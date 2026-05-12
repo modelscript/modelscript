@@ -1634,3 +1634,5 @@ function formatTick(v: number): string {
   // Remove trailing zeros
   return parseFloat(v.toPrecision(4)).toString();
 }
+
+export {};

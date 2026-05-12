@@ -451,3 +451,5 @@ function renderOverlayChart(
 
 // Resize listener
 window.addEventListener("resize", () => renderChart());
+
+export {};

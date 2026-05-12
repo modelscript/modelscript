@@ -500,3 +500,5 @@ function showError(message: string): void {
 
 vscode.postMessage({ type: "enableLocal" });
 vscode.postMessage({ type: "refresh" });
+
+export {};

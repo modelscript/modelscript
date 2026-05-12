@@ -165,6 +165,8 @@ interface FlattenerContext {
   connectorCardinality?: Map<string, number>;
   /** Whether cardinality() is allowed in the current expression context (if-condition or assert). */
   cardinalityAllowed?: boolean;
+  /** Declaring scope for modification expressions (e.g., the class where an import alias was defined). */
+  modificationScope?: any;
 
   options?: ModelicaCompilerOptions;
   /** Components currently being evaluated (cycle detection). */
@@ -1185,7 +1187,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
             if (modArg) {
               const newMod = modArg.modification || modArg;
-              const mergedMod = ModelicaFlattener.mergeModifications(el.modification, newMod);
+              const modScope = newMod.scope || classMod.scope || node.parent;
+              const wrappedNewMod = { ...newMod, scope: modScope };
+              const mergedMod = ModelicaFlattener.mergeModifications(el.modification, wrappedNewMod);
               Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
             }
           }
@@ -1259,6 +1263,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               get modification() {
                 return a.modification ? { ast: a.modification, scope: ext } : null;
               },
+              get scope() {
+                return ext;
+              },
               get modificationExpression() {
                 if (!a.modification?.modificationExpression) return null;
                 return { expression: a.modification.modificationExpression.expression };
@@ -1286,7 +1293,9 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             );
             if (modArg) {
               const newMod = modArg.modification || modArg;
-              const mergedMod = ModelicaFlattener.mergeModifications(newMod, el.modification);
+              const modScope = newMod.scope || extMod.scope || ext;
+              const wrappedNewMod = { ...newMod, scope: modScope };
+              const mergedMod = ModelicaFlattener.mergeModifications(wrappedNewMod, el.modification);
               Object.defineProperty(el, "modification", { value: mergedMod, writable: true, configurable: true });
             } else {
               // Class modification: mod name matches the element's *class* type name, not component name.
@@ -1314,7 +1323,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                           return a.name?.parts?.map((p: any) => p.text).join(".") ?? a.identifier?.text ?? null;
                         },
                         get modification() {
-                          return a.modification ? { ast: a.modification, scope: rawMod?.scope } : null;
+                          return a.modification ? { ast: a.modification, scope: rawMod?.scope ?? ext } : null;
+                        },
+                        get scope() {
+                          return rawMod?.scope ?? ext;
                         },
                         get modificationExpression() {
                           if (!a.modification?.modificationExpression) return null;
@@ -2046,7 +2058,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   // Context to track type replacements (redeclarations) during traversal
   #redeclareContext = new Map<string, any>();
   // Map from fully qualified component name to its generated subset of DAE variables and equations
-  #inheritedModificationsStack: { nameParts: string[]; valueExpr: any }[][] = [];
+  #inheritedModificationsStack: { nameParts: string[]; valueExpr: any; scope?: any }[][] = [];
   #componentContents = new Map<string, { variables: ModelicaVariable[]; equations: ModelicaEquation[] }>();
 
   /**
@@ -2279,7 +2291,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       );
     }
 
-    const currentMods: { nameParts: string[]; valueExpr: any }[] = [];
+    const currentMods: { nameParts: string[]; valueExpr: any; scope?: any }[] = [];
     const parentMods = this.#inheritedModificationsStack[this.#inheritedModificationsStack.length - 1];
     if (parentMods) {
       for (const pm of parentMods) {
@@ -2288,6 +2300,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           currentMods.push({
             nameParts: pm.nameParts.slice(1),
             valueExpr: pm.valueExpr,
+            scope: pm.scope,
           });
         } else if (
           pm.nameParts.length > 0 &&
@@ -2343,7 +2356,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             // Push the top-level value binding (e.g., x = 2.0 → nameParts: ["x"], valueExpr: 2.0)
             const topExpr = modArg.modificationExpression?.expression || modArg.expression || modArg.arg?.value;
             if (topExpr) {
-              currentMods.push({ nameParts: parts, valueExpr: topExpr });
+              currentMods.push({
+                nameParts: parts,
+                valueExpr: topExpr,
+                scope: modArg.scope || node.modification.scope || node.parent,
+              });
             }
 
             // Also extract nested sub-modifications (e.g., B(x = 2.0) → nameParts: ["B", "x"], valueExpr: 2.0)
@@ -2360,6 +2377,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 currentMods.push({
                   nameParts: [...parts, ...subName.split(".")],
                   valueExpr: subExpr,
+                  scope: subMod.scope || modArg.scope || node.modification.scope || node.parent,
                 });
               }
             }
@@ -2485,9 +2503,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
   #getEvaluationScope(
     node: ModelicaComponentInstance,
     defaultPrefix: string,
+    explicitScope?: any,
   ): { prefix: string; classInstance: ModelicaClassInstance } {
     const defaultCtx = node.parent ?? ({} as ModelicaClassInstance);
-    const modScope = node.modification?.scope;
+    const modScope = explicitScope || node.modification?.scope;
     if (!modScope) return { prefix: defaultPrefix, classInstance: defaultCtx };
 
     const parts = defaultPrefix ? defaultPrefix.split(".") : [];
@@ -2543,7 +2562,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     return { prefix: defaultPrefix, classInstance: defaultCtx };
   }
 
-  #flattenToSymbolic(expr: any, ctxNode: ModelicaComponentInstance, prefix: string, dae: ModelicaDAE): any {
+  #flattenToSymbolic(
+    expr: any,
+    ctxNode: ModelicaComponentInstance,
+    prefix: string,
+    dae: ModelicaDAE,
+    explicitScope?: any,
+  ): any {
     if (!expr) return expr;
     if (typeof expr.accept === "function") {
       // If it's already a symbolic expression (from a previous flattening pass), don't re-flatten
@@ -2554,7 +2579,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // to be visited by the syntax flattener below.
       if ("hash" in expr) return expr;
 
-      const evalScope = this.#getEvaluationScope(ctxNode, prefix);
+      const evalScope = this.#getEvaluationScope(ctxNode, prefix, explicitScope);
       let result = expr.accept(new ModelicaSyntaxFlattener(this.options), {
         prefix: evalScope.prefix,
         classInstance: evalScope.classInstance,
@@ -2563,6 +2588,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         activeClassStack: this.activeClassStack,
         activePrefixes: this.activePrefixes,
         structuralFinalParams: this.#structuralFinalParams,
+        modificationScope: explicitScope,
       });
 
       if (result == null && expr.kind === "expression" && expr.text && this.context) {
@@ -2657,7 +2683,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
   #collectTypeAttributes(
     cls: ModelicaClassInstance | null,
-    attributes: Map<string, ModelicaExpression>,
+    attributes: Map<string, any>,
     visited = new Set<unknown>(),
   ): void {
     if (!cls || visited.has((cls as any).id ?? cls)) return;
@@ -2752,7 +2778,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     name: string,
     args: [string, ModelicaDAE],
     effectiveVariability?: ModelicaVariability | null,
-    currentMods: { nameParts: string[]; valueExpr: any }[] = [],
+    currentMods: { nameParts: string[]; valueExpr: any; scope?: any }[] = [],
   ): void {
     const variability = effectiveVariability ?? node.variability;
     // For dotted names (sub-components like c1.x), OMC generally preserves input/output
@@ -2789,7 +2815,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       isFinal = true;
     }
 
-    const attributes = new Map<string, ModelicaExpression>();
+    const attributes = new Map<string, any>();
 
     const classInst = node.classInstance;
 
@@ -2809,13 +2835,15 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     const nodeMod = node.modification;
 
     let dynamicModExpr: any = null;
+    let dynamicModScope: any = null;
     for (const pm of currentMods) {
       if (pm.nameParts.length === 0) {
         dynamicModExpr = pm.valueExpr;
+        dynamicModScope = pm.scope;
         break;
       } else if (pm.nameParts.length === 1 && pm.nameParts[0] !== "annotation") {
         // If the modification is for an attribute (like `x.start=1`), add to attributes map.
-        attributes.set(pm.nameParts[0] ?? "", pm.valueExpr);
+        attributes.set(pm.nameParts[0] ?? "", { expr: pm.valueExpr, scope: pm.scope });
       }
     }
 
@@ -2829,7 +2857,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Evaluate all collected attributes into symbolic expressions
     for (const [key, val] of attributes.entries()) {
-      attributes.set(key, this.#flattenToSymbolic(val, node, args[0], args[1]));
+      if (val && typeof val === "object" && "expr" in val) {
+        attributes.set(key, this.#flattenToSymbolic(val.expr, node, args[0], args[1], val.scope));
+      } else {
+        attributes.set(key, this.#flattenToSymbolic(val, node, args[0], args[1]));
+      }
     }
 
     let expression: ModelicaExpression | null;
@@ -2842,7 +2874,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!rawExpr) {
         rawExpr = node.modification?.expression ?? null;
       }
-      expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
+      expression =
+        this.#flattenToSymbolic(rawExpr, node, args[0], args[1], dynamicModScope || node.modification?.scope) ?? null;
       // Look up field value from parent record object expression (e.g., r1 = R(1.0, 2.0, 3.0))
       // Parent object values take priority over type defaults (e.g., constant R r1 = R(4.0, 5.0, 6.0))
       if (this.#parentObjectExpression && node.name) {
@@ -2851,7 +2884,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
       if (!expression && nodeMod?.modificationExpression?.expression) {
         const rawExpr = nodeMod.modificationExpression.expression;
-        expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1]) ?? null;
+        expression = this.#flattenToSymbolic(rawExpr, node, args[0], args[1], nodeMod.scope) ?? null;
       }
       // Even if the constant was evaluated, collect any function definitions
       // referenced in the raw binding expression (e.g., constant Integer s = mySize({1,2,3}))
@@ -2864,7 +2897,8 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       expression = null;
       const rawParamExpr = dynamicModExpr ?? nodeMod?.modificationExpression?.expression;
       if (rawParamExpr) {
-        expression = this.#flattenToSymbolic(rawParamExpr, node, args[0], args[1]) ?? null;
+        const paramScope = dynamicModExpr ? dynamicModScope : nodeMod?.scope || null;
+        expression = this.#flattenToSymbolic(rawParamExpr, node, args[0], args[1], paramScope) ?? null;
       }
       // Distribute array-valued parameter bindings when inside an array element iteration
       // e.g., A a[2](n={1,2}) → a[1].n=1, a[2].n=2
@@ -2907,6 +2941,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     if (varExpression) {
       varExpression = this.#foldExpression(varExpression, args[1]);
     }
+
     // When a scalar variable binding comes from a multi-return function call evaluation,
     // the result is an array of all outputs (e.g., {6.0, 9.0} from f returning (y,z)).
     // Extract only the first output for scalar assignments.
@@ -3065,6 +3100,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // (same component inherited through multiple extends paths)
       if (!this.#emittedVarNames.has(variable.name)) {
         this.#emittedVarNames.add(variable.name);
+
         args[1].variables.push(variable);
         // Track flow variables for flow balance post-processing.
         // Cap at 10,000 to avoid performance issues with huge array models (e.g., cells[1000,100]).
@@ -6379,6 +6415,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // alias for a builtin function (e.g. `import sinx = sin;` → sinx(0) → sin(0))
         // or a user-defined function (e.g. `import P = Package;` → P.Func(1) → Package.Func(1)).
         const importTarget = this.#resolveImportAlias(functionName, ctx);
+
         if (importTarget) {
           if (ModelicaSyntaxFlattener.#isBuiltinFunction(importTarget)) {
             functionName = importTarget;
@@ -6386,7 +6423,26 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           } else {
             // Try resolving the expanded name (e.g. Package.Func)
             const expandedParts = importTarget.split(".");
-            const expandedResolved = ctx.classInstance.resolveName(expandedParts);
+            let expandedResolved = ctx.classInstance.resolveName(expandedParts);
+            // If the current classInstance can't resolve it, try the modification scope
+            // (e.g., Model2 where the import was declared) and activeClassStack
+            if (!expandedResolved || !(expandedResolved.isClassInstance || expandedResolved.isComponentInstance)) {
+              if (ctx.modificationScope?.resolveName) {
+                expandedResolved = ctx.modificationScope.resolveName(expandedParts);
+              }
+              if (!expandedResolved || !(expandedResolved.isClassInstance || expandedResolved.isComponentInstance)) {
+                for (const cls of ctx.activeClassStack ?? []) {
+                  if (cls?.resolveName) {
+                    const r = cls.resolveName(expandedParts);
+                    if (r && (r.isClassInstance || r.isComponentInstance)) {
+                      expandedResolved = r;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
             if (expandedResolved && (expandedResolved.isClassInstance || expandedResolved.isComponentInstance)) {
               functionName = importTarget;
             } else {
@@ -6417,6 +6473,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     }
 
     const originalName = functionName;
+
     let isExternalBuiltinAlias = false;
 
     // Check if the function resolves to an external clause mapping to a builtin
@@ -7146,8 +7203,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (defaultsAreConstant) {
         const targetDae = ctx.rootDae ?? ctx.dae;
         const interp = new ModelicaInterpreter(true, undefined, targetDae.diagnostics as any);
-        const evalResult = node.accept(interp, ctx.classInstance as any);
-        if (evalResult) {
+        const interpScope = ctx.modificationScope ?? ctx.classInstance;
+        const evalResult = node.accept(interp, interpScope as any);
+        if (evalResult && !(evalResult instanceof ModelicaFunctionCallExpression)) {
           // Function was fully inlined — remove its definition from the DAE
           // so it doesn't appear in the output (matches OMC behavior).
           const targetDae = ctx.rootDae ?? ctx.dae;
@@ -7165,6 +7223,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // args to the function instance.
         if (!builtinDef && flatArgs.every((a) => isLiteral(a) || isLiteralArray(a))) {
           const funcInstance = ctx.classInstance.resolveName(functionName.split("."));
+
           if (funcInstance instanceof ModelicaClassInstance && funcInstance.classKind === ModelicaClassKind.FUNCTION) {
             const inputParams = Array.from(funcInstance.inputParameters);
             if (flatArgs.length <= inputParams.length) {
@@ -7190,8 +7249,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                     stmt.accept(interpFallback, clone);
                   }
                   const outParams = Array.from(clone.outputParameters);
+
                   if (outParams.length >= 1 && (outParams[0] as any)?.classInstance) {
                     const outExpr = ModelicaExpression.fromClassInstance((outParams[0] as any).classInstance);
+
                     if (outExpr && (isLiteral(outExpr) || isLiteralArray(outExpr))) {
                       return outExpr;
                     }
@@ -7305,13 +7366,30 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
       }
     }
+    // Also check the modification declaring scope (e.g., Model2 where `import P = Package` lives)
+    if (ctx.modificationScope && !visited.has(ctx.modificationScope)) {
+      visited.add(ctx.modificationScope);
+      candidates.push(ctx.modificationScope);
+    }
 
     for (const inst of candidates) {
       const astNode = inst.abstractSyntaxNode;
       if (!astNode) continue;
       // Elements may be on classSpecifier or astNode directly
       const specifier = astNode.classSpecifier;
-      const elements = specifier?.elements ?? astNode.elements ?? [];
+      const elements = [];
+      if (specifier?.sections) {
+        for (const section of specifier.sections) {
+          if (section.elements) elements.push(...section.elements);
+        }
+      }
+      if (specifier?.elements) elements.push(...specifier.elements);
+      if (astNode.elements) elements.push(...astNode.elements);
+      if (astNode.sections) {
+        for (const section of astNode.sections) {
+          if (section.elements) elements.push(...section.elements);
+        }
+      }
       for (const el of elements) {
         // ModelicaSimpleImportClauseSyntaxNode has:
         //   shortName: ModelicaIdentifierSyntaxNode (the alias, e.g. "P")
