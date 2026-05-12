@@ -5769,6 +5769,36 @@ connection.onRequest(
   },
 );
 
+// ── Shared DAE Cache for Code Lens / Inlay Hints ──
+// Both code lens and inlay hints need a flattened DAE but run the full
+// flattener on every request.  Cache the DAE per URI+content-hash so the
+// model is only flattened once per edit cycle.
+const daeCache = new Map<string, { version: string; dae: any }>();
+
+function getCachedDAE(uri: string, instance: any): any | null {
+  const effectiveUri = uri.startsWith("modelscript-lib://global")
+    ? "file://" + uri.substring("modelscript-lib://global".length)
+    : uri;
+  const indexedText = lastIndexedText.get(effectiveUri);
+  const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
+  const cacheKey = `${uri}|${instance.name ?? ""}`;
+  const cached = daeCache.get(cacheKey);
+  if (cached && cached.version === version) {
+    return cached.dae;
+  }
+  try {
+    if (!instance.instantiated) instance.instantiate();
+    const dae = new ModelicaDAE(instance.name || "Model");
+    const flattener = new ModelicaFlattener();
+    instance.accept(flattener, ["", dae]);
+    flattener.generateFlowBalanceEquations(dae);
+    daeCache.set(cacheKey, { version, dae });
+    return dae;
+  } catch (e) {
+    return null;
+  }
+}
+
 // ── Code Lens Provider ──
 
 connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
@@ -5804,16 +5834,14 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
       instance.classKind === ModelicaClassKind.CLASS;
 
     if (isSimulatable) {
-      // Flatten to get equation/variable counts
+      // Use cached DAE to avoid re-flattening on every keystroke
       try {
-        const dae = new ModelicaDAE(instance.name || "Model");
-        const flattener = new ModelicaFlattener();
-        instance.accept(flattener, ["", dae]);
-        flattener.generateFlowBalanceEquations(dae);
+        const dae = getCachedDAE(uri, instance);
+        if (!dae) continue;
 
-        const nEqs = dae.equations.filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation").length;
+        const nEqs = dae.equations.filter((eq: any) => eq.constructor.name !== "ModelicaFunctionCallEquation").length;
         const nVars = dae.variables.filter(
-          (v) =>
+          (v: any) =>
             (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
         ).length;
 
@@ -5903,9 +5931,8 @@ connection.onRequest("textDocument/inlayHint", (params): InlayHint[] => {
     if (!isSimulatable) continue;
 
     try {
-      const dae = new ModelicaDAE(instance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      instance.accept(flattener, ["", dae]);
+      const dae = getCachedDAE(uri, instance);
+      if (!dae) continue;
 
       // For each variable, show start value if it has one
       for (const v of dae.variables) {
