@@ -1095,7 +1095,14 @@ async function runSemanticPipeline(
     const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
     const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
     const isWorkspaceFile = !!documents.get(uri);
-    const skipHeavyLints = !isWorkspaceFile && docSymbolCount > 1000;
+    const hasSyntaxErrors = baseDiagnostics.length > 0;
+    const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
+
+    if (hasSyntaxErrors) {
+      // Retain existing semantic diagnostics if the AST is broken to prevent flashing
+      const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+      newSemanticDiagnostics.push(...cachedSemantic);
+    }
 
     if (!skipHeavyLints) {
       const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale);
@@ -1448,49 +1455,57 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       };
       collectErrors(tree.rootNode);
 
-      // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
-      const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
-        await new Promise<void>((r) => setTimeout(r, 0));
-        return false; // sysml2 side doesn't have isStale easily accessible here, but yielding prevents UI freeze
-      });
-      for (const d of engineDiags) {
-        const start = bridge["positions"].offsetToPosition(d.startByte);
-        const end = bridge["positions"].offsetToPosition(d.endByte);
-        let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-        if (d.severity === "error") severity = DiagnosticSeverity.Error;
-        if (d.severity === "info") severity = DiagnosticSeverity.Information;
+      const hasSyntaxErrors = sysmlDiagnostics.length > 0;
 
-        sysmlDiagnostics.push({
-          severity,
-          range: { start, end },
-          message: d.message,
-          source: "sysml2",
+      if (!hasSyntaxErrors) {
+        // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
+        const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
+          await new Promise<void>((r) => setTimeout(r, 0));
+          return false; // sysml2 side doesn't have isStale easily accessible here, but yielding prevents UI freeze
         });
-      }
+        for (const d of engineDiags) {
+          const start = bridge["positions"].offsetToPosition(d.startByte);
+          const end = bridge["positions"].offsetToPosition(d.endByte);
+          let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+          if (d.severity === "error") severity = DiagnosticSeverity.Error;
+          if (d.severity === "info") severity = DiagnosticSeverity.Information;
 
-      // Collect unresolved references
-      // Skip unresolved-reference diagnostics while the SysML2 standard library
-      // is still loading — primitive types like Real/Integer/Boolean/String live
-      // in the stdlib and produce false positives until it's indexed.
-      const unresolvedRefs = sysml2StdlibReady
-        ? await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
-            await new Promise<void>((r) => setTimeout(r, 0));
-            return false;
-          })
-        : [];
-      for (const r of unresolvedRefs) {
-        const start = bridge["positions"].offsetToPosition(r.startByte);
-        const end = bridge["positions"].offsetToPosition(r.endByte);
-        let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-        if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-        if (r.severity === "info") severity = DiagnosticSeverity.Information;
+          sysmlDiagnostics.push({
+            severity,
+            range: { start, end },
+            message: d.message,
+            source: "sysml2",
+          });
+        }
 
-        sysmlDiagnostics.push({
-          severity,
-          range: { start, end },
-          message: r.message,
-          source: "sysml2",
-        });
+        // Collect unresolved references
+        // Skip unresolved-reference diagnostics while the SysML2 standard library
+        // is still loading — primitive types like Real/Integer/Boolean/String live
+        // in the stdlib and produce false positives until it's indexed.
+        const unresolvedRefs = sysml2StdlibReady
+          ? await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
+              await new Promise<void>((r) => setTimeout(r, 0));
+              return false;
+            })
+          : [];
+        for (const r of unresolvedRefs) {
+          const start = bridge["positions"].offsetToPosition(r.startByte);
+          const end = bridge["positions"].offsetToPosition(r.endByte);
+          let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+          if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+          if (r.severity === "info") severity = DiagnosticSeverity.Information;
+
+          sysmlDiagnostics.push({
+            severity,
+            range: { start, end },
+            message: r.message,
+            source: "sysml2",
+          });
+        }
+      } else {
+        // Retain existing semantic diagnostics if the AST is broken to prevent flashing
+        const cachedSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
+        sysmlDiagnostics.push(...cachedSemantic);
       }
 
       const vDiags = verificationDiagnosticsByUri.get(textDocument.uri);

@@ -105,6 +105,30 @@ export class SymbolIndexer {
 
     const newIndex: SymbolIndex = { symbols: newSymbols, byName: newByName, childrenOf: newChildrenOf };
 
+    // Post-walk cleanup: deduplicate and validate childrenOf/byName arrays.
+    // During incremental walks, the same symbol ID can be pushed multiple
+    // times (stableKey collisions across sibling scopes), and old entries
+    // from bulk-copy may overlap with re-indexed entries from the walk zone.
+    for (const [key, ids] of newChildrenOf) {
+      // Filter to only IDs that exist in symbols, then deduplicate
+      const valid = ids.filter((id) => newSymbols.has(id));
+      const deduped = valid.length > new Set(valid).size ? [...new Set(valid)] : valid;
+      if (deduped.length === 0) {
+        newChildrenOf.delete(key);
+      } else {
+        newChildrenOf.set(key, deduped);
+      }
+    }
+    for (const [key, ids] of newByName) {
+      const valid = ids.filter((id) => newSymbols.has(id));
+      const deduped = valid.length > new Set(valid).size ? [...new Set(valid)] : valid;
+      if (deduped.length === 0) {
+        newByName.delete(key);
+      } else {
+        newByName.set(key, deduped);
+      }
+    }
+
     // Compute changed IDs
     const changedIds = new Set<SymbolId>();
 
@@ -243,11 +267,20 @@ export class SymbolIndexer {
       // Try to reuse old entry if unchanged
       const sKey = this.stableKey(hook.ruleName, name, parentId, siblingOrdinal);
       let oldEntry = oldByStableKey.get(sKey);
+      let matchedKey = sKey;
 
       // Fallback: if parent ID changed, try with the old parent ID
       if (!oldEntry && oldParentId !== parentId) {
         const altKey = this.stableKey(hook.ruleName, name, oldParentId, siblingOrdinal);
         oldEntry = oldByStableKey.get(altKey);
+        matchedKey = altKey;
+      }
+
+      // Consume the matched entry so it can't be reused by another node
+      // with the same ruleName+name (e.g. multiple Reference:Real entries
+      // under different component_clause wrappers).
+      if (oldEntry) {
+        oldByStableKey.delete(matchedKey);
       }
 
       const overlaps = this.nodeOverlapsEdits(node, editRanges);
@@ -306,22 +339,7 @@ export class SymbolIndexer {
     const children = node.children || [];
     const childCount = node.childCount ?? children.length;
 
-    // For large child lists, use binary search to only process the edit zone
-    if (childCount > 32 && editRanges.length > 0) {
-      this.walkChildrenBinarySearch(
-        node,
-        currentParentId,
-        childCount,
-        symbols,
-        byName,
-        childrenOf,
-        oldByStableKey,
-        oldIndex,
-        editRanges,
-        currentOldParentId,
-        totalDelta,
-      );
-    } else {
+    {
       const childSiblingCounts = new Map<string, number>();
 
       for (let i = 0; i < childCount; i++) {
@@ -396,42 +414,22 @@ export class SymbolIndexer {
     }
     const lastAffected = Math.min(childCount - 1, lo); // 1 after for safety
 
-    // Compute edit delta for byte position adjustment
-    let editDelta = 0;
-    for (const r of editRanges) {
-      // delta = newLength - oldLength. editRanges has startByte and endByte in NEW coordinates.
-      // The edit at r.startByte replaced (r.endByte - r.startByte) old bytes...
-      // Actually, editRanges come from Monaco edits: startByte=offset, endByte=offset+max(rangeLength, text.length)
-      // We don't have the exact old vs new length here, so compute from the edit params
-    }
-    // Simpler: compute delta from first/last affected children vs old entries
-    // For now, use old entries' byte positions directly (they're correct for before-edit,
-    // and slightly off for after-edit — corrected on next full index)
+    // Compute the ACTUAL byte range that the edit zone walk will cover.
+    // Any old entry whose byte range falls within this zone must NOT be
+    // bulk-copied — the edit zone walk will re-index them from the tree.
+    const walkZoneStartByte =
+      firstAffected < childCount && children[firstAffected] ? nodeStartByte(children[firstAffected]!) : Infinity;
+    const walkZoneEndByte =
+      lastAffected < childCount && children[lastAffected] ? nodeEndByte(children[lastAffected]!) : 0;
 
-    // Identify old entries that overlap with any edit range (in old coordinates).
-    // editRanges.startByte is the same in old and new coords (nothing before it changed).
-    // Use a generous margin to catch entries that partially overlap.
-    const editZoneOldIds = new Set<SymbolId>();
-    const oldChildIds = oldIndex.childrenOf.get(parentId) ?? [];
+    const oldChildIds = oldIndex.childrenOf.get(oldParentId) ?? [];
+
+    // BEFORE edit zone: bulk-copy old entries that end strictly before the walk zone
     for (const oldId of oldChildIds) {
       const entry = oldIndex.symbols.get(oldId);
       if (!entry) continue;
-      if (entry.startByte < editEndByte && entry.endByte > editStartByte) {
-        editZoneOldIds.add(oldId);
-      }
-    }
-
-    // BEFORE edit zone: bulk-copy old entries without tree access
-    const editZoneStartByte =
-      firstAffected < childCount ? (children[firstAffected] ? nodeStartByte(children[firstAffected]!) : 0) : Infinity;
-
-    for (const oldId of oldChildIds) {
-      const entry = oldIndex.symbols.get(oldId);
-      if (!entry) continue;
-      if (editZoneOldIds.has(oldId)) continue; // overlaps edit — will be re-indexed
-      // Entry ends before the edit zone — it's unchanged, copy directly
-      if (entry.endByte <= editZoneStartByte) {
-        this.copyEntryToNewIndex(entry, symbols, byName, childrenOf, 0);
+      if (entry.endByte <= walkZoneStartByte) {
+        this.copyEntryToNewIndex(entry, parentId, symbols, byName, childrenOf, 0);
         this.reuseSubtreeFromIndex(entry.id, entry.id, oldIndex, symbols, byName, childrenOf, 0);
       }
     }
@@ -457,27 +455,27 @@ export class SymbolIndexer {
       );
     }
 
-    // AFTER edit zone: bulk-copy old entries that are beyond the edit zone
+    // AFTER edit zone: bulk-copy old entries that start at or after the walk zone end
     for (const oldId of oldChildIds) {
       const entry = oldIndex.symbols.get(oldId);
       if (!entry) continue;
-      if (editZoneOldIds.has(oldId)) continue; // overlaps edit — already re-indexed
-      if (entry.endByte <= editZoneStartByte) continue; // already copied above
-      if (symbols.has(entry.id)) continue; // already processed
-      // This is an after-edit entry — copy with approximate byte positions
-      this.copyEntryToNewIndex(entry, symbols, byName, childrenOf, totalDelta);
+      if (entry.endByte <= walkZoneStartByte) continue; // already copied above
+      if (entry.startByte < walkZoneEndByte) continue; // inside walk zone — already re-indexed
+      if (symbols.has(entry.id)) continue; // already processed (safety check)
+      this.copyEntryToNewIndex(entry, parentId, symbols, byName, childrenOf, totalDelta);
       this.reuseSubtreeFromIndex(entry.id, entry.id, oldIndex, symbols, byName, childrenOf, totalDelta);
     }
   }
 
   private copyEntryToNewIndex(
     oldEntry: SymbolEntry,
+    newParentId: SymbolId | null,
     symbols: Map<SymbolId, SymbolEntry>,
     byName: Map<string, SymbolId[]>,
     childrenOf: Map<SymbolId | null, SymbolId[]>,
     byteDelta: number,
   ): void {
-    const entry = { ...oldEntry };
+    const entry = { ...oldEntry, parentId: newParentId };
     if (byteDelta !== 0) {
       entry.startByte += byteDelta;
       entry.endByte += byteDelta;
