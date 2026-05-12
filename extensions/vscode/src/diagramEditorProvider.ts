@@ -67,11 +67,15 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let currentDiagramType = "All";
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
+    // True when a text-change-triggered update has been scheduled (debounced or immediate).
+    // Prevents projectTreeChanged from scheduling a redundant second rebuild.
+    let textChangeUpdatePending = false;
 
     /** Immediately request fresh diagram data (cancels any pending debounced request). */
     const immediateUpdate = () => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = null;
+      textChangeUpdatePending = false;
       diagramRequestNonce++;
       const currentNonce = diagramRequestNonce;
       webviewPanel.webview.postMessage({ type: "loading" });
@@ -81,16 +85,17 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     };
 
     /** Request diagram data after a debounce (for external text changes like user typing). */
-    const debouncedUpdate = () => {
+    const debouncedUpdate = (delayMs = 500) => {
       if (updateTimeout) clearTimeout(updateTimeout);
       updateTimeout = setTimeout(() => {
+        textChangeUpdatePending = false;
         diagramRequestNonce++;
         const currentNonce = diagramRequestNonce;
         webviewPanel.webview.postMessage({ type: "loading" });
         this.requestDiagramData(webviewPanel, uriString, currentDiagramType, {
           isCanceled: () => diagramRequestNonce !== currentNonce,
         });
-      }, 200);
+      }, delayMs);
     };
 
     const applyTextEdits = async (uri: string, edits: vscode.TextEdit[]) => {
@@ -278,10 +283,14 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         return;
       }
       if (hint === "debounced") {
+        textChangeUpdatePending = true;
         debouncedUpdate();
         return;
       }
-      // External change — debounced refresh
+      // External change (user typing) — debounced refresh.
+      // Mark that a text-change update is pending so projectTreeChanged
+      // doesn't schedule a redundant second rebuild.
+      textChangeUpdatePending = true;
       debouncedUpdate();
     });
 
@@ -292,6 +301,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.webview.postMessage({ type: "stopLoading" }); // Hide spinner when edit finishes
         return;
       }
+      // Skip if a text-change-triggered update is already pending —
+      // it will fire soon and produce the same result without double work.
+      if (textChangeUpdatePending) return;
       debouncedUpdate();
     });
 

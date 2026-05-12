@@ -1287,11 +1287,25 @@ END-ISO-10303-21;`;
     }
   }
 
-  // Listen for document changes AND opens to re-fetch markdown data (debounced)
+  // Listen for document changes AND opens to re-fetch markdown data (debounced).
+  // Only fires when a markdown preview tab is actually visible, to avoid blocking
+  // the LSP event loop with unnecessary resolveMarkdownVars/resolveMarkdownContent
+  // requests during interactive editing.
   let markdownRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  const isMarkdownPreviewOpen = (): boolean => {
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        if (tab.input instanceof vscode.TabInputWebview && tab.label.includes("Preview")) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   const scheduleMarkdownRefresh = () => {
+    if (!isMarkdownPreviewOpen()) return;
     if (markdownRefreshTimer) clearTimeout(markdownRefreshTimer);
-    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 300);
+    markdownRefreshTimer = setTimeout(() => refreshMarkdownData(), 2000);
   };
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => {

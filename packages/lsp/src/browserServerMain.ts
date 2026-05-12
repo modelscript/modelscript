@@ -790,6 +790,17 @@ const documentRevisions = new Map<string, number>();
 const lastIndexedText = new Map<string, string>();
 // Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
 const lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
+// Throttle projectTreeChanged notifications so the diagram editor isn't rebuilt
+// on every keystroke. Uses a trailing-edge throttle: after the first notification,
+// subsequent calls within the window are coalesced into a single deferred fire.
+let projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
+function sendProjectTreeChanged() {
+  if (projectTreeChangedTimer) return; // already scheduled
+  projectTreeChangedTimer = setTimeout(() => {
+    projectTreeChangedTimer = null;
+    connection.sendNotification("modelscript/projectTreeChanged");
+  }, 1000);
+}
 
 /**
  * Collect syntax errors (ERROR and MISSING nodes) from a tree-sitter CST.
@@ -1130,7 +1141,7 @@ async function runSemanticPipeline(
     const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
 
     connection.sendDiagnostics({ uri, diagnostics });
-    connection.sendNotification("modelscript/projectTreeChanged");
+    sendProjectTreeChanged();
   } catch (e: any) {
     connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
     if (!isStale()) {
@@ -3133,6 +3144,15 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
 // Key: `${uri}|${className}|${diagramType}|${version}`
 const diagramCache = new Map<string, { version: number | string; data: any }>();
 
+/** Fast non-cryptographic hash (djb2) for cache key generation. */
+function simpleHash(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return hash >>> 0;
+}
+
 /**
  * Shared getDiagramData implementation used by both legacy and unified handlers.
  * Wraps dispatch.getData with Modelica-specific caching, isLoading state, and perf logging.
@@ -3148,13 +3168,26 @@ async function handleGetDiagramData(params: { uri: string; className?: string; d
     return getDiagramDispatch().getData(params);
   }
 
-  // Modelica — check cache first
-  const doc = documents.get(params.uri);
-  const version = doc ? `${doc.version}|${mslStdlibReady}` : mslStdlibReady ? "msl-ready" : "msl-loading";
+  // Modelica — check cache first.
+  // Use the last-indexed text as the cache key rather than doc.version.
+  // doc.version increments on every keystroke, making the cache useless
+  // during interactive editing. lastIndexedText only updates when the
+  // semantic pipeline actually re-indexes, so intermediate keystrokes
+  // reuse the previous diagram data.
+  const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+    ? "file://" + params.uri.substring("modelscript-lib://global".length)
+    : params.uri;
+  const indexedText = lastIndexedText.get(effectiveUri);
+  const version =
+    indexedText != null
+      ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${mslStdlibReady}`
+      : mslStdlibReady
+        ? "msl-ready"
+        : "msl-loading";
   const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
   const cached = diagramCache.get(cacheKey);
   if (cached && cached.version === version) {
-    connection.console.error(`[diagram-perf] cache hit for ${params.uri} (v=${version})`);
+    connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
     return cached.data;
   }
 
