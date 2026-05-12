@@ -1581,6 +1581,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       (s): s is ModelicaEquationSectionSyntaxNode => s instanceof ModelicaEquationSectionSyntaxNode,
     );
     const t_eq_start = Date.now();
+    const syntaxFlattener = new ModelicaSyntaxFlattener(this.options);
     for (let i = equationSections.length - 1; i >= 0; i--) {
       const section = equationSections[i];
       if (!section) continue;
@@ -1589,20 +1590,21 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const constraintCollector: ModelicaEquation[] = [];
         const savedEquations = args[1].equations;
         args[1].equations = constraintCollector;
+        const flattenerCtx = {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: [],
+          structuralFinalParams: this.#structuralFinalParams,
+          connectedFlowVars: this.#connectedFlowVars,
+          activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
+          flowConnectPairs: this.#flowConnectPairs,
+          streamConnections: this.#streamConnectPairs,
+          connectorCardinality: this.#connectorCardinality,
+        };
         for (const eq of section.equations) {
-          eq.accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: args[0],
-            classInstance: node,
-            dae: args[1],
-            stmtCollector: [],
-            structuralFinalParams: this.#structuralFinalParams,
-            connectedFlowVars: this.#connectedFlowVars,
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-            flowConnectPairs: this.#flowConnectPairs,
-            streamConnections: this.#streamConnectPairs,
-            connectorCardinality: this.#connectorCardinality,
-          });
+          eq.accept(syntaxFlattener, flattenerCtx);
         }
         args[1].equations = savedEquations;
         for (const c of constraintCollector) {
@@ -1614,21 +1616,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         const target = section.initial ? args[1].initialEquations : args[1].equations;
         const savedEquations = args[1].equations;
         args[1].equations = target;
+        const flattenerCtx = {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: [],
+          structuralFinalParams: this.#structuralFinalParams,
+          connectedFlowVars: this.#connectedFlowVars,
+          activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
+          flowConnectPairs: this.#flowConnectPairs,
+          streamConnections: this.#streamConnectPairs,
+          redeclareContext: this.#redeclareContext,
+          connectorCardinality: this.#connectorCardinality,
+        };
         for (const eq of section.equations) {
-          eq.accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: args[0],
-            classInstance: node,
-            dae: args[1],
-            stmtCollector: [],
-            structuralFinalParams: this.#structuralFinalParams,
-            connectedFlowVars: this.#connectedFlowVars,
-            activeClassStack: this.activeClassStack,
-            activePrefixes: this.activePrefixes,
-            flowConnectPairs: this.#flowConnectPairs,
-            streamConnections: this.#streamConnectPairs,
-            redeclareContext: this.#redeclareContext,
-            connectorCardinality: this.#connectorCardinality,
-          });
+          eq.accept(syntaxFlattener, flattenerCtx);
         }
         args[1].equations = savedEquations;
       }
@@ -1641,17 +1644,22 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const section of localSections) {
       if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         const collector: ModelicaStatement[] = [];
+        const flattenerCtx = {
+          prefix: args[0],
+          classInstance: node,
+          dae: args[1],
+          stmtCollector: collector,
+          structuralFinalParams: this.#structuralFinalParams,
+          connectedFlowVars: this.#connectedFlowVars,
+          activeClassStack: this.activeClassStack,
+          activePrefixes: this.activePrefixes,
+          flowConnectPairs: this.#flowConnectPairs,
+          streamConnections: this.#streamConnectPairs,
+          redeclareContext: this.#redeclareContext,
+          connectorCardinality: this.#connectorCardinality,
+        };
         for (const statement of section.statements) {
-          statement.accept(new ModelicaSyntaxFlattener(this.options), {
-            prefix: args[0],
-            classInstance: node,
-            dae: args[1],
-            stmtCollector: collector,
-            structuralFinalParams: this.#structuralFinalParams,
-            activePrefixes: this.activePrefixes,
-            activeClassStack: this.activeClassStack,
-            redeclareContext: this.#redeclareContext,
-          });
+          statement.accept(syntaxFlattener, flattenerCtx);
         }
         if (section.initial) {
           if (collector.length > 0) {

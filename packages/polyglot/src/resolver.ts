@@ -275,6 +275,94 @@ export class ScopeResolver {
   }
 
   /**
+   * Async version of resolveAllReferences that yields to the event loop.
+   * If yieldFn returns true, the process is considered stale and aborts early.
+   */
+  async resolveAllReferencesAsync(
+    resourceId?: string,
+    yieldFn?: () => Promise<boolean>,
+  ): Promise<
+    Array<{
+      symbolId: SymbolId;
+      startByte: number;
+      endByte: number;
+      name: string;
+      ruleName: string;
+      message: string;
+      severity: "error" | "warning" | "info" | "hint";
+    }>
+  > {
+    const diagnostics: Array<{
+      symbolId: SymbolId;
+      startByte: number;
+      endByte: number;
+      name: string;
+      ruleName: string;
+      message: string;
+      severity: "error" | "warning" | "info" | "hint";
+    }> = [];
+
+    let entriesToCheck: Iterable<SymbolEntry>;
+    if (resourceId && this.index.symbolsByResource) {
+      const resourceIds = this.index.symbolsByResource.get(resourceId);
+      if (!resourceIds) return diagnostics;
+      entriesToCheck = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
+    } else {
+      entriesToCheck = this.index.symbols.values();
+    }
+
+    let chunkCount = 0;
+    for (const entry of entriesToCheck) {
+      const hook = this.refHooksByRule.get(entry.ruleName);
+      if (!hook) continue;
+
+      if (resourceId && entry.resourceId !== resourceId) continue;
+
+      const name = entry.name;
+      if (!name || name === "<anonymous>") continue;
+
+      const lenientResolved =
+        hook.resolve === "qualified"
+          ? this.resolveQualified(name, entry.parentId, [])
+          : this.resolveLexical(name, entry.parentId, []);
+
+      if (lenientResolved.length > 0) continue;
+
+      if (this.resolveViaMemberType(name, entry.parentId)) continue;
+
+      if (this.resolveViaFeatureChain(name, entry)) continue;
+
+      const globalIds = this.index.byName.get(name);
+      if (globalIds && globalIds.length > 0) {
+        const hasDeclaration = globalIds.some((id) => {
+          const sym = this.index.symbols.get(id);
+          return sym && !this.refHooksByRule.has(sym.ruleName);
+        });
+        if (hasDeclaration) continue;
+      }
+
+      if (this.implicitNames.has(name)) continue;
+
+      diagnostics.push({
+        symbolId: entry.id,
+        startByte: entry.startByte,
+        endByte: entry.endByte,
+        name,
+        ruleName: entry.ruleName,
+        message: `Unresolved reference '${name}'`,
+        severity: "error",
+      });
+
+      if (yieldFn && ++chunkCount % 50 === 0) {
+        const isStale = await yieldFn();
+        if (isStale) return diagnostics;
+      }
+    }
+
+    return diagnostics;
+  }
+
+  /**
    * Try to resolve a name by looking at the enclosing entry's type.
    *
    * When a reference like `:>> mass` can't be resolved lexically, we check

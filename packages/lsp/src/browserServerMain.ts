@@ -18,7 +18,6 @@ import {
   DocumentSymbol,
   InitializeResult,
   InlayHint,
-  InlayHintKind,
   ParameterInformation,
   SemanticTokens,
   SemanticTokensBuilder,
@@ -988,6 +987,11 @@ async function runSemanticPipeline(
   const isStale = () => revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart;
   /** Yields to the event loop so new edits can be processed. */
   const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
+  /** Yields and checks if pipeline is stale */
+  const yieldAndCheckStale = async () => {
+    await yieldToEventLoop();
+    return isStale();
+  };
 
   try {
     const effectiveUri = uri.startsWith("modelscript-lib://global")
@@ -1094,7 +1098,9 @@ async function runSemanticPipeline(
     const skipHeavyLints = !isWorkspaceFile && docSymbolCount > 1000;
 
     if (!skipHeavyLints) {
-      const engineDiags = engine!.runAllLints(uri);
+      const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale);
+      if (isStale()) return;
+
       for (const d of engineDiags) {
         const start = (bridge as any).positions.offsetToPosition(d.startByte);
         const end = (bridge as any).positions.offsetToPosition(d.endByte);
@@ -1111,7 +1117,11 @@ async function runSemanticPipeline(
 
     // ── Step 4: Resolve references ───────────────────────────────────────
     if (!skipHeavyLints) {
-      const unresolvedRefs = mslStdlibReady ? resolver.resolveAllReferences(uri) : [];
+      const unresolvedRefs = mslStdlibReady
+        ? await (resolver as any).resolveAllReferencesAsync(uri, yieldAndCheckStale)
+        : [];
+      if (isStale()) return;
+
       let dirty = false;
       for (const r of unresolvedRefs) {
         if (r.fqn) {
@@ -1439,7 +1449,10 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       collectErrors(tree.rootNode);
 
       // Run Polyglot declarative lints (e.g. multiplicity bounds, usage matching)
-      const engineDiags = engine!.runAllLints(textDocument.uri);
+      const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
+        await new Promise<void>((r) => setTimeout(r, 0));
+        return false; // sysml2 side doesn't have isStale easily accessible here, but yielding prevents UI freeze
+      });
       for (const d of engineDiags) {
         const start = bridge["positions"].offsetToPosition(d.startByte);
         const end = bridge["positions"].offsetToPosition(d.endByte);
@@ -1459,7 +1472,12 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       // Skip unresolved-reference diagnostics while the SysML2 standard library
       // is still loading — primitive types like Real/Integer/Boolean/String live
       // in the stdlib and produce false positives until it's indexed.
-      const unresolvedRefs = sysml2StdlibReady ? resolver.resolveAllReferences(textDocument.uri) : [];
+      const unresolvedRefs = sysml2StdlibReady
+        ? await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
+            await new Promise<void>((r) => setTimeout(r, 0));
+            return false;
+          })
+        : [];
       for (const r of unresolvedRefs) {
         const start = bridge["positions"].offsetToPosition(r.startByte);
         const end = bridge["positions"].offsetToPosition(r.endByte);
@@ -5768,57 +5786,6 @@ connection.onRequest(
     }
   },
 );
-
-// ── Shared DAE Cache for Code Lens / Inlay Hints ──
-// Both code lens and inlay hints need a flattened DAE but run the full
-// flattener on every request.  Cache the DAE per URI+content-hash so the
-// model is only flattened once per edit cycle.
-const daeCache = new Map<string, { version: string; dae: any }>();
-const pendingFlattenings = new Map<string, ReturnType<typeof setTimeout>>();
-
-function getCachedDAE(uri: string, instance: any): any | null {
-  const effectiveUri = uri.startsWith("modelscript-lib://global")
-    ? "file://" + uri.substring("modelscript-lib://global".length)
-    : uri;
-  const indexedText = lastIndexedText.get(effectiveUri);
-  const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
-  const cacheKey = `${uri}|${instance.name ?? ""}`;
-  const cached = daeCache.get(cacheKey);
-
-  if (cached && cached.version === version) {
-    return cached.dae;
-  }
-
-  // Schedule a debounced flattening to avoid freezing the editor on every keystroke
-  if (pendingFlattenings.has(cacheKey)) {
-    clearTimeout(pendingFlattenings.get(cacheKey)!);
-  }
-
-  pendingFlattenings.set(
-    cacheKey,
-    setTimeout(() => {
-      pendingFlattenings.delete(cacheKey);
-      try {
-        if (!instance.instantiated) instance.instantiate();
-        const dae = new ModelicaDAE(instance.name || "Model");
-        const flattener = new ModelicaFlattener();
-        instance.accept(flattener, ["", dae]);
-        flattener.generateFlowBalanceEquations(dae);
-        daeCache.set(cacheKey, { version, dae });
-      } catch (e) {
-        // ignore
-      }
-    }, 2000),
-  );
-
-  // Return stale data if available so the UI doesn't flicker while typing
-  if (cached) {
-    return cached.dae;
-  }
-
-  return null;
-}
-
 // ── Code Lens Provider ──
 
 connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
@@ -5854,18 +5821,12 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
       instance.classKind === ModelicaClassKind.CLASS;
 
     if (isSimulatable) {
-      // Use cached DAE to avoid re-flattening on every keystroke
       try {
-        const dae = getCachedDAE(uri, instance);
-        if (!dae) continue;
-
-        const nEqs = dae.equations.filter((eq: any) => eq.constructor.name !== "ModelicaFunctionCallEquation").length;
-        const nVars = dae.variables.filter(
-          (v: any) =>
-            (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
-        ).length;
-
-        // removed debug fs write
+        let nEqs = instance.equations?.length || 0;
+        let nVars = 0;
+        for (const c of instance.components) {
+          if (c.variability !== "parameter" && c.variability !== "constant") nVars++;
+        }
 
         if (nEqs > 0 || nVars > 0) {
           lenses.push({
@@ -5874,29 +5835,13 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
               end: { line: startLine, character: 0 },
             },
             command: {
-              title: `📐 ${nEqs} equation${nEqs !== 1 ? "s" : ""}, ${nVars} unknown${nVars !== 1 ? "s" : ""}`,
+              title: `📐 ~${nEqs} equation${nEqs !== 1 ? "s" : ""}, ~${nVars} unknown${nVars !== 1 ? "s" : ""}`,
               command: "modelscript.analyzeBlt",
             },
           });
         }
-
-        // Check for algebraic loops via BLT
-        if (dae.algebraicLoops.length > 0) {
-          for (const loop of dae.algebraicLoops) {
-            lenses.push({
-              range: {
-                start: { line: startLine, character: 0 },
-                end: { line: startLine, character: 0 },
-              },
-              command: {
-                title: `⚠️ Algebraic loop (size ${loop.variables.length}): ${loop.variables.slice(0, 3).join(", ")}${loop.variables.length > 3 ? "…" : ""}`,
-                command: "modelscript.analyzeBlt",
-              },
-            });
-          }
-        }
       } catch (e) {
-        console.warn(`[codeLens] Could not flatten ${instance.name}:`, e);
+        continue;
       }
     }
 
@@ -5929,69 +5874,7 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
 // ── Inlay Hints Provider ──
 
 connection.onRequest("textDocument/inlayHint", (params): InlayHint[] => {
-  if (!parserReady || !parser) return [];
-
-  const uri = params.textDocument.uri;
-  const instances = documentInstances.get(uri);
-  if (!instances || instances.length === 0) return [];
-
-  const document = documents.get(uri);
-  if (!document) return [];
-
-  const hints: InlayHint[] = [];
-
-  for (const instance of instances) {
-    if (!instance.instantiated) continue;
-
-    // Only process simulatable classes for start value hints
-    const isSimulatable =
-      instance.classKind === ModelicaClassKind.MODEL ||
-      instance.classKind === ModelicaClassKind.BLOCK ||
-      instance.classKind === ModelicaClassKind.CLASS;
-    if (!isSimulatable) continue;
-
-    try {
-      const dae = getCachedDAE(uri, instance);
-      if (!dae) continue;
-
-      // For each variable, show start value if it has one
-      for (const v of dae.variables) {
-        const rv = v as any;
-        if (rv.start !== undefined && rv.start !== null && rv.start !== 0) {
-          if (typeof rv.start === "object") continue;
-
-          // Try to find the component declaration in the source for this variable
-          // Only show for top-level (non-dotted) names declared in this class
-          const varName = v.name;
-          if (varName.includes(".") || varName.startsWith("der(")) continue;
-
-          // Find the declaration position in the source text
-          for (const element of instance.declaredElements) {
-            if (element instanceof ModelicaComponentInstance && element.name === varName) {
-              const sr = element.abstractSyntaxNode?.sourceRange;
-              if (sr && sr.startRow >= params.range.start.line && sr.startRow <= params.range.end.line) {
-                const identNode = element.abstractSyntaxNode?.declaration?.identifier;
-                const identSr = identNode?.sourceRange;
-                if (identSr) {
-                  hints.push({
-                    position: { line: identSr.endRow, character: identSr.endCol },
-                    label: ` start=${rv.start}`,
-                    kind: InlayHintKind.Parameter,
-                    paddingLeft: true,
-                  });
-                }
-              }
-              break;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn(`[inlayHint] Could not flatten ${instance.name}:`, e);
-    }
-  }
-
-  return hints;
+  return [];
 });
 
 // ── Class Hierarchy RPC ──

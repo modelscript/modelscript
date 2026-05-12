@@ -406,6 +406,58 @@ export class QueryEngine {
     return diagnostics;
   }
 
+  /**
+   * Async version of runAllLints that yields to the event loop.
+   * If yieldFn returns true, the process is considered stale and aborts early.
+   */
+  async runAllLintsAsync(resourceId?: string, yieldFn?: () => Promise<boolean>): Promise<LintDiagnostic[]> {
+    const diagnostics: LintDiagnostic[] = [];
+
+    let symbolsToCheck: Iterable<[SymbolId, SymbolEntry]>;
+    if (resourceId && this.index.symbolsByResource) {
+      const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
+      if (!resourceSymbolIds) return diagnostics;
+      symbolsToCheck = resourceSymbolIds
+        .map((id) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
+        .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
+    } else {
+      symbolsToCheck = this.index.symbols;
+    }
+
+    let chunkCount = 0;
+    for (const [id, entry] of symbolsToCheck) {
+      if (resourceId && entry.resourceId !== resourceId) continue;
+
+      for (const { lintName, result } of this.runLints(id)) {
+        let startByte = result.startByte ?? entry.startByte;
+        let endByte = result.endByte ?? entry.endByte;
+
+        if (result.field && !result.startByte && !result.endByte) {
+          const fieldRange = entry.fieldRanges?.[result.field];
+          if (fieldRange) {
+            startByte = fieldRange.startByte;
+            endByte = fieldRange.endByte;
+          }
+        }
+
+        diagnostics.push({
+          symbolId: id,
+          startByte,
+          endByte,
+          message: result.message,
+          severity: result.severity,
+          lintName,
+        });
+      }
+
+      if (yieldFn && ++chunkCount % 50 === 0) {
+        const isStale = await yieldFn();
+        if (isStale) return diagnostics; // Abort early
+      }
+    }
+    return diagnostics;
+  }
+
   // =========================================================================
   // Public QueryDB Facade
   // =========================================================================
