@@ -62,10 +62,19 @@ export class CadViewerPanel {
       this._disposables,
     );
 
+    let cadUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedUpdate = () => {
+      if (cadUpdateTimer) clearTimeout(cadUpdateTimer);
+      cadUpdateTimer = setTimeout(() => {
+        cadUpdateTimer = null;
+        this.update();
+      }, 2000);
+    };
+
     vscode.workspace.onDidChangeTextDocument(
       (e) => {
         if (e.document === vscode.window.activeTextEditor?.document) {
-          this.update();
+          debouncedUpdate();
         }
       },
       null,
@@ -74,7 +83,7 @@ export class CadViewerPanel {
 
     // Listen for LSP compilation complete so we update when the AST is ready
     this._client.onNotification("modelscript/projectTreeChanged", () => {
-      this.update();
+      debouncedUpdate();
     });
   }
 

@@ -3275,10 +3275,24 @@ connection.onRequest(
 );
 
 // Custom request: get CAD components for the webview
+// Cache for CAD components — avoids re-flattening on every keystroke.
+const cadComponentsCache = new Map<string, { version: string; data: any }>();
+
 connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
   const instances = documentInstances.get(params.uri);
   if (!instances || instances.length === 0) {
     return [];
+  }
+
+  // Check cache using the same content-hash strategy as the diagram cache
+  const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+    ? "file://" + params.uri.substring("modelscript-lib://global".length)
+    : params.uri;
+  const indexedText = lastIndexedText.get(effectiveUri);
+  const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
+  const cached = cadComponentsCache.get(params.uri);
+  if (cached && cached.version === version) {
+    return cached.data;
   }
 
   const classInstance = instances[0];
@@ -3292,7 +3306,7 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
     classInstance.accept(flattener, ["", dae]);
 
     // Extract variables with CAD annotations
-    return dae.variables
+    const data = dae.variables
 
       .filter((v: any) => v.cadAnnotationString)
 
@@ -3301,6 +3315,8 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
         cad: v.cadAnnotationString,
         dynamicBindings: v.cadDynamicBindings ?? [],
       }));
+    cadComponentsCache.set(params.uri, { version, data });
+    return data;
   } catch (e) {
     console.error("[cad] Error extracting CAD components:", e);
     return [];
