@@ -26,6 +26,8 @@ import { registerScmTreeView } from "./scmTreeView";
 import { registerSemanticDiffComments } from "./semanticDiffComments";
 import { VerificationPanel } from "./verificationPanel";
 
+import { CalibrationPanel } from "./calibrationPanel";
+import { ExperimentsTreeProvider } from "./experimentsTree";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
@@ -407,6 +409,14 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(mqttTreeView);
   mqttTreeProvider.startPolling();
 
+  // Register experiments tree view (discovers experiment annotations)
+  const experimentsTreeProvider = new ExperimentsTreeProvider(client);
+  const experimentsTreeView = vscode.window.createTreeView("modelscript.experimentsView", {
+    treeDataProvider: experimentsTreeProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(experimentsTreeView);
+
   // Register ModelScript package registry tree view (Extensions-bar style)
   registerRegistryView(context);
 
@@ -439,6 +449,7 @@ export async function activate(context: vscode.ExtensionContext) {
         setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
+        experimentsTreeProvider.refresh();
 
         // Register integrations only once
         if (!isScmRegistered) {
@@ -733,6 +744,13 @@ END-ISO-10303-21;`;
       } else {
         SimulationPanel.createOrShow(context.extensionUri, client);
       }
+    }),
+    commands.registerCommand("modelscript.openCalibration", (uri?: string) => {
+      if (!client) return;
+      CalibrationPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.refreshExperiments", () => {
+      experimentsTreeProvider.refresh();
     }),
     commands.registerCommand("modelscript.flatten", async () => {
       if (!client) return;

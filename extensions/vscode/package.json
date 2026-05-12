@@ -198,6 +198,11 @@
         "command": "modelscript.scm.generateCommitMessage",
         "title": "Sparkle: Generate Commit Message",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "modelscript.openCalibration",
+        "title": "ModelScript: Open Calibration Dashboard",
+        "icon": "$(beaker)"
       }
     ],
     "configuration": [
@@ -670,13 +675,6 @@
           "visibility": "visible"
         }
       ],
-      "explorer": [
-        {
-          "id": "modelscript.libraryTree",
-          "name": "Libraries",
-          "visibility": "visible"
-        }
-      ],
       "modelscript-cosim": [
         {
           "type": "webview",
@@ -703,6 +701,18 @@
           "id": "modelscript.registryView",
           "name": "Packages",
           "visibility": "visible"
+        }
+      ],
+      "explorer": [
+        {
+          "id": "modelscript.libraryTree",
+          "name": "Libraries",
+          "visibility": "visible"
+        },
+        {
+          "id": "modelscript.experimentsView",
+          "name": "Experiments",
+          "visibility": "collapsed"
         }
       ]
     },

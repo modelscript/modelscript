@@ -3870,6 +3870,9 @@ connection.onRequest(
         tolerance: params.tolerance ?? 1e-8,
         maxIterations: params.maxIterations ?? 100,
         method: params.method ?? "lm",
+        onProgress: (progress) => {
+          connection.sendNotification("modelscript/calibrationProgress", progress);
+        },
       });
 
       const result = calibrator.calibrate();
@@ -3909,6 +3912,85 @@ connection.onRequest(
         error: e instanceof Error ? e.message : String(e),
       };
     }
+  },
+);
+
+// Custom request: discover experiment-annotated classes across the workspace
+connection.onRequest(
+  "modelscript/getExperiments",
+  (): {
+    experiments: {
+      name: string;
+      uri: string;
+      type: "simulation" | "calibration";
+      startTime?: number;
+      stopTime?: number;
+      interval?: number;
+      tolerance?: number;
+    }[];
+  } => {
+    const experiments: {
+      name: string;
+      uri: string;
+      type: "simulation" | "calibration";
+      startTime?: number;
+      stopTime?: number;
+      interval?: number;
+      tolerance?: number;
+    }[] = [];
+
+    for (const [uri, instances] of documentInstances) {
+      for (const instance of instances) {
+        if (!instance.instantiated) {
+          try {
+            instance.instantiate();
+          } catch {
+            continue;
+          }
+        }
+
+        const isSimulatable =
+          instance.classKind === ModelicaClassKind.MODEL ||
+          instance.classKind === ModelicaClassKind.BLOCK ||
+          instance.classKind === ModelicaClassKind.CLASS;
+        if (!isSimulatable) continue;
+
+        // Check for experiment annotation
+        try {
+          const dae = new ModelicaDAE(instance.name || "Model");
+          const flattener = new ModelicaFlattener();
+          instance.accept(flattener, ["", dae]);
+
+          const exp = dae.experiment;
+          // Only consider classes with actual experiment data (not the default empty {})
+          if (
+            exp &&
+            (exp.startTime !== undefined ||
+              exp.stopTime !== undefined ||
+              exp.tolerance !== undefined ||
+              exp.interval !== undefined)
+          ) {
+            // Detect calibration type by checking for __ModelScript_CalibrationResult
+            // in the experiment annotation (this is what Phase 6 generates)
+            const expAny = exp as Record<string, unknown>;
+            const hasCalibration = "__ModelScript_CalibrationResult" in expAny || "__modelscript_calibration" in expAny;
+            experiments.push({
+              name: instance.compositeName || instance.name || "Unknown",
+              uri,
+              type: hasCalibration ? "calibration" : "simulation",
+              startTime: exp.startTime,
+              stopTime: exp.stopTime,
+              interval: exp.interval,
+              tolerance: exp.tolerance,
+            });
+          }
+        } catch {
+          // ignore errors during experiment discovery
+        }
+      }
+    }
+
+    return { experiments };
   },
 );
 
@@ -5597,7 +5679,6 @@ connection.onRequest(
       // Also register the FMU entity for class resolution
       fmuEntity.instantiate();
       const fmuUri = `__fmu__:${params.name}`;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       workspaceInstances.set(fmuUri, [fmuEntity as any]);
       connection.console.info(`[fmu-import] Registered FMU entity '${params.name}'`);
 

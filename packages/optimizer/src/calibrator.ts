@@ -57,6 +57,8 @@ export interface CalibrationProblem {
   method?: "lm" | "sqp";
   /** Gradient method (default: "sensitivity"). */
   gradient?: "sensitivity" | "finite-difference";
+  /** Optional progress callback invoked after each accepted iteration. */
+  onProgress?: (progress: { iteration: number; cost: number; parameters: Record<string, number> }) => void;
 }
 
 export interface CalibrationResult {
@@ -193,6 +195,15 @@ export class ModelicaCalibrator {
         costHistory.push(cost);
         lambda = Math.max(lambda / lambdaDown, 1e-12);
 
+        // Emit progress notification
+        if (this.problem.onProgress) {
+          const currentParams: Record<string, number> = {};
+          for (let pi = 0; pi < nParams; pi++) {
+            currentParams[parameters[pi]!] = theta[pi]!;
+          }
+          this.problem.onProgress({ iteration: iter, cost, parameters: currentParams });
+        }
+
         // Check convergence: relative cost change
         if (costHistory.length >= 2) {
           const prevCost = costHistory[costHistory.length - 2]!;
@@ -320,6 +331,15 @@ export class ModelicaCalibrator {
       cost = this.evaluateCost(theta);
       costHistory.push(cost);
       this.evaluateGradient(theta, grad);
+
+      // Emit progress notification
+      if (this.problem.onProgress) {
+        const currentParams: Record<string, number> = {};
+        for (let pi = 0; pi < nParams; pi++) {
+          currentParams[parameters[pi]!] = theta[pi]!;
+        }
+        this.problem.onProgress({ iteration: iter, cost, parameters: currentParams });
+      }
 
       // BFGS update
       const s = new Float64Array(nParams);

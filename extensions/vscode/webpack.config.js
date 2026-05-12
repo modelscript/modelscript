@@ -121,6 +121,7 @@ const webviewConfig = {
     cadWebview: "./src/webview/cadWebview.tsx",
     stepWebview: "./src/webview/stepWebview.tsx",
     analysisWebview: "./src/webview/analysisWebview.ts",
+    calibrationWebview: "./src/webview/calibrationWebview.tsx",
     markdownPreview: "./src/webview/markdownPreview.ts",
   },
   output: {
