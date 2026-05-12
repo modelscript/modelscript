@@ -1545,8 +1545,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // Used by #flattenPredefinedClass to mark variables as final.
     // Must be taken before component flattening, which adds nested class params to the live set.
     this.#currentLevelStructuralParams = new Set(this.#structuralFinalParams);
-    this.activeClassStack.push(node);
-    this.activePrefixes.set(node, args[0]);
 
     const originalEquations = args[1].equations;
     const compEqs: ModelicaEquation[] = [];
@@ -2297,6 +2295,13 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         "redeclareContext keys:",
         Array.from(this.#redeclareContext.keys()),
       );
+    }
+
+    // Quick Win #4: Empty array skipping
+    if (classInstance instanceof ModelicaArrayClassInstance && classInstance.shape) {
+      if (classInstance.shape.some((d: any) => d === 0)) {
+        return;
+      }
     }
 
     const currentMods: { nameParts: string[]; valueExpr: any; scope?: any }[] = [];
@@ -7662,6 +7667,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     // Flatten the function into a sub-DAE
     const fnDae = new ModelicaDAE(functionName);
     fnDae.classKind = "function";
+    if (resolved.abstractSyntaxNode?.classPrefixes?.purity === "impure") {
+      fnDae.isImpure = true;
+    }
     resolved.instantiate();
 
     // Skip external "builtin" functions — they are platform-provided and
@@ -9118,7 +9126,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (enumClass?.enumerationLiterals && enumClass.enumerationLiterals.length > 0) {
         const typeName = this.#resolveFullyQualifiedName(expr.name, ctx);
         const elements = enumClass.enumerationLiterals.map(
-          (lit: any) => new ModelicaNameExpression(typeName + "." + lit.stringValue),
+          (lit: any, i: number) =>
+            new ModelicaEnumerationLiteral(lit.literalIndex ?? i + 1, lit.stringValue, null, typeName),
         );
         return new ModelicaArray([elements.length], elements);
       }
@@ -9593,7 +9602,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (enumClass?.enumerationLiterals && enumClass.enumerationLiterals.length > 0) {
           const typeName = this.#resolveFullyQualifiedName(range.name, ctx);
           const elements = enumClass.enumerationLiterals.map(
-            (lit: any) => new ModelicaNameExpression(typeName + "." + lit.stringValue),
+            (lit: any, i: number) =>
+              new ModelicaEnumerationLiteral(lit.literalIndex ?? i + 1, lit.stringValue, null, typeName),
           );
           range = new ModelicaArray([elements.length], elements);
         }

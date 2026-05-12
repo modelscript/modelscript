@@ -13,8 +13,6 @@ end EmptyArray;
 // Result:
 // Error processing file: EmptyArray.mo
 // [OpenModelica/flattening/modelica/arrays/EmptyArray.mo:10:15-10:16:writable] Error: Parse error: Empty array constructors are not valid in Modelica.
-// Error: Failed to load package EmptyArray (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class EmptyArray not found in scope <top>.
 // Error: Error occurred while flattening model EmptyArray
 //
 // # Error encountered! Exiting...

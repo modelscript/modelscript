@@ -39,6 +39,9 @@ class VariableNameCollector extends ModelicaDAEVisitor<Set<string>> {
       if (arg instanceof ModelicaNameExpression) {
         argument.add(`der(${arg.name})`);
         return; // Do not recurse into arguments
+      } else if (arg && "name" in arg) {
+        argument.add(`der(${(arg as { name: string }).name})`);
+        return;
       }
     }
     super.visitFunctionCallExpression(node, argument);
@@ -141,8 +144,28 @@ export function performBltTransformation(
   const unknowns = new Set<string>();
   const unknownList: string[] = [];
 
+  const collector = new VariableNameCollector();
+
+  const derVars = new Set<string>();
+  // 1a. Find der(...) usages in equations
+  for (const eq of dae.equations) {
+    const deps = new Set<string>();
+    eq.accept(collector, deps);
+    for (const d of deps) {
+      if (d.startsWith("der(") && d.endsWith(")")) {
+        derVars.add(d.slice(4, -1));
+      }
+    }
+  }
+
   for (const v of dae.variables) {
-    if (v instanceof ModelicaRealVariable && v.variability === null) {
+    if (v instanceof ModelicaRealVariable && v.name.startsWith("der(") && v.name.endsWith(")")) {
+      derVars.add(v.name.slice(4, -1));
+    }
+  }
+
+  for (const v of dae.variables) {
+    if (v instanceof ModelicaRealVariable && v.variability === null && !derVars.has(v.name)) {
       unknowns.add(v.name);
       unknownList.push(v.name);
     }
@@ -150,6 +173,15 @@ export function performBltTransformation(
     if (v instanceof ModelicaRealVariable && v.name.startsWith("der(")) {
       unknowns.add(v.name);
       unknownList.push(v.name);
+    }
+  }
+
+  // Explicitly add der(x) as unknowns if they were found in equations but not in variables
+  for (const d of derVars) {
+    const derName = `der(${d})`;
+    if (!unknowns.has(derName)) {
+      unknowns.add(derName);
+      unknownList.push(derName);
     }
   }
 
@@ -164,10 +196,8 @@ export function performBltTransformation(
     }
   }
 
-  // 2. Build Bipartite Graph E -> V
   // eqDeps maps from equation index to set of unknown variable names it depends on
   const eqDeps = new Map<number, Set<string>>();
-  const collector = new VariableNameCollector();
 
   for (let i = 0; i < equations.length; i++) {
     const eq = equations[i];

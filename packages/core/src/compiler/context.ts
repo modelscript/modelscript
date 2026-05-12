@@ -319,6 +319,10 @@ export class Context extends Scope {
       throw new Error(`Illegal to instantiate partial class ${name}.`);
     }
 
+    if (instance.classKind === "function" || instance.classKind === "operator function") {
+      throw new Error(`Cannot instantiate ${name} due to class specialization function.`);
+    }
+
     // Validate class hierarchy: check components for partial types, connect restrictions, etc.
     this.#validateClassHierarchy(instance, name, new Set());
   }

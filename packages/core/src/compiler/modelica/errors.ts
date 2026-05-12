@@ -640,6 +640,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (name: string) => `Expected ${name} to be a component, but found class instead.`,
   },
+  EMPTY_ARRAY_CONSTRUCTOR: {
+    code: 1003,
+    rule: "empty-array-constructor",
+    severity: "error",
+    message: () => "Parse error: Empty array constructors are not valid in Modelica.",
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

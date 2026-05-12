@@ -293,6 +293,7 @@ export class ModelicaDAE {
   name: string;
   description: string | null;
   classKind = "class";
+  isImpure = false;
   equations: ModelicaEquation[] = [];
   /** Equations sorted by BLT transformation for simulation. */
   sortedEquations: ModelicaEquation[] = [];
@@ -4729,7 +4730,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   #emitVariable(variable: ModelicaVariable, emitProtectedPrefix = false): void {
     this.out.write(this.indent());
     if (emitProtectedPrefix && variable.isProtected) this.out.write("protected ");
-    if (variable.isFinal) this.out.write("final ");
+    if (variable.isFinal && (variable.variability === "parameter" || variable.variability === "constant")) {
+      this.out.write("final ");
+    }
     if (variable.variability) this.out.write(variable.variability + " ");
     if (variable.causality) this.out.write(variable.causality + " ");
     if (variable.functionType) {
@@ -4897,6 +4900,9 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   }
 
   #emitFunction(fn: ModelicaDAE): void {
+    if (fn.isImpure) {
+      this.out.write("impure ");
+    }
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
@@ -4936,7 +4942,8 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
 
   visitEnumerationLiteral(node: ModelicaEnumerationLiteral): void {
     if (node.typeName) {
-      this.out.write(node.typeName + "." + node.stringValue);
+      const shortTypeName = node.typeName.split(".").pop() ?? node.typeName;
+      this.out.write(shortTypeName + "." + node.stringValue);
     } else {
       this.out.write(String('"' + node.stringValue + '"'));
     }

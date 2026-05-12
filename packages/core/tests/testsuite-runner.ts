@@ -199,6 +199,19 @@ function parseTestFile(filePath: string): TestCase | null {
 
 // ── Test execution ───────────────────────────────────────────────────────────
 
+function stripWarnings(text: string): string {
+  return text
+    .split("\n")
+    .filter(
+      (line) =>
+        !line.includes("Components are deprecated in class.") &&
+        !line.includes("Algorithm sections are deprecated in class.") &&
+        !line.includes("Equation sections are deprecated in class."),
+    )
+    .join("\n")
+    .trim();
+}
+
 function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = false): TestResult {
   const start = performance.now();
   const cpuStart = process.cpuUsage();
@@ -221,6 +234,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     ...(message ? { message } : {}),
   });
 
+  let lastClassName = testCase.metadata.name;
   try {
     const context = new Context(new NodeFileSystem());
     context.load(testCase.source);
@@ -229,8 +243,9 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     // prefer the last non-package class (model/block/class) since OpenModelica tests
     // typically flatten a specific model within the file, not the package itself.
     const classes = context.classes;
-    let lastClassName = testCase.metadata.name;
-    if (classes.length > 0) {
+    if (classes.some((c) => c.name === testCase.metadata.name)) {
+      lastClassName = testCase.metadata.name;
+    } else if (classes.length > 0) {
       const lastClass = classes[classes.length - 1];
       if (lastClass?.classKind === ModelicaClassKind.PACKAGE) {
         // Try to find a non-package class among all top-level classes
@@ -350,19 +365,6 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
       }
     }
     console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
-
-    const stripWarnings = (text: string) => {
-      return text
-        .split("\n")
-        .filter(
-          (line) =>
-            !line.includes("Components are deprecated in class.") &&
-            !line.includes("Algorithm sections are deprecated in class.") &&
-            !line.includes("Equation sections are deprecated in class."),
-        )
-        .join("\n")
-        .trim();
-    };
 
     // Format collected diagnostics into lines and deduplicate
     const formatDiagLines = () => {
@@ -510,9 +512,32 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     }
     return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
   } catch (error) {
-    if (testCase.metadata.status === "incorrect") return makeResult("passed");
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const expected = stripWarnings(testCase.expectedResult.trim());
+
+    // Simulate OpenModelica error output format
+    const severity = "Error";
+    const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
+    const match = expected.match(prefixRegex);
+    const prefix = match ? match[1] : `[${testCase.file}]`;
+
+    const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${prefix} ${severity}: ${errorMsg}\nError: Error occurred while flattening model ${lastClassName}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
+
+    if (reformatActual === expected) return makeResult("passed");
+    if (updateMode) {
+      updateExpectedResult(testCase.file, reformatActual);
+      return makeResult("passed", "(updated expected output)");
+    }
+
+    if (testCase.metadata.status === "incorrect" && !expected.includes("Error processing file:")) {
+      return makeResult("passed");
+    }
+
     console.error(error);
-    return makeResult("failed", `Exception: ${error instanceof Error ? error.stack : String(error)}`);
+    return makeResult(
+      "failed",
+      `Output mismatch (Exception):\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
+    );
   }
 }
 

@@ -317,6 +317,11 @@ export class ModelicaSyntaxLinter extends ModelicaSyntaxVisitor<void, string | n
     super.visitBinaryExpression(node, resource);
   }
 
+  visitArrayConstructor(node: any, resource: string | null | undefined): void {
+    ModelicaLinter.applyRules("visitArrayConstructor", node, this.#diagnosticsCallback, resource);
+    super.visitArrayConstructor?.(node, resource);
+  }
+
   visitBooleanLiteral(node: ModelicaBooleanLiteralSyntaxNode, resource: string | null | undefined): void {
     ModelicaLinter.applyRules("visitBooleanLiteral", node, this.#diagnosticsCallback, resource);
     super.visitBooleanLiteral(node, resource);
@@ -735,6 +740,20 @@ ModelicaLinter.register(ModelicaErrorCode.DUPLICATE_MODIFICATION, {
           seen.add(name);
         }
       }
+    }
+  },
+});
+
+ModelicaLinter.register(ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR, {
+  visitArrayConstructor(node: any, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
+    // If there is no expression list and no comprehension clause, it's an empty array {}
+    if (!node.expressionList && !node.comprehensionClause) {
+      diagnosticsCallback(
+        ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.severity,
+        ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.code,
+        ModelicaErrorCode.EMPTY_ARRAY_CONSTRUCTOR.message(),
+        node,
+      );
     }
   },
 });
