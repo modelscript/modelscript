@@ -5774,6 +5774,7 @@ connection.onRequest(
 // flattener on every request.  Cache the DAE per URI+content-hash so the
 // model is only flattened once per edit cycle.
 const daeCache = new Map<string, { version: string; dae: any }>();
+const pendingFlattenings = new Map<string, ReturnType<typeof setTimeout>>();
 
 function getCachedDAE(uri: string, instance: any): any | null {
   const effectiveUri = uri.startsWith("modelscript-lib://global")
@@ -5783,20 +5784,39 @@ function getCachedDAE(uri: string, instance: any): any | null {
   const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
   const cacheKey = `${uri}|${instance.name ?? ""}`;
   const cached = daeCache.get(cacheKey);
+
   if (cached && cached.version === version) {
     return cached.dae;
   }
-  try {
-    if (!instance.instantiated) instance.instantiate();
-    const dae = new ModelicaDAE(instance.name || "Model");
-    const flattener = new ModelicaFlattener();
-    instance.accept(flattener, ["", dae]);
-    flattener.generateFlowBalanceEquations(dae);
-    daeCache.set(cacheKey, { version, dae });
-    return dae;
-  } catch (e) {
-    return null;
+
+  // Schedule a debounced flattening to avoid freezing the editor on every keystroke
+  if (pendingFlattenings.has(cacheKey)) {
+    clearTimeout(pendingFlattenings.get(cacheKey)!);
   }
+
+  pendingFlattenings.set(
+    cacheKey,
+    setTimeout(() => {
+      pendingFlattenings.delete(cacheKey);
+      try {
+        if (!instance.instantiated) instance.instantiate();
+        const dae = new ModelicaDAE(instance.name || "Model");
+        const flattener = new ModelicaFlattener();
+        instance.accept(flattener, ["", dae]);
+        flattener.generateFlowBalanceEquations(dae);
+        daeCache.set(cacheKey, { version, dae });
+      } catch (e) {
+        // ignore
+      }
+    }, 2000),
+  );
+
+  // Return stale data if available so the UI doesn't flicker while typing
+  if (cached) {
+    return cached.dae;
+  }
+
+  return null;
 }
 
 // ── Code Lens Provider ──
@@ -7048,13 +7068,28 @@ const VALUE_CARRYING_RULES = new Set([
   "ShortClassDefinition",
 ]);
 
+// Cache for resolveMarkdownVars — avoids re-iterating all symbols on repeated calls.
+let markdownVarsCache: { version: string; result: { values: Record<string, string> } } | null = null;
+
 connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
   try {
+    // Build a simple version key from the number of open docs and their versions.
+    const allDocs = documents.all();
+    const versionKey = allDocs
+      .map((d) => {
+        const eUri = d.uri.startsWith("modelscript-lib://global")
+          ? "file://" + d.uri.substring("modelscript-lib://global".length)
+          : d.uri;
+        const txt = lastIndexedText.get(eUri);
+        return txt != null ? `${d.uri}:${txt.length}:${simpleHash(txt)}` : `${d.uri}:unknown`;
+      })
+      .join("|");
+    if (markdownVarsCache && markdownVarsCache.version === versionKey) {
+      return markdownVarsCache.result;
+    }
+
     const db = unifiedWorkspace.toUnifiedPartial();
     const values: Record<string, string> = {};
-
-    // Debug: log the full state of the unified index and document manager
-    const allDocUris = documents.all().map((d) => d.uri);
 
     let matchCount = 0;
     for (const entry of db.symbols.values()) {
@@ -7094,17 +7129,18 @@ connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<str
       }
     }
 
-    console.log(
-      `[resolveMarkdownVars] matchCount=${matchCount}, returning ${Object.keys(values).length} values: ${JSON.stringify(values)}`,
-    );
-    return { values };
+    console.log(`[resolveMarkdownVars] matchCount=${matchCount}, returning ${Object.keys(values).length} values`);
+    const result = { values };
+    markdownVarsCache = { version: versionKey, result };
+    return result;
   } catch (e) {
     console.error("[resolveMarkdownVars] Error:", e);
     return { values: {} };
   }
 });
 
-// ── Markdown Content Resolution: render ::requirements and ::diagram blocks ──
+// Cache for resolveMarkdownContent — avoids re-iterating all symbols on repeated calls.
+let markdownContentCache: { version: string; result: any } | null = null;
 
 connection.onRequest(
   "modelscript/resolveMarkdownContent",
@@ -7116,6 +7152,21 @@ connection.onRequest(
     >;
   } => {
     try {
+      // Check cache — same version key pattern as resolveMarkdownVars
+      const allDocs = documents.all();
+      const versionKey = allDocs
+        .map((d) => {
+          const eUri = d.uri.startsWith("modelscript-lib://global")
+            ? "file://" + d.uri.substring("modelscript-lib://global".length)
+            : d.uri;
+          const txt = lastIndexedText.get(eUri);
+          return txt != null ? `${d.uri}:${txt.length}:${simpleHash(txt)}` : `${d.uri}:unknown`;
+        })
+        .join("|");
+      if (markdownContentCache && markdownContentCache.version === versionKey) {
+        return markdownContentCache.result;
+      }
+
       const db = unifiedWorkspace.toUnifiedPartial();
       const requirementsMap: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }> =
         {};
@@ -7228,7 +7279,9 @@ connection.onRequest(
       console.log(
         `[resolveMarkdownContent] diagramCandidates=${diagramCandidates}, diagramsMap keys=${JSON.stringify(Object.keys(diagramsMap))}, requirementsMap keys=${JSON.stringify(Object.keys(requirementsMap))}`,
       );
-      return { requirements: requirementsMap, diagrams: diagramsMap };
+      const result = { requirements: requirementsMap, diagrams: diagramsMap };
+      markdownContentCache = { version: versionKey, result };
+      return result;
     } catch (e) {
       console.error("[resolveMarkdownContent] Error:", e);
       return { requirements: {}, diagrams: {} };

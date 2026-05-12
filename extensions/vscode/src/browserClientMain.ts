@@ -465,11 +465,10 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         // Resolve markdown variable values, requirements, and diagram data.
-        // Call immediately and again after delays to handle the race where
-        // template files are created after the initial ready notification.
-        refreshMarkdownData();
-        setTimeout(() => refreshMarkdownData(), 2000);
-        setTimeout(() => refreshMarkdownData(), 5000);
+        // Single delayed call — the workspace index needs time to populate
+        // before the first fetch. Subsequent updates are handled by the
+        // debounced onDidChangeTextDocument listener.
+        setTimeout(() => refreshMarkdownData(), 3000);
 
         break;
       case "error":
