@@ -3,6 +3,7 @@
 export * from "./ad-jacobian.js";
 export * from "./bdf.js";
 export * from "./branch-and-bound.js";
+export * from "./doe.js";
 export { dopri5, type Dopri5Options, type Dopri5Result, type EventCallback, type RhsFunction } from "./dopri5.js";
 export * from "./dual-evaluator.js";
 export * from "./dual.js";
@@ -14,7 +15,9 @@ export * from "./homotopy-strategies.js";
 export * from "./init-solver.js";
 export * from "./minlp-heuristics.js";
 export * from "./monte-carlo.js";
+export * from "./nn-fmu-subsystem.js";
 export * from "./reverse-evaluator.js";
+export * from "./rom-trainer.js";
 export * from "./simulator.js";
 export * from "./solver-options.js";
 export * from "./statement-executor.js";
@@ -29,6 +32,7 @@ export {
   type SundialsWasmOptions,
   type SundialsWasmResult,
 } from "./sundials-wasm.js";
+export * from "./surrogate-pipeline.js";
 export * from "./system-initializer.js";
 export * from "./tape.js";
 export * from "./wasm-simulation-runner.js";
