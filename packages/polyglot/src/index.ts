@@ -7,13 +7,16 @@ import type {
   CSTTree,
   CycleInfo,
   ExpressionEvaluator,
+  QueryCacheStore,
   QueryDB,
   SpecializationArgs,
   SymbolEntry,
   SymbolId,
   SymbolIndex,
 } from "./runtime.js";
+export * from "./cache-store.js";
 export * from "./constraint-extractor.js";
+export * from "./indexeddb-cache-store.js";
 export { QueryEngine } from "./query-engine.js";
 export * from "./simulation.js";
 export * from "./step-multibody-mapper.js";
@@ -25,6 +28,7 @@ export type {
   CSTTree,
   CycleInfo,
   ExpressionEvaluator,
+  QueryCacheStore,
   QueryDB,
   SpecializationArgs,
   SymbolEntry,

@@ -7,6 +7,7 @@ import type {
   DependencyKey,
   ExpressionEvaluator,
   Memo,
+  QueryCacheStore,
   QueryDB,
   QueryDef,
   QueryFn,
@@ -116,8 +117,16 @@ export class QueryEngine {
   /** Monotonic revision counter. Bumped on every `invalidate()` call. */
   private currentRevision: Revision = 0;
 
-  /** Memoized query results keyed by "queryName:symbolId" or "queryName:symbolId:argsHash". */
+  /** Memoized query results keyed by "queryName:symbolId" or "queryName:symbolId:argsHash".
+   * Maintained as an LRU cache. Oldest items are at the front of the Map iteration.
+   */
   private memos = new Map<string, Memo>();
+
+  /** The external cache store for saving evicted memos (e.g. SQLite, IndexedDB). */
+  private cacheStore?: QueryCacheStore;
+
+  /** Maximum number of memos to keep in memory before evicting. */
+  private maxMemos: number;
 
   /** Tracks when each input (symbol entry) was last modified. */
   private inputRevisions = new Map<SymbolId, Revision>();
@@ -164,11 +173,15 @@ export class QueryEngine {
     options?: {
       evaluator?: ExpressionEvaluator;
       tree?: CSTTree;
+      cacheStore?: QueryCacheStore;
+      maxMemos?: number;
     },
   ) {
     this.hooksByRule = queryHooks;
     this.evaluator = options?.evaluator ?? null;
     this.tree = options?.tree ?? null;
+    this.cacheStore = options?.cacheStore;
+    this.maxMemos = options?.maxMemos ?? 100000;
 
     // Initialize input revisions for all existing symbols
     for (const id of index.symbols.keys()) {
@@ -199,6 +212,37 @@ export class QueryEngine {
    */
   query<T = unknown>(queryName: string, symbolId: SymbolId): T {
     return this.fetch(queryName, symbolId) as T;
+  }
+
+  /**
+   * Preflight queries to hydrate the in-memory cache from the cache store.
+   * This allows the synchronous `query` method to find what it needs for
+   * dependencies that have been flushed to the DB.
+   *
+   * @param symbols The symbols to preflight.
+   * @param queryNames The queries that will likely be run on these symbols.
+   */
+  async preflight(symbols: SymbolId[], queryNames: string[]): Promise<void> {
+    if (!this.cacheStore) return;
+
+    const keysToFetch: string[] = [];
+    for (const symbolId of symbols) {
+      for (const queryName of queryNames) {
+        const key = this.memoKey(queryName, symbolId);
+        if (!this.memos.has(key)) {
+          keysToFetch.push(key);
+        }
+      }
+    }
+
+    if (keysToFetch.length > 0) {
+      const fetched = await this.cacheStore.getMemos(keysToFetch);
+      for (const [key, memo] of fetched) {
+        // We set directly without LRU refresh because preflight implies imminent usage
+        this.memos.set(key, memo);
+      }
+      this.evictIfNeeded();
+    }
   }
 
   /**
@@ -621,6 +665,12 @@ export class QueryEngine {
 
     const memo = this.memos.get(key);
 
+    if (memo) {
+      // LRU logic: move to the end of the map (most recently used)
+      this.memos.delete(key);
+      this.memos.set(key, memo);
+    }
+
     // Fast path: already verified this revision
     if (memo && memo.verified_at === this.currentRevision) {
       return memo.value;
@@ -654,7 +704,39 @@ export class QueryEngine {
       byNameLookups: byNameLookups.size > 0 ? byNameLookups : undefined,
     };
     this.memos.set(key, newMemo);
+    this.evictIfNeeded();
     return value;
+  }
+
+  /**
+   * Evicts the oldest 10% of memos if the memory size exceeds maxMemos.
+   */
+  private evictIfNeeded(): void {
+    if (this.memos.size <= this.maxMemos) return;
+
+    const numToEvict = Math.ceil(this.maxMemos * 0.1);
+    const keysToEvict: string[] = [];
+    const memosToEvict = new Map<string, Memo>();
+
+    let count = 0;
+    // Map iteration yields entries in insertion order (oldest first)
+    for (const [key, memo] of this.memos.entries()) {
+      keysToEvict.push(key);
+      memosToEvict.set(key, memo);
+      count++;
+      if (count >= numToEvict) break;
+    }
+
+    for (const key of keysToEvict) {
+      this.memos.delete(key);
+    }
+
+    if (this.cacheStore) {
+      // Fire and forget cache save
+      this.cacheStore.setMemos(memosToEvict).catch((e) => {
+        console.warn("Failed to flush memos to cache:", e);
+      });
+    }
   }
 
   /**

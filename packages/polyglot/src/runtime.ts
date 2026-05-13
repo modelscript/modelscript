@@ -319,6 +319,43 @@ export interface Memo {
 // ---------------------------------------------------------------------------
 
 /**
+ * An abstraction for caching query results and symbol entries, allowing
+ * the engine to flush cold data out of memory.
+ */
+export interface QueryCacheStore {
+  /**
+   * Retrieve a memoized query result from the cache.
+   * Returns undefined if not found.
+   */
+  getMemo(key: string): Promise<Memo | undefined>;
+
+  /**
+   * Batch retrieve memoized query results from the cache.
+   */
+  getMemos(keys: string[]): Promise<Map<string, Memo>>;
+
+  /**
+   * Store a memoized query result in the cache.
+   */
+  setMemo(key: string, memo: Memo): Promise<void>;
+
+  /**
+   * Store multiple memoized query results in the cache.
+   */
+  setMemos(memos: Map<string, Memo>): Promise<void>;
+
+  /**
+   * Remove a memoized query result from the cache.
+   */
+  deleteMemo(key: string): Promise<void>;
+
+  /**
+   * Remove all memos from the cache.
+   */
+  clearMemos(): Promise<void>;
+}
+
+/**
  * Opaque, hashable specialization arguments.
  *
  * The framework does NOT interpret these. It uses `hash` for memoization

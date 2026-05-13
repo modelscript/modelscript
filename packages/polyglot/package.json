@@ -9,6 +9,7 @@
   "exports": {
     ".": "./dist/src/index.js",
     "./runtime": "./dist/src/runtime.js",
+    "./cache-store": "./dist/src/cache-store.js",
     "./symbol-indexer": "./dist/src/symbol-indexer.js",
     "./query-engine": "./dist/src/query-engine.js",
     "./resolver": "./dist/src/resolver.js",
