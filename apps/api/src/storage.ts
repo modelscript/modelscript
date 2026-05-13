@@ -191,6 +191,13 @@ export class LibraryStorage {
   }
 
   /**
+   * Get the path to the pre-computed salsa-index.db for this library version.
+   */
+  getIndexPath(name: string, version: string): string {
+    return path.join(this.#dataDir, this.#safe(name), this.#safe(version), "salsa-index.db");
+  }
+
+  /**
    * Delete a specific library version.
    * Removes the zip file and all version data (SVGs, extracted files).
    * If no other versions remain, removes the library directory entirely.

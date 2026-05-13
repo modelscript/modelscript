@@ -168,7 +168,7 @@ export class QueryEngine {
   private tree: CSTTree | null;
 
   constructor(
-    private index: SymbolIndex,
+    public index: SymbolIndex,
     queryHooks: Map<string, QueryHooks>,
     options?: {
       evaluator?: ExpressionEvaluator;
@@ -243,6 +243,14 @@ export class QueryEngine {
       }
       this.evictIfNeeded();
     }
+  }
+
+  /**
+   * Dump all currently cached memos in memory.
+   * Useful for serialization and federated caching.
+   */
+  dumpMemos(): Map<string, Memo> {
+    return new Map(this.memos);
   }
 
   /**

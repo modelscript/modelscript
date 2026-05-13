@@ -108,7 +108,7 @@ function hasVisualContent(svg: string): boolean {
 export async function processLibrary(
   libraryPath: string,
   onClass: (className: string, metadata: ClassMetadata, svgs: SvgResult) => Promise<void>,
-): Promise<void> {
+): Promise<Context> {
   ensureSvgWindow();
   ensureParser();
 
@@ -258,4 +258,6 @@ export async function processLibrary(
   for (const element of context.elements) {
     await processElement(element);
   }
+
+  return context;
 }

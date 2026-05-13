@@ -13,6 +13,7 @@
 import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
+import { exportSalsaIndex } from "./util/salsa-index-exporter.js";
 import { processLibrary } from "./util/svg-renderer.js";
 
 process.on("message", async (data: { name: string; version: string; libraryPath: string }) => {
@@ -29,7 +30,7 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
     let metadataBatch: ClassMetadata[] = [];
     let classCount = 0;
 
-    await processLibrary(libraryPath, async (_className, metadata, svgs) => {
+    const context = await processLibrary(libraryPath, async (_className, metadata, svgs) => {
       storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
 
       metadataBatch.push(metadata);
@@ -50,6 +51,11 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
       database.storeClassBatch(name, version, metadataBatch);
       classCount += metadataBatch.length;
     }
+
+    // Export the Salsa index to a SQLite database artifact
+    console.log(`[publish] ${name}@${version}: exporting salsa-index.db...`);
+    const indexPath = storage.getIndexPath(name, version);
+    await exportSalsaIndex(context.queryEngine, indexPath);
 
     console.log(`[publish] ${name}@${version}: completed — ${classCount} classes processed.`);
     process.send?.({ type: "complete", classesProcessed: classCount });

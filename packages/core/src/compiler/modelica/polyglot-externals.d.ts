@@ -27,6 +27,8 @@ declare module "@modelscript/polyglot/query-engine" {
     resolveName(parts: string[]): any;
     invalidate(): void;
     get db(): any;
+    get index(): any;
+    dumpMemos(): Map<string, any>;
     [key: string]: any;
   }
 }

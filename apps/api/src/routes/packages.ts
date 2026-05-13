@@ -139,6 +139,31 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   });
 
   /**
+   * GET /api/v1/libraries/:name/:version/salsa-index.db
+   *
+   * Download the pre-computed Salsa query engine SQLite index for the package.
+   */
+  router.get("/:name/:version/salsa-index.db", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const indexPath = storage.getIndexPath(name, version);
+    if (!fs.existsSync(indexPath)) {
+      res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "application/vnd.sqlite3");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-salsa-index.db"`);
+    res.sendFile(path.resolve(indexPath));
+  });
+
+  /**
    * GET /api/v1/libraries/:name/:version/status
    *
    * Check the SVG generation job status for a library version.
