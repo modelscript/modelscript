@@ -16,6 +16,7 @@ import type {
 export * from "./constraint-extractor.js";
 export { QueryEngine } from "./query-engine.js";
 export * from "./simulation.js";
+export * from "./step-multibody-mapper.js";
 export * from "./topology.js";
 export { UnifiedWorkspace, type IWorkspaceIndex } from "./unified-workspace.js";
 export * from "./verifier.js";

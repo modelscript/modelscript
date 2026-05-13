@@ -189,6 +189,9 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
           outputs: outputNames,
           strategy: args.strategy,
           numSamples: args.numSamples,
+          startTime,
+          stopTime,
+          stepSize,
         },
         rom: {
           architecture: args.architecture,

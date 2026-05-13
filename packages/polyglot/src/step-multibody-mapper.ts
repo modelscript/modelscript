@@ -1,4 +1,4 @@
-import { StepAssemblyModel } from "../../lsp/src/step-physical-data";
+// Removed import from lsp to break nx circular dependency
 
 export interface MultiBodyAssembly {
   name: string;
@@ -38,6 +38,26 @@ export interface MultiBodyFixedTranslation {
   partA: string;
   partB: string;
   r: [number, number, number];
+}
+
+export interface StepAssemblyModel {
+  parts: Map<string, { id: string; name: string; shapeId?: string }>;
+  massProperties: Map<
+    string,
+    {
+      mass: number;
+      centerOfMass: [number, number, number];
+      inertiaTensor: { I_11: number; I_22: number; I_33: number; I_21: number; I_31: number; I_32: number };
+    }
+  >;
+  joints: {
+    partA: string;
+    partB: string;
+    type: string;
+    origin: [number, number, number];
+    axis: [number, number, number];
+  }[];
+  edges: { parentPartId: string; childPartId: string; placement: { location: [number, number, number] } }[];
 }
 
 export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyModel): MultiBodyAssembly {

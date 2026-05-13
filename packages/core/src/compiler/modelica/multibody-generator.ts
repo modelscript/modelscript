@@ -1,4 +1,27 @@
-import { MultiBodyAssembly } from "../../../../polyglot/src/step-multibody-mapper";
+export interface MultiBodyAssembly {
+  name: string;
+  bodies: {
+    name: string;
+    frameVariable?: string;
+    mass: number;
+    inertia: { I_11: number; I_22: number; I_33: number; I_21: number; I_31: number; I_32: number };
+    r_CM: number[];
+    shapeRef?: string;
+  }[];
+  joints: {
+    name: string;
+    type: string;
+    n: number[];
+    partA: string;
+    partB: string;
+  }[];
+  fixedTranslations: {
+    name: string;
+    r: number[];
+    partA: string;
+    partB: string;
+  }[];
+}
 
 export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: string): string {
   const lines: string[] = [];
@@ -57,8 +80,9 @@ export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: 
 
   // Simple sequential chain connection logic
   // Connect root body to world
-  if (assembly.bodies.length > 0) {
-    lines.push(`  connect(world.frame_b, ${assembly.bodies[0].name}.frame_a);`);
+  const firstBody = assembly.bodies[0];
+  if (firstBody) {
+    lines.push(`  connect(world.frame_b, ${firstBody.name}.frame_a);`);
   }
 
   for (const offset of assembly.fixedTranslations) {

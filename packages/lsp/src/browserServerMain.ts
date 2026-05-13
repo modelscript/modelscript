@@ -101,6 +101,7 @@ import {
   createSysML2QueryEngine,
   createSysML2ScopeResolver,
   createSysML2WorkspaceIndex,
+  generateMultiBodyModelica,
   injectPredefinedTypes,
   performBltTransformation,
 } from "@modelscript/core";
@@ -118,7 +119,12 @@ import {
   registerCalibrateDeps,
   registerOptimizeDeps,
 } from "@modelscript/optimizer";
-import { VerificationRunner, extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/polyglot";
+import {
+  VerificationRunner,
+  extractSysML2Constraints,
+  mapConstraintsToOptimizer,
+  mapStepToMultiBody,
+} from "@modelscript/polyglot";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
 import type { DoEInputRange } from "@modelscript/simulator";
@@ -406,7 +412,8 @@ connection.onRequest("modelscript/generateMultiBody", async (params: { uri: stri
   const filename = params.uri.split("/").pop() || "Assembly";
   const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
 
-  const multiBodyDescriptor = mapStepToMultiBody(baseName, model);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const multiBodyDescriptor = mapStepToMultiBody(baseName, model as any);
   const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
 
   return { source: modelicaSource, name: baseName };
