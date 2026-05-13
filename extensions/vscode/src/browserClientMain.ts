@@ -2650,6 +2650,54 @@ async function initWorkspaceAndTree(
           await workspace.fs.writeFile(readmeUri, encoder.encode(readmeMd));
           break;
         }
+        case "surrogate": {
+          filename = "BouncingBall.mo";
+          content = [
+            'model BouncingBall "A classic bouncing ball model"',
+            '  parameter Real e = 0.8 "Coefficient of restitution";',
+            '  parameter Real g = 9.81 "Gravity";',
+            '  parameter Real v_0 = 0.0 "Initial velocity";',
+            '  Real h(start = 1.0) "Height";',
+            '  Real v(start = v_0) "Velocity";',
+            "equation",
+            "  der(h) = v;",
+            "  der(v) = -g;",
+            "  when h <= 0.0 and v < 0.0 then",
+            "    reinit(v, -e * pre(v));",
+            "  end when;",
+            "end BouncingBall;",
+            "",
+          ].join("\n");
+
+          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
+          await workspace.fs.writeFile(
+            readmeUri,
+            new TextEncoder().encode(
+              [
+                "# AI Surrogate Modeling",
+                "",
+                "This workspace demonstrates how to orchestrate Design of Experiments (DoE) and train AI surrogate models (Reduced Order Models) directly from Modelica.",
+                "",
+                "## Training a Surrogate",
+                "",
+                "1. Open `BouncingBall.mo`",
+                "2. Click **Run Simulation** to open the simulation panel",
+                "3. In the sidebar, expand **Surrogate Training**",
+                "4. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
+                "5. Choose an **Architecture** (e.g., MLP Neural Network)",
+                "6. Click **Train Surrogate**",
+                "",
+                "The platform will orchestrate headless simulations to build a dataset, train the neural network, and report the R² accuracy.",
+                "",
+                "## Exporting to WebAssembly",
+                "",
+                "Once training is complete, click **Generate WASM**.",
+                "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
+              ].join("\n"),
+            ),
+          );
+          break;
+        }
         case "stress-test": {
           filename = "MassiveModel.mo";
           const massiveModelRows = [];

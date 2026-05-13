@@ -21,6 +21,8 @@ import { Render } from "./commands/render.js";
 import { Simulate } from "./commands/simulate.js";
 import { Unpublish } from "./commands/unpublish.js";
 
+import { Surrogate } from "./commands/surrogate.js";
+
 const packagePath = path.dirname(import.meta.dirname);
 const pkg = await PackageJson.load(packagePath);
 
@@ -41,6 +43,7 @@ yargs(process.argv.slice(2))
   .command(Publish)
   .command(Render)
   .command(Simulate)
+  .command(Surrogate)
   .command(Unpublish)
   .strictCommands()
   .demandCommand()

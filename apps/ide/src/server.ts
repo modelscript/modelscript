@@ -313,6 +313,11 @@ app.get("/", (_req, res) => {
   
   <div class="divider">Featured Polyglot Scenarios</div>
   <div class="templates">
+    <a href="/vscode/workbench/#memfs:surrogate" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <span class="tpl-name">AI Surrogate ROMs</span>
+      <span class="tpl-desc">Train AI neural networks from physics models and export as edge-ready WebAssembly.</span>
+    </a>
     <a href="/vscode/workbench/#memfs:cfd-verification" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M14.5 5.5L16 4M9.5 5.5L8 4" stroke-width="2" stroke-linecap="round"/></svg></div>
       <span class="tpl-name">CFD-FMU Verification</span>
