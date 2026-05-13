@@ -112,6 +112,12 @@ const tStopInput = document.getElementById("st-stop") as HTMLInputElement;
 const intervalInput = document.getElementById("st-interval") as HTMLInputElement;
 const toleranceInput = document.getElementById("st-tolerance") as HTMLInputElement;
 
+const btnTrainSurrogate = document.getElementById("btn-train-surrogate") as HTMLButtonElement | null;
+const btnExportSurrogate = document.getElementById("btn-export-surrogate") as HTMLButtonElement | null;
+const surrogateStrategy = document.getElementById("surrogate-strategy") as HTMLSelectElement | null;
+const surrogateSamples = document.getElementById("surrogate-samples") as HTMLInputElement | null;
+const surrogateArch = document.getElementById("surrogate-arch") as HTMLSelectElement | null;
+
 let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
 
@@ -297,6 +303,8 @@ window.addEventListener("message", (event) => {
 
     // Fill in Experiment Settings
     settingsSection.style.display = "flex";
+    const surrogateSection = document.getElementById("surrogate-section");
+    if (surrogateSection) surrogateSection.style.display = "flex";
     const exp = msg.data.experiment || {};
     tStartInput.value = (exp.startTime ?? 0).toString();
     tStopInput.value = (exp.stopTime ?? 10).toString();
@@ -306,6 +314,39 @@ window.addEventListener("message", (event) => {
     currentMCData = null; // Clear old MC data on new simulation
 
     draw();
+  } else if (msg.type === "surrogateTrainingProgress") {
+    const progressEl = document.getElementById("surrogate-progress");
+    const progressBar = document.getElementById("surrogate-progress-bar");
+    const statusText = document.getElementById("surrogate-status");
+    const resultsEl = document.getElementById("surrogate-results");
+
+    if (progressEl && progressBar && statusText && resultsEl) {
+      progressEl.style.display = "block";
+      resultsEl.style.display = "none";
+      progressBar.style.width = `${msg.progress}%`;
+      statusText.textContent = `${Math.round(msg.progress)}% - ${msg.message}`;
+    }
+  } else if (msg.type === "surrogateTrainingComplete") {
+    const progressEl = document.getElementById("surrogate-progress");
+    const resultsEl = document.getElementById("surrogate-results");
+    const r2El = document.getElementById("surrogate-r2");
+    const mseEl = document.getElementById("surrogate-mse");
+
+    if (progressEl && resultsEl && r2El && mseEl) {
+      progressEl.style.display = "none";
+      resultsEl.style.display = "block";
+      r2El.textContent = msg.metrics.r2.toFixed(4);
+      mseEl.textContent = msg.metrics.trainMSE.toExponential(4);
+    }
+  } else if (msg.type === "surrogateTrainingError") {
+    const progressEl = document.getElementById("surrogate-progress");
+    const statusText = document.getElementById("surrogate-status");
+
+    if (progressEl && statusText) {
+      statusText.textContent = `Error: ${msg.error}`;
+      const progressBar = document.getElementById("surrogate-progress-bar");
+      if (progressBar) progressBar.style.background = "var(--vscode-testing-iconFailed)";
+    }
   } else if (msg.type === "monteCarloData") {
     // Monte Carlo uncertainty results → fan chart
     isLiveMode = false;
@@ -424,6 +465,49 @@ btnSimulate?.addEventListener("click", () => {
       parameterOverrides,
     },
   });
+});
+
+btnTrainSurrogate?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  const parameterOverrides: Record<string, number> = {};
+  for (const [name, input] of Object.entries(currentParameters)) {
+    if (input.value !== "") {
+      const val = parseFloat(input.value);
+      if (!isNaN(val)) parameterOverrides[name] = val;
+    }
+  }
+
+  // Get inputs from parameters view or just use all parameters
+  const inputs: Record<string, { min: number; max: number }> = {};
+  for (const [name, input] of Object.entries(currentParameters)) {
+    const val = parseFloat(input.value);
+    if (!isNaN(val)) {
+      inputs[name] = { min: val * 0.8, max: val * 1.2 };
+    }
+  }
+
+  // If no parameters, we can't really do DoE on inputs
+  if (Object.keys(inputs).length === 0) {
+    // Notify user? Actually, LSP can handle empty inputs
+  }
+
+  const payload = {
+    inputs,
+    outputs: [], // All outputs
+    strategy: surrogateStrategy?.value || "latin-hypercube",
+    numSamples: parseInt(surrogateSamples?.value || "50"),
+    architecture: surrogateArch?.value || "mlp",
+    startTime: tStartInput.value ? parseFloat(tStartInput.value) : undefined,
+    stopTime: tStopInput.value ? parseFloat(tStopInput.value) : undefined,
+    stepSize: intervalInput.value ? parseFloat(intervalInput.value) : undefined,
+  };
+
+  vscodeApi.postMessage({ type: "trainSurrogate", payload });
+});
+
+btnExportSurrogate?.addEventListener("click", () => {
+  if (!vscodeApi) return;
+  vscodeApi.postMessage({ type: "exportSurrogate" });
 });
 
 // ── Chart Interaction Events ──

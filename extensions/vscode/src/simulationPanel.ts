@@ -36,6 +36,12 @@ export class SimulationPanel {
   public sourceUri?: string;
   private client?: LanguageClient;
   private disposables: vscode.Disposable[] = [];
+  private currentSurrogate?: {
+    modelId: string;
+    wasmC: string;
+    emccFlags: string[];
+    exportedFunctions: string[];
+  };
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
@@ -255,6 +261,93 @@ export class SimulationPanel {
               this.postResults(result);
             },
           );
+        } else if (msg.type === "trainSurrogate" && this.client) {
+          const uri = this.sourceUri;
+          if (!uri) return;
+
+          this.panel.webview.postMessage({
+            type: "surrogateTrainingProgress",
+            progress: 10,
+            message: "Running Design of Experiments...",
+          });
+
+          try {
+            const result = await this.client.sendRequest<{
+              success: boolean;
+              metrics?: { trainMSE: number; valMSE: number; r2: number };
+              wasmC: string;
+              emccFlags: string[];
+              exportedFunctions: string[];
+              error?: string;
+            }>("modelscript/trainSurrogate", {
+              uri,
+              ...msg.payload,
+            });
+
+            if (result.success && result.metrics) {
+              this.currentSurrogate = {
+                modelId: (uri.split("/").pop() ?? "Surrogate").replace(".mo", ""),
+                wasmC: result.wasmC,
+                emccFlags: result.emccFlags,
+                exportedFunctions: result.exportedFunctions,
+              };
+
+              this.panel.webview.postMessage({
+                type: "surrogateTrainingComplete",
+                metrics: result.metrics,
+              });
+            } else {
+              this.panel.webview.postMessage({
+                type: "surrogateTrainingError",
+                error: result.error || "Unknown error occurred during training.",
+              });
+            }
+          } catch (e) {
+            this.panel.webview.postMessage({
+              type: "surrogateTrainingError",
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        } else if (msg.type === "exportSurrogate") {
+          if (!this.currentSurrogate) return;
+          const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+          const modelName = this.currentSurrogate.modelId;
+          const cUri = vscode.Uri.joinPath(folder, `${modelName}_wasm.c`);
+          const buildUri = vscode.Uri.joinPath(folder, `BUILD_WASM.md`);
+
+          try {
+            await vscode.workspace.fs.writeFile(cUri, new TextEncoder().encode(this.currentSurrogate.wasmC));
+
+            const buildCmd = `emcc ${modelName}_wasm.c ${this.currentSurrogate.emccFlags.join(" ")} -o ${modelName}.js`;
+            await vscode.workspace.fs.writeFile(
+              buildUri,
+              new TextEncoder().encode(
+                [
+                  `# WebAssembly Surrogate Build Instructions`,
+                  ``,
+                  `## Prerequisites`,
+                  `- Install [Emscripten](https://emscripten.org/)`,
+                  `- Activate the Emscripten environment: \`source emsdk_env.sh\``,
+                  ``,
+                  `## Build Command`,
+                  `\`\`\`bash`,
+                  buildCmd,
+                  `\`\`\``,
+                  ``,
+                  `## Output`,
+                  `- \`${modelName}.js\` — Emscripten JS glue code`,
+                  `- \`${modelName}.wasm\` — WebAssembly binary`,
+                  ``,
+                  `## Exported Functions`,
+                  ...this.currentSurrogate.exportedFunctions.map((f: string) => `- \`${f}\``),
+                ].join("\n"),
+              ),
+            );
+
+            vscode.window.showInformationMessage(`Exported surrogate WASM source to ${modelName}_wasm.c`);
+          } catch (e) {
+            vscode.window.showErrorMessage(`Failed to export surrogate WASM: ${e}`);
+          }
         }
       },
       null,
@@ -605,9 +698,46 @@ export class SimulationPanel {
           </div>
         </div>
       </div>
-
-
-
+      <div class="sidebar-section collapsed" id="surrogate-section" style="display: none;">
+        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Surrogate Training</div>
+        <div class="sidebar-content" id="surrogate-view">
+          <div class="settings-row">
+            <label>DoE Strategy</label>
+            <select id="surrogate-strategy" style="width: 100px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);">
+              <option value="latin-hypercube">LHS</option>
+              <option value="full-factorial">Factorial</option>
+              <option value="sobol">Sobol</option>
+              <option value="central-composite">CCD</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>Samples</label>
+            <input type="number" id="surrogate-samples" value="50" min="1">
+          </div>
+          <div class="settings-row">
+            <label>Architecture</label>
+            <select id="surrogate-arch" style="width: 100px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);">
+              <option value="mlp">MLP</option>
+              <option value="rbf">RBF</option>
+              <option value="polynomial">Polynomial</option>
+            </select>
+          </div>
+          <div class="simulate-btn-container">
+            <button id="btn-train-surrogate" class="simulate-btn">Train Surrogate</button>
+          </div>
+          <div id="surrogate-progress" style="padding: 0 16px; font-size: 11px; display: none;">
+            <div style="margin-bottom: 4px;">Training... <span id="surrogate-status">0%</span></div>
+            <div style="width: 100%; height: 4px; background: var(--vscode-editor-background); border-radius: 2px;">
+              <div id="surrogate-progress-bar" style="width: 0%; height: 100%; background: var(--vscode-progressBar-background, #0e70c0); border-radius: 2px;"></div>
+            </div>
+          </div>
+          <div id="surrogate-results" style="padding: 8px 16px; font-size: 11px; display: none; border-top: 1px solid var(--vscode-panel-border);">
+            <div style="margin-bottom: 4px;"><strong>R² Score:</strong> <span id="surrogate-r2"></span></div>
+            <div style="margin-bottom: 8px;"><strong>Train MSE:</strong> <span id="surrogate-mse"></span></div>
+            <button id="btn-export-surrogate" class="simulate-btn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);">Generate WASM</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="chart-container">
       <div id="toolbar">

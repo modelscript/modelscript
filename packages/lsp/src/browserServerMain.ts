@@ -104,7 +104,13 @@ import {
   injectPredefinedTypes,
   performBltTransformation,
 } from "@modelscript/core";
-import { ModelicaFmuEntity, buildFmuArchive, generateFmuWasmSource, generateMultiModelWrapper } from "@modelscript/fmi";
+import {
+  ModelicaFmuEntity,
+  buildFmuArchive,
+  generateFmuWasmSource,
+  generateMultiModelWrapper,
+  generateRomWasmSource,
+} from "@modelscript/fmi";
 import {
   ModelicaCalibrator,
   ModelicaOptimizer,
@@ -115,7 +121,13 @@ import {
 import { VerificationRunner, extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/polyglot";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
-import { ModelicaSimulator, registerMonteCarloDeps, registerSimulateDeps } from "@modelscript/simulator";
+import type { DoEInputRange } from "@modelscript/simulator";
+import {
+  ModelicaSimulator,
+  buildSurrogate,
+  registerMonteCarloDeps,
+  registerSimulateDeps,
+} from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks } from "@modelscript/step/indexer_config";
 import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query_hooks";
 import { REF_HOOKS as stepRefHooks } from "@modelscript/step/ref_config";
@@ -3707,6 +3719,186 @@ connection.onRequest(
         t: [],
         y: [],
         states: [],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+);
+
+// Custom request: train a surrogate ROM from a Modelica model
+connection.onRequest(
+  "modelscript/trainSurrogate",
+  async (params: {
+    uri: string;
+    className?: string;
+    inputs: Record<string, { min: number; max: number; levels?: number }>;
+    outputs: string[];
+    strategy?: "full-factorial" | "latin-hypercube" | "sobol" | "central-composite";
+    numSamples?: number;
+    architecture?: "polynomial" | "rbf" | "mlp";
+    hiddenLayers?: number[];
+    activation?: "tanh" | "relu" | "sigmoid";
+    polynomialDegree?: number;
+    epochs?: number;
+    learningRate?: number;
+    startTime?: number;
+    stopTime?: number;
+    stepSize?: number;
+    seed?: number;
+  }): Promise<{
+    success: boolean;
+    metrics?: { trainMSE: number; valMSE: number; r2: number };
+    inputNames?: string[];
+    outputNames?: string[];
+    architecture?: string;
+    wasmC?: string;
+    modelDescriptionXml?: string;
+    emccFlags?: string[];
+    exportedFunctions?: string[];
+    error?: string;
+  }> => {
+    connection.console.info(`[trainSurrogate] Requested for URI: ${params.uri}`);
+
+    try {
+      // 1. Flatten the model to get a DAE, then build a simulator
+      let instances = documentInstances.get(params.uri);
+      if (!instances || instances.length === 0) {
+        const doc = documents.get(params.uri);
+        if (doc) await validateTextDocument(doc);
+        instances = documentInstances.get(params.uri);
+      }
+      if (!instances || instances.length === 0) {
+        return { success: false, error: "No class instances found for this document." };
+      }
+
+      let classInstance = instances[0];
+      if (params.className) {
+        const found = instances.find((i) => i.name === params.className);
+        if (found) classInstance = found;
+      }
+
+      if (!classInstance.instantiated) classInstance.instantiate();
+
+      const dae = new ModelicaDAE(classInstance.name || "Model");
+      const flattener = new ModelicaFlattener();
+      classInstance.accept(flattener, ["", dae]);
+      flattener.generateFlowBalanceEquations(dae);
+      flattener.foldDAEConstants(dae);
+
+      const simulator = new ModelicaSimulator(dae);
+      simulator.prepare();
+
+      const exp = simulator.dae.experiment;
+      const startTime = params.startTime ?? exp.startTime ?? 0;
+      const stopTime = params.stopTime ?? exp.stopTime ?? 1;
+      const stepSize = params.stepSize ?? exp.interval ?? (stopTime - startTime) / 100;
+
+      // 2. Create a SimulatorFmuSubsystem that wraps ModelicaSimulator as FmuSubsystem
+      const inputRanges = new Map<string, DoEInputRange>();
+      for (const [name, range] of Object.entries(params.inputs)) {
+        inputRanges.set(name, range);
+      }
+
+      // If no outputs specified, use all state + algebraic variables
+      const outputNames =
+        params.outputs.length > 0 ? params.outputs : [...simulator.stateVars, ...simulator.algebraicVars];
+
+      // Build a lightweight FmuSubsystem adapter around the simulator
+      const fmuAdapter = {
+        modelName: classInstance.name || "Model",
+        inputNames: Array.from(inputRanges.keys()),
+        outputNames,
+        parameterNames: [] as string[],
+        _inputs: new Map<string, number>(),
+        _outputs: new Map<string, number>(),
+        initialize() {
+          this._inputs.clear();
+          this._outputs.clear();
+        },
+        setInputs(inputs: Map<string, number>) {
+          for (const [k, v] of inputs) this._inputs.set(k, v);
+        },
+        doStep() {
+          // Run a full simulation with the current inputs as parameter overrides
+          const overrides = new Map(this._inputs);
+          const result = simulator.simulate(startTime, stopTime, stepSize, {
+            solver: "dopri5" as const,
+            equidistantOutput: false,
+            parameterOverrides: overrides,
+          });
+          // Extract final-time values
+          const lastY = result.y[result.y.length - 1];
+          if (lastY) {
+            for (let i = 0; i < result.states.length; i++) {
+              this._outputs.set(result.states[i] ?? "", lastY[i] ?? 0);
+            }
+          }
+        },
+        getOutputs() {
+          return new Map(this._outputs);
+        },
+        terminate() {
+          this._inputs.clear();
+          this._outputs.clear();
+        },
+      };
+
+      // 3. Run the surrogate pipeline
+      connection.console.info(
+        `[trainSurrogate] Running DoE (${params.strategy ?? "latin-hypercube"}, ${params.numSamples ?? 50} samples)...`,
+      );
+
+      const surrogateResult = buildSurrogate(
+        fmuAdapter,
+        {
+          doe: {
+            inputs: inputRanges,
+            outputs: outputNames,
+            strategy: params.strategy ?? "latin-hypercube",
+            numSamples: params.numSamples ?? 50,
+            startTime,
+            stopTime,
+            stepSize,
+            seed: params.seed,
+          },
+          rom: {
+            architecture: params.architecture ?? "mlp",
+            hiddenLayers: params.hiddenLayers,
+            activation: params.activation,
+            polynomialDegree: params.polynomialDegree,
+            epochs: params.epochs,
+            learningRate: params.learningRate,
+            seed: params.seed,
+          },
+        },
+        (phase, _progress, detail) => {
+          connection.console.info(`[trainSurrogate] ${phase}: ${detail}`);
+        },
+      );
+
+      connection.console.info(
+        `[trainSurrogate] Complete: R²=${surrogateResult.metrics.r2.toFixed(4)}, Train MSE=${surrogateResult.metrics.trainMSE.toExponential(4)}`,
+      );
+
+      // 4. Generate WASM C source from the trained ROM
+      const modelId = (classInstance.name || "Surrogate").replace(/\./g, "_");
+      const wasmResult = generateRomWasmSource(surrogateResult.trainedROM, modelId);
+
+      return {
+        success: true,
+        metrics: surrogateResult.metrics,
+        inputNames: surrogateResult.trainedROM.inputNames,
+        outputNames: surrogateResult.trainedROM.outputNames,
+        architecture: surrogateResult.trainedROM.architecture,
+        wasmC: wasmResult.wasmC,
+        modelDescriptionXml: wasmResult.modelDescriptionXml,
+        emccFlags: wasmResult.emccFlags,
+        exportedFunctions: wasmResult.exportedFunctions,
+      };
+    } catch (e) {
+      connection.console.error(`[trainSurrogate] Error: ${e}`);
+      return {
+        success: false,
         error: e instanceof Error ? e.message : String(e),
       };
     }
