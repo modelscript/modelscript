@@ -28,9 +28,11 @@ import { VerificationPanel } from "./verificationPanel";
 
 import { CalibrationPanel } from "./calibrationPanel";
 import { ExperimentsTreeProvider } from "./experimentsTree";
+import { OptimizationPanel } from "./optimizationPanel";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
+import { UncertaintyPanel } from "./uncertaintyPanel";
 
 function decodeBase64ToArray(base64: string): Uint8Array {
   // Extract only base64 characters
@@ -747,6 +749,14 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.openCalibration", (uri?: string) => {
       if (!client) return;
       CalibrationPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.openOptimization", (uri?: string) => {
+      if (!client) return;
+      OptimizationPanel.createOrShow(context.extensionUri, client, uri);
+    }),
+    commands.registerCommand("modelscript.openUncertainty", (uri?: string) => {
+      if (!client) return;
+      UncertaintyPanel.createOrShow(context.extensionUri, client, uri);
     }),
     commands.registerCommand("modelscript.refreshExperiments", () => {
       experimentsTreeProvider.refresh();
@@ -1917,7 +1927,7 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "calibrate(SpringDamper,",
         "  stopTime = 5.0,",
         '  parameters = {"k", "c"},',
-        "  parameterBounds = {k=(10, 200), c=(0.1, 20)},",
+        "  parameterBounds = [10, 200; 0.1, 20],",
         '  measurementFile = "measurements.csv",',
         '  method = "lm"',
         ");",
@@ -2015,8 +2025,8 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "  stopTime = 5,",
         "  numberOfIntervals = 200,",
         "  parameters = {",
-        '    {name = "Cd", distribution = "gaussian", mean = 0.47, stddev = 0.05},',
-        '    {name = "m", distribution = "uniform", lo = 0.9, hi = 1.1}',
+        '    "Cd ~ normal(0.47, 0.05)",',
+        '    "m ~ uniform(0.9, 1.1)"',
         "  },",
         "  numSamples = 200,",
         "  seed = 42,",

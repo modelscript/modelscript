@@ -105,38 +105,12 @@ const vscodeApi = (window as typeof window & { acquireVsCodeApi?: () => { postMe
 // Settings & Parameters DOM elements
 const paramsSection = document.getElementById("params-section")!;
 const settingsSection = document.getElementById("settings-section")!;
-const calibrationSection = document.getElementById("calibration-section")!;
 const parametersView = document.getElementById("parameters-view")!;
 const btnSimulate = document.getElementById("btn-simulate")!;
-const btnCalibrate = document.getElementById("btn-calibrate")!;
 const tStartInput = document.getElementById("st-start") as HTMLInputElement;
 const tStopInput = document.getElementById("st-stop") as HTMLInputElement;
 const intervalInput = document.getElementById("st-interval") as HTMLInputElement;
 const toleranceInput = document.getElementById("st-tolerance") as HTMLInputElement;
-
-// Calibration inputs
-const calCsvInput = document.getElementById("cal-csv") as HTMLTextAreaElement;
-const calParamsInput = document.getElementById("cal-params") as HTMLInputElement;
-const calMethodSelect = document.getElementById("cal-method") as HTMLSelectElement;
-const calItersInput = document.getElementById("cal-iters") as HTMLInputElement;
-
-// Optimization inputs
-const optimizationSection = document.getElementById("optimization-section")!;
-const btnOptimize = document.getElementById("btn-optimize")!;
-const optObjectiveInput = document.getElementById("opt-objective") as HTMLInputElement;
-const optControlsInput = document.getElementById("opt-controls") as HTMLInputElement;
-const optToleranceInput = document.getElementById("opt-tolerance") as HTMLInputElement;
-const optItersInput = document.getElementById("opt-iters") as HTMLInputElement;
-const optSysmlUriInput = document.getElementById("opt-sysml-uri") as HTMLInputElement;
-const optSysmlFilterInput = document.getElementById("opt-sysml-filter") as HTMLInputElement;
-
-// Monte Carlo inputs
-const mcSection = document.getElementById("mc-section")!;
-const btnMonteCarlo = document.getElementById("btn-montecarlo")!;
-const mcParamsInput = document.getElementById("mc-params") as HTMLTextAreaElement;
-const mcSamplesInput = document.getElementById("mc-samples") as HTMLInputElement;
-const mcConfidenceInput = document.getElementById("mc-confidence") as HTMLInputElement;
-const mcMethodSelect = document.getElementById("mc-method") as HTMLSelectElement;
 
 let currentParameters: Record<string, HTMLInputElement> = {};
 /* eslint-enable @typescript-eslint/no-non-null-assertion */
@@ -329,9 +303,6 @@ window.addEventListener("message", (event) => {
     intervalInput.value = (exp.interval ?? ((exp.stopTime ?? 10) - (exp.startTime ?? 0)) / 500).toString();
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
 
-    calibrationSection.style.display = "flex";
-    optimizationSection.style.display = "flex";
-    mcSection.style.display = "flex";
     currentMCData = null; // Clear old MC data on new simulation
 
     draw();
@@ -379,78 +350,6 @@ window.addEventListener("message", (event) => {
     toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
     buildTreeView(varNames);
-
-    draw();
-  } else if (msg.type === "calibrationData") {
-    // Treat calibration data as batch simulation data for plotting
-    isLiveMode = false;
-    currentData = msg.data.simulated;
-    isDark = msg.isDark;
-
-    msg.data.simulated.states.forEach((state: string) => {
-      if (!seenVars.has(state)) {
-        hiddenVars.add(state);
-        seenVars.add(state);
-      }
-    });
-
-    placeholderEl.style.display = "none";
-    containerEl.style.display = "flex";
-    toolbarEl.classList.add("visible");
-    toolbarEl.classList.remove("live-mode");
-    stopLiveLoop();
-    buildTreeView(msg.data.simulated.states);
-
-    // Update parameters with optimized values
-    if (msg.data.parameters) {
-      for (const [name, val] of Object.entries(msg.data.parameters)) {
-        if (currentParameters[name]) {
-          currentParameters[name].value = (val as number).toString();
-          currentParameters[name].style.borderColor = "var(--vscode-testing-iconPassed)"; // Highlight success
-        }
-      }
-    }
-
-    draw();
-  } else if (msg.type === "optimizationData") {
-    // Treat optimization data as batch simulation data for plotting
-    isLiveMode = false;
-    isDark = msg.isDark;
-    const allStates = [...Object.keys(msg.data.states), ...Object.keys(msg.data.controls)];
-
-    // Create y matrix from states and controls map
-    const numPoints = msg.data.t.length;
-    const yMatrix: number[][] = [];
-    for (let i = 0; i < numPoints; i++) {
-      const row: number[] = [];
-      for (const state of Object.keys(msg.data.states)) {
-        row.push(msg.data.states[state][i]);
-      }
-      for (const control of Object.keys(msg.data.controls)) {
-        row.push(msg.data.controls[control][i]);
-      }
-      yMatrix.push(row);
-    }
-
-    currentData = {
-      t: msg.data.t,
-      y: yMatrix,
-      states: allStates,
-    };
-
-    allStates.forEach((state: string) => {
-      if (!seenVars.has(state)) {
-        hiddenVars.add(state);
-        seenVars.add(state);
-      }
-    });
-
-    placeholderEl.style.display = "none";
-    containerEl.style.display = "flex";
-    toolbarEl.classList.add("visible");
-    toolbarEl.classList.remove("live-mode");
-    stopLiveLoop();
-    buildTreeView(allStates);
 
     draw();
   } else if (msg.type === "liveMode") {
@@ -523,67 +422,6 @@ btnSimulate?.addEventListener("click", () => {
       interval: intervalInput.value ? parseFloat(intervalInput.value) : undefined,
       tolerance: toleranceInput.value ? parseFloat(toleranceInput.value) : undefined,
       parameterOverrides,
-    },
-  });
-});
-
-btnCalibrate?.addEventListener("click", () => {
-  if (!vscodeApi) return;
-  const paramsStr = calParamsInput.value;
-  const parameters = paramsStr
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  vscodeApi.postMessage({
-    type: "calibrateRequest",
-    payload: {
-      csvData: calCsvInput.value,
-      parameters,
-      method: calMethodSelect.value,
-      maxIterations: calItersInput.value ? parseInt(calItersInput.value) : 100,
-      // Default bounds of -infinity to infinity if none specified
-    },
-  });
-});
-
-btnOptimize?.addEventListener("click", () => {
-  if (!vscodeApi) return;
-  const controlsStr = optControlsInput.value;
-  const controls = controlsStr
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  vscodeApi.postMessage({
-    type: "optimizeRequest",
-    payload: {
-      objective: optObjectiveInput.value || undefined,
-      controls: controls.length > 0 ? controls : undefined,
-      tolerance: optToleranceInput.value ? parseFloat(optToleranceInput.value) : undefined,
-      maxIterations: optItersInput.value ? parseInt(optItersInput.value) : 200,
-      sysmlUri: optSysmlUriInput.value || undefined,
-      sysmlFilter: optSysmlFilterInput.value || undefined,
-    },
-  });
-});
-
-btnMonteCarlo?.addEventListener("click", () => {
-  if (!vscodeApi) return;
-  let parameters: unknown[] = [];
-  try {
-    parameters = JSON.parse(mcParamsInput.value || "[]");
-  } catch {
-    // Invalid JSON — send empty
-  }
-
-  vscodeApi.postMessage({
-    type: "montecarloRequest",
-    payload: {
-      numSamples: mcSamplesInput.value ? parseInt(mcSamplesInput.value) : 200,
-      confidenceLevel: mcConfidenceInput.value ? parseFloat(mcConfidenceInput.value) : 0.95,
-      method: mcMethodSelect.value,
-      parameters,
     },
   });
 });

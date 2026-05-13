@@ -201,8 +201,18 @@
       },
       {
         "command": "modelscript.openCalibration",
-        "title": "ModelScript: Open Calibration Dashboard",
+        "title": "ModelScript: Open Calibration",
         "icon": "$(beaker)"
+      },
+      {
+        "command": "modelscript.openOptimization",
+        "title": "ModelScript: Open Optimization",
+        "icon": "$(graph-line)"
+      },
+      {
+        "command": "modelscript.openUncertainty",
+        "title": "ModelScript: Open Uncertainty",
+        "icon": "$(pulse)"
       }
     ],
     "configuration": [

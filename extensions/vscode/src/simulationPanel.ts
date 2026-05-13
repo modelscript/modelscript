@@ -26,14 +26,6 @@ interface SimulationResult {
   error?: string;
 }
 
-interface GenericWorkerResult {
-  success?: boolean;
-  error?: string;
-  message?: string;
-  messages?: string[];
-  [key: string]: unknown;
-}
-
 export class SimulationPanel {
   static currentPanel: SimulationPanel | undefined;
   static readonly viewType = "modelscript.simulation";
@@ -261,116 +253,6 @@ export class SimulationPanel {
               }
 
               this.postResults(result);
-            },
-          );
-        } else if (msg.type === "calibrateRequest" && this.client) {
-          const uri = this.sourceUri;
-          if (!uri) return;
-
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: "Calibrating model...",
-              cancellable: false,
-            },
-            async () => {
-              if (!this.client) return;
-              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/calibrate", {
-                uri,
-                csvData: msg.payload.csvData,
-                timeColumn: msg.payload.timeColumn,
-                columnMapping: msg.payload.columnMapping,
-                parameters: msg.payload.parameters,
-                parameterBounds: msg.payload.parameterBounds,
-                tolerance: msg.payload.tolerance,
-                maxIterations: msg.payload.maxIterations,
-                method: msg.payload.method,
-              });
-
-              if (result.error || !result.success) {
-                vscode.window.showErrorMessage(`Calibration failed: ${result.error || result.message}`);
-                return;
-              }
-
-              this.panel.webview.postMessage({
-                type: "calibrationData",
-                data: result,
-                isDark:
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
-              });
-            },
-          );
-        } else if (msg.type === "optimizeRequest" && this.client) {
-          const uri = this.sourceUri;
-          if (!uri) return;
-
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: "Optimizing model...",
-              cancellable: false,
-            },
-            async () => {
-              if (!this.client) return;
-              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/optimizeModel", {
-                uri,
-                objective: msg.payload.objective,
-                controls: msg.payload.controls,
-                tolerance: msg.payload.tolerance,
-                maxIterations: msg.payload.maxIterations,
-                sysmlUri: msg.payload.sysmlUri || undefined,
-                sysmlFilter: msg.payload.sysmlFilter || undefined,
-              });
-
-              if (result.error || !result.success) {
-                vscode.window.showErrorMessage(
-                  `Optimization failed: ${result.error || result.messages || result.message}`,
-                );
-                return;
-              }
-
-              this.panel.webview.postMessage({
-                type: "optimizationData",
-                data: result,
-                isDark:
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
-              });
-            },
-          );
-        } else if (msg.type === "montecarloRequest" && this.client) {
-          const uri = this.sourceUri;
-          if (!uri) return;
-
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: "Running Monte Carlo uncertainty analysis...",
-              cancellable: false,
-            },
-            async () => {
-              if (!this.client) return;
-              const result: GenericWorkerResult = await this.client.sendRequest("modelscript/montecarlo", {
-                uri,
-                numSamples: msg.payload.numSamples,
-                confidenceLevel: msg.payload.confidenceLevel,
-                method: msg.payload.method,
-                parameters: msg.payload.parameters,
-              });
-
-              if (result.error || !result.success) {
-                vscode.window.showErrorMessage(`Monte Carlo failed: ${result.error || result.message}`);
-                return;
-              }
-
-              this.panel.webview.postMessage({
-                type: "monteCarloData",
-                data: result,
-                isDark:
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast,
-              });
             },
           );
         }
@@ -723,76 +605,9 @@ export class SimulationPanel {
           </div>
         </div>
       </div>
-      <div class="sidebar-section" id="calibration-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Calibration</div>
-        <div class="sidebar-content" id="calibration-view">
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Measurement Data (CSV)</label>
-            <textarea id="cal-csv" rows="4" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: monospace; font-size: 10px;" placeholder="time,x\n0,1.0\n1,0.37"></textarea>
-          </div>
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Parameters to Optimize (comma separated)</label>
-            <input type="text" id="cal-params" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="a, b">
-          </div>
-          <div class="settings-row"><label>Method</label>
-            <select id="cal-method" style="width:80px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border)">
-              <option value="lm">LM</option>
-              <option value="sqp">SQP</option>
-            </select>
-          </div>
-          <div class="settings-row"><label>Max Iterations</label><input type="number" id="cal-iters" step="any" value="100"></div>
-          <div class="simulate-btn-container">
-            <button id="btn-calibrate" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Calibration</button>
-          </div>
-        </div>
-      </div>
-      <div class="sidebar-section" id="optimization-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Optimization</div>
-        <div class="sidebar-content" id="optimization-view">
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Objective</label>
-            <input type="text" id="opt-objective" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="u^2">
-          </div>
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Controls (comma separated)</label>
-            <input type="text" id="opt-controls" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);" placeholder="u">
-          </div>
-          <div class="settings-row"><label>Tolerance</label><input type="number" id="opt-tolerance" step="any" value="0.000001"></div>
-          <div class="settings-row"><label>Max Iterations</label><input type="number" id="opt-iters" step="any" value="200"></div>
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">SysML2 Constraints URI <span style="opacity:0.5">(optional)</span></label>
-            <input type="text" id="opt-sysml-uri" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-size: 11px;" placeholder="memfs:///requirements.sysml">
-          </div>
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Constraint Filter <span style="opacity:0.5">(optional)</span></label>
-            <input type="text" id="opt-sysml-filter" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-size: 11px;" placeholder="OptAnalysis">
-          </div>
-          <div class="simulate-btn-container">
-            <button id="btn-optimize" class="simulate-btn" style="background: var(--vscode-debugIcon-startForeground, #388a34);">Run Optimization</button>
-          </div>
-        </div>
-      </div>
-      <div class="sidebar-section" id="mc-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Uncertainty (Monte Carlo)</div>
-        <div class="sidebar-content" id="mc-view">
-          <div style="padding: 4px 16px; font-size: 11px;">
-            <label style="display:block;margin-bottom:4px">Uncertain Parameters (JSON)</label>
-            <textarea id="mc-params" rows="5" style="width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); font-family: monospace; font-size: 10px;" placeholder='[{"name":"k","distribution":"gaussian","mean":1.0,"stddev":0.1}]'></textarea>
-          </div>
-          <div class="settings-row"><label>Samples</label><input type="number" id="mc-samples" step="1" value="200"></div>
-          <div class="settings-row"><label>Confidence</label><input type="number" id="mc-confidence" step="0.01" value="0.95"></div>
-          <div class="settings-row"><label>Method</label>
-            <select id="mc-method" style="width:80px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border)">
-              <option value="crude">Crude</option>
-              <option value="lhs">LHS</option>
-              <option value="antithetic">Antithetic</option>
-            </select>
-          </div>
-          <div class="simulate-btn-container">
-            <button id="btn-montecarlo" class="simulate-btn" style="background: #8250df;">Run Monte Carlo</button>
-          </div>
-        </div>
-      </div>
+
+
+
     </div>
     <div id="chart-container">
       <div id="toolbar">
