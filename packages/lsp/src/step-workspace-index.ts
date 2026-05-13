@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { IWorkspaceIndex, SymbolEntry, SymbolIndex } from "@modelscript/polyglot";
+import { extractStepAssembly } from "./step-assembly-extractor";
+import { StepAssemblyModel } from "./step-physical-data";
 
 // Dynamic import so webpack can resolve the WASM asset at build time
 // but we don't eagerly load it until the first STEP file is opened.
@@ -138,6 +140,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
   private _version = 0;
   private fileIndices = new Map<string, SymbolIndex>();
   private fileMeshes = new Map<string, any[]>();
+  private fileAssemblies = new Map<string, StepAssemblyModel>();
 
   get version(): number {
     return this._version;
@@ -145,6 +148,10 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
 
   public getMeshes(uri: string): any[] {
     return this.fileMeshes.get(uri) || [];
+  }
+
+  public getAssemblyModel(uri: string): StepAssemblyModel | undefined {
+    return this.fileAssemblies.get(uri);
   }
 
   /**
@@ -157,6 +164,10 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
     // Step 1: Extract names from raw text (always works, no WASM needed)
     const text = new TextDecoder().decode(buffer);
     const { products, shapes } = extractStepNames(text);
+
+    // Step 1b: Extract assembly hierarchy and kinematic constraints
+    const assemblyModel = extractStepAssembly(text);
+    this.fileAssemblies.set(uri, assemblyModel);
 
     // Step 2: Try OCCT for mesh generation
     const occt = await getOcct(this.serverDistBase);

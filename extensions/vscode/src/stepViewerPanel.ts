@@ -45,6 +45,9 @@ export class StepViewerPanel {
             vscode.window.showInformationMessage(`Selected CAD Feature ID: ${message.id}`);
             // In the future, this will send an executeCommand to the LSP
             break;
+          case "generateMultiBody":
+            vscode.commands.executeCommand("modelscript.generateMultiBody");
+            break;
           case "ready":
             // The STEP file may not be fully indexed by the LSP yet when
             // the webview is ready. Retry a few times with increasing delay.

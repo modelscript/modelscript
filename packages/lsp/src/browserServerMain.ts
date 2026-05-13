@@ -395,6 +395,23 @@ unifiedWorkspace.registerWorkspace("step", stepWorkspaceIndex, {
   },
 });
 
+// ── Multi-Body generation from STEP ───────────────────────────────
+connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
+  const model = stepWorkspaceIndex.getAssemblyModel(params.uri);
+  if (!model) {
+    throw new Error(`No STEP assembly found for ${params.uri}`);
+  }
+
+  // Derive a valid Modelica component name from the filename
+  const filename = params.uri.split("/").pop() || "Assembly";
+  const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
+
+  const multiBodyDescriptor = mapStepToMultiBody(baseName, model);
+  const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
+
+  return { source: modelicaSource, name: baseName };
+});
+
 const documentLSPBridges = new Map<string, LSPBridge>();
 
 /** Global QueryEngines for cross-file dependency tracking and memoization */

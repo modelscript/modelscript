@@ -213,6 +213,11 @@
         "command": "modelscript.openUncertainty",
         "title": "ModelScript: Open Uncertainty",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "modelscript.generateMultiBody",
+        "title": "ModelScript: Generate Multi-Body Model from STEP",
+        "icon": "$(package)"
       }
     ],
     "configuration": [

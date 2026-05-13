@@ -885,6 +885,42 @@ END-ISO-10303-21;`;
         },
       );
     }),
+    commands.registerCommand("modelscript.generateMultiBody", async () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || !editor.document.fileName.match(/\.(step|stp)$/i)) {
+        vscode.window.showErrorMessage("Open a STEP file (.step or .stp) to generate a Multi-Body model.");
+        return;
+      }
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Extracting constraints and generating Modelica...",
+          cancellable: false,
+        },
+        async () => {
+          if (!client) return;
+          try {
+            const res = await client.sendRequest<{ source: string; name: string }>("modelscript/generateMultiBody", {
+              uri: editor.document.uri.toString(),
+            });
+
+            // Write to a new file next to the step file
+            const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+            const outUri = vscode.Uri.joinPath(folder, `${res.name}.mo`);
+            await vscode.workspace.fs.writeFile(outUri, new TextEncoder().encode(res.source));
+
+            vscode.window.showInformationMessage(`Generated Modelica Multi-Body model: ${res.name}.mo`);
+
+            // Open the generated file
+            const doc = await vscode.workspace.openTextDocument(outUri);
+            await vscode.window.showTextDocument(doc);
+          } catch (e) {
+            vscode.window.showErrorMessage(`Multi-Body generation failed: ${e}`);
+          }
+        },
+      );
+    }),
     commands.registerCommand("modelscript.compileWasm", async () => {
       if (!client) return;
       const editor = vscode.window.activeTextEditor;
@@ -2693,6 +2729,61 @@ async function initWorkspaceAndTree(
                 "",
                 "Once training is complete, click **Generate WASM**.",
                 "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
+              ].join("\n"),
+            ),
+          );
+          break;
+        }
+        case "assembly-to-multibody": {
+          filename = "SimplePendulum.step";
+          content = [
+            "ISO-10303-21;",
+            "HEADER;",
+            "FILE_DESCRIPTION(('STEP AP242 Assembly'),'2;1');",
+            "FILE_NAME('SimplePendulum.step','2026-05-13',('ModelScript'),(''),(''),'','');",
+            "FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }'));",
+            "ENDSEC;",
+            "DATA;",
+            "#1=PRODUCT('Assembly','Assembly','',(#2));",
+            "#2=PRODUCT_CONTEXT('',#3,'mechanical');",
+            "#3=APPLICATION_CONTEXT('automotive design');",
+            "#10=PRODUCT('Link','Link','',(#2));",
+            "#20=PRODUCT('Bob','Bob','',(#2));",
+            "#30=NEXT_ASSEMBLY_USAGE_OCCURRENCE('NAUO1','Link to Bob','',#10,#20,$);",
+            "#40=REVOLUTE_PAIR('RevJoint','Joint between Link and Bob',#10,#20);",
+            "ENDSEC;",
+            "END-ISO-10303-21;",
+          ].join("\n");
+
+          const readmeUri = Uri.joinPath(workspaceUri, "README.md");
+          await workspace.fs.writeFile(
+            readmeUri,
+            new TextEncoder().encode(
+              [
+                "# STEP AP242 to Modelica Multi-Body",
+                "",
+                "This workspace demonstrates the automated conversion of a 3D CAD assembly into a Modelica Multi-Body simulation.",
+                "",
+                "## Workflow",
+                "",
+                "1. Open `SimplePendulum.step`.",
+                "2. The 3D Viewer will render the geometric bodies (if OCCT WASM is loaded).",
+                "3. Click the **⚙️ Generate Multi-Body Model** button in the top left of the 3D Viewer, or run the command from the Command Palette.",
+                "4. A new `SimplePendulum.mo` file will be generated automatically, containing `Parts.Body` and `Joints.Revolute` components.",
+                "5. Open `SimplePendulum.mo` and click **Run Simulation** to simulate the dynamics!",
+              ].join("\n"),
+            ),
+          );
+
+          const scriptUri = Uri.joinPath(workspaceUri, "generate.mos");
+          await workspace.fs.writeFile(
+            scriptUri,
+            new TextEncoder().encode(
+              [
+                "// Generate a Multi-Body model from a STEP assembly",
+                'loadStepAssembly("SimplePendulum.step");',
+                "generateMultiBody(density = 7800);",
+                "simulate(SimplePendulum_Assembly, stopTime = 10);",
               ].join("\n"),
             ),
           );

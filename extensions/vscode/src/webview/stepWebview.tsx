@@ -60,6 +60,22 @@ function App() {
       className="step-webview-container"
       style={{ width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
     >
+      <div style={{ position: "absolute", top: "10px", left: "10px", zIndex: 10 }}>
+        <button
+          onClick={() => vscode?.postMessage({ command: "generateMultiBody" })}
+          style={{
+            background: "var(--vscode-button-background)",
+            color: "var(--vscode-button-foreground)",
+            border: "none",
+            padding: "4px 8px",
+            cursor: "pointer",
+            borderRadius: "2px",
+            fontSize: "12px",
+          }}
+        >
+          ⚙️ Generate Multi-Body Model
+        </button>
+      </div>
       <StepViewer meshes={meshes} selectedId={selectedId} onSelect={handleSelect} dark={isDark} isLoading={isLoading} />
     </div>
   );
