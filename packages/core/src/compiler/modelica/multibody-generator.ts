@@ -14,13 +14,21 @@ export function generateMultiBodyModelica(assembly: MultiBodyAssembly, stepUri: 
   if (assembly.bodies.length > 0) {
     lines.push(`  // ── Bodies ──`);
     for (const body of assembly.bodies) {
+      const frame = body.frameVariable ?? `${body.name}.frame_a`;
       lines.push(`  Parts.Body ${body.name}(`);
       lines.push(`    m = ${body.mass},`);
       lines.push(`    I_11 = ${body.inertia.I_11}, I_22 = ${body.inertia.I_22}, I_33 = ${body.inertia.I_33},`);
       lines.push(`    I_21 = ${body.inertia.I_21}, I_31 = ${body.inertia.I_31}, I_32 = ${body.inertia.I_32},`);
       lines.push(`    r_CM = {${body.r_CM[0]}, ${body.r_CM[1]}, ${body.r_CM[2]}},`);
       lines.push(`    animation = true`);
-      lines.push(`  ) annotation(CAD(uri = "${stepUri}"${body.shapeRef ? `, feature="${body.shapeRef}"` : ""}));`);
+
+      // Build CAD annotation with dynamic animation bindings
+      const annParts = [`uri = "${stepUri}"`];
+      if (body.shapeRef) annParts.push(`feature="${body.shapeRef}"`);
+      annParts.push(`dynamicPosition = "{${frame}.r_0[1], ${frame}.r_0[2], ${frame}.r_0[3]}"`);
+      annParts.push(`dynamicRotation = "${frame}.R.T"`);
+
+      lines.push(`  ) annotation(CAD(${annParts.join(", ")}));`);
       lines.push(``);
     }
   }

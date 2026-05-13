@@ -28,9 +28,12 @@ import { AnimationTimeline } from "./animation-timeline";
 
 export interface CadAnnotation {
   uri: string;
+  feature?: string;
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];
+  dynamicPosition?: string;
+  dynamicRotation?: string;
 }
 
 export interface CadPortAnnotation {

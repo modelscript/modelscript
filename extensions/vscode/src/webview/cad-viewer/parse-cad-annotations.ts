@@ -46,9 +46,12 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
   if (isCAD) {
     return {
       uri: (result["uri"] as string) ?? "",
+      feature: result["feature"] as string | undefined,
       position: result["position"] as [number, number, number] | undefined,
       rotation: result["rotation"] as [number, number, number] | undefined,
       scale: result["scale"] as [number, number, number] | undefined,
+      dynamicPosition: result["dynamicPosition"] as string | undefined,
+      dynamicRotation: result["dynamicRotation"] as string | undefined,
     } satisfies CadAnnotation;
   } else {
     return {

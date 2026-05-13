@@ -84,6 +84,7 @@ const liveStatusEl = document.getElementById("live-status")!;
 const liveStatusTextEl = document.getElementById("live-status-text")!;
 const btnPause = document.getElementById("btn-pause")!;
 const btnClear = document.getElementById("btn-clear")!;
+const btn3dAnimation = document.getElementById("btn-3d-animation")!;
 const btnResetView = document.getElementById("btn-reset-view")!;
 const checkboxSmooth = document.getElementById("checkbox-smooth") as HTMLInputElement;
 
@@ -248,6 +249,17 @@ btnResetView?.addEventListener("click", () => {
   else draw();
 });
 
+btn3dAnimation?.addEventListener("click", () => {
+  if (currentData && vscodeApi) {
+    vscodeApi.postMessage({
+      type: "open3dAnimation",
+      payload: {
+        simulationData: currentData,
+      },
+    });
+  }
+});
+
 // Handle messages from extension
 window.addEventListener("message", (event) => {
   const msg = event.data;
@@ -270,6 +282,14 @@ window.addEventListener("message", (event) => {
     toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
     buildTreeView(msg.data.states);
+
+    // Detect Multi-Body simulation
+    const isMultiBody = msg.data.states.some((s: string) => /\.frame_[ab]\.r_0\[1\]$/.test(s));
+    if (isMultiBody) {
+      btn3dAnimation.style.display = "inline-block";
+    } else {
+      btn3dAnimation.style.display = "none";
+    }
 
     // Fill in Parameters
     if (msg.data.parameters && msg.data.parameters.length > 0) {

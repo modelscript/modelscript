@@ -120,6 +120,7 @@ const webviewConfig = {
     chatWorker: "./src/webview/chatWorker.ts",
     cadWebview: "./src/webview/cadWebview.tsx",
     stepWebview: "./src/webview/stepWebview.tsx",
+    multibodyAnimationWebview: "./src/webview/multibodyAnimationWebview.tsx",
     analysisWebview: "./src/webview/analysisWebview.ts",
     calibrationWebview: "./src/webview/calibrationWebview.tsx",
     optimizationWebview: "./src/webview/optimizationWebview.tsx",

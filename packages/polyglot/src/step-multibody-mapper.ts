@@ -21,6 +21,8 @@ export interface MultiBodyPart {
     I_32: number;
   };
   shapeRef?: string;
+  /** Qualified variable name prefix for the body's frame, e.g. "body1" → "body1.frame_a" */
+  frameVariable?: string;
 }
 
 export interface MultiBodyJoint {
@@ -48,13 +50,15 @@ export function mapStepToMultiBody(assemblyName: string, model: StepAssemblyMode
 
   for (const part of model.parts.values()) {
     const massProps = model.massProperties.get(part.id);
+    const bodyName = part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `part_${part.id.replace("#", "")}`;
     bodies.push({
-      name: part.name.replace(/[^a-zA-Z0-9_]/g, "_") || `part_${part.id.replace("#", "")}`,
+      name: bodyName,
       stepId: part.id,
       mass: massProps?.mass || 1.0,
       r_CM: massProps?.centerOfMass || [0, 0, 0],
       inertia: massProps?.inertiaTensor || { I_11: 1, I_22: 1, I_33: 1, I_21: 0, I_31: 0, I_32: 0 },
       shapeRef: part.shapeId,
+      frameVariable: `${bodyName}.frame_a`,
     });
   }
 

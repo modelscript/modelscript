@@ -7,6 +7,7 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CadViewerPanel } from "./cadViewerPanel";
+import { MultiBodyAnimationPanel } from "./multibodyAnimationPanel";
 
 interface SimulationResult {
   t: number[];
@@ -348,6 +349,14 @@ export class SimulationPanel {
           } catch (e) {
             vscode.window.showErrorMessage(`Failed to export surrogate WASM: ${e}`);
           }
+        } else if (msg.type === "open3dAnimation" && this.client && this.sourceUri) {
+          // Launch the 3D Multi-Body Animation viewer
+          MultiBodyAnimationPanel.createOrShow(
+            this.extensionUri,
+            this.client,
+            msg.payload.simulationData,
+            this.sourceUri,
+          );
         }
       },
       null,
@@ -749,6 +758,7 @@ export class SimulationPanel {
         </label>
         <button id="btn-pause" class="live-only">⏸ Pause</button>
         <button id="btn-clear" class="live-only">Clear</button>
+        <button id="btn-3d-animation" style="display: none; background: #2da44e; color: white;">🎬 3D Animation</button>
         <button id="btn-reset-view">⌂ Reset View</button>
       </div>
       <!-- legend was removed -->
