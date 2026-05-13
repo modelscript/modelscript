@@ -10,6 +10,7 @@ export * from "./fmu-wasm-codegen.js";
 export * from "./fmu-wasm-compile.js";
 export * from "./fmu.js";
 export * from "./fmu3-codegen.js";
+export * from "./rom-wasm-codegen.js";
 export * from "./ssp-archive.js";
 export * from "./sundials-codegen.js";
 export * from "./wrapper-template.js";
