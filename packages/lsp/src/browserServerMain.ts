@@ -1599,6 +1599,36 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       }
 
       connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
+
+      // Auto-trigger verification if this document contains verification/analysis cases.
+      // This makes the "compiler actively fails the build" behavior described in the paper
+      // happen automatically without requiring the user to run a command.
+      if (unifiedWorkspace) {
+        try {
+          const udb = unifiedWorkspace.toUnifiedPartial();
+          const hasVerifyCases = Array.from(udb.symbols.values()).some(
+            (s) =>
+              s.resourceId === textDocument.uri &&
+              (s.ruleName === "VerifyRequirementUsage" ||
+                s.ruleName === "AnalysisCaseDefinition" ||
+                s.ruleName === "AnalysisCaseUsage" ||
+                s.ruleName === "VerificationCaseDefinition" ||
+                s.ruleName === "VerificationCaseUsage"),
+          );
+          if (hasVerifyCases) {
+            if (verificationTimer) clearTimeout(verificationTimer);
+            const verifyUri = textDocument.uri;
+            verificationTimer = setTimeout(() => {
+              connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
+              runVerificationForUri(verifyUri).catch(() => {
+                // Ignore — errors surface as diagnostics
+              });
+            }, 1000);
+          }
+        } catch {
+          // Ignore — auto-verify is best-effort
+        }
+      }
     } catch (e: any) {
       connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
       connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
@@ -7677,8 +7707,18 @@ connection.onRequest(
 );
 
 connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
+  return runVerificationForUri(params.uri);
+});
+
+/**
+ * Run requirements verification for a SysML document URI.
+ * Extracts verification/analysis cases, simulates the linked Modelica model,
+ * and evaluates constraints against the trajectory.
+ * Can be called from both the LSP request handler and the auto-trigger.
+ */
+async function runVerificationForUri(uri: string): Promise<{ ok: boolean }> {
   try {
-    const textDocument = documents.get(params.uri);
+    const textDocument = documents.get(uri);
     if (!textDocument) throw new Error("Document not found");
 
     if (activeVerification) activeVerification.abort();
@@ -7698,51 +7738,48 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
     if (fileNodes.length === 0) return { ok: true };
 
-    // Build a CST tree wrapper so that the SysML QueryEngine can access parse trees
-    // for constraint extraction. This mirrors the Modelica path's cstTreeWrapper.
     const verifyCstTreeWrapper = {
       getText(startByte: number, endByte: number, entry?: any): string | null {
         if (!entry || !entry.resourceId) return null;
-        const uri = entry.resourceId;
-        const docTree = documentTrees.get(uri);
+        const entryUri = entry.resourceId;
+        const docTree = documentTrees.get(entryUri);
         if (docTree && docTree.text) return docTree.text.substring(startByte, endByte);
 
-        let lazyCache = lazyLibTrees.get(uri);
+        let lazyCache = lazyLibTrees.get(entryUri);
         if (!lazyCache && sharedContext) {
           try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
             const text = sharedContext.fs.read(fsPath);
             if (text) {
-              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              const tree = sharedContext.parse(entryUri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };
-              lazyLibTrees.set(uri, lazyCache);
+              lazyLibTrees.set(entryUri, lazyCache);
             }
           } catch (e) {}
         }
         if (lazyCache) return lazyCache.text.substring(startByte, endByte);
 
-        // Final Fallback: try to read from the document manager
-        const doc = documents.get(uri);
+        const doc = documents.get(entryUri);
         if (doc) return doc.getText().substring(startByte, endByte);
         return null;
       },
       getNode(startByte: number, endByte: number, entry?: any): any | null {
         if (!entry || !entry.resourceId) return null;
-        const uri = entry.resourceId;
-        const docTree = documentTrees.get(uri);
+        const entryUri = entry.resourceId;
+        const docTree = documentTrees.get(entryUri);
         if (docTree && docTree.tree) {
           return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
         }
 
-        let lazyCache = lazyLibTrees.get(uri);
+        let lazyCache = lazyLibTrees.get(entryUri);
         if (!lazyCache && sharedContext) {
           try {
-            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
             const text = sharedContext.fs.read(fsPath);
             if (text) {
-              const tree = sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+              const tree = sharedContext.parse(entryUri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };
-              lazyLibTrees.set(uri, lazyCache);
+              lazyLibTrees.set(entryUri, lazyCache);
             }
           } catch (e) {}
         }
@@ -7750,18 +7787,17 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
           return lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
         }
 
-        // Final Fallback: parse on-demand if we have the text
-        const doc = documents.get(uri);
+        const doc = documents.get(entryUri);
         if (doc) {
           const text = doc.getText();
           let tree: any;
-          if (uri.endsWith(".sysml") && sysml2Parser) {
+          if (entryUri.endsWith(".sysml") && sysml2Parser) {
             tree = sysml2Parser.parse(text);
           } else if (sharedContext) {
             tree = sharedContext.parse(".mo", text);
           }
           if (tree) {
-            documentTrees.set(uri, { text, tree, classCache: new Map() });
+            documentTrees.set(entryUri, { text, tree, classCache: new Map() });
             return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           }
         }
@@ -7798,8 +7834,6 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
       const finalEntry = db.symbols.get(simTargetId);
       let targetEngine = undefined;
-      // Normal UI edits populate documentQueryEngines, but global UI files like modelscript-lib://
-      // might be lazily indexed. Let's use documentQueryEngines or fallback to unified.
       if (finalEntry && finalEntry.resourceId) {
         targetEngine = finalEntry.resourceId.endsWith(".sysml") ? globalSysML2QueryEngine : globalModelicaQueryEngine;
         if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
@@ -7828,7 +7862,6 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
       if (signal.aborted) return { ok: false };
 
-      // Create a runner per topology with the explicit variable mapping
       const runner = new VerificationRunner(sysmlDB, topo.variableMap);
       const vResults = runner.verifyCase(verifyUsage.id, simResult);
       allResults.push(...vResults);
@@ -7843,7 +7876,7 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
         const targetNode = db.symbols.get(targetId);
 
         if (targetNode) {
-          const bridge = documentLSPBridges.get(textDocument.uri);
+          const bridge = documentLSPBridges.get(uri);
           if (bridge && typeof targetNode.startByte === "number" && typeof targetNode.endByte === "number") {
             const s = bridge["positions"].offsetToPosition(targetNode.startByte);
             const e = bridge["positions"].offsetToPosition(targetNode.endByte);
@@ -7855,10 +7888,19 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
         }
 
         if (!vr.isSatisfied) {
+          let diagMsg: string;
+          if (vr.requirementName && vr.message) {
+            diagMsg = `Requirement '${vr.requirementName}' violated: ${vr.message.replace(/^Requirement violated: /, "")}`;
+          } else if (vr.message) {
+            diagMsg = vr.message;
+          } else {
+            diagMsg = `Requirement constraint violated over the simulation trajectory.`;
+          }
+
           newDiagnostics.push({
             severity: DiagnosticSeverity.Error,
             range: { start, end },
-            message: vr.message ? vr.message : `Requirement constraint violated over the simulation trajectory.`,
+            message: diagMsg,
             source: "sysml2-verifier",
           });
         }
@@ -7867,27 +7909,24 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
 
     if (signal.aborted) return { ok: false };
 
-    // Store verification diagnostics persistently for this URI until next edit
-    verificationDiagnosticsByUri.set(textDocument.uri, newDiagnostics);
-    verificationResultsByUri.set(textDocument.uri, allResults);
+    verificationDiagnosticsByUri.set(uri, newDiagnostics);
+    verificationResultsByUri.set(uri, allResults);
 
-    // Trigger validation loop to merge and push diagnostics instantly
     validateTextDocument(textDocument);
     return { ok: true };
   } catch (e: any) {
     connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
 
-    // Push the crash as a diagnostic so the user sees it visually instead of it being swallowed
     const crashDiag: Diagnostic = {
       severity: DiagnosticSeverity.Error,
       range: { start: { line: 0, character: 0 }, end: { line: 0, character: 10 } },
       message: `Verification CRASHED: ${e.message}`,
       source: "sysml2-verifier",
     };
-    verificationDiagnosticsByUri.set(params.uri, [crashDiag]);
-    const doc = documents.get(params.uri);
+    verificationDiagnosticsByUri.set(uri, [crashDiag]);
+    const doc = documents.get(uri);
     if (doc) validateTextDocument(doc);
 
     return { ok: false };
   }
-});
+}

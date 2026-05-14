@@ -11,6 +11,14 @@ export interface VerificationResult {
   timeSeriesResult?: boolean[];
   message?: string;
   requirementName?: string;
+  /** Peak (extremal) value of the LHS operand over the simulation timeline. */
+  peakValue?: number;
+  /** The RHS limit value from the requirement. */
+  limitValue?: number;
+  /** Simulation time at which the constraint was first violated. */
+  violationTime?: number;
+  /** Name of the LHS operand (e.g., "motor.T"). */
+  lhsName?: string;
 }
 
 /**
@@ -384,13 +392,13 @@ export class VerificationRunner {
     simResult: SimulationResult,
   ): VerificationResult {
     let allMet = true;
-    let failMessage: string | undefined;
     const timeSeriesResult: boolean[] = [];
 
-    let maxLhs = -Infinity;
-    let traceRhs = 0;
+    let peakLhs = -Infinity;
+    let limitRhs: number | undefined;
+    let firstViolationTime: number | undefined;
 
-    // Attempt to extract for tracing
+    // Attempt to extract the comparison operands for tracing
     const cst = constraint.id ? (this.db.cstNode(constraint.id) as unknown) : null;
     const comp = cst ? this.extractComparison(cst) : null;
 
@@ -401,18 +409,28 @@ export class VerificationRunner {
       if (comp) {
         const lVal = this.resolveOperand(comp.lhs, constraint, simResult, i);
         const rVal = this.resolveOperand(comp.rhs, constraint, simResult, i);
-        if (lVal !== undefined && lVal > maxLhs) maxLhs = lVal;
-        if (rVal !== undefined) traceRhs = rVal;
+        if (lVal !== undefined && lVal > peakLhs) peakLhs = lVal;
+        if (rVal !== undefined) limitRhs = rVal;
       }
 
       if (!res.isSatisfied) {
+        if (allMet) {
+          // First violation
+          firstViolationTime = simResult.t[i];
+        }
         allMet = false;
-        if (!failMessage) failMessage = res.error;
       }
     }
 
-    if (allMet) {
-      failMessage = `DEBUG TRACE (SATISFIED): Max LHS = ${maxLhs}, RHS = ${traceRhs}`;
+    // Format a polished diagnostic message
+    let message: string | undefined;
+    const lhsName = comp?.lhs;
+    const limitStr = limitRhs !== undefined ? limitRhs.toFixed(1) : "?";
+    const peakStr = isFinite(peakLhs) ? peakLhs.toFixed(1) : "?";
+
+    if (!allMet) {
+      const timeStr = firstViolationTime !== undefined ? `at t=${firstViolationTime.toFixed(2)}s` : "";
+      message = `Requirement violated: ${lhsName ?? "value"} reached ${peakStr} (limit: ${limitStr}) ${timeStr}`.trim();
     }
 
     return {
@@ -420,7 +438,11 @@ export class VerificationRunner {
       constraintId: constraint.id,
       isSatisfied: allMet,
       timeSeriesResult,
-      message: failMessage,
+      message,
+      peakValue: isFinite(peakLhs) ? peakLhs : undefined,
+      limitValue: limitRhs,
+      violationTime: firstViolationTime,
+      lhsName: lhsName ?? undefined,
     };
   }
 

@@ -235,16 +235,22 @@ export class VerificationPanel {
       updateSummary(requirements.length, passed, failed);
 
       let html = '<table><thead><tr>' +
-        '<th>Requirement</th><th>Target Variable</th><th>Status</th><th>Message</th>' +
+        '<th>Requirement</th><th>Variable</th><th>Peak</th><th>Limit</th><th>Status</th><th>Violation</th>' +
         '</tr></thead><tbody>';
 
       for (const r of requirements) {
         const statusIcon = r.status === 'Passed' ? '✓' : r.status === 'Failed' ? '✗' : '◌';
-        html += '<tr>' +
+        const peak = r.peakValue !== undefined ? r.peakValue.toFixed(1) : '—';
+        const limit = r.limitValue !== undefined ? r.limitValue.toFixed(1) : '—';
+        const violTime = r.violationTime !== undefined ? ('t=' + r.violationTime.toFixed(2) + 's') : '—';
+        const variable = r.lhsName || (r.constraintIds.length ? r.constraintIds.length + ' constraint(s)' : '—');
+        html += '<tr' + (r.status === 'Failed' ? ' style="background: rgba(241,76,76,0.06);"' : '') + '>' +
           '<td><span class="link" data-uri="' + esc(r.uri) + '" data-start="' + r.startByte + '" data-end="' + r.endByte + '">' + esc(r.name) + '</span></td>' +
-          '<td>' + esc(r.constraintIds.length ? r.constraintIds.length + ' constraint(s)' : '—') + '</td>' +
+          '<td style="font-family: monospace; font-size: 12px;">' + esc(variable) + '</td>' +
+          '<td style="font-family: monospace; text-align: right;">' + esc(peak) + '</td>' +
+          '<td style="font-family: monospace; text-align: right;">' + esc(limit) + '</td>' +
           '<td><span class="badge badge-' + r.status + '">' + statusIcon + ' ' + r.status + '</span></td>' +
-          '<td>' + esc(r.text || '—') + '</td>' +
+          '<td style="font-size: 11px; opacity: 0.7;">' + esc(r.status === 'Failed' ? violTime : '—') + '</td>' +
           '</tr>';
       }
       html += '</tbody></table>';

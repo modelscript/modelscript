@@ -40,6 +40,14 @@ export interface RequirementRow {
   constraintIds: number[];
   /** Verification status placeholder. */
   status: "Pending" | "Passed" | "Failed";
+  /** Peak (extremal) value of the constrained variable. */
+  peakValue?: number;
+  /** The requirement limit value. */
+  limitValue?: number;
+  /** Simulation time of first constraint violation. */
+  violationTime?: number;
+  /** Name of the constrained variable (e.g., "motor.T"). */
+  lhsName?: string;
 }
 
 /** A single cell in the traceability matrix. */
@@ -112,6 +120,10 @@ export function getRequirements(
     constraintId?: number;
     isSatisfied: boolean;
     requirementName?: string;
+    peakValue?: number;
+    limitValue?: number;
+    violationTime?: number;
+    lhsName?: string;
   }[],
 ): RequirementRow[] {
   const rows: RequirementRow[] = [];
@@ -145,13 +157,13 @@ export function getRequirements(
       (entry.metadata?.id as string) ?? (entry.metadata?.reqId as string) ?? `REQ-${String(seqId++).padStart(3, "0")}`;
 
     let status: "Passed" | "Failed" | "Pending" = "Pending";
+    let peakValue: number | undefined;
+    let limitValue: number | undefined;
+    let violationTime: number | undefined;
+    let lhsName: string | undefined;
     if (verificationResults && verificationResults.length > 0) {
       let hasCheckedConstraint = false;
       let hasFailure = false;
-
-      console.log(`[DEBUG getRequirements] Checking requirement: ${entry.name} (ID: ${entry.id})`);
-      console.log(`[DEBUG getRequirements] Constraint IDs: ${constraintIds.join(", ")}`);
-      console.log(`[DEBUG getRequirements] Verification results:`, JSON.stringify(verificationResults));
 
       const reqResults = verificationResults.filter(
         (r) =>
@@ -160,11 +172,18 @@ export function getRequirements(
           (r.constraintId !== undefined && constraintIds.includes(r.constraintId)),
       );
 
-      console.log(`[DEBUG getRequirements] Filtered results for ${entry.name}:`, JSON.stringify(reqResults));
-
       for (const res of reqResults) {
         hasCheckedConstraint = true;
         if (!res.isSatisfied) hasFailure = true;
+        // Take the most extreme values across all matching results
+        if (res.peakValue !== undefined && (peakValue === undefined || res.peakValue > peakValue)) {
+          peakValue = res.peakValue;
+        }
+        if (res.limitValue !== undefined) limitValue = res.limitValue;
+        if (res.violationTime !== undefined && (violationTime === undefined || res.violationTime < violationTime)) {
+          violationTime = res.violationTime;
+        }
+        if (res.lhsName) lhsName = res.lhsName;
       }
       if (hasCheckedConstraint) {
         status = hasFailure ? "Failed" : "Passed";
@@ -183,6 +202,10 @@ export function getRequirements(
       endByte: entry.endByte,
       constraintIds,
       status,
+      peakValue,
+      limitValue,
+      violationTime,
+      lhsName,
     });
   }
 
