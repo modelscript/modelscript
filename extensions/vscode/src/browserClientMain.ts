@@ -1003,10 +1003,36 @@ END-ISO-10303-21;`;
           { location: vscode.ProgressLocation.Notification, title: "Running SysML Requirements Verification..." },
           async () => {
             try {
-              if (client && editor)
+              if (client && editor) {
                 await client.sendRequest("modelscript/runVerification", { uri: editor.document.uri.toString() });
-              // Refresh markdown preview to update requirement statuses
-              refreshMarkdownData();
+                // Refresh markdown preview to update requirement statuses
+                refreshMarkdownData();
+
+                // Forward verification limits to the Simulation Panel for chart overlay
+                try {
+                  const reqs: {
+                    peakValue?: number;
+                    limitValue?: number;
+                    lhsName?: string;
+                    status: string;
+                  }[] = await client.sendRequest("modelscript/getRequirements", {
+                    uri: editor.document.uri.toString(),
+                  });
+                  const limits = reqs
+                    .filter((r): r is typeof r & { limitValue: number } => r.limitValue !== undefined)
+                    .map((r) => ({
+                      variable: r.lhsName ?? "value",
+                      value: r.limitValue,
+                      label: `max: ${r.limitValue.toFixed(1)}`,
+                      violated: r.status === "Failed",
+                    }));
+                  if (limits.length > 0) {
+                    SimulationPanel.postVerificationLimits(limits);
+                  }
+                } catch {
+                  // Ignore — limit overlay is best-effort
+                }
+              }
             } catch (e: unknown) {
               vscode.window.showErrorMessage(`Verification failed: ${(e as Error).message}`);
             }

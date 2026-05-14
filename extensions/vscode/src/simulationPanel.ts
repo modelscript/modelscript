@@ -400,6 +400,19 @@ export class SimulationPanel {
     });
   }
 
+  /**
+   * Forward verification limit lines to the simulation chart overlay.
+   * Each limit draws a dashed horizontal line at the constraint value.
+   */
+  static postVerificationLimits(limits: { variable: string; value: number; label: string; violated: boolean }[]): void {
+    if (SimulationPanel.currentPanel) {
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "verificationLimits",
+        limits,
+      });
+    }
+  }
+
   private getHtmlForWebview(): string {
     const webview = this.panel.webview;
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "simulationWebview.js"));

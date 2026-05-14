@@ -54,6 +54,19 @@ let isDark = true;
 const hiddenVars = new Set<string>();
 const seenVars = new Set<string>();
 
+/** Verification limit line overlay */
+interface VerificationLimit {
+  /** The variable name this limit applies to (e.g., "T") */
+  variable: string;
+  /** The y-value of the horizontal limit line */
+  value: number;
+  /** Human-readable label (e.g., "max: 85.0 °C") */
+  label: string;
+  /** Whether the constraint was violated */
+  violated: boolean;
+}
+let currentLimits: VerificationLimit[] = [];
+
 // ── Live mode state ──
 let isLiveMode = false;
 let livePaused = false;
@@ -332,6 +345,7 @@ window.addEventListener("message", (event) => {
     toleranceInput.value = (exp.tolerance ?? 1e-4).toString();
 
     currentMCData = null; // Clear old MC data on new simulation
+    currentLimits = []; // Clear old verification limits
 
     draw();
   } else if (msg.type === "surrogateTrainingProgress") {
@@ -454,6 +468,12 @@ window.addEventListener("message", (event) => {
       const value = msg.value as number;
       addLivePoint(variable, time, value);
     }
+  } else if (msg.type === "verificationLimits") {
+    // Verification limit lines from the extension host
+    currentLimits = (msg.limits as VerificationLimit[]) || [];
+    // Redraw to show/update limit lines
+    if (currentData) draw();
+    else if (isLiveMode && liveBuffer) drawLive();
   }
 });
 
@@ -1419,6 +1439,45 @@ function draw() {
   }
 
   ctx.restore();
+
+  // ── Verification limit lines ──
+  if (currentLimits.length > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(margin.left, margin.top, plotW, plotH);
+    ctx.clip();
+
+    for (const limit of currentLimits) {
+      const ly = yScale(limit.value);
+      // Only draw if the line is within the visible plot area
+      if (ly >= margin.top && ly <= margin.top + plotH) {
+        // Dashed red line
+        ctx.strokeStyle = limit.violated ? "#f14c4c" : "#3fb950";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(margin.left, ly);
+        ctx.lineTo(margin.left + plotW, ly);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Shaded violation region (above the limit line for max constraints)
+        if (limit.violated) {
+          ctx.fillStyle = isDark ? "rgba(241, 76, 76, 0.06)" : "rgba(241, 76, 76, 0.08)";
+          ctx.fillRect(margin.left, margin.top, plotW, ly - margin.top);
+        }
+
+        // Label at the right edge
+        ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
+        ctx.fillStyle = limit.violated ? "#f14c4c" : "#3fb950";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(limit.label, margin.left + plotW - 4, ly - 3);
+      }
+    }
+
+    ctx.restore();
+  }
 
   // Draw hover tracer
   if (hoverIndex !== null && hoverIndex < t.length) {
