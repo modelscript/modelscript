@@ -7,6 +7,7 @@ export * from "./arithmetic/mccormick.js";
 export * from "./calculus/derivative.js";
 export * from "./calculus/integrate.js";
 export * from "./graphs/blt.js";
+export * from "./graphs/coloring.js";
 export * from "./graphs/pantelides.js";
 export * from "./graphs/sparse.js";
 export * from "./ir/expressions.js";

@@ -64,6 +64,8 @@ export type JacobianMethod =
   | "ad-forward"
   /** Reverse-mode AD via tape (exact, O(1) per output, best for gradients). */
   | "ad-reverse"
+  /** Compressed forward-mode AD with graph coloring (exact, O(numColors) sweeps). */
+  | "ad-colored"
   /** Symbolic differentiation (exact, compile-time, for codegen only). */
   | "symbolic";
 

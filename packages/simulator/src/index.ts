@@ -20,6 +20,7 @@ export * from "./reverse-evaluator.js";
 export * from "./rom-trainer.js";
 export * from "./simulator.js";
 export * from "./solver-options.js";
+export * from "./sparse-jacobian.js";
 export * from "./statement-executor.js";
 export {
   getCachedSundialsWasm,
