@@ -5,6 +5,7 @@ import { idbGet, idbPut, MSL_VERSION_KEY, openMSLCache } from "./browser-file-sy
 
 import type { FederatedQueryCacheStore } from "@modelscript/polyglot";
 import type { Parser, Tree } from "@modelscript/utils";
+import { ingestSalsaIndex } from "./salsa-index-ingester";
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
 
@@ -293,12 +294,32 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     });
 
     // Register federated endpoint for cache store using the configured registry URL
-    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints && ctx.registryUrl) {
-      const baseUrl = ctx.registryUrl.replace(/\/$/, "");
+    let baseUrl = "";
+    if (ctx.registryUrl) {
+      baseUrl = ctx.registryUrl.replace(/\/$/, "");
+    }
+
+    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints && baseUrl) {
       const endpoint = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/memos`;
       if (!ctx.cacheStore.federatedEndpoints.includes(endpoint)) {
         ctx.cacheStore.federatedEndpoints.push(endpoint);
         ctx.logger.log(`[registry] Registered federated endpoint: ${endpoint}`);
+      }
+    }
+
+    if (baseUrl && ctx.cacheStore) {
+      const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
+      try {
+        const resp = await fetch(indexUrl);
+        if (resp.ok) {
+          const buffer = await resp.arrayBuffer();
+          const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore);
+          ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
+        } else {
+          ctx.logger.warn(`[registry] Pre-computed index not available for ${label} (HTTP ${resp.status})`);
+        }
+      } catch (err) {
+        ctx.logger.warn(`[registry] Failed to fetch pre-computed index for ${label}: ${err}`);
       }
     }
 

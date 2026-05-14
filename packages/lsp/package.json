@@ -19,6 +19,7 @@
     "@modelscript/step": "*",
     "fflate": "^0.8.2",
     "occt-import-js": "^0.0.23",
+    "sql.js": "^1.14.1",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.11",
     "web-tree-sitter": "^0.26.7"
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/sql.js": "^1.4.11",
     "eslint": "^9.13.0",
     "ts-loader": "^9.5.1",
     "typescript": "^5.9.2",
