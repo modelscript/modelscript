@@ -19,20 +19,43 @@ export async function exportSalsaIndex(engine: QueryEngine, dbPath: string): Pro
       key TEXT PRIMARY KEY,
       data TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   const insertSymbol = db.prepare(`INSERT OR REPLACE INTO symbols (id, data) VALUES (?, ?)`);
   const insertMemo = db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`);
+  const insertMeta = db.prepare(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`);
 
   const transaction = db.transaction(() => {
+    // Schema version for forward compatibility
+    insertMeta.run("schema_version", "1");
+    insertMeta.run("created_at", new Date().toISOString());
+
     // Dump symbols
     for (const [id, entry] of engine.index.symbols.entries()) {
       insertSymbol.run(id, JSON.stringify(entry));
     }
 
-    // Dump memos
+    // Dump memos — only those whose values survive JSON serialization.
+    // Many queries produce live object instances (ModelicaClassInstance, etc.)
+    // that contain circular references and closures.
+    let exported = 0;
+    let skipped = 0;
     for (const [key, memo] of engine.dumpMemos().entries()) {
-      insertMemo.run(key, JSON.stringify(memo));
+      try {
+        const serialized = JSON.stringify(memo);
+        insertMemo.run(key, serialized);
+        exported++;
+      } catch {
+        skipped++;
+      }
+    }
+    if (skipped > 0) {
+      console.log(`[salsa-export] Exported ${exported} memos, skipped ${skipped} non-serializable`);
     }
   });
 

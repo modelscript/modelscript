@@ -437,6 +437,9 @@ let stepParserReady = false;
 /* Whether MSL background indexing has completed */
 let mslStdlibReady = false;
 
+/* Registry URL — read from client initializationOptions or default */
+let registryUrl = "https://api.modelscript.org";
+
 /* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
 const sysml2Layouts = new Map<string, SysML2Layout>();
 
@@ -618,6 +621,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       documentTrees: documentTrees as any,
       sysml2Parser: sysml2Parser as any,
       cacheStore,
+      registryUrl,
     };
     savedLoaderCtx = loaderCtx;
     await loadMSL(serverDistBase, loaderCtx);
@@ -770,6 +774,12 @@ connection.onInitialize((params): InitializeResult => {
   connection.console.info("[lsp] onInitialize called");
   // Get the extension URI from initializationOptions
   const extensionUri = params.initializationOptions?.extensionUri as string;
+
+  // Read the registry URL from client settings (sent via initializationOptions)
+  if (params.initializationOptions?.registryUrl) {
+    registryUrl = params.initializationOptions.registryUrl as string;
+    connection.console.info(`[lsp] Using registry URL: ${registryUrl}`);
+  }
 
   if (extensionUri) {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
@@ -1148,14 +1158,27 @@ async function runSemanticPipeline(
     await yieldToEventLoop();
     if (isStale()) return;
 
+    // ── Step 2.5: Preflight cache hydration ──────────────────────────────
+    // Before running synchronous queries, asynchronously hydrate memos for
+    // the symbols in this document from the cache store (IndexedDB / federated).
+    // This ensures evicted dependency memos are available for the synchronous
+    // fetch() calls inside linting and reference resolution.
+    const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
+    const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
+    if (engine && resourceSymbolIds && resourceSymbolIds.length > 0 && engine.preflight) {
+      try {
+        await engine.preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
+      } catch {
+        // Best-effort — don't block validation if preflight fails
+      }
+    }
+
     // ── Step 3: Run lints ────────────────────────────────────────────────
     // Skip for library files with >1000 symbols to avoid O(n²) on MSL.
     // User-authored files always get full diagnostics regardless of size.
     // A file is a "workspace file" if it's tracked by the TextDocuments manager
     // (i.e., currently open in the editor). Library files loaded via loadMSL
     // or background indexing are not tracked by documents.
-    const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
-    const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
     const isWorkspaceFile = !!documents.get(uri);
     const hasSyntaxErrors = baseDiagnostics.length > 0;
     const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;

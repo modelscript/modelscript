@@ -320,6 +320,7 @@ export async function activate(context: vscode.ExtensionContext) {
     synchronize: {},
     initializationOptions: {
       extensionUri: context.extensionUri.toString(),
+      registryUrl: vscode.workspace.getConfiguration("modelscript").get("registryUrl", "https://api.modelscript.org"),
     },
     outputChannel: lspOutputChannel,
   };

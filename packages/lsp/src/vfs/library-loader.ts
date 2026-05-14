@@ -18,6 +18,7 @@ export interface LoaderContext {
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
   sysml2Parser: Parser | null;
   cacheStore?: FederatedQueryCacheStore;
+  registryUrl?: string;
 }
 
 export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promise<void> {
@@ -291,13 +292,13 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       message: `Loading ${label}...`,
     });
 
-    // Register federated endpoint for cache store
-    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints) {
-      // Assuming registry API is hosted at api.modelscript.com for now
-      // Ideally, the extension passes the actual API URL.
-      const endpoint = `https://api.modelscript.com/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/memos`;
+    // Register federated endpoint for cache store using the configured registry URL
+    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints && ctx.registryUrl) {
+      const baseUrl = ctx.registryUrl.replace(/\/$/, "");
+      const endpoint = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/memos`;
       if (!ctx.cacheStore.federatedEndpoints.includes(endpoint)) {
         ctx.cacheStore.federatedEndpoints.push(endpoint);
+        ctx.logger.log(`[registry] Registered federated endpoint: ${endpoint}`);
       }
     }
 

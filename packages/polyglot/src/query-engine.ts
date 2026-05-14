@@ -718,19 +718,37 @@ export class QueryEngine {
 
   /**
    * Evicts the oldest 10% of memos if the memory size exceeds maxMemos.
+   *
+   * Only memos whose values are JSON-serializable are flushed to the
+   * cache store. Memos containing live object graphs (e.g.,
+   * ModelicaClassInstance) are silently discarded since they cannot
+   * survive serialization round-tripping.
    */
   private evictIfNeeded(): void {
     if (this.memos.size <= this.maxMemos) return;
 
     const numToEvict = Math.ceil(this.maxMemos * 0.1);
     const keysToEvict: string[] = [];
-    const memosToEvict = new Map<string, Memo>();
+    const serializableMemos = new Map<string, Memo>();
 
     let count = 0;
     // Map iteration yields entries in insertion order (oldest first)
     for (const [key, memo] of this.memos.entries()) {
       keysToEvict.push(key);
-      memosToEvict.set(key, memo);
+
+      // Only attempt to persist memos whose values survive JSON round-tripping.
+      // Many query results contain live class instances, closures, or circular
+      // references that would produce garbage if serialized.
+      if (this.cacheStore) {
+        try {
+          JSON.stringify(memo.value);
+          // Value is safe — include for persistence
+          serializableMemos.set(key, memo);
+        } catch {
+          // Not serializable — discard silently
+        }
+      }
+
       count++;
       if (count >= numToEvict) break;
     }
@@ -739,9 +757,9 @@ export class QueryEngine {
       this.memos.delete(key);
     }
 
-    if (this.cacheStore) {
+    if (this.cacheStore && serializableMemos.size > 0) {
       // Fire and forget cache save
-      this.cacheStore.setMemos(memosToEvict).catch((e) => {
+      this.cacheStore.setMemos(serializableMemos).catch((e) => {
         console.warn("Failed to flush memos to cache:", e);
       });
     }

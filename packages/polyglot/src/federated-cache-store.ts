@@ -8,7 +8,7 @@ import type { Memo, QueryCacheStore } from "./runtime.js";
 export class FederatedQueryCacheStore implements QueryCacheStore {
   constructor(
     private localStore: QueryCacheStore,
-    private federatedEndpoints: string[], // e.g. "https://api.modelscript.com/api/v1/libraries/Modelica/4.1.0/memos"
+    public federatedEndpoints: string[], // e.g. "https://api.modelscript.org/api/v1/libraries/Modelica/4.1.0/memos"
   ) {}
 
   async getMemo(key: string): Promise<Memo | undefined> {
