@@ -301,26 +301,60 @@ export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenO
   lines.push("}");
   lines.push("");
 
-  // ── Jacobian evaluation (dense, unrolled into sparse CSC) ──
-  // For simplicity, use a dense Jacobian — n_cons × n_vars nonzeros
-  const nnzJac = nCons * nVars;
+  // ── Jacobian evaluation (sparse CCS via tape dependency analysis) ──
+  // Compute structural sparsity: for each constraint, which variables does it depend on?
+  const conDeps: Set<string>[] = [];
+  for (const ct of conTapes) {
+    if (!ct) {
+      conDeps.push(new Set<string>());
+      continue;
+    }
+    const allDeps = ct.tape.getDependencies(ct.outputIdx);
+    // Filter to only include decision variables
+    const filtered = new Set<string>();
+    for (const d of allDeps) {
+      if (varIndexMap.has(d)) filtered.add(d);
+    }
+    conDeps.push(filtered);
+  }
+
+  // Build CCS sparsity pattern
   const jacRowIdx: number[] = [];
   const jacColPtr: number[] = [];
 
   for (let col = 0; col < nVars; col++) {
-    jacColPtr.push(col * nCons);
+    jacColPtr.push(jacRowIdx.length);
+    const varName = problem.variables[col];
+    if (!varName) continue;
     for (let row = 0; row < nCons; row++) {
-      jacRowIdx.push(row);
+      const deps = conDeps[row];
+      if (deps && deps.has(varName)) {
+        jacRowIdx.push(row);
+      }
     }
   }
-  jacColPtr.push(nnzJac);
+  jacColPtr.push(jacRowIdx.length);
+  const nnzJac = jacRowIdx.length;
+
+  // Build sparse index lookup: for each (row, col) non-zero, its position in the values array
+  const sparseIdxMap = new Map<string, number>();
+  for (let col = 0; col < nVars; col++) {
+    const start = jacColPtr[col] ?? 0;
+    const end = jacColPtr[col + 1] ?? 0;
+    for (let p = start; p < end; p++) {
+      const row = jacRowIdx[p] ?? 0;
+      sparseIdxMap.set(`${row},${col}`, p);
+    }
+  }
 
   lines.push("static void model_eval_jacobian(void* inst, const double* x, double* jac) {");
   lines.push("  (void)inst;");
-  lines.push(`  /* Dense Jacobian: ${nCons} × ${nVars} = ${nnzJac} entries */`);
+  lines.push(`  /* Sparse Jacobian: ${nCons} constraints × ${nVars} vars, ${nnzJac} non-zeros */`);
   for (let row = 0; row < conTapes.length; row++) {
     const ct = conTapes[row];
     if (!ct) continue;
+    const deps = conDeps[row];
+    if (!deps || deps.size === 0) continue;
     lines.push(`  { /* Constraint ${row}: forward + reverse pass */`);
     const fwd = ct.tape.emitForwardC(varResolver);
     const { code: rev, gradients: gMap } = ct.tape.emitReverseC(ct.outputIdx);
@@ -328,12 +362,11 @@ export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenO
     lines.push("    " + rev.join("\n    "));
     for (let col = 0; col < nVars; col++) {
       const varName = problem.variables[col];
-      const gIdx = varName ? gMap.get(varName) : undefined;
-      const sparseIdx = col * nCons + row;
-      if (gIdx !== undefined) {
+      if (!varName || !deps.has(varName)) continue;
+      const gIdx = gMap.get(varName);
+      const sparseIdx = sparseIdxMap.get(`${row},${col}`);
+      if (gIdx !== undefined && sparseIdx !== undefined) {
         lines.push(`    jac[${sparseIdx}] = dt[${gIdx}];`);
-      } else {
-        lines.push(`    jac[${sparseIdx}] = 0.0;`);
       }
     }
     lines.push("  }");
@@ -342,7 +375,9 @@ export function generateNlpMainC(problem: NlpProblemDef, options: CoinorCodegenO
   lines.push("");
 
   // Static sparsity arrays
-  lines.push(`static const int jac_row_idx[${nnzJac}] = {${jacRowIdx.join(", ")}};`);
+  lines.push(
+    `static const int jac_row_idx[${Math.max(nnzJac, 1)}] = {${jacRowIdx.length > 0 ? jacRowIdx.join(", ") : "0"}};`,
+  );
   lines.push(`static const int jac_col_ptr[${nVars + 1}] = {${jacColPtr.join(", ")}};`);
   lines.push("");
 

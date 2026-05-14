@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { SparseJacobian } from "./sparse-jacobian.js";
+import { sparseJacobianToDense } from "./sparse-jacobian.js";
+
 /**
  * Variable-order BDF (Backward Differentiation Formula) solver for stiff ODE systems.
  *
@@ -24,19 +27,13 @@
 
 // ── BDF coefficients ──
 // α coefficients for BDF orders 1-5 (normalized so α_0 = 1 after division by β)
-// BDF-k: Σ_{j=0}^k α_j * y_{n-j} = h * f(t_n, y_n)
-// We store the error constant and γ_0 = 1/β for each order.
-
-/** γ_0 = 1/β for each BDF order (index 0 = order 1) */
-const GAMMA0: readonly number[] = [1, 2 / 3, 6 / 11, 12 / 25, 60 / 137];
-
 /** Error constants for each BDF order */
 const ERROR_CONST: readonly number[] = [1 / 2, 2 / 9, 3 / 22, 12 / 125, 10 / 137];
 
 /**
  * BDF coefficients α_j for each order k (k = 1..5).
  * Index: ALPHA[order-1][j], where j = 0..order.
- * The formula is: Σ α_j * y_{n-j} = h * γ_0^{-1} * f(t_n, y_n)
+ * The formula is: Σ α_j * y_{n-j} = h * f(t_n, y_n)
  */
 const ALPHA: readonly (readonly number[])[] = [
   // BDF-1: y_n - y_{n-1} = h * f_n
@@ -67,8 +64,14 @@ export interface BdfOptions {
   maxSteps?: number;
   /** Maximum BDF order (default: 5, range 1-5). */
   maxOrder?: number;
-  /** Jacobian function (optional — uses finite differences if not provided). */
+  /** Dense Jacobian function (optional — uses finite differences if not provided). */
   jacobian?: (t: number, y: number[]) => number[][];
+  /**
+   * Sparse Jacobian function using graph-coloring-compressed AD.
+   * Takes priority over `jacobian` if both are provided.
+   * The sparse result is converted to dense for the LU factorization.
+   */
+  sparseJacobian?: (t: number, y: number[]) => SparseJacobian;
 }
 
 /** Result of a BDF integration. */
@@ -182,7 +185,6 @@ export function bdf(
     // ── Determine effective order (limited by available history) ──
     const effectiveOrder = Math.min(order, history.length, maxOrder);
     const alpha = ALPHA[effectiveOrder - 1];
-    const gamma0 = GAMMA0[effectiveOrder - 1] ?? 1;
     if (!alpha) break;
 
     // ── Compute predictor (explicit extrapolation from history) ──
@@ -197,14 +199,18 @@ export function bdf(
       jacobianMatrix === null || newtonFailCount > 2 || Math.abs(h - lastJacobianH) / Math.max(h, lastJacobianH) > 0.5;
 
     if (needNewJacobian) {
-      if (options.jacobian) {
+      if (options.sparseJacobian) {
+        // Use compressed colored AD — much fewer sweeps than dense
+        const sj = options.sparseJacobian(t, y);
+        jacobianMatrix = sparseJacobianToDense(sj);
+      } else if (options.jacobian) {
         jacobianMatrix = options.jacobian(t, y);
       } else {
         jacobianMatrix = finiteDifferenceJacobian(f, t, y, fCurrent, n, result);
       }
       result.jEvals++;
 
-      // Form the iteration matrix: M = I - h*γ₀*J and compute LU
+      // Form the iteration matrix: M = alpha_0*I - h*J and compute LU
       const iterMatrix = new Array(n) as number[][];
       for (let i = 0; i < n; i++) {
         const iterRow = new Array(n) as number[];
@@ -213,7 +219,7 @@ export function bdf(
         if (!jRow) continue;
         for (let j = 0; j < n; j++) {
           const jVal = jRow[j] ?? 0;
-          iterRow[j] = (i === j ? 1 : 0) - h * gamma0 * jVal;
+          iterRow[j] = (i === j ? (alpha[0] ?? 1) : 0) - h * jVal;
         }
       }
       luMatrix = luDecompose(iterMatrix, n);
@@ -233,8 +239,7 @@ export function bdf(
       const fNew = f(tNew, yNewton);
       result.fEvals++;
 
-      // Compute residual: G(y) = α_0*y - h*γ₀^{-1}*f(t_new, y) - Σ_{j=1}^k α_j*y_{n+1-j}
-      // Rearranged: G(y) = α_0*y - h/β*f - historySum
+      // Compute residual: G(y) = α_0*y - h*f(t_new, y) + Σ_{j=1}^k α_j*y_{n+1-j}
       const residual = new Array(n) as number[];
       for (let i = 0; i < n; i++) {
         let histSum = 0;
@@ -244,7 +249,7 @@ export function bdf(
             histSum += (alpha[j] ?? 0) * (histEntry.y[i] ?? 0);
           }
         }
-        residual[i] = (alpha[0] ?? 1) * (yNewton[i] ?? 0) - h * gamma0 * (fNew[i] ?? 0) + histSum;
+        residual[i] = (alpha[0] ?? 1) * (yNewton[i] ?? 0) - h * (fNew[i] ?? 0) + histSum;
       }
 
       // Check convergence
