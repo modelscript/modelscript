@@ -413,6 +413,37 @@ export class SimulationPanel {
     }
   }
 
+  /**
+   * Forward Monte Carlo statistics to the simulation chart for fan-chart rendering.
+   * The webview already handles 'monteCarloData' messages with percentile band drawing.
+   */
+  static postMonteCarloData(
+    data: {
+      numSamples: number;
+      statistics: Record<
+        string,
+        {
+          mean: number[];
+          stddev: number[];
+          ciLo: number[];
+          ciHi: number[];
+          percentiles: Record<string, number[]>;
+        }
+      >;
+      t: number[];
+      convergence: { coeffOfVariation: number; effectiveSampleSize: number };
+    },
+    isDark: boolean,
+  ): void {
+    if (SimulationPanel.currentPanel) {
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "monteCarloData",
+        data,
+        isDark,
+      });
+    }
+  }
+
   private getHtmlForWebview(): string {
     const webview = this.panel.webview;
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "simulationWebview.js"));

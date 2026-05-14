@@ -1,10 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Manages the uncertainty (Monte Carlo) webview panel lifecycle.
-// Sends uncertainty requests to the LSP server.
+// Sends uncertainty requests to the LSP server and displays results
+// in a professional dashboard with per-parameter distribution configuration,
+// statistical summary tables, and convergence diagnostics.
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { SimulationPanel } from "./simulationPanel";
+
+interface SimulationResult {
+  t: number[];
+  y: number[][];
+  states: string[];
+  parameters?: {
+    name: string;
+    type: "real" | "integer" | "boolean" | "enumeration";
+    defaultValue: number;
+    min?: number;
+    max?: number;
+    step: number;
+    unit?: string;
+  }[];
+  experiment?: { startTime?: number; stopTime?: number; interval?: number; tolerance?: number };
+  error?: string;
+}
 
 export class UncertaintyPanel {
   static currentPanel: UncertaintyPanel | undefined;
@@ -16,7 +36,7 @@ export class UncertaintyPanel {
   private client?: LanguageClient;
   private disposables: vscode.Disposable[] = [];
 
-  static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
+  static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
     const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
     if (!sourceUri) {
       vscode.window.showWarningMessage("Open a Modelica file to run uncertainty analysis.");
@@ -25,13 +45,16 @@ export class UncertaintyPanel {
 
     if (UncertaintyPanel.currentPanel) {
       UncertaintyPanel.currentPanel.sourceUri = sourceUri;
+      UncertaintyPanel.currentPanel.client = client;
       UncertaintyPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
+      // Re-fetch parameters for the (possibly new) source URI
+      await UncertaintyPanel.currentPanel.fetchAndSendParameters();
       return;
     }
 
     const panel = vscode.window.createWebviewPanel(
       UncertaintyPanel.viewType,
-      "Uncertainty (Monte Carlo) Dashboard",
+      "Uncertainty Dashboard",
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -43,6 +66,9 @@ export class UncertaintyPanel {
     UncertaintyPanel.currentPanel = new UncertaintyPanel(panel, extensionUri);
     UncertaintyPanel.currentPanel.client = client;
     UncertaintyPanel.currentPanel.sourceUri = sourceUri;
+
+    // Fetch parameters from the model and send to the webview
+    await UncertaintyPanel.currentPanel.fetchAndSendParameters();
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
@@ -53,32 +79,115 @@ export class UncertaintyPanel {
     this.panel.webview.onDidReceiveMessage(
       async (msg) => {
         if (msg.type === "montecarloRequest") {
-          try {
-            if (!this.client) return;
-            const result = await this.client.sendRequest("modelscript/montecarlo", {
-              uri: this.sourceUri,
-              numSamples: msg.payload.numSamples,
-              confidenceLevel: msg.payload.confidenceLevel,
-              method: msg.payload.method,
-              parameters: msg.payload.parameters,
-            });
-            const isDark =
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            this.panel.webview.postMessage({
-              type: "montecarloResult",
-              data: result,
-              isDark,
-            });
-          } catch (e: unknown) {
-            const errMsg = e instanceof Error ? e.message : String(e);
-            vscode.window.showErrorMessage(`Uncertainty analysis failed: ${errMsg}`);
-            this.panel.webview.postMessage({ type: "montecarloError", error: errMsg });
-          }
+          await this.handleMonteCarloRequest(msg.payload);
         }
       },
       null,
       this.disposables,
+    );
+  }
+
+  /**
+   * Fetch model parameters from the LSP and send them to the webview
+   * for the distribution configuration form.
+   */
+  private async fetchAndSendParameters(): Promise<void> {
+    if (!this.client || !this.sourceUri) return;
+    try {
+      const result: SimulationResult = await this.client.sendRequest("modelscript/simulate", {
+        uri: this.sourceUri,
+        startTime: 0,
+        stopTime: 0,
+        interval: 1,
+      });
+      if (result.parameters && result.parameters.length > 0) {
+        this.panel.webview.postMessage({
+          type: "modelParameters",
+          parameters: result.parameters,
+        });
+      }
+    } catch {
+      // Ignore — parameters will need to be entered manually
+    }
+  }
+
+  private async handleMonteCarloRequest(payload: {
+    numSamples: number;
+    confidenceLevel: number;
+    method: string;
+    parameters: {
+      name: string;
+      distribution: string;
+      mean?: number;
+      stddev?: number;
+      lo?: number;
+      hi?: number;
+    }[];
+    startTime?: number;
+    stopTime?: number;
+    interval?: number;
+  }): Promise<void> {
+    if (!this.client) return;
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Running Monte Carlo (${payload.numSamples} samples)...`,
+        cancellable: false,
+      },
+      async () => {
+        try {
+          this.panel.webview.postMessage({ type: "montecarloRunning" });
+
+          if (!this.client) return;
+          const result = await this.client.sendRequest("modelscript/montecarlo", {
+            uri: this.sourceUri,
+            numSamples: payload.numSamples,
+            confidenceLevel: payload.confidenceLevel,
+            method: payload.method,
+            parameters: payload.parameters,
+            startTime: payload.startTime,
+            stopTime: payload.stopTime,
+            interval: payload.interval,
+          });
+
+          const isDark =
+            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+
+          this.panel.webview.postMessage({
+            type: "montecarloResult",
+            data: result,
+            isDark,
+          });
+
+          // Forward MC results to the SimulationPanel for fan-chart overlay
+          const mcData = result as {
+            success: boolean;
+            numSamples: number;
+            statistics: Record<
+              string,
+              {
+                mean: number[];
+                stddev: number[];
+                ciLo: number[];
+                ciHi: number[];
+                percentiles: Record<string, number[]>;
+              }
+            >;
+            t: number[];
+            convergence: { coeffOfVariation: number; effectiveSampleSize: number };
+          };
+
+          if (mcData.success && mcData.t.length > 0) {
+            SimulationPanel.postMonteCarloData(mcData, isDark);
+          }
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          vscode.window.showErrorMessage(`Uncertainty analysis failed: ${errMsg}`);
+          this.panel.webview.postMessage({ type: "montecarloError", error: errMsg });
+        }
+      },
     );
   }
 
