@@ -3,6 +3,7 @@ import { unzipSync } from "fflate";
 import type { BrowserFileSystem } from "./browser-file-system";
 import { idbGet, idbPut, MSL_VERSION_KEY, openMSLCache } from "./browser-file-system";
 
+import type { FederatedQueryCacheStore } from "@modelscript/polyglot";
 import type { Parser, Tree } from "@modelscript/utils";
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
@@ -16,6 +17,7 @@ export interface LoaderContext {
   sysml2WorkspaceIndex: WorkspaceIndex;
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
   sysml2Parser: Parser | null;
+  cacheStore?: FederatedQueryCacheStore;
 }
 
 export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promise<void> {
@@ -288,6 +290,16 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       state: "loading",
       message: `Loading ${label}...`,
     });
+
+    // Register federated endpoint for cache store
+    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints) {
+      // Assuming registry API is hosted at api.modelscript.com for now
+      // Ideally, the extension passes the actual API URL.
+      const endpoint = `https://api.modelscript.com/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/memos`;
+      if (!ctx.cacheStore.federatedEndpoints.includes(endpoint)) {
+        ctx.cacheStore.federatedEndpoints.push(endpoint);
+      }
+    }
 
     // Write files to the VFS
     let fileCount = 0;

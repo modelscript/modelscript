@@ -120,6 +120,8 @@ import {
   registerOptimizeDeps,
 } from "@modelscript/optimizer";
 import {
+  FederatedQueryCacheStore,
+  IndexedDBQueryCacheStore,
   VerificationRunner,
   extractSysML2Constraints,
   mapConstraintsToOptimizer,
@@ -412,7 +414,6 @@ connection.onRequest("modelscript/generateMultiBody", async (params: { uri: stri
   const filename = params.uri.split("/").pop() || "Assembly";
   const baseName = filename.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9_]/g, "_");
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const multiBodyDescriptor = mapStepToMultiBody(baseName, model as any);
   const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
 
@@ -596,7 +597,13 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     }
 
     // Load the Modelica Standard Library from the bundled zip
-    sharedContext = new Context(sharedFs);
+    // Initialize FederatedCacheStore with local IndexedDB and (currently empty) federated endpoints
+    const localStore = new IndexedDBQueryCacheStore("modelscript-lsp-cache");
+    const federatedEndpoints: string[] = []; // Endpoints added later in loadRegistryPackages
+    const cacheStore = new FederatedQueryCacheStore(localStore, federatedEndpoints);
+    const MAX_MEMOS = 100_000; // Limit in-memory memos
+
+    sharedContext = new Context(sharedFs, cacheStore, MAX_MEMOS);
     const loaderCtx: LoaderContext = {
       connectionState: connection,
       logger: {
@@ -610,6 +617,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       sysml2WorkspaceIndex,
       documentTrees: documentTrees as any,
       sysml2Parser: sysml2Parser as any,
+      cacheStore,
     };
     savedLoaderCtx = loaderCtx;
     await loadMSL(serverDistBase, loaderCtx);
@@ -3207,7 +3215,12 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
       engine = createSysML2QueryEngine(unifiedIndex) as any;
       globalSysML2QueryEngine = engine;
     } else {
-      engine = createModelicaQueryEngine(unifiedIndex, getSharedCstTreeWrapper()) as any;
+      engine = createModelicaQueryEngine(
+        unifiedIndex,
+        getSharedCstTreeWrapper(),
+        savedLoaderCtx?.cacheStore,
+        100_000,
+      ) as any;
       globalModelicaQueryEngine = engine;
     }
   }

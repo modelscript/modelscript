@@ -85,8 +85,10 @@ export class Context extends Scope {
    * Initializes a new compiler Context.
    *
    * @param fs - The FileSystem implementation to use for reading files and checking paths.
+   * @param cacheStore - Optional external store for memoizing queries
+   * @param maxMemos - Optional max number of memos to keep in memory
    */
-  constructor(fs: FileSystem) {
+  constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number) {
     super(null);
     this.#fs = fs;
     this.#workspaceIndex = createModelicaWorkspaceIndex();
@@ -107,7 +109,7 @@ export class Context extends Scope {
       },
     };
 
-    this.#queryEngine = createModelicaQueryEngine(this.#workspaceIndex.toUnified(), contextTree);
+    this.#queryEngine = createModelicaQueryEngine(this.#workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
     this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
   }
 

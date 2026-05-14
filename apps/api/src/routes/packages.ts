@@ -164,6 +164,57 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   });
 
   /**
+   * GET /api/v1/libraries/:name/:version/memos
+   *
+   * Federated API: Query specific memoized keys from the pre-computed salsa-index.db.
+   * Query params: `keys` (comma-separated string of memo keys).
+   */
+  router.get("/:name/:version/memos", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+    const keysParam = req.query["keys"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    if (typeof keysParam !== "string" || !keysParam) {
+      res.status(400).json({ error: "Missing 'keys' query parameter" });
+      return;
+    }
+
+    const indexPath = storage.getIndexPath(name, version);
+    if (!fs.existsSync(indexPath)) {
+      res.status(404).json({ error: `Salsa index not found for "${name}@${version}"` });
+      return;
+    }
+
+    const keys = keysParam.split(",");
+    const result: Record<string, unknown> = {};
+
+    try {
+      // Import dynamically to avoid top-level better-sqlite3 requirement if not needed
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Database = require("better-sqlite3");
+      const db = new Database(indexPath, { readonly: true });
+      const stmt = db.prepare("SELECT data FROM memos WHERE key = ?");
+
+      for (const key of keys) {
+        const row = stmt.get(key) as { data: string } | undefined;
+        if (row) {
+          result[key] = JSON.parse(row.data);
+        }
+      }
+
+      db.close();
+      res.json({ memos: result });
+    } catch {
+      res.status(500).json({ error: "Failed to read salsa index" });
+    }
+  });
+
+  /**
    * GET /api/v1/libraries/:name/:version/status
    *
    * Check the SVG generation job status for a library version.
