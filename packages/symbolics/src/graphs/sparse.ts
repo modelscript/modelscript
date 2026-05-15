@@ -78,8 +78,12 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
       const v = dae.variables.get(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
-      for (let i = 0; i < size; i++) {
-        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+      if (baseName.includes("[") || size === 1) {
+        derEqs.push({ state: baseName, rhs });
+      } else {
+        for (let i = 0; i < size; i++) {
+          derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+        }
       }
       continue;
     }
@@ -100,11 +104,14 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
     const outIdx = tape.walk(eq.rhs);
     const deps = tape.getDependencies(outIdx);
 
+    console.error(`[DEBUG] state=${eq.state}, deps=${Array.from(deps).join(",")}`);
+
     // Keep only dependencies that are in our independent variables list
     const filteredDeps = new Set<string>();
     for (const d of deps) {
       if (indepVars.has(d)) filteredDeps.add(d);
     }
+    console.error(`[DEBUG] state=${eq.state}, filteredDeps=${Array.from(filteredDeps).join(",")}`);
 
     rowsDeps.push(filteredDeps);
   }
@@ -135,8 +142,12 @@ export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; stat
       const v = dae.variables.get(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
-      for (let i = 0; i < size; i++) {
-        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+      if (baseName.includes("[") || size === 1) {
+        derEqs.push({ state: baseName, rhs });
+      } else {
+        for (let i = 0; i < size; i++) {
+          derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+        }
       }
       continue;
     }

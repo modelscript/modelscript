@@ -27,6 +27,7 @@ interface SurrogateArgs {
   stopTime?: number;
   "out-file"?: string;
   outFile?: string;
+  report?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -88,6 +89,11 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
         description: "output C file name",
         type: "string",
         default: "surrogate_wasm.c",
+      })
+      .option("report", {
+        description: "output report JSON file",
+        type: "string",
+        default: "report.json",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SurrogateArgs>["builder"],
@@ -95,8 +101,7 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Context.registerParser(".mo", parser as any);
+    Context.registerParser(".mo", parser);
     const context = new Context(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
@@ -108,8 +113,8 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
 
     // Flatten the model
     const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
+    // @ts-expect-error - visitor type mismatch
+    instance.accept(new ModelicaFlattener(), ["", dae]);
 
     const simulator = new ModelicaSimulator(dae);
     simulator.prepare();
@@ -212,5 +217,24 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
     const outFile = args.outFile ?? "surrogate_wasm.c";
     await fs.writeFile(outFile, wasmResult.wasmC);
     console.error(`Generated C source saved to ${outFile}`);
+
+    const reportFile = args.report ?? "report.json";
+    const reportData = {
+      mse: surrogateResult.metrics.trainMSE,
+      valMSE: surrogateResult.metrics.valMSE,
+      r2: surrogateResult.metrics.r2,
+      lossCurve: surrogateResult.trainedROM.lossCurve ?? [],
+      hyperparameters: {
+        architecture: args.architecture,
+        layers:
+          surrogateResult.trainedROM.weights.type === "mlp"
+            ? surrogateResult.trainedROM.weights.layers.length
+            : undefined,
+      },
+      numSamples: args.numSamples,
+      wallClockMs: surrogateResult.totalWallClockMs,
+    };
+    await fs.writeFile(reportFile, JSON.stringify(reportData, null, 2));
+    console.error(`Generated report saved to ${reportFile}`);
   },
 };

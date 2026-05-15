@@ -2,6 +2,7 @@
 
 import { Context, ModelicaDAE, ModelicaDAEPrinter, ModelicaFlattener, ModelicaLinter } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
+import { snapshotMemory } from "@modelscript/simulator";
 import path from "node:path";
 import Parser, { type Range } from "tree-sitter";
 import type { CommandModule } from "yargs";
@@ -12,6 +13,8 @@ interface FlattenArgs {
   name: string;
   paths: string[];
   timing?: boolean;
+  "memory-profile"?: boolean;
+  memoryProfile?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -35,6 +38,11 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
         description: "report timing information for each stage as JSON to stderr",
         type: "boolean",
         default: false,
+      })
+      .option("memory-profile", {
+        description: "profile memory usage across phases and report as JSON to stderr",
+        type: "boolean",
+        default: false,
       });
   },
   handler: async (args) => {
@@ -53,9 +61,18 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
+    const memProfiles: Record<string, unknown> = {};
+    let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
+
     profiler.start("parsing");
     for (const p of args.paths) await context.addLibrary(p);
     profiler.end("parsing");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["parsing"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
 
     const instance = context.query(args.name);
     if (!instance) {
@@ -69,6 +86,11 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (instance as any).accept(new ModelicaFlattener(), ["", dae]);
     profiler.end("flattening");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["flattening"] = { before: lastSnap, after: snap };
+    }
 
     // Run the linter to collect diagnostics
     profiler.start("linting");
@@ -135,6 +157,10 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     for (const d of warnings) console.error(formatDiag(d));
     if (errors.length > 0 || warnings.length > 0) {
       console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
+    }
+
+    if (args.memoryProfile) {
+      console.error(JSON.stringify({ memory: memProfiles }, null, 2));
     }
 
     if (args.timing) profiler.report();

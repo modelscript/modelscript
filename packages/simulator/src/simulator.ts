@@ -3,6 +3,7 @@
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   ExpressionEvaluator,
+  ModelicaArrayEquation,
   ModelicaAssignmentStatement,
   ModelicaBinaryExpression,
   ModelicaBooleanLiteral,
@@ -45,6 +46,7 @@ import { solveInitialEquations } from "./init-solver.js";
 import { type MonteCarloResult, type RandomVariable, runMonteCarloSimulation } from "./monte-carlo.js";
 import { ReverseExpressionEvaluator } from "./reverse-evaluator.js";
 import { type SolverOptions, resolveSolverOptions } from "./solver-options.js";
+import { buildSparseAdJacobian } from "./sparse-jacobian.js";
 import { buildFunctionLookup, executeStatements, executeStatementsAsync } from "./statement-executor.js";
 import { getCachedSundialsWasm } from "./sundials-wasm.js";
 import { Tape, type TapeNode } from "./tape.js";
@@ -261,12 +263,21 @@ export function luSolve(fact: LUFactorization, b: Float64Array): void {
   for (let i = 0; i < n; i++) b[i] = pb[i] ?? 0;
 }
 
-function extractDerName(expr: unknown): string | null {
+import { ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { StringWriter } from "@modelscript/utils";
+
+export function extractDerName(expr: unknown): string | null {
   if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
     const funcExpr = expr as { functionName: string; args: unknown[] };
     if (funcExpr.functionName === "der" && funcExpr.args.length === 1) {
       const arg0 = funcExpr.args[0];
-      if (arg0 && typeof arg0 === "object" && "name" in arg0) {
+      if (arg0 && typeof arg0 === "object" && "accept" in arg0) {
+        const out = new StringWriter();
+        (arg0 as { accept: (v: unknown) => void }).accept(new ModelicaDAEPrinter(out));
+        const res = out.toString().trim();
+        console.error(`[extractDerName] funcExpr der: ${res}`);
+        return res;
+      } else if (arg0 && typeof arg0 === "object" && "name" in arg0) {
         const nameVal = (arg0 as { name: unknown }).name;
         if (typeof nameVal === "string") return nameVal;
       }
@@ -704,7 +715,7 @@ export class ModelicaSimulator {
     // Connection equations produce voltage equalities (e.g., L1.p.v = C2.p.v)
     // and flow identities (e.g., C1.i = C1.p.i). All simple A = B equations
     // are valid aliases — they represent the same physical quantity.
-    const nonAliasEquations: ModelicaSimpleEquation[] = [];
+    const nonAliasEquations: (ModelicaSimpleEquation | ModelicaArrayEquation)[] = [];
     const negatedAliasPairs: [string, string][] = []; // [a, b] meaning a = -b
     for (const eq of flattenedEquations) {
       if (eq instanceof ModelicaWhenEquation) {
@@ -760,6 +771,7 @@ export class ModelicaSimulator {
       if (eq instanceof ModelicaSimpleEquation) {
         const lhsName = extractVarName(eq.expression1);
         const rhsName = extractVarName(eq.expression2);
+        console.error(`[DEBUG] Simple eq: lhsName=${lhsName}, rhsName=${rhsName}`);
         if (lhsName && rhsName) {
           // This is an alias equation: A = B
           aliasUnion(lhsName, rhsName, eq);
@@ -790,6 +802,8 @@ export class ModelicaSimulator {
           }
           nonAliasEquations.push(eq);
         }
+      } else if (eq instanceof ModelicaArrayEquation) {
+        nonAliasEquations.push(eq);
       }
     }
 
@@ -897,8 +911,12 @@ export class ModelicaSimulator {
     // Process explicit `der(x) = expr` and implicit `coeff * der(x) = expr` first,
     // so that all state variables are known before processing algebraic equations.
     const algebraicEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+    console.error(`[DEBUG] Before Pass A: stateVars size is ${this.stateVars.size}`);
 
     for (const { lhs, rhs } of substitutedEquations) {
+      if (lhs) {
+        console.error(`[DEBUG] Pass A eq lhs constructor: ${lhs.constructor.name}`);
+      }
       // ── Case 1: der(x) appears directly as LHS or RHS ──
       const lhsDer = extractDerName(lhs);
       const rhsDer = extractDerName(rhs);
@@ -1193,11 +1211,15 @@ export class ModelicaSimulator {
     // ── Step 3: Apply Pantelides index reduction for unmatched equations ──
     const unmatchedEquations = algebraicEquations.filter((_, i) => matchEq[i] === -1);
     const pantelidesResult = pantelidesIndexReduction(unmatchedEquations, this.stateVars, this.parameters, definedVars);
+    if (pantelidesResult.dummyDerivatives.size > 0) {
+      console.error(`Pantelides reduced ${pantelidesResult.dummyDerivatives.size} states to dummy derivatives.`);
+    }
     for (const dummy of pantelidesResult.dummyDerivatives) {
       this.stateVars.delete(dummy);
       this.algebraicVars.add(dummy);
       definedVars.add(dummy);
     }
+    console.error(`[DEBUG] After Pantelides: stateVars size is ${this.stateVars.size}`);
     for (const ca of pantelidesResult.constraintAssignments) {
       assignments.push(ca);
       if (!ca.isDerivative) {
@@ -1272,8 +1294,9 @@ export class ModelicaSimulator {
       assign.expr.accept(visitor, deps);
       dependencyMap.set(targetCanonical, deps);
     }
+    console.error(`[DEBUG] After Pass B: stateVars size is ${this.stateVars.size}`);
 
-    // Tarjan's Strongly Connected Components algorithm
+    // ── Structural BLT Sorting (Tarjan's strongly connected components) ──
     const index = new Map<string, number>();
     const lowlink = new Map<string, number>();
     const onStack = new Set<string>();
@@ -2030,10 +2053,37 @@ export class ModelicaSimulator {
     }
 
     const stateVarsArr = Array.from(this.stateVars);
+    console.error(`[DEBUG] After prepare(), stateVars size is ${stateVarsArr.length}`);
     const algebraicVarsArr = Array.from(this.algebraicVars);
     // Only ODE states go into the RK4 integration vector.
     // Algebraic vars are re-evaluated from sorted equations at each timestep.
     const stateList = stateVarsArr;
+
+    let sparseAdEvaluator: ((time: number, y: number[]) => import("./sparse-jacobian.js").SparseJacobian) | undefined =
+      undefined;
+    if (solverOpts.jacobian === "ad-colored") {
+      const res = buildSparseAdJacobian(this.dae, stateList);
+      if (res) {
+        sparseAdEvaluator = res.evaluator;
+        console.error(
+          JSON.stringify({
+            jacobian: {
+              mode: "sparse",
+              n: stateList.length,
+              nnz: res.nnz,
+              numColors: res.numColors,
+              sparsity:
+                (
+                  ((stateList.length * stateList.length - res.nnz) / Math.max(1, stateList.length * stateList.length)) *
+                  100
+                ).toFixed(1) + "%",
+              densityReduction:
+                res.nnz > 0 ? ((stateList.length * stateList.length) / res.nnz).toFixed(1) + "x" : "inf x",
+            },
+          }),
+        );
+      }
+    }
 
     // ────────────────────────────────────────────────────────
     //  Consistent Initialization
@@ -2348,6 +2398,7 @@ export class ModelicaSimulator {
         maxStep: step,
         initialStep: step / 10,
       };
+      if (sparseAdEvaluator) bdfOpts.sparseJacobian = sparseAdEvaluator;
 
       const bdfResult = bdfSolver(
         f,
@@ -2458,6 +2509,7 @@ export class ModelicaSimulator {
           maxStep: step,
           initialStep: step / 10,
         };
+        if (sparseAdEvaluator) bdfOpts.sparseJacobian = sparseAdEvaluator;
 
         const bdfResult = bdfSolver(
           f,
@@ -3683,6 +3735,15 @@ export class ModelicaSimulator {
     // Algebraic vars are re-evaluated from sorted equations at each timestep.
     const stateList = stateVarsArr;
 
+    let sparseAdEvaluator: ((time: number, y: number[]) => import("./sparse-jacobian.js").SparseJacobian) | undefined =
+      undefined;
+    if (solverOpts.jacobian === "ad-colored") {
+      const res = buildSparseAdJacobian(this.dae, stateList);
+      if (res) {
+        sparseAdEvaluator = res.evaluator;
+      }
+    }
+
     // ────────────────────────────────────────────────────────
     //  Consistent Initialization
     // ────────────────────────────────────────────────────────
@@ -4018,6 +4079,7 @@ export class ModelicaSimulator {
           maxStep: step,
           initialStep: step / 10,
         };
+        if (sparseAdEvaluator) bdfOpts.sparseJacobian = sparseAdEvaluator;
 
         const bdfResult = bdfSolver(
           f,
@@ -4132,6 +4194,7 @@ export class ModelicaSimulator {
             maxStep: step,
             initialStep: step / 10,
           };
+          if (sparseAdEvaluator) bdfOpts.sparseJacobian = sparseAdEvaluator;
 
           const bdfResult = bdfSolver(
             f,

@@ -101,6 +101,7 @@ import {
   createSysML2QueryEngine,
   createSysML2ScopeResolver,
   createSysML2WorkspaceIndex,
+  emitVerificationDiagnostics,
   generateMultiBodyModelica,
   injectPredefinedTypes,
   performBltTransformation,
@@ -7866,44 +7867,10 @@ async function runVerificationForUri(uri: string): Promise<{ ok: boolean }> {
       const vResults = runner.verifyCase(verifyUsage.id, simResult);
       allResults.push(...vResults);
 
-      for (const vr of vResults) {
-        if (!vr.constraintId) continue;
-
-        let start = { line: 0, character: 0 };
-        let end = { line: 0, character: 10 };
-
-        const targetId = vr.constraintId;
-        const targetNode = db.symbols.get(targetId);
-
-        if (targetNode) {
-          const bridge = documentLSPBridges.get(uri);
-          if (bridge && typeof targetNode.startByte === "number" && typeof targetNode.endByte === "number") {
-            const s = bridge["positions"].offsetToPosition(targetNode.startByte);
-            const e = bridge["positions"].offsetToPosition(targetNode.endByte);
-            if (!isNaN(s.line) && !isNaN(e.line)) {
-              start = s;
-              end = e;
-            }
-          }
-        }
-
-        if (!vr.isSatisfied) {
-          let diagMsg: string;
-          if (vr.requirementName && vr.message) {
-            diagMsg = `Requirement '${vr.requirementName}' violated: ${vr.message.replace(/^Requirement violated: /, "")}`;
-          } else if (vr.message) {
-            diagMsg = vr.message;
-          } else {
-            diagMsg = `Requirement constraint violated over the simulation trajectory.`;
-          }
-
-          newDiagnostics.push({
-            severity: DiagnosticSeverity.Error,
-            range: { start, end },
-            message: diagMsg,
-            source: "sysml2-verifier",
-          });
-        }
+      const bridge = documentLSPBridges.get(uri);
+      if (bridge) {
+        const diags = emitVerificationDiagnostics(vResults, sysmlDB, uri, bridge["positions"]);
+        newDiagnostics.push(...diags);
       }
     }
 

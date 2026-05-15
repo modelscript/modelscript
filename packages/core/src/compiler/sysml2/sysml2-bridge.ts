@@ -9,6 +9,7 @@ import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/pol
 import { LSPBridge, PositionIndex } from "@modelscript/polyglot/lsp-bridge";
 import { QueryEngine } from "@modelscript/polyglot/query-engine";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
+import type { VerificationResult } from "@modelscript/polyglot/verifier";
 import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
 
 import { INDEXER_HOOKS } from "@modelscript/sysml2/indexer_config";
@@ -122,4 +123,57 @@ export function buildSysML2DiagramData(
   diagramType: "All" | "BDD" | "IBD" | "StateMachine" = "All",
 ): PolyglotDiagramData {
   return buildPolyglotDiagram(index, gfxConfig, documentUri, resolver, diagramType);
+}
+
+/**
+ * Transforms VerificationRunner results into LSP Diagnostic objects.
+ * Maps solver constraint violations and dynamic requirement failures back
+ * to their SysML source locations.
+ */
+export function emitVerificationDiagnostics(
+  results: VerificationResult[],
+  db: any,
+  documentUri: string,
+  positions: PositionIndex,
+): any[] {
+  const diagnostics = [];
+
+  for (const vr of results) {
+    if (!vr.constraintId) continue;
+
+    let start = { line: 0, character: 0 };
+    let end = { line: 0, character: 10 };
+
+    const targetId = vr.constraintId;
+    const targetNode = db.symbols.get(targetId);
+
+    if (targetNode && typeof targetNode.startByte === "number" && typeof targetNode.endByte === "number") {
+      const s = positions.offsetToPosition(targetNode.startByte);
+      const e = positions.offsetToPosition(targetNode.endByte);
+      if (!isNaN(s.line) && !isNaN(e.line)) {
+        start = s;
+        end = e;
+      }
+    }
+
+    if (!vr.isSatisfied) {
+      let diagMsg: string;
+      if (vr.requirementName && vr.message) {
+        diagMsg = `Requirement '${vr.requirementName}' violated: ${vr.message.replace(/^Requirement violated: /, "")}`;
+      } else if (vr.message) {
+        diagMsg = vr.message;
+      } else {
+        diagMsg = `Requirement constraint violated over the simulation trajectory.`;
+      }
+
+      diagnostics.push({
+        severity: 1, // DiagnosticSeverity.Error
+        range: { start, end },
+        message: diagMsg,
+        source: "sysml2-verifier",
+      });
+    }
+  }
+
+  return diagnostics;
 }

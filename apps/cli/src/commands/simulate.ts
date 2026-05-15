@@ -3,7 +3,7 @@
 import { Context, ModelicaDAE, ModelicaFlattener, ModelicaLinter } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaSimulator, runWasmSimulation } from "@modelscript/simulator";
+import { ModelicaSimulator, runWasmSimulation, snapshotMemory, type MemorySnapshot } from "@modelscript/simulator";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -28,6 +28,9 @@ interface SimulateArgs {
   realtime?: number;
   engine: string;
   timing?: boolean;
+  "memory-profile"?: boolean;
+  memoryProfile?: boolean;
+  jacobian: "dense" | "sparse" | "fd";
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -90,6 +93,16 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         description: "report timing information for each stage as JSON to stderr",
         type: "boolean",
         default: false,
+      })
+      .option("memory-profile", {
+        description: "profile memory usage across phases and report as JSON to stderr",
+        type: "boolean",
+        default: false,
+      })
+      .option("jacobian", {
+        description: "Jacobian calculation method",
+        choices: ["dense", "sparse", "fd"],
+        default: "sparse",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SimulateArgs>["builder"],
@@ -108,9 +121,18 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       pathMap.set(path.resolve(p), p);
     }
 
+    const memProfiles: Record<string, unknown> = {};
+    let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
+
     profiler.start("parsing");
     for (const p of args.paths) await context.addLibrary(p);
     profiler.end("parsing");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["parsing"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
 
     const instance = context.query(args.name);
     if (!instance) {
@@ -124,6 +146,12 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (instance as any).accept(new ModelicaFlattener(), ["", dae]);
     profiler.end("flattening");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["flattening"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
 
     // Run the linter to collect diagnostics
     profiler.start("linting");
@@ -198,15 +226,19 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
     // Dispatch to the selected engine
     switch (args.engine) {
       case "wasm":
-        await simulateWasm(dae, args, profiler, startTime, stopTime, step);
+        await simulateWasm(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
       case "c":
-        await simulateC(dae, args, profiler, startTime, stopTime, step);
+        await simulateC(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
       case "js":
       default:
-        simulateJs(dae, args, profiler, startTime, stopTime, step);
+        simulateJs(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
+    }
+
+    if (args.memoryProfile) {
+      console.error(JSON.stringify({ memory: memProfiles }, null, 2));
     }
 
     if (args.timing) profiler.report();
@@ -222,26 +254,52 @@ function simulateJs(
   startTime: number,
   stopTime: number,
   step: number,
+  memProfiles: Record<string, unknown>,
+  lastSnap: MemorySnapshot | null,
 ): void {
   const simulator = new ModelicaSimulator(dae);
   simulator.prepare();
   const states = Array.from(simulator.stateVars) as string[];
 
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["codegen"] = { before: lastSnap, after: snap }; // JS "codegen" is prepare()
+    lastSnap = snap;
+  }
+
+  // Map CLI jacobian arg to SolverOptions
+  let jacobianMethod: "finite-difference" | "ad-forward" | "ad-colored" = "finite-difference";
+  if (args.jacobian === "dense") jacobianMethod = "ad-forward";
+  if (args.jacobian === "sparse") jacobianMethod = "ad-colored";
+
   profiler.start("simulation");
 
   if (args.realtime !== undefined && args.realtime > 0) {
-    // Real-time mode is inherently async — fall through to the async handler
     // For simplicity, run synchronously here (realtime is niche for CLI)
     const result = simulator.simulate(startTime, stopTime, step, {
       solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
+      solverOptions: { jacobian: jacobianMethod },
     });
     profiler.end("simulation");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["simulation"] = { before: lastSnap, after: snap };
+    }
+
     outputResults(result.t, result.y, states, args.format);
   } else {
     const result = simulator.simulate(startTime, stopTime, step, {
       solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
+      solverOptions: { jacobian: jacobianMethod },
     });
     profiler.end("simulation");
+
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["simulation"] = { before: lastSnap, after: snap };
+    }
+
     outputResults(result.t, result.y, states, args.format);
   }
 }
@@ -255,6 +313,8 @@ async function simulateWasm(
   startTime: number,
   stopTime: number,
   step: number,
+  memProfiles: Record<string, unknown>,
+  lastSnap: MemorySnapshot | null,
 ): Promise<void> {
   // Generate FMI result for scalar variable metadata
   const simulator = new ModelicaSimulator(dae);
@@ -272,6 +332,12 @@ async function simulateWasm(
   profiler.start("compilation");
   const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
   profiler.end("compilation");
+
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["codegen"] = { before: lastSnap, after: snap };
+    lastSnap = snap;
+  }
 
   if (!compileResult.success || !compileResult.wasm || !compileResult.jsGlue) {
     console.error(`WASM compilation failed: ${compileResult.message}`);
@@ -294,6 +360,11 @@ async function simulateWasm(
     stepSize: step,
   });
   profiler.end("simulation");
+
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["simulation"] = { before: lastSnap, after: snap };
+  }
 
   if (result.error) {
     console.error(`WASM simulation error: ${result.error}`);
@@ -319,6 +390,8 @@ async function simulateC(
   startTime: number,
   stopTime: number,
   step: number,
+  memProfiles: Record<string, unknown>,
+  lastSnap: MemorySnapshot | null,
 ): Promise<void> {
   const simulator = new ModelicaSimulator(dae);
   simulator.prepare();
@@ -357,6 +430,12 @@ async function simulateC(
   }
   profiler.end("compilation");
 
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["codegen"] = { before: lastSnap, after: snap };
+    lastSnap = snap;
+  }
+
   console.error(`Compiled: ${cc} -O3 → ${binFile}`);
 
   // Execute the compiled binary and capture stdout
@@ -381,6 +460,11 @@ async function simulateC(
     child.on("error", reject);
   });
   profiler.end("simulation");
+
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["simulation"] = { before: lastSnap, after: snap };
+  }
 
   // Clean up temp files
   fs.rmSync(tmpDir, { recursive: true, force: true });

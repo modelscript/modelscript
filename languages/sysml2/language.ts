@@ -169,8 +169,22 @@ const definitionStructuralQueries = {
         if (res && res.length > 0) node.targetClassId = res[0].id;
       }
 
-      const parts = db.childrenOf(entry.id).filter((c) => c.ruleName === "PartUsage" || c.ruleName === "SubjectUsage");
+      const parts = db
+        .childrenOf(entry.id)
+        .filter(
+          (c) =>
+            c.ruleName === "PartUsage" || c.ruleName === "SubjectUsage" || c.ruleName === "ObjectiveRequirementUsage",
+        );
       for (const part of parts) {
+        if (part.ruleName === "ObjectiveRequirementUsage" && !node.targetClassId) {
+          // Find subject inside objective
+          const subjects = db.childrenOf(part.id).filter((c) => c.ruleName === "SubjectUsage");
+          for (const subj of subjects) {
+            const typeNode = usageQueries.resolvedType(db, subj);
+            if (typeNode) node.targetClassId = typeNode.id;
+          }
+        }
+
         const childNode = walk(part.id, entry.id, path);
         if (childNode) node.children.push(childNode);
 
@@ -178,9 +192,7 @@ const definitionStructuralQueries = {
         // to bootstrap the root definition (useful if the subject IS the model to simulate)
         if (part.ruleName === "SubjectUsage" && !node.targetClassId) {
           const typeNode = usageQueries.resolvedType(db, part);
-          if (typeNode && typeNode.kind === "Class") {
-            node.targetClassId = typeNode.id;
-          }
+          if (typeNode) node.targetClassId = typeNode.id;
         }
       }
 

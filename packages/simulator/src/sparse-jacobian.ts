@@ -18,7 +18,6 @@ import {
   ModelicaArrayEquation,
   type ModelicaDAE,
   type ModelicaExpression,
-  ModelicaFunctionCallExpression,
   StaticTapeBuilder,
   type TapeOp,
   colorJacobianColumns,
@@ -39,14 +38,7 @@ export interface SparseJacobian {
   nnz: number;
 }
 
-/** Extract derivative name from expression like der(x). */
-function extractDer(expr: ModelicaExpression): string | null {
-  if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
-    const a = expr.args[0];
-    if (a && typeof a === "object" && "name" in a) return (a as { name: string }).name;
-  }
-  return null;
-}
+import { extractDerName as extractDer } from "./simulator.js";
 
 /**
  * Forward-mode tape evaluation with a seed vector.
@@ -227,9 +219,10 @@ function evaluateTapeForwardDual(
  */
 export function buildSparseAdJacobian(
   dae: ModelicaDAE,
+  stateNames: string[],
 ): { evaluator: (time: number, y: number[]) => SparseJacobian; numColors: number; nnz: number } | null {
-  // ── Step 1: Extract derivative equations ──
-  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
+  // ── Step 1: Extract derivative equations in the order of stateNames ──
+  const derEqsMap = new Map<string, ModelicaExpression>();
   for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : dae.equations) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
@@ -243,19 +236,40 @@ export function buildSparseAdJacobian(
       const v = dae.variables.get(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
-      for (let i = 0; i < size; i++) {
-        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+
+      if (baseName.includes("[") || size === 1) {
+        derEqsMap.set(baseName, rhs);
+      } else {
+        for (let i = 0; i < size; i++) {
+          derEqsMap.set(`${baseName}[${i + 1}]`, rhs);
+        }
       }
       continue;
     }
 
-    if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
-    else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
+    if (ld) derEqsMap.set(ld, se.expression2);
+    else if (rd) derEqsMap.set(rd, se.expression1);
   }
 
-  if (derEqs.length === 0) return null;
+  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
+  for (const name of stateNames) {
+    const rhs = derEqsMap.get(name);
+    if (!rhs) {
+      console.error(
+        `buildSparseAdJacobian failed: Missing derivative for state ${name}. Available keys: ${Array.from(derEqsMap.keys()).join(", ")}`,
+      );
+      return null; // Missing derivative for state variable
+    }
+    derEqs.push({ state: name, rhs });
+  }
 
-  const stateNames = derEqs.map((eq) => eq.state);
+  if (derEqs.length === 0) {
+    console.error(`buildSparseAdJacobian failed: derEqs is empty.`);
+    console.error(`Requested stateNames: ${stateNames.join(", ")}`);
+    console.error(`Available keys in derEqsMap: ${Array.from(derEqsMap.keys()).join(", ")}`);
+    return null;
+  }
+
   const n = stateNames.length;
 
   // ── Step 2: Compute sparsity pattern ──

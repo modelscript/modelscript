@@ -18,7 +18,8 @@
     "./semantic-node": "./dist/src/semantic-node.js",
     "./semantic-diff": "./dist/src/semantic-diff.js",
     "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
-    "./diagram-builder": "./dist/src/polyglot-diagram-builder.js"
+    "./diagram-builder": "./dist/src/polyglot-diagram-builder.js",
+    "./verifier": "./dist/src/verifier.js"
   },
   "main": "dist/src/index.js",
   "directories": {

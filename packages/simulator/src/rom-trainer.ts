@@ -61,6 +61,7 @@ export interface TrainedROM {
   outputScaling: ScalingParams[];
   weights: ROMWeights;
   metrics: { trainMSE: number; valMSE: number; r2: number };
+  lossCurve?: { epoch: number; trainLoss: number; valLoss: number }[];
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -333,7 +334,7 @@ function trainMLP(
   lr: number,
   seed: number,
   onProgress?: (epoch: number, trainLoss: number, valLoss: number) => void,
-): { layers: { W: number[][]; b: number[] }[] } {
+): { layers: { W: number[][]; b: number[] }[]; lossCurve: { epoch: number; trainLoss: number; valLoss: number }[] } {
   const nIn = trainIn[0]!.length;
   const nOut = trainOut[0]!.length;
   const sizes = [nIn, ...hiddenLayers, nOut];
@@ -370,6 +371,8 @@ function trainMLP(
     beta2 = 0.999,
     eps = 1e-8;
   let t = 0;
+
+  const lossCurve: { epoch: number; trainLoss: number; valLoss: number }[] = [];
 
   for (let epoch = 0; epoch < epochs; epoch++) {
     let trainLoss = 0;
@@ -466,9 +469,10 @@ function trainMLP(
     valLoss /= Math.max(valIn.length, 1);
 
     onProgress?.(epoch, trainLoss, valLoss);
+    lossCurve.push({ epoch, trainLoss, valLoss });
   }
 
-  return { layers };
+  return { layers, lossCurve };
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -499,6 +503,7 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
   const { trainIn, trainOut, valIn, valOut } = splitData(normInputs, normOutputs, valFrac, seed);
 
   let weights: ROMWeights;
+  let lossCurve: { epoch: number; trainLoss: number; valLoss: number }[] | undefined;
 
   switch (architecture) {
     case "polynomial": {
@@ -532,6 +537,7 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
         config.onProgress,
       );
       weights = { type: "mlp", layers: result.layers, activation };
+      lossCurve = result.lossCurve;
       break;
     }
   }
@@ -539,7 +545,7 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
   // Compute final metrics
   const { trainMSE, valMSE, r2 } = computeMetrics(weights, trainIn, trainOut, valIn, valOut, architecture, config);
 
-  return {
+  const result: TrainedROM = {
     architecture,
     inputNames: data.inputNames,
     outputNames: data.outputNames,
@@ -548,6 +554,10 @@ export function trainROM(config: ROMTrainConfig): TrainedROM {
     weights,
     metrics: { trainMSE, valMSE, r2 },
   };
+  if (lossCurve) {
+    result.lossCurve = lossCurve;
+  }
+  return result;
 }
 
 /** Evaluate a trained ROM on a single normalized input. */

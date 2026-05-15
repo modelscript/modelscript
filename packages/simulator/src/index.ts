@@ -13,6 +13,7 @@ export * from "./fmu-subsystem.js";
 export * from "./gaussian.js";
 export * from "./homotopy-strategies.js";
 export * from "./init-solver.js";
+export * from "./memory-profiler.js";
 export * from "./minlp-heuristics.js";
 export * from "./monte-carlo.js";
 export * from "./nn-fmu-subsystem.js";
