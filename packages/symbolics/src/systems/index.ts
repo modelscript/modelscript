@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
-import { Causality, DAEArenaBuilder, EqKind, Variability, VarType } from "@modelscript/polyglot";
+import { BinOp, Causality, DAEArenaBuilder, EqKind, UnaryOp, Variability, VarType } from "@modelscript/polyglot";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
 
@@ -297,6 +297,21 @@ export class SymbolTable {
       if (variable.expression) {
         this._arena.setVarExpression(idx, variable.expression);
       }
+      // Mirror start attribute expression (for consistent initialization)
+      const startAttr = variable.attributes.get("start");
+      if (startAttr) {
+        this._arena.setVarStartAttr(idx, startAttr);
+      }
+      // Mirror fixed flag
+      const fixedAttr = variable.attributes.get("fixed");
+      if (
+        fixedAttr &&
+        (fixedAttr as unknown as { constructor: { name: string }; value: boolean }).constructor.name ===
+          "ModelicaBooleanLiteral" &&
+        (fixedAttr as unknown as { value: boolean }).value
+      ) {
+        this._arena.setVarFixed(idx);
+      }
     }
   }
 
@@ -538,6 +553,99 @@ export class ModelicaDAE {
     };
   }
 
+  private _mirrorExpressionToArena(expr: ModelicaExpression): number {
+    if (!this.arena) return -1;
+    if (expr instanceof ModelicaNameExpression) return this.arena.addNameExpr(expr.name);
+    if (expr instanceof ModelicaIntegerLiteral) return this.arena.addIntLiteral(expr.value);
+    if (expr instanceof ModelicaRealLiteral) return this.arena.addRealLiteral(expr.value);
+    if (expr instanceof ModelicaBooleanLiteral) return this.arena.addBoolLiteral(expr.value);
+    if (expr instanceof ModelicaStringLiteral) return this.arena.addStringLiteral(expr.value);
+    if (expr instanceof ModelicaBinaryExpression) {
+      const lhs = this._mirrorExpressionToArena(expr.operand1);
+      const rhs = this._mirrorExpressionToArena(expr.operand2);
+      let op = BinOp.Add;
+      switch (expr.operator) {
+        case ModelicaBinaryOperator.ADDITION:
+          op = BinOp.Add;
+          break;
+        case ModelicaBinaryOperator.SUBTRACTION:
+          op = BinOp.Sub;
+          break;
+        case ModelicaBinaryOperator.MULTIPLICATION:
+          op = BinOp.Mul;
+          break;
+        case ModelicaBinaryOperator.DIVISION:
+          op = BinOp.Div;
+          break;
+        case ModelicaBinaryOperator.EXPONENTIATION:
+          op = BinOp.Pow;
+          break;
+        case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+          op = BinOp.ElemAdd;
+          break;
+        case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+          op = BinOp.ElemSub;
+          break;
+        case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+          op = BinOp.ElemMul;
+          break;
+        case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+          op = BinOp.ElemDiv;
+          break;
+        case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+          op = BinOp.ElemPow;
+          break;
+        case ModelicaBinaryOperator.LOGICAL_AND:
+          op = BinOp.And;
+          break;
+        case ModelicaBinaryOperator.LOGICAL_OR:
+          op = BinOp.Or;
+          break;
+        case ModelicaBinaryOperator.EQUALITY:
+          op = BinOp.Eq;
+          break;
+        case ModelicaBinaryOperator.INEQUALITY:
+          op = BinOp.Neq;
+          break;
+        case ModelicaBinaryOperator.LESS_THAN:
+          op = BinOp.Lt;
+          break;
+        case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+          op = BinOp.Lte;
+          break;
+        case ModelicaBinaryOperator.GREATER_THAN:
+          op = BinOp.Gt;
+          break;
+        case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+          op = BinOp.Gte;
+          break;
+      }
+      return this.arena.addBinaryExpr(op, lhs, rhs);
+    }
+    if (expr instanceof ModelicaUnaryExpression) {
+      const operand = this._mirrorExpressionToArena(expr.operand);
+      let op = UnaryOp.Negate;
+      switch (expr.operator) {
+        case ModelicaUnaryOperator.UNARY_MINUS:
+          op = UnaryOp.Negate;
+          break;
+        case ModelicaUnaryOperator.LOGICAL_NEGATION:
+          op = UnaryOp.Not;
+          break;
+      }
+      return this.arena.addUnaryExpr(op, operand);
+    }
+    if (expr instanceof ModelicaFunctionCallExpression) {
+      const args = expr.args.map((a) => this._mirrorExpressionToArena(a));
+      if (expr.functionName === "der" && args.length === 1 && args[0] !== undefined) {
+        return this.arena.addDerExpr(args[0]);
+      }
+      return this.arena.addCallExpr(expr.functionName, args);
+    }
+    if (expr instanceof ModelicaVariable) return this.arena.addNameExpr(expr.name);
+    return 0; // fallback dummy for unimplemented
+  }
+
   private _mirrorEquationToArena(eq: ModelicaEquation): void {
     if (this.arena) {
       let kind = EqKind.Simple;
@@ -547,8 +655,17 @@ export class ModelicaDAE {
       else if (eq.constructor.name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
       else if (eq.constructor.name === "ModelicaArrayEquation") kind = EqKind.Array;
 
-      // Currently expressions are not fully mirrored, we just use 0 as dummy ExprIds
-      this.arena.addEquation(kind, 0, 0);
+      let lhsId = 0;
+      let rhsId = 0;
+      if (eq instanceof ModelicaSimpleEquation) {
+        lhsId = this._mirrorExpressionToArena(eq.expression1);
+        rhsId = this._mirrorExpressionToArena(eq.expression2);
+      } else if (eq instanceof ModelicaArrayEquation) {
+        lhsId = this._mirrorExpressionToArena(eq.expression1);
+        rhsId = this._mirrorExpressionToArena(eq.expression2);
+      }
+
+      this.arena.addEquation(kind, lhsId, rhsId);
     }
   }
 

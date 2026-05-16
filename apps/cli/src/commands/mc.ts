@@ -80,7 +80,7 @@ export const MC: CommandModule<{}, McArgs> = {
     parser.setLanguage(Modelica);
 
     Context.registerParser(".mo", parser);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);

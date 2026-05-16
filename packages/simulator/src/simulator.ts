@@ -7,7 +7,6 @@ import {
   ModelicaArrayEquation,
   ModelicaAssignmentStatement,
   ModelicaBinaryExpression,
-  ModelicaBooleanLiteral,
   ModelicaBooleanVariable,
   type ModelicaDAE,
   ModelicaDAEVisitor,
@@ -2115,24 +2114,29 @@ export class ModelicaSimulator {
     // Phase 1: Collect start values from variable attributes
     const startValues = new Map<string, number>();
     const fixedVars = new Set<string>();
-    for (const v of this.dae.variables) {
-      // Apply start attribute
-      const startAttr = v.attributes.get("start");
-      if (startAttr) {
-        const initEval = new ExpressionEvaluator(new Map(this.parameters));
-        const val = initEval.evaluate(startAttr);
-        if (val !== null) startValues.set(v.name, val);
-      }
-      // Apply binding expression for non-parameter variables
-      if (v.expression) {
-        const initEval = new ExpressionEvaluator(new Map(this.parameters));
-        const val = initEval.evaluate(v.expression);
-        if (val !== null) startValues.set(v.name, val);
-      }
-      // Track fixed variables (fixed=true means value cannot change from start)
-      const fixedAttr = v.attributes.get("fixed");
-      if (fixedAttr && fixedAttr instanceof ModelicaBooleanLiteral && fixedAttr.value) {
-        fixedVars.add(v.name);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        // Apply start attribute
+        const startAttr = _arena.getVarStartAttr(_i);
+        if (startAttr) {
+          const initEval = new ExpressionEvaluator(new Map(this.parameters));
+          const val = initEval.evaluate(startAttr as ModelicaExpression);
+          if (val !== null) startValues.set(_name, val);
+        }
+        // Apply binding expression for non-parameter variables
+        const expr = _arena.getVarExpression(_i);
+        if (expr) {
+          const initEval = new ExpressionEvaluator(new Map(this.parameters));
+          const val = initEval.evaluate(expr as ModelicaExpression);
+          if (val !== null) startValues.set(_name, val);
+        }
+        // Track fixed variables (fixed=true means value cannot change from start)
+        if (_arena.isVarFixed(_i)) {
+          fixedVars.add(_name);
+        }
       }
     }
 
@@ -3782,24 +3786,29 @@ export class ModelicaSimulator {
     // Phase 1: Collect start values from variable attributes
     const startValues = new Map<string, number>();
     const fixedVars = new Set<string>();
-    for (const v of this.dae.variables) {
-      // Apply start attribute
-      const startAttr = v.attributes.get("start");
-      if (startAttr) {
-        const initEval = new ExpressionEvaluator(new Map(this.parameters));
-        const val = initEval.evaluate(startAttr);
-        if (val !== null) startValues.set(v.name, val);
-      }
-      // Apply binding expression for non-parameter variables
-      if (v.expression) {
-        const initEval = new ExpressionEvaluator(new Map(this.parameters));
-        const val = initEval.evaluate(v.expression);
-        if (val !== null) startValues.set(v.name, val);
-      }
-      // Track fixed variables (fixed=true means value cannot change from start)
-      const fixedAttr = v.attributes.get("fixed");
-      if (fixedAttr && fixedAttr instanceof ModelicaBooleanLiteral && fixedAttr.value) {
-        fixedVars.add(v.name);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        // Apply start attribute
+        const startAttr = _arena.getVarStartAttr(_i);
+        if (startAttr) {
+          const initEval = new ExpressionEvaluator(new Map(this.parameters));
+          const val = initEval.evaluate(startAttr as ModelicaExpression);
+          if (val !== null) startValues.set(_name, val);
+        }
+        // Apply binding expression for non-parameter variables
+        const expr = _arena.getVarExpression(_i);
+        if (expr) {
+          const initEval = new ExpressionEvaluator(new Map(this.parameters));
+          const val = initEval.evaluate(expr as ModelicaExpression);
+          if (val !== null) startValues.set(_name, val);
+        }
+        // Track fixed variables (fixed=true means value cannot change from start)
+        if (_arena.isVarFixed(_i)) {
+          fixedVars.add(_name);
+        }
       }
     }
 

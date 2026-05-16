@@ -95,7 +95,7 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);

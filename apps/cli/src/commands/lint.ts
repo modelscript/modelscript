@@ -60,7 +60,7 @@ export const Lint: CommandModule<{}, LintArgs> = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
     for (const path of args.paths ?? []) await context.addLibrary(path);
     const library = new ModelicaLibrary(context, args.path);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

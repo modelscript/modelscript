@@ -36,7 +36,7 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     const extractor = new I18nExtractor();
 

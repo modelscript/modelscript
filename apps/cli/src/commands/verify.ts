@@ -47,7 +47,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     modelicaParser.setLanguage(Modelica);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", modelicaParser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     const WebParserModule = await import("web-tree-sitter");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -118,9 +118,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const verifyEntry = verifyEntries.find(
-      (e: any) =>
+      (e: { ruleName: string; id: number }) =>
         e.ruleName === "VerifyRequirementUsage" || e.ruleName.includes("Verify") || e.ruleName.includes("Verification"),
     );
     if (!verifyEntry) {

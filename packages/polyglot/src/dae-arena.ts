@@ -231,6 +231,10 @@ export class DAEArenaBuilder {
   private varFlowPrefixes = new Map<number, string>();
   private varCadAnnotations = new Map<number, string>();
   private varExpressions = new Map<number, unknown>();
+  /** Start attribute expression per variable (for initialization). */
+  private varStartAttrs = new Map<number, unknown>();
+  /** Whether each variable has `fixed=true` (for consistent initialization). */
+  private varFixedFlags = new Set<number>();
 
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
@@ -435,6 +439,26 @@ export class DAEArenaBuilder {
     return this.varExpressions.get(idx);
   }
 
+  /** Store the `start` attribute expression for a variable. */
+  setVarStartAttr(idx: number, expr: unknown): void {
+    this.varStartAttrs.set(idx, expr);
+  }
+
+  /** Get the `start` attribute expression for a variable. */
+  getVarStartAttr(idx: number): unknown | undefined {
+    return this.varStartAttrs.get(idx);
+  }
+
+  /** Mark a variable as `fixed=true`. */
+  setVarFixed(idx: number): void {
+    this.varFixedFlags.add(idx);
+  }
+
+  /** Check if a variable has `fixed=true`. */
+  isVarFixed(idx: number): boolean {
+    return this.varFixedFlags.has(idx);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Equation API
   // ─────────────────────────────────────────────────────────────────────────
@@ -616,6 +640,8 @@ export class DAEArenaBuilder {
     this._exprCount = 0;
     this.shapesMap.clear();
     this.aliasMap.clear();
+    this.varStartAttrs.clear();
+    this.varFixedFlags.clear();
   }
 
   /** Release all buffers for GC. */

@@ -46,7 +46,7 @@ export const Render: CommandModule<{}, RenderArgs> = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     // Build mapping from absolute resolved paths to user-provided paths
     const pathMap = new Map<string, string>();

@@ -5,8 +5,8 @@
 import PackageJson from "@npmcli/package-json";
 import path from "node:path";
 import yargs from "yargs/yargs";
+import { Compile } from "./commands/compile.js";
 import { Cosim } from "./commands/cosim.js";
-import { Flatten } from "./commands/flatten.js";
 import { Fmu } from "./commands/fmu.js";
 import { I18n } from "./commands/i18n.js";
 import { Init } from "./commands/init.js";
@@ -31,7 +31,7 @@ const pkg = await PackageJson.load(packagePath);
 yargs(process.argv.slice(2))
   .scriptName("msc")
   .usage(`CLI for ModelScript ${pkg.content.version}`)
-  .command(Flatten)
+  .command(Compile)
   .command(Cosim)
   .command(Fmu)
   .command(I18n)

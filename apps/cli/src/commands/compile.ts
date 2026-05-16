@@ -9,7 +9,7 @@ import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
 
-interface FlattenArgs {
+interface CompileArgs {
   name: string;
   paths: string[];
   timing?: boolean;
@@ -18,8 +18,8 @@ interface FlattenArgs {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export const Flatten: CommandModule<{}, FlattenArgs> = {
-  command: "flatten <name> <paths...>",
+export const Compile: CommandModule<{}, CompileArgs> = {
+  command: ["compile <name> <paths...>", "flatten <name> <paths...>"],
   describe: "Flatten a Modelica model to a flat DAE representation",
   builder: (yargs) => {
     return yargs
@@ -53,7 +53,7 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
-    const context = new Context(new NodeFileSystem());
+    const context = Context.createBatch(new NodeFileSystem());
 
     // Build mapping from absolute resolved paths to user-provided paths
     const pathMap = new Map<string, string>();
@@ -87,6 +87,8 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     (instance as any).accept(new ModelicaFlattener(), ["", dae]);
     profiler.end("flattening");
 
+    Context.gcBetweenPhases();
+
     if (args.memoryProfile && lastSnap) {
       const snap = snapshotMemory(true);
       memProfiles["flattening"] = { before: lastSnap, after: snap };
@@ -114,6 +116,8 @@ export const Flatten: CommandModule<{}, FlattenArgs> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     linter.lint(instance as any);
     profiler.end("linting");
+
+    Context.gcBetweenPhases();
 
     // Convert absolute resource path to user-provided relative path
     const toUserPath = (absPath: string | null) => {
