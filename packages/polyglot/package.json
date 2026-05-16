@@ -19,7 +19,10 @@
     "./semantic-diff": "./dist/src/semantic-diff.js",
     "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
     "./diagram-builder": "./dist/src/polyglot-diagram-builder.js",
-    "./verifier": "./dist/src/verifier.js"
+    "./verifier": "./dist/src/verifier.js",
+    "./interner": "./dist/src/interner.js",
+    "./arena": "./dist/src/arena.js",
+    "./line-index": "./dist/src/line-index.js"
   },
   "main": "dist/src/index.js",
   "directories": {

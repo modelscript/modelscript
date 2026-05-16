@@ -14,10 +14,13 @@ import type {
   SymbolId,
   SymbolIndex,
 } from "./runtime.js";
+export { Arena, StructArena } from "./arena.js";
 export * from "./cache-store.js";
 export * from "./constraint-extractor.js";
 export { FederatedQueryCacheStore } from "./federated-cache-store.js";
 export { IndexedDBQueryCacheStore } from "./indexeddb-cache-store.js";
+export { NULL_STRING_ID, StringInterner, type StringId } from "./interner.js";
+export { LineIndex, type TokenData } from "./line-index.js";
 export { QueryEngine } from "./query-engine.js";
 export * from "./simulation.js";
 export * from "./step-multibody-mapper.js";
