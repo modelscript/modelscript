@@ -551,6 +551,24 @@ export class ModelicaDAE {
       }
       return originalPush(...eqs);
     };
+
+    // Override initialEquations array push for dual-write
+    const originalInitPush = this.initialEquations.push.bind(this.initialEquations);
+    this.initialEquations.push = (...eqs) => {
+      for (const eq of eqs) {
+        this._mirrorEquationToArena(eq, true);
+      }
+      return originalInitPush(...eqs);
+    };
+
+    // Override whenClauses array push for dual-write
+    const originalWhenPush = this.whenClauses.push.bind(this.whenClauses);
+    this.whenClauses.push = (...eqs) => {
+      for (const eq of eqs) {
+        this._mirrorEquationToArena(eq);
+      }
+      return originalWhenPush(...eqs);
+    };
   }
 
   private _mirrorExpressionToArena(expr: ModelicaExpression): number {
@@ -646,10 +664,10 @@ export class ModelicaDAE {
     return 0; // fallback dummy for unimplemented
   }
 
-  private _mirrorEquationToArena(eq: ModelicaEquation): void {
+  private _mirrorEquationToArena(eq: ModelicaEquation, initial = false): void {
     if (this.arena) {
-      let kind = EqKind.Simple;
-      if (eq.constructor.name === "ModelicaForEquation") kind = EqKind.For;
+      let kind = initial ? EqKind.InitialSimple : EqKind.Simple;
+      if (eq.constructor.name === "ModelicaForEquation") kind = initial ? EqKind.InitialFor : EqKind.For;
       else if (eq.constructor.name === "ModelicaIfEquation") kind = EqKind.If;
       else if (eq.constructor.name === "ModelicaWhenEquation") kind = EqKind.When;
       else if (eq.constructor.name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
