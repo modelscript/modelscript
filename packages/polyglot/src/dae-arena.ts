@@ -119,6 +119,16 @@ export enum ExprKind {
   Negate = 14,
   /** Tuple expression: data1 = element count, left = first element ExprId. */
   Tuple = 15,
+  /** Colon `:` (whole-dimension slice): no data fields used. */
+  Colon = 16,
+  /** Enumeration literal: data1 = ordinal value, left = StringId of string value. */
+  EnumLiteral = 17,
+  /** Comprehension/reduction: data1 = StringId of func name, left = body ExprId, right = iterator count. */
+  Comprehension = 18,
+  /** Partial function application: data1 = StringId of func name, left = arg count. */
+  PartialFunc = 19,
+  /** Object/record constructor: data1 = field count, left = first field ExprId. */
+  Object = 20,
 }
 
 /** Binary operator tag. */
@@ -602,6 +612,77 @@ export class DAEArenaBuilder {
   /** Add a der(x) expression. */
   addDerExpr(argExprId: number): number {
     return this.addExpression(ExprKind.Der, argExprId);
+  }
+
+  /** Add a pre(x) expression. */
+  addPreExpr(argExprId: number): number {
+    return this.addExpression(ExprKind.Pre, argExprId);
+  }
+
+  /** Add an if-else expression. */
+  addIfElseExpr(condId: number, thenId: number, elseId: number): number {
+    return this.addExpression(ExprKind.IfElse, condId, thenId, elseId);
+  }
+
+  /** Add a range expression (start:step:stop or start:stop). */
+  addRangeExpr(startId: number, stopId: number, stepId = -1): number {
+    return this.addExpression(ExprKind.Range, startId, stepId, stopId);
+  }
+
+  /** Add an array constructor. Elements are stored as consecutive Tuple entries. */
+  addArrayCtorExpr(elementIds: number[]): number {
+    const firstElem = elementIds.length > 0 ? elementIds[0]! : -1;
+    const ctorId = this.addExpression(ExprKind.ArrayCtor, elementIds.length, firstElem);
+    for (let i = 1; i < elementIds.length; i++) {
+      this.addExpression(ExprKind.Tuple, i, elementIds[i]!);
+    }
+    return ctorId;
+  }
+
+  /** Add a subscripted expression (base[subscripts]). */
+  addSubscriptExpr(baseId: number, indexIds: number[]): number {
+    // For multi-subscript, chain: first subscript in left, rest as Tuple entries
+    const firstIdx = indexIds.length > 0 ? indexIds[0]! : -1;
+    const subId = this.addExpression(ExprKind.Subscript, baseId, firstIdx, indexIds.length);
+    for (let i = 1; i < indexIds.length; i++) {
+      this.addExpression(ExprKind.Tuple, i, indexIds[i]!);
+    }
+    return subId;
+  }
+
+  /** Add a tuple expression. */
+  addTupleExpr(elementIds: number[]): number {
+    const firstElem = elementIds.length > 0 ? elementIds[0]! : -1;
+    const tupleId = this.addExpression(ExprKind.Tuple, elementIds.length, firstElem);
+    for (let i = 1; i < elementIds.length; i++) {
+      this.addExpression(ExprKind.Tuple, i, elementIds[i]!);
+    }
+    return tupleId;
+  }
+
+  /** Add a colon `:` expression (whole-dimension slice). */
+  addColonExpr(): number {
+    return this.addExpression(ExprKind.Colon);
+  }
+
+  /** Add an enumeration literal. */
+  addEnumLiteral(ordinal: number, stringValue: string): number {
+    return this.addExpression(ExprKind.EnumLiteral, ordinal, this.interner.intern(stringValue));
+  }
+
+  /** Add a comprehension/reduction expression (e.g., sum(expr for i in range)). */
+  addComprehensionExpr(funcName: string, bodyId: number, iteratorCount: number): number {
+    return this.addExpression(ExprKind.Comprehension, this.interner.intern(funcName), bodyId, iteratorCount);
+  }
+
+  /** Add a partial function application expression. */
+  addPartialFuncExpr(funcName: string, argIds: number[]): number {
+    const firstArg = argIds.length > 0 ? argIds[0]! : -1;
+    const id = this.addExpression(ExprKind.PartialFunc, this.interner.intern(funcName), firstArg, argIds.length);
+    for (let i = 1; i < argIds.length; i++) {
+      this.addExpression(ExprKind.Tuple, i, argIds[i]!);
+    }
+    return id;
   }
 
   // ── Expression field readers ──

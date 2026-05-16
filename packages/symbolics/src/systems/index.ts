@@ -578,6 +578,9 @@ export class ModelicaDAE {
     if (expr instanceof ModelicaRealLiteral) return this.arena.addRealLiteral(expr.value);
     if (expr instanceof ModelicaBooleanLiteral) return this.arena.addBoolLiteral(expr.value);
     if (expr instanceof ModelicaStringLiteral) return this.arena.addStringLiteral(expr.value);
+    if (expr instanceof ModelicaEnumerationLiteral) {
+      return this.arena.addEnumLiteral(expr.ordinalValue, expr.stringValue);
+    }
     if (expr instanceof ModelicaBinaryExpression) {
       const lhs = this._mirrorExpressionToArena(expr.operand1);
       const rhs = this._mirrorExpressionToArena(expr.operand2);
@@ -658,10 +661,72 @@ export class ModelicaDAE {
       if (expr.functionName === "der" && args.length === 1 && args[0] !== undefined) {
         return this.arena.addDerExpr(args[0]);
       }
+      if (expr.functionName === "pre" && args.length === 1 && args[0] !== undefined) {
+        return this.arena.addPreExpr(args[0]);
+      }
       return this.arena.addCallExpr(expr.functionName, args);
     }
+    if (expr instanceof ModelicaIfElseExpression) {
+      // Flatten elseif chains into nested if-else in the arena.
+      // Build from the innermost else outward.
+      let elseId = this._mirrorExpressionToArena(expr.elseExpression);
+      for (let i = expr.elseIfClauses.length - 1; i >= 0; i--) {
+        const clause = expr.elseIfClauses[i];
+        if (!clause) continue;
+        const clauseCondId = this._mirrorExpressionToArena(clause.condition);
+        const clauseThenId = this._mirrorExpressionToArena(clause.expression);
+        elseId = this.arena.addIfElseExpr(clauseCondId, clauseThenId, elseId);
+      }
+      const condId = this._mirrorExpressionToArena(expr.condition);
+      const thenId = this._mirrorExpressionToArena(expr.thenExpression);
+      return this.arena.addIfElseExpr(condId, thenId, elseId);
+    }
+    if (expr instanceof ModelicaRangeExpression) {
+      const startId = this._mirrorExpressionToArena(expr.start);
+      const endId = this._mirrorExpressionToArena(expr.end);
+      const stepId = expr.step ? this._mirrorExpressionToArena(expr.step) : -1;
+      return this.arena.addRangeExpr(startId, endId, stepId);
+    }
+    if (expr instanceof ModelicaArray) {
+      const elementIds = expr.elements.map((e) => this._mirrorExpressionToArena(e));
+      return this.arena.addArrayCtorExpr(elementIds);
+    }
+    if (expr instanceof ModelicaSubscriptedExpression) {
+      const baseId = this._mirrorExpressionToArena(expr.base);
+      const indexIds = expr.subscripts.map((s) => this._mirrorExpressionToArena(s));
+      return this.arena.addSubscriptExpr(baseId, indexIds);
+    }
+    if (expr instanceof ModelicaTupleExpression) {
+      const elementIds = expr.elements.map((e) => (e ? this._mirrorExpressionToArena(e) : -1));
+      return this.arena.addTupleExpr(elementIds);
+    }
+    if (expr instanceof ModelicaColonExpression) {
+      return this.arena.addColonExpr();
+    }
+    if (expr instanceof ModelicaPartialFunctionExpression) {
+      const argIds = expr.namedArgs.map((a) => this._mirrorExpressionToArena(a.value));
+      return this.arena.addPartialFuncExpr(expr.functionName, argIds);
+    }
+    if (expr instanceof ModelicaComprehensionExpression) {
+      const bodyId = this._mirrorExpressionToArena(expr.bodyExpression);
+      // Store iterator ranges as consecutive expressions after the comprehension
+      for (const it of expr.iterators) {
+        this._mirrorExpressionToArena(it.range);
+      }
+      return this.arena.addComprehensionExpr(expr.functionName, bodyId, expr.iterators.length);
+    }
+    if (expr instanceof ModelicaObject) {
+      // Record constructor: store field name+value pairs as consecutive Name+value expressions
+      const fieldIds: number[] = [];
+      for (const [fieldName, fieldValue] of expr.elements) {
+        this.arena.addNameExpr(fieldName); // field name
+        fieldIds.push(this._mirrorExpressionToArena(fieldValue)); // field value
+      }
+      const firstField = fieldIds.length > 0 ? (fieldIds[0] ?? -1) : -1;
+      return this.arena.addExpression(20 /* ExprKind.Object */, fieldIds.length, firstField);
+    }
     if (expr instanceof ModelicaVariable) return this.arena.addNameExpr(expr.name);
-    return 0; // fallback dummy for unimplemented
+    return 0; // fallback: unknown expression type
   }
 
   private _mirrorEquationToArena(eq: ModelicaEquation, initial = false): void {
@@ -693,6 +758,63 @@ export class ModelicaDAE {
 
   addEquation(eq: ModelicaEquation): void {
     this.equations.push(eq);
+  }
+
+  // ─── Phase 3d: Arena-first variable access ───────────────────────────
+
+  /**
+   * Iterate over all non-removed variables, materializing each from the arena
+   * as a full `ModelicaVariable` object. This is the Flyweight bridge: callers
+   * get the same interface as `for (const v of dae.variables)`, but the data
+   * is sourced exclusively from the arena.
+   *
+   * Use this in new code instead of `dae.variables`.
+   */
+  *arenaVariables(): IterableIterator<ModelicaVariable> {
+    const arena = this.arena;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      yield materializeVariable(arena, i);
+    }
+  }
+
+  /**
+   * Count of non-removed variables in the arena. O(n) scan.
+   */
+  get arenaVarCount(): number {
+    const arena = this.arena;
+    let count = 0;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (!arena.isVarRemoved(i)) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Lookup a variable by name from the arena. O(n) scan.
+   * Returns null if not found or removed.
+   */
+  arenaGetVarByName(name: string): ModelicaVariable | null {
+    const arena = this.arena;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      if (arena.getVarName(i) === name) {
+        return materializeVariable(arena, i);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Iterate over variable names from the arena without materializing objects.
+   * This is the most memory-efficient way to enumerate variables.
+   */
+  *arenaVarNames(): IterableIterator<string> {
+    const arena = this.arena;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      yield arena.getVarName(i);
+    }
   }
 
   get hash(): string {
