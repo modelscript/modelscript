@@ -2,7 +2,16 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
-import { Causality, DAEArenaBuilder, EqKind, Variability, VarType } from "@modelscript/polyglot";
+import {
+  BinOp,
+  Causality,
+  DAEArenaBuilder,
+  EqKind,
+  ExprKind,
+  UnaryOp,
+  Variability,
+  VarType,
+} from "@modelscript/polyglot";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
 
@@ -428,17 +437,138 @@ export class ModelicaDAE {
     };
   }
 
+  private _mirrorExpression(expr: ModelicaExpression | null | undefined): number {
+    if (!this.arena || !expr) return 0;
+
+    const name = expr.constructor.name;
+
+    if (name === "ModelicaNameExpression" || name === "ModelicaVariable") {
+      return this.arena.addNameExpr((expr as unknown as { name: string }).name);
+    } else if (name === "ModelicaIntegerLiteral") {
+      return this.arena.addIntLiteral((expr as unknown as { value: number }).value);
+    } else if (name === "ModelicaRealLiteral") {
+      return this.arena.addRealLiteral((expr as unknown as { value: number }).value);
+    } else if (name === "ModelicaBooleanLiteral") {
+      return this.arena.addBoolLiteral((expr as unknown as { value: boolean }).value);
+    } else if (name === "ModelicaStringLiteral") {
+      return this.arena.addStringLiteral((expr as unknown as { value: string }).value);
+    } else if (name === "ModelicaBinaryExpression") {
+      const e = expr as unknown as { operand1: ModelicaExpression; operand2: ModelicaExpression; operator: string };
+      const left = this._mirrorExpression(e.operand1);
+      const right = this._mirrorExpression(e.operand2);
+      let op = BinOp.Add;
+      switch (e.operator) {
+        case "+":
+          op = BinOp.Add;
+          break;
+        case "-":
+          op = BinOp.Sub;
+          break;
+        case "*":
+          op = BinOp.Mul;
+          break;
+        case "/":
+          op = BinOp.Div;
+          break;
+        case "^":
+          op = BinOp.Pow;
+          break;
+        case ".+":
+          op = BinOp.ElemAdd;
+          break;
+        case ".-":
+          op = BinOp.ElemSub;
+          break;
+        case ".*":
+          op = BinOp.ElemMul;
+          break;
+        case "./":
+          op = BinOp.ElemDiv;
+          break;
+        case ".^":
+          op = BinOp.ElemPow;
+          break;
+        case "and":
+          op = BinOp.And;
+          break;
+        case "or":
+          op = BinOp.Or;
+          break;
+        case "==":
+          op = BinOp.Eq;
+          break;
+        case "<>":
+          op = BinOp.Neq;
+          break;
+        case "<":
+          op = BinOp.Lt;
+          break;
+        case ">":
+          op = BinOp.Gt;
+          break;
+        case "<=":
+          op = BinOp.Lte;
+          break;
+        case ">=":
+          op = BinOp.Gte;
+          break;
+      }
+      return this.arena.addBinaryExpr(op, left, right);
+    } else if (name === "ModelicaUnaryExpression") {
+      const e = expr as unknown as { operand: ModelicaExpression; operator: string };
+      const left = this._mirrorExpression(e.operand);
+      let op = UnaryOp.Negate;
+      if (e.operator === "not") op = UnaryOp.Not;
+      else if (e.operator === "-") op = UnaryOp.Negate;
+      return this.arena.addUnaryExpr(op, left);
+    } else if (name === "ModelicaFunctionCallExpression") {
+      const e = expr as unknown as { functionName: string; args: ModelicaExpression[] };
+      if (e.functionName === "der" && e.args.length === 1) {
+        return this.arena.addDerExpr(this._mirrorExpression(e.args[0]));
+      }
+      if (e.functionName === "pre" && e.args.length === 1) {
+        return this.arena.addExpression(ExprKind.Pre, this._mirrorExpression(e.args[0]), 0, 0);
+      }
+      const args = e.args.map((a) => this._mirrorExpression(a));
+      return this.arena.addCallExpr(e.functionName, args);
+    } else if (name === "ModelicaIfElseExpression") {
+      const e = expr as unknown as {
+        condition: ModelicaExpression;
+        thenExpression: ModelicaExpression;
+        elseExpression: ModelicaExpression;
+      };
+      const cond = this._mirrorExpression(e.condition);
+      const thenExpr = this._mirrorExpression(e.thenExpression);
+      const elseExpr = this._mirrorExpression(e.elseExpression);
+      return this.arena.addExpression(ExprKind.IfElse, cond, thenExpr, elseExpr);
+    } else if (name === "ModelicaRangeExpression") {
+      const e = expr as unknown as { start: ModelicaExpression; step?: ModelicaExpression; end: ModelicaExpression };
+      const start = this._mirrorExpression(e.start);
+      const step = e.step ? this._mirrorExpression(e.step) : -1;
+      const stop = this._mirrorExpression(e.end);
+      return this.arena.addExpression(ExprKind.Range, start, step, stop);
+    }
+    return 0;
+  }
+
   private _mirrorEquationToArena(eq: ModelicaEquation): void {
     if (this.arena) {
       let kind = EqKind.Simple;
-      if (eq.constructor.name === "ModelicaForEquation") kind = EqKind.For;
-      else if (eq.constructor.name === "ModelicaIfEquation") kind = EqKind.If;
-      else if (eq.constructor.name === "ModelicaWhenEquation") kind = EqKind.When;
-      else if (eq.constructor.name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
-      else if (eq.constructor.name === "ModelicaArrayEquation") kind = EqKind.Array;
+      let leftId = 0;
+      let rightId = 0;
 
-      // Currently expressions are not fully mirrored, we just use 0 as dummy ExprIds
-      this.arena.addEquation(kind, 0, 0);
+      const name = eq.constructor.name;
+      if (name === "ModelicaSimpleEquation") {
+        kind = EqKind.Simple;
+        leftId = this._mirrorExpression((eq as unknown as { expression1: ModelicaExpression }).expression1);
+        rightId = this._mirrorExpression((eq as unknown as { expression2: ModelicaExpression }).expression2);
+      } else if (name === "ModelicaForEquation") kind = EqKind.For;
+      else if (name === "ModelicaIfEquation") kind = EqKind.If;
+      else if (name === "ModelicaWhenEquation") kind = EqKind.When;
+      else if (name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
+      else if (name === "ModelicaArrayEquation") kind = EqKind.Array;
+
+      this.arena.addEquation(kind, leftId, rightId);
     }
   }
 
