@@ -1337,7 +1337,7 @@ ModelicaLinter.register(ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH, {
             ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH.code,
             ModelicaErrorCode.BUILTIN_ATTRIBUTE_TYPE_MISMATCH.message(
               attrName,
-              getExpressionText(expr),
+              getExpressionText(expr, node),
               expectedType,
               actualType,
             ),
@@ -1559,7 +1559,7 @@ ModelicaLinter.register(ModelicaErrorCode.EQUATION_TYPE_MISMATCH, {
           (lhsShape.length !== rhsShape.length || lhsShape.some((d, i) => d !== rhsShape[i]))
         ) {
           const lhsTypeName = getBaseTypeName(lhsComp.classInstance) ?? "Real";
-          const rhsText = getExpressionText(eq.expression2);
+          const rhsText = getExpressionText(eq.expression2, node);
           diagnosticsCallback(
             ModelicaErrorCode.EQUATION_TYPE_MISMATCH.severity,
             ModelicaErrorCode.EQUATION_TYPE_MISMATCH.code,
@@ -1586,45 +1586,93 @@ import {
   ModelicaSimpleAssignmentStatementSyntaxNode as SimpleAssign,
 } from "@modelscript/modelica/ast";
 
-function getExpressionText(expr: any): string {
+function getExpressionText(expr: any, node?: ModelicaClassInstance, promoteToReal = false): string {
   if (!expr) return "...";
+  let text: string;
   // Component reference: reconstruct from parts
   if (expr.parts) {
-    return expr.parts.map((p: any) => p.identifier?.text || p.name?.text || "?").join(".");
+    text = expr.parts.map((p: any) => p.identifier?.text || p.name?.text || "?").join(".");
   }
   // Array constructor: {a, b, c}
-  if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
+  else if (expr["@type"] === "ArrayConstructor" && expr.expressionList) {
     const exprs = expr.expressionList.expressions ?? [];
-    return `{${exprs.map(getExpressionText).join(", ")}}`;
+    text = `{${exprs.map((e: any) => getExpressionText(e, node)).join(", ")}}`;
   }
   // Array concatenation: [a, b; c, d]
-  if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
+  else if (expr["@type"] === "ArrayConcatenation" && expr.expressionLists) {
     const rows = expr.expressionLists ?? [];
-    const rowTexts = rows.map((r: any) => (r.expressions ?? []).map(getExpressionText).join(", "));
-    return `[${rowTexts.join("; ")}]`;
+    const rowTexts = rows.map((r: any) => (r.expressions ?? []).map((e: any) => getExpressionText(e, node)).join(", "));
+    text = `[${rowTexts.join("; ")}]`;
   }
   // String literals: ensure quotes
-  if (expr["@type"] === "STRING" || expr["@type"] === "string_literal" || expr["@type"] === "String") {
-    const text = expr.text || (expr.value !== undefined ? String(expr.value) : "");
-    if (!text.startsWith('"')) return `"${text}"`;
-    return text;
+  else if (expr["@type"] === "STRING" || expr["@type"] === "string_literal" || expr["@type"] === "String") {
+    text = expr.text || (expr.value !== undefined ? String(expr.value) : "");
+    if (!text.startsWith('"')) text = `"${text}"`;
   }
   // Literal values
-  if (expr.text !== undefined && expr.text !== null) return String(expr.text);
-  if (expr.value !== undefined && expr.value !== null) return String(expr.value);
+  else if (expr.text !== undefined && expr.text !== null) text = String(expr.text);
+  else if (expr.value !== undefined && expr.value !== null) text = String(expr.value);
   // Function call
-  if (expr.functionReference || expr.functionReferenceName) {
-    return expr.functionReferenceName || getExpressionText(expr.functionReference) + "(...)";
+  else if (expr.functionReference || expr.functionReferenceName) {
+    text = expr.functionReferenceName || getExpressionText(expr.functionReference, node) + "(...)";
   }
   // Binary expression
-  if (expr.operand1 && expr.operand2) {
-    return getExpressionText(expr.operand1) + " " + (expr.operator || "?") + " " + getExpressionText(expr.operand2);
+  else if (expr.operand1 && expr.operand2) {
+    let op1Text = getExpressionText(expr.operand1, node);
+    let op2Text = getExpressionText(expr.operand2, node);
+
+    // Simulate OMC's CAST and literal coercion for arithmetic operations
+    if (node && ["+", "-", "*", "/", "^"].includes(expr.operator)) {
+      let t1 = inferExpressionType(expr.operand1, node);
+      let t2 = inferExpressionType(expr.operand2, node);
+      if (expr.operator === "/") {
+        if (t1 === "Integer") t1 = "Real";
+        if (t2 === "Integer") t2 = "Real";
+      } else if (t1 === "Real" || t2 === "Real") {
+        if (t1 === "Integer") t1 = "Real";
+        if (t2 === "Integer") t2 = "Real";
+      }
+
+      if (t1 === "Real" && inferExpressionType(expr.operand1, node) === "Integer") {
+        op1Text =
+          expr.operand1.value !== undefined || expr.operand1.text !== undefined
+            ? op1Text.includes(".")
+              ? op1Text
+              : op1Text + ".0"
+            : `CAST(Real, ${op1Text})`;
+      }
+      if (t2 === "Real" && inferExpressionType(expr.operand2, node) === "Integer") {
+        op2Text =
+          expr.operand2.value !== undefined || expr.operand2.text !== undefined
+            ? op2Text.includes(".")
+              ? op2Text
+              : op2Text + ".0"
+            : `CAST(Real, ${op2Text})`;
+      }
+    }
+
+    text = op1Text + " " + (expr.operator || "?") + " " + op2Text;
   }
   // Unary expression
-  if (expr.operand) {
-    return (expr.operator || "-") + getExpressionText(expr.operand);
+  else if (expr.operand) {
+    text = (expr.operator || "-") + getExpressionText(expr.operand, node);
+  } else {
+    text = "...";
   }
-  return "...";
+
+  // Handle outer promoteToReal if requested
+  if (promoteToReal && node) {
+    const t = inferExpressionType(expr, node);
+    if (t === "Integer") {
+      if (expr.value !== undefined || expr.text !== undefined) {
+        if (!text.includes(".")) text += ".0";
+      } else {
+        text = `CAST(Real, ${text})`;
+      }
+    }
+  }
+
+  return text;
 }
 
 ModelicaLinter.register(
@@ -1656,7 +1704,7 @@ ModelicaLinter.register(
             diagnosticsCallback(
               ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.severity,
               ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.code,
-              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(targetName, getExpressionText(stmt.source)),
+              ModelicaErrorCode.ASSIGNMENT_TO_CONSTANT.message(targetName, getExpressionText(stmt.source, node)),
               stmt.target,
             );
           }
@@ -1698,7 +1746,7 @@ ModelicaLinter.register(
               ModelicaErrorCode.ASSIGNMENT_TYPE_MISMATCH.message(
                 targetName,
                 targetType,
-                getExpressionText(stmt.source),
+                getExpressionText(stmt.source, node),
                 sourceType,
               ),
               stmt,

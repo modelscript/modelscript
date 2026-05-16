@@ -771,6 +771,10 @@ function main(): void {
       const result = runTestCase(testCase, testsuiteRoot, updateMode);
       suiteResults.push(result);
       printResult(result);
+
+      if (global.gc) {
+        global.gc();
+      }
     }
 
     printSummary(suiteResults, `Summary: ${suiteName}`);
