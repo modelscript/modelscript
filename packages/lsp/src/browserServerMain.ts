@@ -123,10 +123,12 @@ import {
 import {
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
+  LineIndex,
   VerificationRunner,
   extractSysML2Constraints,
   mapConstraintsToOptimizer,
   mapStepToMultiBody,
+  type TokenData,
 } from "@modelscript/polyglot";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
@@ -194,6 +196,8 @@ interface CachedTree {
   text: string;
   tree: TreeSitterTree;
   classCache: Map<string, CachedClassEntry>;
+  lineIndex?: LineIndex;
+  tokens?: SyntaxNode[];
 }
 
 const documentTrees = new Map<string, CachedTree>();
@@ -346,7 +350,13 @@ function updateDocumentTree(uri: string, newText: string): TreeSitterTree {
     tree = parser.parse(newText);
   }
 
-  documentTrees.set(uri, { text: newText, tree, classCache: cached?.classCache ?? new Map() });
+  documentTrees.set(uri, {
+    text: newText,
+    tree,
+    classCache: cached?.classCache ?? new Map(),
+    lineIndex: undefined,
+    tokens: undefined,
+  });
   return tree;
 }
 
@@ -365,6 +375,45 @@ function getDocumentTree(uri: string): TreeSitterTree | null {
 
   const text = document.getText();
   return updateDocumentTree(uri, text);
+}
+
+/**
+ * Get or build the LineIndex for a document.
+ */
+function getLineIndexForDoc(uri: string): { lineIndex: LineIndex; tokens: SyntaxNode[] } | null {
+  const cached = documentTrees.get(uri);
+  if (!cached || !cached.tree) return null;
+
+  if (cached.lineIndex && cached.tokens) {
+    return { lineIndex: cached.lineIndex, tokens: cached.tokens };
+  }
+
+  const tokensData: TokenData[] = [];
+  const nodes: SyntaxNode[] = [];
+
+  const walk = (node: SyntaxNode) => {
+    if (node.childCount === 0) {
+      tokensData.push({
+        line: node.startPosition.row,
+        startCol: node.startPosition.column,
+        endCol: node.endPosition.column,
+        nodeId: node.id,
+      });
+      nodes.push(node);
+    } else {
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child) walk(child);
+      }
+    }
+  };
+
+  walk(cached.tree.rootNode);
+  const totalLines = cached.text.split("\n").length;
+  cached.lineIndex = new LineIndex(totalLines, tokensData);
+  cached.tokens = nodes;
+
+  return { lineIndex: cached.lineIndex, tokens: cached.tokens };
 }
 
 /* Per-document state for hover resolution */
@@ -2770,10 +2819,19 @@ connection.onSelectionRanges((params) => {
   if (!tree) return [];
 
   const results = params.positions.map((pos) => {
-    let node: SyntaxNode | null = tree.rootNode.descendantForPosition({
-      row: pos.line,
-      column: pos.character,
-    });
+    let node: SyntaxNode | null = null;
+    const indexData = getLineIndexForDoc(document.uri);
+    if (indexData) {
+      const idx = indexData.lineIndex.tokenIndexAt(pos.line, pos.character);
+      if (idx !== -1) node = indexData.tokens[idx]!;
+    }
+
+    if (!node) {
+      node = tree.rootNode.descendantForPosition({
+        row: pos.line,
+        column: pos.character,
+      });
+    }
 
     // Build the chain from innermost to outermost
 
@@ -2817,29 +2875,25 @@ connection.onDocumentHighlight((params) => {
   const word = lineContent.substring(wordStart, wordEnd);
   if (!word || /^\d/.test(word)) return []; // Skip empty or numeric tokens
 
-  // Find all occurrences of the word in the document using tree-sitter
-  const tree = getDocumentTree(document.uri);
-  if (!tree) return [];
+  // Find all occurrences of the word in the document using LineIndex
+  const indexData = getLineIndexForDoc(document.uri);
+  if (!indexData) return [];
+
   const highlights: {
     range: { start: { line: number; character: number }; end: { line: number; character: number } };
     kind: DocumentHighlightKind;
   }[] = [];
 
-  const collectHighlights = (node: SyntaxNode) => {
+  for (let i = 0; i < indexData.tokens.length; i++) {
+    const node = indexData.tokens[i]!;
     if (node.type === "IDENT" && node.text === word) {
       highlights.push({
         range: nodeRange(node),
         kind: DocumentHighlightKind.Text,
       });
     }
-    const children = node.children || [];
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      if (child) collectHighlights(child);
-    }
-  };
+  }
 
-  collectHighlights(tree.rootNode);
   return highlights;
 });
 
@@ -2856,10 +2910,18 @@ connection.onSignatureHelp((params) => {
 
   try {
     const rootNode = tree.rootNode;
-    const node = rootNode.descendantForPosition({
-      row: params.position.line,
-      column: params.position.character,
-    });
+    let node: SyntaxNode | null = null;
+    const indexData = getLineIndexForDoc(document.uri);
+    if (indexData) {
+      const idx = indexData.lineIndex.tokenIndexAt(params.position.line, params.position.character);
+      if (idx !== -1) node = indexData.tokens[idx]!;
+    }
+    if (!node) {
+      node = rootNode.descendantForPosition({
+        row: params.position.line,
+        column: params.position.character,
+      });
+    }
 
     // Walk up to find a FunctionCall ancestor
     let funcCallNode: SyntaxNode | null = node;
