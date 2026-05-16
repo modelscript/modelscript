@@ -208,14 +208,14 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
   // Initialize
   L.push(`void ${id}_initialize(${id}_Instance* inst) {`);
   L.push("  memset(inst, 0, sizeof(*inst));");
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined && v.expression)
         L.push(`  inst->vars[${ref}] = ${exprToC(v.expression, result.variables)};  /* ${v.name} */`);
     }
   }
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === null || v.variability === undefined) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined) {

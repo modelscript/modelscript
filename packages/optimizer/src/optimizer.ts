@@ -579,7 +579,7 @@ export class ModelicaOptimizer {
 
     // Resolve initial state values
     const paramEnv = new Map<string, number>();
-    for (const v of this.dae.variables) {
+    for (const v of this.dae.arenaVariables()) {
       if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
         if (v.expression) {
           if (v.expression instanceof ModelicaRealLiteral) paramEnv.set(v.name, v.expression.value);
@@ -591,7 +591,7 @@ export class ModelicaOptimizer {
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;
       let initVal = 0;
-      for (const v of this.dae.variables) {
+      for (const v of this.dae.arenaVariables()) {
         if (v.name === name) {
           if (v.expression instanceof ModelicaRealLiteral) {
             initVal = v.expression.value;

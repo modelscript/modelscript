@@ -121,19 +121,29 @@ export function materializeVariable(arena: DAEArenaBuilder, idx: number): Modeli
 
   const desc = arena.getVarDescription(idx) || null;
   const funcType = arena.getVarFunctionType(idx) || null;
-  let expr = (arena.getVarExpression(idx) as ModelicaExpression) || null;
-  if (!expr && typeof startVal === "number" && startVal !== 0) {
-    expr = new ModelicaRealLiteral(startVal);
+  const expr = (arena.getVarExpression(idx) as ModelicaExpression) || null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const attributes = new Map<string, any>();
+  const startAttr = arena.getVarStartAttr(idx);
+  if (startAttr !== undefined) {
+    attributes.set("start", startAttr);
+  } else if (!expr && typeof startVal === "number" && startVal !== 0) {
+    attributes.set("start", new ModelicaRealLiteral(startVal));
+  }
+
+  if (arena.isVarFixed(idx)) {
+    attributes.set("fixed", new ModelicaBooleanLiteral(true));
   }
 
   let v: ModelicaVariable;
   if (type === VarType.Real) {
-    v = new ModelicaRealVariable(name, expr, new Map(), variability, desc, causality, isFinal, isProtected, funcType);
+    v = new ModelicaRealVariable(name, expr, attributes, variability, desc, causality, isFinal, isProtected, funcType);
   } else if (type === VarType.Integer) {
     v = new ModelicaIntegerVariable(
       name,
       expr,
-      new Map(),
+      attributes,
       variability,
       desc,
       causality,
@@ -145,7 +155,7 @@ export function materializeVariable(arena: DAEArenaBuilder, idx: number): Modeli
     v = new ModelicaBooleanVariable(
       name,
       expr,
-      new Map(),
+      attributes,
       variability,
       desc,
       causality,
@@ -154,15 +164,25 @@ export function materializeVariable(arena: DAEArenaBuilder, idx: number): Modeli
       funcType,
     );
   } else if (type === VarType.String) {
-    v = new ModelicaStringVariable(name, expr, new Map(), variability, desc, causality, isFinal, isProtected, funcType);
+    v = new ModelicaStringVariable(
+      name,
+      expr,
+      attributes,
+      variability,
+      desc,
+      causality,
+      isFinal,
+      isProtected,
+      funcType,
+    );
   } else if (type === VarType.Clock) {
-    v = new ModelicaClockVariable(name, expr, new Map(), variability, desc, causality, isFinal, isProtected, funcType);
+    v = new ModelicaClockVariable(name, expr, attributes, variability, desc, causality, isFinal, isProtected, funcType);
   } else if (type === VarType.Enumeration) {
     const literals = (arena.getVarEnumerationLiterals(idx) as ModelicaEnumerationLiteral[]) ?? [];
     v = new ModelicaEnumerationVariable(
       name,
       expr,
-      new Map(),
+      attributes,
       variability,
       desc,
       literals,
@@ -486,7 +506,7 @@ export class ModelicaDAE {
   initialAlgorithms: ModelicaStatement[][] = [];
   /** Algebraic loops (SCCs) detected during flattening. */
   algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
-  variables: SymbolTable;
+  legacyVariables: SymbolTable;
 
   /** Arena-backed builder populated during dual-write phase. */
   arena: DAEArenaBuilder;
@@ -541,7 +561,7 @@ export class ModelicaDAE {
     this.name = name;
     this.description = description ?? null;
     this.arena = new DAEArenaBuilder(undefined, name, this.description ?? "");
-    this.variables = new SymbolTable(this.arena);
+    this.legacyVariables = new SymbolTable(this.arena);
 
     // Override equations array push to intercept dual-write hooks
     const originalPush = this.equations.push.bind(this.equations);
@@ -779,30 +799,43 @@ export class ModelicaDAE {
   }
 
   /**
-   * Count of non-removed variables in the arena. O(n) scan.
+   * Count of non-removed variables in the arena. O(1).
    */
   get arenaVarCount(): number {
-    const arena = this.arena;
-    let count = 0;
-    for (let i = 0; i < arena.varCount; i++) {
-      if (!arena.isVarRemoved(i)) count++;
-    }
-    return count;
+    return this.arena.activeVarCount;
   }
 
   /**
-   * Lookup a variable by name from the arena. O(n) scan.
+   * Lookup a variable by name from the arena. O(1).
    * Returns null if not found or removed.
    */
   arenaGetVarByName(name: string): ModelicaVariable | null {
-    const arena = this.arena;
-    for (let i = 0; i < arena.varCount; i++) {
-      if (arena.isVarRemoved(i)) continue;
-      if (arena.getVarName(i) === name) {
-        return materializeVariable(arena, i);
-      }
-    }
-    return null;
+    const idx = this.arena.getVarIdxByName(name);
+    if (idx < 0) return null;
+    return materializeVariable(this.arena, idx);
+  }
+
+  /** Check if a variable exists (and is not removed) by name. O(1). */
+  arenaHasVar(name: string): boolean {
+    return this.arena.hasVar(name);
+  }
+
+  /** Lookup variable by encoded suffix (for `\0prefix\0suffix` naming). O(1). */
+  arenaGetEncoded(decodedName: string): ModelicaVariable | null {
+    const idx = this.arena.getVarIdxByEncoded(decodedName);
+    if (idx < 0) return null;
+    return materializeVariable(this.arena, idx);
+  }
+
+  /** Get array element variables for a root name. O(1). */
+  arenaGetArrayElements(baseName: string): ModelicaVariable[] {
+    const indices = this.arena.getArrayElementIndices(baseName);
+    return indices.map((idx) => materializeVariable(this.arena, idx));
+  }
+
+  /** Check if array elements exist for a root name. O(1). */
+  arenaHasArrayElements(baseName: string): boolean {
+    return this.arena.hasArrayElements(baseName);
   }
 
   /**
@@ -821,7 +854,7 @@ export class ModelicaDAE {
     const hash = createHash("sha256");
     hash.update(this.name);
     for (const fn of this.functions) hash.update(fn.hash);
-    for (const variable of this.variables) {
+    for (const variable of this.arenaVariables()) {
       hash.update(variable.hash);
     }
     for (const sm of this.stateMachines) {
@@ -843,7 +876,7 @@ export class ModelicaDAE {
       description: this.description,
       stateMachines: this.stateMachines.map((m) => m.toJSON),
       functions: this.functions.map((f) => f.toJSON),
-      variables: this.variables.map((v) => v.toJSON),
+      variables: [...this.arenaVariables()].map((v) => v.toJSON),
       equations: this.equations.map((e) => e.toJSON),
       algorithms: this.algorithms.map((section) => section.map((s) => s.toJSON)),
       objective: this.objective ? this.objective.toJSON : null,
@@ -856,7 +889,7 @@ export class ModelicaDAE {
     triples.push({ s: id, p: "rdf:type", o: "modelica:DAE" });
     triples.push({ s: id, p: "modelica:name", o: this.name });
     if (this.description) triples.push({ s: id, p: "modelica:description", o: this.description });
-    for (const variable of this.variables) {
+    for (const variable of this.arenaVariables()) {
       triples.push({ s: id, p: "modelica:variable", o: `_:var_${variable.name}` });
       triples.push(...variable.toRDF);
     }
@@ -879,7 +912,7 @@ export class ModelicaDAE {
    * qualifier such as constant/parameter/discrete).
    */
   get stateVariables(): ModelicaRealVariable[] {
-    return this.variables.filter(
+    return [...this.arenaVariables()].filter(
       (v) => v instanceof ModelicaRealVariable && v.variability === null,
     ) as ModelicaRealVariable[];
   }
@@ -888,7 +921,7 @@ export class ModelicaDAE {
    * Identify derivative variables — those whose names match `der(...)`.
    */
   get derivativeVariables(): ModelicaRealVariable[] {
-    return this.variables.filter(
+    return [...this.arenaVariables()].filter(
       (v) => v instanceof ModelicaRealVariable && v.name.startsWith("der("),
     ) as ModelicaRealVariable[];
   }
@@ -922,7 +955,7 @@ export class ModelicaDAE {
     // Multi-pass parameter/constant evaluation to handle dependency chains
     for (let pass = 0; pass < 10; pass++) {
       let changed = false;
-      for (const variable of this.variables) {
+      for (const variable of this.arenaVariables()) {
         if (
           variable.variability === ModelicaVariability.PARAMETER ||
           variable.variability === ModelicaVariability.CONSTANT
@@ -4760,7 +4793,7 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   }
 
   visitDAE(node: ModelicaDAE, argument?: A): void {
-    for (const variable of node.variables) variable.accept(this, argument);
+    for (const variable of node.arenaVariables()) variable.accept(this, argument);
     for (const clause of node.whenClauses) clause.accept(this, argument);
     for (const equation of node.equations) equation.accept(this, argument);
   }
@@ -5327,7 +5360,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
     this.out.write("\n");
 
-    for (const variable of node.variables) {
+    for (const variable of node.arenaVariables()) {
       this.#emitVariable(variable, variable.isProtected);
     }
     for (const sm of node.stateMachines || []) {
@@ -5366,7 +5399,7 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (fn.description) this.out.write(' "' + fn.description + '"');
     this.out.write("\n");
 
-    for (const variable of fn.variables) {
+    for (const variable of fn.arenaVariables()) {
       this.#emitVariable(variable, variable.isProtected);
     }
     if (fn.equations.length > 0 || fn.whenClauses.length > 0) {

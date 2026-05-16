@@ -3522,7 +3522,7 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
     classInstance.accept(flattener, ["", dae]);
 
     // Extract variables with CAD annotations
-    const data = dae.variables
+    const data = [...dae.arenaVariables()]
 
       .filter((v: any) => v.cadAnnotationString)
 
@@ -3740,14 +3740,14 @@ connection.onRequest(
       flattener.generateFlowBalanceEquations(dae);
       flattener.foldDAEConstants(dae);
 
-      connection.console.info(`[simulate] DAE variables: ${dae.variables.length}`);
+      connection.console.info(`[simulate] DAE variables: ${dae.arenaVarCount}`);
       connection.console.info(`[simulate] DAE equations: ${dae.equations.length}`);
       connection.console.info(`[simulate] DAE initial equations: ${dae.initialEquations.length}`);
       connection.console.info(`[simulate] DAE algorithms: ${dae.algorithms.length}`);
       connection.console.info(`[simulate] DAE functions: ${dae.functions.length}`);
       // Log first 20 variables with their types and expressions
       let varIdx = 0;
-      for (const v of dae.variables) {
+      for (const v of dae.arenaVariables()) {
         if (varIdx < 20) {
           const startAttr = v.attributes.get("start");
           connection.console.info(
@@ -3803,7 +3803,7 @@ connection.onRequest(
         return {
           t: baseT,
           y: sweepResults[0]?.y ?? [],
-          states: simulator.dae.variables
+          states: [...simulator.dae.arenaVariables()]
             .filter((v) => simulator.stateVars.has(v.name) || simulator.algebraicVars.has(v.name))
             .map((v) => v.name),
           parameters: simulator.getParameterInfo(),
@@ -4159,7 +4159,7 @@ connection.onRequest(
       // But we accept overrides from the UI if present.
       let finalControls = params.controls;
       if (!finalControls || finalControls.length === 0) {
-        finalControls = dae.variables.filter((v) => v.attributes.has("free")).map((v) => v.name);
+        finalControls = [...dae.arenaVariables()].filter((v) => v.attributes.has("free")).map((v) => v.name);
       }
       if (!finalControls || finalControls.length === 0) {
         // Fallback or testing
@@ -4709,7 +4709,7 @@ connection.onRequest(
 
       // Initialize current values from start attributes
       const currentValues = new Map<string, number>();
-      for (const v of dae.variables) {
+      for (const v of dae.arenaVariables()) {
         const startAttr = v.attributes.get("start");
         if (startAttr && "value" in startAttr) {
           const val = (startAttr as { value: number }).value;
@@ -4730,7 +4730,7 @@ connection.onRequest(
       });
 
       // Build variable list with causality info
-      const variables = dae.variables.map((v) => ({
+      const variables = [...dae.arenaVariables()].map((v) => ({
         name: v.name,
         causality: v.causality ?? "local",
       }));
@@ -4792,7 +4792,7 @@ connection.onRequest(
       // Collect outputs (variables with causality "output")
       const outputs: Record<string, number> = {};
       const allValues: Record<string, number> = {};
-      for (const v of entry.dae.variables) {
+      for (const v of entry.dae.arenaVariables()) {
         const val = entry.currentValues.get(v.name);
         if (val !== undefined) {
           allValues[v.name] = val;
@@ -6369,9 +6369,9 @@ connection.onRequest(
           }
         });
 
-      const varNames = dae.variables.map((v) => v.name);
+      const varNames = [...dae.arenaVariables()].map((v) => v.name);
 
-      const unknownCount = dae.variables.filter(
+      const unknownCount = [...dae.arenaVariables()].filter(
         (v) => (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
       ).length;
 
@@ -6527,7 +6527,7 @@ connection.onRequest(
       };
 
       const bounds: IntervalBound[] = [];
-      for (const v of dae.variables) {
+      for (const v of dae.arenaVariables()) {
         const attrs = v.attributes;
         const minVal = exprToNum(attrs.get("min"));
         const maxVal = exprToNum(attrs.get("max"));
@@ -6548,7 +6548,7 @@ connection.onRequest(
       return {
         className: target.name || "Model",
         bounds,
-        totalVariables: dae.variables.length,
+        totalVariables: dae.arenaVarCount,
         boundedCount: bounds.filter((b) => b.isComputed).length,
       };
     } catch (e) {
@@ -6600,7 +6600,7 @@ connection.onRequest(
       // Build a simple optimization problem from the DAE
       const controls: string[] = [];
       const controlBounds = new Map<string, { min: number; max: number }>();
-      for (const v of dae.variables) {
+      for (const v of dae.arenaVariables()) {
         if (v.causality === "input") {
           controls.push(v.name);
           controlBounds.set(v.name, { min: -1e6, max: 1e6 });
@@ -6955,7 +6955,7 @@ connection.onRequest(
       // Extract initial parameter values
       const fittedParameters: { name: string; initial: number; fitted: number }[] = [];
       for (const paramName of params.parametersToFit) {
-        const v = dae.variables.get(paramName);
+        const v = dae.arenaGetVarByName(paramName);
         const startAttr = v?.attributes.get("start");
         const initial =
           startAttr && typeof (startAttr as unknown as { value?: unknown }).value === "number"

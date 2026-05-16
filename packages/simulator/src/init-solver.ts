@@ -277,7 +277,7 @@ export function solveInitialEquations(
   // Identify unknowns: variables that are not fixed, not parameters/constants
   const fixedVars = new Set<string>();
   const paramNames = new Set(parameters.keys());
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       paramNames.add(v.name);
     }
@@ -333,7 +333,7 @@ export function solveInitialEquations(
   }
 
   // Expand array variable unknowns: for vars with arrayDimensions, add subscripted names
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.arrayDimensions && v.arrayDimensions.length > 0 && unknowns.has(v.name)) {
       const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
       for (let i = 0; i < size; i++) {
@@ -774,7 +774,7 @@ export function solveInitialEquationsAdvanced(
 
   // Identify discrete variables for MINLP
   const discreteSet = new Set<string>();
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v instanceof ModelicaIntegerVariable || v instanceof ModelicaBooleanVariable) {
       discreteSet.add(v.name);
     }
@@ -836,7 +836,7 @@ export function solveInitialEquationsAdvanced(
       const initialBox: DomainBox = new Map();
       for (const vName of variables) {
         // Use variable bounds from attributes, or default range
-        const v = dae.variables.get(vName);
+        const v = dae.arenaGetVarByName(vName);
         const lo = v?.attributes.get("min");
         const hi = v?.attributes.get("max");
         const loVal = lo && typeof lo === "object" && "value" in lo ? (lo as { value: number }).value : -1e6;

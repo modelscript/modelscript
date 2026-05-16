@@ -559,7 +559,7 @@ function generateInitializeSolve(id: string, dae: ModelicaDAE, result: FmuResult
 
   // Identify unknowns: variables referenced in initial equations that are not parameters
   const paramNames = new Set<string>();
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       paramNames.add(v.name);
     }
@@ -807,7 +807,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   // ── Initialize function ──
   lines.push(`void ${id}_initialize(${id}_Instance* inst) {`);
   lines.push("  memset(inst, 0, sizeof(*inst));");
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined && v.expression) {
@@ -818,7 +818,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
     }
   }
   // Set start values for continuous variables (from start attribute or binding)
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === null || v.variability === undefined) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined) {

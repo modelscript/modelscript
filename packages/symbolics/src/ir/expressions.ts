@@ -925,7 +925,7 @@ function detectTrivialAlias(
 export function eliminateAliases(dae: ModelicaDAE): void {
   // Build the set of continuous unknowns (same logic as BLT)
   const unknowns = new Set<string>();
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v instanceof ModelicaRealVariable && v.variability === null) {
       unknowns.add(v.name);
     }
@@ -946,7 +946,7 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       const { aliasVar, targetExpr } = alias;
 
       // Don't eliminate parameters, constants, or derivatives
-      const varDef = dae.variables.get(aliasVar);
+      const varDef = dae.arenaGetVarByName(aliasVar);
       if (!varDef) continue;
       if (varDef.variability === ModelicaVariability.PARAMETER || varDef.variability === ModelicaVariability.CONSTANT) {
         continue;
@@ -969,8 +969,8 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       dae.equations.splice(i, 1);
 
       // Remove the alias variable
-      const aliasVarDef = dae.variables.get(aliasVar);
-      if (aliasVarDef) dae.variables.remove(aliasVarDef);
+      const aliasVarDef = dae.arenaGetVarByName(aliasVar);
+      if (aliasVarDef && aliasVarDef._arenaIdx !== undefined) dae.arena.setVarRemoved(aliasVarDef._arenaIdx);
 
       // Remove from unknowns set
       unknowns.delete(aliasVar);

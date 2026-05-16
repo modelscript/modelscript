@@ -63,7 +63,7 @@ export class JsSimulatorParticipant implements CoSimParticipant {
 
     // Build Modelica-compatible metadata from the DAE
     const variables: ParticipantVariable[] = [];
-    for (const v of this.dae.variables) {
+    for (const v of this.dae.arenaVariables()) {
       let causality: ParticipantVariable["causality"] = "local";
       if (v.causality === "input") causality = "input";
       else if (v.causality === "output") causality = "output";
@@ -111,7 +111,7 @@ export class JsSimulatorParticipant implements CoSimParticipant {
     void stepSize;
 
     // Initialize current values from DAE start values (via attributes)
-    for (const v of this.dae.variables) {
+    for (const v of this.dae.arenaVariables()) {
       const startAttr = v.attributes.get("start");
       if (startAttr && "value" in startAttr) {
         const val = (startAttr as { value: number }).value;

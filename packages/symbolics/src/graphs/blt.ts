@@ -158,13 +158,13 @@ export function performBltTransformation(
     }
   }
 
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v instanceof ModelicaRealVariable && v.name.startsWith("der(") && v.name.endsWith(")")) {
       derVars.add(v.name.slice(4, -1));
     }
   }
 
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v instanceof ModelicaRealVariable && v.variability === null && !derVars.has(v.name)) {
       unknowns.add(v.name);
       unknownList.push(v.name);
@@ -254,11 +254,17 @@ export function performBltTransformation(
   }
   if (assignedEqs.size < equations.length) {
     console.warn(`[BLT] Over-determined system: ${equations.length - assignedEqs.size} unused equations.`);
+    let printedUnused = 0;
     for (let i = 0; i < equations.length; i++) {
       if (!assignedEqs.has(i)) {
         const unusedEq = equations[i];
         if (unusedEq) {
-          console.warn(`[BLT] Unused eq [${i}]: (skipped stringify to prevent OOM)`);
+          if (printedUnused < 10) {
+            console.warn(`[BLT] Unused eq [${i}]: (skipped stringify to prevent OOM)`);
+          } else if (printedUnused === 10) {
+            console.warn(`[BLT] ... and ${equations.length - assignedEqs.size - 10} more unused equations.`);
+          }
+          printedUnused++;
         }
       }
     }

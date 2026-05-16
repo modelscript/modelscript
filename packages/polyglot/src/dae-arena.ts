@@ -246,6 +246,19 @@ export class DAEArenaBuilder {
   /** Whether each variable has `fixed=true` (for consistent initialization). */
   private varFixedFlags = new Set<number>();
 
+  // ── O(1) Secondary Indices (Wave 0) ──
+
+  /** Exact name → variable index. O(1) lookup. */
+  private _nameIndex = new Map<string, number>();
+  /** Array root name → variable indices (e.g. "x" → [idx of x[1], x[2], …]). */
+  private _arrayRootIndex = new Map<string, number[]>();
+  /** Encoded suffix → variable index (for `\0prefix\0suffix` naming). */
+  private _encodedIndex = new Map<string, number>();
+  /** Causality → variable indices. */
+  private _causalityIndex = new Map<Causality, number[]>();
+  /** Count of non-removed variables. */
+  private _activeVarCount = 0;
+
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
     this.nameId = this.interner.intern(name);
@@ -285,6 +298,7 @@ export class DAEArenaBuilder {
     flags = 0,
   ): number {
     const idx = this._varCount++;
+    this._activeVarCount++;
     const offset = idx * VAR_STRIDE;
 
     // Grow if needed
@@ -304,6 +318,38 @@ export class DAEArenaBuilder {
     this.varData[offset + VAR_START_LO] = INT32_VIEW[1]!;
 
     this.varData[offset + VAR_SHAPE_DIM] = 0;
+
+    // ── Populate secondary indices ──
+    this._nameIndex.set(name, idx);
+
+    // Array root index: "foo[1,2]" → root "foo"
+    const bracketIdx = name.indexOf("[");
+    if (bracketIdx > 0) {
+      const root = name.substring(0, bracketIdx);
+      let arr = this._arrayRootIndex.get(root);
+      if (!arr) {
+        arr = [];
+        this._arrayRootIndex.set(root, arr);
+      }
+      arr.push(idx);
+    }
+
+    // Encoded variable index: "\0prefix\0suffix" → suffix
+    if (name.startsWith("\0")) {
+      const lastNull = name.lastIndexOf("\0");
+      if (lastNull > 0) {
+        const suffix = name.substring(lastNull + 1);
+        this._encodedIndex.set(suffix, idx);
+      }
+    }
+
+    // Causality index
+    let causalityArr = this._causalityIndex.get(causality);
+    if (!causalityArr) {
+      causalityArr = [];
+      this._causalityIndex.set(causality, causalityArr);
+    }
+    causalityArr.push(idx);
 
     return idx;
   }
@@ -367,7 +413,14 @@ export class DAEArenaBuilder {
 
   setVarRemoved(idx: number): void {
     const offset = idx * VAR_STRIDE + VAR_FLAGS;
+    const wasRemoved = (this.varData[offset]! & 32) !== 0;
     this.varData[offset] = this.varData[offset]! | 32;
+    if (!wasRemoved) {
+      this._activeVarCount--;
+      // Remove from name index so lookups don't find removed vars
+      const name = this.getVarName(idx);
+      this._nameIndex.delete(name);
+    }
   }
 
   /** Set array dimensions for a variable. */
@@ -467,6 +520,51 @@ export class DAEArenaBuilder {
   /** Check if a variable has `fixed=true`. */
   isVarFixed(idx: number): boolean {
     return this.varFixedFlags.has(idx);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // O(1) Variable Lookup API (Wave 0)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Count of non-removed variables. O(1). */
+  get activeVarCount(): number {
+    return this._activeVarCount;
+  }
+
+  /** Lookup variable index by exact name. O(1). Returns -1 if not found or removed. */
+  getVarIdxByName(name: string): number {
+    return this._nameIndex.get(name) ?? -1;
+  }
+
+  /** Check if a variable exists (and is not removed) by name. O(1). */
+  hasVar(name: string): boolean {
+    return this._nameIndex.has(name);
+  }
+
+  /** Lookup variable index by encoded suffix (for `\0prefix\0suffix` naming). O(1). Returns -1 if not found. */
+  getVarIdxByEncoded(decodedName: string): number {
+    const idx = this._encodedIndex.get(decodedName) ?? -1;
+    if (idx >= 0 && this.isVarRemoved(idx)) return -1;
+    return idx;
+  }
+
+  /** Get array element variable indices for a root name (e.g. "x" → indices of x[1], x[2], …). O(1). */
+  getArrayElementIndices(baseName: string): number[] {
+    const indices = this._arrayRootIndex.get(baseName);
+    if (!indices) return [];
+    return indices.filter((i) => !this.isVarRemoved(i));
+  }
+
+  /** Check if array elements exist for a root name. O(1). */
+  hasArrayElements(baseName: string): boolean {
+    return this._arrayRootIndex.has(baseName);
+  }
+
+  /** Get variable indices by causality. O(1). */
+  getVarIdxByCausality(causality: Causality): number[] {
+    const indices = this._causalityIndex.get(causality);
+    if (!indices) return [];
+    return indices.filter((i) => !this.isVarRemoved(i));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -719,10 +817,15 @@ export class DAEArenaBuilder {
     this._varCount = 0;
     this._eqCount = 0;
     this._exprCount = 0;
+    this._activeVarCount = 0;
     this.shapesMap.clear();
     this.aliasMap.clear();
     this.varStartAttrs.clear();
     this.varFixedFlags.clear();
+    this._nameIndex.clear();
+    this._arrayRootIndex.clear();
+    this._encodedIndex.clear();
+    this._causalityIndex.clear();
   }
 
   /** Release all buffers for GC. */
@@ -741,6 +844,10 @@ export class DAEArenaBuilder {
       this.exprData.byteLength +
       this.shapesMap.size * 80 +
       this.aliasMap.size * 40 +
+      this._nameIndex.size * 80 +
+      this._arrayRootIndex.size * 120 +
+      this._encodedIndex.size * 80 +
+      this._causalityIndex.size * 80 +
       this.interner.estimateMemoryBytes()
     );
   }

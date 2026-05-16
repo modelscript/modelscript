@@ -251,7 +251,7 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
       const baseName = ld || rd;
       if (!baseName) continue;
       const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.variables.get(baseName);
+      const v = dae.arenaGetVarByName(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
       for (let i = 0; i < size; i++) {
@@ -288,7 +288,7 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
       if (name) varValues.set(name, y[i] ?? 0);
     }
     // Also set any other DAE variables from their current values
-    for (const v of dae.variables) {
+    for (const v of dae.arenaVariables()) {
       if (!varValues.has(v.name) && v.expression) {
         // For non-state variables, use start value as approximation
         // (In a full implementation, these would be computed from the DAE)

@@ -196,7 +196,7 @@ export function extractNetlist(dae: ModelicaDAE): NetlistGraph {
  */
 function extractPlacement(dae: ModelicaDAE, componentName: string): ComponentPlacement | null {
   // Look for annotation attributes on the component variable
-  const v = dae.variables.get(componentName);
+  const v = dae.arenaGetVarByName(componentName);
   if (!v) return null;
 
   const pcbAnnotation = v.attributes.get("PCB");

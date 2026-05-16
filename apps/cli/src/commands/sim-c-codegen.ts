@@ -128,7 +128,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   L.push("  g_isInitPhase = 1;");
 
   // Set parameter/constant values
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined && v.expression) {
@@ -138,7 +138,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   }
 
   // Set start values for continuous variables
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.variability === null || v.variability === undefined) {
       const ref = vrMap.get(v.name);
       if (ref !== undefined) {

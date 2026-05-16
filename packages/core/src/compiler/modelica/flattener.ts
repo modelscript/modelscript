@@ -279,7 +279,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
             if (expr instanceof ModelicaSubscriptedExpression && expr.base instanceof ModelicaNameExpression) {
               const baseName = expr.base.name;
               if (expr.subscripts.length === 1 && expr.subscripts[0] instanceof ModelicaColonExpression) {
-                const vars = ctx.dae.variables
+                const vars = [...ctx.dae.arenaVariables()]
                   .filter((v) => v.name.startsWith(baseName + "["))
                   .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
                 if (vars.length > 0) {
@@ -291,7 +291,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
               }
             }
             if (expr instanceof ModelicaNameExpression) {
-              const vars = ctx.dae.variables
+              const vars = [...ctx.dae.arenaVariables()]
                 .filter((v) => v.name.startsWith(expr.name + "["))
                 .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
               if (vars.length > 0) {
@@ -398,7 +398,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
       ) {
         const innerFuncDef = ctx.dae.functions.find((f) => f.name === arrayArg.functionName);
         if (innerFuncDef) {
-          const outputVars = innerFuncDef.variables.filter((v) => v.causality === "output");
+          const outputVars = innerFuncDef.legacyVariables.filter((v) => v.causality === "output");
           const outVar = outputVars[0];
           if (outputVars.length === 1 && outVar) {
             const nameMatch = outVar.name.match(/^\0\[([^\]]+)\]\0/);
@@ -426,7 +426,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
                 if (sizeMatch?.[1] && sizeMatch[2]) {
                   const paramName = sizeMatch[1];
                   const sizeDim = parseInt(sizeMatch[2], 10);
-                  const inputVars = innerFuncDef.variables.filter((v) => v.causality === "input");
+                  const inputVars = innerFuncDef.legacyVariables.filter((v) => v.causality === "input");
                   const stripEncoding = (n: string) => n.replace(/^\0\[[^\]]*\]\0/, "");
                   const paramIdx = inputVars.findIndex((v) => stripEncoding(v.name) === paramName);
                   if (paramIdx >= 0 && paramIdx < arrayArg.args.length) {
@@ -480,7 +480,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
         args[1] instanceof ModelicaIntegerLiteral
       ) {
         const varName = arrayArg.name;
-        const funcVar = ctx.dae.variables.getEncoded(varName);
+        const funcVar = ctx.dae.arenaGetEncoded(varName);
         if (funcVar && funcVar.causality !== "input") {
           const nameMatch = funcVar.name.match(/^\0\[([^\]]+)\]\0/);
           if (nameMatch?.[1]) {
@@ -556,7 +556,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
       }
       // Fallback: infer shape from flattened DAE variable names
       if (arrayArg instanceof ModelicaNameExpression && ctx.dae) {
-        const matchingVars = ctx.dae.variables.getArrayElements(arrayArg.name);
+        const matchingVars = ctx.dae.arenaGetArrayElements(arrayArg.name);
 
         if (matchingVars.length > 0) {
           const dims: number[] = [];
@@ -1833,12 +1833,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       for (const pair of this.#streamConnectPairs) {
         // inStream(side1) = side2
         const inStreamName1 = `$inStream(${pair.side1})`;
-        dae.variables.push(new ModelicaRealVariable(inStreamName1, null, new Map(), null));
+        dae.arena.addVariable(inStreamName1, 0, 0, 0);
         dae.equations.push(new ModelicaSimpleEquation(AstBuilder.name(inStreamName1), AstBuilder.name(pair.side2)));
 
         // inStream(side2) = side1
         const inStreamName2 = `$inStream(${pair.side2})`;
-        dae.variables.push(new ModelicaRealVariable(inStreamName2, null, new Map(), null));
+        dae.arena.addVariable(inStreamName2, 0, 0, 0);
         dae.equations.push(new ModelicaSimpleEquation(AstBuilder.name(inStreamName2), AstBuilder.name(pair.side1)));
       }
       this.#streamConnectPairs = [];
@@ -1896,11 +1896,11 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // variable (e.g., `final parameter Boolean a.b = b`), the referenced variable
       // must also be marked final (structural parameters are transitive).
       const varByName = new Map<string, ModelicaVariable>();
-      for (const v of args[1].variables) varByName.set(v.name, v);
+      for (const v of args[1].legacyVariables) varByName.set(v.name, v);
       let changed = true;
       while (changed) {
         changed = false;
-        for (const v of args[1].variables) {
+        for (const v of args[1].legacyVariables) {
           if (!v.isFinal) continue;
           // Check if the binding expression is a simple variable reference
           const expr = v.expression;
@@ -2519,7 +2519,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             }
             if (!this.#emittedVarNames.has(dummyVar.name)) {
               this.#emittedVarNames.add(dummyVar.name);
-              args[1].variables.push(dummyVar);
+              args[1].legacyVariables.push(dummyVar);
             }
           }
         }
@@ -2562,7 +2562,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           ? (modExpr as ModelicaObject)
           : null;
 
-      const startVars = args[1].variables.length;
+      const startVars = args[1].legacyVariables.length;
       const startEqs = args[1].equations.length;
 
       const savedRedeclare = new Map(this.#redeclareContext);
@@ -2574,10 +2574,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       this.#inheritedModificationsStack.pop();
       this.#redeclareContext = savedRedeclare;
 
-      const endVars = args[1].variables.length;
+      const endVars = args[1].legacyVariables.length;
       const endEqs = args[1].equations.length;
       this.#componentContents.set(name, {
-        variables: args[1].variables.slice(startVars, endVars),
+        variables: args[1].legacyVariables.slice(startVars, endVars),
         equations: args[1].equations.slice(startEqs, endEqs),
       });
 
@@ -3165,7 +3165,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             .join(".");
           // The target variable name is relative to the current prefix
           const targetName = args[0] ? `${args[0]}.${refName}` : refName;
-          const targetVar = args[1].variables.find((v) => v.name === targetName);
+          const targetVar = args[1].legacyVariables.find((v) => v.name === targetName);
           if (targetVar) targetVar.isFinal = true;
         }
       }
@@ -3193,7 +3193,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       if (!this.#emittedVarNames.has(variable.name)) {
         this.#emittedVarNames.add(variable.name);
 
-        args[1].variables.push(variable);
+        args[1].legacyVariables.push(variable);
         // Track flow variables for flow balance post-processing.
         // Cap at 10,000 to avoid performance issues with huge array models (e.g., cells[1000,100]).
         if (node.flowPrefix === ModelicaFlow.FLOW && this.#allFlowVars.size < 10_000) {
@@ -3253,7 +3253,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     );
     if (!this.#emittedVarNames.has(variable.name)) {
       this.#emittedVarNames.add(variable.name);
-      args[1].variables.push(variable);
+      args[1].legacyVariables.push(variable);
     }
   }
 
@@ -3775,7 +3775,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         }
         if (!this.#emittedVarNames.has(variable.name)) {
           this.#emittedVarNames.add(variable.name);
-          args[1].variables.push(variable);
+          args[1].legacyVariables.push(variable);
         }
       }
       return;
@@ -3998,7 +3998,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (variable) {
           if (!this.#emittedVarNames.has(variable.name)) {
             this.#emittedVarNames.add(variable.name);
-            args[1].variables.push(variable);
+            args[1].legacyVariables.push(variable);
           }
         }
       } else if (declaredElement && typeof declaredElement.accept === "function") {
@@ -4321,7 +4321,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     while (changed && iterations < 100) {
       changed = false;
       iterations++;
-      for (const variable of dae.variables) {
+      for (const variable of dae.arenaVariables()) {
         if (
           variable.variability === ModelicaVariability.CONSTANT ||
           variable.variability === ModelicaVariability.PARAMETER
@@ -4390,7 +4390,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             // (e.g., y = {hold(z[1]), hold(z[2])} → y[1] = hold(z[1]), y[2] = hold(z[2]))
             let expanded = false;
             if (newExpr1 instanceof ModelicaNameExpression && newExpr2 instanceof ModelicaArray) {
-              const vars = dae.variables
+              const vars = [...dae.arenaVariables()]
                 .filter((v) => v.name.startsWith(newExpr1.name + "["))
                 .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
               const flat2 = [...newExpr2.flatElements];
@@ -4406,7 +4406,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
                 changed = true;
               }
             } else if (newExpr2 instanceof ModelicaNameExpression && newExpr1 instanceof ModelicaArray) {
-              const vars = dae.variables
+              const vars = [...dae.arenaVariables()]
                 .filter((v) => v.name.startsWith(newExpr2.name + "["))
                 .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
               const flat1 = [...newExpr1.flatElements];
@@ -4584,7 +4584,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         // Record array range: {expr for i in r} where r is a known array in the DAE
         if (iter.range instanceof ModelicaNameExpression || iter.range instanceof ModelicaVariable) {
           const arrayName = iter.range instanceof ModelicaVariable ? iter.range.name : iter.range.name;
-          const arrayVars = dae.variables.getArrayElements(arrayName);
+          const arrayVars = dae.arenaGetArrayElements(arrayName);
           if (arrayVars.length > 0) {
             // Extract unique first-dimension indices
             const indices = new Set<number>();
@@ -4662,7 +4662,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     } else if (expr instanceof ModelicaNameExpression) {
       if (dae && !visited.has(expr.name)) {
-        const variable = dae.variables.get(expr.name);
+        const variable = dae.arenaGetVarByName(expr.name);
         if (
           variable &&
           (variable.variability === ModelicaVariability.CONSTANT ||
@@ -4684,7 +4684,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (base instanceof ModelicaNameExpression && subscripts.every((s) => s instanceof ModelicaIntegerLiteral)) {
           const flatName = base.name + "[" + subscripts.map((s) => (s as ModelicaIntegerLiteral).value).join(",") + "]";
           if (!visited.has(flatName)) {
-            const variable = dae.variables.get(flatName);
+            const variable = dae.arenaGetVarByName(flatName);
             if (
               variable &&
               (variable.variability === ModelicaVariability.CONSTANT ||
@@ -4759,7 +4759,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           const buildNestedArray = (axisIndex: number, currentIndices: number[]): ModelicaExpression => {
             if (axisIndex >= axes.length) {
               const flatName = base.name + "[" + currentIndices.join(",") + "]";
-              const variable = dae.variables.get(flatName);
+              const variable = dae.arenaGetVarByName(flatName);
               if (
                 variable &&
                 (variable.variability === ModelicaVariability.CONSTANT ||
@@ -4833,7 +4833,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           subscripts.every((s) => s instanceof ModelicaIntegerLiteral)
         ) {
           const flatName = base.name + "[" + subscripts.map((s) => (s as ModelicaIntegerLiteral).value).join(",") + "]";
-          if (dae.variables.has(flatName)) {
+          if (dae.arenaHasVar(flatName)) {
             return AstBuilder.name(flatName);
           }
         }
@@ -4948,8 +4948,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         if (contents) {
           // Move variables and equations to the state, intersecting with DAE to avoid duplicated nested captures
           const varSet = new Set(contents.variables);
-          stateNode.variables = dae.variables.filter((v: ModelicaVariable) => varSet.has(v));
-          dae.variables.bulkRemove(varSet);
+          stateNode.variables = [...dae.arenaVariables()].filter((v: ModelicaVariable) => varSet.has(v));
+          for (const v of varSet) {
+            if (v._arenaIdx !== undefined) dae.arena.setVarRemoved(v._arenaIdx);
+          }
 
           const eqSet = new Set(contents.equations);
           stateNode.equations = dae.equations.filter((e: ModelicaEquation) => eqSet.has(e));
@@ -5160,7 +5162,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
     }
 
-    for (const v of dae.variables) {
+    for (const v of dae.arenaVariables()) {
       if (clockedVarNames.has(v.name)) {
         // Find which clock domain this variable belongs to
         for (const eq of dae.equations) {
@@ -6395,10 +6397,10 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     if (builtinDef && builtinDef.inputs.length === 1 && builtinDef.fold1 && flatArgs.length === 1) {
       const arg = flatArgs[0];
       if (arg instanceof ModelicaNameExpression) {
-        const isArrayVar = !!ctx.dae.variables.getEncoded(arg.name) || ctx.dae.variables.hasArrayElements(arg.name);
+        const isArrayVar = !!ctx.dae.arenaGetEncoded(arg.name) || ctx.dae.arenaHasArrayElements(arg.name);
         // For function body context: check if the arg is a known array-typed param
         const funcDef = ctx.dae.functions.find((f) =>
-          f.variables.some(
+          f.legacyVariables.some(
             (v) => v.name.includes("\0" + arg.name) || (v.name.includes("[") && v.name.startsWith(arg.name)),
           ),
         );
@@ -6432,7 +6434,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           if (arg instanceof ModelicaVariable && arg instanceof ModelicaIntegerVariable) return true;
           if (arg instanceof ModelicaBinaryExpression) return argIsInteger(arg.operand1) && argIsInteger(arg.operand2);
           if (arg instanceof ModelicaNameExpression) {
-            const foundVar = ctx.dae.variables.get(arg.name);
+            const foundVar = ctx.dae.arenaGetVarByName(arg.name);
             return !!foundVar && foundVar instanceof ModelicaIntegerVariable;
           }
           return false;
@@ -6644,8 +6646,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         funcDef = ctx.rootDae.functions.find((f) => f.name === functionName);
       }
       if (funcDef) {
-        const inputVars = funcDef.variables.filter((v) => v.causality === "input");
-        const funcLocalNames = new Set(funcDef.variables.map((v) => v.name));
+        const inputVars = funcDef.legacyVariables.filter((v) => v.causality === "input");
+        const funcLocalNames = new Set(funcDef.legacyVariables.map((v) => v.name));
 
         /** Check if an expression references names outside the function scope */
         const refsExternal = (expr: ModelicaExpression): boolean => {
@@ -6684,7 +6686,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
 
       if (funcDef) {
-        const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+        const inputVars = funcDef.legacyVariables.filter((v) => v.causality === "input");
 
         // Type check: verify each positional argument's type matches the expected input type
         for (let i = 0; i < Math.min(flatArgs.length, inputVars.length); i++) {
@@ -6839,7 +6841,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
               const argTypeName = inferArgType(flatArgs[i]);
               callParamSigs.push(`${argTypeName} ${paramName}`);
             }
-            const outputVars = funcDef.variables.filter((v) => v.causality === "output");
+            const outputVars = funcDef.legacyVariables.filter((v) => v.causality === "output");
             const retTypeName = outputVars.length > 0 ? varTypeName(outputVars[0]) : "()";
             const callSig = `.${functionName}<function>(${callParamSigs.join(", ")}) => ${retTypeName} in component <NO COMPONENT>`;
 
@@ -7101,7 +7103,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         ctx.dae.functions.find((f) => f.name === functionName) ||
         ctx.rootDae?.functions.find((f) => f.name === functionName);
       if (fDef) {
-        const inputVars = fDef.variables.filter((v) => v.causality === "input");
+        const inputVars = fDef.legacyVariables.filter((v) => v.causality === "input");
         let hasHigherOrderArg = false;
         const newBindings = new Map<string, ModelicaPartialFunctionExpression | string>();
         const filteredArgs: ModelicaExpression[] = [];
@@ -7208,7 +7210,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const isConstantEvaluable = (expr: ModelicaExpression): boolean => {
       if (isLiteral(expr) || isLiteralArray(expr)) return true;
       if (expr instanceof ModelicaNameExpression) {
-        const variable = ctx.dae.variables.get(expr.name);
+        const variable = ctx.dae.arenaGetVarByName(expr.name);
         if (variable) {
           const treatAsConstant =
             variable.variability === ModelicaVariability.CONSTANT ||
@@ -7256,9 +7258,9 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (!builtinDef) {
         const funcDef = ctx.dae.functions.find((f) => f.name === functionName);
         if (funcDef) {
-          const inputVars = funcDef.variables.filter((v) => v.causality === "input");
+          const inputVars = funcDef.legacyVariables.filter((v) => v.causality === "input");
           // Names that are local to the function (inputs, outputs, protected vars)
-          const funcLocalNames = new Set(funcDef.variables.map((v) => v.name));
+          const funcLocalNames = new Set(funcDef.legacyVariables.map((v) => v.name));
 
           /** Check if a default expression references any name outside the function scope */
           const referencesExternalName = (expr: ModelicaExpression): boolean => {
@@ -7688,13 +7690,13 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       if (isFinalOrConstant) {
         variable.isProtected = true;
       }
-      fnDae.variables.push(variable);
+      fnDae.legacyVariables.push(variable);
     }
 
     // Add output parameter of the record type
     const outputVar = new ModelicaRealVariable("res", null, new Map(), null, null, "output");
     outputVar.customTypeName = recordName;
-    fnDae.variables.push(outputVar);
+    fnDae.legacyVariables.push(outputVar);
 
     targetDae.functions.unshift(fnDae);
     ModelicaSyntaxFlattener.#collectingFunctions.delete(recordName);
@@ -8097,7 +8099,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Skip emitting this variable as an argument! It is statically bound.
         continue;
       }
-      fnDae.variables.push(variable);
+      fnDae.legacyVariables.push(variable);
     }
 
     // Register the function definition early to prevent infinite recursion when
@@ -8162,7 +8164,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // This walks into if-else branches to find recursive calls at tail position
         const markRecursiveReturns = (stmts: ModelicaStatement[]): void => {
           if (stmts.length === 0) return;
-          const hasOutput = fnDae.variables.some((v) => v.causality === "output");
+          const hasOutput = fnDae.legacyVariables.some((v) => v.causality === "output");
           if (!hasOutput) return;
 
           const last = stmts[stmts.length - 1];
@@ -8219,7 +8221,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           const fnName = resolved.name;
           const inputNames: string[] = [];
           let outputName: string | null = null;
-          for (const v of fnDae.variables) {
+          for (const v of fnDae.legacyVariables) {
             if (v.causality === "input") inputNames.push(v.name);
             else if (v.causality === "output" && !outputName) outputName = v.name;
           }
@@ -8357,7 +8359,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             .map((p) => p.identifier?.text ?? "")
             .join(".");
           const flatName = loopVal.name + "." + remainingParts;
-          const variable = ctx.dae.variables.get(flatName);
+          const variable = ctx.dae.arenaGetVarByName(flatName);
           if (variable) return variable;
           return AstBuilder.name(flatName);
         }
@@ -8638,8 +8640,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
         if (firstPartResolved !== null && resolved === null) {
           let existsInDAE = false;
-          if (ctx.dae && ctx.dae.variables) {
-            for (const v of ctx.dae.variables) {
+          if (ctx.dae) {
+            for (const v of ctx.dae.arenaVariables()) {
               if (v.name === name) {
                 existsInDAE = true;
                 break;
@@ -8875,7 +8877,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         if (resolvedFromFlattener.length === subscriptNodes.length) {
           const indexedName = baseName + "[" + resolvedFromFlattener.join(",") + "]";
-          const variable = ctx.dae.variables.get(indexedName);
+          const variable = ctx.dae.arenaGetVarByName(indexedName);
           if (variable) return variable;
         }
         // Try the interpreter for subscripts containing parameters (e.g. work[x] where x=4)
@@ -8893,7 +8895,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           }
         }
         const arrayPrefix = baseName + "[";
-        const arraySize = ctx.dae.variables.getArrayElements(arrayPrefix.slice(0, -1)).length;
+        const arraySize = ctx.dae.arenaGetArrayElements(arrayPrefix.slice(0, -1)).length;
         const interp = new ModelicaInterpreter(true);
         interp.endValue = arraySize > 0 ? arraySize : null;
         const resolvedIndices: number[] = [];
@@ -8925,7 +8927,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         }
         if (resolvedIndices.length === subscriptNodes.length) {
           const indexedName = baseName + "[" + resolvedIndices.join(",") + "]";
-          const variable = ctx.dae.variables.get(indexedName);
+          const variable = ctx.dae.arenaGetVarByName(indexedName);
           if (variable) return variable;
         }
         // Expand range subscripts into a ModelicaArray of individual indexed variables
@@ -8934,7 +8936,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           const elements: ModelicaExpression[] = [];
           for (const idx of rangeIndices) {
             const indexedName = baseName + "[" + [...resolvedIndices, idx].join(",") + "]";
-            const variable = ctx.dae.variables.get(indexedName);
+            const variable = ctx.dae.arenaGetVarByName(indexedName);
             if (variable) {
               elements.push(variable);
             } else {
@@ -8962,12 +8964,12 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           return AstBuilder.subscript(AstBuilder.name(name), subscripts);
         }
       }
-      const variable = ctx.dae.variables.get(name);
+      const variable = ctx.dae.arenaGetVarByName(name);
       if (variable) return variable;
       // If exact match not found, look for array element variables with this prefix
       // This handles references like x[:] or bare array name y
       const prefix = name + "[";
-      const arrayElements = ctx.dae.variables.getArrayElements(prefix.slice(0, -1));
+      const arrayElements = ctx.dae.arenaGetArrayElements(prefix.slice(0, -1));
 
       if (arrayElements.length > 0) {
         // Check if these are multi-dimensional (e.g., A[1,1], A[1,2], ...)
@@ -9022,7 +9024,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       // Check for encoded array function parameters (\0[dims]\0name) — return a
       // name expression with the bare name so the printer outputs it cleanly.
-      if (ctx.dae.variables.getEncoded(name)) {
+      if (ctx.dae.arenaGetEncoded(name)) {
         return AstBuilder.name(name);
       }
     }
@@ -9035,8 +9037,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     ctx: FlattenerContext,
   ): ModelicaEquation[] {
     const collected: ModelicaEquation[] = [];
-    for (const eq of equations) {
-      eq.accept(this, { ...ctx, dae: { ...ctx.dae, equations: collected } as ModelicaDAE });
+    const oldEquations = ctx.dae.equations;
+    ctx.dae.equations = collected;
+    try {
+      for (const eq of equations) {
+        eq.accept(this, ctx);
+      }
+    } finally {
+      ctx.dae.equations = oldEquations;
     }
     return collected;
   }
@@ -9481,7 +9489,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           let fnDef = ctx.dae.functions.find((f) => f.name === src.functionName);
           if (!fnDef && ctx.rootDae) fnDef = ctx.rootDae.functions.find((f) => f.name === src.functionName);
           if (fnDef) {
-            const outputCount = fnDef.variables.filter((v) => v.causality === "output").length;
+            const outputCount = fnDef.legacyVariables.filter((v) => v.causality === "output").length;
             if (outputCount > 1) {
               source = AstBuilder.subscript(src, [AstBuilder.int(1)]);
             }
@@ -9804,7 +9812,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
    */
   #getArrayDimensionSize(qualifiedName: string, dimIdx: number, totalDims: number, ctx: FlattenerContext): number {
     const prefix = qualifiedName + "[";
-    const arrayVars = ctx.dae.variables.getArrayElements(prefix.slice(0, -1));
+    const arrayVars = ctx.dae.arenaGetArrayElements(prefix.slice(0, -1));
     if (arrayVars.length === 0) return 0;
 
     // For 1D arrays, just return total count
@@ -10322,7 +10330,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           // Look up the function's return type from the collected definitions
           const funcDef = ctx.dae.functions.find((f) => f.name === expr.functionName);
           if (funcDef) {
-            const outputVars = funcDef.variables.filter((v) => v.causality === "output");
+            const outputVars = funcDef.legacyVariables.filter((v) => v.causality === "output");
             if (outputVars.length > 0) {
               const out = outputVars[0];
               if (out instanceof ModelicaStringVariable) return "String";
@@ -10384,14 +10392,14 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       }
       if (lhsName) {
         const rootName = lhsName;
-        const hasIndexedVars = ctx.dae.variables.hasArrayElements(rootName);
+        const hasIndexedVars = ctx.dae.arenaHasArrayElements(rootName);
         isScalarLHS = !hasIndexedVars;
         if (isScalarLHS) {
           // The LHS is a scalar — this array RHS likely came from a multi-return function
           expression2 = expression2.elements[0] ?? expression2;
         } else {
           // LHS is an array name, RHS is a literal array — expand into per-element equations
-          const arrayVars = ctx.dae.variables
+          const arrayVars = [...ctx.dae.arenaVariables()]
             .filter((v) => v.name.startsWith(rootName + "["))
             .sort((a: any, b: any) => a.name.localeCompare(b.name));
           const flatRhs = [...expression2.flatElements];
@@ -10435,7 +10443,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           // Record constructor expansion only happens in binding contexts (parameter declarations),
           // not in equation or algorithm sections.
 
-          const outputs = funcDef.variables.filter((v) => v.causality === "output");
+          const outputs = funcDef.legacyVariables.filter((v) => v.causality === "output");
           if (outputs.length > 1) {
             if (!(expression1 instanceof ModelicaTupleExpression)) {
               // Implicit tuple expansion: b = func() -> (b, _, _) = func()
@@ -10516,7 +10524,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         // Check if the function definition has only scalar inputs
         const funcDef = ctx.dae.functions.find((f) => f.name === rhsCall.functionName);
         const hasScalarInputsOnly = funcDef
-          ? funcDef.variables.filter((v) => v.causality === "input").every((v) => !v.name.includes("["))
+          ? funcDef.legacyVariables.filter((v) => v.causality === "input").every((v) => !v.name.includes("["))
           : false;
         const argArrays = rhsCall.args.map((arg) => (arg instanceof ModelicaArray ? [...arg.flatElements] : null));
         const hasArrayArgs = argArrays.some((a) => a !== null);
@@ -10545,7 +10553,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
                           return e.expression;
                         }
                         if (e instanceof ModelicaNameExpression) {
-                          const v = ctx.dae.variables.get(e.name);
+                          const v = ctx.dae.arenaGetVarByName(e.name);
                           if (v?.expression instanceof ModelicaIntegerLiteral) return v.expression;
                         }
                         if (e instanceof ModelicaUnaryExpression) {
@@ -10684,7 +10692,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (expr instanceof ModelicaSubscriptedExpression && expr.base instanceof ModelicaNameExpression) {
           const baseName = expr.base.name;
           if (expr.subscripts.length === 1 && expr.subscripts[0] instanceof ModelicaColonExpression) {
-            const vars = ctx.dae.variables
+            const vars = [...ctx.dae.arenaVariables()]
               .filter((v) => v.name.startsWith(baseName + "["))
               .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
             if (vars.length > 0) {
@@ -10699,7 +10707,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       };
       const expandNameToArray = (expr: ModelicaExpression): ModelicaArray | null => {
         if (expr instanceof ModelicaNameExpression) {
-          const vars = ctx.dae.variables
+          const vars = [...ctx.dae.arenaVariables()]
             .filter((v) => v.name.startsWith(expr.name + "["))
             .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
           if (vars.length > 0) {
@@ -10786,11 +10794,11 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         if (!(e instanceof ModelicaFunctionCallExpression)) return false;
         const fd = ctx.dae.functions.find((f) => f.name === e.functionName);
         if (!fd) return false;
-        const outVar = fd.variables.find((v) => v.causality === "output");
+        const outVar = fd.legacyVariables.find((v) => v.causality === "output");
         return !!(outVar?.customTypeName && e.functionName === outVar.customTypeName);
       };
       const isArrayName = (e: ModelicaExpression): boolean =>
-        e instanceof ModelicaNameExpression && ctx.dae.variables.hasArrayElements(e.name);
+        e instanceof ModelicaNameExpression && ctx.dae.arenaHasArrayElements(e.name);
       if (!isRecordConstructorCall(expression1) && !isRecordConstructorCall(expression2)) {
         if (isRealTyped(expression1, ctx.dae) && !isArrayName(expression2))
           expression2 = coerceToReal(expression2, ctx.dae) ?? expression2;
@@ -10801,7 +10809,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
       // Array mode checks
       const isArrayTarget = (expr: ModelicaExpression): boolean => {
         if (expr instanceof ModelicaNameExpression) {
-          const foundVar = ctx.dae.variables.get(expr.name);
+          const foundVar = ctx.dae.arenaGetVarByName(expr.name);
           return !!foundVar && foundVar.arrayDimensions != null;
         }
         if (expr instanceof ModelicaVariable) {
@@ -11133,7 +11141,7 @@ function castToReal(expression: ModelicaExpression | null): ModelicaExpression |
 function expressionHasNameRefs(expr: ModelicaExpression, dae: ModelicaDAE): boolean {
   if (expr instanceof ModelicaNameExpression) {
     // Check if this name refers to a parameter variable in the DAE
-    const v = dae.variables.get(expr.name);
+    const v = dae.arenaGetVarByName(expr.name);
     if (v && v.variability === ModelicaVariability.PARAMETER) return true;
     // If not found as a DAE variable, it's likely a constant or unresolved — skip
     return false;
@@ -11184,12 +11192,12 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
     } else if (builtinType) {
       return AstBuilder.call("/*Real*/", [expression]);
     } else {
-      const variable = dae.variables.get(expression.name);
+      const variable = dae.arenaGetVarByName(expression.name);
       if (variable instanceof ModelicaRealVariable) {
         // Already Real-typed, no coercion needed
       } else if (!variable) {
         // Check for array name references — e.g., "B" when "B[1,1]", "B[1,2]" etc. exist
-        const arrayEls = dae.variables.getArrayElements(expression.name);
+        const arrayEls = dae.arenaGetArrayElements(expression.name);
         const arrayEl = arrayEls.length > 0 ? arrayEls[0] : undefined;
         if (arrayEl instanceof ModelicaRealVariable) {
           // Array of Real variables — no coercion needed
@@ -11199,7 +11207,7 @@ function coerceToReal(expression: ModelicaExpression | null, dae?: ModelicaDAE):
           // Check for encoded array function parameters (e.g., positionvector[1] → \0[3]\0positionvector)
           const bracketIdx = expression.name.indexOf("[");
           const baseName = bracketIdx >= 0 ? expression.name.substring(0, bracketIdx) : expression.name;
-          const encodedMatch = dae.variables.getEncoded(baseName);
+          const encodedMatch = dae.arenaGetEncoded(baseName);
           if (encodedMatch instanceof ModelicaRealVariable) {
             // Element of a Real array, no coercion needed
           } else {
@@ -11262,15 +11270,15 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     return isRealTyped(expr.operand1, dae) || isRealTyped(expr.operand2, dae);
   if (expr instanceof ModelicaUnaryExpression) return isRealTyped(expr.operand, dae);
   if (expr instanceof ModelicaNameExpression && dae) {
-    const exactMatch = dae.variables.get(expr.name);
+    const exactMatch = dae.arenaGetVarByName(expr.name);
     if (exactMatch instanceof ModelicaRealVariable && !exactMatch.customTypeName) return true;
 
-    const arrayEls = dae.variables.getArrayElements(expr.name);
+    const arrayEls = dae.arenaGetArrayElements(expr.name);
     const arrayElement = arrayEls.length > 0 ? arrayEls[0] : undefined;
     if (arrayElement instanceof ModelicaRealVariable && !arrayElement.customTypeName) return true;
 
     // Check for encoded array function parameters (\0[dims]\0name)
-    const encodedMatch = dae.variables.getEncoded(expr.name);
+    const encodedMatch = dae.arenaGetEncoded(expr.name);
     if (encodedMatch instanceof ModelicaRealVariable && !encodedMatch.customTypeName) return true;
   }
   if (expr instanceof ModelicaNameExpression && expr.name === "time") return true;
@@ -11307,10 +11315,10 @@ function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     return isIntegerTyped(expr.operand1, dae) && isIntegerTyped(expr.operand2, dae);
   if (expr instanceof ModelicaUnaryExpression) return isIntegerTyped(expr.operand, dae);
   if (expr instanceof ModelicaNameExpression && dae) {
-    const exactMatch = dae.variables.get(expr.name);
+    const exactMatch = dae.arenaGetVarByName(expr.name);
     if (exactMatch instanceof ModelicaIntegerVariable) return true;
 
-    const intArrayEls = dae.variables.getArrayElements(expr.name);
+    const intArrayEls = dae.arenaGetArrayElements(expr.name);
     const arrayElement = intArrayEls.length > 0 ? intArrayEls[0] : undefined;
     if (arrayElement instanceof ModelicaIntegerVariable) return true;
   }
@@ -11352,7 +11360,7 @@ function isBooleanTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
     return false;
   }
   if (expr instanceof ModelicaNameExpression && dae) {
-    const exactMatch = dae.variables.get(expr.name);
+    const exactMatch = dae.arenaGetVarByName(expr.name);
     if (exactMatch instanceof ModelicaBooleanVariable) return true;
   }
   if (expr instanceof ModelicaFunctionCallExpression) {
@@ -11437,7 +11445,7 @@ function canonicalizeBinaryExpression(
   // Look up from the DAE since the operands are ModelicaNameExpressions at this point.
   if (dae && operand1 instanceof ModelicaNameExpression) {
     const op1Name = operand1.name;
-    const encoded = dae.variables.getEncoded(op1Name);
+    const encoded = dae.arenaGetEncoded(op1Name);
     if (encoded) {
       const expanded = expandArrayVariable(encoded);
       if (expanded) operand1 = expanded;
@@ -11445,7 +11453,7 @@ function canonicalizeBinaryExpression(
   }
   if (dae && operand2 instanceof ModelicaNameExpression) {
     const op2Name = operand2.name;
-    const encoded = dae.variables.getEncoded(op2Name);
+    const encoded = dae.arenaGetEncoded(op2Name);
     if (encoded) {
       const expanded = expandArrayVariable(encoded);
       if (expanded) operand2 = expanded;
@@ -11930,7 +11938,7 @@ function wrapIntegerAsReal(expr: ModelicaExpression, dae?: ModelicaDAE): Modelic
     return AstBuilder.call("/*Real*/", [expr]);
   }
   if (dae && expr instanceof ModelicaNameExpression) {
-    const variable = dae.variables.get(expr.name);
+    const variable = dae.arenaGetVarByName(expr.name);
     if (variable instanceof ModelicaIntegerVariable) {
       return AstBuilder.call("/*Real*/", [expr]);
     }

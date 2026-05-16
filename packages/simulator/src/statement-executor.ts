@@ -483,9 +483,9 @@ export function executeFunction(
 
   try {
     // Partition variables by role
-    const inputVars = funcDae.variables.filter((v) => v.causality === "input");
-    const outputVars = funcDae.variables.filter((v) => v.causality === "output");
-    const otherVars = funcDae.variables.filter((v) => v.causality !== "input" && v.causality !== "output");
+    const inputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "input");
+    const outputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "output");
+    const otherVars = [...funcDae.arenaVariables()].filter((v) => v.causality !== "input" && v.causality !== "output");
 
     // Create a fresh evaluator scope for the function body
     const funcEnv = new Map<string, number>();
@@ -602,9 +602,9 @@ export async function executeFunctionAsync(
   }
 
   try {
-    const inputVars = funcDae.variables.filter((v) => v.causality === "input");
-    const outputVars = funcDae.variables.filter((v) => v.causality === "output");
-    const otherVars = funcDae.variables.filter((v) => v.causality !== "input" && v.causality !== "output");
+    const inputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "input");
+    const outputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "output");
+    const otherVars = [...funcDae.arenaVariables()].filter((v) => v.causality !== "input" && v.causality !== "output");
 
     const funcEnv = new Map<string, number>();
     const funcEvaluator = new ExpressionEvaluator(funcEnv);

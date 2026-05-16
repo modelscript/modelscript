@@ -615,7 +615,7 @@ export class ModelicaCalibrator {
    * Extract the default value of a parameter from the DAE.
    */
   private extractDefaultValue(name: string): number {
-    for (const v of this.dae.variables) {
+    for (const v of this.dae.arenaVariables()) {
       if (v.name === name) {
         if (v.expression instanceof ModelicaRealLiteral) return v.expression.value;
         if (v.expression instanceof ModelicaIntegerLiteral) return v.expression.value;

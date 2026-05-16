@@ -1951,24 +1951,27 @@ ModelicaLinter.register(
   {
     visitClassInstance(node: ModelicaClassInstance, diagnosticsCallback: DiagnosticsCallbackWithoutResource): void {
       // Check for duplicate elements in the same scope (declared locally)
-      const declaredElements = node.declaredElements;
-      const seenNames = new Set<string>();
-      for (const element of declaredElements) {
-        // Only check components, classes, and enum literals. Ignore equations or other nameless elements.
-        const isComponentOrClass = element.isComponentInstance || element.isClassInstance;
-        const isEnumLiteral = element.kind === "enumeration_literal" || element.classKind === "enumeration_literal";
-        if (!isComponentOrClass && !isEnumLiteral) continue;
+      // Skip array class instances as their declaredElements are just repeated array entries
+      if (!("shape" in node) || (node as any).shape?.length === 0) {
+        const declaredElements = node.declaredElements;
+        const seenNames = new Set<string>();
+        for (const element of declaredElements) {
+          // Only check components, classes, and enum literals. Ignore equations or other nameless elements.
+          const isComponentOrClass = element.isComponentInstance || element.isClassInstance;
+          const isEnumLiteral = element.kind === "enumeration_literal" || element.classKind === "enumeration_literal";
+          if (!isComponentOrClass && !isEnumLiteral) continue;
 
-        if (!element.name) continue;
-        if (seenNames.has(element.name)) {
-          diagnosticsCallback(
-            ModelicaErrorCode.DUPLICATE_ELEMENT.severity,
-            ModelicaErrorCode.DUPLICATE_ELEMENT.code,
-            ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name),
-            element.abstractSyntaxNode ?? null,
-          );
-        } else {
-          seenNames.add(element.name);
+          if (!element.name) continue;
+          if (seenNames.has(element.name)) {
+            diagnosticsCallback(
+              ModelicaErrorCode.DUPLICATE_ELEMENT.severity,
+              ModelicaErrorCode.DUPLICATE_ELEMENT.code,
+              ModelicaErrorCode.DUPLICATE_ELEMENT.message(element.name),
+              element.abstractSyntaxNode ?? null,
+            );
+          } else {
+            seenNames.add(element.name);
+          }
         }
       }
 
@@ -3332,10 +3335,10 @@ ModelicaLinter.register(ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH, {
 
       // Walk the binding expression to find component references
       const referencedNames = collectComponentRefs(bindingExpr);
-      for (const refName of referencedNames) {
-        // Look up the referenced component in the same class
-        const referenced = node.resolveSimpleName(refName);
-        if (!referenced || !(referenced instanceof ModelicaComponentInstance)) continue;
+      for (const parts of referencedNames) {
+        // Look up the referenced component using the full reference path
+        const referenced = node.resolveComponentReference(parts);
+        if (!referenced || !(referenced as any).isComponentInstance) continue;
         const refVariability = (referenced as any).variability as string | undefined;
         // Default variability for components without explicit prefix is "continuous"
         const effectiveRefVariability = refVariability ?? "continuous";
@@ -3363,16 +3366,18 @@ ModelicaLinter.register(ModelicaErrorCode.VARIABILITY_BINDING_MISMATCH, {
   },
 });
 
-/** Recursively collect top-level component reference names from an AST expression. */
-function collectComponentRefs(expr: any): string[] {
+/** Recursively collect component reference name parts from an AST expression. */
+function collectComponentRefs(expr: any): string[][] {
   if (!expr) return [];
-  const refs: string[] = [];
+  const refs: string[][] = [];
   const typeStr = expr["@type"];
   if (typeStr === "ComponentReference" || typeStr === "component_reference" || (expr.parts && !expr.operand1)) {
     const parts = expr.parts;
     if (parts && parts.length > 0) {
-      const name = parts[0]?.identifier?.text;
-      if (name) refs.push(name);
+      const names = parts
+        .map((p: any) => p?.identifier?.text ?? p?.name?.text ?? p?.text ?? p)
+        .filter((n: any) => typeof n === "string");
+      if (names.length > 0) refs.push(names);
     }
   } else if (expr.operand1 && expr.operand2) {
     refs.push(...collectComponentRefs(expr.operand1));

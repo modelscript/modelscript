@@ -233,7 +233,7 @@ export function buildSparseAdJacobian(
       const baseName = ld || rd;
       if (!baseName) continue;
       const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.variables.get(baseName);
+      const v = dae.arenaGetVarByName(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
 
@@ -359,7 +359,7 @@ export function buildSparseAdJacobian(
       const name = stateNames[i];
       if (name) varValues.set(name, y[i] ?? 0);
     }
-    for (const v of dae.variables) {
+    for (const v of dae.arenaVariables()) {
       if (!varValues.has(v.name) && v.expression) {
         varValues.set(v.name, 0);
       }

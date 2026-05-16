@@ -156,7 +156,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
   /** Enumeration type definitions: typeName → literals. */
   const enumTypes = new Map<string, { name: string; description: string | null }[]>();
 
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     const sv = mapVariable(v, valueRef++);
     scalarVariables.push(sv);
 
@@ -193,7 +193,7 @@ export function generateFmu(dae: ModelicaDAE, options: FmuOptions, stateVars?: S
 
   // ── Derivative variables ──
   // For each state variable x, add der(x) as a derivative output
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (states.has(v.name)) {
       const stateRef = stateVarRefs.get(v.name);
       const derSv: FmiScalarVariable = {

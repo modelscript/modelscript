@@ -102,7 +102,7 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   const discreteVarNames = new Set<string>();
   knowns.add("time");
 
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     // Parameters and constants are always known
     if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
       knowns.add(v.name);
@@ -178,7 +178,7 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   }
 
   // Expand array unknowns
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (v.arrayDimensions && v.arrayDimensions.length > 0 && unknowns.has(v.name)) {
       const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
       for (let i = 0; i < size; i++) unknowns.add(`${v.name}[${i + 1}]`);

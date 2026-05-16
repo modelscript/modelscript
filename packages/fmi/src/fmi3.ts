@@ -222,7 +222,7 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
   const states = stateVars ?? new Set<string>();
   const enumTypes = new Map<string, { name: string; description: string | null }[]>();
 
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     const totalSize = v.arrayDimensions ? v.arrayDimensions.reduce((a, b) => a * b, 1) : 1;
     const fv = mapVariable3(v, valueRef);
     valueRef += totalSize;
@@ -259,7 +259,7 @@ export function generateFmi3(dae: ModelicaDAE, options: Fmi3Options, stateVars?:
   const aliasMap = detectAliases3(dae, variables);
 
   // ── Derivative variables ──
-  for (const v of dae.variables) {
+  for (const v of dae.arenaVariables()) {
     if (states.has(v.name)) {
       const stateRef = stateVarRefs.get(v.name);
       const totalSize = v.arrayDimensions ? v.arrayDimensions.reduce((a, b) => a * b, 1) : 1;

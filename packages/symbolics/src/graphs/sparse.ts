@@ -75,7 +75,7 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
       const baseName = ld || rd;
       if (!baseName) continue;
       const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.variables.get(baseName);
+      const v = dae.arenaGetVarByName(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
       if (baseName.includes("[") || size === 1) {
@@ -139,7 +139,7 @@ export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; stat
       const baseName = ld || rd;
       if (!baseName) continue;
       const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.variables.get(baseName);
+      const v = dae.arenaGetVarByName(baseName);
       const dims = v?.arrayDimensions ?? [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
       if (baseName.includes("[") || size === 1) {
