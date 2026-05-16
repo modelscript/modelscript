@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
+import { Causality, DAEArenaBuilder, EqKind, Variability, VarType } from "@modelscript/polyglot";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
 
@@ -96,6 +97,12 @@ export interface SourceLocation {
  * The backing array preserves insertion order for serialization and test output.
  */
 export class SymbolTable {
+  private _arena?: DAEArenaBuilder | undefined;
+
+  constructor(arena?: DAEArenaBuilder) {
+    this._arena = arena;
+  }
+
   /** Ordered backing array — preserved for serialization / iteration. */
   private _items: ModelicaVariable[] = [];
 
@@ -139,6 +146,56 @@ export class SymbolTable {
   push(variable: ModelicaVariable): void {
     this._items.push(variable);
     this._indexVariable(variable);
+
+    if (this._arena) {
+      let type = VarType.Real;
+      if (variable.constructor.name === "ModelicaIntegerVariable") type = VarType.Integer;
+      else if (variable.constructor.name === "ModelicaBooleanVariable") type = VarType.Boolean;
+      else if (variable.constructor.name === "ModelicaStringVariable") type = VarType.String;
+      else if (variable.constructor.name === "ModelicaEnumerationVariable") type = VarType.Enumeration;
+      else if (variable.constructor.name === "ModelicaClockVariable") type = VarType.Clock;
+
+      let variability = Variability.Continuous;
+      if (variable.variability === "discrete") variability = Variability.Discrete;
+      else if (variable.variability === "parameter") variability = Variability.Parameter;
+      else if (variable.variability === "constant") variability = Variability.Constant;
+
+      let causality = Causality.Local;
+      if (variable.causality === "input") causality = Causality.Input;
+      else if (variable.causality === "output") causality = Causality.Output;
+
+      let flags = 0;
+      const v = variable as unknown as {
+        isState?: boolean;
+        isAlias?: boolean;
+        isFlow?: boolean;
+        start?: { kind: string; value: number | boolean } | number | boolean;
+      };
+      if (variable.isProtected) flags |= 1;
+      if (v.isState) flags |= 2;
+      if (v.isAlias) flags |= 4;
+      if (v.isFlow) flags |= 8;
+
+      let startValue = 0.0;
+      const expr = variable.expression ?? (variable.attributes ? variable.attributes.get("start") : undefined);
+      if (expr != null) {
+        if (typeof expr === "number") startValue = expr;
+        else if (typeof expr === "boolean") startValue = expr ? 1.0 : 0.0;
+        else {
+          const s = expr as unknown as { constructor: { name: string }; value: number | boolean };
+          if (s.constructor.name === "ModelicaRealLiteral") startValue = s.value as number;
+          else if (s.constructor.name === "ModelicaIntegerLiteral") startValue = s.value as number;
+          else if (s.constructor.name === "ModelicaBooleanLiteral") startValue = s.value ? 1.0 : 0.0;
+        }
+      }
+
+      const idx = this._arena.addVariable(variable.name, type, variability, causality, startValue, flags);
+
+      // Mirror array dimensions if applicable
+      if (variable.arrayDimensions && variable.arrayDimensions.length > 0) {
+        this._arena.setVarShape(idx, variable.arrayDimensions);
+      }
+    }
   }
 
   remove(variable: ModelicaVariable): void {
@@ -304,7 +361,11 @@ export class ModelicaDAE {
   initialAlgorithms: ModelicaStatement[][] = [];
   /** Algebraic loops (SCCs) detected during flattening. */
   algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
-  variables: SymbolTable = new SymbolTable();
+  variables: SymbolTable;
+
+  /** Arena-backed builder populated during dual-write phase. */
+  arena: DAEArenaBuilder;
+
   stateMachines: ModelicaStateMachine[] = [];
   /** Clock partitions identified by the synchronous clock inference pass. */
   clockPartitions: ModelicaClockPartition[] = [];
@@ -354,10 +415,39 @@ export class ModelicaDAE {
   constructor(name: string, description?: string | null) {
     this.name = name;
     this.description = description ?? null;
+    this.arena = new DAEArenaBuilder(undefined, name, this.description ?? "");
+    this.variables = new SymbolTable(this.arena);
+
+    // Override equations array push to intercept dual-write hooks
+    const originalPush = this.equations.push.bind(this.equations);
+    this.equations.push = (...eqs) => {
+      for (const eq of eqs) {
+        this._mirrorEquationToArena(eq);
+      }
+      return originalPush(...eqs);
+    };
+  }
+
+  private _mirrorEquationToArena(eq: ModelicaEquation): void {
+    if (this.arena) {
+      let kind = EqKind.Simple;
+      if (eq.constructor.name === "ModelicaForEquation") kind = EqKind.For;
+      else if (eq.constructor.name === "ModelicaIfEquation") kind = EqKind.If;
+      else if (eq.constructor.name === "ModelicaWhenEquation") kind = EqKind.When;
+      else if (eq.constructor.name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
+      else if (eq.constructor.name === "ModelicaArrayEquation") kind = EqKind.Array;
+
+      // Currently expressions are not fully mirrored, we just use 0 as dummy ExprIds
+      this.arena.addEquation(kind, 0, 0);
+    }
   }
 
   accept<R, A>(visitor: IModelicaDAEVisitor<R, A>, argument?: A): R {
     return visitor.visitDAE(this, argument);
+  }
+
+  addEquation(eq: ModelicaEquation): void {
+    this.equations.push(eq);
   }
 
   get hash(): string {

@@ -48,7 +48,7 @@ import { StringInterner } from "./interner.js";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Variable type tag. */
-export const enum VarType {
+export enum VarType {
   Real = 0,
   Integer = 1,
   Boolean = 2,
@@ -58,7 +58,7 @@ export const enum VarType {
 }
 
 /** Variable variability. */
-export const enum Variability {
+export enum Variability {
   Continuous = 0,
   Discrete = 1,
   Parameter = 2,
@@ -66,14 +66,14 @@ export const enum Variability {
 }
 
 /** Variable causality. */
-export const enum Causality {
+export enum Causality {
   Local = 0,
   Input = 1,
   Output = 2,
 }
 
 /** Equation kind tag. */
-export const enum EqKind {
+export enum EqKind {
   Simple = 0,
   Array = 1,
   For = 2,
@@ -86,7 +86,7 @@ export const enum EqKind {
 }
 
 /** Expression kind tag. */
-export const enum ExprKind {
+export enum ExprKind {
   /** Variable reference: data1 = StringId of the variable name. */
   Name = 0,
   /** Integer literal: data1 = integer value. */
@@ -122,7 +122,7 @@ export const enum ExprKind {
 }
 
 /** Binary operator tag. */
-export const enum BinOp {
+export enum BinOp {
   Add = 0,
   Sub = 1,
   Mul = 2,
@@ -144,7 +144,7 @@ export const enum BinOp {
 }
 
 /** Unary operator tag. */
-export const enum UnaryOp {
+export enum UnaryOp {
   Negate = 0,
   Not = 1,
 }
