@@ -22,7 +22,9 @@
     "./verifier": "./dist/src/verifier.js",
     "./interner": "./dist/src/interner.js",
     "./arena": "./dist/src/arena.js",
-    "./line-index": "./dist/src/line-index.js"
+    "./line-index": "./dist/src/line-index.js",
+    "./symbol-arena": "./dist/src/symbol-arena.js",
+    "./memo-keys": "./dist/src/memo-keys.js"
   },
   "main": "dist/src/index.js",
   "directories": {
