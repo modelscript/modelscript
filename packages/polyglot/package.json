@@ -24,7 +24,8 @@
     "./arena": "./dist/src/arena.js",
     "./line-index": "./dist/src/line-index.js",
     "./symbol-arena": "./dist/src/symbol-arena.js",
-    "./memo-keys": "./dist/src/memo-keys.js"
+    "./memo-keys": "./dist/src/memo-keys.js",
+    "./dae-arena": "./dist/src/dae-arena.js"
   },
   "main": "dist/src/index.js",
   "directories": {

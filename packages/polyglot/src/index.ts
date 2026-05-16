@@ -17,6 +17,7 @@ import type {
 export { Arena, StructArena } from "./arena.js";
 export * from "./cache-store.js";
 export * from "./constraint-extractor.js";
+export { BinOp, Causality, DAEArenaBuilder, EqKind, ExprKind, UnaryOp, Variability, VarType } from "./dae-arena.js";
 export { FederatedQueryCacheStore } from "./federated-cache-store.js";
 export { IndexedDBQueryCacheStore } from "./indexeddb-cache-store.js";
 export { NULL_STRING_ID, StringInterner, type StringId } from "./interner.js";
