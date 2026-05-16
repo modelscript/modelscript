@@ -30,6 +30,17 @@ export interface ModelicaCompilerOptions {
   fmiVersion?: "2.0" | "3.0";
   solver?: InitSolverConfig;
   canonicalizeEquations?: boolean;
+  /**
+   * Batch mode: disables Salsa memoization and triggers manual GC between
+   * compilation phases (parse → index → flatten).
+   *
+   * This should be enabled implicitly by one-shot execution environments
+   * (like the CLI or CI pipelines) to stay within V8 heap limits. It should
+   * NOT be used by long-lived processes (LSP, Web IDE) which rely on the cache.
+   *
+   * Requires Node.js to be started with `--expose-gc` for GC to take effect.
+   */
+  batch?: boolean;
 }
 
 export class ModelicaLibrary {
@@ -111,6 +122,24 @@ export class Context extends Scope {
 
     this.#queryEngine = createModelicaQueryEngine(this.#workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
     this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
+  }
+
+  /**
+   * Create a Context optimized for batch (one-shot) compilation.
+   * Disables Salsa memoization to minimize memory usage.
+   */
+  static createBatch(fs: FileSystem): Context {
+    return new Context(fs, undefined, 0);
+  }
+
+  /**
+   * Trigger a manual GC pass if `--expose-gc` is enabled.
+   * No-op in environments without `globalThis.gc`.
+   */
+  static gcBetweenPhases(): void {
+    if (typeof globalThis.gc === "function") {
+      globalThis.gc();
+    }
   }
 
   readonly hash = "root";
@@ -301,6 +330,11 @@ export class Context extends Scope {
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);
+
+    // In batch mode, trigger GC after flattening to release intermediate allocations
+    if (options?.batch) {
+      Context.gcBetweenPhases();
+    }
 
     // Optimization classes use the equations unmodified, do not apply BLT sorting/solving.
     if (dae.classKind !== "optimization") {

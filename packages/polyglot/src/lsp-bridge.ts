@@ -101,6 +101,17 @@ export class PositionIndex {
     return { line: lo, character: offset - this.lineStarts[lo] };
   }
 
+  /** Convert an LSP line/character position back to a byte offset. */
+  positionToOffset(line: number, character: number): number {
+    if (line < 0 || line >= this.lineStarts.length) return 0;
+    return this.lineStarts[line]! + character;
+  }
+
+  /** Total number of lines in the source. */
+  get lineCount(): number {
+    return this.lineStarts.length;
+  }
+
   rangeFromBytes(startByte: number, endByte: number): LSPRange {
     return {
       start: this.offsetToPosition(startByte),
@@ -555,13 +566,31 @@ export class LSPBridge {
   // Helpers
   // =========================================================================
 
+  /**
+   * Get the SymbolId list for the current document.
+   * Uses the symbolsByResource index when available (O(1) lookup),
+   * falling back to a full scan for older indices that lack it.
+   */
+  private getDocumentSymbolIds(): Iterable<SymbolId> {
+    if (this.index.symbolsByResource) {
+      return this.index.symbolsByResource.get(this.documentUri) ?? [];
+    }
+    // Fallback: filter from all symbols (legacy path)
+    const ids: SymbolId[] = [];
+    for (const entry of this.index.symbols.values()) {
+      if (entry.resourceId === this.documentUri) ids.push(entry.id);
+    }
+    return ids;
+  }
+
   /** Find the narrowest symbol entry containing a byte offset. */
   private findEntryAtOffset(offset: number): SymbolEntry | null {
     let best: SymbolEntry | null = null;
     let bestSize = Infinity;
 
-    for (const entry of this.index.symbols.values()) {
-      if (entry.resourceId !== this.documentUri) continue;
+    for (const id of this.getDocumentSymbolIds()) {
+      const entry = this.index.symbols.get(id);
+      if (!entry) continue;
       if (entry.startByte <= offset && offset < entry.endByte) {
         const size = entry.endByte - entry.startByte;
         if (size < bestSize) {
@@ -583,8 +612,9 @@ export class LSPBridge {
     let best: SymbolEntry | null = null;
     let bestSize = Infinity;
 
-    for (const entry of this.index.symbols.values()) {
-      if (entry.resourceId !== this.documentUri) continue;
+    for (const id of this.getDocumentSymbolIds()) {
+      const entry = this.index.symbols.get(id);
+      if (!entry) continue;
       if (entry.startByte <= offset && offset <= entry.endByte) {
         const size = entry.endByte - entry.startByte;
         if (size < bestSize) {
