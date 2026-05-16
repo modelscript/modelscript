@@ -230,6 +230,7 @@ export class DAEArenaBuilder {
   private varEnumerationLiterals = new Map<number, any[]>();
   private varFlowPrefixes = new Map<number, string>();
   private varCadAnnotations = new Map<number, string>();
+  private varExpressions = new Map<number, unknown>();
 
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
@@ -424,6 +425,14 @@ export class DAEArenaBuilder {
   }
   setVarCadAnnotation(idx: number, annotation: string): void {
     this.varCadAnnotations.set(idx, annotation);
+  }
+
+  setVarExpression(idx: number, expr: unknown): void {
+    this.varExpressions.set(idx, expr);
+  }
+
+  getVarExpression(idx: number): unknown | undefined {
+    return this.varExpressions.get(idx);
   }
 
   // ─────────────────────────────────────────────────────────────────────────

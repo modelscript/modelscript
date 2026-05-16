@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
+import { Variability } from "@modelscript/polyglot";
 import {
   ExpressionEvaluator,
   ModelicaArrayEquation,
@@ -35,6 +36,7 @@ import {
   ModelicaWhenEquation,
   egraphSimplify,
   isolateSymbolically,
+  materializeVariable,
   pantelidesIndexReduction,
 } from "@modelscript/symbolics";
 import { type BdfOptions, bdf as bdfSolver } from "./bdf.js";
@@ -1467,15 +1469,20 @@ export class ModelicaSimulator {
     const unresolved: { name: string; expr: ModelicaExpression }[] = [];
 
     // First pass: resolve all directly evaluable parameters
-    for (const v of this.dae.variables) {
-      if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
-        if (v.expression) {
-          const val = evaluator.evaluate(v.expression);
+    const arena = this.dae.arena;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const variability = arena.getVarVariability(i);
+      if (variability === Variability.Parameter || variability === Variability.Constant) {
+        const expr = arena.getVarExpression(i);
+        const name = arena.getVarName(i);
+        if (expr) {
+          const val = evaluator.evaluate(expr as ModelicaExpression);
           if (val !== null) {
-            this.parameters.set(v.name, val);
-            evaluator.env.set(v.name, val);
+            this.parameters.set(name, val);
+            evaluator.env.set(name, val);
           } else {
-            unresolved.push({ name: v.name, expr: v.expression });
+            unresolved.push({ name: name, expr: expr as ModelicaExpression });
           }
         }
       }
@@ -1573,10 +1580,16 @@ export class ModelicaSimulator {
   public getParameterInfo(): ParameterInfo[] {
     const evaluator = new ExpressionEvaluator(new Map(this.parameters));
     const infos: ParameterInfo[] = [];
-    for (const v of this.dae.variables) {
-      if (v.variability !== ModelicaVariability.PARAMETER) continue;
-      const defaultValue = this.parameters.get(v.name);
+    const arena = this.dae.arena;
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      if (arena.getVarVariability(i) !== Variability.Parameter) continue;
+      const name = arena.getVarName(i);
+      const defaultValue = this.parameters.get(name);
       if (defaultValue === undefined) continue;
+
+      // Materialize variable to access AST nodes for min/max
+      const v = materializeVariable(arena, i);
 
       let type: ParameterInfo["type"] = "real";
       let step = 0.1;
@@ -1679,9 +1692,12 @@ export class ModelicaSimulator {
     evaluator.env.set("time", time);
 
     // Pre-populate all DAE variables with 0 to avoid null cascades
-    for (const v of this.dae.variables) {
-      if (!evaluator.env.has(v.name)) {
-        evaluator.env.set(v.name, 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!evaluator.env.has(_name)) evaluator.env.set(_name, 0);
       }
     }
 
@@ -1758,8 +1774,13 @@ export class ModelicaSimulator {
       for (const [name, value] of controlValues) baseValues.set(name, value);
     }
     baseValues.set("time", time);
-    for (const v of this.dae.variables) {
-      if (!baseValues.has(v.name)) baseValues.set(v.name, 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!baseValues.has(_name)) baseValues.set(_name, 0);
+      }
     }
 
     // First pass: compute f values (reuse evaluateRHS for the function values)
@@ -1900,9 +1921,12 @@ export class ModelicaSimulator {
     revEval.env.set("time", tape.constant(time));
 
     // Pre-populate all DAE variables with 0
-    for (const v of this.dae.variables) {
-      if (!revEval.env.has(v.name)) {
-        revEval.env.set(v.name, tape.constant(0));
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!revEval.env.has(_name)) revEval.env.set(_name, tape.constant(0));
       }
     }
 
@@ -2119,9 +2143,12 @@ export class ModelicaSimulator {
       initEvaluator.functionLookup = buildFunctionLookup(this.dae.functions);
     }
     // Pre-populate all variables with start values or 0
-    for (const v of this.dae.variables) {
-      if (!initEvaluator.env.has(v.name)) {
-        initEvaluator.env.set(v.name, startValues.get(v.name) ?? 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!initEvaluator.env.has(_name)) initEvaluator.env.set(_name, startValues.get(_name) ?? 0);
       }
     }
     for (const av of algebraicVarsArr) {
@@ -2215,10 +2242,15 @@ export class ModelicaSimulator {
     }
 
     // Carry over initialized variable values from the init evaluator
-    for (const v of this.dae.variables) {
-      if (!evaluator.env.has(v.name)) {
-        const initVal = initEvaluator.env.get(v.name);
-        evaluator.env.set(v.name, initVal ?? 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!evaluator.env.has(_name)) {
+          const initVal = initEvaluator.env.get(_name);
+          evaluator.env.set(_name, initVal ?? 0);
+        }
       }
     }
 
@@ -3778,9 +3810,12 @@ export class ModelicaSimulator {
       initEvaluator.functionLookup = buildFunctionLookup(this.dae.functions);
     }
     // Pre-populate all variables with start values or 0
-    for (const v of this.dae.variables) {
-      if (!initEvaluator.env.has(v.name)) {
-        initEvaluator.env.set(v.name, startValues.get(v.name) ?? 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!initEvaluator.env.has(_name)) initEvaluator.env.set(_name, startValues.get(_name) ?? 0);
       }
     }
     for (const av of algebraicVarsArr) {
@@ -3884,10 +3919,15 @@ export class ModelicaSimulator {
     }
 
     // Carry over initialized variable values from the init evaluator
-    for (const v of this.dae.variables) {
-      if (!evaluator.env.has(v.name)) {
-        const initVal = initEvaluator.env.get(v.name);
-        evaluator.env.set(v.name, initVal ?? 0);
+    {
+      const _arena = this.dae.arena;
+      for (let _i = 0; _i < _arena.varCount; _i++) {
+        if (_arena.isVarRemoved(_i)) continue;
+        const _name = _arena.getVarName(_i);
+        if (!evaluator.env.has(_name)) {
+          const initVal = initEvaluator.env.get(_name);
+          evaluator.env.set(_name, initVal ?? 0);
+        }
       }
     }
 

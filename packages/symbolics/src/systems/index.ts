@@ -121,7 +121,10 @@ export function materializeVariable(arena: DAEArenaBuilder, idx: number): Modeli
 
   const desc = arena.getVarDescription(idx) || null;
   const funcType = arena.getVarFunctionType(idx) || null;
-  const expr = typeof startVal === "number" && startVal !== 0 ? new ModelicaRealLiteral(startVal) : null;
+  let expr = (arena.getVarExpression(idx) as ModelicaExpression) || null;
+  if (!expr && typeof startVal === "number" && startVal !== 0) {
+    expr = new ModelicaRealLiteral(startVal);
+  }
 
   let v: ModelicaVariable;
   if (type === VarType.Real) {
@@ -290,6 +293,9 @@ export class SymbolTable {
       // Mirror array dimensions if applicable
       if (variable.arrayDimensions && variable.arrayDimensions.length > 0) {
         this._arena.setVarShape(idx, variable.arrayDimensions);
+      }
+      if (variable.expression) {
+        this._arena.setVarExpression(idx, variable.expression);
       }
     }
   }
