@@ -164,7 +164,7 @@ const VAR_CAUSALITY = 3; // Causality
 const VAR_START_HI = 4; // Float64 start value (high 32 bits)
 const VAR_START_LO = 5; // Float64 start value (low 32 bits)
 const VAR_SHAPE_DIM = 6; // Number of array dimensions (0 = scalar)
-const VAR_FLAGS = 7; // Bit flags: isProtected(0), isState(1), isAlias(2), isFlow(3)
+const VAR_FLAGS = 7; // Bit flags: isProtected(0), isState(1), isAlias(2), isFlow(3), isFinal(4), isRemoved(5)
 
 /** Equation record stride. */
 const EQ_STRIDE = 4;
@@ -220,6 +220,16 @@ export class DAEArenaBuilder {
   private shapesMap = new Map<number, number[]>();
   /** Alias targets: varIndex → target variable name StringId. */
   private aliasMap = new Map<number, StringId>();
+
+  // ── Sparse AST Side-Tables (for lossy attributes) ──
+  private varDescriptions = new Map<number, string>();
+  private varCustomTypes = new Map<number, string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private varFunctionTypes = new Map<number, any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private varEnumerationLiterals = new Map<number, any[]>();
+  private varFlowPrefixes = new Map<number, string>();
+  private varCadAnnotations = new Map<number, string>();
 
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
@@ -332,6 +342,19 @@ export class DAEArenaBuilder {
     return (this.getVarFlags(idx) & 8) !== 0;
   }
 
+  isVarFinal(idx: number): boolean {
+    return (this.getVarFlags(idx) & 16) !== 0;
+  }
+
+  isVarRemoved(idx: number): boolean {
+    return (this.getVarFlags(idx) & 32) !== 0;
+  }
+
+  setVarRemoved(idx: number): void {
+    const offset = idx * VAR_STRIDE + VAR_FLAGS;
+    this.varData[offset] = this.varData[offset]! | 32;
+  }
+
   /** Set array dimensions for a variable. */
   setVarShape(idx: number, dims: number[]): void {
     this.varData[idx * VAR_STRIDE + VAR_SHAPE_DIM] = dims.length;
@@ -353,6 +376,54 @@ export class DAEArenaBuilder {
   getVarAliasTarget(idx: number): string | null {
     const id = this.aliasMap.get(idx);
     return id !== undefined ? this.interner.resolve(id) : null;
+  }
+
+  // ── Sparse Attribute Accessors ──
+
+  getVarDescription(idx: number): string | undefined {
+    return this.varDescriptions.get(idx);
+  }
+  setVarDescription(idx: number, description: string): void {
+    this.varDescriptions.set(idx, description);
+  }
+
+  getVarCustomType(idx: number): string | undefined {
+    return this.varCustomTypes.get(idx);
+  }
+  setVarCustomType(idx: number, customType: string): void {
+    this.varCustomTypes.set(idx, customType);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getVarFunctionType(idx: number): any | undefined {
+    return this.varFunctionTypes.get(idx);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setVarFunctionType(idx: number, functionType: any): void {
+    this.varFunctionTypes.set(idx, functionType);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getVarEnumerationLiterals(idx: number): any[] | undefined {
+    return this.varEnumerationLiterals.get(idx);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setVarEnumerationLiterals(idx: number, literals: any[]): void {
+    this.varEnumerationLiterals.set(idx, literals);
+  }
+
+  getVarFlowPrefix(idx: number): string | undefined {
+    return this.varFlowPrefixes.get(idx);
+  }
+  setVarFlowPrefix(idx: number, prefix: string): void {
+    this.varFlowPrefixes.set(idx, prefix);
+  }
+
+  getVarCadAnnotation(idx: number): string | undefined {
+    return this.varCadAnnotations.get(idx);
+  }
+  setVarCadAnnotation(idx: number, annotation: string): void {
+    this.varCadAnnotations.set(idx, annotation);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
