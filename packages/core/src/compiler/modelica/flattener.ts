@@ -173,6 +173,27 @@ interface FlattenerContext {
   evaluatingComponents?: Set<string>;
 }
 
+/**
+ * Factory for building Modelica AST objects during flattening.
+ * This is the first step toward Phase 3c (arena-backed expressions).
+ * Eventually, this factory will emit ExprIds to the DAEArenaBuilder instead of instantiating objects.
+ */
+export const AstBuilder = {
+  int: (value: number) => new ModelicaIntegerLiteral(value),
+  real: (value: number) => new ModelicaRealLiteral(value),
+  bool: (value: boolean) => new ModelicaBooleanLiteral(value),
+  string: (value: string) => new ModelicaStringLiteral(value),
+  name: (name: string) => new ModelicaNameExpression(name),
+  binary: (operator: ModelicaBinaryOperator, left: ModelicaExpression, right: ModelicaExpression) =>
+    new ModelicaBinaryExpression(operator, left, right),
+  unary: (operator: ModelicaUnaryOperator, operand: ModelicaExpression) =>
+    new ModelicaUnaryExpression(operator, operand),
+  call: (functionName: string, args: ModelicaExpression[]) => new ModelicaFunctionCallExpression(functionName, args),
+  array: (shape: number[], elements: ModelicaExpression[]) => new ModelicaArray(shape, elements),
+  subscript: (base: ModelicaExpression, subscripts: ModelicaExpression[]) =>
+    new ModelicaSubscriptedExpression(base, subscripts),
+};
+
 /** Extract an integer shape array from a list of expressions (all must be ModelicaIntegerLiteral). */
 function extractShape(args: ModelicaExpression[]): number[] | null {
   const shape: number[] = [];
@@ -191,7 +212,7 @@ type BuiltinArrayHandler = (args: ModelicaExpression[], ctx: FlattenerContext) =
  * Each handler returns a flattened expression or null if it cannot evaluate.
  */
 const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map<string, BuiltinArrayHandler>([
-  ["array", (args) => (args.length >= 1 ? new ModelicaArray([args.length], args) : null)],
+  ["array", (args) => (args.length >= 1 ? AstBuilder.array([args.length], args) : null)],
 
   [
     "cat",
@@ -216,9 +237,9 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
                   .filter((v) => v.name.startsWith(baseName + "["))
                   .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
                 if (vars.length > 0) {
-                  return new ModelicaArray(
+                  return AstBuilder.array(
                     [vars.length],
-                    vars.map((v) => new ModelicaNameExpression(v.name)),
+                    vars.map((v) => AstBuilder.name(v.name)),
                   );
                 }
               }
@@ -228,9 +249,9 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
                 .filter((v) => v.name.startsWith(expr.name + "["))
                 .sort((a: any, b: any) => a.name.localeCompare(b.name, undefined, { numeric: true }));
               if (vars.length > 0) {
-                return new ModelicaArray(
+                return AstBuilder.array(
                   [vars.length],
-                  vars.map((v) => new ModelicaNameExpression(v.name)),
+                  vars.map((v) => AstBuilder.name(v.name)),
                 );
               }
             }
@@ -244,7 +265,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
           expandedArgs.push(arg);
         } else {
           // Scalars are treated as arrays with shape [1]
-          expandedArgs.push(new ModelicaArray([1], [arg]));
+          expandedArgs.push(AstBuilder.array([1], [arg]));
         }
       }
 
@@ -259,7 +280,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
         }
         const firstShape = expandedArgs[0]?.flatShape ?? [];
         const resShape = [totalRows, ...firstShape.slice(1)];
-        return new ModelicaArray(resShape, elements);
+        return AstBuilder.array(resShape, elements);
       } else if (k === 2) {
         // Concatenate along second dimension (columns)
         const firstShape = expandedArgs[0]?.flatShape ?? [];
@@ -279,7 +300,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
             }
           }
         }
-        return new ModelicaArray(resShape, resElements);
+        return AstBuilder.array(resShape, resElements);
       }
       return null;
     },
@@ -299,9 +320,9 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
     (args) => {
       if (args.length < 1) return null;
       const shape = extractShape(args);
-      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(0));
+      if (shape) return buildFilledArray(shape, AstBuilder.int(0));
       // Symbolic args: rewrite zeros(n) → fill(0.0, n)
-      return new ModelicaFunctionCallExpression("fill", [new ModelicaRealLiteral(0.0), ...args]);
+      return AstBuilder.call("fill", [AstBuilder.real(0.0), ...args]);
     },
   ],
 
@@ -310,9 +331,9 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
     (args) => {
       if (args.length < 1) return null;
       const shape = extractShape(args);
-      if (shape) return buildFilledArray(shape, new ModelicaIntegerLiteral(1));
+      if (shape) return buildFilledArray(shape, AstBuilder.int(1));
       // Symbolic args: rewrite ones(n) → fill(1.0, n)
-      return new ModelicaFunctionCallExpression("fill", [new ModelicaRealLiteral(1.0), ...args]);
+      return AstBuilder.call("fill", [AstBuilder.real(1.0), ...args]);
     },
   ],
 
@@ -365,7 +386,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
                   if (paramIdx >= 0 && paramIdx < arrayArg.args.length) {
                     const callerArg = arrayArg.args[paramIdx];
                     if (callerArg instanceof ModelicaArray && sizeDim >= 1 && sizeDim <= callerArg.shape.length) {
-                      return new ModelicaIntegerLiteral(callerArg.shape[sizeDim - 1] ?? 0);
+                      return AstBuilder.int(callerArg.shape[sizeDim - 1] ?? 0);
                     }
                     if (callerArg instanceof ModelicaNameExpression && ctx.classInstance) {
                       const resolved = ctx.classInstance.resolveName(callerArg.name.split("."));
@@ -375,13 +396,13 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
                       ) {
                         const shape = resolved.classInstance.shape;
                         if (sizeDim >= 1 && sizeDim <= shape.length) {
-                          return new ModelicaIntegerLiteral(shape[sizeDim - 1] ?? 0);
+                          return AstBuilder.int(shape[sizeDim - 1] ?? 0);
                         }
                       }
                     }
                   }
                 } else if (/^\d+$/.test(dimExpr)) {
-                  return new ModelicaIntegerLiteral(parseInt(dimExpr, 10));
+                  return AstBuilder.int(parseInt(dimExpr, 10));
                 }
               }
             }
@@ -393,12 +414,12 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
       if (arrayArg instanceof ModelicaArray) {
         const shape = arrayArg.flatShape;
         if (args.length === 1) {
-          return new ModelicaIntegerLiteral(shape.reduce((a: any, b: any) => a * b, 1));
+          return AstBuilder.int(shape.reduce((a: any, b: any) => a * b, 1));
         }
         if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
           const dim = args[1].value;
           if (dim >= 1 && dim <= shape.length) {
-            return new ModelicaIntegerLiteral(shape[dim - 1] ?? 0);
+            return AstBuilder.int(shape[dim - 1] ?? 0);
           }
         }
       }
@@ -436,7 +457,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
             const dimIdx = (args[1] as ModelicaIntegerLiteral).value - 1;
             const dimExpr = dimIdx >= 0 && dimIdx < dims.length ? dims[dimIdx] : undefined;
             if (dimExpr && /^\d+$/.test(dimExpr)) {
-              return new ModelicaIntegerLiteral(parseInt(dimExpr, 10));
+              return AstBuilder.int(parseInt(dimExpr, 10));
             }
           }
         }
@@ -477,12 +498,12 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
           }
 
           if (args.length === 1) {
-            return new ModelicaIntegerLiteral(shape.reduce((a: number, b: number) => a * b, 1));
+            return AstBuilder.int(shape.reduce((a: number, b: number) => a * b, 1));
           }
           if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
             const dim = args[1].value;
             if (dim >= 1 && dim <= shape.length) {
-              return new ModelicaIntegerLiteral(shape[dim - 1] ?? 0);
+              return AstBuilder.int(shape[dim - 1] ?? 0);
             }
           }
         }
@@ -504,12 +525,12 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
           }
           if (dims.length > 0) {
             if (args.length === 1) {
-              return new ModelicaIntegerLiteral(dims.reduce((a: any, b: any) => a * b, 1));
+              return AstBuilder.int(dims.reduce((a: any, b: any) => a * b, 1));
             }
             if (args.length === 2 && args[1] instanceof ModelicaIntegerLiteral) {
               const dim = args[1].value;
               if (dim >= 1 && dim <= dims.length) {
-                return new ModelicaIntegerLiteral(dims[dim - 1] ?? 0);
+                return AstBuilder.int(dims[dim - 1] ?? 0);
               }
             }
           }
