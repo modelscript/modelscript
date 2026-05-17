@@ -933,11 +933,12 @@ export function eliminateAliases(dae: ModelicaDAE): void {
 
   // Iterate until no more aliases are found (substitution may reveal new aliases)
   let changed = true;
+  const equations = Array.from(dae.arenaEquations());
   while (changed) {
     changed = false;
 
-    for (let i = 0; i < dae.equations.length; i++) {
-      const eq = dae.equations[i];
+    for (let i = 0; i < equations.length; i++) {
+      const eq = equations[i];
       if (!(eq instanceof ModelicaSimpleEquation)) continue;
 
       const alias = detectTrivialAlias(eq, unknowns);
@@ -958,15 +959,15 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       if (containsVariable(targetExpr, aliasVar)) continue;
 
       // Substitute aliasVar → targetExpr in all OTHER equations
-      for (let j = 0; j < dae.equations.length; j++) {
+      for (let j = 0; j < equations.length; j++) {
         if (j === i) continue;
-        const otherEq = dae.equations[j];
+        const otherEq = equations[j];
         if (!(otherEq instanceof ModelicaSimpleEquation)) continue;
-        dae.equations[j] = substituteInEquation(otherEq, aliasVar, targetExpr);
+        equations[j] = substituteInEquation(otherEq, aliasVar, targetExpr);
       }
 
       // Remove the alias equation
-      dae.equations.splice(i, 1);
+      equations.splice(i, 1);
 
       // Remove the alias variable
       const aliasVarDef = dae.arenaGetVarByName(aliasVar);
@@ -979,4 +980,7 @@ export function eliminateAliases(dae: ModelicaDAE): void {
       break; // restart scan from the beginning
     }
   }
+
+  // Write back the modified equations array
+  dae.equations = equations;
 }

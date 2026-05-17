@@ -3741,7 +3741,7 @@ connection.onRequest(
       flattener.foldDAEConstants(dae);
 
       connection.console.info(`[simulate] DAE variables: ${dae.arenaVarCount}`);
-      connection.console.info(`[simulate] DAE equations: ${dae.equations.length}`);
+      connection.console.info(`[simulate] DAE equations: ${dae.arena.eqCount}`);
       connection.console.info(`[simulate] DAE initial equations: ${dae.initialEquations.length}`);
       connection.console.info(`[simulate] DAE algorithms: ${dae.algorithms.length}`);
       connection.console.info(`[simulate] DAE functions: ${dae.functions.length}`);
@@ -3757,8 +3757,9 @@ connection.onRequest(
         varIdx++;
       }
       // Log first 10 equations
-      for (let i = 0; i < Math.min(10, dae.equations.length); i++) {
-        const eq = dae.equations[i];
+      const eqArray = Array.from(dae.arenaEquations());
+      for (let i = 0; i < Math.min(10, eqArray.length); i++) {
+        const eq = eqArray[i];
         if (eq) {
           connection.console.info(`[simulate]   eq[${i}] ${eq.toString()}`);
         }
@@ -6355,7 +6356,7 @@ connection.onRequest(
       const { algebraicLoops } = performBltTransformation(dae);
 
       // Serialize equation text via toJSON
-      const eqTexts = dae.equations
+      const eqTexts = Array.from(dae.arenaEquations())
         .filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation")
         .map((eq) => {
           try {
@@ -6389,7 +6390,9 @@ connection.onRequest(
             }
           }),
         })),
-        equationCount: dae.equations.filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation").length,
+        equationCount: Array.from(dae.arenaEquations()).filter(
+          (eq) => eq.constructor.name !== "ModelicaFunctionCallEquation",
+        ).length,
         unknownCount,
       };
     } catch (e) {
@@ -7096,7 +7099,7 @@ connection.onRequest(
       target.accept(flattener, ["", dae]);
 
       const eqIdx = params.equationIndex ?? 0;
-      const equations = dae.equations;
+      const equations = Array.from(dae.arenaEquations());
       if (eqIdx >= equations.length) return null;
 
       const eq = equations[eqIdx];
@@ -7117,7 +7120,8 @@ connection.onRequest(
 
       const simplified = (() => {
         try {
-          const foldedEq = eqIdx < dae.equations.length ? dae.equations[eqIdx] : eq;
+          const foldedEqs = Array.from(dae.arenaEquations());
+          const foldedEq = eqIdx < foldedEqs.length ? foldedEqs[eqIdx] : eq;
           const json = foldedEq.toJSON;
           if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
             return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
