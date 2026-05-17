@@ -1808,7 +1808,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           sum = AstBuilder.binary(ModelicaBinaryOperator.ADDITION, sum, AstBuilder.name(n));
         }
         const lhs = AstBuilder.unary(ModelicaUnaryOperator.UNARY_MINUS, sum);
-        dae.equations.push(new ModelicaSimpleEquation(lhs, AstBuilder.real(0.0)));
+        dae.addEquation(new ModelicaSimpleEquation(lhs, AstBuilder.real(0.0)));
       }
 
       // Clear pairs so they're not processed again in nested flattening
@@ -1834,12 +1834,12 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         // inStream(side1) = side2
         const inStreamName1 = `$inStream(${pair.side1})`;
         dae.arena.addVariable(inStreamName1, 0, 0, 0);
-        dae.equations.push(new ModelicaSimpleEquation(AstBuilder.name(inStreamName1), AstBuilder.name(pair.side2)));
+        dae.addEquation(new ModelicaSimpleEquation(AstBuilder.name(inStreamName1), AstBuilder.name(pair.side2)));
 
         // inStream(side2) = side1
         const inStreamName2 = `$inStream(${pair.side2})`;
         dae.arena.addVariable(inStreamName2, 0, 0, 0);
-        dae.equations.push(new ModelicaSimpleEquation(AstBuilder.name(inStreamName2), AstBuilder.name(pair.side1)));
+        dae.addEquation(new ModelicaSimpleEquation(AstBuilder.name(inStreamName2), AstBuilder.name(pair.side1)));
       }
       this.#streamConnectPairs = [];
     }
@@ -4154,7 +4154,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       }
 
       const lhs = new ModelicaRealVariable(name, null, new Map(), null);
-      args[1].equations.push(new ModelicaSimpleEquation(lhs, rhs));
+      args[1].addEquation(new ModelicaSimpleEquation(lhs, rhs));
     }
   }
 
@@ -4310,7 +4310,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     // f = 0.0. If they are connected, they participate in the sum-to-zero equation.
     for (const flowVar of this.#allFlowVars) {
       if (!this.#connectedFlowVars.has(flowVar)) {
-        dae.equations.push(new ModelicaSimpleEquation(AstBuilder.name(flowVar), AstBuilder.real(0.0)));
+        dae.addEquation(new ModelicaSimpleEquation(AstBuilder.name(flowVar), AstBuilder.real(0.0)));
       }
     }
   }
@@ -4433,7 +4433,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
           newEquations.push(equation);
         }
       }
-      dae.equations = newEquations;
+      dae.replaceEquations(newEquations);
     }
   }
 
@@ -4955,7 +4955,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
           const eqSet = new Set(contents.equations);
           stateNode.equations = dae.equations.filter((e: ModelicaEquation) => eqSet.has(e));
-          dae.equations = dae.equations.filter((e: ModelicaEquation) => !eqSet.has(e));
+          dae.replaceEquations(dae.equations.filter((e: ModelicaEquation) => !eqSet.has(e)));
         }
 
         stateMachine.states.push(stateNode);
@@ -4964,16 +4964,18 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       // Move transitional equations for this component from dae to stateMachine
       const compSet = new Set(comp);
       const smEquations: ModelicaEquation[] = [];
-      dae.equations = dae.equations.filter((eq: ModelicaEquation) => {
-        if (eq instanceof ModelicaInitialStateEquation && compSet.has(eq.stateName)) {
-          smEquations.push(eq);
-          return false;
-        } else if (eq instanceof ModelicaTransitionEquation && compSet.has(eq.fromState)) {
-          smEquations.push(eq);
-          return false;
-        }
-        return true;
-      });
+      dae.replaceEquations(
+        dae.equations.filter((eq: ModelicaEquation) => {
+          if (eq instanceof ModelicaInitialStateEquation && compSet.has(eq.stateName)) {
+            smEquations.push(eq);
+            return false;
+          } else if (eq instanceof ModelicaTransitionEquation && compSet.has(eq.fromState)) {
+            smEquations.push(eq);
+            return false;
+          }
+          return true;
+        }),
+      );
       stateMachine.equations = smEquations;
 
       allMachines.set(smName, { sm: stateMachine, parentPrefix, rank: parentPrefix.split(".").length });
@@ -5258,7 +5260,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
     for (const eq of dae.initialEquations) extractEq(eq);
 
     // Remove when equations from continuous equations lists so they don't corrupt BLT
-    dae.equations = dae.equations.filter((eq) => !(eq instanceof ModelicaWhenEquation));
+    dae.replaceEquations(dae.equations.filter((eq) => !(eq instanceof ModelicaWhenEquation)));
     dae.initialEquations = dae.initialEquations.filter((eq) => !(eq instanceof ModelicaWhenEquation));
   }
 }

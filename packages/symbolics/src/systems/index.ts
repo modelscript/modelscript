@@ -921,6 +921,20 @@ export class ModelicaDAE {
     this.equations.push(eq);
   }
 
+  /**
+   * Replace the entire equations list atomically. Updates the legacy array
+   * and triggers the dual-write interceptor to keep the arena in sync.
+   * Used by the flattener after constant folding, state machine extraction,
+   * and when-clause removal.
+   */
+  replaceEquations(eqs: ModelicaEquation[]): void {
+    this.arena.clearEquations();
+    this.equations.length = 0;
+    for (const eq of eqs) {
+      this.equations.push(eq); // triggers the dual-write interceptor
+    }
+  }
+
   // ─── Phase 3d: Arena-first variable access ───────────────────────────
 
   /**
@@ -1027,7 +1041,7 @@ export class ModelicaDAE {
     for (const sm of this.stateMachines) {
       hash.update(sm.hash);
     }
-    for (const equation of this.equations) {
+    for (const equation of this.arenaEquations()) {
       hash.update(equation.hash);
     }
     for (const section of this.algorithms) {
@@ -1044,7 +1058,7 @@ export class ModelicaDAE {
       stateMachines: this.stateMachines.map((m) => m.toJSON),
       functions: this.functions.map((f) => f.toJSON),
       variables: [...this.arenaVariables()].map((v) => v.toJSON),
-      equations: this.equations.map((e) => e.toJSON),
+      equations: [...this.arenaEquations()].map((e) => e.toJSON),
       algorithms: this.algorithms.map((section) => section.map((s) => s.toJSON)),
       objective: this.objective ? this.objective.toJSON : null,
     };
@@ -1064,10 +1078,9 @@ export class ModelicaDAE {
       triples.push({ s: id, p: "modelica:stateMachine", o: `_:sm_${sm.name}` });
       triples.push(...sm.toRDF);
     }
-    for (let i = 0; i < this.equations.length; i++) {
-      const eq = this.equations[i];
-      if (!eq) continue;
-      const eqId = `_:eq_${i}`;
+    let eqIdx = 0;
+    for (const eq of this.arenaEquations()) {
+      const eqId = `_:eq_${eqIdx++}`;
       triples.push({ s: id, p: "modelica:equation", o: eqId });
       triples.push(...eq.toRDF);
     }
@@ -1145,7 +1158,7 @@ export class ModelicaDAE {
     // Use multi-pass to handle chains like y = f(u), u = g(x).
     for (let pass = 0; pass < 10; pass++) {
       let changed = false;
-      for (const equation of this.equations) {
+      for (const equation of this.arenaEquations()) {
         if (!(equation instanceof ModelicaSimpleEquation)) continue;
         const lhsDer = extractDerName(equation.expression1);
         const rhsDer = extractDerName(equation.expression2);
@@ -1185,7 +1198,7 @@ export class ModelicaDAE {
 
     // Evaluate equations to extract derivative values.
     const derivatives = new Map<string, number>();
-    for (const equation of this.equations) {
+    for (const equation of this.arenaEquations()) {
       if (!(equation instanceof ModelicaSimpleEquation)) continue;
       const lhsDer = extractDerName(equation.expression1);
       const rhsDer = extractDerName(equation.expression2);

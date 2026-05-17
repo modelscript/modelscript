@@ -981,6 +981,6 @@ export function eliminateAliases(dae: ModelicaDAE): void {
     }
   }
 
-  // Write back the modified equations array
-  dae.equations = equations;
+  // Write back the modified equations array (arena-synced)
+  dae.replaceEquations(equations);
 }

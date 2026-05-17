@@ -812,6 +812,11 @@ export class DAEArenaBuilder {
   // Memory Management
   // ─────────────────────────────────────────────────────────────────────────
 
+  /** Reset just the equation arena (keeps variables, expressions, and indexes). */
+  clearEquations(): void {
+    this._eqCount = 0;
+  }
+
   /** Reset all arenas (clear data, keep buffers). */
   clear(): void {
     this._varCount = 0;
