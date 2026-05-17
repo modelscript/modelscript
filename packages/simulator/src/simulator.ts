@@ -668,7 +668,7 @@ export class ModelicaSimulator {
     // For-equations like `for i in 1:N loop x[i] = f(i); end for;` that survived
     // the flattener (because their range depends on parameters) can now be
     // expanded since parameter values are available.
-    const expandedEquations = expandForEquations(this.dae.equations, this.parameters);
+    const expandedEquations = expandForEquations(Array.from(this.dae.arenaEquations()), this.parameters);
 
     // ── Pre-process: flatten if-equations into conditional simple equations ──
     // An if-equation like:

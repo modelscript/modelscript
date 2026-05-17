@@ -522,7 +522,7 @@ function detectAliases3(dae: ModelicaDAE, variables: Fmi3Variable[]): Map<string
   const svByName = new Map<string, Fmi3Variable>();
   for (const sv of variables) svByName.set(sv.name, sv);
 
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!(eq instanceof ModelicaSimpleEquation)) continue;
     const lhs = eq.expression1;
     const rhs = eq.expression2;
@@ -585,7 +585,7 @@ function computeDependencies3(
   for (const sv of variables) svByName.set(sv.name, sv);
 
   const equationDeps = new Map<string, Set<string>>();
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!(eq instanceof ModelicaSimpleEquation)) continue;
     const lhs = eq.expression1;
     if (lhs instanceof ModelicaNameExpression) {

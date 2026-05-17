@@ -232,7 +232,7 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
   L.push("  double time = inst->time; (void)time;");
   L.push("");
   let derIdx = 0;
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const isArrayEq = eq instanceof ModelicaArrayEquation;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
@@ -272,7 +272,9 @@ function generateModelC3(id: string, dae: ModelicaDAE, result: Fmi3Result): stri
   L.push("");
 
   // Event indicators
-  const whenEqs = dae.equations.filter((eq): eq is ModelicaWhenEquation => eq instanceof ModelicaWhenEquation);
+  const whenEqs = Array.from(dae.arenaEquations()).filter(
+    (eq): eq is ModelicaWhenEquation => eq instanceof ModelicaWhenEquation,
+  );
   L.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators) {`);
   if (whenEqs.length === 0) {
     L.push("  (void)inst; (void)indicators;");

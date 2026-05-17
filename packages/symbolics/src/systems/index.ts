@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
 import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
-import { BinOp, Causality, DAEArenaBuilder, EqKind, UnaryOp, Variability, VarType } from "@modelscript/polyglot";
+import {
+  BinOp,
+  Causality,
+  DAEArenaBuilder,
+  EqKind,
+  ExprKind,
+  UnaryOp,
+  Variability,
+  VarType,
+} from "@modelscript/polyglot";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
 
@@ -213,6 +222,138 @@ export function materializeVariable(arena: DAEArenaBuilder, idx: number): Modeli
 
   v._arenaIdx = idx;
   return v;
+}
+
+const binOpMap = new Map<BinOp, ModelicaBinaryOperator>([
+  [BinOp.Add, ModelicaBinaryOperator.ADDITION],
+  [BinOp.Sub, ModelicaBinaryOperator.SUBTRACTION],
+  [BinOp.Mul, ModelicaBinaryOperator.MULTIPLICATION],
+  [BinOp.Div, ModelicaBinaryOperator.DIVISION],
+  [BinOp.Pow, ModelicaBinaryOperator.EXPONENTIATION],
+  [BinOp.ElemAdd, ModelicaBinaryOperator.ELEMENTWISE_ADDITION],
+  [BinOp.ElemSub, ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION],
+  [BinOp.ElemMul, ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION],
+  [BinOp.ElemDiv, ModelicaBinaryOperator.ELEMENTWISE_DIVISION],
+  [BinOp.ElemPow, ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION],
+  [BinOp.And, ModelicaBinaryOperator.LOGICAL_AND],
+  [BinOp.Or, ModelicaBinaryOperator.LOGICAL_OR],
+  [BinOp.Eq, ModelicaBinaryOperator.EQUALITY],
+  [BinOp.Neq, ModelicaBinaryOperator.INEQUALITY],
+  [BinOp.Lt, ModelicaBinaryOperator.LESS_THAN],
+  [BinOp.Lte, ModelicaBinaryOperator.LESS_THAN_OR_EQUAL],
+  [BinOp.Gt, ModelicaBinaryOperator.GREATER_THAN],
+  [BinOp.Gte, ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL],
+]);
+
+const unaryOpMap = new Map<UnaryOp, ModelicaUnaryOperator>([
+  [UnaryOp.Negate, ModelicaUnaryOperator.UNARY_MINUS],
+  [UnaryOp.Not, ModelicaUnaryOperator.LOGICAL_NEGATION],
+]);
+
+export function materializeExpression(arena: DAEArenaBuilder, id: number): ModelicaExpression {
+  if (id < 0) return new ModelicaNameExpression("");
+  const kind = arena.getExprKind(id);
+
+  if (kind === ExprKind.Name) {
+    return new ModelicaNameExpression(arena.interner.resolve(arena.getExprData1(id)!));
+  } else if (kind === ExprKind.IntLiteral) {
+    return new ModelicaIntegerLiteral(arena.getExprData1(id)!);
+  } else if (kind === ExprKind.RealLiteral) {
+    return new ModelicaRealLiteral(arena.getExprRealValue(id)!);
+  } else if (kind === ExprKind.BoolLiteral) {
+    return new ModelicaBooleanLiteral(arena.getExprData1(id) !== 0);
+  } else if (kind === ExprKind.StringLiteral) {
+    return new ModelicaStringLiteral(arena.interner.resolve(arena.getExprData1(id)!));
+  } else if (kind === ExprKind.EnumLiteral) {
+    return new ModelicaEnumerationLiteral(arena.getExprData1(id)!, arena.interner.resolve(arena.getExprLeft(id)!));
+  } else if (kind === ExprKind.Binary) {
+    const op = binOpMap.get(arena.getExprData1(id) as BinOp) || ModelicaBinaryOperator.ADDITION;
+    return new ModelicaBinaryExpression(
+      op,
+      materializeExpression(arena, arena.getExprLeft(id)!),
+      materializeExpression(arena, arena.getExprRight(id)!),
+    );
+  } else if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+    const op =
+      kind === ExprKind.Negate
+        ? ModelicaUnaryOperator.UNARY_MINUS
+        : unaryOpMap.get(arena.getExprData1(id) as UnaryOp) || ModelicaUnaryOperator.UNARY_MINUS;
+    return new ModelicaUnaryExpression(op, materializeExpression(arena, arena.getExprLeft(id)!));
+  } else if (kind === ExprKind.Call) {
+    const name = arena.interner.resolve(arena.getExprData1(id)!);
+    const argCount = arena.getExprRight(id)!;
+    const args: ModelicaExpression[] = [];
+    if (argCount > 0) args.push(materializeExpression(arena, arena.getExprLeft(id)!));
+    for (let i = 1; i < argCount; i++) args.push(materializeExpression(arena, arena.getExprLeft(id + i)!));
+    return new ModelicaFunctionCallExpression(name, args);
+  } else if (kind === ExprKind.Der) {
+    return new ModelicaFunctionCallExpression("der", [materializeExpression(arena, arena.getExprLeft(id)!)]);
+  } else if (kind === ExprKind.Pre) {
+    return new ModelicaFunctionCallExpression("pre", [materializeExpression(arena, arena.getExprLeft(id)!)]);
+  } else if (kind === ExprKind.IfElse) {
+    return new ModelicaIfElseExpression(
+      materializeExpression(arena, arena.getExprData1(id)!),
+      materializeExpression(arena, arena.getExprLeft(id)!),
+      [],
+      materializeExpression(arena, arena.getExprRight(id)!),
+    );
+  } else if (kind === ExprKind.Range) {
+    const step = arena.getExprLeft(id)!;
+    return new ModelicaRangeExpression(
+      materializeExpression(arena, arena.getExprData1(id)!),
+      materializeExpression(arena, arena.getExprRight(id)!),
+      step >= 0 ? materializeExpression(arena, step) : null,
+    );
+  } else if (kind === ExprKind.ArrayCtor) {
+    const count = arena.getExprData1(id)!;
+    const elements: ModelicaExpression[] = [];
+    if (count > 0) elements.push(materializeExpression(arena, arena.getExprLeft(id)!));
+    for (let i = 1; i < count; i++) elements.push(materializeExpression(arena, arena.getExprLeft(id + i)!));
+    return new ModelicaArray([count], elements);
+  } else if (kind === ExprKind.Subscript) {
+    const base = materializeExpression(arena, arena.getExprData1(id)!);
+    const count = arena.getExprRight(id)!;
+    const subscripts: ModelicaExpression[] = [];
+    if (count > 0) subscripts.push(materializeExpression(arena, arena.getExprLeft(id)!));
+    for (let i = 1; i < count; i++) subscripts.push(materializeExpression(arena, arena.getExprLeft(id + i)!));
+    return new ModelicaSubscriptedExpression(base, subscripts);
+  } else if (kind === ExprKind.Tuple) {
+    const count = arena.getExprData1(id)!;
+    const elements: ModelicaExpression[] = [];
+    if (count > 0) elements.push(materializeExpression(arena, arena.getExprLeft(id)!));
+    for (let i = 1; i < count; i++) elements.push(materializeExpression(arena, arena.getExprLeft(id + i)!));
+    return new ModelicaTupleExpression(elements);
+  } else if (kind === ExprKind.Colon) {
+    return new ModelicaColonExpression();
+  } else if (kind === ExprKind.Comprehension) {
+    return new ModelicaComprehensionExpression(
+      arena.interner.resolve(arena.getExprData1(id)!),
+      materializeExpression(arena, arena.getExprLeft(id)!),
+      [],
+    );
+  } else if (kind === ExprKind.PartialFunc) {
+    const name = arena.interner.resolve(arena.getExprData1(id)!);
+    const argCount = arena.getExprRight(id)!;
+    const args: { name: string; value: ModelicaExpression }[] = [];
+    if (argCount > 0) args.push({ name: "", value: materializeExpression(arena, arena.getExprLeft(id)!) });
+    for (let i = 1; i < argCount; i++)
+      args.push({ name: "", value: materializeExpression(arena, arena.getExprLeft(id + i)!) });
+    return new ModelicaPartialFunctionExpression(name, args);
+  } else if (kind === ExprKind.Object) {
+    return new ModelicaObject(new Map());
+  }
+  return new ModelicaNameExpression("");
+}
+
+export function materializeEquation(arena: DAEArenaBuilder, id: number): ModelicaEquation | null {
+  const kind = arena.getEqKind(id);
+  const lhs = materializeExpression(arena, arena.getEqLhs(id)!);
+  const rhs = materializeExpression(arena, arena.getEqRhs(id)!);
+
+  if (kind === EqKind.Simple) return new ModelicaSimpleEquation(lhs, rhs);
+  if (kind === EqKind.Array) return new ModelicaArrayEquation(lhs as any, rhs as any);
+  // Default fallback
+  return new ModelicaSimpleEquation(lhs, rhs);
 }
 
 export class SymbolTable {
@@ -847,6 +988,32 @@ export class ModelicaDAE {
     for (let i = 0; i < arena.varCount; i++) {
       if (arena.isVarRemoved(i)) continue;
       yield arena.getVarName(i);
+    }
+  }
+
+  /**
+   * Lazily materializes non-initial equations from the arena.
+   */
+  *arenaEquations(): IterableIterator<ModelicaEquation> {
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      const kind = this.arena.getEqKind(i);
+      if (kind !== EqKind.InitialSimple && kind !== EqKind.InitialFor) {
+        const eq = materializeEquation(this.arena, i);
+        if (eq) yield eq;
+      }
+    }
+  }
+
+  /**
+   * Lazily materializes initial equations from the arena.
+   */
+  *arenaInitialEquations(): IterableIterator<ModelicaEquation> {
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      const kind = this.arena.getEqKind(i);
+      if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
+        const eq = materializeEquation(this.arena, i);
+        if (eq) yield eq;
+      }
     }
   }
 
@@ -5375,10 +5542,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.out.write("initial algorithm\n");
       for (const stmt of section) stmt.accept(this);
     }
-    if (node.equations.length > 0 || node.whenClauses.length > 0) {
+    if (node.arena.eqCount > 0 || node.whenClauses.length > 0) {
       this.out.write("equation\n");
       for (const clause of node.whenClauses) clause.accept(this);
-      for (const equation of node.equations) equation.accept(this);
+      for (const equation of node.arenaEquations()) equation.accept(this);
     }
     for (const section of node.algorithms) {
       this.out.write("algorithm\n");
@@ -5402,10 +5569,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     for (const variable of fn.arenaVariables()) {
       this.#emitVariable(variable, variable.isProtected);
     }
-    if (fn.equations.length > 0 || fn.whenClauses.length > 0) {
+    if (fn.arena.eqCount > 0 || fn.whenClauses.length > 0) {
       this.out.write("equation\n");
       for (const clause of fn.whenClauses) clause.accept(this);
-      for (const equation of fn.equations) equation.accept(this);
+      for (const equation of fn.arenaEquations()) equation.accept(this);
     }
     for (const section of fn.algorithms) {
       this.out.write("algorithm\n");

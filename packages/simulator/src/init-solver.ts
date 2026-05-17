@@ -759,7 +759,7 @@ export function solveInitialEquationsAdvanced(
     converged: true,
   };
 
-  if (dae.initialEquations.length === 0 && dae.equations.length === 0) return result;
+  if (dae.arena.eqCount === 0) return result;
 
   // Step 1: Build initialization BLT
   const { blocks } = buildInitBLT(dae);

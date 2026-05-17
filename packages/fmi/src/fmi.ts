@@ -261,7 +261,7 @@ function detectAliases(dae: ModelicaDAE, scalarVariables: FmiScalarVariable[]): 
   const svByName = new Map<string, FmiScalarVariable>();
   for (const sv of scalarVariables) svByName.set(sv.name, sv);
 
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!(eq instanceof ModelicaSimpleEquation)) continue;
     const lhs = eq.expression1;
     const rhs = eq.expression2;
@@ -326,7 +326,7 @@ function computeDependencies(
 
   // Build a map from LHS variable name → equation RHS names
   const equationDeps = new Map<string, Set<string>>();
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!(eq instanceof ModelicaSimpleEquation)) continue;
     const lhs = eq.expression1;
     if (lhs instanceof ModelicaNameExpression) {

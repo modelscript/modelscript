@@ -320,7 +320,7 @@ function generateModelH(
     if ("expression1" in expr && expr.expression1) countDelays(expr.expression1 as ModelicaExpression);
     if ("expression2" in expr && expr.expression2) countDelays(expr.expression2 as ModelicaExpression);
   };
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (eq instanceof ModelicaSimpleEquation) {
       countDelays(eq.expression1);
       countDelays(eq.expression2);
@@ -713,7 +713,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
     if ("expression1" in expr && expr.expression1) checkDelays(expr.expression1 as ModelicaExpression);
     if ("expression2" in expr && expr.expression2) checkDelays(expr.expression2 as ModelicaExpression);
   };
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (eq instanceof ModelicaSimpleEquation) {
       checkDelays(eq.expression1);
       checkDelays(eq.expression2);
@@ -848,7 +848,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
 
   // Collect all variable names referenced in derivative equations
   const referencedNames = new Set<string>();
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     collectReferencedNames(simpleEq.expression1, referencedNames);
@@ -879,7 +879,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
   }
 
   // Walk DAE equations looking for der(x) = expr patterns
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const lhsDer = extractDerName(simpleEq.expression1);
@@ -916,7 +916,7 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
       if ("expression2" in expr && expr.expression2) collectDelayExprs(expr.expression2 as ModelicaExpression, records);
     };
     const recordLines: string[] = [];
-    for (const eq of dae.equations) {
+    for (const eq of dae.arenaEquations()) {
       if (eq instanceof ModelicaSimpleEquation) {
         collectDelayExprs(eq.expression1, recordLines);
         collectDelayExprs(eq.expression2, recordLines);
@@ -1961,7 +1961,7 @@ function generateFmi2FunctionsC(
 
   // Extract derivative equations: der(x) = f(x, y, t)
   const derEquations: { stateName: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const simpleEq = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const lhsDer = extractDerName(simpleEq.expression1);

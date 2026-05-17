@@ -125,7 +125,7 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   //    - Continuous equations evaluated at t=0 (dynamic constraints)
   const initEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression; source: "initial" | "continuous" }[] = [];
 
-  for (const eq of dae.initialEquations) {
+  for (const eq of dae.arenaInitialEquations()) {
     if (eq instanceof ModelicaArrayEquation) {
       // Unroll array equations element-wise
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
@@ -144,7 +144,7 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   }
 
   // Add continuous equations (they also hold at t=0)
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (eq instanceof ModelicaArrayEquation) {
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
       const lhsElems = se.expression1 instanceof ModelicaArray ? [...se.expression1.flatElements] : [se.expression1];

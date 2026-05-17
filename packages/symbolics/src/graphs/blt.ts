@@ -148,7 +148,7 @@ export function performBltTransformation(
 
   const derVars = new Set<string>();
   // 1a. Find der(...) usages in equations
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     const deps = new Set<string>();
     eq.accept(collector, deps);
     for (const d of deps) {
@@ -188,7 +188,7 @@ export function performBltTransformation(
   const equations: ModelicaEquation[] = [];
   const constraintEquations: ModelicaEquation[] = [];
 
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (eq instanceof ModelicaFunctionCallEquation) {
       constraintEquations.push(eq);
     } else {
@@ -381,9 +381,6 @@ export function performBltTransformation(
                   const idx = sccEqs.indexOf(matchingEq);
                   if (idx >= 0) sccEqs[idx] = isolated;
                   equations[eqIdx] = isolated;
-                  // Propagate back to the original DAE so output uses the isolated form
-                  const origIdx = dae.equations.indexOf(matchingEq);
-                  if (origIdx >= 0) dae.equations[origIdx] = isolated;
                 } else {
                   // implicit single variable loop — cannot isolate
                   algebraicLoops.push({ variables: scc, equations: sccEqs });

@@ -65,7 +65,7 @@ export function buildCCS(rowsDeps: Set<string>[], columns: string[]): CCSMatrix 
  */
 export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; states: string[] } {
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);
@@ -129,7 +129,7 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
  */
 export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; states: string[] } {
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);

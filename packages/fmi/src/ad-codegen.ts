@@ -36,7 +36,7 @@ export function generateModelEvaluateJacobian(id: string, dae: ModelicaDAE, vars
 
   // Gather target equations (der(x) = f(x,u))
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : dae.equations) {
+  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);
@@ -185,7 +185,7 @@ export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars:
   varMap.set("time", `inst->time`);
 
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : dae.equations) {
+  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
     if (eq instanceof ModelicaArrayEquation) continue;
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };

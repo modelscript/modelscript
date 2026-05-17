@@ -223,7 +223,7 @@ export function buildSparseAdJacobian(
 ): { evaluator: (time: number, y: number[]) => SparseJacobian; numColors: number; nnz: number } | null {
   // ── Step 1: Extract derivative equations in the order of stateNames ──
   const derEqsMap = new Map<string, ModelicaExpression>();
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : dae.equations) {
+  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const ld = extractDer(se.expression1);

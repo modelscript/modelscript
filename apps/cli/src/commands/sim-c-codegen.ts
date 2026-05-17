@@ -165,7 +165,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
 
   // Collect referenced variable names for local alias emission
   const refNames = new Set<string>();
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     collectReferencedNames(se.expression1, refNames);
@@ -182,7 +182,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   L.push("");
 
   // Emit derivative equations
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!("expression1" in eq && "expression2" in eq)) continue;
     const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
     const lhsDer = extractDerName(se.expression1);
@@ -201,7 +201,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   }
 
   // Also compute algebraic equations (update g_vars[])
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (!(eq instanceof ModelicaSimpleEquation)) continue;
     if (
       eq.expression1 instanceof ModelicaNameExpression &&

@@ -131,7 +131,7 @@ function generateModelJs(id: string, nVars: number, nStates: number, dae: Modeli
     lines.push(`    this.states[${i}] = this.vars[${stateVRs[i]}];`);
   }
 
-  for (const eq of dae.equations) {
+  for (const eq of dae.arenaEquations()) {
     if (eq instanceof ModelicaSimpleEquation && eq.expression1 instanceof ModelicaNameExpression) {
       lines.push(`    ${varToJs(eq.expression1.name)} = ${exprToJs(eq.expression2)};`);
     }
