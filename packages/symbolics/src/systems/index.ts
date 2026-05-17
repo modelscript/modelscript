@@ -928,10 +928,20 @@ export class ModelicaDAE {
    * and when-clause removal.
    */
   replaceEquations(eqs: ModelicaEquation[]): void {
-    this.arena.clearEquations();
+    // Clear only non-initial equations from the arena (InitialSimple=7, InitialFor=8)
+    this.arena.clearEquationsByKindFilter((kind: number) => kind !== 7 && kind !== 8);
     this.equations.length = 0;
     for (const eq of eqs) {
       this.equations.push(eq); // triggers the dual-write interceptor
+    }
+  }
+
+  replaceInitialEquations(eqs: ModelicaEquation[]): void {
+    // Clear only initial equations from the arena
+    this.arena.clearEquationsByKindFilter((kind: number) => kind === 7 || kind === 8);
+    this.initialEquations.length = 0;
+    for (const eq of eqs) {
+      this.initialEquations.push(eq); // triggers the dual-write interceptor
     }
   }
 
@@ -1027,6 +1037,19 @@ export class ModelicaDAE {
       if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
         const eq = materializeEquation(this.arena, i);
         if (eq) yield eq;
+      }
+    }
+  }
+
+  /**
+   * Lazily materializes when-clauses from the arena.
+   */
+  *arenaWhenClauses(): IterableIterator<ModelicaWhenEquation> {
+    for (let i = 0; i < this.arena.eqCount; i++) {
+      const kind = this.arena.getEqKind(i);
+      if (kind === EqKind.When) {
+        const eq = materializeEquation(this.arena, i);
+        if (eq && eq instanceof ModelicaWhenEquation) yield eq;
       }
     }
   }
@@ -5547,13 +5570,16 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (sm as any).accept(this as any);
     }
-    if (node.initialEquations.length > 0) {
+    const initEqList = [...node.arenaInitialEquations()];
+    if (initEqList.length > 0) {
       this.out.write("initial equation\n");
-      for (const equation of node.initialEquations) equation.accept(this);
+      for (const equation of initEqList) equation.accept(this);
     }
     for (const section of node.initialAlgorithms) {
-      this.out.write("initial algorithm\n");
-      for (const stmt of section) stmt.accept(this);
+      if (section.length > 0) {
+        this.out.write("initial algorithm\n");
+        for (const stmt of section) stmt.accept(this);
+      }
     }
     if (node.arena.eqCount > 0 || node.whenClauses.length > 0) {
       this.out.write("equation\n");
@@ -5561,8 +5587,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       for (const equation of node.arenaEquations()) equation.accept(this);
     }
     for (const section of node.algorithms) {
-      this.out.write("algorithm\n");
-      for (const stmt of section) stmt.accept(this);
+      if (section.length > 0) {
+        this.out.write("algorithm\n");
+        for (const stmt of section) stmt.accept(this);
+      }
     }
     if (node.constraints.length > 0) {
       this.out.write("constraint\n");
@@ -5588,8 +5616,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       for (const equation of fn.arenaEquations()) equation.accept(this);
     }
     for (const section of fn.algorithms) {
-      this.out.write("algorithm\n");
-      for (const stmt of section) stmt.accept(this);
+      if (section.length > 0) {
+        this.out.write("algorithm\n");
+        for (const stmt of section) stmt.accept(this);
+      }
     }
     if (fn.externalDecl) {
       this.out.write("\n  " + fn.externalDecl + "\n");

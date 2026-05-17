@@ -1382,7 +1382,7 @@ export class ModelicaSimulator {
 
     // Extract when-clauses
     this.whenClauses = [];
-    for (const eq of this.dae.whenClauses) {
+    for (const eq of this.dae.arenaWhenClauses()) {
       const mainClause = this.buildWhenClause(eq.condition, eq.equations);
       if (mainClause) this.whenClauses.push(mainClause);
       for (const elseWhen of eq.elseWhenClauses) {

@@ -272,7 +272,8 @@ export function solveInitialEquations(
     converged: true,
   };
 
-  if (dae.initialEquations.length === 0) return result;
+  const initialEquations = [...dae.arenaInitialEquations()];
+  if (initialEquations.length === 0) return result;
 
   // Identify unknowns: variables that are not fixed, not parameters/constants
   const fixedVars = new Set<string>();
@@ -289,7 +290,7 @@ export function solveInitialEquations(
 
   // Collect all variable names referenced in initial equations
   const referencedVars = new Set<string>();
-  for (const eq of dae.initialEquations) {
+  for (const eq of initialEquations) {
     if ("expression1" in eq && "expression2" in eq) {
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
       collectVarNames(se.expression1, referencedVars);
@@ -309,7 +310,7 @@ export function solveInitialEquations(
 
   // Classify equations
   const classified: ClassifiedEq[] = [];
-  for (const eq of dae.initialEquations) {
+  for (const eq of initialEquations) {
     if (eq instanceof ModelicaArrayEquation) {
       // Unroll array initial equation into per-element implicit equations
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };

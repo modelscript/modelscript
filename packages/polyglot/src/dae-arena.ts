@@ -812,7 +812,28 @@ export class DAEArenaBuilder {
   // Memory Management
   // ─────────────────────────────────────────────────────────────────────────
 
-  /** Reset just the equation arena (keeps variables, expressions, and indexes). */
+  /** Clear all equations of a specific kind, shifting remaining equations to fill gaps. O(N) */
+  clearEquationsByKindFilter(filterFn: (kind: EqKind) => boolean): void {
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < this._eqCount; readIdx++) {
+      const offset = readIdx * EQ_STRIDE;
+      const kind = this.eqData[offset]! as EqKind;
+      if (!filterFn(kind)) {
+        // Keep this equation
+        if (writeIdx !== readIdx) {
+          const writeOffset = writeIdx * EQ_STRIDE;
+          this.eqData[writeOffset] = this.eqData[offset]!;
+          this.eqData[writeOffset + 1] = this.eqData[offset + 1]!;
+          this.eqData[writeOffset + 2] = this.eqData[offset + 2]!;
+          this.eqData[writeOffset + 3] = this.eqData[offset + 3]!;
+        }
+        writeIdx++;
+      }
+    }
+    this._eqCount = writeIdx;
+  }
+
+  /** Reset all equations. */
   clearEquations(): void {
     this._eqCount = 0;
   }

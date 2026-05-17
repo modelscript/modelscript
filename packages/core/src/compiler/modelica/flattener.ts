@@ -5261,7 +5261,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
 
     // Remove when equations from continuous equations lists so they don't corrupt BLT
     dae.replaceEquations(dae.equations.filter((eq) => !(eq instanceof ModelicaWhenEquation)));
-    dae.initialEquations = dae.initialEquations.filter((eq) => !(eq instanceof ModelicaWhenEquation));
+    dae.replaceInitialEquations(dae.initialEquations.filter((eq) => !(eq instanceof ModelicaWhenEquation)));
   }
 }
 /**

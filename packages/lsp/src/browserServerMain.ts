@@ -3742,7 +3742,9 @@ connection.onRequest(
 
       connection.console.info(`[simulate] DAE variables: ${dae.arenaVarCount}`);
       connection.console.info(`[simulate] DAE equations: ${dae.arena.eqCount}`);
-      connection.console.info(`[simulate] DAE initial equations: ${dae.initialEquations.length}`);
+      let initialEqCount = 0;
+      for (const _eq of dae.arenaInitialEquations()) initialEqCount++;
+      connection.console.info(`[simulate] DAE initial equations: ${initialEqCount}`);
       connection.console.info(`[simulate] DAE algorithms: ${dae.algorithms.length}`);
       connection.console.info(`[simulate] DAE functions: ${dae.functions.length}`);
       // Log first 20 variables with their types and expressions

@@ -274,7 +274,8 @@ function generateModelH(
   lines.push(`#define N_STATES ${nStates}`);
   lines.push(`#define N_STRING_VARS ${nStringVars}`);
   lines.push(`#define N_EVENT_INDICATORS ${result.numberOfEventIndicators}`);
-  const nWhenConditions = dae.whenClauses.reduce((acc, weq) => acc + 1 + weq.elseWhenClauses.length, 0);
+  const whenEqList = [...dae.arenaWhenClauses()];
+  const nWhenConditions = whenEqList.reduce((acc, weq) => acc + 1 + weq.elseWhenClauses.length, 0);
   lines.push(`#define N_WHEN_CONDITIONS ${nWhenConditions}`);
   lines.push("");
 
@@ -524,14 +525,15 @@ function generateAlgebraicLoopSolvers(id: string, dae: ModelicaDAE, result: FmuR
 function generateInitializeSolve(id: string, dae: ModelicaDAE, result: FmuResult): string[] {
   const lines: string[] = [];
 
-  if (dae.initialEquations.length === 0) {
+  const initEqList = [...dae.arenaInitialEquations()];
+  if (initEqList.length === 0) {
     lines.push(`void ${id}_initializeSolve(${id}_Instance* inst) { (void)inst; }`);
     return lines;
   }
 
   // Collect initial equations — unroll array equations into per-element scalar equations
   const initEqs: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.initialEquations) {
+  for (const eq of initEqList) {
     if ("expression1" in eq && "expression2" in eq) {
       const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
       if (eq instanceof ModelicaArrayEquation) {
@@ -833,8 +835,11 @@ function generateModelC(id: string, dae: ModelicaDAE, result: FmuResult): string
     }
   }
   // Call the initial equation solver (generated below) after start values
-  if (dae.initialEquations.length > 0) {
-    lines.push(`  ${id}_initializeSolve(inst);`);
+  {
+    const hasInitEqs = !dae.arenaInitialEquations()[Symbol.iterator]().next().done;
+    if (hasInitEqs) {
+      lines.push(`  ${id}_initializeSolve(inst);`);
+    }
   }
   lines.push("}");
   lines.push("");
@@ -1644,7 +1649,7 @@ function generateFmi2FunctionsC(
   lines.push("  info->valuesOfContinuousStatesChanged = fmi2False;");
   lines.push("  info->nextEventTimeDefined = fmi2False;");
 
-  const whenEqs = dae.whenClauses;
+  const whenEqs = [...dae.arenaWhenClauses()];
   if (whenEqs.length > 0) {
     lines.push("");
     lines.push("  /* Evaluate current event indicators */");
