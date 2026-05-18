@@ -1,4 +1,4 @@
-import type { QueryHooks } from "@modelscript/polyglot/runtime";
+import type { QueryHooks } from "@modelscript/language";
 
 // Import the language definition to access query lambdas directly.
 // The functions are NOT serialized — they execute from the original source.

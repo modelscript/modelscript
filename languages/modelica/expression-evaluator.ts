@@ -20,7 +20,7 @@
  * recursive-descent evaluator.
  */
 
-import type { ExpressionEvaluator, QueryDB, SymbolEntry } from "@modelscript/polyglot";
+import type { ExpressionEvaluator, QueryDB, SymbolEntry } from "@modelscript/language";
 import type { ModificationValue } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------

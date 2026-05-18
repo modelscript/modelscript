@@ -18,7 +18,7 @@
  * - Redeclaration modifications: `redeclare type T = NewType`
  */
 
-import type { SpecializationArgs } from "@modelscript/polyglot";
+import type { SpecializationArgs } from "@modelscript/language";
 
 // ---------------------------------------------------------------------------
 // Modification Data Types

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
+import type { SymbolEntry } from "@modelscript/language";
+import { StringInterner } from "@modelscript/language/interner";
+import { SymbolArena, SymbolEntryView } from "@modelscript/language/symbol-arena";
 import { MemoKeyStore, packMemoKey, QueryNameRegistry, unpackMemoKey } from "@modelscript/salsa";
 import { describe, expect, it } from "vitest";
-import { StringInterner } from "../src/interner.js";
-import type { SymbolEntry } from "../src/runtime.js";
-import { SymbolArena, SymbolEntryView } from "../src/symbol-arena.js";
 
 // ---------------------------------------------------------------------------
 // Helper: create a test SymbolEntry

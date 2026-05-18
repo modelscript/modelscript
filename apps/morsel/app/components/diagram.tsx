@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  disposeDiagram,
-  dropComponentGhost,
-  initGraph,
-  renderDiagram,
-  setDiagramOptions,
-} from "@modelscript/diagram-core";
+import { disposeDiagram, dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 

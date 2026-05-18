@@ -3,7 +3,7 @@ import { unzipSync } from "fflate";
 import type { BrowserFileSystem } from "./browser-file-system";
 import { idbGet, idbPut, MSL_VERSION_KEY, openMSLCache } from "./browser-file-system";
 
-import type { FederatedQueryCacheStore } from "@modelscript/polyglot";
+import type { FederatedQueryCacheStore } from "@modelscript/language";
 import type { Parser, Tree } from "@modelscript/utils";
 import { ingestSalsaIndex } from "./salsa-index-ingester";
 
@@ -151,7 +151,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
                   }
                 }
                 return (mslTreeCache.get(fullPath)?.rootNode ??
-                  null) as unknown as import("@modelscript/polyglot/symbol-indexer").CSTNode;
+                  null) as unknown as import("@modelscript/language/symbol-indexer").CSTNode;
               },
               parentFQN,
             );
@@ -232,11 +232,11 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
 
       ctx.documentTrees.set(uri, { text, tree: null, classCache: new Map() });
       ctx.sysml2WorkspaceIndex.register(uri, () => {
-        if (!ctx.sysml2Parser) return null as unknown as import("@modelscript/polyglot/symbol-indexer").CSTNode;
+        if (!ctx.sysml2Parser) return null as unknown as import("@modelscript/language/symbol-indexer").CSTNode;
         const tree = ctx.sysml2Parser.parse(text);
         const node = ctx.documentTrees.get(uri);
         if (node && tree) node.tree = tree;
-        return (tree ? tree.rootNode : null) as unknown as import("@modelscript/polyglot/symbol-indexer").CSTNode;
+        return (tree ? tree.rootNode : null) as unknown as import("@modelscript/language/symbol-indexer").CSTNode;
       });
       fileCount++;
     }
@@ -411,7 +411,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
                   }
                 }
                 return (pkgTreeCache.get(fullPath)?.rootNode ??
-                  null) as unknown as import("@modelscript/polyglot/symbol-indexer").CSTNode;
+                  null) as unknown as import("@modelscript/language/symbol-indexer").CSTNode;
               },
               parentFQN,
             );

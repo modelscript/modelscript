@@ -8,19 +8,6 @@
   "type": "module",
   "exports": {
     ".": "./dist/src/index.js",
-    "./runtime": "./dist/src/runtime.js",
-    "./symbol-indexer": "./dist/src/symbol-indexer.js",
-    "./resolver": "./dist/src/resolver.js",
-    "./lsp-bridge": "./dist/src/lsp-bridge.js",
-    "./workspace-index": "./dist/src/workspace-index.js",
-    "./semantic-node": "./dist/src/semantic-node.js",
-    "./semantic-diff": "./dist/src/semantic-diff.js",
-    "./diagram-builder": "./dist/src/polyglot-diagram-builder.js",
-    "./verifier": "./dist/src/verifier.js",
-    "./interner": "./dist/src/interner.js",
-    "./arena": "./dist/src/arena.js",
-    "./line-index": "./dist/src/line-index.js",
-    "./symbol-arena": "./dist/src/symbol-arena.js",
     "./dae-arena": "./dist/src/dae-arena.js"
   },
   "main": "dist/src/index.js",
@@ -28,7 +15,7 @@
     "example": "examples"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
     "clean": "rimraf dist",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -3,7 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram-core";
+import { dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram";
 
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {
@@ -96,12 +96,12 @@ window.addEventListener("DOMContentLoaded", () => {
     container,
     isDark,
     onAction: enqueueDiagramAction,
-    onSelect: (id) => {
+    onSelect: (id: unknown) => {
       if (!id) {
         document.getElementById("properties-panel")?.classList.remove("open");
       }
     },
-    onShowProperties: (nodeId, cachedProps, isLoading) => {
+    onShowProperties: (nodeId: unknown, cachedProps: unknown, isLoading?: boolean) => {
       showProperties({ id: nodeId, properties: cachedProps, isLoading });
       // We moved showProperties into diagram-core but didn't bring the DOM logic
       vscode.postMessage({ type: "getProperties", componentName: nodeId });

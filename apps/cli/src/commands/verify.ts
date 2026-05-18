@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Context, createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/core";
+import { VerificationRunner } from "@modelscript/language";
 import Modelica from "@modelscript/modelica/parser";
-import { VerificationRunner } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import fs from "node:fs";
 import path from "node:path";

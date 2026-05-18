@@ -12,5 +12,5 @@
     "isolatedModules": true,
     "moduleResolution": "nodenext"
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "src-gen/**/*.ts"]
 }

@@ -1,4 +1,4 @@
-import type { IndexerHook } from "@modelscript/polyglot/runtime";
+import type { IndexerHook } from "@modelscript/language";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
   {

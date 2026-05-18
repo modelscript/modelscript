@@ -15,17 +15,17 @@ import {
   field,
   info,
   language,
-  opt,
+  optional,
   prec,
   ref,
-  rep,
-  rep1,
+  repeat,
+  repeat1,
   seq,
   token,
   warning,
   type QueryDB,
   type SymbolEntry,
-} from "@modelscript/polyglot";
+} from "@modelscript/language";
 
 // ---------------------------------------------------------------------------
 // Precedence constants
@@ -355,7 +355,7 @@ const packageModel = {
 type EvalResult = number | boolean | string | null | undefined;
 
 /** CSTNode type alias for expression evaluation */
-type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
 /**
  * Resolve a feature reference name within a scope.
@@ -1860,7 +1860,8 @@ const packageTraceabilityLints = {
 // X6-Compatible Graphics Configuration — Reusable helpers
 // ---------------------------------------------------------------------------
 
-import type { GraphicsConfig, X6Markup } from "@modelscript/polyglot";
+import type { X6Markup } from "@modelscript/diagram/builder";
+import type { GraphicsConfig } from "@modelscript/language";
 
 /** Standard SysML block-style node markup: header + separator + label + icon */
 const blockMarkup: X6Markup[] = [
@@ -2021,7 +2022,7 @@ const sysmlEdgeGraphics = (opts: {
 // Cross-Language Adapters — SysML2 → Modelica helpers
 // ---------------------------------------------------------------------------
 
-import type { AdapterDB } from "@modelscript/polyglot";
+import type { AdapterDB } from "@modelscript/language";
 
 /** Project a SysML2 Definition as a Modelica ClassDefinition. */
 const modelicaClassAdapter = (classKind: string) => ({
@@ -2174,7 +2175,7 @@ export default language({
     // ROOT
     // =====================================================================
 
-    RootNamespace: ($) => rep($._PackageBodyElement),
+    RootNamespace: ($) => repeat($._PackageBodyElement),
 
     _PackageBodyElement: ($) => choice($.PackageMember, $.ElementFilterMember, $.AliasMember, $.Import),
 
@@ -2184,11 +2185,11 @@ export default language({
 
     _Identification: ($) =>
       choice(
-        seq("<", field("declaredShortName", $.Name), ">", opt(field("declaredName", $.Name))),
+        seq("<", field("declaredShortName", $.Name), ">", optional(field("declaredName", $.Name))),
         field("declaredName", $.Name),
       ),
 
-    _RelationshipBody: ($) => choice(";", seq("{", rep($.OwnedAnnotation), "}")),
+    _RelationshipBody: ($) => choice(";", seq("{", repeat($.OwnedAnnotation), "}")),
 
     // =====================================================================
     // VISIBILITY
@@ -2202,14 +2203,14 @@ export default language({
 
     Dependency: ($) =>
       seq(
-        rep($.PrefixMetadataAnnotation),
+        repeat($.PrefixMetadataAnnotation),
         "dependency",
-        opt(seq(opt($._Identification), "from")),
+        optional(seq(optional($._Identification), "from")),
         field("client", $.QualifiedName),
-        rep(seq(",", field("client", $.QualifiedName))),
+        repeat(seq(",", field("client", $.QualifiedName))),
         "to",
         field("supplier", $.QualifiedName),
-        rep(seq(",", field("supplier", $.QualifiedName))),
+        repeat(seq(",", field("supplier", $.QualifiedName))),
         $._RelationshipBody,
       ),
 
@@ -2233,22 +2234,28 @@ export default language({
 
     Comment: ($) =>
       seq(
-        opt(seq("comment", opt($._Identification), opt(seq("about", $.Annotation, rep(seq(",", $.Annotation)))))),
-        opt(seq("locale", field("locale", $.STRING_VALUE))),
+        optional(
+          seq(
+            "comment",
+            optional($._Identification),
+            optional(seq("about", $.Annotation, repeat(seq(",", $.Annotation)))),
+          ),
+        ),
+        optional(seq("locale", field("locale", $.STRING_VALUE))),
         field("body", $.REGULAR_COMMENT),
       ),
 
     Documentation: ($) =>
       seq(
         "doc",
-        opt($._Identification),
-        opt(seq("locale", field("locale", $.STRING_VALUE))),
+        optional($._Identification),
+        optional(seq("locale", field("locale", $.STRING_VALUE))),
         field("body", $.REGULAR_COMMENT),
       ),
 
     TextualRepresentation: ($) =>
       seq(
-        opt(seq("rep", opt($._Identification))),
+        optional(seq("rep", optional($._Identification))),
         "language",
         field("language", $.STRING_VALUE),
         field("body", $.REGULAR_COMMENT),
@@ -2267,11 +2274,11 @@ export default language({
     MetadataUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           choice("metadata", "@"),
-          opt(seq(opt($._Identification), opt(seq(choice(":", seq("defined", "by")))))),
+          optional(seq(optional($._Identification), optional(seq(choice(":", seq("defined", "by")))))),
           field("ownedRelationship", $.MetadataTyping),
-          opt(seq("about", $.Annotation, rep(seq(",", $.Annotation)))),
+          optional(seq("about", $.Annotation, repeat(seq(",", $.Annotation)))),
           $._MetadataBody,
         ),
         symbol: usageAttrs("metadata"),
@@ -2289,23 +2296,26 @@ export default language({
       }),
 
     _MetadataBody: ($) =>
-      choice(";", seq("{", rep(choice($.DefinitionMember, $.MetadataBodyUsageMember, $.AliasMember, $.Import)), "}")),
+      choice(
+        ";",
+        seq("{", repeat(choice($.DefinitionMember, $.MetadataBodyUsageMember, $.AliasMember, $.Import)), "}"),
+      ),
 
     MetadataBodyUsageMember: ($) => field("ownedRelatedElement", $.MetadataBodyUsage),
 
     MetadataBodyUsage: ($) =>
       seq(
-        opt("ref"),
-        opt(choice(":>>", "redefines")),
+        optional("ref"),
+        optional(choice(":>>", "redefines")),
         field("ownedRelationship", $.OwnedRedefinition),
-        opt($._FeatureSpecializationPart),
-        opt($._ValuePart),
+        optional($._FeatureSpecializationPart),
+        optional($._ValuePart),
         $._MetadataBody,
       ),
 
     MetadataDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "metadata", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "metadata", "def", $._Definition),
         symbol: defAttrs("metadata"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2318,7 +2328,7 @@ export default language({
 
     Package: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "package", opt($._Identification), $._PackageBody),
+        syntax: seq(repeat($._usage_modifier), "package", optional($._Identification), $._PackageBody),
         symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
@@ -2333,11 +2343,11 @@ export default language({
     LibraryPackage: ($) =>
       def({
         syntax: seq(
-          opt(field("isStandard", "standard")),
+          optional(field("isStandard", "standard")),
           "library",
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "package",
-          opt($._Identification),
+          optional($._Identification),
           $._PackageBody,
         ),
         symbol: (self: any) => ({
@@ -2352,24 +2362,24 @@ export default language({
         graphics: () => sysmlGroupGraphics({ fill: "#f0f4ff", stroke: "#4a90d9", tabText: "library" }),
       }),
 
-    _PackageBody: ($) => choice(";", seq("{", rep($._PackageBodyElement), "}")),
+    _PackageBody: ($) => choice(";", seq("{", repeat($._PackageBodyElement), "}")),
 
     PackageMember: ($) =>
       seq(
-        opt($.VisibilityIndicator),
+        optional($.VisibilityIndicator),
         choice(field("ownedRelatedElement", $._DefinitionElement), field("ownedRelatedElement", $._UsageElement)),
       ),
 
     ElementFilterMember: ($) =>
-      seq(opt($.VisibilityIndicator), "filter", field("ownedRelatedElement", $.OwnedExpression), ";"),
+      seq(optional($.VisibilityIndicator), "filter", field("ownedRelatedElement", $.OwnedExpression), ";"),
 
     AliasMember: ($) =>
       def({
         syntax: seq(
-          opt($.VisibilityIndicator),
+          optional($.VisibilityIndicator),
           "alias",
-          opt(seq("<", field("memberShortName", $.Name), ">")),
-          opt(field("memberName", $.Name)),
+          optional(seq("<", field("memberShortName", $.Name), ">")),
+          optional(field("memberName", $.Name)),
           "for",
           ref({
             syntax: field("memberElement", $.QualifiedName),
@@ -2390,7 +2400,7 @@ export default language({
     // IMPORTS
     // =====================================================================
 
-    _ImportPrefix: ($) => seq(opt($.VisibilityIndicator), "import", opt(field("isImportAll", "all"))),
+    _ImportPrefix: ($) => seq(optional($.VisibilityIndicator), "import", optional(field("isImportAll", "all"))),
 
     Import: ($) => seq(choice($.MembershipImport, $.NamespaceImport), $._RelationshipBody),
 
@@ -2416,7 +2426,7 @@ export default language({
           targetKinds: ["Membership"],
           resolve: "qualified",
         }),
-        opt(seq("::", field("isRecursive", "**"))),
+        optional(seq("::", field("isRecursive", "**"))),
       ),
 
     NamespaceImport: ($) =>
@@ -2443,10 +2453,10 @@ export default language({
         }),
         "::",
         "*",
-        opt(seq("::", field("isRecursive", "**"))),
+        optional(seq("::", field("isRecursive", "**"))),
       ),
 
-    FilterPackage: ($) => seq($.FilterPackageImport, rep1($.FilterPackageMember)),
+    FilterPackage: ($) => seq($.FilterPackageImport, repeat1($.FilterPackageMember)),
 
     FilterPackageImport: ($) => choice($.FilterPackageMembershipImport, $.FilterPackageNamespaceImport),
 
@@ -2545,7 +2555,7 @@ export default language({
     // =====================================================================
 
     _SubclassificationPart: ($) =>
-      seq(choice(":>", "specializes"), $.OwnedSubclassification, rep(seq(",", $.OwnedSubclassification))),
+      seq(choice(":>", "specializes"), $.OwnedSubclassification, repeat(seq(",", $.OwnedSubclassification))),
 
     OwnedSubclassification: ($) =>
       ref({
@@ -2560,37 +2570,37 @@ export default language({
     // =====================================================================
 
     _FeatureDeclaration: ($) =>
-      choice(seq($._Identification, opt($._FeatureSpecializationPart)), $._FeatureSpecializationPart),
+      choice(seq($._Identification, optional($._FeatureSpecializationPart)), $._FeatureSpecializationPart),
 
     _FeatureSpecializationPart: ($) =>
       choice(
-        seq(rep1($._FeatureSpecialization), opt($._MultiplicityPart), rep($._FeatureSpecialization)),
-        seq($._MultiplicityPart, rep($._FeatureSpecialization)),
+        seq(repeat1($._FeatureSpecialization), optional($._MultiplicityPart), repeat($._FeatureSpecialization)),
+        seq($._MultiplicityPart, repeat($._FeatureSpecialization)),
       ),
 
     _MultiplicityPart: ($) =>
       choice(
         $.OwnedMultiplicity,
         seq(
-          opt($.OwnedMultiplicity),
+          optional($.OwnedMultiplicity),
           choice(
-            seq(field("isOrdered", "ordered"), opt(field("isNonunique", "nonunique"))),
-            seq(field("isNonunique", "nonunique"), opt(field("isOrdered", "ordered"))),
+            seq(field("isOrdered", "ordered"), optional(field("isNonunique", "nonunique"))),
+            seq(field("isNonunique", "nonunique"), optional(field("isOrdered", "ordered"))),
           ),
         ),
       ),
 
     _FeatureSpecialization: ($) => choice($._Typings, $._Subsettings, $._References, $._Crosses, $._Redefinitions),
 
-    _Typings: ($) => seq(choice(":", seq("defined", "by")), $.FeatureTyping, rep(seq(",", $.FeatureTyping))),
+    _Typings: ($) => seq(choice(":", seq("defined", "by")), $.FeatureTyping, repeat(seq(",", $.FeatureTyping))),
 
-    _Subsettings: ($) => seq(choice(":>", "subsets"), $.OwnedSubsetting, rep(seq(",", $.OwnedSubsetting))),
+    _Subsettings: ($) => seq(choice(":>", "subsets"), $.OwnedSubsetting, repeat(seq(",", $.OwnedSubsetting))),
 
     _References: ($) => seq(choice("::>", "references"), $.OwnedReferenceSubsetting),
 
     _Crosses: ($) => seq(choice("=>", "crosses"), $.OwnedCrossSubsetting),
 
-    _Redefinitions: ($) => seq(choice(":>>", "redefines"), $.OwnedRedefinition, rep(seq(",", $.OwnedRedefinition))),
+    _Redefinitions: ($) => seq(choice(":>>", "redefines"), $.OwnedRedefinition, repeat(seq(",", $.OwnedRedefinition))),
 
     FeatureTyping: ($) => choice($.OwnedFeatureTyping, $.ConjugatedPortTyping),
 
@@ -2659,7 +2669,7 @@ export default language({
       seq(
         "[",
         field("lowerBound", $.MultiplicityExpressionMember),
-        opt(seq("..", field("upperBound", $.MultiplicityExpressionMember))),
+        optional(seq("..", field("upperBound", $.MultiplicityExpressionMember))),
         "]",
       ),
 
@@ -2670,35 +2680,35 @@ export default language({
     // DEFINITIONS
     // =====================================================================
 
-    _Definition: ($) => seq(opt($._Identification), opt($._SubclassificationPart), $._DefinitionBody),
+    _Definition: ($) => seq(optional($._Identification), optional($._SubclassificationPart), $._DefinitionBody),
 
-    _DefinitionBody: ($) => choice(";", seq("{", rep($._DefinitionBodyItem), "}")),
+    _DefinitionBody: ($) => choice(";", seq("{", repeat($._DefinitionBodyItem), "}")),
 
     _DefinitionBodyItem: ($) =>
       choice(
         $.DefinitionMember,
         $.VariantUsageMember,
         $.NonOccurrenceUsageMember,
-        seq(opt($.EmptySuccessionMember), $.OccurrenceUsageMember),
+        seq(optional($.EmptySuccessionMember), $.OccurrenceUsageMember),
         $.AliasMember,
         $.Import,
       ),
 
-    DefinitionMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $._DefinitionElement)),
+    DefinitionMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._DefinitionElement)),
 
     VariantUsageMember: ($) =>
-      seq(opt($.VisibilityIndicator), "variant", field("ownedRelatedElement", $._UsageElement)),
+      seq(optional($.VisibilityIndicator), "variant", field("ownedRelatedElement", $._UsageElement)),
 
     NonOccurrenceUsageMember: ($) =>
-      seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $._NonOccurrenceUsageElement)),
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._NonOccurrenceUsageElement)),
 
     OccurrenceUsageMember: ($) =>
-      seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $._OccurrenceUsageElement)),
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._OccurrenceUsageElement)),
 
     // =====================================================================
     // USAGES
     // =====================================================================
-    // Single shared modifier rule — avoids per-rule rep() conflicts
+    // Single shared modifier rule — avoids per-rule repeat() conflicts
     _usage_modifier: ($) =>
       choice(
         field("isEnd", "end"),
@@ -2718,9 +2728,9 @@ export default language({
 
     _UsageDeclaration: ($) => $._FeatureDeclaration,
 
-    _UsageCompletion: ($) => seq(opt($._ValuePart), $._DefinitionBody),
+    _UsageCompletion: ($) => seq(optional($._ValuePart), $._DefinitionBody),
 
-    _Usage: ($) => seq(opt($._UsageDeclaration), $._UsageCompletion),
+    _Usage: ($) => seq(optional($._UsageDeclaration), $._UsageCompletion),
 
     _ValuePart: ($) => $.FeatureValue,
 
@@ -2729,7 +2739,7 @@ export default language({
         choice(
           "=",
           field("isInitial", ":="),
-          seq(field("isDefault", "default"), opt(choice("=", field("isInitial", ":=")))),
+          seq(field("isDefault", "default"), optional(choice("=", field("isInitial", ":=")))),
         ),
         field("ownedRelatedElement", $.OwnedExpression),
       ),
@@ -2740,7 +2750,7 @@ export default language({
 
     DefaultReferenceUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), $._UsageDeclaration, opt($._ValuePart), $._DefinitionBody),
+        syntax: seq(repeat($._usage_modifier), $._UsageDeclaration, optional($._ValuePart), $._DefinitionBody),
         symbol: usageAttrs("ref"),
         queries: usageQueries,
         model: usageModel,
@@ -2749,7 +2759,7 @@ export default language({
 
     ReferenceUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "ref", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "ref", $._Usage),
         symbol: usageAttrs("ref"),
         queries: usageQueries,
         model: usageModel,
@@ -2762,7 +2772,7 @@ export default language({
 
     AttributeDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "attribute", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "attribute", "def", $._Definition),
         symbol: defAttrs("attribute"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2773,7 +2783,7 @@ export default language({
 
     AttributeUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "attribute", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "attribute", $._Usage),
         symbol: usageAttrs("attribute"),
         queries: usageQueries,
         model: usageModel,
@@ -2789,11 +2799,11 @@ export default language({
     EnumerationDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "enum",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._EnumerationBody,
         ),
         symbol: (self) => ({ kind: "Enumeration", name: self.declaredName, exports: [self.declaredName] }),
@@ -2814,13 +2824,14 @@ export default language({
         graphics: () => sysmlNodeGraphics({ stereotype: "enum def", fill: "#f3e5f5", stroke: "#7b1fa2" }),
       }),
 
-    _EnumerationBody: ($) => choice(";", seq("{", rep(choice($.AnnotatingMember, $.EnumerationUsageMember)), "}")),
+    _EnumerationBody: ($) => choice(";", seq("{", repeat(choice($.AnnotatingMember, $.EnumerationUsageMember)), "}")),
 
-    EnumerationUsageMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.EnumeratedValue)),
+    EnumerationUsageMember: ($) =>
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.EnumeratedValue)),
 
     EnumeratedValue: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), opt("enum"), $._Usage),
+        syntax: seq(repeat($._usage_modifier), optional("enum"), $._Usage),
         symbol: (self) => ({ kind: "EnumerationValue", name: self.declaredName }),
         model: {
           name: "EnumerationValueNode" as const,
@@ -2830,7 +2841,7 @@ export default language({
 
     EnumerationUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "enum", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "enum", $._Usage),
         symbol: usageAttrs("enumeration"),
         queries: usageQueries,
         model: usageModel,
@@ -2843,7 +2854,7 @@ export default language({
 
     OccurrenceDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "occurrence", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "occurrence", "def", $._Definition),
         symbol: defAttrs("occurrence"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2853,7 +2864,7 @@ export default language({
 
     OccurrenceUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "occurrence", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "occurrence", $._Usage),
         symbol: usageAttrs("occurrence"),
         queries: usageQueries,
         model: usageModel,
@@ -2866,7 +2877,7 @@ export default language({
 
     ItemDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "item", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "item", "def", $._Definition),
         symbol: defAttrs("item"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2876,7 +2887,7 @@ export default language({
 
     ItemUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "item", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "item", $._Usage),
         symbol: usageAttrs("item"),
         queries: usageQueries,
         model: usageModel,
@@ -2886,7 +2897,7 @@ export default language({
 
     PartDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "part", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "part", "def", $._Definition),
         symbol: defAttrs("part"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2902,7 +2913,7 @@ export default language({
 
     PartUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "part", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "part", $._Usage),
         symbol: usageAttrs("part"),
         queries: usageQueries,
         model: usageModel,
@@ -2917,7 +2928,7 @@ export default language({
 
     PortDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "port", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "port", "def", $._Definition),
         symbol: defAttrs("port"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2932,7 +2943,7 @@ export default language({
 
     PortUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "port", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "port", $._Usage),
         symbol: usageAttrs("port"),
         queries: usageQueries,
         model: usageModel,
@@ -2974,14 +2985,14 @@ export default language({
 
     ConnectorEnd: ($) =>
       seq(
-        opt(field("ownedRelationship", $.OwnedMultiplicity)),
-        opt(seq(field("declaredName", $.Name), choice("::>", "references"))),
+        optional(field("ownedRelationship", $.OwnedMultiplicity)),
+        optional(seq(field("declaredName", $.Name), choice("::>", "references"))),
         $.OwnedReferenceSubsetting,
       ),
 
     ConnectionDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "connection", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "connection", "def", $._Definition),
         symbol: defAttrs("connection"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -2993,9 +3004,14 @@ export default language({
     ConnectionUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           choice(
-            seq("connection", opt($._UsageDeclaration), opt($._ValuePart), opt(seq("connect", $._ConnectorPart))),
+            seq(
+              "connection",
+              optional($._UsageDeclaration),
+              optional($._ValuePart),
+              optional(seq("connect", $._ConnectorPart)),
+            ),
             seq("connect", $._ConnectorPart),
           ),
           $._DefinitionBody,
@@ -3015,13 +3031,13 @@ export default language({
     _BinaryConnectorPart: ($) => seq($.ConnectorEndMember, "to", $.ConnectorEndMember),
 
     _NaryConnectorPart: ($) =>
-      seq("(", $.ConnectorEndMember, ",", $.ConnectorEndMember, rep(seq(",", $.ConnectorEndMember)), ")"),
+      seq("(", $.ConnectorEndMember, ",", $.ConnectorEndMember, repeat(seq(",", $.ConnectorEndMember)), ")"),
 
     BindingConnectorAsUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt(seq("binding", opt($._UsageDeclaration))),
+          repeat($._usage_modifier),
+          optional(seq("binding", optional($._UsageDeclaration))),
           "bind",
           $.ConnectorEndMember,
           "=",
@@ -3038,8 +3054,8 @@ export default language({
     SuccessionAsUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt(seq("succession", opt($._UsageDeclaration))),
+          repeat($._usage_modifier),
+          optional(seq("succession", optional($._UsageDeclaration))),
           "first",
           $.ConnectorEndMember,
           "then",
@@ -3060,11 +3076,11 @@ export default language({
     InterfaceDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "interface",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._DefinitionBody,
         ),
         symbol: defAttrs("interface"),
@@ -3077,10 +3093,10 @@ export default language({
     InterfaceUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "interface",
-          opt($._UsageDeclaration),
-          opt(seq("connect", $._ConnectorPart)),
+          optional($._UsageDeclaration),
+          optional(seq("connect", $._ConnectorPart)),
           $._DefinitionBody,
         ),
         symbol: usageAttrs("interface"),
@@ -3096,7 +3112,7 @@ export default language({
 
     AllocationDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "allocation", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "allocation", "def", $._Definition),
         symbol: defAttrs("allocation"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -3107,9 +3123,9 @@ export default language({
     AllocationUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           choice(
-            seq("allocation", opt($._UsageDeclaration), opt(seq("allocate", $._ConnectorPart))),
+            seq("allocation", optional($._UsageDeclaration), optional(seq("allocate", $._ConnectorPart))),
             seq("allocate", $._ConnectorPart),
           ),
           $._DefinitionBody,
@@ -3127,7 +3143,7 @@ export default language({
 
     FlowDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "flow", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "flow", "def", $._Definition),
         symbol: defAttrs("flow"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -3138,15 +3154,15 @@ export default language({
     FlowUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "flow",
           choice(
             seq($.FlowEndMember, "to", $.FlowEndMember),
             seq(
-              opt($._UsageDeclaration),
-              opt($._ValuePart),
-              opt(seq("of", $.PayloadFeatureMember)),
-              opt(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
+              optional($._UsageDeclaration),
+              optional($._ValuePart),
+              optional(seq("of", $.PayloadFeatureMember)),
+              optional(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
             ),
           ),
           $._DefinitionBody,
@@ -3161,16 +3177,16 @@ export default language({
     SuccessionFlowUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "succession",
           "flow",
           choice(
             seq($.FlowEndMember, "to", $.FlowEndMember),
             seq(
-              opt($._UsageDeclaration),
-              opt($._ValuePart),
-              opt(seq("of", $.PayloadFeatureMember)),
-              opt(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
+              optional($._UsageDeclaration),
+              optional($._ValuePart),
+              optional(seq("of", $.PayloadFeatureMember)),
+              optional(seq("from", $.FlowEndMember, "to", $.FlowEndMember)),
             ),
           ),
           $._DefinitionBody,
@@ -3186,15 +3202,16 @@ export default language({
 
     PayloadFeature: ($) =>
       choice(
-        seq(opt($._Identification), $._FeatureSpecializationPart, opt($._ValuePart)),
-        seq(opt($._Identification), $._ValuePart),
-        seq($.OwnedFeatureTyping, opt($.OwnedMultiplicity)),
+        seq(optional($._Identification), $._FeatureSpecializationPart, optional($._ValuePart)),
+        seq(optional($._Identification), $._ValuePart),
+        seq($.OwnedFeatureTyping, optional($.OwnedMultiplicity)),
         seq($.OwnedMultiplicity, $.OwnedFeatureTyping),
       ),
 
     FlowEndMember: ($) => field("ownedRelatedElement", $.FlowEnd),
 
-    FlowEnd: ($) => seq(opt(seq($.OwnedReferenceSubsetting, ".")), field("ownedRelationship", $.FlowFeatureMember)),
+    FlowEnd: ($) =>
+      seq(optional(seq($.OwnedReferenceSubsetting, ".")), field("ownedRelationship", $.FlowFeatureMember)),
 
     FlowFeatureMember: ($) => field("ownedRelatedElement", $.FlowFeature),
 
@@ -3213,12 +3230,12 @@ export default language({
     ActionDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "action",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
-          opt($._ParameterList),
+          optional($._Identification),
+          optional($._SubclassificationPart),
+          optional($._ParameterList),
           $._ActionBody,
         ),
         symbol: defAttrs("action"),
@@ -3229,7 +3246,7 @@ export default language({
         graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#e3f2fd", stroke: "#1565c0" }),
       }),
 
-    _ActionBody: ($) => choice(";", seq("{", rep($._ActionBodyItem), "}")),
+    _ActionBody: ($) => choice(";", seq("{", repeat($._ActionBodyItem), "}")),
 
     _ActionBodyItem: ($) =>
       choice(
@@ -3238,7 +3255,7 @@ export default language({
         $.DefinitionMember,
         $.VariantUsageMember,
         $.NonOccurrenceUsageMember,
-        seq(opt($.EmptySuccessionMember), $._OccurrenceUsageElement),
+        seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
         $.ActionNodeMember,
         $.ReturnParameterMember,
       ),
@@ -3247,7 +3264,7 @@ export default language({
 
     MultiplicitySourceEnd: ($) => field("ownedRelationship", $.OwnedMultiplicity),
 
-    ActionNodeMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $._ActionNode)),
+    ActionNodeMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._ActionNode)),
 
     _ActionNode: ($) =>
       choice(
@@ -3262,29 +3279,30 @@ export default language({
 
     IfNode: ($) =>
       seq(
-        rep($._usage_modifier),
-        opt(seq("action", opt($._UsageDeclaration))),
+        repeat($._usage_modifier),
+        optional(seq("action", optional($._UsageDeclaration))),
         "if",
         field("condition", $.OwnedExpression),
         field("thenBody", $.ActionBodyParameter),
-        opt(seq("else", choice(field("elseBody", $.ActionBodyParameter), $.IfNode))),
+        optional(seq("else", choice(field("elseBody", $.ActionBodyParameter), $.IfNode))),
       ),
 
-    ActionBodyParameter: ($) => seq(opt(seq("action", opt($._UsageDeclaration))), "{", rep($._ActionBodyItem), "}"),
+    ActionBodyParameter: ($) =>
+      seq(optional(seq("action", optional($._UsageDeclaration))), "{", repeat($._ActionBodyItem), "}"),
 
     WhileLoopNode: ($) =>
       seq(
-        rep($._usage_modifier),
-        opt(seq("action", opt($._UsageDeclaration))),
+        repeat($._usage_modifier),
+        optional(seq("action", optional($._UsageDeclaration))),
         choice(seq("while", field("condition", $.OwnedExpression)), "loop"),
         $.ActionBodyParameter,
-        opt(seq("until", field("untilCondition", $.OwnedExpression), ";")),
+        optional(seq("until", field("untilCondition", $.OwnedExpression), ";")),
       ),
 
     ForLoopNode: ($) =>
       seq(
-        rep($._usage_modifier),
-        opt(seq("action", opt($._UsageDeclaration))),
+        repeat($._usage_modifier),
+        optional(seq("action", optional($._UsageDeclaration))),
         "for",
         field("variable", $.ForVariableDeclaration),
         "in",
@@ -3296,22 +3314,22 @@ export default language({
 
     ControlNode: ($) => choice($.MergeNode, $.DecisionNode, $.JoinNode, $.ForkNode),
 
-    MergeNode: ($) => seq(rep($._usage_modifier), "merge", opt($._UsageDeclaration), $._ActionBody),
+    MergeNode: ($) => seq(repeat($._usage_modifier), "merge", optional($._UsageDeclaration), $._ActionBody),
 
-    DecisionNode: ($) => seq(rep($._usage_modifier), "decide", opt($._UsageDeclaration), $._ActionBody),
+    DecisionNode: ($) => seq(repeat($._usage_modifier), "decide", optional($._UsageDeclaration), $._ActionBody),
 
-    JoinNode: ($) => seq(rep($._usage_modifier), "join", opt($._UsageDeclaration), $._ActionBody),
+    JoinNode: ($) => seq(repeat($._usage_modifier), "join", optional($._UsageDeclaration), $._ActionBody),
 
-    ForkNode: ($) => seq(rep($._usage_modifier), "fork", opt($._UsageDeclaration), $._ActionBody),
+    ForkNode: ($) => seq(repeat($._usage_modifier), "fork", optional($._UsageDeclaration), $._ActionBody),
 
     ActionUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "action",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
-          opt($._ParameterList),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          optional($._ParameterList),
           $._ActionBody,
         ),
         symbol: usageAttrs("action"),
@@ -3328,11 +3346,11 @@ export default language({
     AcceptActionNode: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt(seq("action", opt($._UsageDeclaration))),
+          repeat($._usage_modifier),
+          optional(seq("action", optional($._UsageDeclaration))),
           "accept",
           $.PayloadFeatureMember,
-          opt(seq("via", $.OwnedReferenceSubsetting)),
+          optional(seq("via", $.OwnedReferenceSubsetting)),
           $._ActionBody,
         ),
         symbol: usageAttrs("action"),
@@ -3343,12 +3361,12 @@ export default language({
     SendActionNode: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt(seq("action", opt($._UsageDeclaration))),
+          repeat($._usage_modifier),
+          optional(seq("action", optional($._UsageDeclaration))),
           "send",
           field("sentItem", $.OwnedExpression),
-          opt(seq("via", $.OwnedReferenceSubsetting)),
-          opt(seq("to", field("receiver", $.OwnedExpression))),
+          optional(seq("via", $.OwnedReferenceSubsetting)),
+          optional(seq("to", field("receiver", $.OwnedExpression))),
           $._ActionBody,
         ),
         symbol: usageAttrs("action"),
@@ -3359,8 +3377,8 @@ export default language({
     AssignActionNode: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt(seq("action", opt($._UsageDeclaration))),
+          repeat($._usage_modifier),
+          optional(seq("action", optional($._UsageDeclaration))),
           "assign",
           field("assignedValue", $.OwnedExpression),
           "=:",
@@ -3375,13 +3393,13 @@ export default language({
     PerformActionUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "perform",
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("action", opt($._UsageDeclaration)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("action", optional($._UsageDeclaration)),
           ),
-          opt($._ValuePart),
+          optional($._ValuePart),
           $._ActionBody,
         ),
         symbol: usageAttrs("action"),
@@ -3398,12 +3416,12 @@ export default language({
     CalculationDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "calc",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
-          opt($._ParameterList),
+          optional($._Identification),
+          optional($._SubclassificationPart),
+          optional($._ParameterList),
           $._CalculationBody,
         ),
         symbol: defAttrs("calc"),
@@ -3417,26 +3435,27 @@ export default language({
     _CalculationBody: ($) =>
       choice(
         ";",
-        seq("{", rep(choice($._ActionBodyItem, $.ReturnParameterMember)), opt($.ResultExpressionMember), "}"),
+        seq("{", repeat(choice($._ActionBodyItem, $.ReturnParameterMember)), optional($.ResultExpressionMember), "}"),
       ),
 
-    _ParameterList: ($) => seq("(", opt(seq($.ParameterMember, rep(seq(",", $.ParameterMember)))), ")"),
+    _ParameterList: ($) => seq("(", optional(seq($.ParameterMember, repeat(seq(",", $.ParameterMember)))), ")"),
 
-    ParameterMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $._UsageElement)),
+    ParameterMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $._UsageElement)),
 
     ReturnParameterMember: ($) =>
-      seq(opt($.VisibilityIndicator), "return", field("ownedRelatedElement", $._UsageElement)),
+      seq(optional($.VisibilityIndicator), "return", field("ownedRelatedElement", $._UsageElement)),
 
-    ResultExpressionMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.OwnedExpression)),
+    ResultExpressionMember: ($) =>
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.OwnedExpression)),
 
     CalculationUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "calc",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
-          opt($._ParameterList),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          optional($._ParameterList),
           $._CalculationBody,
         ),
         symbol: usageAttrs("calc"),
@@ -3453,11 +3472,11 @@ export default language({
     ConstraintDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "constraint",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._CalculationBody,
         ),
         symbol: defAttrs("constraint"),
@@ -3471,10 +3490,10 @@ export default language({
     ConstraintUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "constraint",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
           $._CalculationBody,
         ),
         symbol: usageAttrs("constraint"),
@@ -3487,12 +3506,12 @@ export default language({
     AssertConstraintUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "assert",
-          opt(field("isNegated", "not")),
+          optional(field("isNegated", "not")),
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("constraint", opt($._UsageDeclaration), opt($._ValuePart)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("constraint", optional($._UsageDeclaration), optional($._ValuePart)),
           ),
           $._CalculationBody,
         ),
@@ -3509,11 +3528,11 @@ export default language({
     RequirementDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "requirement",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._RequirementBody,
         ),
         symbol: defAttrs("requirement"),
@@ -3546,16 +3565,16 @@ export default language({
         },
       }),
 
-    _RequirementBody: ($) => choice(";", seq("{", rep($._RequirementBodyItem), "}")),
+    _RequirementBody: ($) => choice(";", seq("{", repeat($._RequirementBodyItem), "}")),
 
     _RequirementBodyItem: ($) =>
       choice($._DefinitionBodyItem, $.SubjectMember, $.RequirementConstraintMember, $.ActorMember, $.StakeholderMember),
 
-    SubjectMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.SubjectUsage)),
+    SubjectMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.SubjectUsage)),
 
     SubjectUsage: ($) =>
       def({
-        syntax: seq("subject", rep($._usage_modifier), $._Usage),
+        syntax: seq("subject", repeat($._usage_modifier), $._Usage),
         symbol: usageAttrs("subject"),
         model: usageModel,
         graphics: () => sysmlUsageGraphics({ stereotype: "subject", fill: "#f1f8e9", stroke: "#33691e" }),
@@ -3563,7 +3582,7 @@ export default language({
 
     RequirementConstraintMember: ($) =>
       seq(
-        opt($.VisibilityIndicator),
+        optional($.VisibilityIndicator),
         field("constraintKind", choice("assume", "require")),
         field("ownedRelatedElement", $.RequirementConstraintUsage),
       ),
@@ -3571,12 +3590,12 @@ export default language({
     RequirementConstraintUsage: ($) =>
       def({
         syntax: choice(
-          seq($.OwnedReferenceSubsetting, rep($._FeatureSpecialization), $._CalculationBody),
+          seq($.OwnedReferenceSubsetting, repeat($._FeatureSpecialization), $._CalculationBody),
           seq(
-            rep($._usage_modifier),
-            opt("constraint"),
-            opt($._UsageDeclaration),
-            opt($._ValuePart),
+            repeat($._usage_modifier),
+            optional("constraint"),
+            optional($._UsageDeclaration),
+            optional($._ValuePart),
             $._CalculationBody,
           ),
         ),
@@ -3585,21 +3604,21 @@ export default language({
         model: constraintUsageModel,
       }),
 
-    ActorMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.ActorUsage)),
+    ActorMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.ActorUsage)),
 
     ActorUsage: ($) =>
       def({
-        syntax: seq("actor", rep($._usage_modifier), $._Usage),
+        syntax: seq("actor", repeat($._usage_modifier), $._Usage),
         symbol: usageAttrs("actor"),
         model: usageModel,
         graphics: () => sysmlUsageGraphics({ stereotype: "actor", fill: "#fff3e0", stroke: "#e65100" }),
       }),
 
-    StakeholderMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.StakeholderUsage)),
+    StakeholderMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.StakeholderUsage)),
 
     StakeholderUsage: ($) =>
       def({
-        syntax: seq("stakeholder", rep($._usage_modifier), $._Usage),
+        syntax: seq("stakeholder", repeat($._usage_modifier), $._Usage),
         symbol: usageAttrs("stakeholder"),
         model: usageModel,
         graphics: () => sysmlUsageGraphics({ stereotype: "stakeholder", fill: "#fbe9e7", stroke: "#bf360c" }),
@@ -3608,10 +3627,10 @@ export default language({
     RequirementUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "requirement",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
           $._RequirementBody,
         ),
         symbol: usageAttrs("requirement"),
@@ -3624,16 +3643,16 @@ export default language({
     SatisfyRequirementUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
-          opt("assert"),
-          opt(field("isNegated", "not")),
+          repeat($._usage_modifier),
+          optional("assert"),
+          optional(field("isNegated", "not")),
           "satisfy",
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("requirement", opt($._UsageDeclaration)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("requirement", optional($._UsageDeclaration)),
           ),
-          opt($._ValuePart),
-          opt(seq("by", field("satisfyingFeature", $.OwnedReferenceSubsetting))),
+          optional($._ValuePart),
+          optional(seq("by", field("satisfyingFeature", $.OwnedReferenceSubsetting))),
           $._RequirementBody,
         ),
         symbol: usageAttrs("requirement"),
@@ -3650,11 +3669,11 @@ export default language({
     ConcernDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "concern",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._RequirementBody,
         ),
         symbol: defAttrs("concern"),
@@ -3666,7 +3685,13 @@ export default language({
 
     ConcernUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "concern", opt($._UsageDeclaration), opt($._ValuePart), $._RequirementBody),
+        syntax: seq(
+          repeat($._usage_modifier),
+          "concern",
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          $._RequirementBody,
+        ),
         symbol: usageAttrs("concern"),
         queries: usageQueries,
         model: usageModel,
@@ -3681,11 +3706,11 @@ export default language({
     CaseDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "case",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._CaseBody,
         ),
         symbol: defAttrs("case"),
@@ -3700,15 +3725,21 @@ export default language({
         ";",
         seq(
           "{",
-          rep(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember, $.ObjectiveMember)),
-          opt($.ResultExpressionMember),
+          repeat(choice($._ActionBodyItem, $.SubjectMember, $.ActorMember, $.StakeholderMember, $.ObjectiveMember)),
+          optional($.ResultExpressionMember),
           "}",
         ),
       ),
 
     CaseUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "case", opt($._UsageDeclaration), opt($._ValuePart), $._CaseBody),
+        syntax: seq(
+          repeat($._usage_modifier),
+          "case",
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          $._CaseBody,
+        ),
         symbol: usageAttrs("case"),
         queries: usageQueries,
         model: usageModel,
@@ -3719,11 +3750,11 @@ export default language({
     AnalysisCaseDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "analysis",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._CaseBody,
         ),
         symbol: defAttrs("analysisCase"),
@@ -3735,7 +3766,13 @@ export default language({
 
     AnalysisCaseUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "analysis", opt($._UsageDeclaration), opt($._ValuePart), $._CaseBody),
+        syntax: seq(
+          repeat($._usage_modifier),
+          "analysis",
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          $._CaseBody,
+        ),
         symbol: usageAttrs("analysisCase"),
         queries: usageQueries,
         model: usageModel,
@@ -3746,11 +3783,11 @@ export default language({
     VerificationCaseDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "verification",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._VerificationBody,
         ),
         symbol: defAttrs("verificationCase"),
@@ -3763,10 +3800,10 @@ export default language({
     VerificationCaseUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "verification",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
           $._VerificationBody,
         ),
         symbol: usageAttrs("verificationCase"),
@@ -3776,23 +3813,24 @@ export default language({
         lints: verificationCaseUsageLints,
       }),
 
-    _VerificationBody: ($) => choice(";", seq("{", rep($._VerificationBodyItem), opt($.ResultExpressionMember), "}")),
+    _VerificationBody: ($) =>
+      choice(";", seq("{", repeat($._VerificationBodyItem), optional($.ResultExpressionMember), "}")),
 
     _VerificationBodyItem: ($) => choice($._ActionBodyItem, $.VerifyRequirementUsageMember, $.ObjectiveMember),
 
     VerifyRequirementUsageMember: ($) =>
-      seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.VerifyRequirementUsage)),
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.VerifyRequirementUsage)),
 
     VerifyRequirementUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "verify",
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("requirement", opt($._UsageDeclaration)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("requirement", optional($._UsageDeclaration)),
           ),
-          opt($._ValuePart),
+          optional($._ValuePart),
           $._RequirementBody,
         ),
         symbol: usageAttrs("verification"),
@@ -3802,15 +3840,16 @@ export default language({
         graphics: () => sysmlEdgeGraphics({ label: "«verify»", stroke: "#3f51b5", strokeDasharray: "4 4" }),
       }),
 
-    ObjectiveMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.ObjectiveRequirementUsage)),
+    ObjectiveMember: ($) =>
+      seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.ObjectiveRequirementUsage)),
 
     ObjectiveRequirementUsage: ($) =>
       def({
         syntax: seq(
           "objective",
-          rep($._usage_modifier),
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
+          repeat($._usage_modifier),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
           $._RequirementBody,
         ),
         symbol: usageAttrs("objective"),
@@ -3820,12 +3859,12 @@ export default language({
     UseCaseDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "use",
           "case",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._CaseBody,
         ),
         symbol: defAttrs("useCase"),
@@ -3837,7 +3876,14 @@ export default language({
 
     UseCaseUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "use", "case", opt($._UsageDeclaration), opt($._ValuePart), $._CaseBody),
+        syntax: seq(
+          repeat($._usage_modifier),
+          "use",
+          "case",
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          $._CaseBody,
+        ),
         symbol: usageAttrs("useCase"),
         queries: usageQueries,
         model: usageModel,
@@ -3848,13 +3894,13 @@ export default language({
     IncludeUseCaseUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "include",
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("use", "case", opt($._UsageDeclaration)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("use", "case", optional($._UsageDeclaration)),
           ),
-          opt($._ValuePart),
+          optional($._ValuePart),
           $._CaseBody,
         ),
         symbol: usageAttrs("useCase"),
@@ -3869,12 +3915,12 @@ export default language({
     StateDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "state",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
-          choice(";", seq(opt(field("isParallel", "parallel")), "{", rep($._StateBodyItem), "}")),
+          optional($._Identification),
+          optional($._SubclassificationPart),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Definition" as const,
@@ -3899,7 +3945,7 @@ export default language({
         $.DefinitionMember,
         $.VariantUsageMember,
         $.NonOccurrenceUsageMember,
-        seq(opt($.EmptySuccessionMember), $._OccurrenceUsageElement),
+        seq(optional($.EmptySuccessionMember), $._OccurrenceUsageElement),
         $.TransitionUsageMember,
         $.EntryActionMember,
         $.DoActionMember,
@@ -3907,22 +3953,23 @@ export default language({
       ),
 
     EntryActionMember: ($) =>
-      seq(opt($.VisibilityIndicator), "entry", field("ownedRelatedElement", $.StateActionUsage)),
+      seq(optional($.VisibilityIndicator), "entry", field("ownedRelatedElement", $.StateActionUsage)),
 
-    DoActionMember: ($) => seq(opt($.VisibilityIndicator), "do", field("ownedRelatedElement", $.StateActionUsage)),
+    DoActionMember: ($) => seq(optional($.VisibilityIndicator), "do", field("ownedRelatedElement", $.StateActionUsage)),
 
-    ExitActionMember: ($) => seq(opt($.VisibilityIndicator), "exit", field("ownedRelatedElement", $.StateActionUsage)),
+    ExitActionMember: ($) =>
+      seq(optional($.VisibilityIndicator), "exit", field("ownedRelatedElement", $.StateActionUsage)),
 
-    StateActionUsage: ($) => choice(";", seq(opt($._UsageDeclaration), opt($._ValuePart), $._ActionBody)),
+    StateActionUsage: ($) => choice(";", seq(optional($._UsageDeclaration), optional($._ValuePart), $._ActionBody)),
 
     StateUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "state",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
-          choice(";", seq(opt(field("isParallel", "parallel")), "{", rep($._StateBodyItem), "}")),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Usage" as const,
@@ -3941,14 +3988,14 @@ export default language({
     ExhibitStateUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "exhibit",
           choice(
-            seq($.OwnedReferenceSubsetting, opt($._FeatureSpecializationPart)),
-            seq("state", opt($._UsageDeclaration)),
+            seq($.OwnedReferenceSubsetting, optional($._FeatureSpecializationPart)),
+            seq("state", optional($._UsageDeclaration)),
           ),
-          opt($._ValuePart),
-          choice(";", seq(opt(field("isParallel", "parallel")), "{", rep($._StateBodyItem), "}")),
+          optional($._ValuePart),
+          choice(";", seq(optional(field("isParallel", "parallel")), "{", repeat($._StateBodyItem), "}")),
         ),
         symbol: (self: any) => ({
           kind: "Usage" as const,
@@ -3964,22 +4011,22 @@ export default language({
         lints: usageLints,
       }),
 
-    TransitionUsageMember: ($) => seq(opt($.VisibilityIndicator), field("ownedRelatedElement", $.TransitionUsage)),
+    TransitionUsageMember: ($) => seq(optional($.VisibilityIndicator), field("ownedRelatedElement", $.TransitionUsage)),
 
     TransitionUsage: ($) =>
       def({
         syntax: seq(
           "transition",
-          opt(seq(opt($._UsageDeclaration), "first")),
+          optional(seq(optional($._UsageDeclaration), "first")),
           ref({
             syntax: field("source", $.QualifiedName),
             name: (self) => self.source,
             targetKinds: ["Feature"],
             resolve: "qualified",
           }),
-          opt(seq("accept", $.PayloadFeatureMember)),
-          opt(seq("if", field("guard", $.OwnedExpression))),
-          opt(seq("do", field("effect", $.StateActionUsage))),
+          optional(seq("accept", $.PayloadFeatureMember)),
+          optional(seq("if", field("guard", $.OwnedExpression))),
+          optional(seq("do", field("effect", $.StateActionUsage))),
           "then",
           $.ConnectorEndMember,
           $._ActionBody,
@@ -3996,12 +4043,12 @@ export default language({
     ViewDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "view",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
-          choice(";", seq("{", rep(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
+          optional($._Identification),
+          optional($._SubclassificationPart),
+          choice(";", seq("{", repeat(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
         ),
         symbol: defAttrs("view"),
         queries: definitionStructuralQueries,
@@ -4013,11 +4060,11 @@ export default language({
     ViewUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "view",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
-          choice(";", seq("{", rep(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
+          choice(";", seq("{", repeat(choice($._DefinitionBodyItem, $.ElementFilterMember)), "}")),
         ),
         symbol: usageAttrs("view"),
         queries: usageQueries,
@@ -4029,11 +4076,11 @@ export default language({
     ViewpointDefinition: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "viewpoint",
           "def",
-          opt($._Identification),
-          opt($._SubclassificationPart),
+          optional($._Identification),
+          optional($._SubclassificationPart),
           $._RequirementBody,
         ),
         symbol: defAttrs("viewpoint"),
@@ -4046,10 +4093,10 @@ export default language({
     ViewpointUsage: ($) =>
       def({
         syntax: seq(
-          rep($._usage_modifier),
+          repeat($._usage_modifier),
           "viewpoint",
-          opt($._UsageDeclaration),
-          opt($._ValuePart),
+          optional($._UsageDeclaration),
+          optional($._ValuePart),
           $._RequirementBody,
         ),
         symbol: usageAttrs("viewpoint"),
@@ -4065,7 +4112,7 @@ export default language({
 
     RenderingDefinition: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "rendering", "def", $._Definition),
+        syntax: seq(repeat($._usage_modifier), "rendering", "def", $._Definition),
         symbol: defAttrs("rendering"),
         queries: definitionStructuralQueries,
         model: definitionModel,
@@ -4075,7 +4122,7 @@ export default language({
 
     RenderingUsage: ($) =>
       def({
-        syntax: seq(rep($._usage_modifier), "rendering", $._Usage),
+        syntax: seq(repeat($._usage_modifier), "rendering", $._Usage),
         symbol: usageAttrs("rendering"),
         queries: usageQueries,
         model: usageModel,
@@ -4132,7 +4179,7 @@ export default language({
         PREC.NULL_COALESCING,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", "??"), field("operand", $.ImpliesExpressionReference))),
+          repeat1(seq(field("operator", "??"), field("operand", $.ImpliesExpressionReference))),
         ),
       ),
 
@@ -4144,7 +4191,7 @@ export default language({
         PREC.IMPLIES,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", "implies"), field("operand", $.ImpliesExpressionReference))),
+          repeat1(seq(field("operator", "implies"), field("operand", $.ImpliesExpressionReference))),
         ),
       ),
 
@@ -4156,7 +4203,7 @@ export default language({
         PREC.OR,
         seq(
           field("operand", $._Expression),
-          rep1(
+          repeat1(
             choice(
               seq(field("operator", "|"), field("operand", $._Expression)),
               seq(field("operator", "or"), field("operand", $.XorExpressionReference)),
@@ -4171,7 +4218,7 @@ export default language({
     XorExpression: ($) =>
       prec.left(
         PREC.XOR,
-        seq(field("operand", $._Expression), rep1(seq(field("operator", "xor"), field("operand", $._Expression)))),
+        seq(field("operand", $._Expression), repeat1(seq(field("operator", "xor"), field("operand", $._Expression)))),
       ),
 
     AndExpression: ($) =>
@@ -4179,7 +4226,7 @@ export default language({
         PREC.AND,
         seq(
           field("operand", $._Expression),
-          rep1(
+          repeat1(
             choice(
               seq(field("operator", "&"), field("operand", $._Expression)),
               seq(field("operator", "and"), field("operand", $.EqualityExpressionReference)),
@@ -4196,7 +4243,7 @@ export default language({
         PREC.EQUALITY,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", $.EqualityOperator), field("operand", $._Expression))),
+          repeat1(seq(field("operator", $.EqualityOperator), field("operand", $._Expression))),
         ),
       ),
 
@@ -4252,7 +4299,7 @@ export default language({
         PREC.RELATIONAL,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", $.RelationalOperator), field("operand", $._Expression))),
+          repeat1(seq(field("operator", $.RelationalOperator), field("operand", $._Expression))),
         ),
       ),
     RelationalOperator: () => choice("<", ">", "<=", ">="),
@@ -4268,7 +4315,7 @@ export default language({
         PREC.ADDITIVE,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", $.AdditiveOperator), field("operand", $._Expression))),
+          repeat1(seq(field("operator", $.AdditiveOperator), field("operand", $._Expression))),
         ),
       ),
     AdditiveOperator: () => choice("+", "-"),
@@ -4278,7 +4325,7 @@ export default language({
         PREC.MULTIPLICATIVE,
         seq(
           field("operand", $._Expression),
-          rep1(seq(field("operator", $.MultiplicativeOperator), field("operand", $._Expression))),
+          repeat1(seq(field("operator", $.MultiplicativeOperator), field("operand", $._Expression))),
         ),
       ),
     MultiplicativeOperator: () => choice("*", "/", "%"),
@@ -4316,7 +4363,7 @@ export default language({
           seq(".", field("collect", $.BodyExpression)),
           seq(".?", field("select", $.BodyExpression)),
         ),
-        opt(seq(".", field("featureChain", $.FeatureChainMember))),
+        optional(seq(".", field("featureChain", $.FeatureChainMember))),
       ),
 
     PrimaryExpression: ($) =>
@@ -4326,9 +4373,9 @@ export default language({
           seq(
             field("base", $._BaseExpression),
             seq(".", field("featureChain", $.FeatureChainMember)),
-            rep($._postfix_operation),
+            repeat($._postfix_operation),
           ),
-          seq(field("base", $._BaseExpression), rep1($._postfix_operation)),
+          seq(field("base", $._BaseExpression), repeat1($._postfix_operation)),
         ),
       ),
 
@@ -4367,7 +4414,10 @@ export default language({
     ExpressionBody: ($) => $._CalculationBody,
 
     SequenceExpression: ($) =>
-      seq($.OwnedExpression, opt(choice(",", seq(field("operator", ","), field("operand", $.SequenceExpression))))),
+      seq(
+        $.OwnedExpression,
+        optional(choice(",", seq(field("operator", ","), field("operand", $.SequenceExpression)))),
+      ),
 
     FeatureReferenceExpression: ($) => field("ownedRelationship", $.FeatureReferenceMember),
     FeatureReferenceMember: ($) =>
@@ -4405,7 +4455,7 @@ export default language({
       ),
 
     _FeatureChain: ($) =>
-      seq(field("chaining", $.OwnedFeatureChaining), rep1(seq(".", field("chaining", $.OwnedFeatureChaining)))),
+      seq(field("chaining", $.OwnedFeatureChaining), repeat1(seq(".", field("chaining", $.OwnedFeatureChaining)))),
 
     OwnedFeatureChaining: ($) =>
       ref({
@@ -4415,16 +4465,19 @@ export default language({
         resolve: "qualified",
       }),
 
-    _ArgumentList: ($) => seq("(", opt(choice($._PositionalArgumentList, $._NamedArgumentList)), ")"),
+    _ArgumentList: ($) => seq("(", optional(choice($._PositionalArgumentList, $._NamedArgumentList)), ")"),
 
     _PositionalArgumentList: ($) =>
-      seq(field("argument", $.ArgumentMember), rep(seq(",", field("argument", $.ArgumentMember)))),
+      seq(field("argument", $.ArgumentMember), repeat(seq(",", field("argument", $.ArgumentMember)))),
 
     ArgumentMember: ($) => field("ownedRelatedElement", $.Argument),
     Argument: ($) => field("ownedRelationship", $.ArgumentValue),
 
     _NamedArgumentList: ($) =>
-      seq(field("namedArgument", $.NamedArgumentMember), rep(seq(",", field("namedArgument", $.NamedArgumentMember)))),
+      seq(
+        field("namedArgument", $.NamedArgumentMember),
+        repeat(seq(",", field("namedArgument", $.NamedArgumentMember))),
+      ),
 
     NamedArgumentMember: ($) => field("ownedRelatedElement", $.NamedArgument),
     NamedArgument: ($) =>
@@ -4450,7 +4503,7 @@ export default language({
     LiteralString: ($) => field("value", $.STRING_VALUE),
     LiteralInteger: ($) => field("value", $.DECIMAL_VALUE),
     LiteralReal: ($) => field("value", $.RealValue),
-    RealValue: ($) => choice(seq(opt($.DECIMAL_VALUE), ".", choice($.DECIMAL_VALUE, $.EXP_VALUE)), $.EXP_VALUE),
+    RealValue: ($) => choice(seq(optional($.DECIMAL_VALUE), ".", choice($.DECIMAL_VALUE, $.EXP_VALUE)), $.EXP_VALUE),
     LiteralInfinity: () => "*",
 
     // =====================================================================
@@ -4459,8 +4512,8 @@ export default language({
 
     Name: ($) => choice($.ID, $.UNRESTRICTED_NAME),
     GlobalQualification: () => seq("$", "::"),
-    Qualification: ($) => rep1(seq($.Name, "::")),
-    QualifiedName: ($) => seq(opt($.GlobalQualification), opt($.Qualification), field("name", $.Name)),
+    Qualification: ($) => repeat1(seq($.Name, "::")),
+    QualifiedName: ($) => seq(optional($.GlobalQualification), optional($.Qualification), field("name", $.Name)),
 
     // =====================================================================
     // TERMINALS
@@ -4468,15 +4521,15 @@ export default language({
 
     DECIMAL_VALUE: () => token(/[0-9]+/),
 
-    EXP_VALUE: () => token(seq(/[0-9]+/, choice("e", "E"), opt(choice("+", "-")), /[0-9]+/)),
+    EXP_VALUE: () => token(seq(/[0-9]+/, choice("e", "E"), optional(choice("+", "-")), /[0-9]+/)),
 
-    ID: () => token(seq(/[a-zA-Z_]/, rep(/[a-zA-Z_0-9]/))),
+    ID: () => token(seq(/[a-zA-Z_]/, repeat(/[a-zA-Z_0-9]/))),
 
     UNRESTRICTED_NAME: () =>
-      token(seq("'", rep(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^'\\]/)), "'")),
+      token(seq("'", repeat(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^'\\]/)), "'")),
 
     STRING_VALUE: () =>
-      token(seq('"', rep(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^"\\]/)), '"')),
+      token(seq('"', repeat(choice(seq("\\", choice("b", "t", "n", "f", "r", '"', "'", "\\")), /[^"\\]/)), '"')),
 
     REGULAR_COMMENT: () => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
     ML_NOTE: () => token(seq("//*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),

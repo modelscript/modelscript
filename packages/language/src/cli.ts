@@ -1,11 +1,11 @@
 /* eslint-disable */
 import * as fs from "fs";
 import * as path from "path";
-import { extractIndexerHooks, serializeIndexerConfig } from "./generate-indexer.js";
-import { extractQueryHooks, serializeQueryHooks } from "./generate-queries.js";
-import { extractRecoverySpecs, type RecoverySpec } from "./generate-recovery.js";
-import { extractRefHooks, serializeRefConfig } from "./generate-refs.js";
-import { generateScanner } from "./generate-scanner.js";
+import { extractIndexerHooks, serializeIndexerConfig } from "./generators/indexer.js";
+import { extractQueryHooks, serializeQueryHooks } from "./generators/queries.js";
+import { extractRefHooks, serializeRefConfig } from "./generators/refs.js";
+import { generateScanner } from "./generators/scanner.js";
+import { extractRecoverySpecs, type RecoverySpec } from "./recovery.js";
 
 // ---------------------------------------------------------------------------
 // Rule Serializer — Converts DSL AST nodes to Tree-Sitter grammar.js syntax
@@ -26,11 +26,11 @@ function serializeRule(ruleAST: any): string {
         return `seq(${ruleAST.args.map(serializeRule).join(", ")})`;
       case "choice":
         return `choice(${ruleAST.args.map(serializeRule).join(", ")})`;
-      case "opt":
+      case "optional":
         return `optional(${serializeRule(ruleAST.arg)})`;
-      case "rep":
+      case "repeat":
         return `repeat(${serializeRule(ruleAST.arg)})`;
-      case "rep1":
+      case "repeat1":
         return `repeat1(${serializeRule(ruleAST.arg)})`;
       case "token":
         return `token(${serializeRule(ruleAST.arg)})`;
@@ -91,7 +91,7 @@ function serializeConflicts(conflictSets: any[][]): string {
 
 /**
  * Serialize a rule AST with recovery blob injection.
- * For each RecoverySpec, finds the matching field(name, rep(choice(...)))
+ * For each RecoverySpec, finds the matching field(name, repeat(choice(...)))
  * and appends `prec(-1, $._recovery_*)` to the choice alternatives.
  */
 function serializeRuleWithRecovery(ruleAST: any, specs: RecoverySpec[]): string {
@@ -111,7 +111,7 @@ function serializeRuleRecoveryWalk(node: any, fieldToSpec: Map<string, RecoveryS
       case "field": {
         const spec = fieldToSpec.get(node.name);
         if (spec) {
-          // This is the target field — inject recovery into its rep(choice(...))
+          // This is the target field — inject recovery into its repeat(choice(...))
           const injected = injectRecoveryIntoField(node.arg, spec);
           return `field(${JSON.stringify(node.name)}, ${injected})`;
         }
@@ -132,7 +132,7 @@ function serializeRuleRecoveryWalk(node: any, fieldToSpec: Map<string, RecoveryS
 }
 
 /**
- * Given the inner content of a field (e.g., rep(choice(A, B, C))),
+ * Given the inner content of a field (e.g., repeat(choice(A, B, C))),
  * inject `prec(-1, $._recovery_*)` into the choice.
  */
 function injectRecoveryIntoField(node: any, spec: RecoverySpec): string {
@@ -140,17 +140,17 @@ function injectRecoveryIntoField(node: any, spec: RecoverySpec): string {
 
   const recoveryToken = `prec(-1, $.${spec.externalTokenName})`;
 
-  if (node.type === "rep" || node.type === "rep1") {
+  if (node.type === "repeat" || node.type === "repeat1") {
     const inner = node.arg;
-    const repeatFn = node.type === "rep" ? "repeat" : "repeat1";
+    const repeatFn = node.type === "repeat" ? "repeat" : "repeat1";
 
     if (inner && inner.type === "choice") {
-      // rep(choice(A, B, C)) → repeat(choice(A, B, C, prec(-1, $._recovery_*)))
+      // repeat(choice(A, B, C)) → repeat(choice(A, B, C, prec(-1, $._recovery_*)))
       const alts = inner.args.map(serializeRule);
       alts.push(recoveryToken);
       return `${repeatFn}(choice(${alts.join(", ")}))`;
     } else {
-      // rep(A) → repeat(choice(A, prec(-1, $._recovery_*)))
+      // repeat(A) → repeat(choice(A, prec(-1, $._recovery_*)))
       return `${repeatFn}(choice(${serializeRule(inner)}, ${recoveryToken}))`;
     }
   }
@@ -275,109 +275,105 @@ async function generate(fileArg: string) {
 
   grammarSections.push(`\n  rules: {\n${rulesContent.replace(/\n$/, "")}\n  }`);
 
-  const grammarContent = `module.exports = grammar({\n${grammarSections.join(",")}\n});\n`;
+  const grammarContent = `export default grammar({\n${grammarSections.join(",")}\n});\n`;
 
   const grammarFile = path.join(outputDir, "grammar.js");
   fs.writeFileSync(grammarFile, grammarContent, "utf-8");
   console.log(`Generated ${grammarFile}`);
 
   // -------------------------------------------------------------------------
-  // Artifact B: indexer_config.ts (Symbol Indexer configuration)
+  // Artifact B: config.ts (Symbol Indexer, Reference resolution, Graphics, Diff)
   // -------------------------------------------------------------------------
+  const srcGenDir = path.join(outputDir, "src-gen");
+  fs.mkdirSync(srcGenDir, { recursive: true });
+
   const indexerHooks = extractIndexerHooks(langConfig, $);
-  const indexerContent = serializeIndexerConfig(indexerHooks);
-  const indexerFile = path.join(outputDir, "indexer_config.ts");
-  fs.writeFileSync(indexerFile, indexerContent, "utf-8");
-  console.log(`Generated ${indexerFile}`);
+  const indexerContent = serializeIndexerConfig(indexerHooks).replace(
+    /import type \{ IndexerHook \} from ".*";\n*/g,
+    "",
+  );
+
+  const refHooks = extractRefHooks(langConfig, $);
+  const refContent = serializeRefConfig(refHooks).replace(/import type \{ RefHook \} from ".*";\n*/g, "");
+
+  const { extractClassSpecs, generateAstClasses } = await import("./generators/ast.js");
+  const classSpecs = extractClassSpecs(langConfig, $);
+
+  let graphicsContent = "";
+  const graphicsSpecs = classSpecs.filter((s: any) => s.graphicsConfig);
+  if (graphicsSpecs.length > 0) {
+    const gfxLines: string[] = [];
+    gfxLines.push(`export const graphicsConfig: Record<string, GraphicsConfig> = {`);
+    for (const spec of graphicsSpecs) {
+      gfxLines.push(
+        `  ${JSON.stringify(spec.ruleName)}: ${JSON.stringify(spec.graphicsConfig, null, 4)
+          .split("\\n")
+          .map((l: string, i: number) => (i === 0 ? l : `  ${l}`))
+          .join("\\n")},`,
+      );
+    }
+    gfxLines.push(`};`);
+    gfxLines.push(``);
+    graphicsContent = gfxLines.join("\n");
+  }
+
+  let diffContent = "";
+  const diffSpecs = classSpecs.filter((s: any) => s.diffConfig);
+  if (diffSpecs.length > 0) {
+    const diffLines: string[] = [];
+    diffLines.push(`export const diffConfig: Record<string, DiffConfig> = {`);
+    for (const spec of diffSpecs) {
+      let serializedJSON = JSON.stringify(spec.diffConfig, null, 4);
+      // Safely unquote the __FUNCTION__ blocks so they execute as lambdas
+      serializedJSON = serializedJSON.replace(/"__FUNCTION__(.*?)__FUNCTION__"/g, (match, p1) => {
+        return p1.replace(/\\\\n/g, "\\n").replace(/\\\\"/g, '"');
+      });
+      const indentedJSON = serializedJSON
+        .split("\\n")
+        .map((l: string, i: number) => (i === 0 ? l : `  ${l}`))
+        .join("\\n");
+      diffLines.push(`  ${JSON.stringify(spec.ruleName)}: ${indentedJSON},`);
+    }
+    diffLines.push(`};`);
+    diffLines.push(``);
+    diffContent = diffLines.join("\n");
+  }
+
+  const imports = ["IndexerHook", "RefHook"];
+  if (graphicsSpecs.length > 0) imports.push("GraphicsConfig");
+  if (diffSpecs.length > 0) imports.push("DiffConfig");
+
+  const combinedConfigContent =
+    `import type { ${imports.join(", ")} } from "@modelscript/language";\n\n` +
+    indexerContent +
+    "\n" +
+    refContent +
+    "\n" +
+    graphicsContent +
+    "\n" +
+    diffContent;
+
+  const configFile = path.join(srcGenDir, "config.ts");
+  fs.writeFileSync(configFile, combinedConfigContent, "utf-8");
+  console.log(`Generated ${configFile}`);
 
   // -------------------------------------------------------------------------
-  // Artifact C: query_hooks.ts (Bound Query Engine hooks)
+  // Artifact C: query-hooks.ts (Bound Query Engine hooks)
   // -------------------------------------------------------------------------
   const queryHooks = extractQueryHooks(langConfig, $);
-  const queryContent = serializeQueryHooks(queryHooks, inputFile, outputDir);
-  const queryFile = path.join(outputDir, "query_hooks.ts");
+  const queryContent = serializeQueryHooks(queryHooks, inputFile, srcGenDir);
+  const queryFile = path.join(srcGenDir, "query-hooks.ts");
   fs.writeFileSync(queryFile, queryContent, "utf-8");
   console.log(`Generated ${queryFile}`);
 
   // -------------------------------------------------------------------------
-  // Artifact D: ref_config.ts (Reference resolution configuration)
+  // Artifact D: ast.ts (Pull-Up AST classes, if ast configs exist)
   // -------------------------------------------------------------------------
-  const refHooks = extractRefHooks(langConfig, $);
-  const refContent = serializeRefConfig(refHooks);
-  const refFile = path.join(outputDir, "ref_config.ts");
-  fs.writeFileSync(refFile, refContent, "utf-8");
-  console.log(`Generated ${refFile}`);
-
-  // -------------------------------------------------------------------------
-  // Artifact E: ast_classes.ts (Pull-Up AST classes, if ast configs exist)
-  // -------------------------------------------------------------------------
-  const { extractClassSpecs, generateAstClasses } = await import("./generate-ast-classes.js");
-  const classSpecs = extractClassSpecs(langConfig, $);
   if (classSpecs.length > 0) {
     const astClassesContent = generateAstClasses(classSpecs, langConfig.name);
-    const astFile = path.join(outputDir, "ast_classes.ts");
+    const astFile = path.join(srcGenDir, "ast.ts");
     fs.writeFileSync(astFile, astClassesContent, "utf-8");
     console.log(`Generated ${astFile}`);
-
-    // Generate graphics_config.ts — X6-compatible graphics map
-    const graphicsSpecs = classSpecs.filter((s: any) => s.graphicsConfig);
-    if (graphicsSpecs.length > 0) {
-      const gfxLines: string[] = [];
-      gfxLines.push(`// =============================================================================`);
-      gfxLines.push(`// GENERATED by @modelscript/language — do not edit manually.`);
-      gfxLines.push(`// Language: ${langConfig.name}`);
-      gfxLines.push(`// X6-compatible graphics configuration for diagram rendering.`);
-      gfxLines.push(`// =============================================================================`);
-      gfxLines.push(``);
-      gfxLines.push(`import type { GraphicsConfig } from "@modelscript/language";`);
-      gfxLines.push(``);
-      gfxLines.push(`export const graphicsConfig: Record<string, GraphicsConfig> = {`);
-      for (const spec of graphicsSpecs) {
-        gfxLines.push(
-          `  ${JSON.stringify(spec.ruleName)}: ${JSON.stringify(spec.graphicsConfig, null, 4)
-            .split("\n")
-            .map((l: string, i: number) => (i === 0 ? l : `  ${l}`))
-            .join("\n")},`,
-        );
-      }
-      gfxLines.push(`};`);
-      gfxLines.push(``);
-      const gfxFile = path.join(outputDir, "graphics_config.ts");
-      fs.writeFileSync(gfxFile, gfxLines.join("\n"), "utf-8");
-      console.log(`Generated ${gfxFile}`);
-    }
-
-    // Generate diff_config.ts — Semantic diffing graph configuration
-    const diffSpecs = classSpecs.filter((s: any) => s.diffConfig);
-    if (diffSpecs.length > 0) {
-      const diffLines: string[] = [];
-      diffLines.push(`// =============================================================================`);
-      diffLines.push(`// GENERATED by @modelscript/language — do not edit manually.`);
-      diffLines.push(`// Language: ${langConfig.name}`);
-      diffLines.push(`// Semantic diffing configuration for automated PLM and impact analysis.`);
-      diffLines.push(`// =============================================================================`);
-      diffLines.push(``);
-      diffLines.push(`import type { DiffConfig } from "@modelscript/language";`);
-      diffLines.push(``);
-      diffLines.push(`export const diffConfig: Record<string, DiffConfig> = {`);
-      for (const spec of diffSpecs) {
-        let serializedJSON = JSON.stringify(spec.diffConfig, null, 4);
-        // Safely unquote the __FUNCTION__ blocks so they execute as lambdas
-        serializedJSON = serializedJSON.replace(/"__FUNCTION__(.*?)__FUNCTION__"/g, (match, p1) => {
-          return p1.replace(/\\n/g, "\n").replace(/\\"/g, '"');
-        });
-        const indentedJSON = serializedJSON
-          .split("\n")
-          .map((l: string, i: number) => (i === 0 ? l : `  ${l}`))
-          .join("\n");
-        diffLines.push(`  ${JSON.stringify(spec.ruleName)}: ${indentedJSON},`);
-      }
-      diffLines.push(`};`);
-      diffLines.push(``);
-      const diffFile = path.join(outputDir, "diff_config.ts");
-      fs.writeFileSync(diffFile, diffLines.join("\n"), "utf-8");
-      console.log(`Generated ${diffFile}`);
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -395,7 +391,7 @@ async function generate(fileArg: string) {
   // -------------------------------------------------------------------------
   // Artifact G: queries/ (highlights.scm, indents.scm, folds.scm)
   // -------------------------------------------------------------------------
-  const { generateHighlights, generateIndents, generateFolds } = await import("./generate-highlights.js");
+  const { generateHighlights, generateIndents, generateFolds } = await import("./generators/highlights.js");
   const queriesDir = path.join(outputDir, "queries");
   fs.mkdirSync(queriesDir, { recursive: true });
 

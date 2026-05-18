@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
+import { Arena, StructArena } from "@modelscript/language/arena";
+import { NULL_STRING_ID, StringInterner } from "@modelscript/language/interner";
+import { LineIndex, type TokenData } from "@modelscript/language/line-index";
 import { describe, expect, it } from "vitest";
-import { Arena, StructArena } from "../src/arena.js";
-import { NULL_STRING_ID, StringInterner } from "../src/interner.js";
-import { LineIndex, type TokenData } from "../src/line-index.js";
 
 // ---------------------------------------------------------------------------
 // StringInterner

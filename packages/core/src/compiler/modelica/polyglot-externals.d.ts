@@ -33,7 +33,7 @@ declare module "@modelscript/salsa" {
   }
 }
 
-declare module "@modelscript/polyglot/resolver" {
+declare module "@modelscript/language/resolver" {
   export class ScopeResolver {
     constructor(index: any, refHooks: any, indexerHooks: any);
     resolve(name: string[], fromScope?: any): any;
@@ -41,7 +41,7 @@ declare module "@modelscript/polyglot/resolver" {
   }
 }
 
-declare module "@modelscript/polyglot/workspace-index" {
+declare module "@modelscript/language/workspace-index" {
   export class WorkspaceIndex {
     constructor(indexerHooks: any);
     updateIndex(rootNode: any): any;

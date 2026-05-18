@@ -1,4 +1,4 @@
-module.exports = grammar({
+export default grammar({
   name: "modelica",
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
   conflicts: ($) => [

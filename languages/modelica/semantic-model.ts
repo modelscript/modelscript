@@ -24,7 +24,7 @@
  * ```
  */
 
-import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/polyglot";
+import type { QueryDB, SymbolEntry, SymbolId } from "@modelscript/language";
 import { type ModelicaModArgs, type ModificationArg, modelicaMod } from "./modification-args.js";
 
 export function polyfillAccept(expr: any): any {

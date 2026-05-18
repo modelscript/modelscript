@@ -24,7 +24,7 @@
  * ```
  */
 
-import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/polyglot";
+import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/language";
 import type { ModelicaModArgs } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------

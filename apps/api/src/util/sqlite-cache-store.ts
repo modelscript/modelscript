@@ -1,5 +1,5 @@
-import type { QueryCacheStore } from "@modelscript/polyglot";
-import type { Memo } from "@modelscript/polyglot/runtime";
+import type { QueryCacheStore } from "@modelscript/language";
+import type { Memo } from "@modelscript/language/runtime";
 import Database from "better-sqlite3";
 
 /**

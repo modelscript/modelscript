@@ -14,7 +14,7 @@
  * ```
  */
 
-import type { SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/polyglot";
+import type { SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/language";
 
 // ---------------------------------------------------------------------------
 // Predefined Type Metadata

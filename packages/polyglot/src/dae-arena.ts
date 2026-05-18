@@ -40,8 +40,8 @@
  * Once all tests pass, the legacy path is removed.
  */
 
-import type { StringId } from "./interner.js";
-import { StringInterner } from "./interner.js";
+import type { StringId } from "@modelscript/language/interner";
+import { StringInterner } from "@modelscript/language/interner";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enums (stored as small integers in Uint8Array columns)

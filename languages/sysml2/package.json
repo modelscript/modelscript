@@ -3,18 +3,30 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    "./query_hooks": "./dist/query_hooks.js",
-    "./indexer_config": "./dist/indexer_config.js",
-    "./ref_config": "./dist/ref_config.js",
-    "./ast_classes": "./dist/ast_classes.js",
-    "./graphics_config": "./dist/graphics_config.js",
-    "./language": "./dist/language.js"
+    "./language": "./dist/language.js",
+    "./config": {
+      "types": "./dist/src-gen/config.d.ts",
+      "default": "./dist/src-gen/config.js"
+    },
+    "./query-hooks": {
+      "types": "./dist/src-gen/query-hooks.d.ts",
+      "default": "./dist/src-gen/query-hooks.js"
+    },
+    "./ast": {
+      "types": "./dist/src-gen/ast.d.ts",
+      "default": "./dist/src-gen/ast.js"
+    },
+    "./constraint-extractor": {
+      "types": "./dist/constraint-extractor.d.ts",
+      "default": "./dist/constraint-extractor.js"
+    }
   },
   "scripts": {
     "build": "node build.js && prettier --write . --ignore-unknown && tsc",
     "clean": "rimraf dist *.wasm"
   },
   "dependencies": {
+    "@modelscript/language": "*",
     "@modelscript/polyglot": "*"
   },
   "devDependencies": {}

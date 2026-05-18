@@ -1,6 +1,6 @@
 /* eslint-disable */
 import { describe, expect, it } from "vitest";
-import { alias, blank, choice, def, field, opt, prec, ref, rep, rep1, seq, token } from "../src/index.js";
+import { alias, blank, choice, def, field, optional, prec, ref, repeat, repeat1, seq, token } from "../src/index.js";
 
 describe("combinators", () => {
   it("seq() creates a SeqNode", () => {
@@ -9,20 +9,20 @@ describe("combinators", () => {
     expect(node.args).toEqual(["a", "b", "c"]);
   });
 
-  it("opt() creates an OptNode", () => {
-    const node = opt("x");
+  it("optional() creates an OptionalNode", () => {
+    const node = optional("x");
     expect(node.type).toBe("opt");
     expect(node.arg).toBe("x");
   });
 
-  it("rep() creates a RepNode", () => {
-    const node = rep("x");
+  it("repeat() creates a RepeatNode", () => {
+    const node = repeat("x");
     expect(node.type).toBe("rep");
     expect(node.arg).toBe("x");
   });
 
-  it("rep1() creates a Rep1Node", () => {
-    const node = rep1("x");
+  it("repeat1() creates a Repeat1Node", () => {
+    const node = repeat1("x");
     expect(node.type).toBe("rep1");
     expect(node.arg).toBe("x");
   });
@@ -118,8 +118,8 @@ describe("combinators", () => {
     const node = seq(
       "class",
       field("name", "IDENT"),
-      opt(seq("extends", field("superclass", "NAME"))),
-      field("body", rep(choice("decl", "stmt"))),
+      optional(seq("extends", field("superclass", "NAME"))),
+      field("body", repeat(choice("decl", "stmt"))),
       "end",
     );
     expect(node.type).toBe("seq");

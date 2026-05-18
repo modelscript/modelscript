@@ -1,4 +1,4 @@
-module.exports = grammar({
+export default grammar({
   name: "step",
   extras: ($) => [/\s/, $.BLOCK_COMMENT],
   rules: {

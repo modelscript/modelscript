@@ -3,14 +3,10 @@
 // Rule Nodes — Named generic interfaces for type-level field extraction
 // ---------------------------------------------------------------------------
 
-import type {
-  CycleInfo,
-  GlobalAdapters,
-  GraphicsConfig,
-  NodeAdapter,
-  QueryDB,
-  SymbolEntry,
-} from "@modelscript/polyglot";
+import type { GraphicsConfig } from "@modelscript/diagram/builder";
+import type { GlobalAdapters, NodeAdapter } from "./adapter-registry.js";
+import type { CycleInfo, QueryDB, SymbolEntry } from "./runtime.js";
+export type { CycleInfo, GlobalAdapters, GraphicsConfig, NodeAdapter, QueryDB, SymbolEntry };
 
 export interface SymbolNode {
   type: "sym";
@@ -27,18 +23,18 @@ export interface ChoiceNode<T extends Rule[] = Rule[]> {
   args: T;
 }
 
-export interface OptNode<T extends Rule = Rule> {
-  type: "opt";
+export interface OptionalNode<T extends Rule = Rule> {
+  type: "optional";
   arg: T;
 }
 
-export interface RepNode<T extends Rule = Rule> {
-  type: "rep";
+export interface RepeatNode<T extends Rule = Rule> {
+  type: "repeat";
   arg: T;
 }
 
-export interface Rep1Node<T extends Rule = Rule> {
-  type: "rep1";
+export interface Repeat1Node<T extends Rule = Rule> {
+  type: "repeat1";
   arg: T;
 }
 
@@ -95,9 +91,9 @@ export interface BlankNode {
 export type RuleNode =
   | SeqNode
   | ChoiceNode
-  | OptNode
-  | RepNode
-  | Rep1Node
+  | OptionalNode
+  | RepeatNode
+  | Repeat1Node
   | TokenNode
   | TokenImmediateNode
   | FieldNode
@@ -157,11 +153,11 @@ export type ExtractFieldNames<R, Depth extends unknown[] = []> =
                               ? ExtractFieldNames<T[number], [...Depth, unknown]>
                               : R extends ChoiceNode<infer T>
                                 ? ExtractFieldNames<T[number], [...Depth, unknown]>
-                                : R extends OptNode<infer T>
+                                : R extends OptionalNode<infer T>
                                   ? ExtractFieldNames<T, [...Depth, unknown]>
-                                  : R extends RepNode<infer T>
+                                  : R extends RepeatNode<infer T>
                                     ? ExtractFieldNames<T, [...Depth, unknown]>
-                                    : R extends Rep1Node<infer T>
+                                    : R extends Repeat1Node<infer T>
                                       ? ExtractFieldNames<T, [...Depth, unknown]>
                                       : R extends TokenNode<infer T>
                                         ? ExtractFieldNames<T, [...Depth, unknown]>
@@ -412,7 +408,7 @@ export interface DefOptions<Fields extends string = string, QKeys extends string
    *     modelica: { accepts: ["ClassDefinition"], transform: (db, foreign) => ({...}) }
    *   }
    */
-  adapters?: Record<string, NodeAdapter<Fields>>;
+  adapters?: Record<string, NodeAdapter>;
   /**
    * Declarative graphics configuration for layout and UI rendering.
    * Can map structural CST components to visualization primitives (nodes, ports, edges).
@@ -556,128 +552,18 @@ export function language(options: LanguageOptions) {
   return options;
 }
 
-// ---------------------------------------------------------------------------
-// Generic combinators — preserve literal types for field name inference
-// ---------------------------------------------------------------------------
+export * from "./combinators.js";
 
-export function seq<T extends Rule[]>(...args: T): SeqNode<T> {
-  return { type: "seq", args };
-}
-
-export function opt<T extends Rule>(arg: T): OptNode<T> {
-  return { type: "opt", arg };
-}
-
-export function rep<T extends Rule>(arg: T): RepNode<T> {
-  return { type: "rep", arg };
-}
-
-export function rep1<T extends Rule>(arg: T): Rep1Node<T> {
-  return { type: "rep1", arg };
-}
-
-export function choice<T extends Rule[]>(...args: T): ChoiceNode<T> {
-  return { type: "choice", args };
-}
-
-export function token<T extends Rule>(arg: T): TokenNode<T> {
-  return { type: "token", arg };
-}
-
-/**
- * Marks a token as immediate (no whitespace allowed before it).
- * Attached as `token.immediate()` for Tree-Sitter compatibility.
- */
-token.immediate = function <T extends Rule>(arg: T): TokenImmediateNode<T> {
-  return { type: "token_immediate", arg };
-};
-
-export function field<N extends string>(name: N, arg: Rule): FieldNode<N> {
-  return { type: "field", name, arg };
-}
-
-export function blank(): BlankNode {
-  return { type: "blank" };
-}
-
-/**
- * Assigns a precedence level to a rule.
- * Higher values bind tighter.
- */
-export function prec(precedence: number, arg: Rule): PrecNode {
-  return { type: "prec", precedence, arg };
-}
-
-/** Left-associative precedence. */
-prec.left = function (precedence: number, arg: Rule): PrecLeftNode {
-  return { type: "prec_left", precedence, arg };
-};
-
-/** Right-associative precedence. */
-prec.right = function (precedence: number, arg: Rule): PrecRightNode {
-  return { type: "prec_right", precedence, arg };
-};
-
-/** Dynamic precedence (resolved at parse time). */
-prec.dynamic = function (precedence: number, arg: Rule): PrecDynamicNode {
-  return { type: "prec_dynamic", precedence, arg };
-};
-
-/**
- * Renames a node in the generated CST.
- */
-export function alias(arg: Rule, value: string | SymbolNode): AliasNode {
-  return { type: "alias", arg, value };
-}
-
-// ---------------------------------------------------------------------------
-// def() — Unified syntax + semantics binding
-// ---------------------------------------------------------------------------
-
-/**
- * Wraps a syntax rule with semantic metadata for symbol declarations.
- *
- * **Option B (default):** Field names are inferred from the rule structure.
- *   `def({ syntax: seq(field("name", ...), field("body", ...)), symbol: (self) => ... })`
- *   → `self` has autocomplete for `.name` and `.body`
- *
- * **Option A (explicit):** Provide field names as a type parameter.
- *   `def<"name" | "body">({ syntax: seq(...), symbol: (self) => ... })`
- *   → `self` has autocomplete for `.name` and `.body`
- */
-export type DefConfig<R extends Rule, Fields extends string = string, QKeys extends string = never> = {
-  syntax: R;
-} & DefOptions<Fields, QKeys>;
-
-export function def<Fields extends string = never, QKeys extends string = never, R extends Rule = Rule>(
-  config: DefConfig<R, [Fields] extends [never] ? ExtractFieldNames<R> : Fields, QKeys>,
-): DefNode {
-  const { syntax, ...options } = config;
-  return { type: "def", rule: syntax, options: options as unknown as DefOptions<any> };
-}
-
-// ---------------------------------------------------------------------------
-// ref() — Reference site annotation
-// ---------------------------------------------------------------------------
-
-export type RefConfig<R extends Rule, Fields extends string = string> = { syntax: R } & RefOptions<Fields>;
-
-/**
- * Wraps a syntax rule with semantic metadata for reference sites.
- * The counterpart to `def()` — marks where symbols are *used*, not *defined*.
- *
- * ```typescript
- * type_specifier: ($) => ref({
- *   syntax: $.name,
- *   name: (self) => self.name,
- *   targetKinds: ["Class", "Type"],
- *   resolve: "qualified",
- * })
- * ```
- */
-export function ref<Fields extends string = never, R extends Rule = Rule>(
-  config: RefConfig<R, [Fields] extends [never] ? ExtractFieldNames<R> : Fields>,
-): RefNode {
-  const { syntax, ...options } = config;
-  return { type: "ref", rule: syntax, options: options as RefOptions<any> };
-}
+export * from "./adapter-registry.js";
+export * from "./interner.js";
+export * from "./line-index.js";
+export * from "./lsp-bridge.js";
+export * from "./resolver.js";
+export * from "./runtime.js";
+export * from "./semantic-diff.js";
+export * from "./semantic-node.js";
+export * from "./symbol-indexer.js";
+export * from "./topology.js";
+export * from "./unified-workspace.js";
+export * from "./verifier.js";
+export * from "./workspace-index.js";

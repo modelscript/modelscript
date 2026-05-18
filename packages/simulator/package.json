@@ -27,6 +27,12 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./simulation": {
+      "types": "./dist/simulation.d.ts",
+      "import": "./dist/simulation.js",
+      "require": "./dist/simulation.js",
+      "default": "./dist/simulation.js"
     }
   },
   "main": "dist/index.js",

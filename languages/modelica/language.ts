@@ -28,11 +28,11 @@ import {
   field,
   info,
   language,
-  opt,
+  optional,
   prec,
   ref,
-  rep,
-  rep1,
+  repeat,
+  repeat1,
   seq,
   token,
   warning,
@@ -40,7 +40,7 @@ import {
   type Rule,
   type SymbolEntry,
   type SymbolId,
-} from "@modelscript/polyglot";
+} from "@modelscript/language";
 import { isBroken, mergeModArgs, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
 
 function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
@@ -227,12 +227,12 @@ const BUILTIN_MODELICA_NAMES = new Set([
 
 /** Match zero or more rules delimited by a separator. */
 function commaSep(rule: Rule, sep: Rule = ","): Rule {
-  return opt(commaSep1(rule, sep));
+  return optional(commaSep1(rule, sep));
 }
 
 /** Match one or more rules delimited by a separator. */
 function commaSep1(rule: Rule, sep: Rule = ","): Rule {
-  return seq(rule, rep(seq(sep, rule)));
+  return seq(rule, repeat(seq(sep, rule)));
 }
 
 /** Unary expression template: operator operand. */
@@ -341,9 +341,9 @@ export default language({
 
     StoredDefinition: ($) =>
       seq(
-        opt($.BOM),
-        opt(field("withinDirective", $.WithinDirective)),
-        rep(
+        optional($.BOM),
+        optional(field("withinDirective", $.WithinDirective)),
+        repeat(
           choice(
             field("classDefinition", $.ClassDefinition),
             field("componentClause", $.ComponentClause),
@@ -352,7 +352,7 @@ export default language({
         ),
       ),
 
-    WithinDirective: ($) => seq("within", opt(field("packageName", $.Name)), ";"),
+    WithinDirective: ($) => seq("within", optional(field("packageName", $.Name)), ";"),
 
     // =====================================================================
     // §A.2.2 — Class Definition
@@ -361,15 +361,15 @@ export default language({
     ClassDefinition: ($) =>
       def({
         syntax: seq(
-          opt(field("redeclare", "redeclare")),
-          opt(field("final", "final")),
-          opt(field("inner", "inner")),
-          opt(field("outer", "outer")),
-          opt(field("replaceable", "replaceable")),
-          opt(field("encapsulated", "encapsulated")),
+          optional(field("redeclare", "redeclare")),
+          optional(field("final", "final")),
+          optional(field("inner", "inner")),
+          optional(field("outer", "outer")),
+          optional(field("replaceable", "replaceable")),
+          optional(field("encapsulated", "encapsulated")),
           field("classPrefixes", $.ClassPrefixes),
           field("classSpecifier", $._ClassSpecifier),
-          opt(field("constrainingClause", $.ConstrainingClause)),
+          optional(field("constrainingClause", $.ConstrainingClause)),
           ";",
         ),
         symbol: (self) => {
@@ -395,7 +395,7 @@ export default language({
           members: (db, self) => db.childrenOf(self.id),
           /** Extract array dimensions for ShortClassSpecifiers like type ArrayType = Real[3]; */
           arrayDimensions: (db, self) => {
-            const cst = db.cstNode(self.id) as import("@modelscript/polyglot/symbol-indexer").CSTNode | null;
+            const cst = db.cstNode(self.id) as import("@modelscript/language/symbol-indexer").CSTNode | null;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
             if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
@@ -1619,18 +1619,18 @@ export default language({
 
     ClassPrefixes: () =>
       seq(
-        opt(field("partial", "partial")),
+        optional(field("partial", "partial")),
         choice(
           field("class", "class"),
           field("model", "model"),
-          seq(opt(field("operator", "operator")), field("record", "record")),
+          seq(optional(field("operator", "operator")), field("record", "record")),
           field("block", "block"),
-          seq(opt(field("expandable", "expandable")), field("connector", "connector")),
+          seq(optional(field("expandable", "expandable")), field("connector", "connector")),
           field("type", "type"),
           field("package", "package"),
           seq(
-            opt(field("purity", choice("pure", "impure"))),
-            opt(field("operator", "operator")),
+            optional(field("purity", choice("pure", "impure"))),
+            optional(field("operator", "operator")),
             field("function", "function"),
           ),
           field("operator", "operator"),
@@ -1642,14 +1642,14 @@ export default language({
 
     LongClassSpecifier: ($) =>
       seq(
-        opt(field("extends", "extends")),
+        optional(field("extends", "extends")),
         field("identifier", $.IDENT),
-        opt(field("classModification", $.ClassModification)),
-        opt(field("description", $.Description)),
-        opt(field("section", $.InitialElementSection)),
-        rep(field("section", choice($.ElementSection, $.EquationSection, $.AlgorithmSection, $.ConstraintSection))),
-        opt(field("externalFunctionClause", $.ExternalFunctionClause)),
-        opt(seq(field("annotationClause", $.AnnotationClause), ";")),
+        optional(field("classModification", $.ClassModification)),
+        optional(field("description", $.Description)),
+        optional(field("section", $.InitialElementSection)),
+        repeat(field("section", choice($.ElementSection, $.EquationSection, $.AlgorithmSection, $.ConstraintSection))),
+        optional(field("externalFunctionClause", $.ExternalFunctionClause)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
         "end",
         field("endIdentifier", $.IDENT),
       ),
@@ -1660,15 +1660,15 @@ export default language({
         "=",
         choice(
           seq(
-            opt(field("causality", choice("input", "output"))),
+            optional(field("causality", choice("input", "output"))),
             field("typeSpecifier", $.TypeSpecifier),
-            opt(field("arraySubscripts", $.ArraySubscripts)),
-            opt(field("classModification", $.ClassModification)),
+            optional(field("arraySubscripts", $.ArraySubscripts)),
+            optional(field("classModification", $.ClassModification)),
           ),
           seq(
             field("enumeration", "enumeration"),
             "(",
-            opt(
+            optional(
               choice(
                 commaSep1(field("enumerationLiteral", $.EnumerationLiteral)),
                 field("unspecifiedEnumeration", ":"),
@@ -1677,8 +1677,8 @@ export default language({
             ")",
           ),
         ),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
       ),
 
     DerClassSpecifier: ($) =>
@@ -1691,16 +1691,16 @@ export default language({
         ",",
         commaSep1(field("input", $.IDENT)),
         ")",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
       ),
 
     EnumerationLiteral: ($) =>
       def({
         syntax: seq(
           field("identifier", $.IDENT),
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
         ),
         symbol: (self) => ({
           kind: "EnumerationLiteral",
@@ -1715,9 +1715,9 @@ export default language({
     ExternalFunctionClause: ($) =>
       seq(
         "external",
-        opt(field("languageSpecification", $.LanguageSpecification)),
-        opt(field("externalFunctionCall", $.ExternalFunctionCall)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("languageSpecification", $.LanguageSpecification)),
+        optional(field("externalFunctionCall", $.ExternalFunctionCall)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -1725,10 +1725,10 @@ export default language({
 
     ExternalFunctionCall: ($) =>
       seq(
-        opt(seq(field("output", $.ComponentReference), "=")),
+        optional(seq(field("output", $.ComponentReference), "=")),
         field("functionName", $.IDENT),
         "(",
-        opt(field("arguments", $.ExpressionList)),
+        optional(field("arguments", $.ExpressionList)),
         ")",
       ),
 
@@ -1736,9 +1736,10 @@ export default language({
     // §A.2.2a — Element Sections
     // =====================================================================
 
-    InitialElementSection: ($) => seq(rep1(field("element", $._Element))),
+    InitialElementSection: ($) => seq(repeat1(field("element", $._Element))),
 
-    ElementSection: ($) => seq(field("visibility", choice("protected", "public")), rep(field("element", $._Element))),
+    ElementSection: ($) =>
+      seq(field("visibility", choice("protected", "public")), repeat(field("element", $._Element))),
 
     _Element: ($) =>
       choice($.ClassDefinition, $.ComponentClause, $.ExtendsClause, $._ImportClause, $.ElementAnnotation),
@@ -1751,10 +1752,10 @@ export default language({
       def({
         syntax: seq(
           "import",
-          opt(seq(field("shortName", $.IDENT), "=")),
+          optional(seq(field("shortName", $.IDENT), "=")),
           field("packageName", $.Name),
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
           ";",
         ),
         symbol: (self) => ({
@@ -1783,8 +1784,8 @@ export default language({
           "{",
           commaSep1(field("importName", $.IDENT)),
           "}",
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
           ";",
         ),
         symbol: (self) => ({
@@ -1810,8 +1811,8 @@ export default language({
           field("packageName", $.Name),
           ".",
           "*",
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
           ";",
         ),
         symbol: (self) => ({
@@ -1839,8 +1840,8 @@ export default language({
         syntax: seq(
           "extends",
           field("typeSpecifier", $.TypeSpecifier),
-          opt(field("classOrInheritanceModification", $.ClassOrInheritanceModification)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("classOrInheritanceModification", $.ClassOrInheritanceModification)),
+          optional(field("annotationClause", $.AnnotationClause)),
           ";",
         ),
         symbol: (self) => ({
@@ -1983,8 +1984,8 @@ export default language({
       seq(
         "constrainedby",
         field("typeSpecifier", $.TypeSpecifier),
-        opt(field("classModification", $.ClassModification)),
-        opt(field("description", $.Description)),
+        optional(field("classModification", $.ClassModification)),
+        optional(field("description", $.Description)),
       ),
 
     ClassOrInheritanceModification: ($) =>
@@ -2008,18 +2009,18 @@ export default language({
 
     ComponentClause: ($) =>
       seq(
-        opt(field("redeclare", "redeclare")),
-        opt(field("final", "final")),
-        opt(field("inner", "inner")),
-        opt(field("outer", "outer")),
-        opt(field("replaceable", "replaceable")),
-        opt(field("flow", choice("flow", "stream"))),
-        opt(field("variability", choice("discrete", "parameter", "constant"))),
-        opt(field("causality", choice("input", "output"))),
+        optional(field("redeclare", "redeclare")),
+        optional(field("final", "final")),
+        optional(field("inner", "inner")),
+        optional(field("outer", "outer")),
+        optional(field("replaceable", "replaceable")),
+        optional(field("flow", choice("flow", "stream"))),
+        optional(field("variability", choice("discrete", "parameter", "constant"))),
+        optional(field("causality", choice("input", "output"))),
         field("typeSpecifier", $.TypeSpecifier),
-        opt(field("arraySubscripts", $.ArraySubscripts)),
+        optional(field("arraySubscripts", $.ArraySubscripts)),
         commaSep1(field("componentDeclaration", $.ComponentDeclaration)),
-        opt(field("constrainingClause", $.ConstrainingClause)),
+        optional(field("constrainingClause", $.ConstrainingClause)),
         ";",
       ),
 
@@ -2027,9 +2028,9 @@ export default language({
       def({
         syntax: seq(
           field("declaration", $.Declaration),
-          opt(field("conditionAttribute", $.ConditionAttribute)),
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("conditionAttribute", $.ConditionAttribute)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
         ),
         symbol: (self) => ({
           kind: "Component",
@@ -2307,7 +2308,7 @@ export default language({
            */
           arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
             // Get the CST node for this ComponentDeclaration
-            const cst = db.cstNode(self.id) as import("@modelscript/polyglot/symbol-indexer").CSTNode | null;
+            const cst = db.cstNode(self.id) as import("@modelscript/language/symbol-indexer").CSTNode | null;
             if (!cst) return null;
 
             /** Extract subscript descriptors from an ArraySubscripts CST node. */
@@ -2638,7 +2639,7 @@ export default language({
            * e.g. `Integer y = 1.5;` (Real literal assigned to Integer).
            */
           bindingTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             const meta = self.metadata as Record<string, unknown>;
             const declaredType = meta?.typeSpecifier as string | undefined;
@@ -2751,7 +2752,7 @@ export default language({
            * e.g. `Real[2] x = {1,2,3};` — declared size 2 but 3 elements.
            */
           arrayShapeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             // Get declared dimensions via query
             const dims = db.query<Array<{ kind: string; value?: number }> | null>("arrayDimensions", self.id);
@@ -2812,7 +2813,7 @@ export default language({
            * e.g. `B[2] b = {B(1,1), C(2)};` — C is not B.
            */
           arrayElementTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             const meta = self.metadata as Record<string, unknown>;
             const typeName = meta?.typeSpecifier as string | undefined;
@@ -2906,7 +2907,7 @@ export default language({
            * e.g. `constant Real x = y;` where y doesn't exist in scope.
            */
           unresolvedReference: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             // Get the CST node
             const cst = db.cstNode(self.id) as CSTNode | null;
@@ -2985,7 +2986,7 @@ export default language({
            * e.g. `Real x = X(2,3);` where X takes 1 input.
            */
           functionCallMismatch: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             // Get the CST binding expression
             const cst = db.cstNode(self.id) as CSTNode | null;
@@ -3263,8 +3264,8 @@ export default language({
     Declaration: ($) =>
       seq(
         field("identifier", $.IDENT),
-        opt(field("arraySubscripts", $.ArraySubscripts)),
-        opt(field("modification", $.Modification)),
+        optional(field("arraySubscripts", $.ArraySubscripts)),
+        optional(field("modification", $.Modification)),
       ),
 
     // =====================================================================
@@ -3275,7 +3276,7 @@ export default language({
       choice(
         seq(
           field("classModification", $.ClassModification),
-          opt(seq("=", field("modificationExpression", $.ModificationExpression))),
+          optional(seq("=", field("modificationExpression", $.ModificationExpression))),
         ),
         seq("=", field("modificationExpression", $.ModificationExpression)),
       ),
@@ -3288,37 +3289,37 @@ export default language({
 
     ElementModification: ($) =>
       seq(
-        opt(field("each", "each")),
-        opt(field("final", "final")),
+        optional(field("each", "each")),
+        optional(field("final", "final")),
         field("name", $.Name),
-        opt(field("modification", $.Modification)),
-        opt(field("description", $.Description)),
+        optional(field("modification", $.Modification)),
+        optional(field("description", $.Description)),
       ),
 
     ElementRedeclaration: ($) =>
       seq(
-        opt(field("redeclare", "redeclare")),
-        opt(field("each", "each")),
-        opt(field("final", "final")),
-        opt(field("replaceable", "replaceable")),
+        optional(field("redeclare", "redeclare")),
+        optional(field("each", "each")),
+        optional(field("final", "final")),
+        optional(field("replaceable", "replaceable")),
         choice(field("classDefinition", $.ShortClassDefinition), field("componentClause", $.ComponentClause1)),
       ),
 
     ComponentClause1: ($) =>
       seq(
-        opt(field("flow", choice("flow", "stream"))),
-        opt(field("variability", choice("discrete", "parameter", "constant"))),
-        opt(field("causality", choice("input", "output"))),
+        optional(field("flow", choice("flow", "stream"))),
+        optional(field("variability", choice("discrete", "parameter", "constant"))),
+        optional(field("causality", choice("input", "output"))),
         field("typeSpecifier", $.TypeSpecifier),
         field("componentDeclaration", $.ComponentDeclaration1),
-        opt(field("constrainingClause", $.ConstrainingClause)),
+        optional(field("constrainingClause", $.ConstrainingClause)),
       ),
 
     ComponentDeclaration1: ($) =>
       seq(
         field("declaration", $.Declaration),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
       ),
 
     ShortClassDefinition: ($) =>
@@ -3326,7 +3327,7 @@ export default language({
         syntax: seq(
           field("classPrefixes", $.ClassPrefixes),
           field("classSpecifier", $.ShortClassSpecifier),
-          opt(field("constrainingClause", $.ConstrainingClause)),
+          optional(field("constrainingClause", $.ConstrainingClause)),
         ),
         symbol: (self) => ({
           kind: "Class",
@@ -3349,26 +3350,26 @@ export default language({
 
     EquationSection: ($) =>
       seq(
-        opt(field("initial", "initial")),
+        optional(field("initial", "initial")),
         "equation",
-        rep(field("equation", $._Equation)),
-        opt(seq(field("annotationClause", $.AnnotationClause), ";")),
+        repeat(field("equation", $._Equation)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
 
     AlgorithmSection: ($) =>
       seq(
-        opt(field("initial", "initial")),
+        optional(field("initial", "initial")),
         "algorithm",
-        rep(field("statement", $._Statement)),
-        opt(seq(field("annotationClause", $.AnnotationClause), ";")),
+        repeat(field("statement", $._Statement)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
 
     ConstraintSection: ($) =>
       seq(
-        opt(field("initial", "initial")),
+        optional(field("initial", "initial")),
         "constraint",
-        rep(field("equation", $._Equation)),
-        opt(seq(field("annotationClause", $.AnnotationClause), ";")),
+        repeat(field("equation", $._Equation)),
+        optional(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
 
     _Equation: ($) =>
@@ -3392,8 +3393,8 @@ export default language({
         field("target", $.ComponentReference),
         choice(":=", "="),
         field("source", $._Expression),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3401,8 +3402,8 @@ export default language({
       seq(
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3412,8 +3413,8 @@ export default language({
         choice(":=", "="),
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3422,8 +3423,8 @@ export default language({
         field("expression1", $._SimpleExpression),
         field("operator", choice("=", "<=", ">=", "<", ">")),
         field("expression2", $._Expression),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3431,63 +3432,73 @@ export default language({
       seq(
         field("functionReference", $.ComponentReference),
         field("functionCallArguments", $.FunctionCallArguments),
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     BreakStatement: ($) =>
-      seq("break", opt(field("description", $.Description)), opt(field("annotationClause", $.AnnotationClause)), ";"),
+      seq(
+        "break",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
 
     ReturnStatement: ($) =>
-      seq("return", opt(field("description", $.Description)), opt(field("annotationClause", $.AnnotationClause)), ";"),
+      seq(
+        "return",
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
+        ";",
+      ),
 
     IfEquation: ($) =>
       seq(
         "if",
         field("condition", $._Expression),
         "then",
-        rep(field("equation", $._Equation)),
-        rep(field("elseIfEquationClause", $.ElseIfEquationClause)),
-        opt(seq("else", rep(field("elseEquation", $._Equation)))),
+        repeat(field("equation", $._Equation)),
+        repeat(field("elseIfEquationClause", $.ElseIfEquationClause)),
+        optional(seq("else", repeat(field("elseEquation", $._Equation)))),
         "end",
         "if",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     ElseIfEquationClause: ($) =>
-      seq("elseif", field("condition", $._Expression), "then", rep(field("equation", $._Equation))),
+      seq("elseif", field("condition", $._Expression), "then", repeat(field("equation", $._Equation))),
 
     IfStatement: ($) =>
       seq(
         "if",
         field("condition", $._Expression),
         "then",
-        rep(field("statement", $._Statement)),
-        rep(field("elseIfStatementClause", $.ElseIfStatementClause)),
-        opt(seq("else", rep(field("elseStatement", $._Statement)))),
+        repeat(field("statement", $._Statement)),
+        repeat(field("elseIfStatementClause", $.ElseIfStatementClause)),
+        optional(seq("else", repeat(field("elseStatement", $._Statement)))),
         "end",
         "if",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     ElseIfStatementClause: ($) =>
-      seq("elseif", field("condition", $._Expression), "then", rep(field("statement", $._Statement))),
+      seq("elseif", field("condition", $._Expression), "then", repeat(field("statement", $._Statement))),
 
     ForEquation: ($) =>
       seq(
         "for",
         commaSep1(field("forIndex", $.ForIndex)),
         "loop",
-        rep(field("equation", $._Equation)),
+        repeat(field("equation", $._Equation)),
         "end",
         "for",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3496,26 +3507,26 @@ export default language({
         "for",
         commaSep1(field("forIndex", $.ForIndex)),
         "loop",
-        rep(field("statement", $._Statement)),
+        repeat(field("statement", $._Statement)),
         "end",
         "for",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
-    ForIndex: ($) => seq(field("identifier", $.IDENT), opt(seq("in", field("expression", $._Expression)))),
+    ForIndex: ($) => seq(field("identifier", $.IDENT), optional(seq("in", field("expression", $._Expression)))),
 
     WhileStatement: ($) =>
       seq(
         "while",
         field("condition", $._Expression),
         "loop",
-        rep(field("statement", $._Statement)),
+        repeat(field("statement", $._Statement)),
         "end",
         "while",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
@@ -3524,34 +3535,34 @@ export default language({
         "when",
         field("condition", $._Expression),
         "then",
-        rep(field("equation", $._Equation)),
-        rep(field("elseWhenEquationClause", $.ElseWhenEquationClause)),
+        repeat(field("equation", $._Equation)),
+        repeat(field("elseWhenEquationClause", $.ElseWhenEquationClause)),
         "end",
         "when",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     ElseWhenEquationClause: ($) =>
-      seq("elsewhen", field("condition", $._Expression), "then", rep(field("equation", $._Equation))),
+      seq("elsewhen", field("condition", $._Expression), "then", repeat(field("equation", $._Equation))),
 
     WhenStatement: ($) =>
       seq(
         "when",
         field("condition", $._Expression),
         "then",
-        rep(field("statement", $._Statement)),
-        rep(field("elseWhenStatementClause", $.ElseWhenStatementClause)),
+        repeat(field("statement", $._Statement)),
+        repeat(field("elseWhenStatementClause", $.ElseWhenStatementClause)),
         "end",
         "when",
-        opt(field("description", $.Description)),
-        opt(field("annotationClause", $.AnnotationClause)),
+        optional(field("description", $.Description)),
+        optional(field("annotationClause", $.AnnotationClause)),
         ";",
       ),
 
     ElseWhenStatementClause: ($) =>
-      seq("elsewhen", field("condition", $._Expression), "then", rep(field("statement", $._Statement))),
+      seq("elsewhen", field("condition", $._Expression), "then", repeat(field("statement", $._Statement))),
 
     ConnectEquation: ($) =>
       def({
@@ -3562,8 +3573,8 @@ export default language({
           ",",
           field("componentReference2", $.ComponentReference),
           ")",
-          opt(field("description", $.Description)),
-          opt(field("annotationClause", $.AnnotationClause)),
+          optional(field("description", $.Description)),
+          optional(field("annotationClause", $.AnnotationClause)),
           ";",
         ),
         symbol: (self) => ({
@@ -3607,7 +3618,7 @@ export default language({
            * e.g. `connect(x, y)` where x/y are plain Real variables.
            */
           nonConnectorType: (db: QueryDB, self: SymbolEntry) => {
-            type CSTNode = import("@modelscript/polyglot/symbol-indexer").CSTNode;
+            type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
 
             const meta = self.metadata as Record<string, unknown>;
             const ref1Name = typeof meta?.ref1 === "string" ? meta.ref1 : null;
@@ -3725,7 +3736,7 @@ export default language({
         field("condition", $._Expression),
         "then",
         field("expression", $._Expression),
-        rep(field("elseIfExpressionClause", $.ElseIfExpressionClause)),
+        repeat(field("elseIfExpressionClause", $.ElseIfExpressionClause)),
         "else",
         field("elseExpression", $._Expression),
       ),
@@ -3801,7 +3812,7 @@ export default language({
 
     TypeSpecifier: ($) =>
       ref({
-        syntax: seq(opt(field("global", ".")), field("name", $.Name)),
+        syntax: seq(optional(field("global", ".")), field("name", $.Name)),
         name: (self) => self.name,
         targetKinds: ["Class"],
         resolve: "qualified",
@@ -3811,13 +3822,14 @@ export default language({
 
     ComponentReference: ($) =>
       ref({
-        syntax: seq(opt(field("global", ".")), commaSep1(field("part", $.ComponentReferencePart), ".")),
+        syntax: seq(optional(field("global", ".")), commaSep1(field("part", $.ComponentReferencePart), ".")),
         name: (self) => self.part,
         targetKinds: ["Component", "Class"],
         resolve: "qualified",
       }),
 
-    ComponentReferencePart: ($) => seq(field("identifier", $.IDENT), opt(field("arraySubscripts", $.ArraySubscripts))),
+    ComponentReferencePart: ($) =>
+      seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
 
     FunctionCall: ($) =>
       seq(
@@ -3828,12 +3840,12 @@ export default language({
     FunctionCallArguments: ($) =>
       seq(
         "(",
-        opt(
+        optional(
           choice(
             field("comprehensionClause", $.ComprehensionClause),
             seq(
               commaSep1(field("argument", $.FunctionArgument)),
-              opt(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
+              optional(seq(",", commaSep1(field("namedArgument", $.NamedArgument)))),
             ),
             commaSep1(field("namedArgument", $.NamedArgument)),
           ),
@@ -3846,7 +3858,9 @@ export default language({
     ArrayConstructor: ($) =>
       seq(
         "{",
-        opt(choice(field("comprehensionClause", $.ComprehensionClause), field("expressionList", $.ExpressionList))),
+        optional(
+          choice(field("comprehensionClause", $.ComprehensionClause), field("expressionList", $.ExpressionList)),
+        ),
         "}",
       ),
 
@@ -3873,7 +3887,7 @@ export default language({
         choice(field("arraySubscripts", $.ArraySubscripts), seq(".", field("identifier", $.IDENT))),
       ),
 
-    OutputExpressionList: ($) => seq("(", commaSep(opt(field("output", $._Expression)), ","), ")"),
+    OutputExpressionList: ($) => seq("(", commaSep(optional(field("output", $._Expression)), ","), ")"),
 
     ExpressionList: ($) => commaSep1(field("expression", $._Expression)),
 
@@ -3896,7 +3910,7 @@ export default language({
         choice(
           seq(
             /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
-            rep(
+            repeat(
               choice(
                 /[0-9]/,
                 /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
@@ -3906,7 +3920,7 @@ export default language({
           // Q-IDENT: 'quoted identifier'
           seq(
             "'",
-            rep(
+            repeat(
               choice(
                 /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
                 /[0-9]/,
@@ -3950,7 +3964,11 @@ export default language({
 
     STRING: () =>
       token(
-        seq('"', rep(choice(/[^"\\]/, seq("\\", choice("'", '"', "?", "\\", "a", "b", "f", "n", "r", "t", "v")))), '"'),
+        seq(
+          '"',
+          repeat(choice(/[^"\\]/, seq("\\", choice("'", '"', "?", "\\", "a", "b", "f", "n", "r", "t", "v")))),
+          '"',
+        ),
       ),
 
     UNSIGNED_INTEGER: () => /[0-9]+/,
@@ -3958,9 +3976,9 @@ export default language({
     UNSIGNED_REAL: () =>
       token(
         choice(
-          seq(/[0-9]+/, ".", opt(/[0-9]+/)),
-          seq(/[0-9]+/, opt(seq(".", opt(/[0-9]+/))), choice("e", "E"), opt(choice("+", "-")), /[0-9]+/),
-          seq(".", /[0-9]+/, opt(seq(choice("e", "E"), opt(choice("+", "-")), /[0-9]+/))),
+          seq(/[0-9]+/, ".", optional(/[0-9]+/)),
+          seq(/[0-9]+/, optional(seq(".", optional(/[0-9]+/))), choice("e", "E"), optional(choice("+", "-")), /[0-9]+/),
+          seq(".", /[0-9]+/, optional(seq(choice("e", "E"), optional(choice("+", "-")), /[0-9]+/))),
         ),
       ),
 

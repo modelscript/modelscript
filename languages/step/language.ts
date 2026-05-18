@@ -17,15 +17,15 @@ import {
   def,
   field,
   language,
-  opt,
+  optional,
   ref,
-  rep,
-  rep1,
+  repeat,
+  repeat1,
   seq,
   token,
   type QueryDB,
   type SymbolEntry,
-} from "@modelscript/polyglot";
+} from "@modelscript/language";
 
 // ---------------------------------------------------------------------------
 // Language Definition
@@ -42,7 +42,11 @@ export default language({
     // =====================================================================
 
     StepFile: ($) =>
-      seq(field("header", $.HeaderSection), rep(field("dataSection", $.DataSection)), opt(field("trailer", $.Trailer))),
+      seq(
+        field("header", $.HeaderSection),
+        repeat(field("dataSection", $.DataSection)),
+        optional(field("trailer", $.Trailer)),
+      ),
 
     Trailer: () => "END-ISO-10303-21;",
 
@@ -50,7 +54,7 @@ export default language({
     // Header Section
     // =====================================================================
 
-    HeaderSection: ($) => seq("ISO-10303-21;", "HEADER;", rep(field("headerEntity", $.HeaderEntity)), "ENDSEC;"),
+    HeaderSection: ($) => seq("ISO-10303-21;", "HEADER;", repeat(field("headerEntity", $.HeaderEntity)), "ENDSEC;"),
 
     HeaderEntity: ($) =>
       def({
@@ -69,9 +73,9 @@ export default language({
       def({
         syntax: seq(
           "DATA",
-          opt(seq("(", field("scopeName", $.STRING), ")")),
+          optional(seq("(", field("scopeName", $.STRING), ")")),
           ";",
-          rep(field("entity", $.EntityInstance)),
+          repeat(field("entity", $.EntityInstance)),
           "ENDSEC;",
         ),
         symbol: (self) => ({
@@ -142,11 +146,11 @@ export default language({
 
     _Record: ($) => choice($.SimpleRecord, $.ComplexRecord),
 
-    SimpleRecord: ($) => seq(field("keyword", $.KEYWORD), "(", opt(field("parameters", $.ParameterList)), ")"),
+    SimpleRecord: ($) => seq(field("keyword", $.KEYWORD), "(", optional(field("parameters", $.ParameterList)), ")"),
 
-    ComplexRecord: ($) => seq("(", rep1($.SimpleRecord), ")"),
+    ComplexRecord: ($) => seq("(", repeat1($.SimpleRecord), ")"),
 
-    ParameterList: ($) => seq($._Parameter, rep(seq(",", $._Parameter))),
+    ParameterList: ($) => seq($._Parameter, repeat(seq(",", $._Parameter))),
 
     _Parameter: ($) =>
       choice(
@@ -173,9 +177,9 @@ export default language({
         resolve: "lexical",
       }),
 
-    TypedParameter: ($) => seq(field("keyword", $.KEYWORD), "(", opt(field("parameters", $.ParameterList)), ")"),
+    TypedParameter: ($) => seq(field("keyword", $.KEYWORD), "(", optional(field("parameters", $.ParameterList)), ")"),
 
-    ListValue: ($) => seq("(", opt($.ParameterList), ")"),
+    ListValue: ($) => seq("(", optional($.ParameterList), ")"),
 
     OMITTED_PARAMETER: () => "$",
 
@@ -192,22 +196,22 @@ export default language({
     KEYWORD: () => /[A-Z][A-Z0-9_]*/,
 
     /** Integer literal (signed) */
-    INTEGER: () => token(seq(opt(choice("+", "-")), /[0-9]+/)),
+    INTEGER: () => token(seq(optional(choice("+", "-")), /[0-9]+/)),
 
     /** Real literal (signed, with optional exponent) */
     REAL: () =>
       token(
         seq(
-          opt(choice("+", "-")),
+          optional(choice("+", "-")),
           /[0-9]+/,
           ".",
-          opt(/[0-9]+/),
-          opt(seq(choice("E", "e"), opt(choice("+", "-")), /[0-9]+/)),
+          optional(/[0-9]+/),
+          optional(seq(choice("E", "e"), optional(choice("+", "-")), /[0-9]+/)),
         ),
       ),
 
     /** Single-quoted string */
-    STRING: () => token(seq("'", rep(choice(/[^']/, "''")), "'")),
+    STRING: () => token(seq("'", repeat(choice(/[^']/, "''")), "'")),
 
     /** Enumeration value: .T., .F., .MILLI., .METRE. */
     ENUMERATION: () => token(seq(".", /[A-Z][A-Z0-9_]*/, ".")),

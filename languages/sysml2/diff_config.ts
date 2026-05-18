@@ -4,7 +4,7 @@
 // Semantic diffing configuration for automated PLM and impact analysis.
 // =============================================================================
 
-import type { DiffConfig } from "@modelscript/polyglot";
+import type { DiffConfig } from "@modelscript/language";
 
 export const diffConfig: Record<string, DiffConfig> = {
   PartDefinition: {

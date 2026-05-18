@@ -16,9 +16,9 @@ When given an Xtext (`.xtext`) grammar, convert it to a polyglot `language.ts` f
 | `RuleName returns Type : body ;`                   | `RuleName: ($) => body`                                            |
 | `A B C` (sequence)                                 | `seq(A, B, C)`                                                     |
 | `A \| B` (alternatives)                            | `choice(A, B)`                                                     |
-| `A?` (optional)                                    | `opt(A)`                                                           |
-| `A*` (zero or more)                                | `rep(A)`                                                           |
-| `A+` (one or more)                                 | `rep1(A)`                                                          |
+| `A?` (optional)                                    | `optional(A)`                                                      |
+| `A*` (zero or more)                                | `repeat(A)`                                                        |
+| `A+` (one or more)                                 | `repeat1(A)`                                                       |
 | `field = Rule` (assignment)                        | `field("field", $.Rule)`                                           |
 | `field += Rule` (list append)                      | `field("field", $.Rule)` (same — tree-sitter handles multiplicity) |
 | `field ?= Rule` (boolean)                          | `field("field", $.Rule)`                                           |
@@ -45,8 +45,8 @@ const PREC = {
 } as const;
 ```
 
-- **Left-associative binary operators** → `prec.left(PREC.X, seq(operand, rep(seq(operator, operand))))`
-- **Right-associative operators** (e.g. exponentiation) → `prec.right(PREC.X, seq(operand, opt(seq(operator, operand))))`
+- **Left-associative binary operators** → `prec.left(PREC.X, seq(operand, repeat(seq(operator, operand))))`
+- **Right-associative operators** (e.g. exponentiation) → `prec.right(PREC.X, seq(operand, optional(seq(operator, operand))))`
 - **Unary prefix operators** → `prec(PREC.X, seq(operator, operand))`
 
 ### Semantic Annotations

@@ -1,19 +1,19 @@
 /* eslint-disable */
-import { AdapterRegistry, type ProjectionResult } from "@modelscript/polyglot";
-import { LSPBridge, PositionIndex } from "@modelscript/polyglot/lsp-bridge";
-import { ScopeResolver } from "@modelscript/polyglot/resolver";
-import type { IndexerHook, SymbolIndex } from "@modelscript/polyglot/runtime";
-import { nodeEndByte, nodeStartByte, SymbolIndexer, type CSTNode } from "@modelscript/polyglot/symbol-indexer";
 import { QueryEngine } from "@modelscript/salsa";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { WebSocket, WebSocketServer } from "ws";
-import { extractClassSpecs, generateAstClasses } from "./generate-ast-classes.js";
-import { extractKeywords } from "./generate-highlights.js";
-import { extractIndexerHooks } from "./generate-indexer.js";
-import { extractRefHooks } from "./generate-refs.js";
+import { AdapterRegistry, type ProjectionResult } from "./adapter-registry.js";
+import { extractClassSpecs, generateAstClasses } from "./generators/ast.js";
+import { extractKeywords } from "./generators/highlights.js";
+import { extractIndexerHooks } from "./generators/indexer.js";
+import { extractRefHooks } from "./generators/refs.js";
+import type { IndexerHook, SymbolIndex } from "./index.js";
 import { buildWasm, findWasmFile } from "./init.js";
+import { LSPBridge, PositionIndex } from "./lsp-bridge.js";
+import { ScopeResolver } from "./resolver.js";
+import { nodeEndByte, nodeStartByte, SymbolIndexer, type CSTNode } from "./symbol-indexer.js";
 
 // ---------------------------------------------------------------------------
 // Mock parser fallback (used when WASM is not available)
@@ -135,7 +135,7 @@ function cstToJson(node: CSTNode, depth = 0): CSTJson {
     result.text = node.text.substring(0, 120);
   }
   if (node.children.length > 0) {
-    result.children = node.children.map((c) => cstToJson(c, depth + 1));
+    result.children = node.children.map((c: any) => cstToJson(c, depth + 1));
   }
   return result;
 }
@@ -1749,7 +1749,7 @@ require(['vs/editor/editor.main'], function () {
   }
 
   // Custom dark theme with semantic token rules
-  monaco.editor.defineTheme('metascript-dark', {
+  monaco.editor.defineTheme('modelscript-dark', {
     base: 'vs-dark', inherit: true,
     rules: [
       { token: 'keyword', foreground: 'ff7b72', fontStyle: 'bold' },
@@ -1808,7 +1808,7 @@ require(['vs/editor/editor.main'], function () {
 
   // Apply semantic token colors via CSS-based theme customizations
   // These map to the semantic token types defined in the legend
-  monaco.editor.defineTheme('metascript-dark-semantic', {
+  monaco.editor.defineTheme('modelscript-dark-semantic', {
     base: 'vs-dark', inherit: true,
     rules: [
       { token: 'keyword', foreground: 'ff7b72', fontStyle: 'bold' },
@@ -1839,7 +1839,7 @@ require(['vs/editor/editor.main'], function () {
   });
 
   const editorOpts = {
-    theme: 'metascript-dark-semantic',
+    theme: 'modelscript-dark-semantic',
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 14, lineHeight: 22,
     padding: { top: 12, bottom: 12 },
@@ -2061,10 +2061,10 @@ function setDiagnostics(diagnostics, editor) {
       message: d.message,
       startLineNumber: startPos.lineNumber, startColumn: startPos.column,
       endLineNumber: endPos.lineNumber, endColumn: endPos.column,
-      source: 'metascript',
+      source: 'modelscript',
     };
   });
-  monaco.editor.setModelMarkers(model, 'metascript', markers);
+  monaco.editor.setModelMarkers(model, 'modelscript', markers);
 }
 
 // =========================================================================

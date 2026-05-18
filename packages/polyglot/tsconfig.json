@@ -11,10 +11,7 @@
     "outDir": "dist",
     "paths": {
       "@modelscript/polyglot": ["./src/index.ts"],
-      "@modelscript/polyglot/runtime": ["./src/runtime.ts"],
       "@modelscript/polyglot/symbol-indexer": ["./src/symbol-indexer.ts"],
-      "@modelscript/polyglot/resolver": ["./src/resolver.ts"],
-      "@modelscript/polyglot/semantic-node": ["./src/semantic-node.ts"],
       "@modelscript/polyglot/lsp-bridge": ["./src/lsp-bridge.ts"]
     },
     "declaration": true

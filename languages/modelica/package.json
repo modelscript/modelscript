@@ -67,7 +67,7 @@
     "test:native": "node --test bindings/node/*_test.cjs"
   },
   "dependencies": {
-    "@modelscript/polyglot": "*",
+    "@modelscript/language": "*",
     "node-addon-api": "^8.5.0",
     "node-gyp-build": "^4.8.4"
   },

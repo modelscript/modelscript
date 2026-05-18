@@ -2,21 +2,54 @@
   "name": "@modelscript/language",
   "version": "0.0.0",
   "description": "A language workbench for generating tree-sitter grammars, typed AST wrappers, symbol indexers, and query hooks from a single declarative file.",
+  "keywords": [
+    "modelscript",
+    "language",
+    "tree-sitter",
+    "dsl",
+    "ast",
+    "workbench"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/language"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
   "type": "module",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./runtime": "./dist/runtime.js",
+    "./resolver": "./dist/resolver.js",
+    "./semantic-node": "./dist/semantic-node.js",
+    "./semantic-diff": "./dist/semantic-diff.js",
+    "./symbol-indexer": "./dist/symbol-indexer.js",
+    "./workspace-index": "./dist/workspace-index.js",
+    "./line-index": "./dist/line-index.js",
+    "./interner": "./dist/interner.js",
+    "./topology": "./dist/topology.js",
+    "./lsp-bridge": "./dist/lsp-bridge.js",
+    "./adapter-registry": "./dist/adapter-registry.js",
+    "./unified-workspace": "./dist/unified-workspace.js",
+    "./verifier": "./dist/verifier.js",
+    "./arena": "./dist/arena.js",
+    "./symbol-arena": "./dist/symbol-arena.js"
   },
   "main": "dist/index.js",
   "bin": {
-    "metascript": "./dist/cli.js"
+    "modelscript-language": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rimraf dist && tsc",
     "clean": "rimraf dist",
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelscript/diagram": "*",
     "@modelscript/polyglot": "*",
+    "@modelscript/salsa": "*",
+    "@modelscript/simulator": "*",
     "commander": "^11.0.0",
     "tree-sitter-cli": "^0.24.7",
     "web-tree-sitter": "^0.24.7"

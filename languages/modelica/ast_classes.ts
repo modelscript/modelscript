@@ -3,9 +3,8 @@
 // Language: modelica
 // =============================================================================
 
-import type { QueryDB, SpecializationArgs, SymbolEntry, SymbolId } from "@modelscript/polyglot/runtime";
-import type { SemanticVisitor } from "@modelscript/polyglot/semantic-node";
-import { GenericNode, SemanticNode } from "@modelscript/polyglot/semantic-node";
+import type { QueryDB, SemanticVisitor, SpecializationArgs, SymbolEntry, SymbolId } from "@modelscript/language";
+import { GenericNode, SemanticNode } from "@modelscript/language";
 
 export class ClassDefinition extends SemanticNode {
   readonly kind = "Class";

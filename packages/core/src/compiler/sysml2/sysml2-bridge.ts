@@ -5,20 +5,15 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/polyglot/diagram-builder";
-import { LSPBridge, PositionIndex } from "@modelscript/polyglot/lsp-bridge";
-import { ScopeResolver } from "@modelscript/polyglot/resolver";
-import type { VerificationResult } from "@modelscript/polyglot/verifier";
-import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
+import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
+import { LSPBridge, PositionIndex } from "@modelscript/language/lsp-bridge";
+import { ScopeResolver } from "@modelscript/language/resolver";
+import type { VerificationResult } from "@modelscript/language/verifier";
+import { WorkspaceIndex } from "@modelscript/language/workspace-index";
 import { QueryEngine } from "@modelscript/salsa";
 
-import { INDEXER_HOOKS } from "@modelscript/sysml2/indexer_config";
-import { QUERY_HOOKS } from "@modelscript/sysml2/query_hooks";
-import { REF_HOOKS } from "@modelscript/sysml2/ref_config";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — graphicsConfig is a generated named export
-import { graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2/graphics_config";
+import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2/config";
+import { QUERY_HOOKS } from "@modelscript/sysml2/query-hooks";
 
 const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__sysml2IndexerHooksFallback;
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;

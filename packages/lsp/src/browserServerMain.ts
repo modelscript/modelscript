@@ -56,21 +56,21 @@ import {
 } from "./sysml2DiagramEdits";
 
 // @ts-ignore
-import { SemanticEdit, computeSemanticDiff } from "@modelscript/polyglot/semantic-diff";
+import { SemanticEdit, computeSemanticDiff } from "@modelscript/language/semantic-diff";
 // @ts-ignore
 import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
 // @ts-ignore
-import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/indexer_config";
+import { INDEXER_HOOKS as sysml2IndexerHooks } from "@modelscript/sysml2/config";
 // @ts-ignore
 import { wrapEntry as modelicaWrapEntry } from "@modelscript/modelica/ast_classes";
 // @ts-ignore
-import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast_classes";
+import { wrapEntry as sysml2WrapEntry } from "@modelscript/sysml2/ast";
 // @ts-ignore
 import { QUERY_HOOKS as modelicaQueryHooks } from "@modelscript/modelica/query_hooks";
 // @ts-ignore
 import { invalidateWrapperCache } from "@modelscript/modelica/semantic-model";
 // @ts-ignore
-import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query_hooks";
+import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query-hooks";
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
@@ -114,24 +114,21 @@ import {
   generateRomWasmSource,
 } from "@modelscript/fmi";
 import {
+  FederatedQueryCacheStore,
+  IndexedDBQueryCacheStore,
+  LineIndex,
+  VerificationRunner,
+  type TokenData,
+} from "@modelscript/language";
+import { ScopeResolver } from "@modelscript/language/resolver";
+import { SymbolIndexer } from "@modelscript/language/symbol-indexer";
+import {
   ModelicaCalibrator,
   ModelicaOptimizer,
   parseCsvMeasurements,
   registerCalibrateDeps,
   registerOptimizeDeps,
 } from "@modelscript/optimizer";
-import {
-  FederatedQueryCacheStore,
-  IndexedDBQueryCacheStore,
-  LineIndex,
-  VerificationRunner,
-  extractSysML2Constraints,
-  mapConstraintsToOptimizer,
-  mapStepToMultiBody,
-  type TokenData,
-} from "@modelscript/polyglot";
-import { ScopeResolver } from "@modelscript/polyglot/resolver";
-import { SymbolIndexer } from "@modelscript/polyglot/symbol-indexer";
 import type { DoEInputRange } from "@modelscript/simulator";
 import {
   ModelicaSimulator,
@@ -139,10 +136,11 @@ import {
   registerMonteCarloDeps,
   registerSimulateDeps,
 } from "@modelscript/simulator";
-import { INDEXER_HOOKS as stepIndexerHooks } from "@modelscript/step/indexer_config";
-import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query_hooks";
-import { REF_HOOKS as stepRefHooks } from "@modelscript/step/ref_config";
+import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
+import { mapStepToMultiBody } from "@modelscript/step/mapper";
+import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query-hooks";
 import { ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import { StringWriter } from "@modelscript/utils";
 import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
@@ -429,8 +427,8 @@ const allWorkspaceIndices = new Map<string, any>();
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 
+import { UnifiedWorkspace } from "@modelscript/language";
 import modelicaLangFallback from "@modelscript/modelica/language";
-import { UnifiedWorkspace } from "@modelscript/polyglot";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { StepWorkspaceIndex } from "./step-workspace-index";
 

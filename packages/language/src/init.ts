@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 // ---------------------------------------------------------------------------
-// init command — scaffold a metascript language project
+// init command — scaffold a modelscript language project
 // ---------------------------------------------------------------------------
 
 export interface InitOptions {
@@ -17,10 +17,10 @@ export interface InitOptions {
 }
 
 /**
- * Scaffold or update a metascript language project directory.
+ * Scaffold or update a modelscript language project directory.
  *
  * Creates:
- *   package.json     — deps (tree-sitter-cli, web-tree-sitter, metascript) + scripts
+ *   package.json     — deps (tree-sitter-cli, web-tree-sitter, @modelscript/language) + scripts
  *   language.ts      — starter template (only if missing)
  *   tree-sitter.json — tree-sitter config for WASM build
  *
@@ -45,24 +45,37 @@ export function initProject(options: InitOptions): void {
   const pkg = {
     name: existingPkg.name ?? `tree-sitter-${langName}`,
     version: existingPkg.version ?? "0.0.0",
-    description: existingPkg.description ?? `Tree-sitter grammar for ${langName} (via metascript)`,
+    description: existingPkg.description ?? `Tree-sitter grammar for ${langName} (via @modelscript/language)`,
     main: existingPkg.main ?? "bindings/node",
     scripts: {
       ...(existingPkg.scripts ?? {}),
-      generate: `metascript generate language.ts`,
+      generate: `modelscript-language generate language.ts`,
       "build:parser": "tree-sitter generate",
       "build:wasm": "tree-sitter build --wasm -o tree-sitter-" + langName + ".wasm",
       build: "npm run generate && npm run build:parser && npm run build:wasm",
-      playground: `metascript playground language.ts`,
+      playground: `modelscript-language playground language.ts`,
     },
     dependencies: {
       ...(existingPkg.dependencies ?? {}),
-      "@modelscript/polyglot": existingPkg.dependencies?.["@modelscript/polyglot"] ?? "*",
+      "@modelscript/language": existingPkg.dependencies?.["@modelscript/language"] ?? "*",
+      "node-addon-api": existingPkg.dependencies?.["node-addon-api"] ?? "^8.5.0",
+      "node-gyp-build": existingPkg.dependencies?.["node-gyp-build"] ?? "^4.8.4",
     },
     devDependencies: {
       ...(existingPkg.devDependencies ?? {}),
-      "tree-sitter-cli": existingPkg.devDependencies?.["tree-sitter-cli"] ?? "^0.24.7",
-      "web-tree-sitter": existingPkg.devDependencies?.["web-tree-sitter"] ?? "^0.24.7",
+      prebuildify: existingPkg.devDependencies?.["prebuildify"] ?? "^6.0.1",
+      "tree-sitter": existingPkg.devDependencies?.["tree-sitter"] ?? "^0.22.4",
+      "tree-sitter-cli": existingPkg.devDependencies?.["tree-sitter-cli"] ?? "^0.25.10",
+    },
+    peerDependencies: {
+      ...(existingPkg.peerDependencies ?? {}),
+      "tree-sitter": existingPkg.peerDependencies?.["tree-sitter"] ?? "^0.22.4",
+    },
+    peerDependenciesMeta: {
+      ...(existingPkg.peerDependenciesMeta ?? {}),
+      "tree-sitter": {
+        optional: true,
+      },
     },
   };
 
@@ -83,8 +96,8 @@ export function initProject(options: InitOptions): void {
   language,
   def,
   seq,
-  opt,
-  rep,
+  optional,
+  repeat,
   choice,
   token,
   field,
@@ -96,10 +109,10 @@ export default language({
   rules: {
     // Define your grammar rules here.
     // Use def() to create symbol-producing rules.
-    // See: https://github.com/modelscript/metascript
+    // See: https://github.com/modelscript/modelscript
 
     source_file: ($) =>
-      rep($.definition),
+      repeat($.definition),
 
     definition: ($) =>
       def({
@@ -205,7 +218,7 @@ export function buildWasm(dir: string, langName: string): string | null {
   console.log(`[init] Building WASM parser for ${langName}...`);
   ensureTreeSitterJson(dir, langName);
   try {
-    // Step 1: Generate grammar.js from language.ts (if metascript CLI is available)
+    // Step 1: Generate grammar.js from language.ts (if modelscript-language CLI is available)
     const grammarPath = path.join(dir, "grammar.js");
     if (!fs.existsSync(grammarPath)) {
       console.log("[init] Generating grammar.js...");

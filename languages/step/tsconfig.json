@@ -11,6 +11,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["language.ts", "indexer_config.ts", "query_hooks.ts", "ref_config.ts"],
+  "include": [
+    "language.ts",
+    "indexer_config.ts",
+    "query_hooks.ts",
+    "ref_config.ts",
+    "step-multibody-mapper.ts",
+    "src-gen/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist", "build", "src"]
 }

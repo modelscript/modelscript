@@ -1,4 +1,4 @@
-import type { RefHook } from "@modelscript/polyglot/runtime";
+import type { RefHook } from "@modelscript/language";
 
 export const REF_HOOKS: RefHook[] = [
   {

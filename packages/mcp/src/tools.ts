@@ -14,10 +14,10 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
+import type { TopologyGraph } from "@modelscript/language";
+import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/language";
 import { QueryBasedFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
-import type { TopologyGraph } from "@modelscript/polyglot";
-import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/polyglot";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
