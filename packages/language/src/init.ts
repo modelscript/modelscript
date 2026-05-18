@@ -88,7 +88,7 @@ export function initProject(options: InitOptions): void {
   choice,
   token,
   field,
-} from "@modelscript/polyglot";
+} from "@modelscript/language";
 
 export default language({
   name: ${JSON.stringify(langName)},

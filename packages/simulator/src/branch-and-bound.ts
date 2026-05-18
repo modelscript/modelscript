@@ -25,14 +25,8 @@
  *    for the global optimisation of nonconvex MINLPs", Computers & Chem. Eng.
  */
 
+import { Interval, StaticTapeBuilder, evaluateTapeInterval, evaluateTapeMcCormick } from "@modelscript/compiler";
 import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
-import {
-  Interval,
-  StaticTapeBuilder,
-  evaluateTapeInterval,
-  evaluateTapeMcCormick,
-  type TapeOp,
-} from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 
 /** A box in the search space: variable name → [lo, hi] */
@@ -81,8 +75,8 @@ interface SbbNode {
  * @param options        Solver options
  */
 export function solveSBB(
-  objectiveTape: { ops: TapeOp[]; outputIndex: number },
-  constraintTapes: { ops: TapeOp[]; outputIndex: number }[],
+  objectiveTape: { ops: StaticTapeBuilder; outputIndex: number },
+  constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[],
   variables: string[],
   initialBox: DomainBox,
   options: SbbOptions = {},
@@ -189,13 +183,13 @@ export function solveSBB(
 // ── Helper functions ──
 
 /** Evaluate interval lower bound of objective over a box. */
-function evaluateIntervalLB(tape: { ops: TapeOp[]; outputIndex: number }, box: DomainBox): number {
+function evaluateIntervalLB(tape: { ops: StaticTapeBuilder; outputIndex: number }, box: DomainBox): number {
   const intervals = evaluateTapeInterval(tape.ops, box);
   return intervals[tape.outputIndex]?.lo ?? -Infinity;
 }
 
 /** Evaluate objective at a point. */
-function evaluateObjective(tape: { ops: TapeOp[]; outputIndex: number }, point: Map<string, number>): number {
+function evaluateObjective(tape: { ops: StaticTapeBuilder; outputIndex: number }, point: Map<string, number>): number {
   const t = evaluateTapeForward(tape.ops, point);
   return t[tape.outputIndex] ?? Infinity;
 }
@@ -250,8 +244,8 @@ function findWidestDimension(box: DomainBox, variables: string[]): string | null
  * For constrained: solves the KKT system.
  */
 function localNewtonSolve(
-  objectiveTape: { ops: TapeOp[]; outputIndex: number },
-  constraintTapes: { ops: TapeOp[]; outputIndex: number }[],
+  objectiveTape: { ops: StaticTapeBuilder; outputIndex: number },
+  constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[],
   variables: string[],
   startPoint: Map<string, number>,
   maxIter: number,
@@ -382,8 +376,8 @@ export function buildSbbFromDAE(
   objectiveExpr: ModelicaExpression,
   constraintExprs: ModelicaExpression[],
 ): {
-  objectiveTape: { ops: TapeOp[]; outputIndex: number };
-  constraintTapes: { ops: TapeOp[]; outputIndex: number }[];
+  objectiveTape: { ops: StaticTapeBuilder; outputIndex: number };
+  constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[];
 } {
   const objTape = new StaticTapeBuilder();
   const objIdx = objTape.walk(objectiveExpr);
@@ -391,11 +385,11 @@ export function buildSbbFromDAE(
   const constraintTapes = constraintExprs.map((expr) => {
     const tape = new StaticTapeBuilder();
     const idx = tape.walk(expr);
-    return { ops: [...tape.ops], outputIndex: idx };
+    return { ops: tape, outputIndex: idx };
   });
 
   return {
-    objectiveTape: { ops: [...objTape.ops], outputIndex: objIdx },
+    objectiveTape: { ops: objTape, outputIndex: objIdx },
     constraintTapes,
   };
 }

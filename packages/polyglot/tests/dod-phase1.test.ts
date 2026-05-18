@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
+import { MemoKeyStore, packMemoKey, QueryNameRegistry, unpackMemoKey } from "@modelscript/salsa";
 import { describe, expect, it } from "vitest";
 import { StringInterner } from "../src/interner.js";
-import { MemoKeyStore, packMemoKey, QueryNameRegistry, unpackMemoKey } from "../src/memo-keys.js";
 import type { SymbolEntry } from "../src/runtime.js";
 import { SymbolArena, SymbolEntryView } from "../src/symbol-arena.js";
 
@@ -239,8 +239,8 @@ describe("packMemoKey", () => {
     expect(packMemoKey(0, -100)).toBeNull();
   });
 
-  it("returns null for symbol IDs exceeding 24-bit range", () => {
-    expect(packMemoKey(0, 0x0100_0000)).toBeNull();
+  it("returns null for symbol IDs exceeding 40-bit range", () => {
+    expect(packMemoKey(0, 0x0100_0000_0000)).toBeNull();
   });
 });
 

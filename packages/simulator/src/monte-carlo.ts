@@ -1,3 +1,4 @@
+import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
@@ -15,8 +16,6 @@
  * (non-Gaussian distributions, complex nonlinearities) and as the backbone
  * for Sample Average Approximation (SAA) in stochastic optimization.
  */
-
-import type { TapeOp } from "@modelscript/symbolics";
 
 // ─────────────────────────────────────────────────────────────────────
 // Distribution Types
@@ -493,7 +492,7 @@ function lgamma(x: number): number {
  * @param options       MC options (numSamples, seed, etc.)
  */
 export function runMonteCarloTape(
-  ops: TapeOp[],
+  ops: StaticTapeBuilder,
   randomVars: RandomVariable[],
   outputIndex: number,
   options?: MonteCarloOptions,
@@ -548,78 +547,90 @@ export function runMonteCarloTape(
 }
 
 /** Evaluate a tape with concrete float values (forward pass only). */
-function evaluateTapeFloat(ops: TapeOp[], values: Map<string, number>, t: number[]): void {
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!;
-    switch (op.type) {
-      case "const":
-        t[i] = op.val;
+function evaluateTapeFloat(builder: StaticTapeBuilder, values: Map<string, number>, t: number[]): void {
+  const n = builder.length;
+  const { opData, valData, interner } = builder;
+  const TAPE_STRIDE = 4;
+
+  for (let i = 0; i < n; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    switch (kind) {
+      case 1: // Const
+        t[i] = valData[i]!;
         break;
-      case "var":
-        t[i] = values.get(op.name) ?? 0;
+      case 2: // Var
+        t[i] = values.get(interner.resolve(a) || "") ?? 0;
         break;
-      case "add":
-        t[i] = t[op.a]! + t[op.b]!;
+      case 3: // Add
+        t[i] = t[a]! + t[b]!;
         break;
-      case "sub":
-        t[i] = t[op.a]! - t[op.b]!;
+      case 4: // Sub
+        t[i] = t[a]! - t[b]!;
         break;
-      case "mul":
-        t[i] = t[op.a]! * t[op.b]!;
+      case 5: // Mul
+        t[i] = t[a]! * t[b]!;
         break;
-      case "div":
-        t[i] = t[op.a]! / t[op.b]!;
+      case 6: // Div
+        t[i] = t[a]! / t[b]!;
         break;
-      case "pow":
-        t[i] = Math.pow(t[op.a]!, t[op.b]!);
+      case 7: // Pow
+        t[i] = Math.pow(t[a]!, t[b]!);
         break;
-      case "neg":
-        t[i] = -t[op.a]!;
+      case 8: // Neg
+        t[i] = -t[a]!;
         break;
-      case "sin":
-        t[i] = Math.sin(t[op.a]!);
+      case 9: // Sin
+        t[i] = Math.sin(t[a]!);
         break;
-      case "cos":
-        t[i] = Math.cos(t[op.a]!);
+      case 10: // Cos
+        t[i] = Math.cos(t[a]!);
         break;
-      case "tan":
-        t[i] = Math.tan(t[op.a]!);
+      case 11: // Tan
+        t[i] = Math.tan(t[a]!);
         break;
-      case "exp":
-        t[i] = Math.exp(t[op.a]!);
+      case 12: // Exp
+        t[i] = Math.exp(t[a]!);
         break;
-      case "log":
-        t[i] = Math.log(t[op.a]!);
+      case 13: // Log
+        t[i] = Math.log(t[a]!);
         break;
-      case "sqrt":
-        t[i] = Math.sqrt(t[op.a]!);
+      case 14: // Sqrt
+        t[i] = Math.sqrt(t[a]!);
         break;
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = values.get(`${op.baseName}[${k + 1}]`) ?? 0;
+      case 15: {
+        // VecVar
+        const baseName = interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          t[i + k] = values.get(`${baseName}[${k + 1}]`) ?? 0;
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = op.vals[k] ?? 0;
+      }
+      case 16: // VecConst
+        for (let k = 0; k < b; k++) {
+          t[i + k] = valData[i + k] ?? 0;
         }
         break;
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) t[i + k] = t[op.a + k]! + t[op.b + k]!;
+      case 17: // VecAdd
+        for (let k = 0; k < b; k++) t[i + k] = t[a + k]! + t[c + k]!;
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) t[i + k] = t[op.a + k]! - t[op.b + k]!;
+      case 18: // VecSub
+        for (let k = 0; k < b; k++) t[i + k] = t[a + k]! - t[c + k]!;
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) t[i + k] = t[op.a + k]! * t[op.b + k]!;
+      case 19: // VecMul
+        for (let k = 0; k < b; k++) t[i + k] = t[a + k]! * t[c + k]!;
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) t[i + k] = -t[op.a + k]!;
+      case 20: // VecNeg
+        for (let k = 0; k < b; k++) t[i + k] = -t[a + k]!;
         break;
-      case "vec_subscript":
-        t[i] = t[op.a + op.offset] ?? 0;
+      case 21: // VecSubscript
+        t[i] = t[a + c] ?? 0;
         break;
-      case "nop":
+      case 0: // Nop
         break;
     }
   }

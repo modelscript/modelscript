@@ -4840,9 +4840,6 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
         return AstBuilder.subscript(base, subscripts);
       }
     }
-    if (expr && typeof (expr as any).accept !== "function" && !(expr instanceof ModelicaEnumerationLiteral)) {
-      console.error("FOLD EXPRESSION LEAKING POJO:", expr, expr.constructor.name);
-    }
     return expr;
   }
 

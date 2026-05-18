@@ -1,19 +1,19 @@
 /* eslint-disable */
+import { AdapterRegistry, type ProjectionResult } from "@modelscript/polyglot";
+import { LSPBridge, PositionIndex } from "@modelscript/polyglot/lsp-bridge";
+import { ScopeResolver } from "@modelscript/polyglot/resolver";
+import type { IndexerHook, SymbolIndex } from "@modelscript/polyglot/runtime";
+import { nodeEndByte, nodeStartByte, SymbolIndexer, type CSTNode } from "@modelscript/polyglot/symbol-indexer";
+import { QueryEngine } from "@modelscript/salsa";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { WebSocket, WebSocketServer } from "ws";
-import { AdapterRegistry, type ProjectionResult } from "./adapter-registry.js";
 import { extractClassSpecs, generateAstClasses } from "./generate-ast-classes.js";
 import { extractKeywords } from "./generate-highlights.js";
 import { extractIndexerHooks } from "./generate-indexer.js";
 import { extractRefHooks } from "./generate-refs.js";
 import { buildWasm, findWasmFile } from "./init.js";
-import { LSPBridge, PositionIndex } from "./lsp-bridge.js";
-import { QueryEngine } from "./query-engine.js";
-import { ScopeResolver } from "./resolver.js";
-import type { IndexerHook, SymbolIndex } from "./runtime.js";
-import { nodeEndByte, nodeStartByte, SymbolIndexer, type CSTNode } from "./symbol-indexer.js";
 
 // ---------------------------------------------------------------------------
 // Mock parser fallback (used when WASM is not available)
@@ -446,7 +446,9 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
     let tsLanguage: any = null;
     if (wasmPath) {
       try {
-        const { Parser, Language } = await import("web-tree-sitter");
+        const ts = await import("web-tree-sitter");
+        const Parser = ts.default || (ts as any).Parser;
+        const Language = ts.default?.Language || (ts as any).Language;
         await Parser.init();
         tsLanguage = await Language.load(wasmPath);
         tsParser = new Parser();
@@ -466,12 +468,13 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
         try {
           // Split query into individual patterns and validate each one
           // This is much more robust than iteratively removing bad names
-          const { Query } = await import("web-tree-sitter");
+          const ts = await import("web-tree-sitter");
+          const Query = ts.default?.Query || (ts as any).Query;
           const querySource = fs.readFileSync(queriesPath, "utf-8");
 
           // Try loading directly first (fast path)
           try {
-            highlightQuery = new Query(tsLanguage, querySource);
+            highlightQuery = new (Query as any)(tsLanguage, querySource);
             console.log(
               `[playground/${langName}] ✅ Loaded highlight query directly (${highlightQuery.captureNames.length} captures)`,
             );
@@ -515,7 +518,7 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
 
             for (const pattern of patterns) {
               try {
-                const testQuery = new Query(tsLanguage, pattern);
+                const testQuery = new (Query as any)(tsLanguage, pattern);
                 testQuery.delete();
                 validPatterns.push(pattern);
               } catch {
@@ -526,7 +529,7 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
             if (validPatterns.length > 0) {
               const validSource = validPatterns.join("\n\n");
               try {
-                highlightQuery = new Query(tsLanguage, validSource);
+                highlightQuery = new (Query as any)(tsLanguage, validSource);
                 console.log(
                   `[playground/${langName}] ✅ Loaded highlight query (${highlightQuery.captureNames.length} captures, ${removedCount} invalid patterns removed from ${patterns.length} total)`,
                 );
@@ -1034,10 +1037,12 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
     if (!R || !lastIndexL) return [];
     try {
       // Project LEFT → RIGHT
-      const lr = adapterRegistry.projectAll(L.langName, R.langName).map((r) => serializeProjection(r, "lr"));
+      const lr = adapterRegistry
+        .projectAll(L.langName, R.langName)
+        .map((r: ProjectionResult) => serializeProjection(r, "lr"));
       // Project RIGHT → LEFT (if right is analyzed)
       const rl = lastIndexR
-        ? adapterRegistry.projectAll(R.langName, L.langName).map((r) => serializeProjection(r, "rl"))
+        ? adapterRegistry.projectAll(R.langName, L.langName).map((r: ProjectionResult) => serializeProjection(r, "rl"))
         : [];
       return [...lr, ...rl];
     } catch (e) {

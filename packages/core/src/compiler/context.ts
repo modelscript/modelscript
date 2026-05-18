@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { QueryEngine } from "@modelscript/polyglot/query-engine";
 import type { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
+import type { QueryEngine } from "@modelscript/salsa";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";

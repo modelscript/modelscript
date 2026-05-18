@@ -1,3 +1,4 @@
+import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -18,7 +19,6 @@
  */
 
 import type { ModelicaExpression } from "@modelscript/symbolics";
-import { StaticTapeBuilder, type TapeOp } from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import type { ImplicitInitBlock } from "./system-initializer.js";
 
@@ -75,13 +75,13 @@ export function freezeAndSolve(
   }
 
   // Build AD tapes for residuals: R_i = LHS_i - RHS_i
-  const tapeData: { ops: TapeOp[]; outputIndex: number }[] = [];
+  const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of block.equations) {
     const tape = new StaticTapeBuilder();
     const lhsIdx = tape.walk(eq.lhs);
     const rhsIdx = tape.walk(eq.rhs);
     const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
-    tapeData.push({ ops: [...tape.ops], outputIndex: residualIdx });
+    tapeData.push({ ops: tape, outputIndex: residualIdx });
   }
 
   const nResiduals = tapeData.length;

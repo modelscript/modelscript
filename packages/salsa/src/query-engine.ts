@@ -1,11 +1,11 @@
 /* eslint-disable */
-import type { LintResult } from "./index.js";
 import type {
   CSTTree,
   CycleInfo,
   CycleRecoveryFn,
   DependencyKey,
   ExpressionEvaluator,
+  LintResult,
   Memo,
   QueryCacheStore,
   QueryDB,
@@ -17,7 +17,7 @@ import type {
   SymbolEntry,
   SymbolId,
   SymbolIndex,
-} from "./runtime.js";
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Dependency Tracker — Records which inputs/queries a query reads

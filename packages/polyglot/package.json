@@ -9,22 +9,18 @@
   "exports": {
     ".": "./dist/src/index.js",
     "./runtime": "./dist/src/runtime.js",
-    "./cache-store": "./dist/src/cache-store.js",
     "./symbol-indexer": "./dist/src/symbol-indexer.js",
-    "./query-engine": "./dist/src/query-engine.js",
     "./resolver": "./dist/src/resolver.js",
     "./lsp-bridge": "./dist/src/lsp-bridge.js",
     "./workspace-index": "./dist/src/workspace-index.js",
     "./semantic-node": "./dist/src/semantic-node.js",
     "./semantic-diff": "./dist/src/semantic-diff.js",
-    "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
     "./diagram-builder": "./dist/src/polyglot-diagram-builder.js",
     "./verifier": "./dist/src/verifier.js",
     "./interner": "./dist/src/interner.js",
     "./arena": "./dist/src/arena.js",
     "./line-index": "./dist/src/line-index.js",
     "./symbol-arena": "./dist/src/symbol-arena.js",
-    "./memo-keys": "./dist/src/memo-keys.js",
     "./dae-arena": "./dist/src/dae-arena.js"
   },
   "main": "dist/src/index.js",
@@ -34,12 +30,11 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
-    "generate": "tsx src/cli.ts",
-    "playground": "tsx src/cli.ts playground",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@modelscript/salsa": "*",
     "@types/ws": "^8.18.1",
     "web-tree-sitter": "^0.26.8",
     "ws": "^8.20.0"

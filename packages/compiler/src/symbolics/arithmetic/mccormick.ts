@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
+/* eslint-disable @typescript-eslint/no-non-null-assertion, no-case-declarations */
 /**
  * McCormick Relaxation Engine for the StaticTapeBuilder tape.
  *
@@ -20,7 +20,8 @@
  *   "Generalized McCormick Relaxations", JOGO.
  */
 
-import type { TapeOp } from "../tape.js";
+import type { StaticTapeBuilder } from "../tape.js";
+import { TAPE_DATA1, TAPE_DATA2, TAPE_DATA3, TAPE_OP_KIND, TAPE_STRIDE, TapeOpKind } from "../tape.js";
 import { Interval, iaCos, iaDiv, iaMul, iaPow, iaSin, iaTan } from "./interval.js";
 
 /** McCormick relaxation tuple at a single tape node. */
@@ -294,98 +295,105 @@ function mcTan(a: McCormickTuple): McCormickTuple {
  * Returns McCormick tuples (cv, cc, lo, hi) at each tape slot.
  */
 export function evaluateTapeMcCormick(
-  ops: TapeOp[],
+  builder: StaticTapeBuilder,
   bounds: Map<string, Interval>,
   point: Map<string, number>,
 ): McCormickTuple[] {
-  const t = new Array<McCormickTuple>(ops.length);
+  const t = new Array<McCormickTuple>(builder.length);
 
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    switch (op.type) {
-      case "const":
-        t[i] = mcConst(op.val);
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = builder.opData[offset + TAPE_OP_KIND]!;
+    const a = builder.opData[offset + TAPE_DATA1]!;
+    const b = builder.opData[offset + TAPE_DATA2]!;
+    const c = builder.opData[offset + TAPE_DATA3]!;
+
+    switch (kind) {
+      case TapeOpKind.Const:
+        t[i] = mcConst(builder.valData[i]!);
         break;
-      case "var": {
-        const bound = bounds.get(op.name) ?? Interval.point(0);
-        const val = point.get(op.name) ?? bound.mid;
+      case TapeOpKind.Var: {
+        const name = builder.interner.resolve(a) || "";
+        const bound = bounds.get(name) ?? Interval.point(0);
+        const val = point.get(name) ?? bound.mid;
         t[i] = mcVar(val, bound.lo, bound.hi);
         break;
       }
-      case "add":
-        t[i] = mcAdd(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Add:
+        t[i] = mcAdd(t[a]!, t[b]!);
         break;
-      case "sub":
-        t[i] = mcSub(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sub:
+        t[i] = mcSub(t[a]!, t[b]!);
         break;
-      case "mul":
-        t[i] = mcMul(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Mul:
+        t[i] = mcMul(t[a]!, t[b]!);
         break;
-      case "div":
-        t[i] = mcDiv(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Div:
+        t[i] = mcDiv(t[a]!, t[b]!);
         break;
-      case "pow":
-        t[i] = mcPow(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Pow:
+        t[i] = mcPow(t[a]!, t[b]!);
         break;
-      case "neg":
-        t[i] = mcNeg(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Neg:
+        t[i] = mcNeg(t[a]!);
         break;
-      case "sin":
-        t[i] = mcSin(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sin:
+        t[i] = mcSin(t[a]!);
         break;
-      case "cos":
-        t[i] = mcCos(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Cos:
+        t[i] = mcCos(t[a]!);
         break;
-      case "tan":
-        t[i] = mcTan(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Tan:
+        t[i] = mcTan(t[a]!);
         break;
-      case "exp":
-        t[i] = mcExp(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Exp:
+        t[i] = mcExp(t[a]!);
         break;
-      case "log":
-        t[i] = mcLog(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Log:
+        t[i] = mcLog(t[a]!);
         break;
-      case "sqrt":
-        t[i] = mcSqrt(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sqrt:
+        t[i] = mcSqrt(t[a]!);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          const name = `${op.baseName}[${k + 1}]`;
+      case TapeOpKind.VecVar:
+        const baseName = builder.interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          const name = `${baseName}[${k + 1}]`;
           const bound = bounds.get(name) ?? Interval.point(0);
           const val = point.get(name) ?? bound.mid;
           t[i + k] = mcVar(val, bound.lo, bound.hi);
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = mcConst(op.vals[k] ?? 0);
+      case TapeOpKind.VecConst:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = mcConst(builder.valData[i + k] ?? 0);
         }
         break;
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = mcAdd(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecAdd:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = mcAdd(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = mcSub(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecSub:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = mcSub(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = mcMul(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecMul:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = mcMul(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = mcNeg(t[op.a + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecNeg:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = mcNeg(t[a + k]!);
         }
         break;
-      case "vec_subscript":
-        t[i] = t[op.a + op.offset] ?? mcConst(0);
+      case TapeOpKind.VecSubscript:
+        t[i] = t[a + c] ?? mcConst(0);
         break;
-      case "nop":
+      case TapeOpKind.Nop:
         break;
     }
   }

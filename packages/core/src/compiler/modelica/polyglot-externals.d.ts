@@ -7,7 +7,7 @@
 // to allow the flattener to access properties that will be progressively typed.
 // TODO: Replace with precise types once the compat-shim API is stable.
 
-declare module "@modelscript/polyglot/query-engine" {
+declare module "@modelscript/salsa" {
   export interface LintDiagnostic {
     severity: string;
     rule: string;

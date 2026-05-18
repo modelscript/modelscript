@@ -1,3 +1,100 @@
+/** X6 SVG Markup element — defines the DOM structure of a node/port. */
+export interface X6Markup {
+  tagName: string;
+  selector?: string;
+  groupSelector?: string;
+  attrs?: Record<string, string | number>;
+  style?: Record<string, string | number>;
+  className?: string;
+  textContent?: string;
+  children?: X6Markup[];
+}
+
+/**
+ * X6 attribute styles keyed by selector.
+ * Values may contain template placeholders like "{{name}}" that are resolved
+ * at render time from symbol entry properties.
+ */
+export type X6Attrs = Record<string, Record<string, string | number | Record<string, unknown>>>;
+
+/** X6 port group definition — appearance template for a group of ports. */
+export interface X6PortGroup {
+  position?: string | { name: string; args?: Record<string, unknown> };
+  markup?: X6Markup | X6Markup[];
+  attrs?: X6Attrs;
+  zIndex?: number | "auto";
+  label?: {
+    markup?: X6Markup | X6Markup[];
+    position?: { name: string; args?: Record<string, unknown> };
+  };
+}
+
+/** X6 port item — a single port instance. */
+export interface X6PortItem {
+  id?: string;
+  group?: string;
+  args?: Record<string, unknown>;
+  markup?: X6Markup | X6Markup[];
+  attrs?: X6Attrs;
+  zIndex?: number | "auto";
+}
+
+/** X6 port configuration — groups define templates, items define instances. */
+export interface X6Ports {
+  groups?: Record<string, X6PortGroup>;
+  items?: X6PortItem[];
+}
+
+/** Full GraphicsConfig — node, edge, and port configuration for X6 rendering. */
+export interface GraphicsConfig {
+  /** The graphic role this node plays in diagram rendering. */
+  role: "node" | "edge" | "group" | "port-owner" | "compartment";
+
+  /** Node/Group visual configuration (X6 addNode format). */
+  node?: {
+    /** X6 shape name (default: "rect"). */
+    shape?: string;
+    /** SVG markup elements defining the DOM structure. */
+    markup?: X6Markup[];
+    /** Attribute styles keyed by selector (body, label, icon, etc). */
+    attrs?: X6Attrs;
+    /** Default node size. */
+    size?: { width: number; height: number };
+    /** Port group templates and optional static items. */
+    ports?: X6Ports;
+    /**
+     * Query name to call for dynamic port items at render time.
+     * The renderer calls `db.query(portQuery, symbolId)` to get port entries.
+     */
+    portQuery?: string;
+  };
+
+  /** Edge visual configuration (X6 addEdge format). */
+  edge?: {
+    /** X6 edge shape name (default: "edge"). */
+    shape?: string;
+    /** Field path pointing to the source node symbol. */
+    source?: SelfAccessor | string;
+    /** Field path pointing to the target node symbol. */
+    target?: SelfAccessor | string;
+    /** Field path to resolve source port name. */
+    sourcePort?: SelfAccessor | string;
+    /** Field path to resolve target port name. */
+    targetPort?: SelfAccessor | string;
+    /** Edge attrs (line styles, markers). */
+    attrs?: X6Attrs;
+    /** Edge labels (stereotype text, etc). */
+    labels?: {
+      attrs?: X6Attrs;
+      position?: { distance?: number; offset?: number };
+    }[];
+    /** Router config (e.g. "manhattan", "orth"). */
+    router?: string | { name: string; args?: Record<string, unknown> };
+    /** Connector config (e.g. "rounded", "smooth"). */
+    connector?: string | { name: string; args?: Record<string, unknown> };
+  };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
@@ -5,7 +102,8 @@
 // Reads SymbolIndex + GraphicsConfig and produces X6‑compatible JSON
 // that the webview can feed directly to Graph.fromJSON().
 
-import type { GraphicsConfig, X6Attrs, X6Markup, X6Ports } from "./index.js";
+type SelfAccessor = any;
+
 import type { ScopeResolver } from "./resolver.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 

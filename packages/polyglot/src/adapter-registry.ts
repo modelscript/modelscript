@@ -1,3 +1,99 @@
+/**
+ * The database facade passed to adapter `transform` functions.
+ * Provides cross-language projection utilities alongside the
+ * standard symbol-index navigation helpers.
+ */
+export interface AdapterDB {
+  /** Get a symbol entry by ID (real or virtual). */
+  symbol(id: SymbolId): SymbolEntry | undefined;
+  /** Get all direct children of a symbol. */
+  childrenOf(id: SymbolId): SymbolEntry[];
+  /**
+   * Recursively project a foreign SymbolEntry into the given target language.
+   * Walks registered adapters (C → B → A priority) to find a matching transform.
+   * Returns a property bag ready to pass into the target's AST class constructors,
+   * or `null` if no adapter matched.
+   *
+   * This is the main primitive for recursive cross-language AST walking:
+   *   modelica → sysml2:  db.project(foreignModelicaClass, "sysml2")
+   *   sysml2  → modelica: db.project(foreignSysmlBlock, "modelica")
+   */
+  project(foreignEntry: SymbolEntry, targetLang: string): Record<string, unknown> | null;
+}
+
+/**
+ * Node-level cross-language adapter (Approaches A and B).
+ * Placed inside a `def()` call under `adapters[languageName]`.
+ *
+ * **Approach A (source-side export):**
+ * This node declares how it should appear when viewed by another language.
+ *   adapters: {
+ *     sysml2: {
+ *       target: "BlockDefinition",
+ *       transform: (db, self) => ({ name: self.name, parts: [...] })
+ *     }
+ *   }
+ *
+ * **Approach B (target-side import):**
+ * This node declares which foreign nodes it can absorb and how.
+ *   adapters: {
+ *     sysml2: {
+ *       accepts: ["BlockDefinition"],
+ *       transform: (db, foreign) => ({ name: foreign.name, ... })
+ *     }
+ *   }
+ */
+export interface NodeAdapter {
+  /**
+   * Approach A — the className this node projects INTO in the target language.
+   * Must match the `ast.className` of a rule in the target language.
+   */
+  target?: string;
+
+  /**
+   * Approach B — which foreign node classNames this node can accept.
+   * Each string must match the `ast.className` of a rule from the foreign language.
+   */
+  accepts?: string[];
+
+  /**
+   * The projection function.
+   * - Approach A: `self` is a SelfAccessor proxy over this node's own fields.
+   * - Approach B: `self` is the raw foreign SymbolEntry being imported.
+   * Returns a plain property bag consumed by the adapter registry.
+   */
+  transform?: (db: AdapterDB, self: Record<string, unknown> | SymbolEntry) => Record<string, unknown>;
+}
+
+/**
+ * Top-level language-wide adapter registry (Approach C).
+ * Lives at the root of `language({})` under the `adapters` key.
+ *
+ * Shape:
+ *   adapters: {
+ *     sysml2: {
+ *       BlockDefinition: (db, foreignNode) => ({ target: "ClassDefinition", props: {...} })
+ *     }
+ *   }
+ *
+ * Priority: C > B > A (global registry is the most intentional override).
+ */
+export type GlobalAdapters = Record<
+  string, // foreign language name (e.g. "sysml2", "modelica")
+  Record<
+    string, // foreign node className matching ast.className
+    (
+      db: AdapterDB,
+      foreignNode: SymbolEntry,
+    ) => {
+      /** Local className to project into (must match a local ast.className). */
+      target: string;
+      /** Property bag for the projected synthetic node. */
+      props: Record<string, unknown>;
+    }
+  >
+>;
+
 /* eslint-disable */
 /**
  * adapter-registry.ts
@@ -13,7 +109,6 @@
  *   A (source-side export) — source language says "here is how I look to others"
  */
 
-import type { AdapterDB, GlobalAdapters } from "./index.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 
 // ---------------------------------------------------------------------------

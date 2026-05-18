@@ -1,4 +1,4 @@
-import type { Memo, QueryCacheStore } from "./runtime.js";
+import type { Memo, QueryCacheStore } from "./types.js";
 
 /**
  * IndexedDB-backed implementation of QueryCacheStore for browser environments.

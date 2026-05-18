@@ -653,7 +653,9 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     // Initialize FederatedCacheStore with local IndexedDB and (currently empty) federated endpoints
     const localStore = new IndexedDBQueryCacheStore("modelscript-lsp-cache");
     const federatedEndpoints: string[] = []; // Endpoints added later in loadRegistryPackages
-    const cacheStore = new FederatedQueryCacheStore(localStore, federatedEndpoints);
+    const cacheStore = new FederatedQueryCacheStore(localStore, {
+      getEndpoints: () => federatedEndpoints,
+    });
     const MAX_MEMOS = 100_000; // Limit in-memory memos
 
     sharedContext = new Context(sharedFs, cacheStore, MAX_MEMOS);
@@ -672,6 +674,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       sysml2Parser: sysml2Parser as any,
       cacheStore,
       registryUrl,
+      federatedEndpoints,
     };
     savedLoaderCtx = loaderCtx;
     await loadMSL(serverDistBase, loaderCtx);

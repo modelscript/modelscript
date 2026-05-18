@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-
+/* eslint-disable @typescript-eslint/no-non-null-assertion, no-case-declarations */
 /**
  * Interval Arithmetic Engine for the StaticTapeBuilder tape.
  *
@@ -11,7 +11,8 @@
  *   "Introduction to Interval Analysis", SIAM.
  */
 
-import type { TapeOp } from "../tape.js";
+import type { StaticTapeBuilder } from "../tape.js";
+import { TAPE_DATA1, TAPE_DATA2, TAPE_DATA3, TAPE_OP_KIND, TAPE_STRIDE, TapeOpKind } from "../tape.js";
 
 /** A closed interval [lo, hi]. */
 export class Interval {
@@ -216,89 +217,95 @@ export function iaSqrt(a: Interval): Interval {
  * Evaluate a tape forward pass with interval arithmetic.
  * Returns interval bounds at each tape slot.
  */
-export function evaluateTapeInterval(ops: TapeOp[], bounds: Map<string, Interval>): Interval[] {
-  const t = new Array<Interval>(ops.length);
+export function evaluateTapeInterval(builder: StaticTapeBuilder, bounds: Map<string, Interval>): Interval[] {
+  const t = new Array<Interval>(builder.length);
 
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    switch (op.type) {
-      case "const":
-        t[i] = Interval.point(op.val);
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = builder.opData[offset + TAPE_OP_KIND]!;
+    const a = builder.opData[offset + TAPE_DATA1]!;
+    const b = builder.opData[offset + TAPE_DATA2]!;
+    const c = builder.opData[offset + TAPE_DATA3]!;
+
+    switch (kind) {
+      case TapeOpKind.Const:
+        t[i] = Interval.point(builder.valData[i]!);
         break;
-      case "var":
-        t[i] = bounds.get(op.name) ?? Interval.point(0);
+      case TapeOpKind.Var:
+        t[i] = bounds.get(builder.interner.resolve(a) || "") ?? Interval.point(0);
         break;
-      case "add":
-        t[i] = iaAdd(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Add:
+        t[i] = iaAdd(t[a]!, t[b]!);
         break;
-      case "sub":
-        t[i] = iaSub(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sub:
+        t[i] = iaSub(t[a]!, t[b]!);
         break;
-      case "mul":
-        t[i] = iaMul(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Mul:
+        t[i] = iaMul(t[a]!, t[b]!);
         break;
-      case "div":
-        t[i] = iaDiv(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Div:
+        t[i] = iaDiv(t[a]!, t[b]!);
         break;
-      case "pow":
-        t[i] = iaPow(t[op.a]!, t[op.b]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Pow:
+        t[i] = iaPow(t[a]!, t[b]!);
         break;
-      case "neg":
-        t[i] = iaNeg(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Neg:
+        t[i] = iaNeg(t[a]!);
         break;
-      case "sin":
-        t[i] = iaSin(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sin:
+        t[i] = iaSin(t[a]!);
         break;
-      case "cos":
-        t[i] = iaCos(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Cos:
+        t[i] = iaCos(t[a]!);
         break;
-      case "tan":
-        t[i] = iaTan(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Tan:
+        t[i] = iaTan(t[a]!);
         break;
-      case "exp":
-        t[i] = iaExp(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Exp:
+        t[i] = iaExp(t[a]!);
         break;
-      case "log":
-        t[i] = iaLog(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Log:
+        t[i] = iaLog(t[a]!);
         break;
-      case "sqrt":
-        t[i] = iaSqrt(t[op.a]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.Sqrt:
+        t[i] = iaSqrt(t[a]!);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = bounds.get(`${op.baseName}[${k + 1}]`) ?? Interval.point(0);
+      case TapeOpKind.VecVar:
+        const baseName = builder.interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          t[i + k] = bounds.get(`${baseName}[${k + 1}]`) ?? Interval.point(0);
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = Interval.point(op.vals[k] ?? 0);
+      case TapeOpKind.VecConst:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = Interval.point(builder.valData[i + k] ?? 0);
         }
         break;
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = iaAdd(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecAdd:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = iaAdd(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = iaSub(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecSub:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = iaSub(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = iaMul(t[op.a + k]!, t[op.b + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecMul:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = iaMul(t[a + k]!, t[c + k]!);
         }
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = iaNeg(t[op.a + k]!); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      case TapeOpKind.VecNeg:
+        for (let k = 0; k < b; k++) {
+          t[i + k] = iaNeg(t[a + k]!);
         }
         break;
-      case "vec_subscript":
-        t[i] = t[op.a + op.offset] ?? Interval.point(0);
+      case TapeOpKind.VecSubscript:
+        t[i] = t[a + c] ?? Interval.point(0);
         break;
-      case "nop":
+      case TapeOpKind.Nop:
         break;
     }
   }
@@ -316,144 +323,149 @@ export function evaluateTapeInterval(ops: TapeOp[], bounds: Map<string, Interval
  * @returns Array of C-code lines
  */
 export function emitIntervalForwardC(
-  ops: TapeOp[],
+  builder: StaticTapeBuilder,
   varResolver: (name: string) => { lo: string; hi: string },
 ): string[] {
   const lines: string[] = [];
-  const n = ops.length;
+  const n = builder.length;
   lines.push(`double t_lo[${n}], t_hi[${n}];`);
 
   for (let i = 0; i < n; i++) {
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    switch (op.type) {
-      case "const":
-        lines.push(`t_lo[${i}] = ${formatNum(op.val)}; t_hi[${i}] = ${formatNum(op.val)};`);
+    const offset = i * TAPE_STRIDE;
+    const kind = builder.opData[offset + TAPE_OP_KIND]!;
+    const a = builder.opData[offset + TAPE_DATA1]!;
+    const b = builder.opData[offset + TAPE_DATA2]!;
+    const c = builder.opData[offset + TAPE_DATA3]!;
+
+    switch (kind) {
+      case TapeOpKind.Const:
+        const val = builder.valData[i]!;
+        lines.push(`t_lo[${i}] = ${formatNum(val)}; t_hi[${i}] = ${formatNum(val)};`);
         break;
-      case "var": {
-        const vr = varResolver(op.name);
+      case TapeOpKind.Var: {
+        const vr = varResolver(builder.interner.resolve(a) || "");
         lines.push(`t_lo[${i}] = ${vr.lo}; t_hi[${i}] = ${vr.hi};`);
         break;
       }
-      case "add":
-        lines.push(`t_lo[${i}] = t_lo[${op.a}] + t_lo[${op.b}]; t_hi[${i}] = t_hi[${op.a}] + t_hi[${op.b}];`);
+      case TapeOpKind.Add:
+        lines.push(`t_lo[${i}] = t_lo[${a}] + t_lo[${b}]; t_hi[${i}] = t_hi[${a}] + t_hi[${b}];`);
         break;
-      case "sub":
-        lines.push(`t_lo[${i}] = t_lo[${op.a}] - t_hi[${op.b}]; t_hi[${i}] = t_hi[${op.a}] - t_lo[${op.b}];`);
+      case TapeOpKind.Sub:
+        lines.push(`t_lo[${i}] = t_lo[${a}] - t_hi[${b}]; t_hi[${i}] = t_hi[${a}] - t_lo[${b}];`);
         break;
-      case "mul":
-        lines.push(`{ double p1 = t_lo[${op.a}]*t_lo[${op.b}], p2 = t_lo[${op.a}]*t_hi[${op.b}],`);
-        lines.push(`         p3 = t_hi[${op.a}]*t_lo[${op.b}], p4 = t_hi[${op.a}]*t_hi[${op.b}];`);
+      case TapeOpKind.Mul:
+        lines.push(`{ double p1 = t_lo[${a}]*t_lo[${b}], p2 = t_lo[${a}]*t_hi[${b}],`);
+        lines.push(`         p3 = t_hi[${a}]*t_lo[${b}], p4 = t_hi[${a}]*t_hi[${b}];`);
         lines.push(`  t_lo[${i}] = fmin(fmin(p1,p2),fmin(p3,p4)); t_hi[${i}] = fmax(fmax(p1,p2),fmax(p3,p4)); }`);
         break;
-      case "div":
-        lines.push(`if (t_lo[${op.b}] > 0 || t_hi[${op.b}] < 0) {`);
-        lines.push(`  double rl = 1.0/t_hi[${op.b}], rh = 1.0/t_lo[${op.b}];`);
-        lines.push(`  double p1 = t_lo[${op.a}]*rl, p2 = t_lo[${op.a}]*rh,`);
-        lines.push(`         p3 = t_hi[${op.a}]*rl, p4 = t_hi[${op.a}]*rh;`);
+      case TapeOpKind.Div:
+        lines.push(`if (t_lo[${b}] > 0 || t_hi[${b}] < 0) {`);
+        lines.push(`  double rl = 1.0/t_hi[${b}], rh = 1.0/t_lo[${b}];`);
+        lines.push(`  double p1 = t_lo[${a}]*rl, p2 = t_lo[${a}]*rh,`);
+        lines.push(`         p3 = t_hi[${a}]*rl, p4 = t_hi[${a}]*rh;`);
         lines.push(`  t_lo[${i}] = fmin(fmin(p1,p2),fmin(p3,p4)); t_hi[${i}] = fmax(fmax(p1,p2),fmax(p3,p4));`);
         lines.push(`} else { t_lo[${i}] = -INFINITY; t_hi[${i}] = INFINITY; }`);
         break;
-      case "pow":
-        lines.push(`t_lo[${i}] = pow(fmax(1e-300,t_lo[${op.a}]), t_lo[${op.b}]);`);
-        lines.push(`t_hi[${i}] = pow(fmax(1e-300,t_hi[${op.a}]), t_hi[${op.b}]);`);
+      case TapeOpKind.Pow:
+        lines.push(`t_lo[${i}] = pow(fmax(1e-300,t_lo[${a}]), t_lo[${b}]);`);
+        lines.push(`t_hi[${i}] = pow(fmax(1e-300,t_hi[${a}]), t_hi[${b}]);`);
         lines.push(
           `if (t_lo[${i}] > t_hi[${i}]) { double tmp = t_lo[${i}]; t_lo[${i}] = t_hi[${i}]; t_hi[${i}] = tmp; }`,
         );
         break;
-      case "neg":
-        lines.push(`t_lo[${i}] = -t_hi[${op.a}]; t_hi[${i}] = -t_lo[${op.a}];`);
+      case TapeOpKind.Neg:
+        lines.push(`t_lo[${i}] = -t_hi[${a}]; t_hi[${i}] = -t_lo[${a}];`);
         break;
-      case "sin":
-        // Conservative: use [-1, 1] for wide intervals
-        lines.push(`{ double sw = t_hi[${op.a}] - t_lo[${op.a}];`);
+      case TapeOpKind.Sin:
+        lines.push(`{ double sw = t_hi[${a}] - t_lo[${a}];`);
         lines.push(`  if (sw >= 6.2831853) { t_lo[${i}] = -1.0; t_hi[${i}] = 1.0; }`);
-        lines.push(`  else { double s1 = sin(t_lo[${op.a}]), s2 = sin(t_hi[${op.a}]);`);
+        lines.push(`  else { double s1 = sin(t_lo[${a}]), s2 = sin(t_hi[${a}]);`);
         lines.push(`    t_lo[${i}] = fmin(s1,s2); t_hi[${i}] = fmax(s1,s2);`);
         lines.push(`    /* Check critical points */ `);
         lines.push(`    double TWO_PI = 6.2831853;`);
         lines.push(
-          `    for (int k = (int)floor((t_lo[${op.a}]-1.5707963)/TWO_PI); k <= (int)ceil((t_hi[${op.a}]-1.5707963)/TWO_PI); k++)`,
+          `    for (int k = (int)floor((t_lo[${a}]-1.5707963)/TWO_PI); k <= (int)ceil((t_hi[${a}]-1.5707963)/TWO_PI); k++)`,
         );
         lines.push(
-          `      { double cp = 1.5707963 + k*TWO_PI; if (cp >= t_lo[${op.a}] && cp <= t_hi[${op.a}]) t_hi[${i}] = 1.0; }`,
+          `      { double cp = 1.5707963 + k*TWO_PI; if (cp >= t_lo[${a}] && cp <= t_hi[${a}]) t_hi[${i}] = 1.0; }`,
         );
         lines.push(
-          `    for (int k = (int)floor((t_lo[${op.a}]-4.7123890)/TWO_PI); k <= (int)ceil((t_hi[${op.a}]-4.7123890)/TWO_PI); k++)`,
+          `    for (int k = (int)floor((t_lo[${a}]-4.7123890)/TWO_PI); k <= (int)ceil((t_hi[${a}]-4.7123890)/TWO_PI); k++)`,
         );
         lines.push(
-          `      { double cp = 4.7123890 + k*TWO_PI; if (cp >= t_lo[${op.a}] && cp <= t_hi[${op.a}]) t_lo[${i}] = -1.0; }`,
+          `      { double cp = 4.7123890 + k*TWO_PI; if (cp >= t_lo[${a}] && cp <= t_hi[${a}]) t_lo[${i}] = -1.0; }`,
         );
         lines.push(`} }`);
         break;
-      case "cos":
-        lines.push(`{ double cw = t_hi[${op.a}] - t_lo[${op.a}];`);
+      case TapeOpKind.Cos:
+        lines.push(`{ double cw = t_hi[${a}] - t_lo[${a}];`);
         lines.push(`  if (cw >= 6.2831853) { t_lo[${i}] = -1.0; t_hi[${i}] = 1.0; }`);
-        lines.push(`  else { double c1 = cos(t_lo[${op.a}]), c2 = cos(t_hi[${op.a}]);`);
+        lines.push(`  else { double c1 = cos(t_lo[${a}]), c2 = cos(t_hi[${a}]);`);
         lines.push(`    t_lo[${i}] = fmin(c1,c2); t_hi[${i}] = fmax(c1,c2);`);
         lines.push(`    double TWO_PI = 6.2831853;`);
-        lines.push(`    for (int k = (int)floor(t_lo[${op.a}]/TWO_PI); k <= (int)ceil(t_hi[${op.a}]/TWO_PI); k++)`);
-        lines.push(`      { double cp = k*TWO_PI; if (cp >= t_lo[${op.a}] && cp <= t_hi[${op.a}]) t_hi[${i}] = 1.0; }`);
+        lines.push(`    for (int k = (int)floor(t_lo[${a}]/TWO_PI); k <= (int)ceil(t_hi[${a}]/TWO_PI); k++)`);
+        lines.push(`      { double cp = k*TWO_PI; if (cp >= t_lo[${a}] && cp <= t_hi[${a}]) t_hi[${i}] = 1.0; }`);
         lines.push(
-          `    for (int k = (int)floor((t_lo[${op.a}]-3.1415927)/TWO_PI); k <= (int)ceil((t_hi[${op.a}]-3.1415927)/TWO_PI); k++)`,
+          `    for (int k = (int)floor((t_lo[${a}]-3.1415927)/TWO_PI); k <= (int)ceil((t_hi[${a}]-3.1415927)/TWO_PI); k++)`,
         );
         lines.push(
-          `      { double cp = 3.1415927 + k*TWO_PI; if (cp >= t_lo[${op.a}] && cp <= t_hi[${op.a}]) t_lo[${i}] = -1.0; }`,
+          `      { double cp = 3.1415927 + k*TWO_PI; if (cp >= t_lo[${a}] && cp <= t_hi[${a}]) t_lo[${i}] = -1.0; }`,
         );
         lines.push(`} }`);
         break;
-      case "tan":
-        lines.push(`t_lo[${i}] = tan(t_lo[${op.a}]); t_hi[${i}] = tan(t_hi[${op.a}]);`);
-        lines.push(
-          `if (t_hi[${op.a}] - t_lo[${op.a}] >= 3.1415927) { t_lo[${i}] = -INFINITY; t_hi[${i}] = INFINITY; }`,
-        );
+      case TapeOpKind.Tan:
+        lines.push(`t_lo[${i}] = tan(t_lo[${a}]); t_hi[${i}] = tan(t_hi[${a}]);`);
+        lines.push(`if (t_hi[${a}] - t_lo[${a}] >= 3.1415927) { t_lo[${i}] = -INFINITY; t_hi[${i}] = INFINITY; }`);
         break;
-      case "exp":
-        lines.push(`t_lo[${i}] = exp(t_lo[${op.a}]); t_hi[${i}] = exp(t_hi[${op.a}]);`);
+      case TapeOpKind.Exp:
+        lines.push(`t_lo[${i}] = exp(t_lo[${a}]); t_hi[${i}] = exp(t_hi[${a}]);`);
         break;
-      case "log":
-        lines.push(`t_lo[${i}] = log(fmax(1e-300,t_lo[${op.a}])); t_hi[${i}] = log(fmax(1e-300,t_hi[${op.a}]));`);
+      case TapeOpKind.Log:
+        lines.push(`t_lo[${i}] = log(fmax(1e-300,t_lo[${a}])); t_hi[${i}] = log(fmax(1e-300,t_hi[${a}]));`);
         break;
-      case "sqrt":
-        lines.push(`t_lo[${i}] = sqrt(fmax(0.0,t_lo[${op.a}])); t_hi[${i}] = sqrt(fmax(0.0,t_hi[${op.a}]));`);
+      case TapeOpKind.Sqrt:
+        lines.push(`t_lo[${i}] = sqrt(fmax(0.0,t_lo[${a}])); t_hi[${i}] = sqrt(fmax(0.0,t_hi[${a}]));`);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          const vr = varResolver(`${op.baseName}[${k + 1}]`);
+      case TapeOpKind.VecVar:
+        for (let k = 0; k < b; k++) {
+          const vr = varResolver(`${builder.interner.resolve(a) || ""}[${k + 1}]`);
           lines.push(`t_lo[${i + k}] = ${vr.lo}; t_hi[${i + k}] = ${vr.hi};`);
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          lines.push(`t_lo[${i + k}] = ${formatNum(op.vals[k] ?? 0)}; t_hi[${i + k}] = ${formatNum(op.vals[k] ?? 0)};`);
+      case TapeOpKind.VecConst:
+        for (let k = 0; k < b; k++) {
+          lines.push(
+            `t_lo[${i + k}] = ${formatNum(builder.valData[i + k]!)}; t_hi[${i + k}] = ${formatNum(builder.valData[i + k]!)};`,
+          );
         }
         break;
-      case "vec_add":
+      case TapeOpKind.VecAdd:
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = t_lo[${op.a}+_k] + t_lo[${op.b}+_k]; t_hi[${i}+_k] = t_hi[${op.a}+_k] + t_hi[${op.b}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_lo[${i}+_k] = t_lo[${a}+_k] + t_lo[${c}+_k]; t_hi[${i}+_k] = t_hi[${a}+_k] + t_hi[${c}+_k]; }`,
         );
         break;
-      case "vec_sub":
+      case TapeOpKind.VecSub:
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = t_lo[${op.a}+_k] - t_hi[${op.b}+_k]; t_hi[${i}+_k] = t_hi[${op.a}+_k] - t_lo[${op.b}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_lo[${i}+_k] = t_lo[${a}+_k] - t_hi[${c}+_k]; t_hi[${i}+_k] = t_hi[${a}+_k] - t_lo[${c}+_k]; }`,
         );
         break;
-      case "vec_mul":
-        lines.push(`for (int _k = 0; _k < ${op.size}; _k++) {`);
-        lines.push(`  double p1=t_lo[${op.a}+_k]*t_lo[${op.b}+_k], p2=t_lo[${op.a}+_k]*t_hi[${op.b}+_k],`);
-        lines.push(`         p3=t_hi[${op.a}+_k]*t_lo[${op.b}+_k], p4=t_hi[${op.a}+_k]*t_hi[${op.b}+_k];`);
+      case TapeOpKind.VecMul:
+        lines.push(`for (int _k = 0; _k < ${b}; _k++) {`);
+        lines.push(`  double p1=t_lo[${a}+_k]*t_lo[${c}+_k], p2=t_lo[${a}+_k]*t_hi[${c}+_k],`);
+        lines.push(`         p3=t_hi[${a}+_k]*t_lo[${c}+_k], p4=t_hi[${a}+_k]*t_hi[${c}+_k];`);
         lines.push(`  t_lo[${i}+_k] = fmin(fmin(p1,p2),fmin(p3,p4)); t_hi[${i}+_k] = fmax(fmax(p1,p2),fmax(p3,p4));`);
         lines.push(`}`);
         break;
-      case "vec_neg":
+      case TapeOpKind.VecNeg:
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_lo[${i}+_k] = -t_hi[${op.a}+_k]; t_hi[${i}+_k] = -t_lo[${op.a}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_lo[${i}+_k] = -t_hi[${a}+_k]; t_hi[${i}+_k] = -t_lo[${a}+_k]; }`,
         );
         break;
-      case "vec_subscript":
-        lines.push(`t_lo[${i}] = t_lo[${op.a + op.offset}]; t_hi[${i}] = t_hi[${op.a + op.offset}];`);
+      case TapeOpKind.VecSubscript:
+        lines.push(`t_lo[${i}] = t_lo[${a + c}]; t_hi[${i}] = t_hi[${a + c}];`);
         break;
-      case "nop":
+      case TapeOpKind.Nop:
         break;
     }
   }

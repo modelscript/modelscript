@@ -1,3 +1,4 @@
+import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -24,7 +25,6 @@
  */
 
 import type { HomotopyMode } from "@modelscript/core";
-import type { TapeOp } from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 
 /** Result of a homotopy solve attempt. */
@@ -47,7 +47,7 @@ export interface HomotopyStrategy {
   name: string;
   /** Attempt to solve the system via homotopy continuation. */
   solve(
-    tapeData: { ops: TapeOp[]; outputIndex: number }[],
+    tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
     unknownList: string[],
     nSolve: number,
     env: Map<string, number>,
@@ -68,7 +68,7 @@ export class ResidualHomotopy implements HomotopyStrategy {
   name = "residual";
 
   solve(
-    tapeData: { ops: TapeOp[]; outputIndex: number }[],
+    tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
     unknownList: string[],
     nSolve: number,
     env: Map<string, number>,
@@ -100,7 +100,7 @@ export class FixedPointHomotopy implements HomotopyStrategy {
   name = "fixed-point";
 
   solve(
-    tapeData: { ops: TapeOp[]; outputIndex: number }[],
+    tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
     unknownList: string[],
     nSolve: number,
     env: Map<string, number>,
@@ -133,7 +133,7 @@ export class SymbolicHomotopy implements HomotopyStrategy {
   name = "symbolic";
 
   solve(
-    tapeData: { ops: TapeOp[]; outputIndex: number }[],
+    tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
     unknownList: string[],
     nSolve: number,
     env: Map<string, number>,
@@ -211,7 +211,7 @@ export class ParameterContinuation implements HomotopyStrategy {
   name = "parameter";
 
   solve(
-    tapeData: { ops: TapeOp[]; outputIndex: number }[],
+    tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
     unknownList: string[],
     nSolve: number,
     env: Map<string, number>,
@@ -292,7 +292,7 @@ export function resolveStrategies(mode: HomotopyMode): HomotopyStrategy[] {
  */
 export function solveWithAutoHomotopy(
   mode: HomotopyMode,
-  tapeData: { ops: TapeOp[]; outputIndex: number }[],
+  tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
   unknownList: string[],
   nSolve: number,
   env: Map<string, number>,
@@ -333,7 +333,7 @@ type ResidualFn = (Ri: number, zRow: number, z0Row: number, lambda: number, row:
 type JacobianFn = (dRdz: number, row: number, col: number, lambda: number) => number;
 
 function runHomotopyContinuation(
-  tapeData: { ops: TapeOp[]; outputIndex: number }[],
+  tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
   unknownList: string[],
   nSolve: number,
   env: Map<string, number>,

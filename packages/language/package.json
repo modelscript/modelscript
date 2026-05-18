@@ -1,0 +1,30 @@
+{
+  "name": "@modelscript/language",
+  "version": "0.0.0",
+  "description": "A language workbench for generating tree-sitter grammars, typed AST wrappers, symbol indexers, and query hooks from a single declarative file.",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "bin": {
+    "metascript": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelscript/polyglot": "*",
+    "commander": "^11.0.0",
+    "tree-sitter-cli": "^0.24.7",
+    "web-tree-sitter": "^0.24.7"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
+  }
+}

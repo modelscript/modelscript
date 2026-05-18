@@ -16,8 +16,8 @@
  * ## Packing Scheme
  *
  * For queries WITHOUT argsHash (the common case, ~99% of lookups):
- *   Packed key = queryIndex * 2^24 + (symbolId & 0x00FF_FFFF)
- *   This supports up to 256 query names and ~16M symbol IDs.
+ *   Packed key = queryIndex * 2^40 + symbolId
+ *   This supports up to 256 query names and ~1T symbol IDs.
  *
  * For queries WITH argsHash (specialization, <1% of lookups):
  *   Falls back to string key: `"queryIndex:symbolId:argsHash"`
@@ -34,8 +34,11 @@ import type { SymbolId } from "./runtime.js";
 /** Maximum number of distinct query names (8 bits → 256). */
 const MAX_QUERY_INDEX = 256;
 
-/** Maximum symbol ID that can be packed (24 bits → 16,777,215). */
-const MAX_PACKABLE_SYMBOL_ID = 0x00ff_ffff;
+/** Maximum symbol ID that can be packed (40 bits → 1,099,511,627,775). */
+const MAX_PACKABLE_SYMBOL_ID = 0xffffffffff;
+
+/** Multiplier to shift query index above the 40-bit symbol ID range (2^40). */
+const MULTIPLIER = 0x10000000000;
 
 /**
  * Registry that maps query names to compact integer indices.
@@ -96,8 +99,8 @@ export function packMemoKey(queryIndex: number, symbolId: SymbolId): number | nu
   if (symbolId < 0 || symbolId > MAX_PACKABLE_SYMBOL_ID) {
     return null;
   }
-  // Pack: queryIndex in high byte, symbolId in low 24 bits
-  return (queryIndex << 24) | symbolId;
+  // Pack: queryIndex shifted above the 40-bit symbolId
+  return queryIndex * MULTIPLIER + symbolId;
 }
 
 /**
@@ -107,8 +110,8 @@ export function packMemoKey(queryIndex: number, symbolId: SymbolId): number | nu
  * @returns [queryIndex, symbolId]
  */
 export function unpackMemoKey(key: number): [queryIndex: number, symbolId: SymbolId] {
-  const queryIndex = (key >>> 24) & 0xff;
-  const symbolId = key & MAX_PACKABLE_SYMBOL_ID;
+  const queryIndex = Math.floor(key / MULTIPLIER);
+  const symbolId = key - queryIndex * MULTIPLIER;
   return [queryIndex, symbolId];
 }
 
@@ -213,14 +216,18 @@ export class MemoKeyStore<T> {
   *entries(): IterableIterator<[queryName: string, symbolId: SymbolId, value: T, argsHash?: string]> {
     for (const [packed, value] of this.packedMemos) {
       const [queryIndex, symbolId] = unpackMemoKey(packed);
-      yield [this.registry.resolve(queryIndex), symbolId, value, undefined];
+      yield [this.registry.resolve(queryIndex), symbolId, value] as [string, SymbolId, T];
     }
     for (const [key, value] of this.stringMemos) {
       const parts = key.split(":");
       const queryName = parts[0]!;
       const symbolId = Number(parts[1]);
       const argsHash = parts.length > 2 ? parts.slice(2).join(":") : undefined;
-      yield [queryName, symbolId, value, argsHash];
+      if (argsHash) {
+        yield [queryName, symbolId, value, argsHash] as [string, SymbolId, T, string];
+      } else {
+        yield [queryName, symbolId, value] as [string, SymbolId, T];
+      }
     }
   }
 

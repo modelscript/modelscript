@@ -1,3 +1,4 @@
+import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
@@ -10,7 +11,7 @@
  *
  * This mirrors the architecture of interval.ts (Interval → evaluateTapeInterval)
  * and mccormick.ts (McCormickTuple → evaluateTapeMcCormick), providing a third
- * arithmetic for the same TapeOp representation.
+ * arithmetic for the same representation.
  *
  * First-order rules:
  *   y = f(x)   ⟹   μ_y ≈ f(μ_x),   σ²_y ≈ (f'(μ_x))² · σ²_x
@@ -21,8 +22,6 @@
  *   - Julier, S.J. & Uhlmann, J.K. (2004), "Unscented Filtering and Nonlinear Estimation", Proc. IEEE.
  *   - Smith, R.C. (2014), "Uncertainty Quantification", SIAM.
  */
-
-import type { TapeOp } from "@modelscript/symbolics";
 
 // ─────────────────────────────────────────────────────────────────────
 // Gaussian Tuple
@@ -273,11 +272,14 @@ export function unscentedTransform(
  * @param covariance    Optional pairwise covariances: Cov(name_i, name_j)
  */
 export function evaluateTapeGaussian(
-  ops: TapeOp[],
+  builder: StaticTapeBuilder,
   distributions: Map<string, GaussianTuple>,
   covariance?: Map<string, Map<string, number>>,
 ): GaussianTuple[] {
-  const t = new Array<GaussianTuple>(ops.length);
+  const n = builder.length;
+  const t = new Array<GaussianTuple>(n);
+  const { opData, valData, interner } = builder;
+  const TAPE_STRIDE = 4;
 
   /** Look up Cov(a, b) from the covariance map. */
   function getCov(nameA: string | undefined, nameB: string | undefined): number {
@@ -285,104 +287,117 @@ export function evaluateTapeGaussian(
     return covariance.get(nameA)?.get(nameB) ?? covariance.get(nameB)?.get(nameA) ?? 0;
   }
 
-  // Track which tape slots correspond to which variable names (for covariance lookup)
-  const slotNames = new Array<string | undefined>(ops.length);
+  const slotNames = new Array<string | undefined>(n);
 
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!;
-    switch (op.type) {
-      case "const":
-        t[i] = GaussianTuple.point(op.val);
+  for (let i = 0; i < n; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    switch (kind) {
+      case 1: // Const
+        t[i] = GaussianTuple.point(valData[i]!);
         break;
-      case "var": {
-        t[i] = distributions.get(op.name) ?? GaussianTuple.point(0);
-        slotNames[i] = op.name;
-        break;
-      }
-      case "add": {
-        const cov = getCov(slotNames[op.a], slotNames[op.b]);
-        t[i] = gaAdd(t[op.a]!, t[op.b]!, cov);
-        break;
-      }
-      case "sub": {
-        const cov = getCov(slotNames[op.a], slotNames[op.b]);
-        t[i] = gaSub(t[op.a]!, t[op.b]!, cov);
+      case 2: {
+        // Var
+        const name = interner.resolve(a) || "";
+        t[i] = distributions.get(name) ?? GaussianTuple.point(0);
+        slotNames[i] = name;
         break;
       }
-      case "mul": {
-        const cov = getCov(slotNames[op.a], slotNames[op.b]);
-        t[i] = gaMul(t[op.a]!, t[op.b]!, cov);
+      case 3: {
+        // Add
+        const cov = getCov(slotNames[a], slotNames[b]);
+        t[i] = gaAdd(t[a]!, t[b]!, cov);
         break;
       }
-      case "div": {
-        const cov = getCov(slotNames[op.a], slotNames[op.b]);
-        t[i] = gaDiv(t[op.a]!, t[op.b]!, cov);
+      case 4: {
+        // Sub
+        const cov = getCov(slotNames[a], slotNames[b]);
+        t[i] = gaSub(t[a]!, t[b]!, cov);
         break;
       }
-      case "pow":
-        t[i] = gaPow(t[op.a]!, t[op.b]!);
+      case 5: {
+        // Mul
+        const cov = getCov(slotNames[a], slotNames[b]);
+        t[i] = gaMul(t[a]!, t[b]!, cov);
         break;
-      case "neg":
-        t[i] = gaNeg(t[op.a]!);
+      }
+      case 6: {
+        // Div
+        const cov = getCov(slotNames[a], slotNames[b]);
+        t[i] = gaDiv(t[a]!, t[b]!, cov);
         break;
-      case "sin":
-        t[i] = gaSin(t[op.a]!);
+      }
+      case 7: // Pow
+        t[i] = gaPow(t[a]!, t[b]!);
         break;
-      case "cos":
-        t[i] = gaCos(t[op.a]!);
+      case 8: // Neg
+        t[i] = gaNeg(t[a]!);
         break;
-      case "tan":
-        t[i] = gaTan(t[op.a]!);
+      case 9: // Sin
+        t[i] = gaSin(t[a]!);
         break;
-      case "exp":
-        t[i] = gaExp(t[op.a]!);
+      case 10: // Cos
+        t[i] = gaCos(t[a]!);
         break;
-      case "log":
-        t[i] = gaLog(t[op.a]!);
+      case 11: // Tan
+        t[i] = gaTan(t[a]!);
         break;
-      case "sqrt":
-        t[i] = gaSqrt(t[op.a]!);
+      case 12: // Exp
+        t[i] = gaExp(t[a]!);
+        break;
+      case 13: // Log
+        t[i] = gaLog(t[a]!);
+        break;
+      case 14: // Sqrt
+        t[i] = gaSqrt(t[a]!);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          const name = `${op.baseName}[${k + 1}]`;
+      case 15: {
+        // VecVar
+        const baseName = interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          const name = `${baseName}[${k + 1}]`;
           t[i + k] = distributions.get(name) ?? GaussianTuple.point(0);
           slotNames[i + k] = name;
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = GaussianTuple.point(op.vals[k] ?? 0);
+      }
+      case 16: // VecConst
+        for (let k = 0; k < b; k++) {
+          t[i + k] = GaussianTuple.point(valData[i + k] ?? 0);
         }
         break;
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) {
-          const cov = getCov(slotNames[op.a + k], slotNames[op.b + k]);
-          t[i + k] = gaAdd(t[op.a + k]!, t[op.b + k]!, cov);
+      case 17: // VecAdd
+        for (let k = 0; k < b; k++) {
+          const cov = getCov(slotNames[a + k], slotNames[c + k]);
+          t[i + k] = gaAdd(t[a + k]!, t[c + k]!, cov);
         }
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) {
-          const cov = getCov(slotNames[op.a + k], slotNames[op.b + k]);
-          t[i + k] = gaSub(t[op.a + k]!, t[op.b + k]!, cov);
+      case 18: // VecSub
+        for (let k = 0; k < b; k++) {
+          const cov = getCov(slotNames[a + k], slotNames[c + k]);
+          t[i + k] = gaSub(t[a + k]!, t[c + k]!, cov);
         }
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) {
-          const cov = getCov(slotNames[op.a + k], slotNames[op.b + k]);
-          t[i + k] = gaMul(t[op.a + k]!, t[op.b + k]!, cov);
+      case 19: // VecMul
+        for (let k = 0; k < b; k++) {
+          const cov = getCov(slotNames[a + k], slotNames[c + k]);
+          t[i + k] = gaMul(t[a + k]!, t[c + k]!, cov);
         }
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = gaNeg(t[op.a + k]!);
+      case 20: // VecNeg
+        for (let k = 0; k < b; k++) {
+          t[i + k] = gaNeg(t[a + k]!);
         }
         break;
-      case "vec_subscript":
-        t[i] = t[op.a + op.offset] ?? GaussianTuple.point(0);
+      case 21: // VecSubscript
+        t[i] = t[a + c] ?? GaussianTuple.point(0);
         break;
-      case "nop":
+      case 0: // Nop
         break;
     }
   }
@@ -402,113 +417,124 @@ export function evaluateTapeGaussian(
  * @returns Array of C-code lines
  */
 export function emitGaussianForwardC(
-  ops: TapeOp[],
+  builder: StaticTapeBuilder,
   varResolver: (name: string) => { mean: string; var: string },
 ): string[] {
   const lines: string[] = [];
-  const n = ops.length;
+  const n = builder.length;
   lines.push(`double t_mu[${n}], t_var[${n}];`);
+  const { opData, valData, interner } = builder;
+  const TAPE_STRIDE = 4;
 
   for (let i = 0; i < n; i++) {
-    const op = ops[i]!;
-    switch (op.type) {
-      case "const":
-        lines.push(`t_mu[${i}] = ${formatNum(op.val)}; t_var[${i}] = 0.0;`);
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    switch (kind) {
+      case 1: // Const
+        lines.push(`t_mu[${i}] = ${formatNum(valData[i]!)}; t_var[${i}] = 0.0;`);
         break;
-      case "var": {
-        const vr = varResolver(op.name);
+      case 2: {
+        // Var
+        const name = interner.resolve(a) || "";
+        const vr = varResolver(name);
         lines.push(`t_mu[${i}] = ${vr.mean}; t_var[${i}] = ${vr.var};`);
         break;
       }
-      case "add":
-        lines.push(`t_mu[${i}] = t_mu[${op.a}] + t_mu[${op.b}]; t_var[${i}] = t_var[${op.a}] + t_var[${op.b}];`);
+      case 3: // Add
+        lines.push(`t_mu[${i}] = t_mu[${a}] + t_mu[${b}]; t_var[${i}] = t_var[${a}] + t_var[${b}];`);
         break;
-      case "sub":
-        lines.push(`t_mu[${i}] = t_mu[${op.a}] - t_mu[${op.b}]; t_var[${i}] = t_var[${op.a}] + t_var[${op.b}];`);
+      case 4: // Sub
+        lines.push(`t_mu[${i}] = t_mu[${a}] - t_mu[${b}]; t_var[${i}] = t_var[${a}] + t_var[${b}];`);
         break;
-      case "mul":
-        lines.push(`t_mu[${i}] = t_mu[${op.a}] * t_mu[${op.b}];`);
+      case 5: // Mul
+        lines.push(`t_mu[${i}] = t_mu[${a}] * t_mu[${b}];`);
         lines.push(
-          `t_var[${i}] = t_mu[${op.a}]*t_mu[${op.a}]*t_var[${op.b}] + t_mu[${op.b}]*t_mu[${op.b}]*t_var[${op.a}] + t_var[${op.a}]*t_var[${op.b}];`,
+          `t_var[${i}] = t_mu[${a}]*t_mu[${a}]*t_var[${b}] + t_mu[${b}]*t_mu[${b}]*t_var[${a}] + t_var[${a}]*t_var[${b}];`,
         );
         break;
-      case "div":
-        lines.push(`t_mu[${i}] = t_mu[${op.a}] / t_mu[${op.b}];`);
-        lines.push(`{ double inv_b = 1.0 / t_mu[${op.b}]; double da_db = -t_mu[${op.a}] * inv_b * inv_b;`);
-        lines.push(`  t_var[${i}] = inv_b*inv_b*t_var[${op.a}] + da_db*da_db*t_var[${op.b}]; }`);
+      case 6: // Div
+        lines.push(`t_mu[${i}] = t_mu[${a}] / t_mu[${b}];`);
+        lines.push(`{ double inv_b = 1.0 / t_mu[${b}]; double da_db = -t_mu[${a}] * inv_b * inv_b;`);
+        lines.push(`  t_var[${i}] = inv_b*inv_b*t_var[${a}] + da_db*da_db*t_var[${b}]; }`);
         break;
-      case "pow":
-        lines.push(`t_mu[${i}] = pow(t_mu[${op.a}], t_mu[${op.b}]);`);
-        lines.push(`{ double deriv = t_mu[${op.b}] * pow(t_mu[${op.a}], t_mu[${op.b}] - 1.0);`);
-        lines.push(`  t_var[${i}] = deriv * deriv * t_var[${op.a}]; }`);
+      case 7: // Pow
+        lines.push(`t_mu[${i}] = pow(t_mu[${a}], t_mu[${b}]);`);
+        lines.push(`{ double deriv = t_mu[${b}] * pow(t_mu[${a}], t_mu[${b}] - 1.0);`);
+        lines.push(`  t_var[${i}] = deriv * deriv * t_var[${a}]; }`);
         break;
-      case "neg":
-        lines.push(`t_mu[${i}] = -t_mu[${op.a}]; t_var[${i}] = t_var[${op.a}];`);
+      case 8: // Neg
+        lines.push(`t_mu[${i}] = -t_mu[${a}]; t_var[${i}] = t_var[${a}];`);
         break;
-      case "sin":
-        lines.push(`t_mu[${i}] = sin(t_mu[${op.a}]);`);
-        lines.push(`{ double d = cos(t_mu[${op.a}]); t_var[${i}] = d*d*t_var[${op.a}]; }`);
+      case 9: // Sin
+        lines.push(`t_mu[${i}] = sin(t_mu[${a}]);`);
+        lines.push(`{ double d = cos(t_mu[${a}]); t_var[${i}] = d*d*t_var[${a}]; }`);
         break;
-      case "cos":
-        lines.push(`t_mu[${i}] = cos(t_mu[${op.a}]);`);
-        lines.push(`{ double d = -sin(t_mu[${op.a}]); t_var[${i}] = d*d*t_var[${op.a}]; }`);
+      case 10: // Cos
+        lines.push(`t_mu[${i}] = cos(t_mu[${a}]);`);
+        lines.push(`{ double d = -sin(t_mu[${a}]); t_var[${i}] = d*d*t_var[${a}]; }`);
         break;
-      case "tan":
-        lines.push(`t_mu[${i}] = tan(t_mu[${op.a}]);`);
-        lines.push(`{ double d = 1.0 + t_mu[${i}]*t_mu[${i}]; t_var[${i}] = d*d*t_var[${op.a}]; }`);
+      case 11: // Tan
+        lines.push(`t_mu[${i}] = tan(t_mu[${a}]);`);
+        lines.push(`{ double d = 1.0 + t_mu[${i}]*t_mu[${i}]; t_var[${i}] = d*d*t_var[${a}]; }`);
         break;
-      case "exp":
-        // Exact Gaussian: E[exp(X)] = exp(μ + σ²/2), Var = (exp(σ²)-1)·exp(2μ+σ²)
-        lines.push(`t_mu[${i}] = exp(t_mu[${op.a}] + 0.5*t_var[${op.a}]);`);
-        lines.push(`t_var[${i}] = (exp(t_var[${op.a}]) - 1.0) * exp(2.0*t_mu[${op.a}] + t_var[${op.a}]);`);
+      case 12: // Exp
+        lines.push(`t_mu[${i}] = exp(t_mu[${a}] + 0.5*t_var[${a}]);`);
+        lines.push(`t_var[${i}] = (exp(t_var[${a}]) - 1.0) * exp(2.0*t_mu[${a}] + t_var[${a}]);`);
         break;
-      case "log":
-        lines.push(`t_mu[${i}] = log(fmax(1e-300, t_mu[${op.a}]));`);
-        lines.push(`{ double inv = 1.0 / fmax(1e-300, t_mu[${op.a}]); t_var[${i}] = inv*inv*t_var[${op.a}]; }`);
+      case 13: // Log
+        lines.push(`t_mu[${i}] = log(fmax(1e-300, t_mu[${a}]));`);
+        lines.push(`{ double inv = 1.0 / fmax(1e-300, t_mu[${a}]); t_var[${i}] = inv*inv*t_var[${a}]; }`);
         break;
-      case "sqrt":
-        lines.push(`t_mu[${i}] = sqrt(fmax(0.0, t_mu[${op.a}]));`);
-        lines.push(`{ double d = 0.5 / fmax(1e-300, t_mu[${i}]); t_var[${i}] = d*d*t_var[${op.a}]; }`);
+      case 14: // Sqrt
+        lines.push(`t_mu[${i}] = sqrt(fmax(0.0, t_mu[${a}]));`);
+        lines.push(`{ double d = 0.5 / fmax(1e-300, t_mu[${i}]); t_var[${i}] = d*d*t_var[${a}]; }`);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          const vr = varResolver(`${op.baseName}[${k + 1}]`);
+      case 15: {
+        // VecVar
+        const baseName = interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          const vr = varResolver(`${baseName}[${k + 1}]`);
           lines.push(`t_mu[${i + k}] = ${vr.mean}; t_var[${i + k}] = ${vr.var};`);
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          lines.push(`t_mu[${i + k}] = ${formatNum(op.vals[k] ?? 0)}; t_var[${i + k}] = 0.0;`);
+      }
+      case 16: // VecConst
+        for (let k = 0; k < b; k++) {
+          lines.push(`t_mu[${i + k}] = ${formatNum(valData[i + k] ?? 0)}; t_var[${i + k}] = 0.0;`);
         }
         break;
-      case "vec_add":
+      case 17: // VecAdd
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_mu[${i}+_k] = t_mu[${op.a}+_k] + t_mu[${op.b}+_k]; t_var[${i}+_k] = t_var[${op.a}+_k] + t_var[${op.b}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_mu[${i}+_k] = t_mu[${a}+_k] + t_mu[${c}+_k]; t_var[${i}+_k] = t_var[${a}+_k] + t_var[${c}+_k]; }`,
         );
         break;
-      case "vec_sub":
+      case 18: // VecSub
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_mu[${i}+_k] = t_mu[${op.a}+_k] - t_mu[${op.b}+_k]; t_var[${i}+_k] = t_var[${op.a}+_k] + t_var[${op.b}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_mu[${i}+_k] = t_mu[${a}+_k] - t_mu[${c}+_k]; t_var[${i}+_k] = t_var[${a}+_k] + t_var[${c}+_k]; }`,
         );
         break;
-      case "vec_mul":
-        lines.push(`for (int _k = 0; _k < ${op.size}; _k++) {`);
-        lines.push(`  t_mu[${i}+_k] = t_mu[${op.a}+_k] * t_mu[${op.b}+_k];`);
+      case 19: // VecMul
+        lines.push(`for (int _k = 0; _k < ${b}; _k++) {`);
+        lines.push(`  t_mu[${i}+_k] = t_mu[${a}+_k] * t_mu[${c}+_k];`);
         lines.push(
-          `  t_var[${i}+_k] = t_mu[${op.a}+_k]*t_mu[${op.a}+_k]*t_var[${op.b}+_k] + t_mu[${op.b}+_k]*t_mu[${op.b}+_k]*t_var[${op.a}+_k] + t_var[${op.a}+_k]*t_var[${op.b}+_k];`,
+          `  t_var[${i}+_k] = t_mu[${a}+_k]*t_mu[${a}+_k]*t_var[${c}+_k] + t_mu[${c}+_k]*t_mu[${c}+_k]*t_var[${a}+_k] + t_var[${a}+_k]*t_var[${c}+_k];`,
         );
         lines.push(`}`);
         break;
-      case "vec_neg":
+      case 20: // VecNeg
         lines.push(
-          `for (int _k = 0; _k < ${op.size}; _k++) { t_mu[${i}+_k] = -t_mu[${op.a}+_k]; t_var[${i}+_k] = t_var[${op.a}+_k]; }`,
+          `for (int _k = 0; _k < ${b}; _k++) { t_mu[${i}+_k] = -t_mu[${a}+_k]; t_var[${i}+_k] = t_var[${a}+_k]; }`,
         );
         break;
-      case "vec_subscript":
-        lines.push(`t_mu[${i}] = t_mu[${op.a + op.offset}]; t_var[${i}] = t_var[${op.a + op.offset}];`);
+      case 21: // VecSubscript
+        lines.push(`t_mu[${i}] = t_mu[${a + c}]; t_var[${i}] = t_var[${a + c}];`);
         break;
-      case "nop":
+      case 0: // Nop
         break;
     }
   }

@@ -1,3 +1,5 @@
+import { StaticTapeBuilder } from "@modelscript/compiler";
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -16,8 +18,6 @@ import {
   type ModelicaDAE,
   type ModelicaExpression,
   ModelicaFunctionCallExpression,
-  StaticTapeBuilder,
-  type TapeOp,
 } from "@modelscript/symbolics";
 
 /** Extract derivative name from expression like der(x). */
@@ -32,88 +32,100 @@ function extractDer(expr: ModelicaExpression): string | null {
 /**
  * Evaluate a tape forward pass at runtime, returning the value array.
  */
-export function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number>): Float64Array {
-  const t = new Float64Array(ops.length);
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    switch (op.type) {
-      case "const":
-        t[i] = op.val;
+export function evaluateTapeForward(builder: StaticTapeBuilder, varValues: Map<string, number>): Float64Array {
+  const t = new Float64Array(builder.length);
+  const { opData, valData, interner } = builder;
+  const TAPE_STRIDE = 4;
+
+  // Note: TapeOpKind values must match compiler/src/symbolics/tape.ts
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
+    switch (kind) {
+      case 1: // Const
+        t[i] = valData[i]!;
         break;
-      case "var":
-        t[i] = varValues.get(op.name) ?? 0;
+      case 2: // Var
+        t[i] = varValues.get(interner.resolve(a) || "") ?? 0;
         break;
-      case "add":
-        t[i] = (t[op.a] ?? 0) + (t[op.b] ?? 0);
+      case 3: // Add
+        t[i] = (t[a] ?? 0) + (t[b] ?? 0);
         break;
-      case "sub":
-        t[i] = (t[op.a] ?? 0) - (t[op.b] ?? 0);
+      case 4: // Sub
+        t[i] = (t[a] ?? 0) - (t[b] ?? 0);
         break;
-      case "mul":
-        t[i] = (t[op.a] ?? 0) * (t[op.b] ?? 0);
+      case 5: // Mul
+        t[i] = (t[a] ?? 0) * (t[b] ?? 0);
         break;
-      case "div":
-        t[i] = (t[op.a] ?? 0) / (t[op.b] ?? 0);
+      case 6: // Div
+        t[i] = (t[a] ?? 0) / (t[b] ?? 0);
         break;
-      case "pow":
-        t[i] = Math.pow(t[op.a] ?? 0, t[op.b] ?? 0);
+      case 7: // Pow
+        t[i] = Math.pow(t[a] ?? 0, t[b] ?? 0);
         break;
-      case "neg":
-        t[i] = -(t[op.a] ?? 0);
+      case 8: // Neg
+        t[i] = -(t[a] ?? 0);
         break;
-      case "sin":
-        t[i] = Math.sin(t[op.a] ?? 0);
+      case 9: // Sin
+        t[i] = Math.sin(t[a] ?? 0);
         break;
-      case "cos":
-        t[i] = Math.cos(t[op.a] ?? 0);
+      case 10: // Cos
+        t[i] = Math.cos(t[a] ?? 0);
         break;
-      case "tan":
-        t[i] = Math.tan(t[op.a] ?? 0);
+      case 11: // Tan
+        t[i] = Math.tan(t[a] ?? 0);
         break;
-      case "exp":
-        t[i] = Math.exp(t[op.a] ?? 0);
+      case 12: // Exp
+        t[i] = Math.exp(t[a] ?? 0);
         break;
-      case "log":
-        t[i] = Math.log(t[op.a] ?? 0);
+      case 13: // Log
+        t[i] = Math.log(t[a] ?? 0);
         break;
-      case "sqrt":
-        t[i] = Math.sqrt(t[op.a] ?? 0);
+      case 14: // Sqrt
+        t[i] = Math.sqrt(t[a] ?? 0);
         break;
       // ── Vector ops ──
-      case "vec_var":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = varValues.get(`${op.baseName}[${k + 1}]`) ?? 0;
+      case 15: {
+        // VecVar
+        const baseName = interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          t[i + k] = varValues.get(`${baseName}[${k + 1}]`) ?? 0;
         }
         break;
-      case "vec_const":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = op.vals[k] ?? 0;
+      }
+      case 16: // VecConst
+        for (let k = 0; k < b; k++) {
+          t[i + k] = valData[i + k] ?? 0;
         }
         break;
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = (t[op.a + k] ?? 0) + (t[op.b + k] ?? 0);
+      case 17: // VecAdd
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) + (t[c + k] ?? 0);
         }
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = (t[op.a + k] ?? 0) - (t[op.b + k] ?? 0);
+      case 18: // VecSub
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) - (t[c + k] ?? 0);
         }
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = (t[op.a + k] ?? 0) * (t[op.b + k] ?? 0);
+      case 19: // VecMul
+        for (let k = 0; k < b; k++) {
+          t[i + k] = (t[a + k] ?? 0) * (t[c + k] ?? 0);
         }
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) {
-          t[i + k] = -(t[op.a + k] ?? 0);
+      case 20: // VecNeg
+        for (let k = 0; k < b; k++) {
+          t[i + k] = -(t[a + k] ?? 0);
         }
         break;
-      case "vec_subscript":
-        t[i] = t[op.a + op.offset] ?? 0;
+      case 21: // VecSubscript
+        t[i] = t[a + c] ?? 0;
         break;
-      case "nop":
+      case 0: // Nop
         break;
     }
   }
@@ -123,104 +135,126 @@ export function evaluateTapeForward(ops: TapeOp[], varValues: Map<string, number
 /**
  * Evaluate the reverse-mode AD sweep on a tape, returning gradients for all variables.
  */
-export function evaluateTapeReverse(ops: TapeOp[], t: Float64Array, outputIndex: number): Map<string, number> {
-  const dt = new Float64Array(ops.length);
+export function evaluateTapeReverse(
+  builder: StaticTapeBuilder,
+  t: Float64Array,
+  outputIndex: number,
+): Map<string, number> {
+  const dt = new Float64Array(builder.length);
   dt[outputIndex] = 1.0;
 
-  for (let i = ops.length - 1; i >= 0; i--) {
+  const { opData, interner } = builder;
+  const TAPE_STRIDE = 4;
+
+  for (let i = builder.length - 1; i >= 0; i--) {
     if (dt[i] === 0) continue;
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    const a = opData[offset + 1]!;
+    const b = opData[offset + 2]!;
+    const c = opData[offset + 3]!;
+
     const dti = dt[i] ?? 0;
 
-    switch (op.type) {
-      case "add":
-        dt[op.a] = (dt[op.a] ?? 0) + dti;
-        dt[op.b] = (dt[op.b] ?? 0) + dti;
+    switch (kind) {
+      case 3: // Add
+        dt[a] = (dt[a] ?? 0) + dti;
+        dt[b] = (dt[b] ?? 0) + dti;
         break;
-      case "sub":
-        dt[op.a] = (dt[op.a] ?? 0) + dti;
-        dt[op.b] = (dt[op.b] ?? 0) - dti;
+      case 4: // Sub
+        dt[a] = (dt[a] ?? 0) + dti;
+        dt[b] = (dt[b] ?? 0) - dti;
         break;
-      case "mul":
-        dt[op.a] = (dt[op.a] ?? 0) + dti * (t[op.b] ?? 0);
-        dt[op.b] = (dt[op.b] ?? 0) + dti * (t[op.a] ?? 0);
+      case 5: // Mul
+        dt[a] = (dt[a] ?? 0) + dti * (t[b] ?? 0);
+        dt[b] = (dt[b] ?? 0) + dti * (t[a] ?? 0);
         break;
-      case "div":
-        dt[op.a] = (dt[op.a] ?? 0) + dti / (t[op.b] ?? 1);
-        dt[op.b] = (dt[op.b] ?? 0) - (dti * (t[op.a] ?? 0)) / ((t[op.b] ?? 1) * (t[op.b] ?? 1));
+      case 6: // Div
+        dt[a] = (dt[a] ?? 0) + dti / (t[b] ?? 1);
+        dt[b] = (dt[b] ?? 0) - (dti * (t[a] ?? 0)) / ((t[b] ?? 1) * (t[b] ?? 1));
         break;
-      case "pow": {
-        const base = t[op.a] ?? 0;
-        const exp = t[op.b] ?? 0;
-        dt[op.a] = (dt[op.a] ?? 0) + dti * exp * Math.pow(base, exp - 1);
-        dt[op.b] = (dt[op.b] ?? 0) + dti * (t[i] ?? 0) * Math.log(base);
+      case 7: {
+        // Pow
+        const base = t[a] ?? 0;
+        const exp = t[b] ?? 0;
+        dt[a] = (dt[a] ?? 0) + dti * exp * Math.pow(base, exp - 1);
+        dt[b] = (dt[b] ?? 0) + dti * (t[i] ?? 0) * Math.log(base);
         break;
       }
-      case "neg":
-        dt[op.a] = (dt[op.a] ?? 0) - dti;
+      case 8: // Neg
+        dt[a] = (dt[a] ?? 0) - dti;
         break;
-      case "sin":
-        dt[op.a] = (dt[op.a] ?? 0) + dti * Math.cos(t[op.a] ?? 0);
+      case 9: // Sin
+        dt[a] = (dt[a] ?? 0) + dti * Math.cos(t[a] ?? 0);
         break;
-      case "cos":
-        dt[op.a] = (dt[op.a] ?? 0) - dti * Math.sin(t[op.a] ?? 0);
+      case 10: // Cos
+        dt[a] = (dt[a] ?? 0) - dti * Math.sin(t[a] ?? 0);
         break;
-      case "tan":
-        dt[op.a] = (dt[op.a] ?? 0) + dti * (1 + (t[i] ?? 0) * (t[i] ?? 0));
+      case 11: // Tan
+        dt[a] = (dt[a] ?? 0) + dti * (1 + (t[i] ?? 0) * (t[i] ?? 0));
         break;
-      case "exp":
-        dt[op.a] = (dt[op.a] ?? 0) + dti * (t[i] ?? 0);
+      case 12: // Exp
+        dt[a] = (dt[a] ?? 0) + dti * (t[i] ?? 0);
         break;
-      case "log":
-        dt[op.a] = (dt[op.a] ?? 0) + dti / (t[op.a] ?? 1);
+      case 13: // Log
+        dt[a] = (dt[a] ?? 0) + dti / (t[a] ?? 1);
         break;
-      case "sqrt":
-        dt[op.a] = (dt[op.a] ?? 0) + dti / (2 * (t[i] ?? 1));
+      case 14: // Sqrt
+        dt[a] = (dt[a] ?? 0) + dti / (2 * (t[i] ?? 1));
         break;
       // ── Vector ops reverse ──
-      case "vec_add":
-        for (let k = 0; k < op.size; k++) {
+      case 17: // VecAdd
+        for (let k = 0; k < b; k++) {
           const dk = dt[i + k] ?? 0;
-          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk;
-          dt[op.b + k] = (dt[op.b + k] ?? 0) + dk;
+          dt[a + k] = (dt[a + k] ?? 0) + dk;
+          dt[c + k] = (dt[c + k] ?? 0) + dk;
         }
         break;
-      case "vec_sub":
-        for (let k = 0; k < op.size; k++) {
+      case 18: // VecSub
+        for (let k = 0; k < b; k++) {
           const dk = dt[i + k] ?? 0;
-          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk;
-          dt[op.b + k] = (dt[op.b + k] ?? 0) - dk;
+          dt[a + k] = (dt[a + k] ?? 0) + dk;
+          dt[c + k] = (dt[c + k] ?? 0) - dk;
         }
         break;
-      case "vec_mul":
-        for (let k = 0; k < op.size; k++) {
+      case 19: // VecMul
+        for (let k = 0; k < b; k++) {
           const dk = dt[i + k] ?? 0;
-          dt[op.a + k] = (dt[op.a + k] ?? 0) + dk * (t[op.b + k] ?? 0);
-          dt[op.b + k] = (dt[op.b + k] ?? 0) + dk * (t[op.a + k] ?? 0);
+          dt[a + k] = (dt[a + k] ?? 0) + dk * (t[c + k] ?? 0);
+          dt[c + k] = (dt[c + k] ?? 0) + dk * (t[a + k] ?? 0);
         }
         break;
-      case "vec_neg":
-        for (let k = 0; k < op.size; k++) {
-          dt[op.a + k] = (dt[op.a + k] ?? 0) - (dt[i + k] ?? 0);
+      case 20: // VecNeg
+        for (let k = 0; k < b; k++) {
+          dt[a + k] = (dt[a + k] ?? 0) - (dt[i + k] ?? 0);
         }
         break;
-      case "vec_subscript":
-        dt[op.a + op.offset] = (dt[op.a + op.offset] ?? 0) + dti;
+      case 21: // VecSubscript
+        dt[a + c] = (dt[a + c] ?? 0) + dti;
         break;
-      case "nop":
+      case 0: // Nop
         break;
     }
   }
 
   // Collect variable gradients
   const gradients = new Map<string, number>();
-  for (let i = 0; i < ops.length; i++) {
-    const op = ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    if (op.type === "var") {
-      gradients.set(op.name, (gradients.get(op.name) ?? 0) + (dt[i] ?? 0));
-    } else if (op.type === "vec_var") {
-      for (let k = 0; k < op.size; k++) {
-        const name = `${op.baseName}[${k + 1}]`;
+  for (let i = 0; i < builder.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = opData[offset];
+    if (kind === 2) {
+      // Var
+      const a = opData[offset + 1]!;
+      const name = interner.resolve(a) || "";
+      gradients.set(name, (gradients.get(name) ?? 0) + (dt[i] ?? 0));
+    } else if (kind === 15) {
+      // VecVar
+      const a = opData[offset + 1]!;
+      const b = opData[offset + 2]!;
+      const baseName = interner.resolve(a) || "";
+      for (let k = 0; k < b; k++) {
+        const name = `${baseName}[${k + 1}]`;
         gradients.set(name, (gradients.get(name) ?? 0) + (dt[i + k] ?? 0));
       }
     }
@@ -271,11 +305,11 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
   const n = stateNames.length;
 
   // Build tapes for each equation (done once at compile time)
-  const tapeData: { ops: TapeOp[]; outputIndex: number }[] = [];
+  const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of derEqs) {
     const tape = new StaticTapeBuilder();
     const outIdx = tape.walk(eq.rhs);
-    tapeData.push({ ops: [...tape.ops], outputIndex: outIdx });
+    tapeData.push({ ops: tape, outputIndex: outIdx });
   }
 
   // Return the closure that evaluates J(t, y) at runtime

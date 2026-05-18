@@ -1,3 +1,6 @@
+import { Interval } from "@modelscript/compiler";
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
+import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -18,7 +21,6 @@
 import type { InitSolverConfig } from "@modelscript/core";
 import { ModelicaVariability } from "@modelscript/modelica/ast";
 import {
-  Interval,
   ModelicaArray,
   ModelicaArrayEquation,
   ModelicaBooleanLiteral,
@@ -26,11 +28,9 @@ import {
   ModelicaFunctionCallExpression,
   ModelicaIntegerVariable,
   ModelicaNameExpression,
-  StaticTapeBuilder,
   type ModelicaDAE,
   type ModelicaEquation,
   type ModelicaExpression,
-  type TapeOp,
 } from "@modelscript/symbolics";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import { expandArrayBounds, solveSBB, type DomainBox } from "./branch-and-bound.js";
@@ -377,13 +377,13 @@ export function solveInitialEquations(
   if (nResiduals === 0 || nUnknowns === 0) return result;
 
   // Build AD tapes for each implicit residual: R_i = LHS_i - RHS_i
-  const tapeData: { ops: TapeOp[]; outputIndex: number }[] = [];
+  const tapes: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of implicitEqs) {
     const tape = new StaticTapeBuilder();
     const lhsIdx = tape.walk(eq.lhs);
     const rhsIdx = tape.walk(eq.rhs);
     const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
-    tapeData.push({ ops: [...tape.ops], outputIndex: residualIdx });
+    tapes.push({ ops: tape, outputIndex: residualIdx });
   }
 
   // Newton-Raphson iteration
@@ -411,7 +411,7 @@ export function solveInitialEquations(
       }
       const res = new Array(nSolve);
       for (let row = 0; row < nSolve; row++) {
-        const td = tapeData[row];
+        const td = tapes[row];
         if (!td) continue;
         const tArr = evaluateTapeForward(td.ops, env);
         res[row] = tArr[td.outputIndex] ?? 0;
@@ -453,7 +453,7 @@ export function solveInitialEquations(
     }
 
     for (let row = 0; row < nSolve; row++) {
-      const td = tapeData[row];
+      const td = tapes[row];
       if (!td) continue;
 
       const t = evaluateTapeForward(td.ops, env);
@@ -507,7 +507,7 @@ export function solveInitialEquations(
 
   // If Newton-Raphson failed, try homotopy continuation as fallback
   if (!result.converged) {
-    const homotopyResult = solveWithHomotopy(tapeData, unknownList, nSolve, env, startValues);
+    const homotopyResult = solveWithHomotopy(tapes, unknownList, nSolve, env, startValues);
     if (homotopyResult.converged) {
       result.converged = true;
       result.iterations += homotopyResult.iterations;
@@ -532,7 +532,7 @@ export function solveInitialEquations(
  * with exact AD Jacobian of H(z,λ) at each step.
  */
 function solveWithHomotopy(
-  tapeData: { ops: TapeOp[]; outputIndex: number }[],
+  tapeData: { ops: StaticTapeBuilder; outputIndex: number }[],
   unknownList: string[],
   nSolve: number,
   env: Map<string, number>,
@@ -817,13 +817,13 @@ export function solveInitialEquationsAdvanced(
     }
 
     // Build AD tapes for this block's residuals
-    const tapeData: { ops: TapeOp[]; outputIndex: number }[] = [];
+    const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
     for (const eq of implicitBlock.equations) {
       const tape = new StaticTapeBuilder();
       const lhsIdx = tape.walk(eq.lhs);
       const rhsIdx = tape.walk(eq.rhs);
       const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
-      tapeData.push({ ops: [...tape.ops], outputIndex: residualIdx });
+      tapeData.push({ ops: tape, outputIndex: residualIdx });
     }
 
     const unknownList = implicitBlock.unknowns;
@@ -851,25 +851,43 @@ export function solveInitialEquationsAdvanced(
       // Build a combined objective tape: sum of squared residuals
       // We copy each individual residual tape's ops into a single combined tape,
       // adjusting indices as we go.
-      const combinedOps: TapeOp[] = [];
+      const combinedOps = new StaticTapeBuilder(tapeData[0]?.ops.interner);
       const residualIndices: number[] = [];
       for (const td of tapeData) {
         const offset = combinedOps.length;
         // Copy all ops from this tape, adjusting any index references by offset
-        for (const op of td.ops) {
-          combinedOps.push(shiftTapeOp(op, offset));
+        for (let i = 0; i < td.ops.length; i++) {
+          const kind = td.ops.opData[i * 4]!;
+          const a = td.ops.opData[i * 4 + 1]!;
+          const b = td.ops.opData[i * 4 + 2]!;
+          const c = td.ops.opData[i * 4 + 3]!;
+          const val = td.ops.valData[i]!;
+
+          let aShift = a;
+          let bShift = b;
+          let cShift = c;
+
+          if (kind >= 3 && kind <= 7) {
+            aShift += offset;
+            bShift += offset;
+          } else if (kind >= 8 && kind <= 14) {
+            aShift += offset;
+          } else if (kind >= 17 && kind <= 19) {
+            aShift += offset;
+            cShift += offset;
+          } else if (kind === 20 || kind === 21) {
+            aShift += offset;
+          }
+
+          combinedOps.pushScalarOp(kind, aShift, bShift, cShift, val);
         }
         residualIndices.push(td.outputIndex + offset);
       }
       // Sum squared residuals: sum(R_i^2)
-      let sumIdx = combinedOps.length;
-      combinedOps.push({ type: "const", val: 0 });
+      let sumIdx = combinedOps.pushScalarOp(0, 0, 0, 0, 0); // Const 0
       for (const residIdx of residualIndices) {
-        const sqIdx = combinedOps.length;
-        combinedOps.push({ type: "mul", a: residIdx, b: residIdx });
-        const newSum = combinedOps.length;
-        combinedOps.push({ type: "add", a: sumIdx, b: sqIdx });
-        sumIdx = newSum;
+        const sqIdx = combinedOps.pushScalarOp(5, residIdx, residIdx, 0, 0); // Mul
+        sumIdx = combinedOps.pushScalarOp(3, sumIdx, sqIdx, 0, 0); // Add
       }
 
       try {
@@ -974,44 +992,4 @@ export function solveInitialEquationsAdvanced(
   }
 
   return result;
-}
-
-/**
- * Shift all index references in a TapeOp by the given offset.
- * Used when combining multiple tapes into a single combined tape.
- */
-function shiftTapeOp(op: TapeOp, offset: number): TapeOp {
-  if (offset === 0) return { ...op };
-  switch (op.type) {
-    case "const":
-    case "var":
-      return { ...op };
-    case "add":
-    case "sub":
-    case "mul":
-    case "div":
-    case "pow":
-      return { ...op, a: op.a + offset, b: op.b + offset };
-    case "neg":
-    case "sin":
-    case "cos":
-    case "tan":
-    case "exp":
-    case "log":
-    case "sqrt":
-      return { ...op, a: op.a + offset };
-    case "vec_var":
-    case "vec_const":
-      return { ...op };
-    case "vec_add":
-    case "vec_sub":
-    case "vec_mul":
-      return { ...op, a: op.a + offset, b: op.b + offset };
-    case "vec_neg":
-      return { ...op, a: op.a + offset };
-    case "vec_subscript":
-      return { ...op, a: op.a + offset };
-    case "nop":
-      return op;
-  }
 }

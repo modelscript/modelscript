@@ -1,6 +1,6 @@
 /* eslint-disable */
+import type { IndexerHook } from "@modelscript/polyglot/runtime";
 import { createSelfProxy, extractScopePath } from "./index.js";
-import type { IndexerHook } from "./runtime.js";
 
 /**
  * Walks the evaluated language config and extracts IndexerHook[]

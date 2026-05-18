@@ -20,6 +20,7 @@ export interface LoaderContext {
   sysml2Parser: Parser | null;
   cacheStore?: FederatedQueryCacheStore;
   registryUrl?: string;
+  federatedEndpoints: string[];
 }
 
 export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promise<void> {
@@ -299,10 +300,10 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       baseUrl = ctx.registryUrl.replace(/\/$/, "");
     }
 
-    if (ctx.cacheStore && ctx.cacheStore.federatedEndpoints && baseUrl) {
+    if (ctx.federatedEndpoints && baseUrl) {
       const endpoint = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/memos`;
-      if (!ctx.cacheStore.federatedEndpoints.includes(endpoint)) {
-        ctx.cacheStore.federatedEndpoints.push(endpoint);
+      if (!ctx.federatedEndpoints.includes(endpoint)) {
+        ctx.federatedEndpoints.push(endpoint);
         ctx.logger.log(`[registry] Registered federated endpoint: ${endpoint}`);
       }
     }

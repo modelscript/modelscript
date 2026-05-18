@@ -4,15 +4,6 @@
 /**
  * DAEArenaBuilder — Flat, arena-backed storage for flattened DAE data.
  *
- * During flattening, the compiler currently builds a tree of heavyweight
- * objects (`ModelicaDAE`, `ModelicaRealVariable`, `ModelicaSimpleEquation`,
- * etc.) which consumes ~1.5 GB for a 10k-equation model.
- *
- * This module provides an append-only, TypedArray-backed builder that
- * stores the same data in ~5% of the memory. The flattener appends flat
- * records into typed columns, and the downstream consumers (simulator,
- * code generators) read from those columns via Flyweight views.
- *
  * ## Usage
  *
  * ```typescript
@@ -33,11 +24,6 @@
  * console.log(builder.estimateMemoryBytes()); // ~200 bytes
  * ```
  *
- * ## Dual-Write Strategy
- *
- * During the migration, the flattener populates BOTH the legacy
- * `ModelicaDAE` object and this arena. Tests validate equivalence.
- * Once all tests pass, the legacy path is removed.
  */
 
 import type { StringId } from "./interner.js";

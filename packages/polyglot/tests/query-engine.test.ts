@@ -1,6 +1,6 @@
 /* eslint-disable */
+import { QueryEngine } from "@modelscript/salsa";
 import { describe, expect, it } from "vitest";
-import { QueryEngine } from "../src/query-engine.js";
 import type { QueryHooks, SymbolEntry, SymbolIndex } from "../src/runtime.js";
 
 // ---------------------------------------------------------------------------

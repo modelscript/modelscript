@@ -1,14 +1,22 @@
-import type { Memo, QueryCacheStore } from "./runtime.js";
+import type { Memo, QueryCacheStore } from "./types.js";
+
+/**
+ * Provides a dynamic list of federated endpoints to query.
+ * This allows the cache store to adapt as remote libraries are added or removed from the context.
+ */
+export interface FederatedEndpointProvider {
+  getEndpoints(): string[];
+}
 
 /**
  * A composite QueryCacheStore that first checks a local cache (e.g., IndexedDB),
- * and for any missing keys, queries a list of remote federated endpoints.
+ * and for any missing keys, queries a list of remote federated endpoints provided dynamically.
  * Newly fetched memos are saved to the local cache.
  */
 export class FederatedQueryCacheStore implements QueryCacheStore {
   constructor(
     private localStore: QueryCacheStore,
-    public federatedEndpoints: string[], // e.g. "https://api.modelscript.org/api/v1/libraries/Modelica/4.1.0/memos"
+    private endpointProvider: FederatedEndpointProvider,
   ) {}
 
   async getMemo(key: string): Promise<Memo | undefined> {
@@ -71,12 +79,14 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
    */
   private async fetchFromFederated(keys: string[]): Promise<Map<string, Memo>> {
     const result = new Map<string, Memo>();
-    if (this.federatedEndpoints.length === 0 || keys.length === 0) return result;
+    const endpoints = this.endpointProvider.getEndpoints();
+
+    if (endpoints.length === 0 || keys.length === 0) return result;
 
     // Batched to avoid URI too long. For now, assume a reasonable size.
     const keysParam = keys.join(",");
 
-    for (const endpoint of this.federatedEndpoints) {
+    for (const endpoint of endpoints) {
       try {
         const url = new URL(endpoint);
         url.searchParams.set("keys", keysParam);

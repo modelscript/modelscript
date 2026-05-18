@@ -481,7 +481,8 @@ export class SymbolIndexer {
       entry.endByte += byteDelta;
       if (entry.fieldRanges) {
         entry.fieldRanges = { ...entry.fieldRanges };
-        for (const [key, range] of Object.entries(entry.fieldRanges)) {
+        for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
+          const range = rangeVal as { startByte: number; endByte: number };
           entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
         }
       }
@@ -532,7 +533,8 @@ export class SymbolIndexer {
         entry.endByte += byteDelta;
         if (entry.fieldRanges) {
           entry.fieldRanges = { ...entry.fieldRanges };
-          for (const [key, range] of Object.entries(entry.fieldRanges)) {
+          for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
+            const range = rangeVal as { startByte: number; endByte: number };
             entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
           }
         }

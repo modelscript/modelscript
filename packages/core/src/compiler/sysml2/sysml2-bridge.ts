@@ -7,10 +7,10 @@
 
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/polyglot/diagram-builder";
 import { LSPBridge, PositionIndex } from "@modelscript/polyglot/lsp-bridge";
-import { QueryEngine } from "@modelscript/polyglot/query-engine";
 import { ScopeResolver } from "@modelscript/polyglot/resolver";
 import type { VerificationResult } from "@modelscript/polyglot/verifier";
 import { WorkspaceIndex } from "@modelscript/polyglot/workspace-index";
+import { QueryEngine } from "@modelscript/salsa";
 
 import { INDEXER_HOOKS } from "@modelscript/sysml2/indexer_config";
 import { QUERY_HOOKS } from "@modelscript/sysml2/query_hooks";

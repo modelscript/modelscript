@@ -29,7 +29,7 @@ globalThis.WeakRef = class WeakRefMock {
 
 import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { ArenaDAEPrinter } from "@modelscript/symbolics";
 import { StringWriter } from "@modelscript/utils";
 import fs from "node:fs";
 import path from "node:path";
@@ -303,7 +303,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     if (dae) {
       if (!hasDAEErrors(dae as unknown as DAEOutput)) {
         const out = new StringWriter();
-        dae.accept(new ModelicaDAEPrinter(out));
+        const printer = new ArenaDAEPrinter(out, dae.arena);
+        printer.printDAE(dae.arena);
         flattenedResult = out.toString();
       }
     }
