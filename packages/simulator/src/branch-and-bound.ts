@@ -25,8 +25,13 @@
  *    for the global optimisation of nonconvex MINLPs", Computers & Chem. Eng.
  */
 
-import { Interval, StaticTapeBuilder, evaluateTapeInterval, evaluateTapeMcCormick } from "@modelscript/compiler";
-import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
+import {
+  DAEArenaBuilder,
+  Interval,
+  StaticTapeBuilder,
+  evaluateTapeInterval,
+  evaluateTapeMcCormick,
+} from "@modelscript/compiler";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 
 /** A box in the search space: variable name → [lo, hi] */
@@ -372,19 +377,19 @@ function solveLULocal(A: number[][], b: number[], n: number): number[] {
  * Convenience function for integrating with the ModelScript pipeline.
  */
 export function buildSbbFromDAE(
-  dae: ModelicaDAE,
-  objectiveExpr: ModelicaExpression,
-  constraintExprs: ModelicaExpression[],
+  dae: DAEArenaBuilder,
+  objectiveExprId: number,
+  constraintExprIds: number[],
 ): {
   objectiveTape: { ops: StaticTapeBuilder; outputIndex: number };
   constraintTapes: { ops: StaticTapeBuilder; outputIndex: number }[];
 } {
   const objTape = new StaticTapeBuilder();
-  const objIdx = objTape.walk(objectiveExpr);
+  const objIdx = objTape.addExpression(objectiveExprId, dae);
 
-  const constraintTapes = constraintExprs.map((expr) => {
+  const constraintTapes = constraintExprIds.map((exprId) => {
     const tape = new StaticTapeBuilder();
-    const idx = tape.walk(expr);
+    const idx = tape.addExpression(exprId, dae);
     return { ops: tape, outputIndex: idx };
   });
 
@@ -403,18 +408,21 @@ export function buildSbbFromDAE(
  * @param dae       DAE for variable metadata (arrayDimensions)
  * @returns Expanded domain box with per-element entries
  */
-export function expandArrayBounds(box: DomainBox, dae: ModelicaDAE): DomainBox {
+export function expandArrayBounds(box: DomainBox, dae: DAEArenaBuilder): DomainBox {
   const expanded: DomainBox = new Map();
   for (const [name, interval] of box) {
-    const v = dae.arenaGetVarByName(name);
-    if (v?.arrayDimensions && v.arrayDimensions.length > 0) {
-      const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
-      for (let i = 0; i < size; i++) {
-        expanded.set(`${name}[${i + 1}]`, new Interval(interval.lo, interval.hi));
+    const vIdx = dae.getVarIdxByName(name);
+    if (vIdx >= 0) {
+      const dims = dae.getVarShape(vIdx);
+      if (dims && dims.length > 0) {
+        const size = dims.reduce((a: number, b: number) => a * b, 1);
+        for (let i = 0; i < size; i++) {
+          expanded.set(`${name}[${i + 1}]`, new Interval(interval.lo, interval.hi));
+        }
+        continue;
       }
-    } else {
-      expanded.set(name, interval);
     }
+    expanded.set(name, interval);
   }
   return expanded;
 }

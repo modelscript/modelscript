@@ -94,7 +94,6 @@ import {
   ModelicaElement,
   ModelicaFlattener,
   ModelicaInterpreter,
-  ModelicaLinter,
   ModelicaNamedElement,
   ModelicaScriptScope,
   ModelicaStoredDefinitionSyntaxNode,
@@ -5780,10 +5779,16 @@ connection.onRequest(
     try {
       const tree = ctx.parse(".mo", params.code);
       const errors: string[] = [];
-      const linter = new ModelicaLinter((_type: string, _code: number, message: string) => {
-        errors.push(message);
-      });
-      linter.lint(tree);
+      const walk = (node: any) => {
+        if (!node) return;
+        if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+        if (node.isMissing || node.type === "ERROR") {
+          errors.push(node.isMissing ? `Missing syntax element` : `Syntax error`);
+        }
+        const children = node.children || [];
+        for (let i = 0; i < children.length; i++) walk(children[i]);
+      };
+      walk(tree.rootNode);
 
       const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
       const classes: { name: string; kind: string }[] = [];

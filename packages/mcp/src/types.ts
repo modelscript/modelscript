@@ -2,10 +2,14 @@
 
 import type { Context } from "@modelscript/core";
 
+import type { UnifiedWorkspace } from "@modelscript/compiler";
+
 /**
  * Shared server context — holds the current compiler Context,
  * lazily populated by the modelica_load tool.
  */
 export interface ServerContext {
   current: Context | null;
+  workspace?: UnifiedWorkspace | null;
+  paths?: string[];
 }

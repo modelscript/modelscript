@@ -206,6 +206,12 @@ export interface QueryDB {
    */
   cstNode(id: SymbolId): unknown | null;
 
+  /**
+   * Get the CST subtree node covering a specific byte range.
+   * Returns an opaque tree-sitter SyntaxNode.
+   */
+  cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null;
+
   // -------------------------------------------------------------------------
   // Expression Evaluation
   // -------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+export * from "./arena-eval.js";
 export * from "./cache-store.js";
 export * from "./dae-arena.js";
 export * from "./federated-cache-store.js";

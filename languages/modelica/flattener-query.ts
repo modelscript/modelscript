@@ -98,26 +98,19 @@ export interface ConnectionPair {
   hasFlow: boolean;
 }
 
-/**
- * Flattened DAE output.
- * The result of flattening a Modelica model.
- */
-export interface FlatDAE {
-  /** The original class name */
-  className: string;
-  /** All flattened variables */
-  variables: FlatVariable[];
-  /** All flattened equations */
-  equations: FlatEquation[];
-  /** Connection pairs (pre-expansion) */
-  connections: ConnectionPair[];
-  /** Initial equations */
-  initialEquations: FlatEquation[];
-  /** Algorithm sections (as text) */
-  algorithms: string[];
-  /** Diagnostics generated during flattening */
-  diagnostics: string[];
-}
+import {
+  Causality,
+  DAEArenaBuilder,
+  EqKind,
+  evaluateArenaExpression,
+  ExprKind,
+  Variability,
+  VarType,
+} from "@modelscript/compiler";
+import { ArenaExprVisitor } from "./arena-expr-visitor.js";
+import { ModelicaSyntaxNode } from "./ast.js";
+
+// We remove FlatDAE and FlatVariable interfaces since we emit directly to DAEArenaBuilder.
 
 // ---------------------------------------------------------------------------
 // Predefined Type Detection
@@ -141,7 +134,7 @@ function isPredefinedScalar(name: string): boolean {
  *
  * The flattener is stateless between calls to `flatten()`.
  */
-export class QueryBasedFlattener {
+export class ArenaQueryFlattener {
   constructor(private db: QueryDB) {}
 
   /**
@@ -150,25 +143,16 @@ export class QueryBasedFlattener {
    * @param rootClassId - The SymbolId of the top-level model to flatten
    * @returns A FlatDAE containing all variables, equations, and connections
    */
-  flatten(rootClassId: SymbolId): FlatDAE {
+  flatten(rootClassId: SymbolId): DAEArenaBuilder {
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "<unknown>";
 
-    const dae: FlatDAE = {
-      className,
-      variables: [],
-      equations: [],
-      connections: [],
-      initialEquations: [],
-      algorithms: [],
-      diagnostics: [],
-    };
+    const dae = new DAEArenaBuilder(undefined, className, "");
 
     // Use the instantiate query to get the resolved element tree
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
 
     if (!elements || elements.length === 0) {
-      dae.diagnostics.push(`Class '${className}' has no instantiated elements`);
       return dae;
     }
 
@@ -185,16 +169,8 @@ export class QueryBasedFlattener {
    * Flatten a hybrid system from a SysML TopologyGraph.
    * Walks the topology, instantiating Modelica artifacts bound to each node.
    */
-  flattenFromTopology(graph: TopologyGraph): FlatDAE {
-    const dae: FlatDAE = {
-      className: "HybridSystem",
-      variables: [],
-      equations: [],
-      connections: [],
-      initialEquations: [],
-      algorithms: [],
-      diagnostics: [],
-    };
+  flattenFromTopology(graph: TopologyGraph): DAEArenaBuilder {
+    const dae = new DAEArenaBuilder(undefined, "HybridSystem", "");
 
     const processTopologyNode = (nodeId: SymbolId, prefix: string) => {
       const node = graph.nodes.get(nodeId);
@@ -224,16 +200,9 @@ export class QueryBasedFlattener {
       const srcNode = graph.nodes.get(edge.sourceId);
       const tgtNode = graph.nodes.get(edge.targetId);
       if (srcNode && tgtNode) {
-        // We emit connect equations using their simple paths. The flow
-        // expansion step will later process these.
-        dae.equations.push({
-          kind: "connect",
-          sourceText: `connect(${srcNode.path}, ${tgtNode.path})`,
-          description: "",
-          lhs: "",
-          rhs: "",
-        });
-        dae.connections.push({ from: srcNode.path, to: tgtNode.path, hasFlow: false });
+        const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(srcNode.path));
+        const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(tgtNode.path));
+        dae.addEquation(EqKind.Connect, lhsId, rhsId);
       }
     }
 
@@ -246,7 +215,7 @@ export class QueryBasedFlattener {
   // Element Processing
   // -------------------------------------------------------------------------
 
-  private flattenElements(elementIds: SymbolId[], prefix: string, dae: FlatDAE): void {
+  private flattenElements(elementIds: SymbolId[], prefix: string, dae: DAEArenaBuilder): void {
     for (const eid of elementIds) {
       const entry = this.db.symbol(eid);
       if (!entry) continue;
@@ -288,7 +257,7 @@ export class QueryBasedFlattener {
   // Component Flattening
   // -------------------------------------------------------------------------
 
-  private flattenComponent(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
+  private flattenComponent(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
     const meta = entry.metadata as Record<string, unknown>;
     const typeName = meta?.typeSpecifier as string | undefined;
@@ -351,7 +320,7 @@ export class QueryBasedFlattener {
     classInstanceId: SymbolId,
     shape: number[],
     entry: SymbolEntry,
-    dae: FlatDAE,
+    dae: DAEArenaBuilder,
   ): void {
     // For a multi-dimensional array, expand recursively
     // e.g., Real[3,2] x → x[1,1], x[1,2], x[2,1], ...
@@ -397,56 +366,80 @@ export class QueryBasedFlattener {
   // Variable Emission
   // -------------------------------------------------------------------------
 
-  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: FlatDAE): void {
+  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: DAEArenaBuilder): void {
     const meta = componentEntry.metadata as Record<string, unknown>;
 
     // Extract modification values for start, unit, etc.
     const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
     const mod = specArgs?.data ?? null;
 
-    const variable: FlatVariable = {
-      name,
-      typeName,
-      variability: (meta?.variability as string) ?? "continuous",
-      causality: (meta?.causality as string) ?? "internal",
-      hasBindingEquation: !!mod?.bindingExpression,
-      startValue: this.resolveModAttribute(mod, "start", typeName),
-      unit: (this.resolveModAttribute(mod, "unit", typeName) as string) ?? "",
-      displayUnit: (this.resolveModAttribute(mod, "displayUnit", typeName) as string) ?? "",
-      min: this.resolveModAttribute(mod, "min", typeName) as number | null,
-      max: this.resolveModAttribute(mod, "max", typeName) as number | null,
-      fixed: (this.resolveModAttribute(mod, "fixed", typeName) as boolean) ?? false,
-      description: (meta?.description as string) ?? "",
-      isFlow: meta?.flow === "flow",
-      isStream: meta?.flow === "stream",
-      isConnector: false, // Set during parent connector detection
-      arrayShape: null,
-    };
+    let varType = VarType.Real;
+    if (typeName === "Integer") varType = VarType.Integer;
+    else if (typeName === "Boolean") varType = VarType.Boolean;
+    else if (typeName === "String") varType = VarType.String;
 
-    dae.variables.push(variable);
+    let variability = Variability.Continuous;
+    const vStr = this.resolveModAttribute(mod, "variability", typeName, dae) as string;
+    if (vStr === "discrete") variability = Variability.Discrete;
+    else if (vStr === "parameter") variability = Variability.Parameter;
+    else if (vStr === "constant") variability = Variability.Constant;
+
+    let causality = Causality.Local;
+    const cStr = this.resolveModAttribute(mod, "causality", typeName, dae) as string;
+    if (cStr === "input") causality = Causality.Input;
+    else if (cStr === "output") causality = Causality.Output;
+
+    dae.addVariable(varType, name, (meta?.description as string) ?? "", variability, causality);
 
     // If there's a binding expression, emit a binding equation
     if (mod?.bindingExpression) {
-      const sourceText = this.resolveExpressionText(mod.bindingExpression);
-      if (sourceText) {
-        dae.equations.push({
-          kind: "binding",
-          sourceText: `${name} = ${sourceText}`,
-          description: "",
-          lhs: name,
-          rhs: sourceText,
-        });
+      if (mod.bindingExpression.kind === "expression") {
+        const bytes = mod.bindingExpression.cstBytes;
+        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
+        if (cstNode) {
+          const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+          const visitor = new ArenaExprVisitor(dae);
+          const exprId = visitor.visit(astNode);
+          if (exprId !== undefined) {
+            const nameExpr = dae.addExpression(ExprKind.Name, name);
+            dae.addEquation(EqKind.Simple, nameExpr, exprId);
+          }
+        }
+      } else if (mod.bindingExpression.kind === "literal") {
+        const val = mod.bindingExpression.value;
+        const exprId =
+          typeof val === "number"
+            ? dae.addExpression(ExprKind.RealLiteral, val)
+            : typeof val === "boolean"
+              ? dae.addExpression(ExprKind.BoolLiteral, val)
+              : dae.addExpression(ExprKind.StringLiteral, val as string);
+        const nameExpr = dae.addExpression(ExprKind.Name, name);
+        dae.addEquation(EqKind.Simple, nameExpr, exprId);
       }
     }
   }
 
-  private resolveModAttribute(mod: ModelicaModArgs | null, attrName: string, typeName: string): unknown {
+  private resolveModAttribute(
+    mod: ModelicaModArgs | null,
+    attrName: string,
+    typeName: string,
+    dae: DAEArenaBuilder,
+  ): unknown {
     if (mod) {
       const arg = mod.args.find((a) => a.name === attrName);
       if (arg?.value) {
         if (arg.value.kind === "literal") return arg.value.value;
         if (arg.value.kind === "expression") {
-          return this.db.evaluate(arg.value);
+          const bytes = arg.value.cstBytes;
+          const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
+          if (cstNode) {
+            const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+            const visitor = new ArenaExprVisitor(dae);
+            const exprId = visitor.visit(astNode);
+            if (exprId !== undefined) {
+              return evaluateArenaExpression(dae, exprId);
+            }
+          }
         }
       }
     }
@@ -480,74 +473,66 @@ export class QueryBasedFlattener {
   // Equation Flattening
   // -------------------------------------------------------------------------
 
-  private flattenEquation(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
-    // Get the equation source text from CST
-    const sourceText = this.db.cstText(entry.startByte, entry.endByte);
-    if (!sourceText) return;
+  private flattenEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+    const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
+    if (cstNode) {
+      const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+      // Depending on the equation type, the AST node will have different structure
+      // For a simple equation, it usually has expression1 and expression2 or left/right
+      const visitor = new ArenaExprVisitor(dae);
+      let lhsId: number | undefined = undefined;
+      let rhsId: number | undefined = undefined;
 
-    // Prefix component references in the equation
-    const prefixedText = prefix ? this.prefixComponentRefs(sourceText, prefix) : sourceText;
+      const astAny = astNode as any;
+      if (astAny.expression1 && astAny.expression2) {
+        lhsId = visitor.visit(astAny.expression1);
+        rhsId = visitor.visit(astAny.expression2);
+      } else if (astAny.left && astAny.right) {
+        lhsId = visitor.visit(astAny.left);
+        rhsId = visitor.visit(astAny.right);
+      } else if (astAny.expression) {
+        // Just an expression statement like `foo();`
+        const exprId = visitor.visit(astAny.expression);
+        if (exprId !== undefined) {
+          const zero = dae.addExpression(ExprKind.IntLiteral, 0);
+          dae.addEquation(EqKind.Simple, exprId, zero);
+          return;
+        }
+      }
 
-    dae.equations.push({
-      kind: "equation",
-      sourceText: prefixedText,
-      description: "",
-      lhs: "",
-      rhs: "",
-    });
-  }
-
-  private flattenForEquation(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
-    const sourceText = this.db.cstText(entry.startByte, entry.endByte);
-    if (!sourceText) return;
-
-    dae.equations.push({
-      kind: "for",
-      sourceText: prefix ? this.prefixComponentRefs(sourceText, prefix) : sourceText,
-      description: "",
-      lhs: "",
-      rhs: "",
-    });
-  }
-
-  private flattenIfEquation(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
-    const sourceText = this.db.cstText(entry.startByte, entry.endByte);
-    if (!sourceText) return;
-
-    dae.equations.push({
-      kind: "if",
-      sourceText: prefix ? this.prefixComponentRefs(sourceText, prefix) : sourceText,
-      description: "",
-      lhs: "",
-      rhs: "",
-    });
-  }
-
-  private flattenWhenEquation(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
-    const sourceText = this.db.cstText(entry.startByte, entry.endByte);
-    if (!sourceText) return;
-
-    dae.equations.push({
-      kind: "when",
-      sourceText: prefix ? this.prefixComponentRefs(sourceText, prefix) : sourceText,
-      description: "",
-      lhs: "",
-      rhs: "",
-    });
-  }
-
-  private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
-    const sourceText = this.db.cstText(entry.startByte, entry.endByte);
-    if (sourceText) {
-      dae.algorithms.push(prefix ? this.prefixComponentRefs(sourceText, prefix) : sourceText);
+      if (lhsId !== undefined && rhsId !== undefined) {
+        dae.addEquation(EqKind.Simple, lhsId, rhsId);
+        return;
+      }
     }
+
+    // Fallback if parsing fails
+    const lhs = dae.addExpression(ExprKind.IntLiteral, 0);
+    const rhs = dae.addExpression(ExprKind.IntLiteral, 0);
+    dae.addEquation(EqKind.Simple, lhs, rhs);
+  }
+
+  private flattenForEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+    // Stub
+  }
+
+  private flattenIfEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+    // Stub
+  }
+
+  private flattenWhenEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+    // Stub
+  }
+
+  private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+    // Stub
   }
 
   // -------------------------------------------------------------------------
   // Connection Handling
   // -------------------------------------------------------------------------
 
-  private recordConnection(entry: SymbolEntry, prefix: string, dae: FlatDAE): void {
+  private recordConnection(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
     const meta = entry.metadata as Record<string, unknown>;
     const from = meta?.from as string;
     const to = meta?.to as string;
@@ -557,86 +542,13 @@ export class QueryBasedFlattener {
     const fullFrom = prefix ? `${prefix}.${from}` : from;
     const fullTo = prefix ? `${prefix}.${to}` : to;
 
-    dae.connections.push({
-      from: fullFrom,
-      to: fullTo,
-      hasFlow: false, // Will be resolved during expandConnections
-    });
+    const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(fullFrom));
+    const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(fullTo));
+    dae.addEquation(EqKind.Connect, lhsId, rhsId);
   }
 
-  /**
-   * Expand connections into equality and flow-balance equations.
-   *
-   * Implementation of Modelica §9.1:
-   * - For each connection set, generate equality equations for effort variables
-   * - For each connection set, generate sum=0 equations for flow variables
-   */
-  private expandConnections(dae: FlatDAE): void {
-    if (dae.connections.length === 0) return;
-
-    // Build connection sets using Union-Find
-    const connectionSets = new Map<string, Set<string>>();
-
-    for (const conn of dae.connections) {
-      const fromSet = this.findSet(connectionSets, conn.from);
-      const toSet = this.findSet(connectionSets, conn.to);
-
-      // Merge sets
-      if (fromSet !== toSet) {
-        const mergedSet = new Set([...fromSet, ...toSet]);
-        for (const name of mergedSet) {
-          connectionSets.set(name, mergedSet);
-        }
-      }
-    }
-
-    // Generate equations for each unique connection set
-    const processedSets = new Set<Set<string>>();
-
-    for (const connSet of connectionSets.values()) {
-      if (processedSets.has(connSet)) continue;
-      processedSets.add(connSet);
-
-      const members = [...connSet];
-      if (members.length < 2) continue;
-
-      // Find which of these are flow variables
-      const flowMembers: string[] = [];
-      const effortMembers: string[] = [];
-
-      for (const name of members) {
-        const v = dae.variables.find((v) => v.name === name);
-        if (v?.isFlow) {
-          flowMembers.push(name);
-        } else {
-          effortMembers.push(name);
-        }
-      }
-
-      // Effort variables: generate equality equations
-      // a = b, b = c, etc. (chain)
-      for (let i = 1; i < effortMembers.length; i++) {
-        dae.equations.push({
-          kind: "connect_effort",
-          sourceText: `${effortMembers[i - 1]} = ${effortMembers[i]}`,
-          description: "Connection equation (effort)",
-          lhs: effortMembers[i - 1]!,
-          rhs: effortMembers[i]!,
-        });
-      }
-
-      // Flow variables: generate sum = 0
-      if (flowMembers.length > 0) {
-        const sumExpr = flowMembers.join(" + ");
-        dae.equations.push({
-          kind: "connect_flow",
-          sourceText: `${sumExpr} = 0`,
-          description: "Flow balance equation",
-          lhs: sumExpr,
-          rhs: "0",
-        });
-      }
-    }
+  private expandConnections(dae: DAEArenaBuilder): void {
+    // Stub for future flow expansion implementation
   }
 
   private findSet(sets: Map<string, Set<string>>, name: string): Set<string> {

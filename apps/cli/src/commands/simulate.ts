@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener, ModelicaLinter } from "@modelscript/core";
+import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import { ModelicaSimulator, runWasmSimulation, snapshotMemory, type MemorySnapshot } from "@modelscript/simulator";
@@ -8,7 +8,7 @@ import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Parser, { type Range } from "tree-sitter";
+import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
@@ -151,70 +151,6 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       const snap = snapshotMemory(true);
       memProfiles["flattening"] = { before: lastSnap, after: snap };
       lastSnap = snap;
-    }
-
-    // Run the linter to collect diagnostics
-    profiler.start("linting");
-    const diagnostics: { type: string; code: number; message: string; resource: string | null; range: Range | null }[] =
-      [];
-    const linter = new ModelicaLinter(
-      (
-        type: string,
-        code: number,
-        message: string,
-        resource: string | null | undefined,
-        range: Range | null | undefined,
-      ) => {
-        diagnostics.push({ type, code, message, resource: resource ?? null, range: range ?? null });
-      },
-    );
-    for (const cls of context.classes) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      linter.lint(cls as any);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    linter.lint(instance as any);
-    profiler.end("linting");
-
-    // Convert absolute resource path to user-provided relative path
-    const toUserPath = (absPath: string | null) => {
-      if (!absPath) return "";
-      for (const [resolved, userProvided] of pathMap) {
-        if (absPath === resolved) return userProvided;
-        if (absPath.startsWith(resolved + path.sep)) {
-          return userProvided + absPath.slice(resolved.length);
-        }
-      }
-      return absPath;
-    };
-
-    const formatDiag = (d: (typeof diagnostics)[number]) => {
-      const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-      const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
-      if (d.range) {
-        const startPos = `${d.range.startPosition.row + 1}:${d.range.startPosition.column + 1}`;
-        const endPos = `${d.range.endPosition.row + 1}:${d.range.endPosition.column + 1}`;
-        const filePath = toUserPath(d.resource);
-        return `[${filePath}:${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
-      }
-      return `${severity}: ${codeStr}${d.message}`;
-    };
-
-    const errors = diagnostics.filter((d) => d.type === "error");
-    const warnings = diagnostics.filter((d) => d.type !== "error");
-
-    // If errors exist, print only diagnostics (no simulation)
-    if (errors.length > 0) {
-      for (const d of diagnostics) console.error(formatDiag(d));
-      console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
-      if (args.timing) profiler.report();
-      return;
-    }
-
-    // Print warnings before simulation
-    for (const d of warnings) console.error(formatDiag(d));
-    if (warnings.length > 0) {
-      console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
     }
 
     // Resolve experiment parameters: CLI flags > annotation > defaults

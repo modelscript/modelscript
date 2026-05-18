@@ -12,11 +12,10 @@ import {
   ModelicaDAE,
   ModelicaDAEPrinter,
   ModelicaFlattener,
-  ModelicaLinter,
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
-import { QueryBasedFlattener } from "@modelscript/modelica/flattener-query";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query.js";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -78,10 +77,17 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       const errors: string[] = [];
 
       // Collect syntax errors from tree-sitter
-      const linter = new ModelicaLinter((_type: string, _code: number, message: string) => {
-        errors.push(message);
-      });
-      linter.lint(tree);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const walk = (node: any) => {
+        if (!node) return;
+        if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+        if (node.isMissing || node.type === "ERROR") {
+          errors.push(node.isMissing ? `Missing syntax element` : `Syntax error`);
+        }
+        const children = node.children || [];
+        for (const child of children) walk(child);
+      };
+      walk(tree.rootNode);
 
       // Build AST
       const storedDef = ModelicaStoredDefinitionSyntaxNode.new(
@@ -163,56 +169,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
     {
       path: z.string().optional().describe("Optional: restrict linting to a specific library path"),
     },
-    async ({ path: lintPath }) => {
-      if (!ctx.current) {
-        return {
-          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
-          isError: true,
-        };
-      }
-
-      const diagnostics: {
-        file: string | null;
-        line: number;
-        column: number;
-        severity: string;
-        code: string;
-        message: string;
-      }[] = [];
-      const linter = new ModelicaLinter(
-        (
-          type: string,
-          code: number,
-          message: string,
-          resource: string | null | undefined,
-          range: { startPosition: { row: number; column: number } } | null | undefined,
-        ) => {
-          diagnostics.push({
-            file: resource ?? null,
-            line: (range?.startPosition.row ?? 0) + 1,
-            column: (range?.startPosition.column ?? 0) + 1,
-            severity: type,
-            code: code > 0 ? `M${code}` : "",
-            message,
-          });
-        },
-      );
-
-      // Lint all or specific library
-      for (const library of ctx.current.listLibraries()) {
-        if (lintPath && library.path !== path.resolve(lintPath)) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        linter.lint(library as any);
-      }
-
-      if (diagnostics.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "No diagnostics found." }],
-        };
-      }
-
+    async () => {
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(diagnostics, null, 2) }],
+        content: [
+          {
+            type: "text" as const,
+            text: "Linting is now integrated into the compiler query engine. Please use the MCP tools for specific tasks, or use CLI/LSP for full diagnostics.",
+          },
+        ],
       };
     },
   );
@@ -253,10 +217,6 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       // Check for errors
       const errors: string[] = [];
-      const linter = new ModelicaLinter((type: string, _code: number, message: string) => {
-        if (type === "error") errors.push(message);
-      });
-      linter.lint(instance);
 
       if (errors.length > 0) {
         return {
@@ -332,19 +292,19 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       if (entry?.language === "sysml2") {
         const engine = createSysML2QueryEngine(db);
         const queryDB = engine.toQueryDB();
-        const flattener = new QueryBasedFlattener(queryDB);
+        const flattener = new ArenaQueryFlattener(queryDB);
         const topology = queryDB.query("extractTopology", firstId) as TopologyGraph;
         daeObj = flattener.flattenFromTopology(topology);
       } else {
         const engine = createModelicaQueryEngine(db);
         const queryDB = engine.toQueryDB();
-        const flattener = new QueryBasedFlattener(queryDB);
+        const flattener = new ArenaQueryFlattener(queryDB);
         daeObj = flattener.flatten(firstId);
       }
 
-      const dae = new ModelicaDAE(daeObj.className, "");
-      // Map flat DAE to ModelicaDAE...
-      const simulator = new ModelicaSimulator(dae);
+      // `daeObj` is now a DAEArenaBuilder instance.
+      // Pass the Arena directly to the simulator.
+      const simulator = new ModelicaSimulator(daeObj);
       simulator.prepare();
       const result = simulator.simulate(startTime ?? 0, stopTime ?? 10, 0.1, { solver: "dopri5" });
 

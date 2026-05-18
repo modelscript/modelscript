@@ -846,7 +846,7 @@ export function solveInitialEquationsAdvanced(
       }
 
       // Expand array bounds
-      const expandedBox = expandArrayBounds(initialBox, dae);
+      const expandedBox = expandArrayBounds(initialBox, dae.arena);
 
       // Build a combined objective tape: sum of squared residuals
       // We copy each individual residual tape's ops into a single combined tape,

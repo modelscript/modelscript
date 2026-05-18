@@ -1,20 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaLibrary, ModelicaLinter } from "@modelscript/core";
+import { UnifiedWorkspace } from "@modelscript/compiler";
+import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/core";
+import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
-import Parser, { type Range } from "tree-sitter";
+import fs from "node:fs";
+import path from "node:path";
+import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
-import { NodeFileSystem } from "../util/filesystem.js";
 
 interface LintArgs {
   path: string;
   paths: string[] | undefined;
 }
 
+function findModelicaFiles(dir: string, fileList: string[] = []) {
+  if (!fs.existsSync(dir)) return fileList;
+  const stat = fs.statSync(dir);
+  if (stat.isFile() && dir.endsWith(".mo")) {
+    fileList.push(dir);
+  } else if (stat.isDirectory()) {
+    for (const file of fs.readdirSync(dir)) {
+      findModelicaFiles(path.join(dir, file), fileList);
+    }
+  }
+  return fileList;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Lint: CommandModule<{}, LintArgs> = {
   command: "lint <path> [paths...]",
-  describe: "",
+  describe: "Lint a Modelica library using the QueryEngine",
   builder: (yargs) => {
     return yargs
       .positional("path", {
@@ -30,79 +46,52 @@ export const Lint: CommandModule<{}, LintArgs> = {
       });
   },
   handler: async (args) => {
-    const diagnosticsMap = new Map<
-      string | null,
-      {
-        type: string;
-        code: number;
-        message: string;
-        resource: string | null | undefined;
-        range: Range | null | undefined;
-      }[]
-    >();
-    const linter = new ModelicaLinter(
-      (
-        type: string,
-        code: number,
-        message: string,
-        resource: string | null | undefined,
-        range: Range | null | undefined,
-      ) => {
-        if (!diagnosticsMap.has(resource ?? null)) {
-          diagnosticsMap.set(resource ?? null, []);
-        }
-        diagnosticsMap.get(resource ?? null)?.push({ type, code, message, resource, range });
-      },
-    );
+    const u = new UnifiedWorkspace();
+    const items: { uri: string; text: string }[] = [];
 
+    const allPaths = [args.path, ...(args.paths ?? [])];
+    const files = new Set<string>();
+
+    for (const p of allPaths) {
+      const found = findModelicaFiles(path.resolve(p));
+      for (const f of found) files.add(f);
+    }
+
+    for (const file of files) {
+      const content = fs.readFileSync(file, "utf-8");
+      items.push({ uri: `file://${file}`, text: content });
+    }
+
+    const mIdx = createModelicaWorkspaceIndex();
     const parser = new Parser();
     parser.setLanguage(Modelica);
+    for (const item of items) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mIdx.register(item.uri, () => parser.parse(item.text).rootNode as any);
+    }
+    u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Context.registerParser(".mo", parser as any);
-    const context = Context.createBatch(new NodeFileSystem());
-    for (const path of args.paths ?? []) await context.addLibrary(path);
-    const library = new ModelicaLibrary(context, args.path);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    linter.lint(library as any);
+    const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
+    const engine = createModelicaQueryEngine(db);
 
-    for (const resource of diagnosticsMap.keys()) {
-      const diagnostics = diagnosticsMap.get(resource);
-      if (diagnostics == null) continue;
-      diagnostics.sort((a, b) => {
-        const rowSort = (a.range?.startPosition?.row ?? 0) - (b.range?.startPosition?.row ?? 0);
-        if (rowSort != 0) return rowSort;
-        const colSort = (a.range?.startPosition?.column ?? 0) - (b.range?.startPosition?.column ?? 0);
-        return colSort;
-      });
-      console.log(resource ?? "unknown file");
-      const maxLengthRow = Math.max(...diagnostics.map((r) => String((r.range?.startPosition?.row ?? 0) + 1).length));
-      const maxLengthCol = Math.max(
-        ...diagnostics.map((r) => String((r.range?.startPosition?.column ?? 0) + 1).length),
-      );
-      const maxLengthType = Math.max(...diagnostics.map((r) => r.type.length));
-      for (const diagnostic of diagnostics) {
-        const row = String((diagnostic.range?.startPosition?.row ?? 0) + 1).padStart(maxLengthRow);
-        const col = String((diagnostic.range?.startPosition?.column ?? 0) + 1).padEnd(maxLengthCol);
-        const codeStr = diagnostic.code > 0 ? `[M${diagnostic.code}] ` : "";
-        console.log(
-          "  " + row + ":" + col + "  " + diagnostic.type.padEnd(maxLengthType) + "  " + codeStr + diagnostic.message,
-        );
-      }
+    const diagnostics = await engine.runAllLintsAsync();
+
+    if (diagnostics.length === 0) {
+      console.log("No diagnostics found.");
+      return;
     }
 
-    // Print summary of errors and warnings
-    let totalErrors = 0;
-    let totalWarnings = 0;
-    for (const diagnostics of diagnosticsMap.values()) {
-      if (!diagnostics) continue;
-      for (const d of diagnostics) {
-        if (d.type === "error") totalErrors++;
-        else totalWarnings++;
-      }
+    for (const d of diagnostics) {
+      const entry = engine.toQueryDB().symbol(d.symbolId);
+      const resource = entry?.resourceId ? entry.resourceId.replace("file://", "") : "unknown";
+      console.log(`[${resource}:${d.startByte}-${d.endByte}] ${d.severity}: [${d.lintName}] ${d.message}`);
     }
-    if (totalErrors > 0 || totalWarnings > 0) {
-      console.log(`\n${totalErrors} error(s), ${totalWarnings} warning(s) found.`);
+
+    const errors = diagnostics.filter((d) => d.severity === "error").length;
+    const warnings = diagnostics.filter((d) => d.severity !== "error").length;
+
+    if (errors > 0 || warnings > 0) {
+      console.log(`\n${errors} error(s), ${warnings} warning(s) found.`);
     }
   },
 };

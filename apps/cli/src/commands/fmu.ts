@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener, ModelicaLinter } from "@modelscript/core";
+import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
 import {
   type FmuArchiveOptions,
   FMI2_FUNCTIONS_H,
@@ -19,7 +19,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Parser, { type Range } from "tree-sitter";
+import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
@@ -151,64 +151,6 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (instance as any).accept(new ModelicaFlattener(), ["", dae]);
     profiler.end("flattening");
-
-    // Run the linter
-    profiler.start("linting");
-    const diagnostics: { type: string; code: number; message: string; resource: string | null; range: Range | null }[] =
-      [];
-    const linter = new ModelicaLinter(
-      (
-        type: string,
-        code: number,
-        message: string,
-        resource: string | null | undefined,
-        range: Range | null | undefined,
-      ) => {
-        diagnostics.push({ type, code, message, resource: resource ?? null, range: range ?? null });
-      },
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    linter.lint(instance as any);
-    profiler.end("linting");
-
-    // Build mapping for diagnostic paths
-    const pathMap = new Map<string, string>();
-    for (const p of args.paths) {
-      pathMap.set(path.resolve(p), p);
-    }
-    const toUserPath = (absPath: string | null) => {
-      if (!absPath) return "";
-      for (const [resolved, userProvided] of pathMap) {
-        if (absPath === resolved) return userProvided;
-        if (absPath.startsWith(resolved + path.sep)) {
-          return userProvided + absPath.slice(resolved.length);
-        }
-      }
-      return absPath;
-    };
-
-    // Print diagnostics
-    const errors = diagnostics.filter((d) => d.type === "error");
-    const warnings = diagnostics.filter((d) => d.type !== "error");
-
-    for (const d of diagnostics) {
-      const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-      const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
-      if (d.range) {
-        const startPos = `${d.range.startPosition.row + 1}:${d.range.startPosition.column + 1}`;
-        const endPos = `${d.range.endPosition.row + 1}:${d.range.endPosition.column + 1}`;
-        const resource = toUserPath(d.resource);
-        console.error(`[${resource}:${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`);
-      } else {
-        console.error(`${severity}: ${codeStr}${d.message}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      console.error(`\n${errors.length} error(s), ${warnings.length} warning(s) found.`);
-      if (args.timing) profiler.report();
-      return;
-    }
 
     // Prepare simulator to get state variable info
     const simulator = new ModelicaSimulator(dae);

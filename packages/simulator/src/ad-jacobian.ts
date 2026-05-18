@@ -13,18 +13,16 @@ import { StaticTapeBuilder } from "@modelscript/compiler";
  * finite-difference approximations with exact analytical derivatives.
  */
 
-import {
-  ModelicaArrayEquation,
-  type ModelicaDAE,
-  type ModelicaExpression,
-  ModelicaFunctionCallExpression,
-} from "@modelscript/symbolics";
+import { DAEArenaBuilder, EqKind, ExprKind } from "@modelscript/compiler";
 
 /** Extract derivative name from expression like der(x). */
-function extractDer(expr: ModelicaExpression): string | null {
-  if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
-    const a = expr.args[0];
-    if (a && typeof a === "object" && "name" in a) return (a as { name: string }).name;
+function extractDer(arena: DAEArenaBuilder, exprId: number): string | null {
+  if (exprId < 0) return null;
+  if (arena.getExprKind(exprId) === ExprKind.Der) {
+    const argId = arena.getExprData1(exprId);
+    if (arena.getExprKind(argId) === ExprKind.Name) {
+      return arena.interner.resolve(arena.getExprData1(argId)) || null;
+    }
   }
   return null;
 }
@@ -271,31 +269,37 @@ export function evaluateTapeReverse(
  * @param dae The flattened DAE
  * @returns Jacobian evaluator closure, or null if no derivative equations found
  */
-export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => number[][]) | null {
+export function buildAdJacobian(dae: DAEArenaBuilder): ((t: number, y: number[]) => number[][]) | null {
   // Gather derivative equations: der(x) = f(x, u)
-  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    const ld = extractDer(se.expression1);
-    const rd = extractDer(se.expression2);
+  const derEqs: { state: string; rhsExprId: number }[] = [];
 
-    if (eq instanceof ModelicaArrayEquation) {
-      // Unroll array equation element-wise
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind !== EqKind.Simple && kind !== EqKind.Array) continue;
+
+    const lhsId = dae.getEqLhs(i);
+    const rhsId = dae.getEqRhs(i);
+
+    const ld = extractDer(dae, lhsId);
+    const rd = extractDer(dae, rhsId);
+
+    if (kind === EqKind.Array) {
       const baseName = ld || rd;
       if (!baseName) continue;
-      const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.arenaGetVarByName(baseName);
-      const dims = v?.arrayDimensions ?? [];
-      const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
-      for (let i = 0; i < size; i++) {
-        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+      const rhs = ld ? rhsId : lhsId;
+
+      const vIdx = dae.getVarIdxByName(baseName);
+      const dims = vIdx >= 0 ? dae.getVarShape(vIdx) : [];
+      const size = dims && dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
+
+      for (let j = 0; j < size; j++) {
+        derEqs.push({ state: `${baseName}[${j + 1}]`, rhsExprId: rhs });
       }
       continue;
     }
 
-    if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
-    else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
+    if (ld) derEqs.push({ state: ld, rhsExprId: rhsId });
+    else if (rd) derEqs.push({ state: rd, rhsExprId: lhsId });
   }
 
   if (derEqs.length === 0) return null;
@@ -308,7 +312,7 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
   const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of derEqs) {
     const tape = new StaticTapeBuilder();
-    const outIdx = tape.walk(eq.rhs);
+    const outIdx = tape.addExpression(eq.rhsExprId, dae);
     tapeData.push({ ops: tape, outputIndex: outIdx });
   }
 
@@ -322,11 +326,11 @@ export function buildAdJacobian(dae: ModelicaDAE): ((t: number, y: number[]) => 
       if (name) varValues.set(name, y[i] ?? 0);
     }
     // Also set any other DAE variables from their current values
-    for (const v of dae.arenaVariables()) {
-      if (!varValues.has(v.name) && v.expression) {
+    for (let i = 0; i < dae.varCount; i++) {
+      const name = dae.getVarName(i);
+      if (!varValues.has(name) && dae.getVarExpression(i) !== undefined) {
         // For non-state variables, use start value as approximation
-        // (In a full implementation, these would be computed from the DAE)
-        varValues.set(v.name, 0);
+        varValues.set(name, dae.getVarStartValue(i));
       }
     }
 
