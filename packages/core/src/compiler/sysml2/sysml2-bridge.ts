@@ -5,12 +5,12 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { QueryEngine } from "@modelscript/compiler";
+import { LSPBridge, PositionIndex } from "@modelscript/compiler/lsp-bridge";
+import { ScopeResolver } from "@modelscript/compiler/resolver";
+import type { VerificationResult } from "@modelscript/compiler/verifier";
+import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
-import { LSPBridge, PositionIndex } from "@modelscript/language/lsp-bridge";
-import { ScopeResolver } from "@modelscript/language/resolver";
-import type { VerificationResult } from "@modelscript/language/verifier";
-import { WorkspaceIndex } from "@modelscript/language/workspace-index";
-import { QueryEngine } from "@modelscript/salsa";
 
 import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2/config";
 import { QUERY_HOOKS } from "@modelscript/sysml2/query-hooks";

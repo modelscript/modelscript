@@ -1,4 +1,4 @@
-import type { RefHook } from "@modelscript/language";
+import type { RefHook } from "@modelscript/compiler";
 
 export const REF_HOOKS: RefHook[] = [
   {

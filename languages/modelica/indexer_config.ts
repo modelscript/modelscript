@@ -1,4 +1,4 @@
-import type { IndexerHook } from "@modelscript/language";
+import type { IndexerHook } from "@modelscript/compiler";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
   {

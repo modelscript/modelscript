@@ -25,7 +25,7 @@ import {
   warning,
   type QueryDB,
   type SymbolEntry,
-} from "@modelscript/language";
+} from "@modelscript/compiler";
 
 // ---------------------------------------------------------------------------
 // Precedence constants
@@ -129,15 +129,15 @@ const definitionStructuralQueries = {
   extractTopology: (db: QueryDB, self: SymbolEntry) => {
     // Basic extraction to stub out Phase 3 logic
     const rootIds = [self.id];
-    const nodes = new Map<number, import("@modelscript/polyglot").TopologyNode>();
-    const edges: import("@modelscript/polyglot").TopologyEdge[] = [];
+    const nodes = new Map<number, import("@modelscript/compiler/topology").TopologyNode>();
+    const edges: import("@modelscript/compiler/topology").TopologyEdge[] = [];
 
     const walk = (entryId: number, parentId: number | null, pathPrefix: string) => {
       const entry = db.symbol(entryId);
       if (!entry) return;
 
       const path = pathPrefix ? `${pathPrefix}.${entry.name}` : entry.name || "";
-      const node: import("@modelscript/polyglot").TopologyNode = {
+      const node: import("@modelscript/compiler/topology").TopologyNode = {
         usageId: entry.id,
         path,
         targetClassId: null,
@@ -225,7 +225,7 @@ const definitionStructuralQueries = {
     const rootPath = self.name || "";
     const rootPrefix = rootPath ? rootPath + "." : "";
 
-    const buildVarMap = (node: import("@modelscript/polyglot").TopologyNode) => {
+    const buildVarMap = (node: import("@modelscript/compiler/topology").TopologyNode) => {
       if (node.path && node.path !== rootPath) {
         // Strip root prefix: "circuit.C.v" → "C.v"
         const simPath = node.path.startsWith(rootPrefix) ? node.path.substring(rootPrefix.length) : node.path;
@@ -355,7 +355,7 @@ const packageModel = {
 type EvalResult = number | boolean | string | null | undefined;
 
 /** CSTNode type alias for expression evaluation */
-type CSTNode = import("@modelscript/language/symbol-indexer").CSTNode;
+type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
 /**
  * Resolve a feature reference name within a scope.
@@ -1860,8 +1860,8 @@ const packageTraceabilityLints = {
 // X6-Compatible Graphics Configuration — Reusable helpers
 // ---------------------------------------------------------------------------
 
+import type { GraphicsConfig } from "@modelscript/compiler";
 import type { X6Markup } from "@modelscript/diagram/builder";
-import type { GraphicsConfig } from "@modelscript/language";
 
 /** Standard SysML block-style node markup: header + separator + label + icon */
 const blockMarkup: X6Markup[] = [
@@ -2022,7 +2022,7 @@ const sysmlEdgeGraphics = (opts: {
 // Cross-Language Adapters — SysML2 → Modelica helpers
 // ---------------------------------------------------------------------------
 
-import type { AdapterDB } from "@modelscript/language";
+import type { AdapterDB } from "@modelscript/compiler";
 
 /** Project a SysML2 Definition as a Modelica ClassDefinition. */
 const modelicaClassAdapter = (classKind: string) => ({

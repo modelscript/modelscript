@@ -56,7 +56,7 @@ import {
 } from "./sysml2DiagramEdits";
 
 // @ts-ignore
-import { SemanticEdit, computeSemanticDiff } from "@modelscript/language/semantic-diff";
+import { SemanticEdit, computeSemanticDiff } from "@modelscript/compiler/semantic-diff";
 // @ts-ignore
 import { INDEXER_HOOKS as modelicaIndexerHooks } from "@modelscript/modelica/indexer_config";
 // @ts-ignore
@@ -74,6 +74,15 @@ import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query-hooks
 
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
+import {
+  FederatedQueryCacheStore,
+  IndexedDBQueryCacheStore,
+  LineIndex,
+  VerificationRunner,
+  type TokenData,
+} from "@modelscript/compiler";
+import { ScopeResolver } from "@modelscript/compiler/resolver";
+import { SymbolIndexer } from "@modelscript/compiler/symbol-indexer";
 import {
   Context,
   LSPBridge,
@@ -113,15 +122,6 @@ import {
   generateMultiModelWrapper,
   generateRomWasmSource,
 } from "@modelscript/fmi";
-import {
-  FederatedQueryCacheStore,
-  IndexedDBQueryCacheStore,
-  LineIndex,
-  VerificationRunner,
-  type TokenData,
-} from "@modelscript/language";
-import { ScopeResolver } from "@modelscript/language/resolver";
-import { SymbolIndexer } from "@modelscript/language/symbol-indexer";
 import {
   ModelicaCalibrator,
   ModelicaOptimizer,
@@ -427,7 +427,7 @@ const allWorkspaceIndices = new Map<string, any>();
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
 
-import { UnifiedWorkspace } from "@modelscript/language";
+import { UnifiedWorkspace } from "@modelscript/compiler";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { StepWorkspaceIndex } from "./step-workspace-index";

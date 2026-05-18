@@ -1,6 +1,6 @@
 /* eslint-disable */
-import type { IndexerHook, RefHook, SymbolEntry, SymbolIndex } from "@modelscript/language";
-import { ScopeResolver } from "@modelscript/language";
+import type { IndexerHook, RefHook, SymbolEntry, SymbolIndex } from "@modelscript/compiler";
+import { ScopeResolver } from "@modelscript/compiler";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------

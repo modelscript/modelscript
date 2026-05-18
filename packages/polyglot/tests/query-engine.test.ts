@@ -1,5 +1,5 @@
 /* eslint-disable */
-import type { QueryHooks, SymbolEntry, SymbolIndex } from "@modelscript/language";
+import type { QueryHooks, SymbolEntry, SymbolIndex } from "@modelscript/compiler";
 import { QueryEngine } from "@modelscript/salsa";
 import { describe, expect, it } from "vitest";
 

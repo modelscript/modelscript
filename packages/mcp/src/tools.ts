@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { TopologyGraph } from "@modelscript/compiler";
+import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
 import {
   Context,
   createModelicaQueryEngine,
@@ -14,8 +16,6 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
-import type { TopologyGraph } from "@modelscript/language";
-import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/language";
 import { QueryBasedFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { ModelicaSimulator } from "@modelscript/simulator";

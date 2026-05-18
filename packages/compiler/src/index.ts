@@ -1,10 +1,9 @@
-export * from "./cache-store.js";
-export * from "./dae-arena.js";
-export * from "./memo-keys.js";
-export * from "./query-engine.js";
-export * from "./runtime.js";
-export * from "./symbolics/tape.js";
+// ---------------------------------------------------------------------------
+// @modelscript/compiler — Unified barrel export
+// ---------------------------------------------------------------------------
 
-export { StringInterner } from "./interner.js";
-export * from "./symbolics/arithmetic/interval.js";
-export * from "./symbolics/arithmetic/mccormick.js";
+// Compiler infrastructure (query engine, DAE arena, symbolics, etc.)
+export * from "./_compiler-exports.js";
+
+// Language workbench (DSL types, combinators, runtime hooks, etc.)
+export * from "./language-dsl.js";

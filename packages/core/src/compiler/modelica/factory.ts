@@ -10,10 +10,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { LSPBridge, PositionIndex } from "@modelscript/language/lsp-bridge";
-import { ScopeResolver } from "@modelscript/language/resolver";
-import { WorkspaceIndex } from "@modelscript/language/workspace-index";
-import { QueryEngine } from "@modelscript/salsa";
+import { QueryEngine } from "@modelscript/compiler";
+import { LSPBridge, PositionIndex } from "@modelscript/compiler/lsp-bridge";
+import { ScopeResolver } from "@modelscript/compiler/resolver";
+import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 
 import * as ModelicaAST from "@modelscript/modelica/ast";
 

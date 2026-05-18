@@ -22,10 +22,73 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./resolver": {
+      "types": "./dist/resolver.d.ts",
+      "default": "./dist/resolver.js"
+    },
+    "./semantic-node": {
+      "types": "./dist/semantic-node.d.ts",
+      "default": "./dist/semantic-node.js"
+    },
+    "./semantic-diff": {
+      "types": "./dist/semantic-diff.d.ts",
+      "default": "./dist/semantic-diff.js"
+    },
+    "./symbol-indexer": {
+      "types": "./dist/symbol-indexer.d.ts",
+      "default": "./dist/symbol-indexer.js"
+    },
+    "./workspace-index": {
+      "types": "./dist/workspace-index.d.ts",
+      "default": "./dist/workspace-index.js"
+    },
+    "./line-index": {
+      "types": "./dist/line-index.d.ts",
+      "default": "./dist/line-index.js"
+    },
+    "./interner": {
+      "types": "./dist/interner.d.ts",
+      "default": "./dist/interner.js"
+    },
+    "./topology": {
+      "types": "./dist/topology.d.ts",
+      "default": "./dist/topology.js"
+    },
+    "./lsp-bridge": {
+      "types": "./dist/lsp-bridge.d.ts",
+      "default": "./dist/lsp-bridge.js"
+    },
+    "./adapter-registry": {
+      "types": "./dist/adapter-registry.d.ts",
+      "default": "./dist/adapter-registry.js"
+    },
+    "./unified-workspace": {
+      "types": "./dist/unified-workspace.d.ts",
+      "default": "./dist/unified-workspace.js"
+    },
+    "./verifier": {
+      "types": "./dist/verifier.d.ts",
+      "default": "./dist/verifier.js"
+    },
+    "./arena": {
+      "types": "./dist/arena.d.ts",
+      "default": "./dist/arena.js"
+    },
+    "./symbol-arena": {
+      "types": "./dist/symbol-arena.d.ts",
+      "default": "./dist/symbol-arena.js"
     }
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "modelscript-language": "./dist/cli.js"
+  },
   "files": [
     "package.json",
     "README.md",
@@ -48,14 +111,19 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
+    "@modelscript/diagram": "*",
     "@modelscript/modelica": "*",
+    "@modelscript/simulator": "*",
     "@modelscript/symbolics": "*",
     "@modelscript/sysml2": "*",
     "@modelscript/utils": "*",
     "@svgdotjs/svg.js": "^3.2.5",
+    "commander": "^11.0.0",
     "helmlab": "^0.11.9",
     "pako": "^2.1.0",
-    "pino": "^10.3.1"
+    "pino": "^10.3.1",
+    "tree-sitter-cli": "^0.24.7",
+    "web-tree-sitter": "^0.24.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -80,7 +148,8 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.46.3"
+    "typescript-eslint": "^8.46.3",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=24"

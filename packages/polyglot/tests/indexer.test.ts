@@ -1,6 +1,6 @@
 /* eslint-disable */
-import type { IndexerHook } from "@modelscript/language";
-import { CSTNode, SymbolIndexer } from "@modelscript/language/symbol-indexer";
+import type { IndexerHook } from "@modelscript/compiler";
+import { CSTNode, SymbolIndexer } from "@modelscript/compiler/symbol-indexer";
 import { describe, expect, it } from "vitest";
 
 // ---------------------------------------------------------------------------

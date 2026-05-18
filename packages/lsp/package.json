@@ -11,12 +11,11 @@
     "watch": "webpack --watch"
   },
   "dependencies": {
+    "@modelscript/compiler": "*",
     "@modelscript/core": "*",
     "@modelscript/fmi": "*",
-    "@modelscript/language": "*",
     "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
-    "@modelscript/polyglot": "*",
     "@modelscript/simulator": "*",
     "@modelscript/step": "*",
     "@modelscript/symbolics": "*",

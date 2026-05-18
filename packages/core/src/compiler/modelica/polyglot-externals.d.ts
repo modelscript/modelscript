@@ -7,7 +7,7 @@
 // to allow the flattener to access properties that will be progressively typed.
 // TODO: Replace with precise types once the compat-shim API is stable.
 
-declare module "@modelscript/salsa" {
+declare module "@modelscript/compiler" {
   export interface LintDiagnostic {
     severity: string;
     rule: string;
@@ -33,7 +33,7 @@ declare module "@modelscript/salsa" {
   }
 }
 
-declare module "@modelscript/language/resolver" {
+declare module "@modelscript/compiler/resolver" {
   export class ScopeResolver {
     constructor(index: any, refHooks: any, indexerHooks: any);
     resolve(name: string[], fromScope?: any): any;
@@ -41,7 +41,7 @@ declare module "@modelscript/language/resolver" {
   }
 }
 
-declare module "@modelscript/language/workspace-index" {
+declare module "@modelscript/compiler/workspace-index" {
   export class WorkspaceIndex {
     constructor(indexerHooks: any);
     updateIndex(rootNode: any): any;

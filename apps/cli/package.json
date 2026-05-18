@@ -36,11 +36,11 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
+    "@modelscript/compiler": "*",
     "@modelscript/core": "*",
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
-    "@modelscript/polyglot": "^0.0.0",
     "@modelscript/simulator": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",

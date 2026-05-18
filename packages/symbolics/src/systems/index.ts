@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   BinOp,
   Causality,
@@ -12,7 +11,8 @@ import {
   UnaryOp,
   Variability,
   VarType,
-} from "@modelscript/polyglot";
+} from "@modelscript/compiler";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
 

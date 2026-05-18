@@ -22,11 +22,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelscript/compiler": "*",
     "@modelscript/core": "*",
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
-    "@modelscript/polyglot": "*",
     "@modelscript/simulator": "*",
     "@modelscript/sysml2": "*",
     "tree-sitter": "^0.21.1",

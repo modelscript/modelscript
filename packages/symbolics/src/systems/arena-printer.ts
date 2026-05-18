@@ -6,7 +6,6 @@
  * without materializing any legacy ModelicaExpression objects.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import {
   BinOp,
   type DAEArenaBuilder,
@@ -16,7 +15,8 @@ import {
   UnaryOp,
   Variability,
   VarType,
-} from "@modelscript/polyglot";
+} from "@modelscript/compiler";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import type { Writer } from "@modelscript/utils";
 
 // ── Operator string maps ──

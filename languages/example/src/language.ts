@@ -10,7 +10,7 @@ import {
   warning,
   type QueryDB,
   type SymbolEntry,
-} from "@modelscript/language";
+} from "@modelscript/compiler";
 
 export default language({
   name: "example",

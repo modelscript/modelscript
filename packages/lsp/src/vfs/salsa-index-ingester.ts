@@ -1,5 +1,5 @@
-import type { QueryCacheStore } from "@modelscript/language";
-import type { Memo } from "@modelscript/language/runtime";
+import type { QueryCacheStore } from "@modelscript/compiler";
+import type { Memo } from "@modelscript/compiler/runtime";
 import initSqlJs from "sql.js";
 
 export async function ingestSalsaIndex(

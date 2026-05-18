@@ -26,8 +26,8 @@
     "clean": "rimraf dist *.wasm"
   },
   "dependencies": {
-    "@modelscript/language": "*",
-    "@modelscript/polyglot": "*"
+    "@modelscript/compiler": "*",
+    "@modelscript/diagram": "*"
   },
   "devDependencies": {}
 }

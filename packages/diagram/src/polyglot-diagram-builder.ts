@@ -104,7 +104,7 @@ export interface GraphicsConfig {
 
 type SelfAccessor = any;
 
-import type { ScopeResolver, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/language";
+import type { ScopeResolver, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/compiler";
 
 // ── Public Types ──
 

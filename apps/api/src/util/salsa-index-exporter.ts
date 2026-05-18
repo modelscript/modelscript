@@ -1,4 +1,4 @@
-import type { QueryEngine } from "@modelscript/language";
+import type { QueryEngine } from "@modelscript/compiler";
 import Database from "better-sqlite3";
 
 /**

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Variability } from "@modelscript/compiler";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
-import { Variability } from "@modelscript/polyglot";
 import {
   ExpressionEvaluator,
   ModelicaArrayEquation,

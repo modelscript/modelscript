@@ -1,4 +1,4 @@
-import type { DiffConfig, GraphicsConfig, IndexerHook, RefHook } from "@modelscript/language";
+import type { DiffConfig, GraphicsConfig, IndexerHook, RefHook } from "@modelscript/compiler";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
   {

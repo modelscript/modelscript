@@ -25,7 +25,7 @@ import {
   token,
   type QueryDB,
   type SymbolEntry,
-} from "@modelscript/language";
+} from "@modelscript/compiler";
 
 // ---------------------------------------------------------------------------
 // Language Definition

@@ -15,13 +15,13 @@ export {
   Variability,
 } from "./dae-arena.js";
 
-export { NULL_STRING_ID, StringInterner, type StringId } from "@modelscript/language/interner";
-export { LineIndex, type TokenData } from "@modelscript/language/line-index";
+export { NULL_STRING_ID, StringInterner, type StringId } from "@modelscript/compiler/interner";
+export { LineIndex, type TokenData } from "@modelscript/compiler/line-index";
 
-export * from "@modelscript/language/topology";
-export { UnifiedWorkspace, type IWorkspaceIndex } from "@modelscript/language/unified-workspace";
-export * from "@modelscript/language/verifier";
-export { WorkspaceIndex } from "@modelscript/language/workspace-index";
+export * from "@modelscript/compiler/topology";
+export { UnifiedWorkspace, type IWorkspaceIndex } from "@modelscript/compiler/unified-workspace";
+export * from "@modelscript/compiler/verifier";
+export { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 
 export {
   AdapterRegistry,
@@ -29,4 +29,4 @@ export {
   type GlobalAdapters,
   type NodeAdapter,
   type ProjectionResult,
-} from "@modelscript/language/adapter-registry";
+} from "@modelscript/compiler/adapter-registry";
