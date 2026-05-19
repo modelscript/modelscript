@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./ad-jacobian.js";
+export * from "./arena-simulator.js";
 export * from "./bdf.js";
 export * from "./branch-and-bound.js";
 export * from "./doe.js";

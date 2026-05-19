@@ -13,6 +13,9 @@ export * from "./symbolics/tape.js";
 // Language workbench infrastructure
 export * from "./adapter-registry.js";
 export * from "./arena-alias.js";
+export * from "./arena-blt.js";
+export * from "./arena-cas.js";
+export * from "./arena-pantelides.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
