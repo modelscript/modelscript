@@ -26,6 +26,10 @@ import { registerScmTreeView } from "./scmTreeView";
 import { registerSemanticDiffComments } from "./semanticDiffComments";
 import { VerificationPanel } from "./verificationPanel";
 
+import { OWL2ClassHierarchyProvider } from "./owl2ClassHierarchyProvider";
+import { OWL2DiagramPanel } from "./owl2DiagramPanel";
+import { OWL2PropertyHierarchyProvider } from "./owl2PropertyHierarchyProvider";
+
 import { CalibrationPanel } from "./calibrationPanel";
 import { ExperimentsTreeProvider } from "./experimentsTree";
 import { OptimizationPanel } from "./optimizationPanel";
@@ -310,6 +314,7 @@ export async function activate(context: vscode.ExtensionContext) {
     { language: "modelica" },
     { language: "sysml" },
     { language: "step" },
+    { language: "owl2" },
     { pattern: "**/*.{js,ts}" },
   ];
 
@@ -420,6 +425,22 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(experimentsTreeView);
 
+  // Register OWL2 Protégé-style class hierarchy tree view
+  const owl2ClassProvider = new OWL2ClassHierarchyProvider(client);
+  const owl2ClassTreeView = vscode.window.createTreeView("modelscript.owl2ClassHierarchy", {
+    treeDataProvider: owl2ClassProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(owl2ClassTreeView);
+
+  // Register OWL2 Protégé-style property hierarchy tree view
+  const owl2PropProvider = new OWL2PropertyHierarchyProvider(client);
+  const owl2PropTreeView = vscode.window.createTreeView("modelscript.owl2PropertyHierarchy", {
+    treeDataProvider: owl2PropProvider,
+    canSelectMany: false,
+  });
+  context.subscriptions.push(owl2PropTreeView);
+
   // Register ModelScript package registry tree view (Extensions-bar style)
   registerRegistryView(context);
 
@@ -481,14 +502,21 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // Update tree when active editor changes to a .mo file
+  // Update tree when active editor changes to a .mo or .owl2 file
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor?.document.languageId === "modelica") {
         treeProvider.setDocumentUri(editor.document.uri.toString());
       }
-      // Set context key for SysML2 palette visibility
+      // Refresh OWL2 hierarchy views when an OWL2 file is active
+      if (editor?.document.languageId === "owl2") {
+        const uri = editor.document.uri.toString();
+        owl2ClassProvider.setDocumentUri(uri);
+        owl2PropProvider.setDocumentUri(uri);
+      }
+      // Set context keys for palette visibility
       vscode.commands.executeCommand("setContext", "modelscript.sysml2Active", editor?.document.languageId === "sysml");
+      vscode.commands.executeCommand("setContext", "modelscript.owl2Active", editor?.document.languageId === "owl2");
     }),
   );
 
@@ -533,6 +561,34 @@ export async function activate(context: vscode.ExtensionContext) {
     commands.registerCommand("modelscript.openStepViewer", () => {
       if (!client) return;
       StepViewerPanel.createOrShow(context.extensionUri, client);
+    }),
+    commands.registerCommand("modelscript.owl2.openDiagram", () => {
+      if (!client) return;
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.languageId === "owl2" ? editor.document.uri.toString() : undefined;
+      OWL2DiagramPanel.createOrShow(client, uri);
+    }),
+    commands.registerCommand("modelscript.owl2.goToDeclaration", async (iri: string) => {
+      if (!client) return;
+      try {
+        const result = await client.sendRequest<{ uri: string; line: number; character: number } | null>(
+          "modelscript/owl2/goToDeclaration",
+          { iri },
+        );
+        if (result) {
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(result.uri));
+          const pos = new vscode.Position(result.line, result.character);
+          await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos) });
+        }
+      } catch (e) {
+        console.error("[owl2] Failed to navigate to declaration:", e);
+      }
+    }),
+    commands.registerCommand("modelscript.owl2.refreshClassHierarchy", () => {
+      owl2ClassProvider.refresh();
+    }),
+    commands.registerCommand("modelscript.owl2.refreshPropertyHierarchy", () => {
+      owl2PropProvider.refresh();
     }),
     commands.registerCommand("modelscript.openCadExample", async () => {
       // 1. Get the example file path
