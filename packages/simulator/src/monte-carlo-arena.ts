@@ -24,6 +24,7 @@ import {
   normalQuantile,
   runMonteCarloSimulation,
   sampleDistribution,
+  sobolSample,
 } from "./monte-carlo.js";
 import {
   type ArenaSimulateOptions,
@@ -120,7 +121,9 @@ export async function runMonteCarloArenaAsync(
 
   // Generate sample sets
   let allSamples: Map<string, number>[];
-  if (options?.latinHypercube) {
+  if (options?.sobol) {
+    allSamples = sobolSample(randomVars, N);
+  } else if (options?.latinHypercube) {
     allSamples = latinHypercubeSample(randomVars, N, rng);
   } else {
     allSamples = [];

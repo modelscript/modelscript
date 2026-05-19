@@ -144,6 +144,7 @@ export function evaluateMonteCarlo(
     ...(seed != null ? { seed } : {}),
     confidenceLevel: getNamedArg("confidenceLevel") ?? 0.95,
     latinHypercube: methodStr === "lhs",
+    sobol: methodStr === "sobol",
     antithetic: methodStr === "antithetic",
     storeTrajectories: false, // Raw trajectories are too large for the scripting layer
   };

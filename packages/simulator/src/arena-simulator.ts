@@ -9,6 +9,7 @@ import {
   performBltTransformationArena,
   type ArenaStateMachine,
 } from "@modelscript/compiler";
+import { buildAdJacobian } from "./ad-jacobian.js";
 import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
 import { bdf } from "./bdf.js";
@@ -973,13 +974,16 @@ export class ArenaSimulator {
     let rawResult: { times: number[]; states: number[][] };
 
     if (solver === "bdf") {
+      // Build analytical Jacobian via reverse-mode AD (if available).
+      // This avoids O(n) finite-difference RHS evaluations per Jacobian update.
+      const adJacobian = buildAdJacobian(this.arena);
       rawResult = bdf(
         rhsFn,
         startTime,
         y0,
         stopTime,
         outputTimes,
-        { atol, rtol },
+        { atol, rtol, ...(adJacobian ? { jacobian: adJacobian } : {}) },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
       );
