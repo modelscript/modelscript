@@ -475,7 +475,7 @@ export class ArenaQueryFlattener {
         const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
         if (cstNode) {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-          const visitor = new ArenaExprVisitor(dae);
+          const visitor = this.createExprVisitor(dae);
           const exprId = visitor.visit(astNode);
           if (exprId !== undefined) {
             const nameExpr = dae.addNameExpr(name);
@@ -513,7 +513,7 @@ export class ArenaQueryFlattener {
           const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
           if (cstNode) {
             const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-            const visitor = new ArenaExprVisitor(dae);
+            const visitor = this.createExprVisitor(dae);
             const exprId = visitor.visit(astNode);
             if (exprId !== undefined) {
               return evaluateArenaExpression(dae, exprId);
@@ -591,7 +591,7 @@ export class ArenaQueryFlattener {
       const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
       // Depending on the equation type, the AST node will have different structure
       // For a simple equation, it usually has expression1 and expression2 or left/right
-      const visitor = new ArenaExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae);
       let lhsId: number | undefined = undefined;
       let rhsId: number | undefined = undefined;
 
@@ -688,7 +688,7 @@ export class ArenaQueryFlattener {
   private evaluateForRange(forIndex: ModelicaForIndexSyntaxNode, dae: ArenaDAEBuilder): number[] | null {
     if (!forIndex.expression) return null;
 
-    const visitor = new ArenaExprVisitor(dae);
+    const visitor = this.createExprVisitor(dae);
     const rangeExprId = visitor.visit(forIndex.expression);
     if (rangeExprId === undefined) return null;
 
@@ -732,7 +732,7 @@ export class ArenaQueryFlattener {
 
     // Check node type for dispatch
     if (eqNode instanceof ModelicaSimpleEquationSyntaxNode) {
-      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars);
       const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1) : undefined;
       const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
@@ -747,7 +747,7 @@ export class ArenaQueryFlattener {
       this.flattenWhenEquationAst(eqNode, prefix, dae, loopVars);
     } else {
       // Generic equation — try expression1/expression2 via duck typing
-      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars);
       const n = eqNode as any;
       if (n.expression1 && n.expression2) {
         const lhsId = visitor.visit(n.expression1);
@@ -781,7 +781,7 @@ export class ArenaQueryFlattener {
   ): void {
     // Try to evaluate the condition at compile time
     if (ifEq.condition) {
-      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars);
       const condId = visitor.visit(ifEq.condition);
       if (condId !== undefined) {
         const condVal = evaluateArenaExpression(dae, condId);
@@ -795,7 +795,7 @@ export class ArenaQueryFlattener {
           // Statically false — check elseif branches, then else
           for (const elseIf of ifEq.elseIfEquationClauses) {
             if (elseIf.condition) {
-              const eifVisitor = new ArenaExprVisitor(dae, loopVars);
+              const eifVisitor = this.createExprVisitor(dae, loopVars);
               const eifCondId = eifVisitor.visit(elseIf.condition);
               if (eifCondId !== undefined) {
                 const eifVal = evaluateArenaExpression(dae, eifCondId);
@@ -860,13 +860,13 @@ export class ArenaQueryFlattener {
   ): void {
     if (!whenEq.condition) return;
 
-    const visitor = new ArenaExprVisitor(dae, loopVars);
+    const visitor = this.createExprVisitor(dae, loopVars);
     const condId = visitor.visit(whenEq.condition);
     if (condId === undefined) return;
 
     // Flatten the body equations
     for (const eq of whenEq.equations) {
-      const eqVisitor = new ArenaExprVisitor(dae, loopVars);
+      const eqVisitor = this.createExprVisitor(dae, loopVars);
       const n = eq as any;
       if (n.expression1 && n.expression2) {
         const lhsId = eqVisitor.visit(n.expression1);
@@ -880,12 +880,12 @@ export class ArenaQueryFlattener {
     // Handle elsewhen clauses
     for (const elseWhen of whenEq.elseWhenEquationClauses) {
       if (!elseWhen.condition) continue;
-      const ewVisitor = new ArenaExprVisitor(dae, loopVars);
+      const ewVisitor = this.createExprVisitor(dae, loopVars);
       const ewCondId = ewVisitor.visit(elseWhen.condition);
       if (ewCondId === undefined) continue;
 
       for (const eq of elseWhen.equations) {
-        const eqVisitor = new ArenaExprVisitor(dae, loopVars);
+        const eqVisitor = this.createExprVisitor(dae, loopVars);
         const n = eq as any;
         if (n.expression1 && n.expression2) {
           const lhsId = eqVisitor.visit(n.expression1);
@@ -936,7 +936,7 @@ export class ArenaQueryFlattener {
    */
   private flattenStatement(stmt: ModelicaStatementSyntaxNode, dae: ArenaDAEBuilder): void {
     if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
-      const visitor = new ArenaExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae);
       const lhsId = stmt.target ? visitor.visit(stmt.target) : undefined;
       const rhsId = stmt.source ? visitor.visit(stmt.source) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
@@ -949,7 +949,7 @@ export class ArenaQueryFlattener {
         const firstIdx = forIndexes[0]!;
         const indexName = firstIdx.identifier?.text ?? "";
         const indexNameId = dae.interner.intern(indexName);
-        const visitor = new ArenaExprVisitor(dae);
+        const visitor = this.createExprVisitor(dae);
         const rangeExprId = firstIdx.expression ? visitor.visit(firstIdx.expression) : undefined;
 
         const bodyStartIdx = dae.stmtCount;
@@ -960,7 +960,7 @@ export class ArenaQueryFlattener {
         dae.addForStmt(indexNameId, rangeExprId ?? -1, bodyCount);
       }
     } else if (stmt instanceof ModelicaWhileStatementSyntaxNode) {
-      const visitor = new ArenaExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
 
       const bodyStartIdx = dae.stmtCount;
@@ -970,7 +970,7 @@ export class ArenaQueryFlattener {
       const bodyCount = dae.stmtCount - bodyStartIdx;
       dae.addWhileStmt(condId ?? -1, bodyCount);
     } else if (stmt instanceof ModelicaIfStatementSyntaxNode) {
-      const visitor = new ArenaExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
 
       // Then branch
@@ -986,7 +986,7 @@ export class ArenaQueryFlattener {
       const branchCount = elseIfClauses.length + (elseStmts.length > 0 ? 1 : 0);
 
       for (const clause of elseIfClauses) {
-        const eifVisitor = new ArenaExprVisitor(dae);
+        const eifVisitor = this.createExprVisitor(dae);
         const eifCondId = clause.condition ? eifVisitor.visit(clause.condition) : -1;
         const branchStartIdx = dae.stmtCount;
         for (const inner of clause.statements ?? []) {
@@ -1007,7 +1007,7 @@ export class ArenaQueryFlattener {
 
       dae.addIfStmt(condId ?? -1, thenCount, branchCount);
     } else if (stmt instanceof ModelicaWhenStatementSyntaxNode) {
-      const visitor = new ArenaExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
 
       const bodyStartIdx = dae.stmtCount;
@@ -1019,7 +1019,7 @@ export class ArenaQueryFlattener {
       // ElseWhen clauses
       const elseWhenClauses = stmt.elseWhenStatementClauses ?? [];
       for (const ew of elseWhenClauses) {
-        const ewVisitor = new ArenaExprVisitor(dae);
+        const ewVisitor = this.createExprVisitor(dae);
         const ewCondId = ew.condition ? ewVisitor.visit(ew.condition) : -1;
         const ewStartIdx = dae.stmtCount;
         for (const inner of ew.statements ?? []) {
@@ -1040,7 +1040,7 @@ export class ArenaQueryFlattener {
 
       // ProcedureCallStatement: functionReference + functionCallArguments
       if (stmtAny.functionReferenceName && stmtAny.functionCallArguments) {
-        const visitor = new ArenaExprVisitor(dae);
+        const visitor = this.createExprVisitor(dae);
         const funcCallExprId = visitor.visit(stmt);
         if (funcCallExprId !== undefined) {
           dae.addProcedureCallStmt(funcCallExprId);
@@ -1048,7 +1048,7 @@ export class ArenaQueryFlattener {
       }
       // ComplexAssignmentStatement: outputExpressionList := func(args)
       else if (stmtAny.outputExpressionList && stmtAny.functionReferenceName) {
-        const visitor = new ArenaExprVisitor(dae);
+        const visitor = this.createExprVisitor(dae);
         const callExprId = visitor.visit(stmtAny);
         if (callExprId !== undefined) {
           // Extract target expression IDs from the output list
@@ -1215,5 +1215,88 @@ export class ArenaQueryFlattener {
     // For now, return the text as-is (equation text will need
     // full CST-based processing for production use).
     return text;
+  }
+
+  private createExprVisitor(dae: ArenaDAEBuilder, loopVars?: Map<string, number>): ArenaExprVisitor {
+    return new ArenaExprVisitor(dae, loopVars, (funcName) => this.collectFunctionDefinition(funcName, dae));
+  }
+
+  private collectingFunctions = new Set<string>();
+
+  private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder): void {
+    if (
+      !funcName.includes(".") &&
+      [
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan",
+        "atan2",
+        "sinh",
+        "cosh",
+        "tanh",
+        "exp",
+        "log",
+        "log10",
+        "sqrt",
+        "abs",
+        "sign",
+        "ceil",
+        "floor",
+        "integer",
+        "max",
+        "min",
+        "mod",
+        "rem",
+        "div",
+        "pow",
+        "der",
+        "pre",
+        "noEvent",
+        "String",
+      ].includes(funcName)
+    ) {
+      return;
+    }
+
+    const funcNameId = dae.interner.intern(funcName);
+    if (dae.functions.has(funcNameId) || this.collectingFunctions.has(funcName)) return;
+    this.collectingFunctions.add(funcName);
+
+    // Resolve the function name globally (or via fully qualified path).
+    // In a fully featured version we'd pass scopeId from the visitor, but for Phase 1
+    // we assume functions are either built-in or resolvable by their fully qualified name.
+    const parts = funcName.split(".");
+    let resolvedId: number | null = null;
+
+    // Attempt to resolve globally
+    const resolvedEntries = this.db.byName(funcName);
+    if (resolvedEntries.length > 0) {
+      resolvedId = resolvedEntries[0].id;
+    }
+
+    if (!resolvedId) return; // Unresolved function
+
+    const funcEntry = this.db.symbol(resolvedId);
+    if (funcEntry?.kind !== "Class") return;
+
+    // Verify it's actually a function
+    const meta = funcEntry.metadata as any;
+    if (meta?.classKind !== "function" && meta?.classKind !== "operator function") {
+      return;
+    }
+
+    // Flatten the function into a new ArenaDAEBuilder
+    const fnDae = new ArenaDAEBuilder();
+
+    const elements = this.db.query<number[]>("instantiate", resolvedId);
+    if (elements) {
+      // Temporarily use the fnDae to collect its internal variables/algorithms
+      this.flattenElements(elements, "", fnDae);
+    }
+
+    dae.functions.set(funcNameId, fnDae);
   }
 }

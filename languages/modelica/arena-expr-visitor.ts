@@ -25,6 +25,7 @@ export class ArenaExprVisitor {
   constructor(
     private dae: ArenaDAEBuilder,
     loopVars?: Map<string, number>,
+    private onFunctionCall?: (funcName: string) => void,
   ) {
     this.loopVars = loopVars ?? new Map();
   }
@@ -348,6 +349,9 @@ export class ArenaExprVisitor {
     }
 
     // General function call
+    if (this.onFunctionCall) {
+      this.onFunctionCall(funcName);
+    }
     const argIds = getArgExprs();
     return this.dae.addCallExpr(funcName, argIds);
   }
