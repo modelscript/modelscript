@@ -16,6 +16,7 @@ export * from "./homotopy-strategies.js";
 export * from "./init-solver.js";
 export * from "./memory-profiler.js";
 export * from "./minlp-heuristics.js";
+export * from "./monte-carlo-arena.js";
 export * from "./monte-carlo.js";
 export * from "./nn-fmu-subsystem.js";
 export * from "./reverse-evaluator.js";

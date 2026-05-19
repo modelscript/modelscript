@@ -17,6 +17,7 @@
 import { ArenaDAEBuilder, Variability, evaluateArenaExpression } from "@modelscript/compiler";
 import { solveInitialEquationsArena } from "./arena-init-solver.js";
 import { ArenaSimulator } from "./arena-simulator.js";
+import type { FmuSubsystemRegistry } from "./fmu-subsystem.js";
 
 /** Result of an arena-path simulation. */
 export interface ArenaSimulationResult {
@@ -46,6 +47,8 @@ export interface ArenaSimulateOptions {
   parameterOverrides?: Map<string, number>;
   /** Abort signal for cooperative cancellation. */
   signal?: AbortSignal;
+  /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
+  fmuRegistry?: FmuSubsystemRegistry;
 }
 
 /**
@@ -61,6 +64,9 @@ export interface ArenaSimulateOptions {
 export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOptions): ArenaSimulationResult {
   // ── Step 1: Prepare the simulator ──
   const sim = new ArenaSimulator(arena);
+  if (options?.fmuRegistry) {
+    sim.fmuRegistry = options.fmuRegistry;
+  }
   sim.prepare();
 
   // ── Step 2: Resolve experiment annotation defaults ──
@@ -142,11 +148,17 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
   // ── Step 6: Run simulation ──
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
 
+  // ── Step 5.5: Initialize FMU subsystems (if any) ──
+  sim.initializeFmuSubsystems(startTime, stopTime, step);
+
   const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: options?.solver ?? "rk4",
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
   });
+
+  // ── Step 7.5: Terminate FMU subsystems ──
+  sim.terminateFmuSubsystems();
 
   // ── Step 7: Transform to row-major output ──
   const t = rawResult.t;
@@ -163,6 +175,9 @@ export async function simulateArenaAsync(
   options?: ArenaSimulateOptions,
 ): Promise<ArenaSimulationResult> {
   const sim = new ArenaSimulator(arena);
+  if (options?.fmuRegistry) {
+    sim.fmuRegistry = options.fmuRegistry;
+  }
   sim.prepare();
 
   const exp = arena.experiment;
@@ -233,12 +248,16 @@ export async function simulateArenaAsync(
 
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
 
+  sim.initializeFmuSubsystems(startTime, stopTime, step);
+
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: options?.solver ?? "rk4",
     ...(options?.signal !== undefined && { signal: options.signal }),
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
   });
+
+  sim.terminateFmuSubsystems();
 
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row));

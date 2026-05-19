@@ -14,6 +14,7 @@ import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
 import { bdf } from "./bdf.js";
 import { dopri5 } from "./dopri5.js";
 import { Dual } from "./dual.js";
+import { type FmuSubsystem, type FmuSubsystemRegistry } from "./fmu-subsystem.js";
 import { luFactor, luSolve } from "./simulator.js";
 
 /** Maximum Newton iterations for algebraic loop solving. */
@@ -108,8 +109,18 @@ export class ArenaSimulator {
   /** State machine runtimes. */
   public stateMachineRuntimes: ArenaStateMachineRuntime[] = [];
 
+  /**
+   * Optional registry of FMU co-simulation subsystems.
+   * When set, the simulator delegates input/step/output for matched variable
+   * prefixes to the corresponding FmuSubsystem during each integration step.
+   */
+  public fmuRegistry?: FmuSubsystemRegistry;
+
   /** Warm-start cache for algebraic loop variables (varNameId → value). */
   private algWarmStart = new Map<number, number>();
+
+  /** Cached FMU prefix → subsystem mapping (built once in prepare). */
+  private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
 
   constructor(public arena: ArenaDAEBuilder) {}
 
@@ -137,6 +148,73 @@ export class ArenaSimulator {
     this.extractAssertions();
     this.extractEventIndicators();
     this.extractStateMachines();
+    this.prepareFmuMappings();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // FMU Co-Simulation Bridge
+  //
+  // When fmuRegistry is set, identified FMU-prefixed variables are delegated
+  // to external FmuSubsystem participants during each integration step.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Build the prefix→subsystem mappings from the FMU registry. */
+  private prepareFmuMappings(): void {
+    this.fmuMappings = [];
+    if (!this.fmuRegistry) return;
+
+    for (const [prefix, subsystem] of this.fmuRegistry.entries()) {
+      const inputIds = subsystem.inputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
+      const outputIds = subsystem.outputNames.map((n) => this.arena.interner.intern(`${prefix}.${n}`));
+      this.fmuMappings.push({ prefix, subsystem, inputIds, outputIds });
+    }
+  }
+
+  /**
+   * Drive all registered FMU subsystems for one communication step.
+   *
+   * 1. Read current input values from the arena buffer → set on FMU
+   * 2. Advance the FMU by stepSize
+   * 3. Read FMU output values → write back into the arena buffer
+   */
+  private stepFmuSubsystems(valuesByStringId: Float64Array, currentTime: number, stepSize: number): void {
+    for (const mapping of this.fmuMappings) {
+      // Gather inputs from the arena buffer
+      const inputs = new Map<string, number>();
+      for (let i = 0; i < mapping.subsystem.inputNames.length; i++) {
+        const nameId = mapping.inputIds[i];
+        if (nameId !== undefined) {
+          inputs.set(mapping.subsystem.inputNames[i] ?? "", valuesByStringId[nameId] ?? 0);
+        }
+      }
+
+      // Feed inputs, step, and collect outputs
+      mapping.subsystem.setInputs(inputs);
+      mapping.subsystem.doStep(currentTime, stepSize);
+      const outputs = mapping.subsystem.getOutputs();
+
+      // Write outputs back into the arena buffer
+      for (let i = 0; i < mapping.subsystem.outputNames.length; i++) {
+        const nameId = mapping.outputIds[i];
+        const outName = mapping.subsystem.outputNames[i] ?? "";
+        if (nameId !== undefined) {
+          valuesByStringId[nameId] = outputs.get(outName) ?? 0;
+        }
+      }
+    }
+  }
+
+  /**
+   * Initialize all registered FMU subsystems. Should be called once before
+   * the integration loop begins (after prepare() and before simulate()).
+   */
+  public initializeFmuSubsystems(startTime: number, stopTime: number, stepSize: number): void {
+    this.fmuRegistry?.initializeAll(startTime, stopTime, stepSize);
+  }
+
+  /** Terminate all registered FMU subsystems (cleanup). */
+  public terminateFmuSubsystems(): void {
+    this.fmuRegistry?.terminateAll();
   }
 
   private buildExecutionBlocks() {
@@ -699,6 +777,7 @@ export class ArenaSimulator {
       this.evaluateBlocks(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
       this.checkAssertions(valuesByStringId, t);
 
       // Read derivatives
@@ -753,6 +832,7 @@ export class ArenaSimulator {
       this.evaluateBlocks(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
 
       // Read back possibly-modified state
       const yAfter = new Array<number>(n);
@@ -820,6 +900,7 @@ export class ArenaSimulator {
       this.evaluateBlocks(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
       this.checkAssertions(valuesByStringId, currentTime);
 
       // Record output
@@ -1046,6 +1127,7 @@ export class ArenaSimulator {
       this.evaluateBlocks(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
       this.checkAssertions(valuesByStringId, currentTime);
 
       // Record output
