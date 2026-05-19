@@ -1,0 +1,788 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
+  "name": "owl2",
+  "word": "IDENT",
+  "rules": {
+    "OntologyDocument": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "PrefixDeclaration"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "Ontology"
+        }
+      ]
+    },
+    "PrefixDeclaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Prefix"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "PrefixName"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "FIELD",
+          "name": "iri",
+          "content": {
+            "type": "SYMBOL",
+            "name": "FullIRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "PrefixName": {
+      "type": "PATTERN",
+      "value": "[a-zA-Z][a-zA-Z0-9_]*:"
+    },
+    "FullIRI": {
+      "type": "PATTERN",
+      "value": "<[^>]*>"
+    },
+    "AbbreviatedIRI": {
+      "type": "PATTERN",
+      "value": "[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_]+"
+    },
+    "IRI": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "FullIRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "AbbreviatedIRI"
+        }
+      ]
+    },
+    "IDENT": {
+      "type": "PATTERN",
+      "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+    },
+    "StringLiteral": {
+      "type": "PATTERN",
+      "value": "\"[^\"]*\""
+    },
+    "Ontology": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Ontology"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "iri",
+              "content": {
+                "type": "SYMBOL",
+                "name": "IRI"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "FIELD",
+            "name": "axiom",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_Axiom"
+            }
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "_Axiom": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "Declaration"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "SubClassOfAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "EquivalentClassesAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DisjointClassesAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectPropertyAssertionAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataPropertyAssertionAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ClassAssertionAxiom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "TransitiveObjectPropertyAxiom"
+        }
+      ]
+    },
+    "Declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Declaration"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "entity",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_Entity"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "_Entity": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "ClassEntity"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectPropertyEntity"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataPropertyEntity"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "NamedIndividualEntity"
+        }
+      ]
+    },
+    "ClassEntity": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "Class"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "iri",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectPropertyEntity": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectProperty"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "iri",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DataPropertyEntity": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "DataProperty"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "iri",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "NamedIndividualEntity": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "NamedIndividual"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "iri",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "_ClassExpression": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectIntersectionOf"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectUnionOf"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectComplementOf"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectSomeValuesFrom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ObjectAllValuesFrom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataSomeValuesFrom"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataAllValuesFrom"
+        }
+      ]
+    },
+    "ObjectIntersectionOf": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectIntersectionOf"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ClassExpression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectUnionOf": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectUnionOf"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ClassExpression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectComplementOf": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectComplementOf"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_ClassExpression"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectSomeValuesFrom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectSomeValuesFrom"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_ClassExpression"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectAllValuesFrom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectAllValuesFrom"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_ClassExpression"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DataSomeValuesFrom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "DataSomeValuesFrom"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataRange"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DataAllValuesFrom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "DataAllValuesFrom"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "DataRange"
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DataRange": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "IRI"
+        }
+      ]
+    },
+    "SubClassOfAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "SubClassOf"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "subClass",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ClassExpression"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "superClass",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ClassExpression"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "EquivalentClassesAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "EquivalentClasses"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "FIELD",
+            "name": "classExpr",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_ClassExpression"
+            }
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DisjointClassesAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "DisjointClasses"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "FIELD",
+            "name": "classExpr",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_ClassExpression"
+            }
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ObjectPropertyAssertionAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ObjectPropertyAssertion"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "property",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "subject",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "object",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "DataPropertyAssertionAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "DataPropertyAssertion"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "property",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "subject",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "StringLiteral"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "ClassAssertionAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ClassAssertion"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "classExpr",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ClassExpression"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "individual",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "TransitiveObjectPropertyAxiom": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "TransitiveObjectProperty"
+        },
+        {
+          "type": "STRING",
+          "value": "("
+        },
+        {
+          "type": "FIELD",
+          "name": "property",
+          "content": {
+            "type": "SYMBOL",
+            "name": "IRI"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    }
+  },
+  "extras": [
+    {
+      "type": "PATTERN",
+      "value": "\\s"
+    },
+    {
+      "type": "PATTERN",
+      "value": "#.*"
+    }
+  ],
+  "conflicts": [],
+  "precedences": [],
+  "externals": [],
+  "inline": [],
+  "supertypes": [],
+  "reserved": {}
+}

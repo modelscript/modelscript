@@ -1,0 +1,78 @@
+export default grammar({
+  name: "owl2",
+  extras: ($) => [/\s/, /#.*/],
+  word: ($) => $.IDENT,
+  rules: {
+    OntologyDocument: ($) => seq(repeat($.PrefixDeclaration), $.Ontology),
+    PrefixDeclaration: ($) =>
+      seq("Prefix", "(", field("name", optional($.PrefixName)), "=", field("iri", $.FullIRI), ")"),
+    PrefixName: ($) => /[a-zA-Z][a-zA-Z0-9_]*:/,
+    FullIRI: ($) => /<[^>]*>/,
+    AbbreviatedIRI: ($) => /[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_]+/,
+    IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
+    IDENT: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    StringLiteral: ($) => /"[^"]*"/,
+    Ontology: ($) => seq("Ontology", "(", optional(field("iri", $.IRI)), repeat(field("axiom", $._Axiom)), ")"),
+    _Axiom: ($) =>
+      choice(
+        $.Declaration,
+        $.SubClassOfAxiom,
+        $.EquivalentClassesAxiom,
+        $.DisjointClassesAxiom,
+        $.ObjectPropertyAssertionAxiom,
+        $.DataPropertyAssertionAxiom,
+        $.ClassAssertionAxiom,
+        $.TransitiveObjectPropertyAxiom,
+      ),
+    Declaration: ($) => seq("Declaration", "(", field("entity", $._Entity), ")"),
+    _Entity: ($) => choice($.ClassEntity, $.ObjectPropertyEntity, $.DataPropertyEntity, $.NamedIndividualEntity),
+    ClassEntity: ($) => seq("Class", "(", field("iri", $.IRI), ")"),
+    ObjectPropertyEntity: ($) => seq("ObjectProperty", "(", field("iri", $.IRI), ")"),
+    DataPropertyEntity: ($) => seq("DataProperty", "(", field("iri", $.IRI), ")"),
+    NamedIndividualEntity: ($) => seq("NamedIndividual", "(", field("iri", $.IRI), ")"),
+    _ClassExpression: ($) =>
+      choice(
+        $.IRI,
+        $.ObjectIntersectionOf,
+        $.ObjectUnionOf,
+        $.ObjectComplementOf,
+        $.ObjectSomeValuesFrom,
+        $.ObjectAllValuesFrom,
+        $.DataSomeValuesFrom,
+        $.DataAllValuesFrom,
+      ),
+    ObjectIntersectionOf: ($) => seq("ObjectIntersectionOf", "(", repeat($._ClassExpression), ")"),
+    ObjectUnionOf: ($) => seq("ObjectUnionOf", "(", repeat($._ClassExpression), ")"),
+    ObjectComplementOf: ($) => seq("ObjectComplementOf", "(", $._ClassExpression, ")"),
+    ObjectSomeValuesFrom: ($) => seq("ObjectSomeValuesFrom", "(", $.IRI, $._ClassExpression, ")"),
+    ObjectAllValuesFrom: ($) => seq("ObjectAllValuesFrom", "(", $.IRI, $._ClassExpression, ")"),
+    DataSomeValuesFrom: ($) => seq("DataSomeValuesFrom", "(", $.IRI, $.DataRange, ")"),
+    DataAllValuesFrom: ($) => seq("DataAllValuesFrom", "(", $.IRI, $.DataRange, ")"),
+    DataRange: ($) => choice($.IRI),
+    SubClassOfAxiom: ($) =>
+      seq("SubClassOf", "(", field("subClass", $._ClassExpression), field("superClass", $._ClassExpression), ")"),
+    EquivalentClassesAxiom: ($) => seq("EquivalentClasses", "(", repeat(field("classExpr", $._ClassExpression)), ")"),
+    DisjointClassesAxiom: ($) => seq("DisjointClasses", "(", repeat(field("classExpr", $._ClassExpression)), ")"),
+    ObjectPropertyAssertionAxiom: ($) =>
+      seq(
+        "ObjectPropertyAssertion",
+        "(",
+        field("property", $.IRI),
+        field("subject", $.IRI),
+        field("object", $.IRI),
+        ")",
+      ),
+    DataPropertyAssertionAxiom: ($) =>
+      seq(
+        "DataPropertyAssertion",
+        "(",
+        field("property", $.IRI),
+        field("subject", $.IRI),
+        field("value", $.StringLiteral),
+        ")",
+      ),
+    ClassAssertionAxiom: ($) =>
+      seq("ClassAssertion", "(", field("classExpr", $._ClassExpression), field("individual", $.IRI), ")"),
+    TransitiveObjectPropertyAxiom: ($) => seq("TransitiveObjectProperty", "(", field("property", $.IRI), ")"),
+  },
+});

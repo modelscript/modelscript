@@ -218,6 +218,26 @@
         "command": "modelscript.generateMultiBody",
         "title": "ModelScript: Generate Multi-Body Model from STEP",
         "icon": "$(package)"
+      },
+      {
+        "command": "modelscript.owl2.openDiagram",
+        "title": "ModelScript: Open OWL2 Ontology Diagram",
+        "icon": "$(type-hierarchy-sub)"
+      },
+      {
+        "command": "modelscript.owl2.goToDeclaration",
+        "title": "ModelScript: Go to OWL2 Declaration",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "modelscript.owl2.refreshClassHierarchy",
+        "title": "ModelScript: Refresh Class Hierarchy",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "modelscript.owl2.refreshPropertyHierarchy",
+        "title": "ModelScript: Refresh Property Hierarchy",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": [
@@ -361,6 +381,11 @@
         "language": "step",
         "scopeName": "source.step",
         "path": "./syntaxes/step.tmLanguage.json"
+      },
+      {
+        "language": "owl2",
+        "scopeName": "source.owl2",
+        "path": "./syntaxes/owl2.tmLanguage.json"
       }
     ],
     "keybindings": [
@@ -550,6 +575,23 @@
           ".p21"
         ],
         "configuration": "./step-language-configuration.json"
+      },
+      {
+        "id": "owl2",
+        "aliases": [
+          "OWL2",
+          "OWL2 Functional-Style Syntax"
+        ],
+        "extensions": [
+          ".owl",
+          ".owl2",
+          ".fss"
+        ],
+        "configuration": "./owl2-language-configuration.json",
+        "icon": {
+          "light": "./images/modelica.png",
+          "dark": "./images/modelica.png"
+        }
       }
     ],
     "markdown.markdownItPlugins": true,
@@ -609,6 +651,11 @@
         {
           "command": "modelscript.openStepViewer",
           "when": "editorLangId == step",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.owl2.openDiagram",
+          "when": "editorLangId == owl2",
           "group": "navigation"
         }
       ],
@@ -718,6 +765,18 @@
           "visibility": "visible"
         }
       ],
+      "modelscript-ontology": [
+        {
+          "id": "modelscript.owl2ClassHierarchy",
+          "name": "Class Hierarchy",
+          "visibility": "visible"
+        },
+        {
+          "id": "modelscript.owl2PropertyHierarchy",
+          "name": "Property Hierarchy",
+          "visibility": "visible"
+        }
+      ],
       "explorer": [
         {
           "id": "modelscript.libraryTree",
@@ -747,6 +806,11 @@
           "id": "modelscript-registry",
           "title": "ModelScript Registry",
           "icon": "$(extensions)"
+        },
+        {
+          "id": "modelscript-ontology",
+          "title": "OWL2 Ontology",
+          "icon": "$(type-hierarchy)"
         }
       ]
     },
@@ -762,6 +826,14 @@
       {
         "view": "modelscript.registryView",
         "contents": "Browse and install ModelScript packages from the registry.\n[Search Packages](command:modelscript.registry.search)\n[Refresh](command:modelscript.registry.refresh)"
+      },
+      {
+        "view": "modelscript.owl2ClassHierarchy",
+        "contents": "Open an OWL2 (.owl, .owl2, .fss) file to browse the class hierarchy.\n\nThe class hierarchy shows SubClassOf relationships in a Protégé-style tree."
+      },
+      {
+        "view": "modelscript.owl2PropertyHierarchy",
+        "contents": "Open an OWL2 (.owl, .owl2, .fss) file to browse the property hierarchy.\n\nObject and data properties are displayed with domain, range, and characteristics."
       }
     ],
     "walkthroughs": [

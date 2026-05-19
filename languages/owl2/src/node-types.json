@@ -1,0 +1,905 @@
+[
+  {
+    "type": "ClassAssertionAxiom",
+    "named": true,
+    "fields": {
+      "classExpr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "DataAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "DataSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "IRI",
+            "named": true
+          },
+          {
+            "type": "ObjectAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectComplementOf",
+            "named": true
+          },
+          {
+            "type": "ObjectIntersectionOf",
+            "named": true
+          },
+          {
+            "type": "ObjectSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectUnionOf",
+            "named": true
+          }
+        ]
+      },
+      "individual": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ClassEntity",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "DataAllValuesFrom",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DataRange",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "DataPropertyAssertionAxiom",
+    "named": true,
+    "fields": {
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      },
+      "subject": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "StringLiteral",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "DataPropertyEntity",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "DataRange",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "IRI",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "DataSomeValuesFrom",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DataRange",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Declaration",
+    "named": true,
+    "fields": {
+      "entity": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ClassEntity",
+            "named": true
+          },
+          {
+            "type": "DataPropertyEntity",
+            "named": true
+          },
+          {
+            "type": "NamedIndividualEntity",
+            "named": true
+          },
+          {
+            "type": "ObjectPropertyEntity",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "DisjointClassesAxiom",
+    "named": true,
+    "fields": {
+      "classExpr": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "DataAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "DataSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "IRI",
+            "named": true
+          },
+          {
+            "type": "ObjectAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectComplementOf",
+            "named": true
+          },
+          {
+            "type": "ObjectIntersectionOf",
+            "named": true
+          },
+          {
+            "type": "ObjectSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectUnionOf",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "EquivalentClassesAxiom",
+    "named": true,
+    "fields": {
+      "classExpr": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "DataAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "DataSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "IRI",
+            "named": true
+          },
+          {
+            "type": "ObjectAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectComplementOf",
+            "named": true
+          },
+          {
+            "type": "ObjectIntersectionOf",
+            "named": true
+          },
+          {
+            "type": "ObjectSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectUnionOf",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "IRI",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "AbbreviatedIRI",
+          "named": true
+        },
+        {
+          "type": "FullIRI",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "NamedIndividualEntity",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ObjectAllValuesFrom",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DataAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "DataSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        },
+        {
+          "type": "ObjectAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectComplementOf",
+          "named": true
+        },
+        {
+          "type": "ObjectIntersectionOf",
+          "named": true
+        },
+        {
+          "type": "ObjectSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectUnionOf",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ObjectComplementOf",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "DataAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "DataSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        },
+        {
+          "type": "ObjectAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectComplementOf",
+          "named": true
+        },
+        {
+          "type": "ObjectIntersectionOf",
+          "named": true
+        },
+        {
+          "type": "ObjectSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectUnionOf",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ObjectIntersectionOf",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "DataAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "DataSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        },
+        {
+          "type": "ObjectAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectComplementOf",
+          "named": true
+        },
+        {
+          "type": "ObjectIntersectionOf",
+          "named": true
+        },
+        {
+          "type": "ObjectSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectUnionOf",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ObjectPropertyAssertionAxiom",
+    "named": true,
+    "fields": {
+      "object": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      },
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      },
+      "subject": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ObjectPropertyEntity",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ObjectSomeValuesFrom",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "DataAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "DataSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        },
+        {
+          "type": "ObjectAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectComplementOf",
+          "named": true
+        },
+        {
+          "type": "ObjectIntersectionOf",
+          "named": true
+        },
+        {
+          "type": "ObjectSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectUnionOf",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ObjectUnionOf",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "DataAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "DataSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "IRI",
+          "named": true
+        },
+        {
+          "type": "ObjectAllValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectComplementOf",
+          "named": true
+        },
+        {
+          "type": "ObjectIntersectionOf",
+          "named": true
+        },
+        {
+          "type": "ObjectSomeValuesFrom",
+          "named": true
+        },
+        {
+          "type": "ObjectUnionOf",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Ontology",
+    "named": true,
+    "fields": {
+      "axiom": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ClassAssertionAxiom",
+            "named": true
+          },
+          {
+            "type": "DataPropertyAssertionAxiom",
+            "named": true
+          },
+          {
+            "type": "Declaration",
+            "named": true
+          },
+          {
+            "type": "DisjointClassesAxiom",
+            "named": true
+          },
+          {
+            "type": "EquivalentClassesAxiom",
+            "named": true
+          },
+          {
+            "type": "ObjectPropertyAssertionAxiom",
+            "named": true
+          },
+          {
+            "type": "SubClassOfAxiom",
+            "named": true
+          },
+          {
+            "type": "TransitiveObjectPropertyAxiom",
+            "named": true
+          }
+        ]
+      },
+      "iri": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "OntologyDocument",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "Ontology",
+          "named": true
+        },
+        {
+          "type": "PrefixDeclaration",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "PrefixDeclaration",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "FullIRI",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "PrefixName",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SubClassOfAxiom",
+    "named": true,
+    "fields": {
+      "subClass": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "DataAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "DataSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "IRI",
+            "named": true
+          },
+          {
+            "type": "ObjectAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectComplementOf",
+            "named": true
+          },
+          {
+            "type": "ObjectIntersectionOf",
+            "named": true
+          },
+          {
+            "type": "ObjectSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectUnionOf",
+            "named": true
+          }
+        ]
+      },
+      "superClass": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "DataAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "DataSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "IRI",
+            "named": true
+          },
+          {
+            "type": "ObjectAllValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectComplementOf",
+            "named": true
+          },
+          {
+            "type": "ObjectIntersectionOf",
+            "named": true
+          },
+          {
+            "type": "ObjectSomeValuesFrom",
+            "named": true
+          },
+          {
+            "type": "ObjectUnionOf",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "TransitiveObjectPropertyAxiom",
+    "named": true,
+    "fields": {
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "AbbreviatedIRI",
+    "named": true
+  },
+  {
+    "type": "Class",
+    "named": false
+  },
+  {
+    "type": "ClassAssertion",
+    "named": false
+  },
+  {
+    "type": "DataAllValuesFrom",
+    "named": false
+  },
+  {
+    "type": "DataProperty",
+    "named": false
+  },
+  {
+    "type": "DataPropertyAssertion",
+    "named": false
+  },
+  {
+    "type": "DataSomeValuesFrom",
+    "named": false
+  },
+  {
+    "type": "Declaration",
+    "named": false
+  },
+  {
+    "type": "DisjointClasses",
+    "named": false
+  },
+  {
+    "type": "EquivalentClasses",
+    "named": false
+  },
+  {
+    "type": "FullIRI",
+    "named": true
+  },
+  {
+    "type": "NamedIndividual",
+    "named": false
+  },
+  {
+    "type": "ObjectAllValuesFrom",
+    "named": false
+  },
+  {
+    "type": "ObjectComplementOf",
+    "named": false
+  },
+  {
+    "type": "ObjectIntersectionOf",
+    "named": false
+  },
+  {
+    "type": "ObjectProperty",
+    "named": false
+  },
+  {
+    "type": "ObjectPropertyAssertion",
+    "named": false
+  },
+  {
+    "type": "ObjectSomeValuesFrom",
+    "named": false
+  },
+  {
+    "type": "ObjectUnionOf",
+    "named": false
+  },
+  {
+    "type": "Ontology",
+    "named": false
+  },
+  {
+    "type": "Prefix",
+    "named": false
+  },
+  {
+    "type": "PrefixName",
+    "named": true
+  },
+  {
+    "type": "StringLiteral",
+    "named": true
+  },
+  {
+    "type": "SubClassOf",
+    "named": false
+  },
+  {
+    "type": "TransitiveObjectProperty",
+    "named": false
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "name": "@modelscript/owl2",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./language": "./dist/language.js",
+    "./ast": {
+      "types": "./dist/src-gen/ast.d.ts",
+      "default": "./dist/src-gen/ast.js"
+    }
+  },
+  "scripts": {
+    "build": "node build.js && prettier --write . --ignore-unknown && tsc",
+    "clean": "rimraf dist *.wasm"
+  },
+  "dependencies": {
+    "@modelscript/compiler": "*"
+  },
+  "devDependencies": {}
+}

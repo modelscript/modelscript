@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "OWL2 Functional-Style Syntax",
+  "scopeName": "source.owl2",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#prefix" },
+    { "include": "#ontology" },
+    { "include": "#declaration" },
+    { "include": "#axiom" },
+    { "include": "#classExpression" },
+    { "include": "#iri" },
+    { "include": "#string" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.number-sign.owl2",
+      "match": "#.*$"
+    },
+    "prefix": {
+      "match": "\\b(Prefix)\\s*\\(\\s*([a-zA-Z][a-zA-Z0-9_]*:)?\\s*=",
+      "captures": {
+        "1": { "name": "keyword.control.prefix.owl2" },
+        "2": { "name": "entity.name.tag.prefix.owl2" }
+      }
+    },
+    "ontology": {
+      "match": "\\b(Ontology|Import)\\b",
+      "name": "keyword.control.ontology.owl2"
+    },
+    "declaration": {
+      "match": "\\b(Declaration|Class|ObjectProperty|DataProperty|AnnotationProperty|NamedIndividual|Datatype)\\b",
+      "name": "storage.type.declaration.owl2"
+    },
+    "axiom": {
+      "match": "\\b(SubClassOf|EquivalentClasses|DisjointClasses|DisjointUnion|SubObjectPropertyOf|EquivalentObjectProperties|DisjointObjectProperties|InverseObjectProperties|ObjectPropertyDomain|ObjectPropertyRange|FunctionalObjectProperty|InverseFunctionalObjectProperty|ReflexiveObjectProperty|IrreflexiveObjectProperty|SymmetricObjectProperty|AsymmetricObjectProperty|TransitiveObjectProperty|SubDataPropertyOf|EquivalentDataProperties|DisjointDataProperties|DataPropertyDomain|DataPropertyRange|FunctionalDataProperty|SameIndividual|DifferentIndividuals|ClassAssertion|ObjectPropertyAssertion|NegativeObjectPropertyAssertion|DataPropertyAssertion|NegativeDataPropertyAssertion|AnnotationAssertion|SubAnnotationPropertyOf|AnnotationPropertyDomain|AnnotationPropertyRange|HasKey|DatatypeDefinition)\\b",
+      "name": "keyword.other.axiom.owl2"
+    },
+    "classExpression": {
+      "match": "\\b(ObjectIntersectionOf|ObjectUnionOf|ObjectComplementOf|ObjectOneOf|ObjectSomeValuesFrom|ObjectAllValuesFrom|ObjectHasValue|ObjectHasSelf|ObjectMinCardinality|ObjectMaxCardinality|ObjectExactCardinality|DataSomeValuesFrom|DataAllValuesFrom|DataHasValue|DataMinCardinality|DataMaxCardinality|DataExactCardinality)\\b",
+      "name": "support.function.class-expression.owl2"
+    },
+    "iri": {
+      "patterns": [
+        {
+          "name": "string.other.iri.full.owl2",
+          "match": "<[^>]+>"
+        },
+        {
+          "name": "entity.name.type.abbreviated-iri.owl2",
+          "match": "[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_/.]+"
+        }
+      ]
+    },
+    "string": {
+      "name": "string.quoted.double.owl2",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.owl2",
+          "match": "\\\\."
+        }
+      ]
+    }
+  }
+}
