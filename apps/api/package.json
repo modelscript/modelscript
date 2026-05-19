@@ -70,7 +70,7 @@
     "@types/semver": "^7.7.0",
     "@types/supertest": "^7.2.0",
     "@types/svgdom": "^0.1.2",
-    "@types/xml-formatter": "^1.2.0",
+    "@types/xml-formatter": "^2.1.1",
     "@types/yauzl": "^2.10.3",
     "@types/yazl": "^3.3.0",
     "eslint": "^9.39.1",
