@@ -15,6 +15,8 @@ export * from "./adapter-registry.js";
 export * from "./arena-alias.js";
 export * from "./arena-blt.js";
 export * from "./arena-cas.js";
+export * from "./arena-execution.js";
+export * from "./arena-isolation.js";
 export * from "./arena-pantelides.js";
 export * from "./interner.js";
 export * from "./line-index.js";

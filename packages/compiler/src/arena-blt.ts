@@ -63,7 +63,7 @@ function resolveArenaVarIdx(arena: DAEArenaBuilder, nameId: number): number {
 
 export interface ArenaBltResult {
   sortedEquations: number[];
-  algebraicLoops: number[][];
+  blocks: { eqIdxs: number[]; vars: number[] }[];
 }
 
 /**
@@ -176,7 +176,7 @@ export function performBltTransformationArena(arena: DAEArenaBuilder): ArenaBltR
 
   // 5. Build Sorted Equations
   const sortedEquations: number[] = [];
-  const algebraicLoops: number[][] = [];
+  const blocks: { eqIdxs: number[]; vars: number[] }[] = [];
 
   for (const scc of sccs) {
     const sccEqs: number[] = [];
@@ -184,9 +184,7 @@ export function performBltTransformationArena(arena: DAEArenaBuilder): ArenaBltR
       const eqIdx = match.get(v);
       if (eqIdx !== undefined) sccEqs.push(eqIdx);
     }
-    if (scc.length > 1) {
-      algebraicLoops.push(sccEqs);
-    }
+    blocks.push({ eqIdxs: sccEqs, vars: scc });
     sortedEquations.push(...sccEqs);
   }
 
@@ -197,5 +195,5 @@ export function performBltTransformationArena(arena: DAEArenaBuilder): ArenaBltR
     }
   }
 
-  return { sortedEquations, algebraicLoops };
+  return { sortedEquations, blocks };
 }

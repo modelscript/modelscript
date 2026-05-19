@@ -3,6 +3,7 @@ import {
   ExprKind,
   Variability,
   evaluateArenaExpression,
+  isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
   performBltTransformationArena,
 } from "@modelscript/compiler";
@@ -16,8 +17,9 @@ export class ArenaSimulator {
   public derivativeVars = new Set<number>();
 
   public sortedEquations: number[] = [];
-  public algebraicLoops: number[][] = [];
+  public blocks: { eqIdxs: number[]; vars: number[] }[] = [];
   public dummyDerivatives = new Set<number>();
+  public executionBlocks: import("@modelscript/compiler").ArenaExecutionBlock[] = [];
 
   constructor(public arena: DAEArenaBuilder) {}
 
@@ -38,7 +40,43 @@ export class ArenaSimulator {
     // Arena-Native BLT / Bipartite Matching
     const bltRes = performBltTransformationArena(this.arena);
     this.sortedEquations = bltRes.sortedEquations;
-    this.algebraicLoops = bltRes.algebraicLoops;
+    this.blocks = bltRes.blocks;
+
+    this.buildExecutionBlocks();
+  }
+
+  private buildExecutionBlocks() {
+    for (const block of this.blocks) {
+      if (block.eqIdxs.length === 1 && block.vars.length === 1) {
+        const eqIdx = block.eqIdxs[0] ?? -1;
+        const varIdx = block.vars[0] ?? -1;
+
+        if (eqIdx === -1 || varIdx === -1) continue;
+
+        const isolatedExprId = isolateSymbolicallyArena(this.arena, eqIdx, varIdx);
+        if (isolatedExprId !== -1) {
+          this.executionBlocks.push({ type: "single", varIdx, exprId: isolatedExprId });
+        } else {
+          // Could not isolate, leave as implicit 1x1 system
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+        }
+      } else {
+        this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+      }
+    }
+
+    // Identify unused sorted equations (if any)
+    const assignedEqs = new Set<number>();
+    for (const block of this.blocks) {
+      for (const eqIdx of block.eqIdxs) assignedEqs.add(eqIdx);
+    }
+
+    for (const eqIdx of this.sortedEquations) {
+      if (!assignedEqs.has(eqIdx)) {
+        // Equation without an assigned variable (e.g. constraints)
+        this.executionBlocks.push({ type: "system", eqIdxs: [eqIdx], vars: [] });
+      }
+    }
   }
 
   private resolveParameters() {
