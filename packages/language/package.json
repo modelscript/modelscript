@@ -51,7 +51,7 @@
     "@modelscript/salsa": "*",
     "@modelscript/simulator": "*",
     "commander": "^11.0.0",
-    "tree-sitter-cli": "^0.24.7",
+    "tree-sitter-cli": "^0.26.9",
     "web-tree-sitter": "^0.24.7"
   },
   "devDependencies": {
