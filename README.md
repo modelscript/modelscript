@@ -15,47 +15,71 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
-ModelScript is a comprehensive Modelica compilation, simulation, optimization, and visualization framework. It provides a robust engine for parsing Modelica code, performing semantic analysis, flattening models, simulating dynamic systems, solving optimal control problems, and rendering interactive diagrams — all from the browser or the command line.
+ModelScript is a completely web-native, polyglot incremental compiler supporting multiple engineering domains — from requirements and system architecture to simulation, CAD, CAE, and manufacturing. By natively supporting **Modelica**, **SysML v2**, and **STEP**, ModelScript enables seamless cross-domain simulation-based requirements verification.
+
+Designed for modern workflows, it features a robust engine for incremental compilation and flattening, seamless FMU import/export and integration, surrogate ROM generation from FMUs, as well as advanced model optimization and parameter calibration. All of this is accessible directly in the browser or via the command line.
+
+## Architecture Highlights
+
+- **Salsa-Based Incremental Compiler**: Powered by a query-based incremental compilation architecture (inspired by Rust's Salsa). ModelScript caches intermediate representations and only recompiles what has changed, enabling instantaneous feedback in the IDE.
+- **Arena Data-Oriented Simulator**: The simulator utilizes a zero-garbage, Data-Oriented Design (DoD) architecture (`DAEArenaBuilder`). By moving from legacy recursive AST visitors to direct flat-buffer indexing, it provides high-performance equation sorting, Pantelides index reduction, and bipartite matching with zero allocation overhead.
+- **Polyglot & Cross-Domain**: Unified AST querying and cross-language interoperability between Modelica (Simulation), SysML v2 (Architecture/Requirements), and STEP (CAD/Manufacturing).
 
 ## Monorepo Structure
 
-This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**.
+This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces**. The structure reflects our transition to a fully modular, high-performance compiler and simulator architecture.
 
-| Package                                           | Description                                                                        |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@modelscript/core`](./packages/core/)           | Compiler engine — parsing, semantic analysis, flattening, simulation, linting      |
-| [`@modelscript/cosim`](./packages/cosim/)         | Co-simulation orchestration and SSP archive generation                             |
-| [`@modelscript/ecad`](./packages/ecad/)           | ECAD integration utilities for ModelScript                                         |
-| [`@modelscript/fmi`](./packages/fmi/)             | Functional Mock-up Interface (FMI) support                                         |
-| [`@modelscript/lsp`](./packages/lsp/)             | Language Server Protocol — completions, hover, diagnostics, formatting, colors     |
-| [`@modelscript/mcp`](./packages/mcp/)             | Model Context Protocol implementation                                              |
-| [`@modelscript/modelica`](./languages/modelica/)  | Tree-sitter grammar (native + WASM) and polyglot queries for Modelica              |
-| [`@modelscript/optimizer`](./packages/optimizer/) | Direct collocation optimizer for optimal control problems                          |
-| [`@modelscript/polyglot`](./packages/polyglot/)   | AST querying and transformation utilities                                          |
-| [`@modelscript/simulator`](./packages/simulator/) | ODE/DAE solver engine (Pantelides index reduction, BLT ordering)                   |
-| [`@modelscript/symbolics`](./packages/symbolics/) | Symbolic manipulation engine for equations                                         |
-| [`@modelscript/sysml2`](./languages/sysml2/)      | SysML v2 AST querying and handling                                                 |
-| [`@modelscript/utils`](./packages/utils/)         | Common utility functions across the ModelScript monorepo                           |
-| [`@modelscript/cli`](./apps/cli/)                 | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
-| [`@modelscript/api`](./apps/api/)                 | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
-| [`@modelscript/morsel`](./apps/morsel/)           | Visual Modelica editor — code editing, diagram viewer, simulation, and plotting    |
-| [`@modelscript/site`](./apps/site/)               | Main modelscript.org website                                                       |
-| [`@modelscript/web`](./apps/web/)                 | Web frontend for browsing and exploring Modelica libraries                         |
-| [`@modelscript/ide`](./apps/ide/)                 | VS Code Web IDE — browser-based Modelica development environment                   |
-| [`@modelscript/vscode`](./extensions/vscode/)     | VS Code extension — syntax highlighting, LSP client, diagram view                  |
+### Packages (`packages/`)
+
+| Package                                           | Description                                                                         |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [`@modelscript/compiler`](./packages/compiler/)   | Salsa-based query engine for incremental compilation, type checking, and flattening |
+| [`@modelscript/simulator`](./packages/simulator/) | DoD Arena-based simulator — zero-garbage Pantelides index reduction & BLT ordering  |
+| [`@modelscript/symbolics`](./packages/symbolics/) | Symbolic manipulation engine (differentiation, simplification) native to the Arena  |
+| [`@modelscript/optimizer`](./packages/optimizer/) | Direct collocation optimizer for optimal control problems                           |
+| [`@modelscript/fmi`](./packages/fmi/)             | Functional Mock-up Interface (FMI) support and Surrogate ROM generation             |
+| [`@modelscript/cosim`](./packages/cosim/)         | Co-simulation orchestration and SSP archive generation                              |
+| [`@modelscript/ecad`](./packages/ecad/)           | ECAD integration utilities for ModelScript                                          |
+| [`@modelscript/interop`](./packages/interop/)     | Interoperability utilities connecting Modelica, SysML v2, and STEP models           |
+| [`@modelscript/diagram`](./packages/diagram/)     | Diagram rendering, interactive SVG generation, and X6-based visual layouts          |
+| [`@modelscript/lsp`](./packages/lsp/)             | Language Server Protocol — completions, hover, diagnostics, formatting, colors      |
+| [`@modelscript/mcp`](./packages/mcp/)             | Model Context Protocol implementation for AI/LLM integration                        |
+| [`@modelscript/utils`](./packages/utils/)         | Common utility functions across the monorepo                                        |
+
+### Languages (`languages/`)
+
+| Package                                          | Description                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------- |
+| [`@modelscript/modelica`](./languages/modelica/) | Tree-sitter grammar (native + WASM) and language configuration for Modelica |
+| [`@modelscript/sysml2`](./languages/sysml2/)     | SysML v2 tree-sitter AST querying, handling, and verification               |
+| [`@modelscript/step`](./languages/step/)         | STEP (ISO 10303) grammar and querying for CAD/CAE interoperability          |
+| [`@modelscript/example`](./languages/example/)   | Example language configuration illustrating how to add new languages        |
+
+### Applications (`apps/` & `extensions/`)
+
+| Package                                       | Description                                                                        |
+| --------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)             | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
+| [`@modelscript/api`](./apps/api/)             | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
+| [`@modelscript/morsel`](./apps/morsel/)       | Visual editor — code editing, diagram viewer, simulation, and plotting             |
+| [`@modelscript/web`](./apps/web/)             | Web frontend for browsing and exploring libraries (NPM-style registry)             |
+| [`@modelscript/ide`](./apps/ide/)             | VS Code Web IDE — fully browser-based multi-language development environment       |
+| [`@modelscript/site`](./apps/site/)           | Main modelscript.org website                                                       |
+| [`@modelscript/vscode`](./extensions/vscode/) | VS Code extension — syntax highlighting, LSP client, diagram view                  |
 
 ## Core Features
 
-- **Accurate Parsing** — custom Tree-sitter grammar for efficient, incremental parsing
-- **Semantic Analysis** — full scope and name resolution for complex Modelica hierarchies
-- **Flattening** — transforms hierarchical models into flat Differential Algebraic Equations (DAE)
-- **Simulation** — ODE/DAE solver with Pantelides index reduction and BLT ordering
-- **Optimization** — optimal control problem solver using direct collocation
-- **Diagram Rendering** — interactive SVG diagrams and X6-based visual layouts with auto-placement
-- **Language Server** — completions, hover, diagnostics, formatting, and color provider
-- **Linting** — 15+ lint rules covering syntax, types, semantics, and equations
-- **Modelica Scripting** — interpreter for evaluating Modelica expressions and algorithms
-- **i18n Support** — extracting translatable strings from Modelica models
+- **Polyglot Incremental Compiler** — completely web-native, query-based (Salsa) architecture supporting Modelica, SysML v2, and STEP for cross-domain engineering.
+- **Data-Oriented Simulation Engine** — arena-native ODE/DAE solver featuring zero-garbage buffer allocation, Pantelides index reduction, and BLT ordering.
+- **Cross-Domain Verification** — continuous simulation-based requirements verification spanning architecture, simulation, CAD, CAE, and manufacturing.
+- **Incremental Flattening** — state-of-the-art incremental compilation and unrolling of hierarchical models into flat Differential Algebraic Equations (DAE).
+- **FMU & ROM** — seamless FMU import/export, integration, and high-performance surrogate ROM generation from FMUs.
+- **Optimization & Calibration** — direct collocation solvers for optimal control problems, model optimization, and parameter calibration.
+- **Accurate Parsing** — custom Tree-sitter grammars for efficient, incremental parsing of all supported domains.
+- **Semantic Analysis** — full scope and name resolution for complex multi-domain hierarchies.
+- **Diagram Rendering** — interactive SVG diagrams and X6-based visual layouts with auto-placement.
+- **Language Server** — rich completions, hover, diagnostics, formatting, and color provider.
+- **Linting & i18n** — comprehensive lint rules and string extraction support.
 
 ## Getting Started
 
@@ -100,9 +124,9 @@ This launches:
 | Service               | URL                   | Description                                  |
 | --------------------- | --------------------- | -------------------------------------------- |
 | Morsel (editor)       | http://localhost:3002 | Visual editor with diagrams and simulation   |
-| Web (library browser) | http://localhost:3001 | Browse and explore Modelica libraries        |
+| Web (library browser) | http://localhost:3001 | Browse and explore libraries                 |
 | API                   | http://localhost:3000 | REST API for simulation, publishing, queries |
-| IDE (VS Code Web)     | http://localhost:3003 | Browser-based VS Code with Modelica support  |
+| IDE (VS Code Web)     | http://localhost:3003 | Browser-based VS Code environment            |
 
 #### AI Chat (Optional)
 
@@ -119,7 +143,7 @@ Once downloaded, restart `npm run dev` and open the **ModelScript AI** panel in 
 After building, the CLI is available as `msc`:
 
 ```bash
-# Flatten a model to DAE
+# Flatten a model to DAE incrementally
 npx msc flatten Modelica.Electrical.Analog.Examples.CauerLowPassAnalog path/to/MSL
 
 # Simulate a model (outputs CSV by default)
@@ -141,21 +165,16 @@ npx msc render MyModel model.mo > diagram.svg
 
 ### Testing
 
-Run the test suite across all packages:
+Run the test suite across all packages (including the new compiler tests):
 
 ```bash
 npm test
 ```
 
-### Linting
+### Linting & Formatting
 
 ```bash
 npm run lint
-```
-
-### Formatting
-
-```bash
 npm run format
 ```
 
