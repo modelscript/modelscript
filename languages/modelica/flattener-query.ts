@@ -25,7 +25,7 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/compiler";
-import type { ModelicaModArgs } from "./modification-args.js";
+import { type ModelicaModArgs, mergeModArgs } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------
 // DAE Output Types (mirrors dae.ts from modelscript)
@@ -426,23 +426,33 @@ export class ArenaQueryFlattener {
   private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
     const meta = componentEntry.metadata as Record<string, unknown>;
 
-    // Extract modification values for start, unit, etc.
+    // Extract outer modification from specialization
     const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
-    const mod = specArgs?.data ?? null;
+    const outerMod = specArgs?.data ?? null;
+
+    // Extract inline modification from CST declaration
+    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
+
+    // Merge modifications: outer takes precedence over inline
+    const mod = mergeModArgs(outerMod, inlineMod);
 
     let varType = VarType.Real;
     if (typeName === "Integer") varType = VarType.Integer;
     else if (typeName === "Boolean") varType = VarType.Boolean;
     else if (typeName === "String") varType = VarType.String;
 
+    // Resolve variability: check modification first, then CST metadata, then default
     let variability = Variability.Continuous;
-    const vStr = this.resolveModAttribute(mod, "variability", typeName, dae) as string;
+    const modVariability = this.resolveModAttribute(mod, "variability", typeName, dae) as string;
+    const vStr = modVariability ?? (meta?.variability as string) ?? "continuous";
     if (vStr === "discrete") variability = Variability.Discrete;
     else if (vStr === "parameter") variability = Variability.Parameter;
     else if (vStr === "constant") variability = Variability.Constant;
 
+    // Resolve causality: check modification first, then CST metadata, then default
     let causality = Causality.Local;
-    const cStr = this.resolveModAttribute(mod, "causality", typeName, dae) as string;
+    const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae) as string;
+    const cStr = modCausality ?? (meta?.causality as string) ?? "local";
     if (cStr === "input") causality = Causality.Input;
     else if (cStr === "output") causality = Causality.Output;
 
@@ -451,7 +461,12 @@ export class ArenaQueryFlattener {
       flags |= 8; // isFlow
     }
 
-    const varIdx = dae.addVariable(name, varType, variability, causality, 0.0, flags);
+    // Resolve start value
+    const startVal = this.resolveModAttribute(mod, "start", typeName, dae) ?? 0.0;
+    const initialValue =
+      typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
+
+    const varIdx = dae.addVariable(name, varType, variability, causality, initialValue, flags);
 
     // If there's a binding expression, emit a binding equation
     if (mod?.bindingExpression) {
