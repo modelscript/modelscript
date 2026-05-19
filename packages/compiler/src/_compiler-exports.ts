@@ -22,6 +22,8 @@ export * from "./arena-pantelides.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
+export * from "./owl2-axioms.js";
+export * from "./owl2-projection.js";
 export * from "./resolver.js";
 export * from "./semantic-diff.js";
 export * from "./semantic-node.js";

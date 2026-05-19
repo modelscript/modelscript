@@ -332,4 +332,55 @@ export default language({
         },
       }),
   },
+
+  // =====================================================================
+  // Top-Level Adapters (Approach C — accept projected axioms)
+  // =====================================================================
+
+  adapters: {
+    /**
+     * Accept projected Modelica classes as OWL2 ClassEntity declarations.
+     * This enables the unified ontology to include Modelica-originated classes.
+     */
+    modelica: {
+      ClassDefinition: (_db, foreignNode) => ({
+        target: "ClassEntity",
+        props: {
+          iri: `mo:${foreignNode.name}`,
+          sourceLang: "modelica",
+        },
+      }),
+    },
+    /**
+     * Accept projected SysML2 definitions as OWL2 ClassEntity declarations.
+     */
+    sysml2: {
+      PartDefinition: (_db, foreignNode) => ({
+        target: "ClassEntity",
+        props: {
+          iri: `sysml:${foreignNode.name}`,
+          sourceLang: "sysml2",
+        },
+      }),
+      PortDefinition: (_db, foreignNode) => ({
+        target: "ObjectPropertyEntity",
+        props: {
+          iri: `sysml:hasPort_${foreignNode.name}`,
+          sourceLang: "sysml2",
+        },
+      }),
+    },
+    /**
+     * Accept projected STEP entities as OWL2 ClassEntity declarations.
+     */
+    step: {
+      EntityInstance: (_db, foreignNode) => ({
+        target: "ClassEntity",
+        props: {
+          iri: `step:${foreignNode.name}`,
+          sourceLang: "step",
+        },
+      }),
+    },
+  },
 });

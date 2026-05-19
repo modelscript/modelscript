@@ -236,5 +236,96 @@ export default language({
         },
       }),
     },
+    owl2: {
+      /**
+       * Project STEP entity instances into OWL2 axioms.
+       * Mapping depends on the entity type keyword.
+       */
+      EntityInstance: (db, foreignNode) => {
+        const meta = foreignNode.metadata as Record<string, unknown>;
+        const entityType = meta?.entityType as string;
+        const iri = `step:${foreignNode.name}`;
+
+        if (!entityType) {
+          return { target: "ClassEntity", props: {} };
+        }
+
+        // PRODUCT → Class declaration
+        if (entityType === "PRODUCT" || entityType === "PRODUCT_DEFINITION") {
+          const children = db.childrenOf(foreignNode.id);
+          const displayName = children.find((c) => c.kind === "StringParam")?.name;
+          return {
+            target: "ClassEntity",
+            props: {
+              axioms: [
+                {
+                  type: "ClassDeclaration",
+                  iri: displayName ? `step:${displayName}` : iri,
+                  sourceLang: "step",
+                  sourceQualifiedName: foreignNode.name,
+                },
+              ],
+            },
+          };
+        }
+
+        // SHAPE_REPRESENTATION → SubClassOf(HasGeometry)
+        if (entityType === "SHAPE_REPRESENTATION" || entityType === "ADVANCED_BREP_SHAPE_REPRESENTATION") {
+          return {
+            target: "SubClassOfAxiom",
+            props: {
+              axiomType: "SubClassOf",
+              subClassIri: iri,
+              superClassIri: "step:HasGeometry",
+              sourceLang: "step",
+            },
+          };
+        }
+
+        // MATERIAL_DESIGNATION → DataPropertyAssertion
+        if (entityType === "MATERIAL_DESIGNATION") {
+          const children = db.childrenOf(foreignNode.id);
+          const materialName = children.find((c) => c.kind === "StringParam")?.name ?? "";
+          return {
+            target: "DataPropertyAssertionAxiom",
+            props: {
+              axiomType: "DataPropertyAssertion",
+              propertyIri: "step:hasMaterial",
+              subjectIri: iri,
+              value: materialName,
+              sourceLang: "step",
+            },
+          };
+        }
+
+        // NEXT_ASSEMBLY_USAGE_OCCURRENCE → ObjectPropertyAssertion(isAssembledFrom)
+        if (entityType === "NEXT_ASSEMBLY_USAGE_OCCURRENCE" || entityType === "PRODUCT_DEFINITION_USAGE") {
+          const children = db.childrenOf(foreignNode.id);
+          const refs = children.filter((c) => c.kind === "Reference");
+          const parentRef = refs[0]?.name ?? "unknown";
+          const childRef = refs[1]?.name ?? "unknown";
+          return {
+            target: "ObjectPropertyAssertionAxiom",
+            props: {
+              axiomType: "ObjectPropertyAssertion",
+              propertyIri: "step:isAssembledFrom",
+              subjectIri: `step:${parentRef}`,
+              objectIri: `step:${childRef}`,
+              sourceLang: "step",
+            },
+          };
+        }
+
+        // Default: declare as OWL2 individual
+        return {
+          target: "NamedIndividualEntity",
+          props: {
+            axiomType: "IndividualDeclaration",
+            iri,
+            sourceLang: "step",
+          },
+        };
+      },
+    },
   },
 });

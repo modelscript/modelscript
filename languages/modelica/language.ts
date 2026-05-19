@@ -1567,6 +1567,88 @@ export default language({
                 .map((c) => db.project(c, "sysml2")),
             }),
           },
+          owl2: {
+            target: "ClassEntity",
+            transform: (db, self) => {
+              const s = self as SymbolEntry;
+              const meta = s.metadata as Record<string, unknown>;
+              const iri = `mo:${s.name}`;
+              const children = db.childrenOf(s.id);
+              const axioms: Record<string, unknown>[] = [];
+
+              // Class declaration
+              axioms.push({
+                type: "ClassDeclaration",
+                iri,
+                sourceLang: "modelica",
+                sourceQualifiedName: s.name,
+              });
+
+              // SubClassOf from extends clauses
+              for (const c of children) {
+                if (c.kind === "Extends") {
+                  axioms.push({
+                    type: "SubClassOf",
+                    subClassIri: iri,
+                    superClassIri: `mo:${c.name}`,
+                    sourceLang: "modelica",
+                  });
+                }
+              }
+
+              // DataPropertyAssertions from parameter components
+              for (const c of children) {
+                if (c.kind === "Component") {
+                  const cMeta = c.metadata as Record<string, unknown>;
+                  if (cMeta?.variability === "parameter") {
+                    axioms.push({
+                      type: "DataPropertyDeclaration",
+                      iri: `mo:hasParam_${c.name}`,
+                      sourceLang: "modelica",
+                    });
+                  }
+                }
+              }
+
+              // Connector type → domain classification
+              const prefix = meta?.classPrefixes as string | undefined;
+              if (prefix === "connector") {
+                // Infer domain from package path if available
+                const pkgPath = s.name;
+                if (pkgPath.includes("Electrical")) {
+                  axioms.push({
+                    type: "SubClassOf",
+                    subClassIri: iri,
+                    superClassIri: "mo:ElectricalDomain",
+                    sourceLang: "modelica",
+                  });
+                } else if (pkgPath.includes("Thermal")) {
+                  axioms.push({
+                    type: "SubClassOf",
+                    subClassIri: iri,
+                    superClassIri: "mo:ThermalDomain",
+                    sourceLang: "modelica",
+                  });
+                } else if (pkgPath.includes("Mechanical")) {
+                  axioms.push({
+                    type: "SubClassOf",
+                    subClassIri: iri,
+                    superClassIri: "mo:MechanicalDomain",
+                    sourceLang: "modelica",
+                  });
+                } else if (pkgPath.includes("Fluid")) {
+                  axioms.push({
+                    type: "SubClassOf",
+                    subClassIri: iri,
+                    superClassIri: "mo:FluidDomain",
+                    sourceLang: "modelica",
+                  });
+                }
+              }
+
+              return { axioms };
+            },
+          },
         },
         graphics: (self) => ({
           role: "node" as const,
@@ -4012,6 +4094,62 @@ export default language({
             })),
         },
       }),
+    },
+    owl2: {
+      /**
+       * Project a Modelica connect() clause into an OWL2 ObjectPropertyAssertion.
+       * connect(a.p, b.p) → ObjectPropertyAssertion(mo:isConnectedTo, mo:a, mo:b)
+       */
+      ConnectClause: (_db, node) => ({
+        target: "ObjectPropertyAssertionAxiom",
+        props: {
+          axiomType: "ObjectPropertyAssertion",
+          propertyIri: "mo:isConnectedTo",
+          subjectIri: `mo:${node.name?.split(".")[0] ?? node.name}`,
+          objectIri: `mo:${((node.metadata as Record<string, unknown>)?.connectee as string)?.split(".")[0] ?? "unknown"}`,
+          sourceLang: "modelica",
+        },
+      }),
+      /**
+       * Project a Modelica ComponentClause (variable declaration) into
+       * OWL2 data/object property assertions depending on the component type.
+       */
+      ComponentClause: (_db, node) => {
+        const meta = node.metadata as Record<string, unknown>;
+        const typeSpec = meta?.typeSpecifier as string;
+        const variability = meta?.variability as string | undefined;
+        const parentName = meta?.parentName as string | undefined;
+
+        if (variability === "parameter" && parentName) {
+          return {
+            target: "DataPropertyAssertionAxiom",
+            props: {
+              axiomType: "DataPropertyAssertion",
+              propertyIri: `mo:hasParam_${node.name}`,
+              subjectIri: `mo:${parentName}`,
+              value: (meta?.defaultValue as string) ?? "",
+              datatype: typeSpec === "Real" ? "xsd:double" : typeSpec === "Integer" ? "xsd:integer" : `xsd:${typeSpec}`,
+              sourceLang: "modelica",
+            },
+          };
+        }
+
+        // Non-parameter components → object property (has-part relationship)
+        if (parentName && typeSpec) {
+          return {
+            target: "ObjectPropertyAssertionAxiom",
+            props: {
+              axiomType: "ObjectPropertyAssertion",
+              propertyIri: `mo:hasPart_${node.name}`,
+              subjectIri: `mo:${parentName}`,
+              objectIri: `mo:${typeSpec}`,
+              sourceLang: "modelica",
+            },
+          };
+        }
+
+        return { target: "ClassEntity", props: {} };
+      },
     },
   },
 });

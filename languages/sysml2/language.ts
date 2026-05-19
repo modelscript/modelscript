@@ -2068,6 +2068,93 @@ const modelicaComponentAdapter = (opts?: { variability?: string; mapDirection?: 
   },
 });
 
+// ---------------------------------------------------------------------------
+// Cross-Language Adapters — SysML2 → OWL2 helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Project a SysML2 Definition (part def, item def, etc.) as OWL2 axioms.
+ * Generates: ClassDeclaration + SubClassOf from specializations.
+ */
+const owl2ClassAdapter = (defKind: string) => ({
+  owl2: {
+    target: "ClassEntity",
+    transform: (db: AdapterDB, self: SymbolEntry | any) => {
+      const s = self as SymbolEntry;
+      const iri = `sysml:${s.name}`;
+      const children = db.childrenOf(s.id);
+      const axioms: Record<string, unknown>[] = [];
+
+      // Class declaration
+      axioms.push({
+        type: "ClassDeclaration",
+        iri,
+        sourceLang: "sysml2",
+        sourceQualifiedName: s.name,
+      });
+
+      // SubClassOf from OwnedSubsetting / specialization
+      for (const c of children) {
+        if (
+          c.ruleName === "OwnedSubsetting" ||
+          c.ruleName === "OwnedRedefinition" ||
+          c.ruleName === "OwnedCrossSubsetting"
+        ) {
+          axioms.push({
+            type: "SubClassOf",
+            subClassIri: iri,
+            superClassIri: `sysml:${c.name}`,
+            sourceLang: "sysml2",
+          });
+        }
+      }
+
+      return { axioms };
+    },
+  },
+});
+
+/**
+ * Project a SysML2 port definition as an OWL2 ObjectProperty.
+ */
+const owl2PortAdapter = () => ({
+  owl2: {
+    target: "ObjectPropertyEntity",
+    transform: (_db: AdapterDB, self: SymbolEntry | any) => {
+      const s = self as SymbolEntry;
+      return {
+        axiomType: "ObjectPropertyDeclaration",
+        iri: `sysml:hasPort_${s.name}`,
+        sourceLang: "sysml2",
+      };
+    },
+  },
+});
+
+/**
+ * Project a SysML2 constraint definition as OWL2 restriction axioms.
+ */
+const owl2ConstraintAdapter = () => ({
+  owl2: {
+    target: "ClassEntity",
+    transform: (db: AdapterDB, self: SymbolEntry | any) => {
+      const s = self as SymbolEntry;
+      const iri = `sysml:${s.name}`;
+      const axioms: Record<string, unknown>[] = [];
+
+      // Class declaration for the constraint
+      axioms.push({
+        type: "ClassDeclaration",
+        iri,
+        sourceLang: "sysml2",
+        sourceQualifiedName: s.name,
+      });
+
+      return { axioms };
+    },
+  },
+});
+
 export default language({
   name: "sysml2",
 
@@ -2777,7 +2864,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: modelicaClassAdapter("record"),
+        adapters: { ...modelicaClassAdapter("record"), ...owl2ClassAdapter("attribute") },
         graphics: () => sysmlNodeGraphics({ stereotype: "attribute def", fill: "#fce4ec", stroke: "#e91e63" }),
       }),
 
@@ -2902,7 +2989,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: modelicaClassAdapter("model"),
+        adapters: { ...modelicaClassAdapter("model"), ...owl2ClassAdapter("part") },
         graphics: () =>
           sysmlNodeGraphics({ stereotype: "part def", fill: "#e8f5e9", stroke: "#43a047", portQuery: "ownedPorts" }),
         diff: {
@@ -2934,7 +3021,7 @@ export default language({
         model: definitionModel,
         lints: definitionLints,
         graphics: () => sysmlNodeGraphics({ stereotype: "port def", fill: "#fff9c4", stroke: "#f57f17" }),
-        adapters: modelicaClassAdapter("connector"),
+        adapters: { ...modelicaClassAdapter("connector"), ...owl2PortAdapter() },
         diff: {
           ignore: ["annotationClause", "description"],
           breaking: ["direction"],
@@ -2997,7 +3084,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: modelicaClassAdapter("model"),
+        adapters: { ...modelicaClassAdapter("model"), ...owl2ClassAdapter("connection") },
         graphics: () => sysmlNodeGraphics({ stereotype: "connection def", fill: "#eceff1", stroke: "#546e7a" }),
       }),
 
@@ -3242,7 +3329,7 @@ export default language({
         queries: definitionStructuralQueries,
         model: definitionModel,
         lints: definitionLints,
-        adapters: modelicaClassAdapter("function"),
+        adapters: { ...modelicaClassAdapter("function"), ...owl2ClassAdapter("action") },
         graphics: () => sysmlNodeGraphics({ stereotype: "action def", fill: "#e3f2fd", stroke: "#1565c0" }),
       }),
 
@@ -3483,7 +3570,7 @@ export default language({
         queries: constraintDefinitionQueries,
         model: constraintDefinitionModel,
         lints: constraintDefinitionLints,
-        adapters: modelicaClassAdapter("model"),
+        adapters: { ...modelicaClassAdapter("model"), ...owl2ClassAdapter("requirement") },
         graphics: () => sysmlNodeGraphics({ stereotype: "constraint def", fill: "#ffebee", stroke: "#c62828" }),
       }),
 
