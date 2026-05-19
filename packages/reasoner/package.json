@@ -1,0 +1,74 @@
+{
+  "name": "@modelscript/reasoner",
+  "version": "0.0.18",
+  "description": "ModelScript OWL2 Reasoner — subsumption, consistency, and SPARQL-DL query evaluation",
+  "keywords": [
+    "modelscript",
+    "owl2",
+    "reasoner",
+    "ontology",
+    "description-logic"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "package.json",
+    "README.md",
+    "COPYING",
+    "src/**/*.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.ts.map"
+  ],
+  "scripts": {
+    "build": "npm run clean && npm run lint && tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "watch": "tsc --watch"
+  },
+  "lint-staged": {
+    "*.ts": "eslint",
+    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
+  },
+  "dependencies": {
+    "@modelscript/compiler": "*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.3.2",
+    "eslint": "^9.39.1",
+    "rimraf": "^6.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
