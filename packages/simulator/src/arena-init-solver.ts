@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ArenaDAEBuilder, BinOp, EqKind, Variability, differentiateArenaExpressionWrt } from "@modelscript/compiler";
+import {
+  ArenaDAEBuilder,
+  BinOp,
+  EqKind,
+  ExprKind,
+  Variability,
+  differentiateArenaExpressionWrt,
+} from "@modelscript/compiler";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
 
 /** Result of initial equation solving natively on the arena. */
@@ -11,13 +18,13 @@ export interface ArenaInitSolverResult {
   converged: boolean;
 }
 
-/**
- * LU decomposition with partial pivoting for the Newton linear system.
- */
+// ─────────────────────────────────────────────────────────────────────────
+// LU Decomposition with Partial Pivoting
+// ─────────────────────────────────────────────────────────────────────────
+
 function solveLU(A: number[][], b: number[], n: number): number[] {
   const M = A.map((row) => [...row]);
   const rhs = [...b];
-  const P = Array.from({ length: n }, (_, i) => i);
 
   for (let k = 0; k < n; k++) {
     let maxVal = Math.abs(M[k]?.[k] ?? 0);
@@ -32,7 +39,6 @@ function solveLU(A: number[][], b: number[], n: number): number[] {
     if (maxRow !== k) {
       [M[k], M[maxRow]] = [M[maxRow] ?? [], M[k] ?? []];
       [rhs[k], rhs[maxRow]] = [rhs[maxRow] ?? 0, rhs[k] ?? 0];
-      [P[k], P[maxRow]] = [P[maxRow] ?? 0, P[k] ?? 0];
     }
     const pivot = M[k]?.[k] ?? 0;
     if (Math.abs(pivot) < 1e-30) continue;
@@ -65,9 +71,76 @@ function solveLU(A: number[][], b: number[], n: number): number[] {
   return x;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Structural Sparsity: Collect ExprKind.Name references from an expression
+// ─────────────────────────────────────────────────────────────────────────
+
+function collectExprNameIds(arena: ArenaDAEBuilder, exprId: number, nameIds: Set<number>): void {
+  if (exprId < 0) return;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Name) {
+    nameIds.add(arena.getExprData1(exprId));
+    return;
+  }
+  // Recurse into children based on ExprKind layout
+  const data1 = arena.getExprData1(exprId);
+  const left = arena.getExprLeft(exprId);
+  const right = arena.getExprRight(exprId);
+
+  switch (kind) {
+    case ExprKind.Unary:
+    case ExprKind.Negate:
+    case ExprKind.Der:
+    case ExprKind.Pre:
+      collectExprNameIds(arena, left, nameIds);
+      break;
+    case ExprKind.Binary:
+      collectExprNameIds(arena, left, nameIds);
+      collectExprNameIds(arena, right, nameIds);
+      break;
+    case ExprKind.IfElse:
+      collectExprNameIds(arena, data1, nameIds);
+      collectExprNameIds(arena, left, nameIds);
+      collectExprNameIds(arena, right, nameIds);
+      break;
+    case ExprKind.Call: {
+      // Walk arguments: first arg is in `left`, subsequent in Tuple entries at exprId+i
+      const argCount = right;
+      if (argCount > 0) collectExprNameIds(arena, left, nameIds);
+      for (let i = 1; i < argCount; i++) {
+        collectExprNameIds(arena, arena.getExprLeft(exprId + i), nameIds);
+      }
+      break;
+    }
+    case ExprKind.Subscript:
+      collectExprNameIds(arena, data1, nameIds);
+      collectExprNameIds(arena, left, nameIds);
+      break;
+    case ExprKind.ArrayCtor: {
+      const count = data1;
+      if (count > 0) collectExprNameIds(arena, left, nameIds);
+      for (let i = 1; i < count; i++) {
+        collectExprNameIds(arena, arena.getExprLeft(exprId + i), nameIds);
+      }
+      break;
+    }
+    case ExprKind.Range:
+      collectExprNameIds(arena, data1, nameIds);
+      if (left >= 0) collectExprNameIds(arena, left, nameIds);
+      collectExprNameIds(arena, right, nameIds);
+      break;
+    default:
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Core Init Solver
+// ─────────────────────────────────────────────────────────────────────────
+
 /**
  * Solve the initial equations natively on the ArenaDAEBuilder using Newton-Raphson
- * with exact symbolic analytical Jacobians computed directly on the integer arena buffer.
+ * with structural sparsity, exact symbolic Jacobians, and homotopy continuation fallback.
  *
  * @param arena The ArenaDAEBuilder containing the equations.
  * @param initialValues A Float64Array populated with start values and parameters.
@@ -81,110 +154,191 @@ export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues
     converged: true,
   };
 
+  // ── Step 1: Collect initial equations ──
   const initialEqIndices: number[] = [];
   for (let i = 0; i < arena.eqCount; i++) {
     if (arena.getEqKind(i) === EqKind.InitialSimple) {
       initialEqIndices.push(i);
     }
   }
-
   if (initialEqIndices.length === 0) return result;
 
-  // Identify unknowns (StringIds that are not parameters/constants and not fixed)
-  // For simplicity in this porting step, we extract state variables and their derivatives as unknowns.
-  // In a full implementation, we intersect referenced variables in initialEqs with non-fixed variables.
-  const unknowns = new Set<number>();
-
+  // ── Step 2: Identify unknowns via intersection ──
+  // Build set of variable StringIds that are not parameters/constants and not fixed
+  const solvableVarNameIds = new Set<number>();
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
-    // Assume we want to solve for variables that are not fixed and not parameters
-    if (arena.getVarVariability(i) === Variability.Parameter || arena.getVarVariability(i) === Variability.Constant) {
-      continue;
-    }
-    if (arena.isVarFixed(i)) {
-      continue;
-    }
-    unknowns.add(arena.getVarNameId(i));
+    const v = arena.getVarVariability(i);
+    if (v === Variability.Parameter || v === Variability.Constant) continue;
+    if (arena.isVarFixed(i)) continue;
 
-    // Also include der(x) as an unknown
+    const nameId = arena.getVarNameId(i);
+    solvableVarNameIds.add(nameId);
+
+    // Also include der(x) as solvable
     const derNameId = arena.interner.intern(`der(${arena.getVarName(i)})`);
-    unknowns.add(derNameId);
+    solvableVarNameIds.add(derNameId);
   }
 
-  const unknownList = Array.from(unknowns);
+  // Collect all variable name IDs actually referenced in the initial equations
+  const referencedNameIds = new Set<number>();
+  for (const eqIdx of initialEqIndices) {
+    collectExprNameIds(arena, arena.getEqLhs(eqIdx), referencedNameIds);
+    collectExprNameIds(arena, arena.getEqRhs(eqIdx), referencedNameIds);
+  }
+
+  // Remove "time" from unknowns
+  const timeId = arena.interner.intern("time");
+  referencedNameIds.delete(timeId);
+
+  // Unknowns = intersection of solvable variables and referenced variables
+  const unknownList: number[] = [];
+  for (const nameId of referencedNameIds) {
+    if (solvableVarNameIds.has(nameId)) {
+      unknownList.push(nameId);
+    }
+  }
+
   const nUnknowns = unknownList.length;
   const nResiduals = initialEqIndices.length;
-
   if (nResiduals === 0 || nUnknowns === 0) return result;
-
   const nSolve = Math.min(nResiduals, nUnknowns);
 
-  // Formulate R_i = LHS - RHS
+  // ── Step 3: Build residual expressions R_i = LHS_i - RHS_i ──
   const residualExprIds: number[] = [];
   for (let i = 0; i < nSolve; i++) {
     const eqIdx = initialEqIndices[i] ?? -1;
     if (eqIdx === -1) continue;
     const lhs = arena.getEqLhs(eqIdx);
     const rhs = arena.getEqRhs(eqIdx);
-    const residual = arena.addBinaryExpr(BinOp.Sub, lhs, rhs);
-    residualExprIds.push(residual);
+    residualExprIds.push(arena.addBinaryExpr(BinOp.Sub, lhs, rhs));
   }
 
-  // Precompute symbolic analytical Jacobian ExprIds: J_ij = dR_i / dz_j
-  const jacobianExprIds: number[][] = [];
+  // ── Step 4: Compute structural sparsity pattern ──
+  // sparsityPattern[i] = set of column indices j where ∂R_i/∂z_j may be nonzero
+  const sparsityPattern: Set<number>[] = [];
   for (let i = 0; i < nSolve; i++) {
-    const row: number[] = [];
-    const Ri = residualExprIds[i] ?? -1;
-    if (Ri === -1) continue;
+    const exprId = residualExprIds[i] ?? -1;
+    const deps = new Set<number>();
+    collectExprNameIds(arena, exprId, deps);
+
+    const nonzeroColumns = new Set<number>();
     for (let j = 0; j < nSolve; j++) {
-      const zj = unknownList[j] ?? -1;
-      if (zj === -1) continue;
-      const dRi_dzj = differentiateArenaExpressionWrt(arena, Ri, zj);
-      row.push(dRi_dzj);
+      const zj = unknownList[j] as number;
+      if (deps.has(zj)) {
+        nonzeroColumns.add(j);
+      }
+    }
+    sparsityPattern.push(nonzeroColumns);
+  }
+
+  // ── Step 5: Precompute symbolic Jacobian entries (only for structurally nonzero) ──
+  const jacobianExprIds: (number | -1)[][] = [];
+  for (let i = 0; i < nSolve; i++) {
+    const row: (number | -1)[] = new Array(nSolve).fill(-1) as (number | -1)[];
+    const Ri = residualExprIds[i] ?? -1;
+    if (Ri === -1) {
+      jacobianExprIds.push(row);
+      continue;
+    }
+    const pattern = sparsityPattern[i] as Set<number>;
+    for (const j of pattern) {
+      const zj = unknownList[j] as number;
+      row[j] = differentiateArenaExpressionWrt(arena, Ri, zj);
     }
     jacobianExprIds.push(row);
   }
 
+  // ── Step 6: Newton-Raphson iteration ──
   const maxIter = 50;
   const tol = 1e-10;
 
+  const converged = runNewton(
+    arena,
+    result,
+    residualExprIds,
+    jacobianExprIds,
+    sparsityPattern,
+    unknownList,
+    nSolve,
+    maxIter,
+    tol,
+  );
+
+  // ── Step 7: Homotopy continuation fallback ──
+  if (!converged) {
+    const homotopyConverged = runHomotopy(
+      arena,
+      result,
+      residualExprIds,
+      jacobianExprIds,
+      sparsityPattern,
+      unknownList,
+      nSolve,
+      tol,
+      initialValues,
+    );
+    result.converged = homotopyConverged;
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Newton-Raphson with Sparse Analytical Jacobian
+// ─────────────────────────────────────────────────────────────────────────
+
+function runNewton(
+  arena: ArenaDAEBuilder,
+  result: ArenaInitSolverResult,
+  residualExprIds: number[],
+  jacobianExprIds: (number | -1)[][],
+  sparsityPattern: Set<number>[],
+  unknownList: number[],
+  nSolve: number,
+  maxIter: number,
+  tol: number,
+): boolean {
   for (let iter = 0; iter < maxIter; iter++) {
     result.iterations = iter + 1;
 
-    // Evaluate Residuals and Jacobian
+    // Evaluate residuals
     const R = new Array(nSolve).fill(0) as number[];
-    const J: number[][] = [];
-    for (let i = 0; i < nSolve; i++) {
-      J[i] = new Array(nSolve).fill(0) as number[];
-    }
-
     for (let i = 0; i < nSolve; i++) {
       const exprId = residualExprIds[i] ?? -1;
       if (exprId !== -1) {
         R[i] = evaluateArenaRuntime(arena, exprId, result.valuesByStringId);
       }
-      const Ji = J[i];
-      if (Ji) {
-        for (let j = 0; j < nSolve; j++) {
-          const J_ij = jacobianExprIds[i]?.[j] ?? -1;
-          if (J_ij !== -1) {
-            Ji[j] = evaluateArenaRuntime(arena, J_ij, result.valuesByStringId);
-          }
-        }
-      }
     }
 
+    // Check convergence
     let norm = 0;
-    for (let i = 0; i < nSolve; i++) {
-      norm += Math.abs(R[i] ?? 0);
-    }
+    for (let i = 0; i < nSolve; i++) norm += Math.abs(R[i] ?? 0);
     result.residualNorm = norm;
 
     if (norm < tol) {
       result.converged = true;
-      break;
+      return true;
     }
 
+    // Evaluate Jacobian (sparse: only structurally nonzero entries)
+    const J: number[][] = [];
+    for (let i = 0; i < nSolve; i++) {
+      const row = new Array(nSolve).fill(0) as number[];
+      const pattern = sparsityPattern[i] as Set<number>;
+      const jRow = jacobianExprIds[i];
+      if (jRow) {
+        for (const j of pattern) {
+          const jExprId = jRow[j] ?? -1;
+          if (jExprId !== -1) {
+            row[j] = evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
+          }
+        }
+      }
+      J.push(row);
+    }
+
+    // Solve J · Δz = -R
     const negR = R.map((r) => -r);
     const dz = solveLU(J, negR, nSolve);
 
@@ -201,5 +355,120 @@ export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues
     }
   }
 
-  return result;
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Homotopy Continuation
+//
+// Defines H(z, λ) = λ·R(z) + (1-λ)·(z - z₀) where:
+//   λ = 0 → trivial solution z = z₀ (start values)
+//   λ = 1 → actual system R(z) = 0
+//
+// Steps λ from 0 to 1 in adaptive increments, running Newton-Raphson
+// with the sparse analytical Jacobian of H(z,λ) at each step.
+// ─────────────────────────────────────────────────────────────────────────
+
+function runHomotopy(
+  arena: ArenaDAEBuilder,
+  result: ArenaInitSolverResult,
+  residualExprIds: number[],
+  jacobianExprIds: (number | -1)[][],
+  sparsityPattern: Set<number>[],
+  unknownList: number[],
+  nSolve: number,
+  tol: number,
+  initialValues: Float64Array,
+): boolean {
+  // Save start values z₀
+  const z0 = new Float64Array(nSolve);
+  for (let i = 0; i < nSolve; i++) {
+    const zj = unknownList[i] as number;
+    z0[i] = initialValues[zj] ?? 0;
+  }
+
+  // Reset z to z₀
+  for (let i = 0; i < nSolve; i++) {
+    const zj = unknownList[i] as number;
+    result.valuesByStringId[zj] = z0[i] as number;
+  }
+
+  let lambda = 0;
+  let lambdaStep = 0.1;
+  const maxTotalIter = 200;
+  let totalIter = 0;
+
+  while (lambda < 1.0 && totalIter < maxTotalIter) {
+    const targetLambda = Math.min(lambda + lambdaStep, 1.0);
+
+    let convergedAtLambda = false;
+    const maxNewtonIter = 20;
+
+    for (let iter = 0; iter < maxNewtonIter && totalIter < maxTotalIter; iter++) {
+      totalIter++;
+      result.iterations++;
+
+      // Evaluate homotopy residuals: H_i = λ·R_i(z) + (1-λ)·(z_i - z0_i)
+      const H = new Array(nSolve).fill(0) as number[];
+      for (let i = 0; i < nSolve; i++) {
+        const exprId = residualExprIds[i] ?? -1;
+        const Ri = exprId !== -1 ? evaluateArenaRuntime(arena, exprId, result.valuesByStringId) : 0;
+        const zj = unknownList[i] as number;
+        const zi = result.valuesByStringId[zj] ?? 0;
+        H[i] = targetLambda * Ri + (1 - targetLambda) * (zi - (z0[i] as number));
+      }
+
+      // Check convergence
+      let norm = 0;
+      for (let i = 0; i < nSolve; i++) norm += Math.abs(H[i] ?? 0);
+      result.residualNorm = norm;
+
+      if (norm < tol) {
+        convergedAtLambda = true;
+        break;
+      }
+
+      // Homotopy Jacobian: ∂H_i/∂z_j = λ·∂R_i/∂z_j + (1-λ)·δ_{ij}
+      const J: number[][] = [];
+      for (let i = 0; i < nSolve; i++) {
+        const row = new Array(nSolve).fill(0) as number[];
+        // Identity contribution: (1-λ) on diagonal
+        row[i] = 1 - targetLambda;
+
+        // λ · ∂R_i/∂z_j for structurally nonzero entries
+        const pattern = sparsityPattern[i] as Set<number>;
+        const jRow = jacobianExprIds[i];
+        if (jRow) {
+          for (const j of pattern) {
+            const jExprId = jRow[j] ?? -1;
+            if (jExprId !== -1) {
+              row[j] = (row[j] ?? 0) + targetLambda * evaluateArenaRuntime(arena, jExprId, result.valuesByStringId);
+            }
+          }
+        }
+        J.push(row);
+      }
+
+      // Solve J · Δz = -H
+      const negH = H.map((h) => -(h ?? 0));
+      const dz = solveLU(J, negH, nSolve);
+
+      for (let i = 0; i < nSolve; i++) {
+        const zj = unknownList[i] as number;
+        result.valuesByStringId[zj] = (result.valuesByStringId[zj] ?? 0) + (dz[i] ?? 0);
+      }
+    }
+
+    if (convergedAtLambda) {
+      lambda = targetLambda;
+      // Increase step size on success
+      lambdaStep = Math.min(lambdaStep * 1.5, 0.5);
+    } else {
+      // Decrease step size and retry
+      lambdaStep *= 0.5;
+      if (lambdaStep < 1e-6) break; // Give up
+    }
+  }
+
+  return lambda >= 1.0 - 1e-10;
 }
