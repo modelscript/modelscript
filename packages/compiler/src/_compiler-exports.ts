@@ -1,3 +1,4 @@
+export * from "./arena-coloring.js";
 export * from "./arena-eval.js";
 export * from "./cache-store.js";
 export * from "./dae-arena.js";

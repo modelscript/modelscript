@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/prefer-for-of */
+import { type CCSMatrix, buildCCS } from "@modelscript/compiler";
 import { ModelicaArrayEquation, ModelicaDAE, ModelicaExpression } from "../systems/index.js";
 import { StaticTapeBuilder } from "../tape.js";
+
+// Re-export CCSMatrix and buildCCS from @modelscript/compiler (canonical location)
+export { buildCCS, type CCSMatrix } from "@modelscript/compiler";
 
 /** Extract derivative name (like der(x)) from expression without depending on external module. */
 function extractDer(expr: ModelicaExpression): string | null {
@@ -16,46 +20,6 @@ function extractDer(expr: ModelicaExpression): string | null {
     }
   }
   return null;
-}
-
-export interface CCSMatrix {
-  row_indices: number[];
-  col_ptr: number[];
-  nnz: number;
-}
-
-/**
- * Given a Bipartite Graph mapping (List of sets of dependencies per row) and a list of all column variables,
- * generates the CCS (Compressed Column Storage) arrays representing the structural sparsity of the matrix.
- */
-export function buildCCS(rowsDeps: Set<string>[], columns: string[]): CCSMatrix {
-  const row_indices: number[] = [];
-  const col_ptr: number[] = [0];
-
-  for (const colVar of columns) {
-    // Find all rows that depend on this column variable
-    const rowsForCol: number[] = [];
-    for (let r = 0; r < rowsDeps.length; r++) {
-      if (rowsDeps[r]?.has(colVar)) {
-        rowsForCol.push(r);
-      }
-    }
-
-    // CCS requires row indices to be sorted per column
-    rowsForCol.sort((a, b) => a - b);
-
-    for (const r of rowsForCol) {
-      row_indices.push(r);
-    }
-
-    col_ptr.push(row_indices.length);
-  }
-
-  return {
-    row_indices,
-    col_ptr,
-    nnz: row_indices.length,
-  };
 }
 
 /**

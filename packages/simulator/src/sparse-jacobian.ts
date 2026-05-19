@@ -1,5 +1,4 @@
-import { ArenaDAEBuilder, EqKind, ExprKind } from "@modelscript/compiler";
-import { colorJacobianColumns } from "@modelscript/symbolics";
+import { ArenaDAEBuilder, EqKind, ExprKind, colorJacobianColumns } from "@modelscript/compiler";
 import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
 import { Dual } from "./dual.js";
 

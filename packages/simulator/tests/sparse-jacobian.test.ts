@@ -11,7 +11,7 @@
  *   4. BDF integrator works with sparse Jacobian option
  */
 
-import { buildCCS, colorJacobianColumns } from "@modelscript/symbolics";
+import { buildCCS, colorJacobianColumns } from "@modelscript/compiler";
 import { bdf } from "../src/bdf.js";
 import { sparseJacobianToDense, type SparseJacobian } from "../src/sparse-jacobian.js";
 
