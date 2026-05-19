@@ -178,6 +178,9 @@ export class ArenaQueryFlattener {
     // Post-processing: expand connections into equations
     this.expandConnections(dae);
 
+    // Extract experiment annotation from root class
+    this.extractExperimentAnnotation(rootClassId, dae);
+
     // O(N) Arena-native alias elimination
     eliminateArenaAliases(dae);
 
@@ -461,6 +464,18 @@ export class ArenaQueryFlattener {
       flags |= 8; // isFlow
     }
 
+    // Protected flag (bit 0)
+    const isProtected = this.db.query<boolean>("isProtected", componentEntry.id);
+    if (isProtected) {
+      flags |= 1;
+    }
+
+    // Final flag (bit 4)
+    const isFinal = this.db.query<boolean>("isFinal", componentEntry.id);
+    if (isFinal) {
+      flags |= 16;
+    }
+
     // Resolve start value
     const startVal = this.resolveModAttribute(mod, "start", typeName, dae) ?? 0.0;
     const initialValue =
@@ -469,6 +484,20 @@ export class ArenaQueryFlattener {
     const varIdx = dae.addVariable(name, varType, variability, causality, initialValue, flags);
     if (meta?.flowPrefix === "stream") {
       dae.setVarFlowPrefix(varIdx, "stream");
+    }
+
+    // Set variable description string from CST description field
+    const descNode = meta?.description as { descriptionString?: string } | undefined;
+    if (descNode?.descriptionString) {
+      // Strip quotes from the description string literal
+      const rawDesc = descNode.descriptionString;
+      const desc = rawDesc.startsWith('"') && rawDesc.endsWith('"') ? rawDesc.slice(1, -1) : rawDesc;
+      if (desc) dae.setVarDescription(varIdx, desc);
+    }
+
+    // Evaluate annotation: if annotation(Evaluate=true), promote parameter to constant
+    if (isFinal && variability === Variability.Parameter) {
+      dae.setVarFixed(varIdx);
     }
 
     // If there's a binding expression, emit a binding equation
@@ -1260,6 +1289,70 @@ export class ArenaQueryFlattener {
 
   private createExprVisitor(dae: ArenaDAEBuilder, loopVars?: Map<string, number>): ArenaExprVisitor {
     return new ArenaExprVisitor(dae, loopVars, (funcName) => this.collectFunctionDefinition(funcName, dae));
+  }
+
+  /**
+   * Extract experiment annotation (StartTime, StopTime, Tolerance, Interval)
+   * from the root class CST node and populate dae.experiment.
+   */
+  private extractExperimentAnnotation(rootClassId: SymbolId, dae: ArenaDAEBuilder): void {
+    const cstNode = this.db.cstNode(rootClassId) as any;
+    if (!cstNode) return;
+
+    // Navigate to the class specifier's annotation clause
+    const classSpec = cstNode.childForFieldName?.("classSpecifier");
+    if (!classSpec) return;
+
+    const annClause = classSpec.childForFieldName?.("annotationClause");
+    if (!annClause) return;
+
+    const classMod = annClause.childForFieldName?.("classModification");
+    if (!classMod) return;
+
+    // Look for the "experiment" modification argument
+    for (const arg of classMod.namedChildren ?? []) {
+      const argName = arg.childForFieldName?.("name")?.text ?? arg.childForFieldName?.("identifier")?.text;
+      if (argName !== "experiment") continue;
+
+      // Extract sub-modifications (StartTime, StopTime, etc.)
+      const subMod = arg.childForFieldName?.("modification")?.childForFieldName?.("classModification");
+      if (!subMod) continue;
+
+      for (const subArg of subMod.namedChildren ?? []) {
+        const subName = subArg.childForFieldName?.("name")?.text ?? subArg.childForFieldName?.("identifier")?.text;
+        if (!subName) continue;
+
+        // Extract the value from the modification expression
+        const exprNode =
+          subArg.childForFieldName?.("modification")?.childForFieldName?.("expression") ??
+          subArg.childForFieldName?.("expression");
+        if (!exprNode) continue;
+
+        const text = exprNode.text;
+        if (!text) continue;
+
+        const numVal = Number(text);
+        if (isNaN(numVal)) continue;
+
+        switch (subName) {
+          case "StartTime":
+            dae.experiment.startTime = numVal;
+            break;
+          case "StopTime":
+            dae.experiment.stopTime = numVal;
+            break;
+          case "Tolerance":
+            dae.experiment.tolerance = numVal;
+            break;
+          case "Interval":
+            dae.experiment.interval = numVal;
+            break;
+          case "__modelscript_equidistantOutput":
+            dae.experiment.__modelscript_equidistantOutput = text === "true";
+            break;
+        }
+      }
+    }
   }
 
   private collectingFunctions = new Set<string>();
