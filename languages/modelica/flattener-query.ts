@@ -1175,17 +1175,17 @@ export class ArenaQueryFlattener {
 
         // inStream(A) = B
         const inStreamA = `$inStream(${nameA})`;
-        dae.addVariable(inStreamA, 0, 0, 0, 0.0, 0); // Real, Continuous, Local
-        const inStreamAId = dae.addExpression(1, dae.interner.intern(inStreamA)); // ExprKind.Name = 1
-        const exprBId = dae.addExpression(1, dae.getVarNameId(idxB));
-        dae.addEquation(1, inStreamAId, exprBId); // EqKind.Simple = 1
+        dae.addVariable(inStreamA, VarType.Real, Variability.Continuous, Causality.Local, 0.0, 0);
+        const inStreamAId = dae.addNameExpr(inStreamA);
+        const exprBId = dae.addExpression(ExprKind.Name, dae.getVarNameId(idxB));
+        dae.addEquation(EqKind.Simple, inStreamAId, exprBId);
 
         // inStream(B) = A
         const inStreamB = `$inStream(${nameB})`;
-        dae.addVariable(inStreamB, 0, 0, 0, 0.0, 0);
-        const inStreamBId = dae.addExpression(1, dae.interner.intern(inStreamB));
-        const exprAId = dae.addExpression(1, dae.getVarNameId(idxA));
-        dae.addEquation(1, inStreamBId, exprAId);
+        dae.addVariable(inStreamB, VarType.Real, Variability.Continuous, Causality.Local, 0.0, 0);
+        const inStreamBId = dae.addNameExpr(inStreamB);
+        const exprAId = dae.addExpression(ExprKind.Name, dae.getVarNameId(idxA));
+        dae.addEquation(EqKind.Simple, inStreamBId, exprAId);
       }
     }
 
@@ -1231,9 +1231,9 @@ export class ArenaQueryFlattener {
         let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
         for (let i = 1; i < group.length; i++) {
           const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[i]!));
-          sumExpr = dae.addExpression(ExprKind.Binary, BinOp.Add, sumExpr, vExpr);
+          sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vExpr);
         }
-        const zeroExpr = dae.addExpression(ExprKind.RealLiteral, 0.0);
+        const zeroExpr = dae.addRealLiteral(0.0);
         dae.addEquation(EqKind.Simple, sumExpr, zeroExpr);
       }
     }
@@ -1306,38 +1306,40 @@ export class ArenaQueryFlattener {
     if (dae.functions.has(funcNameId) || this.collectingFunctions.has(funcName)) return;
     this.collectingFunctions.add(funcName);
 
-    // Resolve the function name globally (or via fully qualified path).
-    // In a fully featured version we'd pass scopeId from the visitor, but for Phase 1
-    // we assume functions are either built-in or resolvable by their fully qualified name.
-    const parts = funcName.split(".");
-    let resolvedId: number | null = null;
+    try {
+      // Resolve the function name globally (or via fully qualified path).
+      // In a fully featured version we'd pass scopeId from the visitor, but for Phase 1
+      // we assume functions are either built-in or resolvable by their fully qualified name.
+      let resolvedId: number | null = null;
 
-    // Attempt to resolve globally
-    const resolvedEntries = this.db.byName(funcName);
-    if (resolvedEntries.length > 0) {
-      resolvedId = resolvedEntries[0].id;
+      // Attempt to resolve globally
+      const resolvedEntries = this.db.byName(funcName);
+      if (resolvedEntries.length > 0) {
+        resolvedId = resolvedEntries[0].id;
+      }
+
+      if (!resolvedId) return; // Unresolved function
+
+      const funcEntry = this.db.symbol(resolvedId);
+      if (funcEntry?.kind !== "Class") return;
+
+      // Verify it's actually a function
+      const meta = funcEntry.metadata as any;
+      if (meta?.classKind !== "function" && meta?.classKind !== "operator function") {
+        return;
+      }
+
+      // Flatten the function into a new ArenaDAEBuilder
+      const fnDae = new ArenaDAEBuilder();
+
+      const elements = this.db.query<number[]>("instantiate", resolvedId);
+      if (elements) {
+        this.flattenElements(elements, "", fnDae);
+      }
+
+      dae.functions.set(funcNameId, fnDae);
+    } finally {
+      this.collectingFunctions.delete(funcName);
     }
-
-    if (!resolvedId) return; // Unresolved function
-
-    const funcEntry = this.db.symbol(resolvedId);
-    if (funcEntry?.kind !== "Class") return;
-
-    // Verify it's actually a function
-    const meta = funcEntry.metadata as any;
-    if (meta?.classKind !== "function" && meta?.classKind !== "operator function") {
-      return;
-    }
-
-    // Flatten the function into a new ArenaDAEBuilder
-    const fnDae = new ArenaDAEBuilder();
-
-    const elements = this.db.query<number[]>("instantiate", resolvedId);
-    if (elements) {
-      // Temporarily use the fnDae to collect its internal variables/algorithms
-      this.flattenElements(elements, "", fnDae);
-    }
-
-    dae.functions.set(funcNameId, fnDae);
   }
 }

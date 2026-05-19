@@ -344,31 +344,25 @@ export class ArenaExprVisitor {
     // Specialized: der(x)
     if (funcName === "der") {
       const argIds = getArgExprs();
-      if (argIds.length > 0) {
-        return this.dae.addDerExpr(argIds[0] as number);
-      }
+      return argIds.length > 0 ? this.dae.addDerExpr(argIds[0] as number) : undefined;
     }
 
     // Specialized: pre(x)
     if (funcName === "pre") {
       const argIds = getArgExprs();
-      if (argIds.length > 0) {
-        return this.dae.addPreExpr(argIds[0] as number);
-      }
+      return argIds.length > 0 ? this.dae.addPreExpr(argIds[0] as number) : undefined;
     }
 
-    // Specialized: noEvent(x) — pass through
+    // Specialized: noEvent(x) — pass through, suppressing event indicator extraction
     if (funcName === "noEvent") {
       const oldNoEvent = this.inNoEvent;
       this.inNoEvent = true;
       const argIds = getArgExprs();
       this.inNoEvent = oldNoEvent;
-      if (argIds.length > 0) {
-        return argIds[0] as number;
-      }
+      return argIds.length > 0 ? (argIds[0] as number) : undefined;
     }
 
-    // General function call
+    // General function call — trigger function collection callback
     if (this.onFunctionCall) {
       this.onFunctionCall(funcName);
     }
