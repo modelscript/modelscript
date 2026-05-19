@@ -111,12 +111,20 @@ import {
 } from "@modelscript/compiler";
 import { ArenaExprVisitor } from "./arena-expr-visitor.js";
 import {
+  ModelicaBreakStatementSyntaxNode,
   ModelicaForEquationSyntaxNode,
   ModelicaForIndexSyntaxNode,
+  ModelicaForStatementSyntaxNode,
   ModelicaIfEquationSyntaxNode,
+  ModelicaIfStatementSyntaxNode,
+  ModelicaReturnStatementSyntaxNode,
+  ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
+  ModelicaStatementSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaWhenEquationSyntaxNode,
+  ModelicaWhenStatementSyntaxNode,
+  ModelicaWhileStatementSyntaxNode,
 } from "./ast.js";
 
 // We remove FlatDAE and FlatVariable interfaces since we emit directly to ArenaDAEBuilder.
@@ -233,6 +241,16 @@ export class ArenaQueryFlattener {
     for (const eid of elementIds) {
       const entry = this.db.symbol(eid);
       if (!entry) continue;
+
+      // Conditional component check: skip disabled components
+      if (entry.kind === "Component") {
+        const meta = entry.metadata as Record<string, unknown>;
+        if (meta?.conditionAttribute !== undefined && meta.conditionAttribute !== null) {
+          // Evaluate the condition — if statically false, skip this component
+          const condVal = this.db.evaluate(meta.conditionAttribute, entry.parentId ?? null);
+          if (condVal === false || condVal === 0) continue;
+        }
+      }
 
       switch (entry.kind) {
         case "Component":
@@ -519,7 +537,40 @@ export class ArenaQueryFlattener {
   // Equation Flattening
   // -------------------------------------------------------------------------
 
+  /**
+   * Check if an equation entry's parent section is an `initial equation` section.
+   * The `initial` keyword is a field on the EquationSection CST node.
+   */
+  private isInitialSection(entry: SymbolEntry): boolean {
+    // Walk up to the parent to check if the section has the `initial` field
+    if (entry.parentId !== null) {
+      const parentEntry = this.db.symbol(entry.parentId);
+      if (parentEntry) {
+        const parentCst = this.db.cstNode(parentEntry.id) as any;
+        if (parentCst) {
+          // Check if the classSpecifier has any EquationSection with initial
+          const classSpec = parentCst.childForFieldName?.("classSpecifier");
+          if (classSpec) {
+            for (const child of classSpec.children ?? []) {
+              if (child.type === "EquationSection") {
+                const hasInitial = child.childForFieldName?.("initial") !== null;
+                // Check if this entry's byte range falls within this section
+                if (hasInitial && entry.startByte >= child.startIndex && entry.endByte <= child.endIndex) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   private flattenEquation(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
+    const isInitial = this.isInitialSection(entry);
+    const eqKind = isInitial ? EqKind.InitialSimple : EqKind.Simple;
+
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (cstNode) {
       const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
@@ -541,13 +592,13 @@ export class ArenaQueryFlattener {
         const exprId = visitor.visit(astAny.expression);
         if (exprId !== undefined) {
           const zero = dae.addExpression(ExprKind.IntLiteral, 0);
-          dae.addEquation(EqKind.Simple, exprId, zero);
+          dae.addEquation(eqKind, exprId, zero);
           return;
         }
       }
 
       if (lhsId !== undefined && rhsId !== undefined) {
-        dae.addEquation(EqKind.Simple, lhsId, rhsId);
+        dae.addEquation(eqKind, lhsId, rhsId);
         return;
       }
     }
@@ -555,7 +606,7 @@ export class ArenaQueryFlattener {
     // Fallback if parsing fails
     const lhs = dae.addExpression(ExprKind.IntLiteral, 0);
     const rhs = dae.addExpression(ExprKind.IntLiteral, 0);
-    dae.addEquation(EqKind.Simple, lhs, rhs);
+    dae.addEquation(eqKind, lhs, rhs);
   }
 
   /**
@@ -833,27 +884,170 @@ export class ArenaQueryFlattener {
   }
 
   /**
-   * Flatten an algorithm section into statement-level assignments in the arena.
+   * Flatten an algorithm section into StmtKind entries in the arena.
+   * Emits proper statement opcodes (Assignment, For, While, If, When, etc.)
+   * and registers the section via addAlgorithmSection / addInitialAlgorithmSection.
    */
   private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (!cstNode) return;
 
+    // Detect whether this is an `initial algorithm` section
     const cst = cstNode as any;
-    const statements = cst.childrenForFieldName?.("statement") ?? [];
+    const isInitial = cst.childForFieldName?.("initial") !== null;
 
-    for (const stmt of statements) {
-      // Handle simple assignment: target := source
-      const target = stmt.childForFieldName?.("target");
-      const source = stmt.childForFieldName?.("source");
-      if (target && source) {
+    // Parse AST statements
+    const algoNode = ModelicaSyntaxNode.new(null, cst) as any;
+    const stmtNodes: ModelicaStatementSyntaxNode[] = algoNode?.statements ?? [];
+
+    const stmtStartIdx = dae.stmtCount;
+
+    for (const stmt of stmtNodes) {
+      this.flattenStatement(stmt, dae);
+    }
+
+    const stmtCount = dae.stmtCount - stmtStartIdx;
+    if (stmtCount > 0) {
+      if (isInitial) {
+        dae.addInitialAlgorithmSection(stmtStartIdx, stmtCount);
+      } else {
+        dae.addAlgorithmSection(stmtStartIdx, stmtCount);
+      }
+    }
+  }
+
+  /**
+   * Recursively flatten a single Modelica statement AST node into arena StmtKind entries.
+   */
+  private flattenStatement(stmt: ModelicaStatementSyntaxNode, dae: ArenaDAEBuilder): void {
+    if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
+      const visitor = new ArenaExprVisitor(dae);
+      const lhsId = stmt.target ? visitor.visit(stmt.target) : undefined;
+      const rhsId = stmt.source ? visitor.visit(stmt.source) : undefined;
+      if (lhsId !== undefined && rhsId !== undefined) {
+        dae.addAssignmentStmt(lhsId, rhsId);
+      }
+    } else if (stmt instanceof ModelicaForStatementSyntaxNode) {
+      // For statement: for i in range loop ... end for;
+      const forIndexes = stmt.forIndexes ?? [];
+      if (forIndexes.length > 0) {
+        const firstIdx = forIndexes[0]!;
+        const indexName = firstIdx.identifier?.text ?? "";
+        const indexNameId = dae.interner.intern(indexName);
         const visitor = new ArenaExprVisitor(dae);
-        const targetAst = ModelicaSyntaxNode.new(null, target);
-        const sourceAst = ModelicaSyntaxNode.new(null, source);
-        const lhsId = targetAst ? visitor.visit(targetAst) : undefined;
-        const rhsId = sourceAst ? visitor.visit(sourceAst) : undefined;
-        if (lhsId !== undefined && rhsId !== undefined) {
-          dae.addEquation(EqKind.Simple, lhsId, rhsId);
+        const rangeExprId = firstIdx.expression ? visitor.visit(firstIdx.expression) : undefined;
+
+        const bodyStartIdx = dae.stmtCount;
+        for (const inner of stmt.statements ?? []) {
+          this.flattenStatement(inner, dae);
+        }
+        const bodyCount = dae.stmtCount - bodyStartIdx;
+        dae.addForStmt(indexNameId, rangeExprId ?? -1, bodyCount);
+      }
+    } else if (stmt instanceof ModelicaWhileStatementSyntaxNode) {
+      const visitor = new ArenaExprVisitor(dae);
+      const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
+
+      const bodyStartIdx = dae.stmtCount;
+      for (const inner of stmt.statements ?? []) {
+        this.flattenStatement(inner, dae);
+      }
+      const bodyCount = dae.stmtCount - bodyStartIdx;
+      dae.addWhileStmt(condId ?? -1, bodyCount);
+    } else if (stmt instanceof ModelicaIfStatementSyntaxNode) {
+      const visitor = new ArenaExprVisitor(dae);
+      const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
+
+      // Then branch
+      const thenStartIdx = dae.stmtCount;
+      for (const inner of stmt.statements ?? []) {
+        this.flattenStatement(inner, dae);
+      }
+      const thenCount = dae.stmtCount - thenStartIdx;
+
+      // ElseIf branches + else branch → emit as Block stmts
+      const elseIfClauses = stmt.elseIfStatementClauses ?? [];
+      const elseStmts = stmt.elseStatements ?? [];
+      const branchCount = elseIfClauses.length + (elseStmts.length > 0 ? 1 : 0);
+
+      for (const clause of elseIfClauses) {
+        const eifVisitor = new ArenaExprVisitor(dae);
+        const eifCondId = clause.condition ? eifVisitor.visit(clause.condition) : -1;
+        const branchStartIdx = dae.stmtCount;
+        for (const inner of clause.statements ?? []) {
+          this.flattenStatement(inner, dae);
+        }
+        const branchBodyCount = dae.stmtCount - branchStartIdx;
+        dae.addBlockStmt(eifCondId ?? -1, branchBodyCount);
+      }
+
+      if (elseStmts.length > 0) {
+        const elseStartIdx = dae.stmtCount;
+        for (const inner of elseStmts) {
+          this.flattenStatement(inner, dae);
+        }
+        const elseCount = dae.stmtCount - elseStartIdx;
+        dae.addBlockStmt(-1, elseCount); // -1 condition = unconditional else
+      }
+
+      dae.addIfStmt(condId ?? -1, thenCount, branchCount);
+    } else if (stmt instanceof ModelicaWhenStatementSyntaxNode) {
+      const visitor = new ArenaExprVisitor(dae);
+      const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
+
+      const bodyStartIdx = dae.stmtCount;
+      for (const inner of stmt.statements ?? []) {
+        this.flattenStatement(inner, dae);
+      }
+      const bodyCount = dae.stmtCount - bodyStartIdx;
+
+      // ElseWhen clauses
+      const elseWhenClauses = stmt.elseWhenStatementClauses ?? [];
+      for (const ew of elseWhenClauses) {
+        const ewVisitor = new ArenaExprVisitor(dae);
+        const ewCondId = ew.condition ? ewVisitor.visit(ew.condition) : -1;
+        const ewStartIdx = dae.stmtCount;
+        for (const inner of ew.statements ?? []) {
+          this.flattenStatement(inner, dae);
+        }
+        const ewCount = dae.stmtCount - ewStartIdx;
+        dae.addBlockStmt(ewCondId ?? -1, ewCount);
+      }
+
+      dae.addWhenStmt(condId ?? -1, bodyCount, elseWhenClauses.length);
+    } else if (stmt instanceof ModelicaReturnStatementSyntaxNode) {
+      dae.addReturnStmt();
+    } else if (stmt instanceof ModelicaBreakStatementSyntaxNode) {
+      dae.addBreakStmt();
+    } else {
+      // Fallback: try to handle ProcedureCall and ComplexAssignment via duck-typing
+      const stmtAny = stmt as any;
+
+      // ProcedureCallStatement: functionReference + functionCallArguments
+      if (stmtAny.functionReferenceName && stmtAny.functionCallArguments) {
+        const visitor = new ArenaExprVisitor(dae);
+        const funcCallExprId = visitor.visit(stmt);
+        if (funcCallExprId !== undefined) {
+          dae.addProcedureCallStmt(funcCallExprId);
+        }
+      }
+      // ComplexAssignmentStatement: outputExpressionList := func(args)
+      else if (stmtAny.outputExpressionList && stmtAny.functionReferenceName) {
+        const visitor = new ArenaExprVisitor(dae);
+        const callExprId = visitor.visit(stmtAny);
+        if (callExprId !== undefined) {
+          // Extract target expression IDs from the output list
+          const targets: number[] = [];
+          const outList = stmtAny.outputExpressionList;
+          if (outList?.expressions) {
+            for (const expr of outList.expressions) {
+              const tid = visitor.visit(expr);
+              if (tid !== undefined) targets.push(tid);
+            }
+          }
+          if (targets.length > 0) {
+            dae.addComplexAssignmentStmt(targets, callExprId);
+          }
         }
       }
     }
