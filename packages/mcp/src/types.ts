@@ -3,6 +3,7 @@
 import type { Context } from "@modelscript/core";
 
 import type { UnifiedWorkspace } from "@modelscript/compiler";
+import type { OntologyBuilder } from "@modelscript/reasoner";
 
 /**
  * Shared server context — holds the current compiler Context,
@@ -12,4 +13,5 @@ export interface ServerContext {
   current: Context | null;
   workspace?: UnifiedWorkspace | null;
   paths?: string[];
+  ontologyBuilder?: OntologyBuilder | null;
 }

@@ -17,6 +17,7 @@ import {
 } from "@modelscript/core";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
+import { executeQueryString, formatQueryResult, OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
@@ -280,6 +281,18 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       const db = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
+      // Ensure the ontology store has a full projection
+      u.owl2Store.fullProjection();
+
+      // Create a reasoner instance
+      const reasoner = new TableauReasoner();
+      const builder = new OntologyBuilder(reasoner, u.owl2Store);
+      await builder.initialize();
+
+      // Store in context for subsequent calls
+      ctx.workspace = u;
+      ctx.ontologyBuilder = builder;
+
       const entries = db.byName.get(name) || [];
       const firstId = entries[0];
       if (firstId === undefined) {
@@ -391,6 +404,138 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       return {
         content: [{ type: "text" as const, text: JSON.stringify(info, null, 2) }],
+      };
+    },
+  );
+
+  // ── validate_system_consistency ────────────────────────────────────────
+
+  server.tool(
+    "validate_system_consistency",
+    "Validates the consistency of the unified polyglot model using the OWL2 reasoner.",
+    {},
+    async () => {
+      if (!ctx.ontologyBuilder) {
+        return {
+          content: [{ type: "text" as const, text: "Ontology not initialized. Run hybrid_simulate first." }],
+          isError: true,
+        };
+      }
+
+      const result = ctx.ontologyBuilder.classifyAndCheck();
+
+      if (result.isConsistent) {
+        return {
+          content: [{ type: "text" as const, text: "System is semantically consistent." }],
+        };
+      } else {
+        const errors = result.conflictingAxioms?.map((a) => JSON.stringify(a)).join("\n") ?? "Unknown conflict.";
+        return {
+          content: [
+            { type: "text" as const, text: `System is inconsistent:\n${result.explanation}\nConflicts:\n${errors}` },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── query_ontology_sparql ──────────────────────────────────────────────
+
+  server.tool(
+    "query_ontology_sparql",
+    "Evaluate a SPARQL-DL query against the unified polyglot ontology.",
+    { query: z.string().describe("Query string (e.g., 'subclasses(mo:ElectricalDevice)')") },
+    async ({ query }) => {
+      if (!ctx.ontologyBuilder) {
+        return {
+          content: [{ type: "text" as const, text: "Ontology not initialized. Run hybrid_simulate first." }],
+          isError: true,
+        };
+      }
+
+      const reasoner = ctx.ontologyBuilder.backend;
+      const result = executeQueryString(reasoner, query);
+
+      if (!result) {
+        return {
+          content: [{ type: "text" as const, text: `Failed to parse query: ${query}` }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: "text" as const, text: formatQueryResult(result) }],
+      };
+    },
+  );
+
+  // ── trace_fault_propagation ────────────────────────────────────────────
+
+  server.tool(
+    "trace_fault_propagation",
+    "Trace connections via transitive closure of the isConnectedTo property.",
+    { sourceIri: z.string().describe("Starting node IRI (e.g., 'mo:sensorX')") },
+    async ({ sourceIri }) => {
+      if (!ctx.ontologyBuilder) {
+        return {
+          content: [{ type: "text" as const, text: "Ontology not initialized. Run hybrid_simulate first." }],
+          isError: true,
+        };
+      }
+
+      const reasoner = ctx.ontologyBuilder.backend;
+      const result = reasoner.getTransitiveClosure("mo:isConnectedTo", sourceIri);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Nodes reachable from ${sourceIri} via isConnectedTo:\n${result.reachable.join("\n")}`,
+          },
+        ],
+      };
+    },
+  );
+
+  // ── explain_inference ──────────────────────────────────────────────────
+
+  server.tool(
+    "explain_inference",
+    "Get the axiom justification chain for why a SubClassOf relationship holds.",
+    {
+      subClass: z.string().describe("Subclass IRI"),
+      superClass: z.string().describe("Superclass IRI"),
+    },
+    async ({ subClass, superClass }) => {
+      if (!ctx.ontologyBuilder) {
+        return {
+          content: [{ type: "text" as const, text: "Ontology not initialized. Run hybrid_simulate first." }],
+          isError: true,
+        };
+      }
+
+      const reasoner = ctx.ontologyBuilder.backend;
+      const chain = reasoner.explain(subClass, superClass);
+
+      if (chain.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `No justification found or relationship does not hold between ${subClass} and ${superClass}.`,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Justification for ${subClass} ⊑ ${superClass}:\n${chain.map((c) => JSON.stringify(c)).join("\n")}`,
+          },
+        ],
       };
     },
   );

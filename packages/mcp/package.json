@@ -27,6 +27,7 @@
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
+    "@modelscript/reasoner": "^0.0.18",
     "@modelscript/simulator": "*",
     "@modelscript/sysml2": "*",
     "tree-sitter": "^0.21.1",
