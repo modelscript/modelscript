@@ -1,11 +1,19 @@
-import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "@modelscript/compiler";
+import { BinOp, DAEArenaBuilder, UnaryOp } from "@modelscript/compiler";
 import {
+  ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
+  ModelicaBinaryOperator,
+  ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaIfElseExpressionSyntaxNode,
   ModelicaLiteralSyntaxNode,
-  ModelicaPrimarySyntaxNode,
+  ModelicaRangeExpressionSyntaxNode,
+  ModelicaStringLiteralSyntaxNode,
   ModelicaUnaryExpressionSyntaxNode,
+  ModelicaUnaryOperator,
+  ModelicaUnsignedIntegerLiteralSyntaxNode,
+  ModelicaUnsignedRealLiteralSyntaxNode,
 } from "./ast.js";
 
 /**
@@ -13,19 +21,33 @@ import {
  * inside the given `DAEArenaBuilder`.
  */
 export class ArenaExprVisitor {
-  constructor(private dae: DAEArenaBuilder) {}
+  private loopVars: Map<string, number>;
+  constructor(
+    private dae: DAEArenaBuilder,
+    loopVars?: Map<string, number>,
+  ) {
+    this.loopVars = loopVars ?? new Map();
+  }
 
   public visit(node: unknown): number | undefined {
     if (!node) return undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const n = node as any;
 
-    // Check specific node types. Note: we use constructor names or instance checks
-    // depending on what's available. The AST nodes are subclasses of ModelicaSyntaxNode.
-    if (n instanceof ModelicaLiteralSyntaxNode) {
-      return this.visitLiteral(n);
-    } else if (n instanceof ModelicaPrimarySyntaxNode) {
-      return this.visitPrimary(n);
+    // Check specific node types. The AST nodes are subclasses of ModelicaSyntaxNode.
+    // Literal subclasses must be checked before the base ModelicaLiteralSyntaxNode.
+    if (n instanceof ModelicaBooleanLiteralSyntaxNode) {
+      return this.dae.addBoolLiteral(n.value);
+    } else if (n instanceof ModelicaUnsignedRealLiteralSyntaxNode) {
+      return this.dae.addRealLiteral(n.value);
+    } else if (n instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) {
+      return this.dae.addIntLiteral(n.value);
+    } else if (n instanceof ModelicaStringLiteralSyntaxNode) {
+      if (n.text != null) return this.dae.addStringLiteral(n.text);
+      return undefined;
+    } else if (n instanceof ModelicaLiteralSyntaxNode) {
+      // Fallback for any other literal subclass
+      return this.visitLiteralFallback(n);
     } else if (n instanceof ModelicaComponentReferenceSyntaxNode) {
       return this.visitComponentReference(n);
     } else if (n instanceof ModelicaBinaryExpressionSyntaxNode) {
@@ -34,10 +56,15 @@ export class ArenaExprVisitor {
       return this.visitUnaryExpression(n);
     } else if (n instanceof ModelicaFunctionCallSyntaxNode) {
       return this.visitFunctionCall(n);
+    } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
+      return this.visitIfElseExpression(n);
+    } else if (n instanceof ModelicaRangeExpressionSyntaxNode) {
+      return this.visitRangeExpression(n);
+    } else if (n instanceof ModelicaArrayConstructorSyntaxNode) {
+      return this.visitArrayConstructor(n);
     }
 
-    // Fallback: if it's an unrecognized node, we might be dealing with an intermediate wrapper.
-    // Try to drill down if there's an obvious child.
+    // Fallback: if it's an unrecognized node, drill down into common children.
     if (n.expression) {
       return this.visit(n.expression);
     }
@@ -53,106 +80,107 @@ export class ArenaExprVisitor {
     return undefined;
   }
 
-  private visitLiteral(node: ModelicaLiteralSyntaxNode): number | undefined {
-    if (node.value === "true") return this.dae.addExpression(ExprKind.BoolLiteral, true);
-    if (node.value === "false") return this.dae.addExpression(ExprKind.BoolLiteral, false);
+  /**
+   * Fallback for ModelicaLiteralSyntaxNode subclasses we haven't matched.
+   * Attempts to parse the text as a number or string.
+   */
+  private visitLiteralFallback(node: ModelicaLiteralSyntaxNode): number | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const text = (node as any).text as string | null;
+    if (!text) return undefined;
 
-    const num = Number(node.value);
+    if (text === "true") return this.dae.addBoolLiteral(true);
+    if (text === "false") return this.dae.addBoolLiteral(false);
+
+    const num = Number(text);
     if (!isNaN(num)) {
-      // Check if it's an integer
-      if (node.value.includes(".") || node.value.includes("e") || node.value.includes("E")) {
-        return this.dae.addExpression(ExprKind.RealLiteral, num);
+      if (text.includes(".") || text.includes("e") || text.includes("E")) {
+        return this.dae.addRealLiteral(num);
       }
-      return this.dae.addExpression(ExprKind.IntLiteral, num);
+      return this.dae.addIntLiteral(num);
     }
 
-    // String literals
-    if (node.value.startsWith('"')) {
-      const strVal = node.value.substring(1, node.value.length - 1);
-      return this.dae.addExpression(ExprKind.StringLiteral, strVal);
-    }
-
-    return undefined;
-  }
-
-  private visitPrimary(node: ModelicaPrimarySyntaxNode): number | undefined {
-    // A primary might be a literal, a component reference, or a function call
-    if (node.literal) return this.visit(node.literal);
-    if (node.componentReference) return this.visit(node.componentReference);
-    if (node.functionCall) return this.visit(node.functionCall);
-    if (node.expression) return this.visit(node.expression);
-    return undefined;
+    // String literal (already unquoted by AST constructor for StringLiteral)
+    return this.dae.addStringLiteral(text);
   }
 
   private visitComponentReference(node: ModelicaComponentReferenceSyntaxNode): number | undefined {
-    // We get the full dotted path
-    const path = node.text;
+    // Build the full dotted path from component reference parts
+    const path = node.parts
+      .map((p) => p.identifier?.text)
+      .filter((t): t is string => t != null)
+      .join(".");
     if (!path) return undefined;
 
-    // For now, emit a Name expression. (Later, we can resolve to VarIdx if needed)
-    return this.dae.addExpression(ExprKind.Name, path);
+    // Check if this reference is a loop variable — substitute with IntLiteral
+    if (this.loopVars.has(path)) {
+      return this.dae.addIntLiteral(this.loopVars.get(path) as number);
+    }
+
+    // Emit a Name expression
+    return this.dae.addNameExpr(path);
   }
 
   private visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode): number | undefined {
-    const leftId = this.visit(node.left);
-    const rightId = this.visit(node.right);
+    const leftId = this.visit(node.operand1);
+    const rightId = this.visit(node.operand2);
     if (leftId === undefined || rightId === undefined) return undefined;
 
-    const op = node.operator?.text;
+    const op = node.operator;
     let binOp: BinOp;
     switch (op) {
-      case "+":
+      case ModelicaBinaryOperator.ADDITION:
         binOp = BinOp.Add;
         break;
-      case "-":
+      case ModelicaBinaryOperator.SUBTRACTION:
         binOp = BinOp.Sub;
         break;
-      case "*":
+      case ModelicaBinaryOperator.MULTIPLICATION:
         binOp = BinOp.Mul;
         break;
-      case "/":
+      case ModelicaBinaryOperator.DIVISION:
         binOp = BinOp.Div;
         break;
-      case "^":
+      case ModelicaBinaryOperator.EXPONENTIATION:
         binOp = BinOp.Pow;
         break;
-      case "==":
+      case ModelicaBinaryOperator.EQUALITY:
         binOp = BinOp.Eq;
         break;
-      case "<>":
+      case ModelicaBinaryOperator.INEQUALITY:
         binOp = BinOp.Neq;
         break;
-      case "<":
+      case ModelicaBinaryOperator.LESS_THAN:
         binOp = BinOp.Lt;
         break;
-      case "<=":
+      case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
         binOp = BinOp.Lte;
         break;
-      case ">":
+      case ModelicaBinaryOperator.GREATER_THAN:
         binOp = BinOp.Gt;
         break;
-      case ">=":
+      case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
         binOp = BinOp.Gte;
         break;
-      case "and":
+      case ModelicaBinaryOperator.LOGICAL_AND:
         binOp = BinOp.And;
         break;
-      case "or":
+      case ModelicaBinaryOperator.LOGICAL_OR:
         binOp = BinOp.Or;
         break;
-      case ".+":
+      case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
         binOp = BinOp.ElemAdd;
         break;
-      case ".-":
+      case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
         binOp = BinOp.ElemSub;
         break;
-      case ".*":
+      case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
         binOp = BinOp.ElemMul;
         break;
-      case "./":
+      case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
         binOp = BinOp.ElemDiv;
         break;
-      case ".^":
+      case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
         binOp = BinOp.ElemPow;
         break;
       default:
@@ -160,61 +188,129 @@ export class ArenaExprVisitor {
         return undefined;
     }
 
-    return this.dae.addExpression(ExprKind.Binary, binOp, leftId, rightId);
+    return this.dae.addBinaryExpr(binOp, leftId, rightId);
   }
 
   private visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode): number | undefined {
-    const exprId = this.visit(node.expression);
+    const exprId = this.visit(node.operand);
     if (exprId === undefined) return undefined;
 
-    const op = node.operator?.text;
+    const op = node.operator;
     let unOp: UnaryOp;
     switch (op) {
-      case "-":
+      case ModelicaUnaryOperator.UNARY_MINUS:
+      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_MINUS:
         unOp = UnaryOp.Negate;
         break;
-      case "not":
+      case ModelicaUnaryOperator.LOGICAL_NEGATION:
         unOp = UnaryOp.Not;
         break;
-      case "+":
+      case ModelicaUnaryOperator.UNARY_PLUS:
+      case ModelicaUnaryOperator.ELEMENTWISE_UNARY_PLUS:
         return exprId; // Positive is a no-op
       default:
         console.warn(`ArenaExprVisitor: Unhandled unary operator: ${op}`);
         return undefined;
     }
 
-    return this.dae.addExpression(ExprKind.Unary, unOp, exprId);
+    return this.dae.addUnaryExpr(unOp, exprId);
   }
 
-  private visitFunctionCall(node: ModelicaFunctionCallSyntaxNode): number | undefined {
-    const funcName = node.componentReference?.text;
-    if (!funcName) return undefined;
+  private visitIfElseExpression(node: ModelicaIfElseExpressionSyntaxNode): number | undefined {
+    const condId = this.visit(node.condition);
+    const thenId = this.visit(node.expression);
+    let elseId = this.visit(node.elseExpression);
 
-    // We can emit a specialized expression for `der` or handle arbitrary function calls.
-    if (funcName === "der") {
-      // Typically `der` takes exactly one argument
-      const args = node.functionArguments?.expressions;
-      if (args && args.length > 0) {
-        const argId = this.visit(args[0]);
-        if (argId !== undefined) {
-          return this.dae.addExpression(ExprKind.Der, argId);
+    if (condId === undefined || thenId === undefined) return undefined;
+
+    // Use -1 if no else clause (though usually required in Modelica expressions)
+    if (elseId === undefined) elseId = -1;
+
+    // Modelica parses else-ifs, need to nest them from back to front
+    if (node.elseIfExpressionClauses && node.elseIfExpressionClauses.length > 0) {
+      for (let i = node.elseIfExpressionClauses.length - 1; i >= 0; i--) {
+        const clause = node.elseIfExpressionClauses[i];
+        if (clause) {
+          const cCondId = this.visit(clause.condition);
+          const cThenId = this.visit(clause.expression);
+          if (cCondId !== undefined && cThenId !== undefined) {
+            elseId = this.dae.addIfElseExpr(cCondId, cThenId, elseId);
+          }
         }
       }
     }
 
-    // General function call
-    // Collect arguments
-    const argIds: number[] = [];
-    if (node.functionArguments?.expressions) {
-      for (const argNode of node.functionArguments.expressions) {
-        const id = this.visit(argNode);
-        if (id !== undefined) argIds.push(id);
+    return this.dae.addIfElseExpr(condId, thenId, elseId);
+  }
+
+  private visitRangeExpression(node: ModelicaRangeExpressionSyntaxNode): number | undefined {
+    const startId = this.visit(node.startExpression);
+    const stopId = this.visit(node.stopExpression);
+    if (startId === undefined || stopId === undefined) return undefined;
+
+    if (node.stepExpression) {
+      const stepId = this.visit(node.stepExpression);
+      if (stepId !== undefined) {
+        return this.dae.addRangeExpr(startId, stopId, stepId);
+      }
+    }
+    return this.dae.addRangeExpr(startId, stopId);
+  }
+
+  private visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode): number | undefined {
+    const elementIds: number[] = [];
+    if (node.expressionList?.expressions) {
+      for (const expr of node.expressionList.expressions) {
+        const id = this.visit(expr);
+        if (id !== undefined) elementIds.push(id);
+      }
+    }
+    return this.dae.addArrayCtorExpr(elementIds);
+  }
+
+  private visitFunctionCall(node: ModelicaFunctionCallSyntaxNode): number | undefined {
+    const funcName = node.functionReferenceName;
+    if (!funcName) return undefined;
+
+    // Collect positional arguments from FunctionCallArguments.arguments[]
+    const getArgExprs = (): number[] => {
+      const ids: number[] = [];
+      if (node.functionCallArguments?.arguments) {
+        for (const arg of node.functionCallArguments.arguments) {
+          // Each FunctionArgumentSyntaxNode has an expression child
+          const id = this.visit(arg.expression);
+          if (id !== undefined) ids.push(id);
+        }
+      }
+      return ids;
+    };
+
+    // Specialized: der(x)
+    if (funcName === "der") {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        return this.dae.addDerExpr(argIds[0] as number);
       }
     }
 
-    // Call expr needs to be represented. DAEArena uses an array for arguments.
-    // DAEArenaBuilder: addExpression(ExprKind.Call, funcNameStringId, [arg1, arg2...])
-    const funcStrId = this.dae.addString(funcName);
-    return this.dae.addExpression(ExprKind.Call, funcStrId, argIds);
+    // Specialized: pre(x)
+    if (funcName === "pre") {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        return this.dae.addPreExpr(argIds[0] as number);
+      }
+    }
+
+    // Specialized: noEvent(x) — pass through
+    if (funcName === "noEvent") {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        return argIds[0] as number;
+      }
+    }
+
+    // General function call
+    const argIds = getArgExprs();
+    return this.dae.addCallExpr(funcName, argIds);
   }
 }

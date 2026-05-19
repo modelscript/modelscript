@@ -1,4 +1,10 @@
-import type { SimulationResult } from "@modelscript/simulator/simulation";
+// Inline SimulationResult to break circular dependency with @modelscript/simulator
+export interface SimulationResult {
+  t: number[];
+  states: string[];
+  y: number[][];
+  parameters?: { name: string; value: string | number | boolean }[];
+}
 import type { QueryDB, SymbolEntry } from "./runtime.js";
 
 /**

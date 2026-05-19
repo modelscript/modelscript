@@ -15,7 +15,7 @@ import {
   ModelicaStoredDefinitionSyntaxNode,
   StringWriter,
 } from "@modelscript/core";
-import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query.js";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { ModelicaSimulator } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -304,7 +304,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       // `daeObj` is now a DAEArenaBuilder instance.
       // Pass the Arena directly to the simulator.
-      const simulator = new ModelicaSimulator(daeObj);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const simulator = new ModelicaSimulator(daeObj as any);
       simulator.prepare();
       const result = simulator.simulate(startTime ?? 0, stopTime ?? 10, 0.1, { solver: "dopri5" });
 

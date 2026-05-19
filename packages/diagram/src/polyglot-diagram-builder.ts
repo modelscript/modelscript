@@ -104,7 +104,24 @@ export interface GraphicsConfig {
 
 type SelfAccessor = any;
 
-import type { ScopeResolver, SymbolEntry, SymbolId, SymbolIndex } from "@modelscript/compiler";
+// Minimal types to avoid circular dependency on @modelscript/compiler
+export type SymbolId = string;
+export interface SymbolEntry {
+  id: SymbolId;
+  ruleName: string;
+  name?: string;
+  parentId: SymbolId | null;
+  metadata: Record<string, unknown>;
+  resourceId?: string;
+}
+export interface SymbolIndex {
+  symbols: Map<SymbolId, SymbolEntry>;
+  childrenOf: Map<SymbolId, SymbolId[]>;
+}
+export interface ScopeResolver {
+  resolve?: any;
+  isDeclaration(entry: SymbolEntry): boolean;
+}
 
 // ── Public Types ──
 
@@ -625,7 +642,7 @@ export function buildPolyglotDiagram(
         ports: { groups: {}, items: [] },
         properties: {
           className: sym.ruleName,
-          description: sym.name,
+          description: sym.name ?? "",
           parameters,
         },
         autoLayout: true,
@@ -807,7 +824,7 @@ export function buildPolyglotDiagram(
         },
         properties: {
           className: sym.ruleName,
-          description: sym.name,
+          description: sym.name ?? "",
           parameters,
         },
         autoLayout: true,
@@ -884,7 +901,7 @@ export function buildPolyglotDiagram(
       },
       properties: {
         className: sym.ruleName,
-        description: sym.name,
+        description: sym.name ?? "",
         parameters,
       },
       autoLayout: true,

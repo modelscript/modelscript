@@ -646,6 +646,11 @@ export class QueryEngine {
         if (!entry) return null;
         return engine.tree.getNode(entry.startByte, entry.endByte, entry);
       },
+
+      cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+        if (!engine.tree) return null;
+        return engine.tree.getNode(startByte, endByte, entry);
+      },
     };
     this._queryDBCache = db;
     return db;
@@ -1108,6 +1113,11 @@ export class QueryEngine {
         const entry = engine.resolveEntry(id);
         if (!entry) return null;
         return engine.tree.getNode(entry.startByte, entry.endByte, entry);
+      },
+
+      cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
+        if (!engine.tree) return null;
+        return engine.tree.getNode(startByte, endByte, entry);
       },
     };
   }

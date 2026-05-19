@@ -45,6 +45,7 @@ export interface QueryDB {
   baseOf(id: SymbolId): SymbolId | null;
   cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null;
   cstNode(id: SymbolId): unknown | null;
+  cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null;
   evaluate(expression: unknown, scopeId?: SymbolId | null): unknown;
 }
 

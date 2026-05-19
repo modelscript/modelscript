@@ -99,6 +99,7 @@ export interface ConnectionPair {
 }
 
 import {
+  BinOp,
   Causality,
   DAEArenaBuilder,
   EqKind,
@@ -108,10 +109,16 @@ import {
   VarType,
 } from "@modelscript/compiler";
 import { ArenaExprVisitor } from "./arena-expr-visitor.js";
-import { ModelicaSyntaxNode } from "./ast.js";
+import {
+  ModelicaForEquationSyntaxNode,
+  ModelicaForIndexSyntaxNode,
+  ModelicaIfEquationSyntaxNode,
+  ModelicaSimpleEquationSyntaxNode,
+  ModelicaSyntaxNode,
+  ModelicaWhenEquationSyntaxNode,
+} from "./ast.js";
 
 // We remove FlatDAE and FlatVariable interfaces since we emit directly to DAEArenaBuilder.
-
 // ---------------------------------------------------------------------------
 // Predefined Type Detection
 // ---------------------------------------------------------------------------
@@ -263,7 +270,13 @@ export class ArenaQueryFlattener {
     const typeName = meta?.typeSpecifier as string | undefined;
 
     if (!typeName) {
-      dae.diagnostics.push(`Component '${fullName}' has no type specifier`);
+      dae.diagnostics.push({
+        code: 4004,
+        rule: "arena-flattener",
+        severity: "error",
+        message: `Component '${fullName}' has no type specifier`,
+        range: null,
+      });
       return;
     }
 
@@ -277,13 +290,25 @@ export class ArenaQueryFlattener {
     const classInstanceId = this.db.query<SymbolId | null>("classInstance", entry.id);
 
     if (classInstanceId === null) {
-      dae.diagnostics.push(`Cannot resolve type '${typeName}' for component '${fullName}'`);
+      dae.diagnostics.push({
+        code: 4004,
+        rule: "arena-flattener",
+        severity: "error",
+        message: `Cannot resolve type '${typeName}' for component '${fullName}'`,
+        range: null,
+      });
       return;
     }
 
     const classEntry = this.db.symbol(classInstanceId);
     if (!classEntry) {
-      dae.diagnostics.push(`Type '${typeName}' resolved to invalid symbol for '${fullName}'`);
+      dae.diagnostics.push({
+        code: 4004,
+        rule: "arena-flattener",
+        severity: "error",
+        message: `Type '${typeName}' resolved to invalid symbol for '${fullName}'`,
+        range: null,
+      });
       return;
     }
 
@@ -329,12 +354,19 @@ export class ArenaQueryFlattener {
     const classEntry = this.db.symbol(classInstanceId);
     const typeName = classEntry?.name ?? "Real";
 
+    // Track the root variable index so we can set its shape metadata
+    const rootIdx = dae.getVarIdxByName(baseName);
+
     for (const idx of indices) {
       const indexStr = idx.map(String).join(",");
       const fullName = `${baseName}[${indexStr}]`;
 
       if (isPredefinedScalar(typeName) || classEntry?.metadata?.isPredefined) {
-        this.emitVariable(fullName, typeName, entry, dae);
+        const varIdx = this.emitVariable(fullName, typeName, entry, dae);
+        // Set shape on the first expanded element to record the original array shape
+        if (varIdx >= 0 && idx.every((v, i) => v === 1 || i > 0)) {
+          dae.setVarShape(varIdx, shape);
+        }
       } else {
         // Compound array element — recurse
         const subElements = this.db.query<SymbolId[]>("instantiate", classInstanceId);
@@ -366,7 +398,7 @@ export class ArenaQueryFlattener {
   // Variable Emission
   // -------------------------------------------------------------------------
 
-  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: DAEArenaBuilder): void {
+  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: DAEArenaBuilder): number {
     const meta = componentEntry.metadata as Record<string, unknown>;
 
     // Extract modification values for start, unit, etc.
@@ -389,7 +421,12 @@ export class ArenaQueryFlattener {
     if (cStr === "input") causality = Causality.Input;
     else if (cStr === "output") causality = Causality.Output;
 
-    dae.addVariable(varType, name, (meta?.description as string) ?? "", variability, causality);
+    let flags = 0;
+    if (meta?.flowPrefix === "flow" || meta?.flowPrefix === "stream") {
+      flags |= 8; // isFlow
+    }
+
+    const varIdx = dae.addVariable(name, varType, variability, causality, 0.0, flags);
 
     // If there's a binding expression, emit a binding equation
     if (mod?.bindingExpression) {
@@ -401,7 +438,7 @@ export class ArenaQueryFlattener {
           const visitor = new ArenaExprVisitor(dae);
           const exprId = visitor.visit(astNode);
           if (exprId !== undefined) {
-            const nameExpr = dae.addExpression(ExprKind.Name, name);
+            const nameExpr = dae.addNameExpr(name);
             dae.addEquation(EqKind.Simple, nameExpr, exprId);
           }
         }
@@ -409,14 +446,16 @@ export class ArenaQueryFlattener {
         const val = mod.bindingExpression.value;
         const exprId =
           typeof val === "number"
-            ? dae.addExpression(ExprKind.RealLiteral, val)
+            ? dae.addRealLiteral(val)
             : typeof val === "boolean"
-              ? dae.addExpression(ExprKind.BoolLiteral, val)
-              : dae.addExpression(ExprKind.StringLiteral, val as string);
-        const nameExpr = dae.addExpression(ExprKind.Name, name);
+              ? dae.addBoolLiteral(val as boolean)
+              : dae.addStringLiteral(val as string);
+        const nameExpr = dae.addNameExpr(name);
         dae.addEquation(EqKind.Simple, nameExpr, exprId);
       }
     }
+
+    return varIdx;
   }
 
   private resolveModAttribute(
@@ -512,20 +551,305 @@ export class ArenaQueryFlattener {
     dae.addEquation(EqKind.Simple, lhs, rhs);
   }
 
+  /**
+   * Unroll a for-equation by evaluating the index range at compile time
+   * and emitting one copy of each inner equation per iteration.
+   */
   private flattenForEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
-    // Stub
+    const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
+    if (!cstNode) return;
+
+    const forEq = ModelicaForEquationSyntaxNode.new(null, cstNode as any);
+    if (!forEq) return;
+
+    // Recursively unroll all for-indexes
+    this.unrollForIndexes(forEq.forIndexes, 0, forEq.equations, prefix, dae, new Map());
   }
 
+  /**
+   * Recursively bind for-index variables and unroll inner equations.
+   */
+  private unrollForIndexes(
+    forIndexes: ModelicaForIndexSyntaxNode[],
+    indexPos: number,
+    equations: any[],
+    prefix: string,
+    dae: DAEArenaBuilder,
+    loopVars: Map<string, number>,
+  ): void {
+    if (indexPos >= forIndexes.length) {
+      // Base case: all indices bound — flatten each inner equation
+      for (const eq of equations) {
+        this.flattenCstEquation(eq, prefix, dae, loopVars);
+      }
+      return;
+    }
+
+    const forIndex = forIndexes[indexPos];
+    if (!forIndex) return;
+
+    const indexName = forIndex.identifier?.text ?? "";
+    if (!indexName) return;
+
+    // Evaluate the range expression
+    const rangeValues = this.evaluateForRange(forIndex, dae);
+
+    if (!rangeValues || rangeValues.length === 0) {
+      // Cannot evaluate range — emit as a symbolic for-equation
+      // (This covers dynamic ranges that can't be resolved at compile time)
+      return;
+    }
+
+    // Iterate and recurse
+    for (const val of rangeValues) {
+      const newVars = new Map(loopVars);
+      newVars.set(indexName, val);
+      this.unrollForIndexes(forIndexes, indexPos + 1, equations, prefix, dae, newVars);
+    }
+  }
+
+  /**
+   * Evaluate a for-index range expression to an array of integer values.
+   * Handles `start:stop` and `start:step:stop` patterns.
+   */
+  private evaluateForRange(forIndex: ModelicaForIndexSyntaxNode, dae: DAEArenaBuilder): number[] | null {
+    if (!forIndex.expression) return null;
+
+    const visitor = new ArenaExprVisitor(dae);
+    const rangeExprId = visitor.visit(forIndex.expression);
+    if (rangeExprId === undefined) return null;
+
+    // Check if it's a Range expression
+    if (dae.getExprKind(rangeExprId) === ExprKind.Range) {
+      const startId = dae.getExprData1(rangeExprId);
+      const stepId = dae.getExprLeft(rangeExprId);
+      const stopId = dae.getExprRight(rangeExprId);
+
+      const startVal = evaluateArenaExpression(dae, startId);
+      const stopVal = evaluateArenaExpression(dae, stopId);
+      if (typeof startVal !== "number" || typeof stopVal !== "number") return null;
+
+      let stepVal = 1;
+      if (stepId >= 0) {
+        const sv = evaluateArenaExpression(dae, stepId);
+        if (typeof sv === "number") stepVal = sv;
+      }
+
+      const result: number[] = [];
+      if (stepVal > 0) {
+        for (let i = startVal; i <= stopVal; i += stepVal) result.push(i);
+      } else if (stepVal < 0) {
+        for (let i = startVal; i >= stopVal; i += stepVal) result.push(i);
+      }
+      return result;
+    }
+
+    // Try direct evaluation (e.g., a literal or parameter reference)
+    const val = evaluateArenaExpression(dae, rangeExprId);
+    if (typeof val === "number") return [val];
+
+    return null;
+  }
+
+  /**
+   * Flatten a single CST equation node with loop variable substitution.
+   */
+  private flattenCstEquation(eqNode: any, prefix: string, dae: DAEArenaBuilder, loopVars: Map<string, number>): void {
+    if (!eqNode) return;
+
+    // Check node type for dispatch
+    if (eqNode instanceof ModelicaSimpleEquationSyntaxNode) {
+      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1) : undefined;
+      const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2) : undefined;
+      if (lhsId !== undefined && rhsId !== undefined) {
+        dae.addEquation(EqKind.Simple, lhsId, rhsId);
+      }
+    } else if (eqNode instanceof ModelicaForEquationSyntaxNode) {
+      // Nested for-equation — recurse
+      this.unrollForIndexes(eqNode.forIndexes, 0, eqNode.equations, prefix, dae, loopVars);
+    } else if (eqNode instanceof ModelicaIfEquationSyntaxNode) {
+      this.flattenIfEquationAst(eqNode, prefix, dae, loopVars);
+    } else if (eqNode instanceof ModelicaWhenEquationSyntaxNode) {
+      this.flattenWhenEquationAst(eqNode, prefix, dae, loopVars);
+    } else {
+      // Generic equation — try expression1/expression2 via duck typing
+      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const n = eqNode as any;
+      if (n.expression1 && n.expression2) {
+        const lhsId = visitor.visit(n.expression1);
+        const rhsId = visitor.visit(n.expression2);
+        if (lhsId !== undefined && rhsId !== undefined) {
+          dae.addEquation(EqKind.Simple, lhsId, rhsId);
+        }
+      }
+    }
+  }
+
+  /**
+   * Flatten an if-equation. Attempts compile-time branch elimination;
+   * if the condition is not statically evaluable, emits EqKind.If.
+   */
   private flattenIfEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
-    // Stub
+    const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
+    if (!cstNode) return;
+
+    const ifEq = ModelicaIfEquationSyntaxNode.new(null, cstNode as any);
+    if (!ifEq) return;
+
+    this.flattenIfEquationAst(ifEq, prefix, dae, new Map());
   }
 
+  private flattenIfEquationAst(
+    ifEq: ModelicaIfEquationSyntaxNode,
+    prefix: string,
+    dae: DAEArenaBuilder,
+    loopVars: Map<string, number>,
+  ): void {
+    // Try to evaluate the condition at compile time
+    if (ifEq.condition) {
+      const visitor = new ArenaExprVisitor(dae, loopVars);
+      const condId = visitor.visit(ifEq.condition);
+      if (condId !== undefined) {
+        const condVal = evaluateArenaExpression(dae, condId);
+        if (condVal === true) {
+          // Statically true — only emit the then-branch
+          for (const eq of ifEq.equations) {
+            this.flattenCstEquation(eq, prefix, dae, loopVars);
+          }
+          return;
+        } else if (condVal === false) {
+          // Statically false — check elseif branches, then else
+          for (const elseIf of ifEq.elseIfEquationClauses) {
+            if (elseIf.condition) {
+              const eifVisitor = new ArenaExprVisitor(dae, loopVars);
+              const eifCondId = eifVisitor.visit(elseIf.condition);
+              if (eifCondId !== undefined) {
+                const eifVal = evaluateArenaExpression(dae, eifCondId);
+                if (eifVal === true) {
+                  for (const eq of elseIf.equations) {
+                    this.flattenCstEquation(eq, prefix, dae, loopVars);
+                  }
+                  return;
+                } else if (eifVal === false) {
+                  continue;
+                }
+              }
+            }
+            // Can't evaluate this elseif — fall through to dynamic
+            break;
+          }
+          // All conditions false — emit else branch
+          for (const eq of ifEq.elseEquations) {
+            this.flattenCstEquation(eq, prefix, dae, loopVars);
+          }
+          return;
+        }
+        // Condition is runtime — emit as EqKind.If
+        // Flatten the then-branch equations into the arena
+        const thenStart = dae.eqCount;
+        for (const eq of ifEq.equations) {
+          this.flattenCstEquation(eq, prefix, dae, loopVars);
+        }
+        const thenEnd = dae.eqCount;
+
+        // Flatten the else-branch equations
+        const elseStart = dae.eqCount;
+        for (const eq of ifEq.elseEquations) {
+          this.flattenCstEquation(eq, prefix, dae, loopVars);
+        }
+
+        // Emit the if-equation with condition and then-branch range as aux
+        dae.addEquation(EqKind.If, condId, thenStart, thenEnd);
+      }
+    }
+  }
+
+  /**
+   * Flatten a when-equation. Always emits EqKind.When since when-equations
+   * are event-driven and cannot be eliminated at compile time.
+   */
   private flattenWhenEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
-    // Stub
+    const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
+    if (!cstNode) return;
+
+    const whenEq = ModelicaWhenEquationSyntaxNode.new(null, cstNode as any);
+    if (!whenEq) return;
+
+    this.flattenWhenEquationAst(whenEq, prefix, dae, new Map());
   }
 
+  private flattenWhenEquationAst(
+    whenEq: ModelicaWhenEquationSyntaxNode,
+    prefix: string,
+    dae: DAEArenaBuilder,
+    loopVars: Map<string, number>,
+  ): void {
+    if (!whenEq.condition) return;
+
+    const visitor = new ArenaExprVisitor(dae, loopVars);
+    const condId = visitor.visit(whenEq.condition);
+    if (condId === undefined) return;
+
+    // Flatten the body equations
+    for (const eq of whenEq.equations) {
+      const eqVisitor = new ArenaExprVisitor(dae, loopVars);
+      const n = eq as any;
+      if (n.expression1 && n.expression2) {
+        const lhsId = eqVisitor.visit(n.expression1);
+        const rhsId = eqVisitor.visit(n.expression2);
+        if (lhsId !== undefined && rhsId !== undefined) {
+          dae.addEquation(EqKind.When, lhsId, rhsId, condId);
+        }
+      }
+    }
+
+    // Handle elsewhen clauses
+    for (const elseWhen of whenEq.elseWhenEquationClauses) {
+      if (!elseWhen.condition) continue;
+      const ewVisitor = new ArenaExprVisitor(dae, loopVars);
+      const ewCondId = ewVisitor.visit(elseWhen.condition);
+      if (ewCondId === undefined) continue;
+
+      for (const eq of elseWhen.equations) {
+        const eqVisitor = new ArenaExprVisitor(dae, loopVars);
+        const n = eq as any;
+        if (n.expression1 && n.expression2) {
+          const lhsId = eqVisitor.visit(n.expression1);
+          const rhsId = eqVisitor.visit(n.expression2);
+          if (lhsId !== undefined && rhsId !== undefined) {
+            dae.addEquation(EqKind.When, lhsId, rhsId, ewCondId);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Flatten an algorithm section into statement-level assignments in the arena.
+   */
   private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
-    // Stub
+    const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
+    if (!cstNode) return;
+
+    const cst = cstNode as any;
+    const statements = cst.childrenForFieldName?.("statement") ?? [];
+
+    for (const stmt of statements) {
+      // Handle simple assignment: target := source
+      const target = stmt.childForFieldName?.("target");
+      const source = stmt.childForFieldName?.("source");
+      if (target && source) {
+        const visitor = new ArenaExprVisitor(dae);
+        const targetAst = ModelicaSyntaxNode.new(null, target);
+        const sourceAst = ModelicaSyntaxNode.new(null, source);
+        const lhsId = targetAst ? visitor.visit(targetAst) : undefined;
+        const rhsId = sourceAst ? visitor.visit(sourceAst) : undefined;
+        if (lhsId !== undefined && rhsId !== undefined) {
+          dae.addEquation(EqKind.Simple, lhsId, rhsId);
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -548,15 +872,114 @@ export class ArenaQueryFlattener {
   }
 
   private expandConnections(dae: DAEArenaBuilder): void {
-    // Stub for future flow expansion implementation
-  }
+    class IntUnionFind {
+      private parent: Int32Array;
+      private rank: Int32Array;
+      constructor(size: number) {
+        this.parent = new Int32Array(size);
+        this.rank = new Int32Array(size);
+        for (let i = 0; i < size; i++) this.parent[i] = i;
+      }
+      find(i: number): number {
+        let root = i;
+        while (root !== this.parent[root]!) root = this.parent[root]!;
+        let curr = i;
+        while (curr !== root) {
+          const n = this.parent[curr]!;
+          this.parent[curr] = root;
+          curr = n;
+        }
+        return root;
+      }
+      union(i: number, j: number): boolean {
+        const rootI = this.find(i);
+        const rootJ = this.find(j);
+        if (rootI === rootJ) return false;
+        if (this.rank[rootI]! < this.rank[rootJ]!) {
+          this.parent[rootI] = rootJ;
+        } else if (this.rank[rootI]! > this.rank[rootJ]!) {
+          this.parent[rootJ] = rootI;
+        } else {
+          this.parent[rootJ] = rootI;
+          this.rank[rootI]!++;
+        }
+        return true;
+      }
+    }
 
-  private findSet(sets: Map<string, Set<string>>, name: string): Set<string> {
-    const existing = sets.get(name);
-    if (existing) return existing;
-    const newSet = new Set([name]);
-    sets.set(name, newSet);
-    return newSet;
+    const uf = new IntUnionFind(dae.varCount);
+    const connectPairs: [number, number][] = [];
+
+    // 1. Gather all explicit connect() equation pairs
+    for (let i = 0; i < dae.eqCount; i++) {
+      if (dae.getEqKind(i) === EqKind.Connect) {
+        const lhsId = dae.getEqLhs(i);
+        const rhsId = dae.getEqRhs(i);
+        if (dae.getExprKind(lhsId) === ExprKind.Name && dae.getExprKind(rhsId) === ExprKind.Name) {
+          connectPairs.push([dae.getExprData1(lhsId), dae.getExprData1(rhsId)]);
+        }
+      }
+    }
+
+    if (connectPairs.length === 0) return;
+
+    // 2. Resolve structural connections to variable index pairs
+    for (let i = 0; i < dae.varCount; i++) {
+      const varName = dae.getVarName(i);
+
+      for (const [fromStrId, toStrId] of connectPairs) {
+        const fromStr = dae.interner.resolve(fromStrId);
+        const toStr = dae.interner.resolve(toStrId);
+
+        // Match from -> to
+        let matchSuffix: string | null = null;
+        if (varName === fromStr) matchSuffix = "";
+        else if (varName.startsWith(fromStr + ".")) matchSuffix = varName.substring(fromStr.length);
+
+        if (matchSuffix !== null) {
+          const targetName = toStr + matchSuffix;
+          const targetIdx = dae.getVarIdxByName(targetName);
+          if (targetIdx >= 0) {
+            uf.union(i, targetIdx);
+          }
+        }
+      }
+    }
+
+    // 3. Build equivalence classes
+    const roots = new Map<number, number[]>();
+    for (let i = 0; i < dae.varCount; i++) {
+      const root = uf.find(i);
+      if (!roots.has(root)) roots.set(root, []);
+      roots.get(root)!.push(i);
+    }
+
+    // 4. Emit flow-balance and potential equality equations
+    for (const [root, group] of roots) {
+      if (group.length <= 1) continue;
+
+      const isFlow = dae.isVarFlow(root);
+
+      if (!isFlow) {
+        // Potential variables: emit v1 = root, v2 = root...
+        const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(root));
+        for (const vIdx of group) {
+          if (vIdx !== root) {
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+            dae.addEquation(EqKind.Simple, vExpr, rootExpr);
+          }
+        }
+      } else {
+        // Flow variables: emit sum(flows) = 0
+        let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
+        for (let i = 1; i < group.length; i++) {
+          const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[i]!));
+          sumExpr = dae.addExpression(ExprKind.Binary, BinOp.Add, sumExpr, vExpr);
+        }
+        const zeroExpr = dae.addExpression(ExprKind.RealLiteral, 0.0);
+        dae.addEquation(EqKind.Simple, sumExpr, zeroExpr);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
