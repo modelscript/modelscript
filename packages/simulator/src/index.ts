@@ -20,6 +20,7 @@ export * from "./monte-carlo.js";
 export * from "./nn-fmu-subsystem.js";
 export * from "./reverse-evaluator.js";
 export * from "./rom-trainer.js";
+export * from "./simulate-arena.js";
 export * from "./simulator.js";
 export * from "./solver-options.js";
 export * from "./sparse-jacobian.js";
