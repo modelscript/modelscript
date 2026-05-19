@@ -10,6 +10,8 @@ import {
 } from "@modelscript/compiler";
 import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
+import { bdf } from "./bdf.js";
+import { dopri5 } from "./dopri5.js";
 import { Dual } from "./dual.js";
 import { luFactor, luSolve } from "./simulator.js";
 
@@ -39,6 +41,22 @@ interface ArenaWhenClause {
   wasActive: boolean;
 }
 
+/** An arena assertion extracted from EqKind.FunctionCall assert(cond, msg). */
+interface ArenaAssertion {
+  /** ExprId of the condition expression. */
+  conditionExprId: number;
+  /** ExprId of the message expression (or -1 if none). */
+  messageExprId: number;
+}
+
+/** An arena event indicator for zero-crossing detection. */
+interface ArenaEventIndicator {
+  /** ExprId of the zero-crossing function g(t, y). */
+  exprId: number;
+  /** Previous value of g() for sign-change detection. */
+  prevValue: number;
+}
+
 export class ArenaSimulator {
   public parameters = new Map<string, number>();
 
@@ -54,6 +72,12 @@ export class ArenaSimulator {
 
   /** Extracted when-clauses for event handling. */
   public whenClauses: ArenaWhenClause[] = [];
+
+  /** Extracted assertion equations for runtime checking. */
+  public assertions: ArenaAssertion[] = [];
+
+  /** Event indicator functions for zero-crossing detection. */
+  public eventIndicators: ArenaEventIndicator[] = [];
 
   /** Warm-start cache for algebraic loop variables (varNameId → value). */
   private algWarmStart = new Map<number, number>();
@@ -81,6 +105,8 @@ export class ArenaSimulator {
 
     this.buildExecutionBlocks();
     this.extractWhenClauses();
+    this.extractAssertions();
+    this.extractEventIndicators();
   }
 
   private buildExecutionBlocks() {
@@ -221,6 +247,65 @@ export class ArenaSimulator {
       }
     }
     return actions;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Assertion Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractAssertions() {
+    this.assertions = [];
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.FunctionCall) continue;
+
+      // FunctionCall equations store the call ExprId in lhs
+      const callExprId = this.arena.getEqLhs(eqIdx);
+      if (this.arena.getExprKind(callExprId) !== ExprKind.Call) continue;
+
+      const funcNameId = this.arena.getExprData1(callExprId);
+      const funcName = this.arena.interner.resolve(funcNameId);
+      if (funcName !== "assert") continue;
+
+      // assert(condition, message): first arg = condition, second = message
+      const firstArg = callExprId + 1; // condition ExprId
+      const secondArg = callExprId + 2; // message ExprId (may not exist)
+      const argCount = this.arena.getExprRight(callExprId);
+
+      this.assertions.push({
+        conditionExprId: firstArg,
+        messageExprId: argCount >= 2 ? secondArg : -1,
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Indicator Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractEventIndicators() {
+    this.eventIndicators = [];
+    // Event indicators from the DAE builder
+    for (const exprId of this.arena.eventIndicatorExprIds) {
+      this.eventIndicators.push({ exprId, prevValue: 0 });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Assertion Checking
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private checkAssertions(valuesByStringId: Float64Array, t: number): void {
+    for (const assertion of this.assertions) {
+      const condVal = evaluateArenaRuntime(this.arena, assertion.conditionExprId, valuesByStringId);
+      if (condVal === 0) {
+        let msg = `Assertion failed at t=${t}`;
+        if (assertion.messageExprId !== -1) {
+          const msgVal = evaluateArenaRuntime(this.arena, assertion.messageExprId, valuesByStringId);
+          msg = `Assertion failed at t=${t}: ${msgVal}`;
+        }
+        throw new Error(msg);
+      }
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -375,7 +460,90 @@ export class ArenaSimulator {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Simulation (RK4 with Forward Euler fallback)
+  // RHS Bridge: builds a (t, y) => dy/dt callback for Dopri5/BDF
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildRhsFunction(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+  ): (t: number, y: number[]) => number[] {
+    const n = stateStringIds.length;
+    return (t: number, y: number[]): number[] => {
+      // Write state into the environment
+      valuesByStringId[timeId] = t;
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+      }
+      // Evaluate all blocks
+      this.evaluateBlocks(valuesByStringId);
+      this.processWhenClauses(valuesByStringId);
+      this.checkAssertions(valuesByStringId, t);
+
+      // Read derivatives
+      const dydt = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        dydt[i] = valuesByStringId[derivStringIds[i] ?? -1] ?? 0;
+      }
+      return dydt;
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Functions Bridge: builds g_i(t, y) functions for zero-crossing
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildEventFunctions(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    timeId: number,
+  ): ((t: number, y: number[]) => number)[] {
+    if (this.eventIndicators.length === 0) return [];
+    const n = stateStringIds.length;
+
+    return this.eventIndicators.map((ei) => {
+      return (t: number, y: number[]): number => {
+        valuesByStringId[timeId] = t;
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+        }
+        return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+      };
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Event Callback: handles zero-crossing events (reinit, discrete updates)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private buildEventCallback(
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    timeId: number,
+  ): (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[] {
+    const n = stateStringIds.length;
+    return (t: number, y: number[]): number[] => {
+      // Write state at event time
+      valuesByStringId[timeId] = t;
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
+      }
+      // Process when-clauses at event time (may reinit state variables)
+      this.evaluateBlocks(valuesByStringId);
+      this.processWhenClauses(valuesByStringId);
+
+      // Read back possibly-modified state
+      const yAfter = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        yAfter[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+      }
+      return yAfter;
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Simulation (multi-solver: Euler, RK4, Dopri5, BDF)
   // ─────────────────────────────────────────────────────────────────────────
 
   simulate(
@@ -384,28 +552,53 @@ export class ArenaSimulator {
     valuesByStringId: Float64Array,
     stateStringIds: number[],
     derivStringIds: number[],
-    options?: { solver?: "euler" | "rk4" },
+    options?: {
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+      atol?: number;
+      rtol?: number;
+    },
   ) {
     const solver = options?.solver ?? "rk4";
     const timeId = this.arena.interner.intern("time");
     const n = stateStringIds.length;
-
-    const t_out: number[] = [];
-    const y_out: Float64Array[] = [];
-    let currentTime = 0;
+    const startTime = valuesByStringId[timeId] ?? 0;
 
     // Initialize when-clause wasActive flags
-    valuesByStringId[timeId] = currentTime;
+    valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
     for (const clause of this.whenClauses) {
       const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
       clause.wasActive = condVal !== 0;
     }
+    // Initialize event indicator previous values
+    for (const ei of this.eventIndicators) {
+      ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+    }
+
+    // ── Adaptive solvers (Dopri5, BDF) ──
+    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+      return this.simulateAdaptive(
+        solver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
+    }
+
+    // ── Fixed-step solvers (RK4, Euler) ──
+    const t_out: number[] = [];
+    const y_out: Float64Array[] = [];
+    let currentTime = startTime;
 
     for (let s = 0; s <= steps; s++) {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      this.checkAssertions(valuesByStringId, currentTime);
 
       // Record output
       const currentState = new Float64Array(n);
@@ -431,6 +624,83 @@ export class ArenaSimulator {
 
       currentTime += step;
     }
+
+    return { t: t_out, y: y_out };
+  }
+
+  /**
+   * Run simulation using an adaptive solver (Dopri5 or BDF).
+   * Bridges the arena evaluation into the standalone solver modules.
+   */
+  private simulateAdaptive(
+    solver: "dopri5" | "bdf" | "auto",
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+    options?: { atol?: number; rtol?: number },
+  ) {
+    const n = stateStringIds.length;
+    const startTime = valuesByStringId[timeId] ?? 0;
+    const stopTime = startTime + steps * step;
+    const atol = options?.atol ?? 1e-6;
+    const rtol = options?.rtol ?? 1e-6;
+
+    // Build output times
+    const outputTimes: number[] = [];
+    for (let i = 0; i <= steps; i++) {
+      outputTimes.push(startTime + i * step);
+    }
+
+    // Extract initial state
+    const y0: number[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      y0[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+    }
+
+    // Build RHS function
+    const rhsFn = this.buildRhsFunction(valuesByStringId, stateStringIds, derivStringIds, timeId);
+
+    // Build event functions and callback
+    const eventFns = this.buildEventFunctions(valuesByStringId, stateStringIds, timeId);
+    const eventCb = eventFns.length > 0 ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId) : undefined;
+
+    let rawResult: { times: number[]; states: number[][] };
+
+    if (solver === "bdf") {
+      rawResult = bdf(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        { atol, rtol },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+      );
+    } else {
+      // dopri5 or auto
+      rawResult = dopri5(
+        rhsFn,
+        startTime,
+        y0,
+        stopTime,
+        outputTimes,
+        { atol, rtol },
+        eventFns.length > 0 ? eventFns : undefined,
+        eventCb,
+      );
+    }
+
+    // Convert to Float64Array output format
+    const t_out = rawResult.times;
+    const y_out: Float64Array[] = rawResult.states.map((row) => {
+      const fa = new Float64Array(n);
+      for (let i = 0; i < n; i++) fa[i] = row[i] ?? 0;
+      return fa;
+    });
 
     return { t: t_out, y: y_out };
   }
@@ -497,23 +767,48 @@ export class ArenaSimulator {
     valuesByStringId: Float64Array,
     stateStringIds: number[],
     derivStringIds: number[],
-    options?: { signal?: AbortSignal; solver?: "euler" | "rk4" },
+    options?: {
+      signal?: AbortSignal;
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+      atol?: number;
+      rtol?: number;
+    },
   ) {
     const solver = options?.solver ?? "rk4";
     const timeId = this.arena.interner.intern("time");
     const n = stateStringIds.length;
-
-    const t_out: number[] = [];
-    const y_out: Float64Array[] = [];
-    let currentTime = 0;
+    const startTime = valuesByStringId[timeId] ?? 0;
 
     // Initialize when-clause wasActive flags
-    valuesByStringId[timeId] = currentTime;
+    valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
     for (const clause of this.whenClauses) {
       const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
       clause.wasActive = condVal !== 0;
     }
+    for (const ei of this.eventIndicators) {
+      ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+    }
+
+    // Adaptive solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
+    if (solver === "dopri5" || solver === "bdf" || solver === "auto") {
+      if (options?.signal?.aborted) throw new Error("Simulation aborted");
+      return this.simulateAdaptive(
+        solver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
+    }
+
+    // Fixed-step with async yielding
+    const t_out: number[] = [];
+    const y_out: Float64Array[] = [];
+    let currentTime = startTime;
 
     for (let s = 0; s <= steps; s++) {
       if (options?.signal?.aborted) {
@@ -528,6 +823,7 @@ export class ArenaSimulator {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
+      this.checkAssertions(valuesByStringId, currentTime);
 
       // Record output
       const currentState = new Float64Array(n);

@@ -37,7 +37,11 @@ export interface ArenaSimulateOptions {
   /** Number of output intervals (used if `step` is not given). */
   numberOfIntervals?: number;
   /** ODE solver selection. */
-  solver?: "euler" | "rk4";
+  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+  /** Absolute tolerance for adaptive solvers (default: 1e-6). */
+  atol?: number;
+  /** Relative tolerance for adaptive solvers (default: 1e-6). */
+  rtol?: number;
   /** Parameter overrides (name → value). */
   parameterOverrides?: Map<string, number>;
   /** Abort signal for cooperative cancellation. */
@@ -138,14 +142,11 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
   // ── Step 6: Run simulation ──
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
 
-  const rawResult = options?.signal
-    ? // Run async path synchronously via the sync simulate() — signal only matters for abort
-      sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-        solver: options.solver ?? "rk4",
-      })
-    : sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-        solver: options?.solver ?? "rk4",
-      });
+  const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
+    solver: options?.solver ?? "rk4",
+    ...(options?.atol !== undefined && { atol: options.atol }),
+    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+  });
 
   // ── Step 7: Transform to row-major output ──
   const t = rawResult.t;
@@ -232,12 +233,12 @@ export async function simulateArenaAsync(
 
   const steps = Math.max(Math.round((stopTime - startTime) / step), 1);
 
-  const asyncOpts: { signal?: AbortSignal; solver?: "euler" | "rk4" } = {
+  const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
     solver: options?.solver ?? "rk4",
-  };
-  if (options?.signal) asyncOpts.signal = options.signal;
-
-  const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, asyncOpts);
+    ...(options?.signal !== undefined && { signal: options.signal }),
+    ...(options?.atol !== undefined && { atol: options.atol }),
+    ...(options?.rtol !== undefined && { rtol: options.rtol }),
+  });
 
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row));
