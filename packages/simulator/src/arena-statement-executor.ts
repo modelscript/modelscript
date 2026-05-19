@@ -406,3 +406,450 @@ export function executeArenaFunction(
     currentCallDepth--;
   }
 }
+
+// --- ASYNC DUALS FOR DEBUGGING ---
+
+export async function executeArenaStatementsAsync(
+  arena: ArenaDAEBuilder,
+  startStmtIdx: number,
+  stmtCount: number,
+  valuesByStringId: Float64Array,
+  functionLookup?: (nameId: number, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  let i = startStmtIdx;
+  const endIdx = startStmtIdx + stmtCount;
+
+  while (i < endIdx) {
+    if (debuggerHook?.onArenaStatement) {
+      await debuggerHook.onArenaStatement(arena, i, valuesByStringId);
+    }
+
+    const kind = arena.getStmtKind(i);
+    const data1 = arena.getStmtData1(i);
+    const left = arena.getStmtLeft(i);
+    const right = arena.getStmtRight(i);
+
+    let nextIdx = i + 1;
+
+    switch (kind) {
+      case StmtKind.Assignment: {
+        const targetExprId = data1;
+        const sourceExprId = left;
+        const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
+        if (arena.getExprKind(targetExprId) === ExprKind.Name) {
+          const nameId = arena.getExprData1(targetExprId);
+          valuesByStringId[nameId] = value;
+        }
+        break;
+      }
+
+      case StmtKind.For: {
+        const indexNameId = data1;
+        const rangeExprId = left;
+        const bodyStmtCount = right;
+        nextIdx += bodyStmtCount;
+
+        await executeArenaForStatementAsync(
+          arena,
+          indexNameId,
+          rangeExprId,
+          i + 1,
+          bodyStmtCount,
+          valuesByStringId,
+          functionLookup,
+          debuggerHook,
+        );
+        break;
+      }
+
+      case StmtKind.While: {
+        const condExprId = data1;
+        const bodyStmtCount = left;
+        nextIdx += bodyStmtCount;
+
+        await executeArenaWhileStatementAsync(
+          arena,
+          condExprId,
+          i + 1,
+          bodyStmtCount,
+          valuesByStringId,
+          functionLookup,
+          debuggerHook,
+        );
+        break;
+      }
+
+      case StmtKind.If: {
+        const condExprId = data1;
+        const thenStmtCount = left;
+        const branchCount = right;
+
+        const blockStartIdx = i + 1;
+        nextIdx = blockStartIdx + thenStmtCount;
+
+        const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
+        let executed = false;
+
+        if (condVal !== 0) {
+          await executeArenaStatementsAsync(
+            arena,
+            blockStartIdx,
+            thenStmtCount,
+            valuesByStringId,
+            functionLookup,
+            debuggerHook,
+          );
+          executed = true;
+        }
+
+        for (let b = 0; b < branchCount; b++) {
+          const branchStmtIdx = nextIdx;
+          const branchKind = arena.getStmtKind(branchStmtIdx);
+          const branchCondExprId = arena.getStmtData1(branchStmtIdx);
+          const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+
+          nextIdx += 1 + branchStmtCount;
+
+          if (!executed && branchKind === StmtKind.Block) {
+            if (branchCondExprId === -1) {
+              await executeArenaStatementsAsync(
+                arena,
+                branchStmtIdx + 1,
+                branchStmtCount,
+                valuesByStringId,
+                functionLookup,
+                debuggerHook,
+              );
+              executed = true;
+            } else {
+              const elseIfCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
+              if (elseIfCondVal !== 0) {
+                await executeArenaStatementsAsync(
+                  arena,
+                  branchStmtIdx + 1,
+                  branchStmtCount,
+                  valuesByStringId,
+                  functionLookup,
+                  debuggerHook,
+                );
+                executed = true;
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case StmtKind.When: {
+        const condExprId = data1;
+        const bodyStmtCount = left;
+        const elseWhenCount = right;
+
+        const blockStartIdx = i + 1;
+        nextIdx = blockStartIdx + bodyStmtCount;
+
+        const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
+        let executed = false;
+
+        if (condVal !== 0) {
+          await executeArenaStatementsAsync(
+            arena,
+            blockStartIdx,
+            bodyStmtCount,
+            valuesByStringId,
+            functionLookup,
+            debuggerHook,
+          );
+          executed = true;
+        }
+
+        for (let b = 0; b < elseWhenCount; b++) {
+          const branchStmtIdx = nextIdx;
+          const branchCondExprId = arena.getStmtData1(branchStmtIdx);
+          const branchStmtCount = arena.getStmtLeft(branchStmtIdx);
+
+          nextIdx += 1 + branchStmtCount;
+
+          if (!executed) {
+            const elseWhenCondVal = evaluateArenaRuntime(arena, branchCondExprId, valuesByStringId);
+            if (elseWhenCondVal !== 0) {
+              await executeArenaStatementsAsync(
+                arena,
+                branchStmtIdx + 1,
+                branchStmtCount,
+                valuesByStringId,
+                functionLookup,
+                debuggerHook,
+              );
+              executed = true;
+            }
+          }
+        }
+        break;
+      }
+
+      case StmtKind.Return:
+        throw ArenaReturnSignal;
+
+      case StmtKind.Break:
+        throw ArenaBreakSignal;
+
+      case StmtKind.ProcedureCall: {
+        const callExprId = data1;
+        if (arena.getExprKind(callExprId) === ExprKind.Call) {
+          const funcNameId = arena.getExprData1(callExprId);
+          const firstArg = arena.getExprLeft(callExprId);
+          const numArgs = arena.getExprRight(callExprId);
+
+          const funcName = arena.interner.resolve(funcNameId);
+
+          if (funcName === "assert" || funcName === "print" || funcName === "terminate") {
+            // Silently consume or handle built-ins
+          } else if (functionLookup) {
+            const argValues: number[] = [];
+            if (numArgs > 0) {
+              argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
+              for (let a = 1; a < numArgs; a++) {
+                const tupleExprId = firstArg + a;
+                const argExprId = arena.getExprLeft(tupleExprId);
+                argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
+              }
+            }
+            functionLookup(funcNameId, argValues);
+          }
+        }
+        break;
+      }
+
+      case StmtKind.ComplexAssignment: {
+        const numTargets = data1;
+        const sourceExprId = left;
+        nextIdx += numTargets;
+
+        if (numTargets === 1) {
+          const targetBlockIdx = i + 1;
+          const targetExprId = arena.getStmtData1(targetBlockIdx);
+          const value = evaluateArenaRuntime(arena, sourceExprId, valuesByStringId);
+          if (arena.getExprKind(targetExprId) === ExprKind.Name) {
+            const nameId = arena.getExprData1(targetExprId);
+            valuesByStringId[nameId] = value;
+          }
+        } else if (functionLookup && arena.getExprKind(sourceExprId) === ExprKind.Call) {
+          const funcNameId = arena.getExprData1(sourceExprId);
+          const firstArg = arena.getExprLeft(sourceExprId);
+          const numArgs = arena.getExprRight(sourceExprId);
+
+          const argValues: number[] = [];
+          if (numArgs > 0) {
+            argValues.push(evaluateArenaRuntime(arena, firstArg, valuesByStringId));
+            for (let a = 1; a < numArgs; a++) {
+              const tupleExprId = firstArg + a;
+              const argExprId = arena.getExprLeft(tupleExprId);
+              argValues.push(evaluateArenaRuntime(arena, argExprId, valuesByStringId));
+            }
+          }
+
+          const result = functionLookup(funcNameId, argValues);
+          if (result !== null && numTargets > 0) {
+            const firstTargetBlockIdx = i + 1;
+            const targetExprId = arena.getStmtData1(firstTargetBlockIdx);
+            if (arena.getExprKind(targetExprId) === ExprKind.Name) {
+              const nameId = arena.getExprData1(targetExprId);
+              valuesByStringId[nameId] = result;
+            }
+          }
+        }
+        break;
+      }
+
+      case StmtKind.Block:
+        break;
+    }
+
+    i = nextIdx;
+  }
+}
+
+async function executeArenaForStatementAsync(
+  arena: ArenaDAEBuilder,
+  indexNameId: number,
+  rangeExprId: number,
+  bodyStartIdx: number,
+  bodyStmtCount: number,
+  valuesByStringId: Float64Array,
+  functionLookup?: (nameId: number, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  let startVal: number;
+  let stepVal: number;
+  let endVal: number;
+
+  if (arena.getExprKind(rangeExprId) === ExprKind.Range) {
+    const startId = arena.getExprData1(rangeExprId);
+    const stepId = arena.getExprLeft(rangeExprId);
+    const stopId = arena.getExprRight(rangeExprId);
+
+    startVal = evaluateArenaRuntime(arena, startId, valuesByStringId);
+    endVal = evaluateArenaRuntime(arena, stopId, valuesByStringId);
+    if (stepId !== -1) {
+      stepVal = evaluateArenaRuntime(arena, stepId, valuesByStringId);
+    } else {
+      stepVal = 1;
+    }
+  } else {
+    const val = evaluateArenaRuntime(arena, rangeExprId, valuesByStringId);
+    startVal = val;
+    endVal = val;
+    stepVal = 1;
+  }
+
+  if (stepVal === 0) return;
+
+  const previousValue = valuesByStringId[indexNameId] ?? 0;
+  let iterCount = 0;
+
+  try {
+    if (stepVal > 0) {
+      for (let v = startVal; v <= endVal + 1e-10; v += stepVal) {
+        if (++iterCount > MAX_FOR_ITERATIONS) break;
+        valuesByStringId[indexNameId] = Math.round(v * 1e10) / 1e10;
+        try {
+          await executeArenaStatementsAsync(
+            arena,
+            bodyStartIdx,
+            bodyStmtCount,
+            valuesByStringId,
+            functionLookup,
+            debuggerHook,
+          );
+        } catch (e) {
+          if (e === ArenaBreakSignal) break;
+          throw e;
+        }
+      }
+    } else {
+      for (let v = startVal; v >= endVal - 1e-10; v += stepVal) {
+        if (++iterCount > MAX_FOR_ITERATIONS) break;
+        valuesByStringId[indexNameId] = Math.round(v * 1e10) / 1e10;
+        try {
+          await executeArenaStatementsAsync(
+            arena,
+            bodyStartIdx,
+            bodyStmtCount,
+            valuesByStringId,
+            functionLookup,
+            debuggerHook,
+          );
+        } catch (e) {
+          if (e === ArenaBreakSignal) break;
+          throw e;
+        }
+      }
+    }
+  } finally {
+    valuesByStringId[indexNameId] = previousValue;
+  }
+}
+
+async function executeArenaWhileStatementAsync(
+  arena: ArenaDAEBuilder,
+  condExprId: number,
+  bodyStartIdx: number,
+  bodyStmtCount: number,
+  valuesByStringId: Float64Array,
+  functionLookup?: (nameId: number, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<void> {
+  let iterCount = 0;
+
+  while (true) {
+    if (++iterCount > MAX_WHILE_ITERATIONS) break;
+
+    const condVal = evaluateArenaRuntime(arena, condExprId, valuesByStringId);
+    if (condVal === 0) break;
+
+    try {
+      await executeArenaStatementsAsync(
+        arena,
+        bodyStartIdx,
+        bodyStmtCount,
+        valuesByStringId,
+        functionLookup,
+        debuggerHook,
+      );
+    } catch (e) {
+      if (e === ArenaBreakSignal) break;
+      throw e;
+    }
+  }
+}
+
+export async function executeArenaFunctionAsync(
+  funcArena: ArenaDAEBuilder,
+  argValues: number[],
+  parentLookup?: (nameId: number, args: number[]) => number | null,
+  debuggerHook?: import("./simulator.js").SimulationDebugger,
+): Promise<number | null> {
+  if (++currentCallDepth > MAX_CALL_DEPTH) {
+    currentCallDepth--;
+    throw new Error(`Maximum call depth (${MAX_CALL_DEPTH}) exceeded in function.`);
+  }
+
+  try {
+    const valuesByStringId = new Float64Array(funcArena.interner.size);
+
+    let firstOutputId = -1;
+    let argIndex = 0;
+
+    for (let i = 0; i < funcArena.varCount; i++) {
+      if (funcArena.isVarRemoved(i)) continue;
+
+      const causality = funcArena.getVarCausality(i);
+      const nameId = funcArena.getVarNameId(i);
+      const startExprId = funcArena.getVarExpression(i) as number | undefined;
+
+      if (causality === 1 /* Input */) {
+        if (argIndex < argValues.length) {
+          valuesByStringId[nameId] = argValues[argIndex] ?? 0;
+        } else if (typeof startExprId === "number" && startExprId !== -1) {
+          valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
+        }
+        argIndex++;
+      } else if (causality === 2 /* Output */) {
+        if (firstOutputId === -1) firstOutputId = nameId;
+        if (typeof startExprId === "number" && startExprId !== -1) {
+          valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
+        }
+      } else {
+        if (typeof startExprId === "number" && startExprId !== -1) {
+          valuesByStringId[nameId] = evaluateArenaRuntime(funcArena, startExprId, valuesByStringId);
+        }
+      }
+    }
+
+    for (const section of funcArena.algorithmSections) {
+      try {
+        await executeArenaStatementsAsync(
+          funcArena,
+          section.start,
+          section.count,
+          valuesByStringId,
+          parentLookup,
+          debuggerHook,
+        );
+      } catch (e) {
+        if (e === ArenaReturnSignal) break;
+        throw e;
+      }
+    }
+
+    if (firstOutputId !== -1) {
+      return valuesByStringId[firstOutputId] ?? null;
+    }
+
+    return null;
+  } finally {
+    currentCallDepth--;
+  }
+}

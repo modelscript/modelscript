@@ -1,313 +1,120 @@
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-import { StaticTapeBuilder } from "@modelscript/compiler";
-// SPDX-License-Identifier: AGPL-3.0-or-later
+import { ArenaDAEBuilder, EqKind, ExprKind } from "@modelscript/compiler";
+import { colorJacobianColumns } from "@modelscript/symbolics";
+import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
+import { Dual } from "./dual.js";
 
-/**
- * Sparse Jacobian evaluator using graph-coloring-compressed forward-mode AD.
- *
- * Instead of n individual reverse-mode sweeps (one per equation), this module
- * performs `numColors` compressed forward-mode tape evaluations. Each sweep
- * seeds all columns with the same color simultaneously, exploiting the fact
- * that structurally independent columns cannot interfere during decompression.
- *
- * Memory: O(nnz) instead of O(n²)
- * AD sweeps: O(numColors) instead of O(n)
- *
- * For a banded system with bandwidth k, numColors ≈ 2k+1 ≪ n.
- */
-
-import {
-  ModelicaArrayEquation,
-  type ModelicaDAE,
-  type ModelicaExpression,
-  colorJacobianColumns,
-  computeJacobianSparsity,
-} from "@modelscript/symbolics";
-
-/** Compressed Sparse Row representation of the Jacobian. */
 export interface SparseJacobian {
-  /** Matrix dimension (n × n). */
   n: number;
-  /** Row pointers (length n+1). rowPtr[i]..rowPtr[i+1] are the entries in row i. */
   rowPtr: Int32Array;
-  /** Column indices of non-zero entries (length nnz). */
   colIdx: Int32Array;
-  /** Values of non-zero entries (length nnz). Mutated in-place on each evaluation. */
   values: Float64Array;
-  /** Number of non-zeros. */
   nnz: number;
 }
 
-import { extractDerName as extractDer } from "./simulator.js";
-
-/**
- * Forward-mode tape evaluation with a seed vector.
- *
- * Each tape node gets a value t[i] (from forward eval) and a derivative
- * dt[i] (from the seed propagation). The seed vector `seeds` maps
- * variable names to their seed values (0 or 1).
- *
- * Returns both value and derivative arrays.
- */
-export function evaluateTapeForwardDual(
-  builder: StaticTapeBuilder,
-  varValues: Map<string, number>,
-  seeds: Map<string, number>,
-): { t: Float64Array; dt: Float64Array } {
-  const n = builder.length;
-  const t = new Float64Array(n);
-  const dt = new Float64Array(n);
-  const { opData, valData, interner } = builder;
-  const TAPE_STRIDE = 4;
-
-  for (let i = 0; i < n; i++) {
-    const offset = i * TAPE_STRIDE;
-    const kind = opData[offset];
-    const a = opData[offset + 1]!;
-    const b = opData[offset + 2]!;
-    const c = opData[offset + 3]!;
-
-    switch (kind) {
-      case 1: // Const
-        t[i] = valData[i]!;
-        // dt[i] = 0 (default)
-        break;
-      case 2: {
-        // Var
-        const name = interner.resolve(a) || "";
-        t[i] = varValues.get(name) ?? 0;
-        dt[i] = seeds.get(name) ?? 0;
-        break;
-      }
-      case 3: // Add
-        t[i] = (t[a] ?? 0) + (t[b] ?? 0);
-        dt[i] = (dt[a] ?? 0) + (dt[b] ?? 0);
-        break;
-      case 4: // Sub
-        t[i] = (t[a] ?? 0) - (t[b] ?? 0);
-        dt[i] = (dt[a] ?? 0) - (dt[b] ?? 0);
-        break;
-      case 5: {
-        // Mul
-        const av = t[a] ?? 0;
-        const bv = t[b] ?? 0;
-        t[i] = av * bv;
-        dt[i] = av * (dt[b] ?? 0) + (dt[a] ?? 0) * bv;
-        break;
-      }
-      case 6: {
-        // Div
-        const av = t[a] ?? 0;
-        const bv = t[b] ?? 0;
-        t[i] = av / bv;
-        dt[i] = ((dt[a] ?? 0) * bv - av * (dt[b] ?? 0)) / (bv * bv);
-        break;
-      }
-      case 7: {
-        // Pow
-        const base = t[a] ?? 0;
-        const exp = t[b] ?? 0;
-        const v = Math.pow(base, exp);
-        t[i] = v;
-        const dBase = dt[a] ?? 0;
-        const dExp = dt[b] ?? 0;
-        // d(a^b) = a^b * (b * da/a + db * ln(a))
-        if (dExp === 0) {
-          dt[i] = exp * Math.pow(base, exp - 1) * dBase;
-        } else if (dBase === 0) {
-          dt[i] = v * Math.log(base) * dExp;
-        } else {
-          dt[i] = v * ((exp * dBase) / base + dExp * Math.log(base));
-        }
-        break;
-      }
-      case 8: // Neg
-        t[i] = -(t[a] ?? 0);
-        dt[i] = -(dt[a] ?? 0);
-        break;
-      case 9: {
-        // Sin
-        const av = t[a] ?? 0;
-        t[i] = Math.sin(av);
-        dt[i] = (dt[a] ?? 0) * Math.cos(av);
-        break;
-      }
-      case 10: {
-        // Cos
-        const av = t[a] ?? 0;
-        t[i] = Math.cos(av);
-        dt[i] = -(dt[a] ?? 0) * Math.sin(av);
-        break;
-      }
-      case 11: {
-        // Tan
-        const av = t[a] ?? 0;
-        const tv = Math.tan(av);
-        t[i] = tv;
-        dt[i] = (dt[a] ?? 0) * (1 + tv * tv);
-        break;
-      }
-      case 12: {
-        // Exp
-        const v = Math.exp(t[a] ?? 0);
-        t[i] = v;
-        dt[i] = (dt[a] ?? 0) * v;
-        break;
-      }
-      case 13: {
-        // Log
-        const av = t[a] ?? 0;
-        t[i] = Math.log(av);
-        dt[i] = (dt[a] ?? 0) / av;
-        break;
-      }
-      case 14: {
-        // Sqrt
-        const v = Math.sqrt(t[a] ?? 0);
-        t[i] = v;
-        dt[i] = (dt[a] ?? 0) / (2 * v);
-        break;
-      }
-      // ── Vector ops ──
-      case 15: {
-        // VecVar
-        const baseName = interner.resolve(a) || "";
-        for (let k = 0; k < b; k++) {
-          const name = `${baseName}[${k + 1}]`;
-          t[i + k] = varValues.get(name) ?? 0;
-          dt[i + k] = seeds.get(name) ?? 0;
-        }
-        break;
-      }
-      case 16: // VecConst
-        for (let k = 0; k < b; k++) {
-          t[i + k] = valData[i + k] ?? 0;
-        }
-        break;
-      case 17: // VecAdd
-        for (let k = 0; k < b; k++) {
-          t[i + k] = (t[a + k] ?? 0) + (t[c + k] ?? 0);
-          dt[i + k] = (dt[a + k] ?? 0) + (dt[c + k] ?? 0);
-        }
-        break;
-      case 18: // VecSub
-        for (let k = 0; k < b; k++) {
-          t[i + k] = (t[a + k] ?? 0) - (t[c + k] ?? 0);
-          dt[i + k] = (dt[a + k] ?? 0) - (dt[c + k] ?? 0);
-        }
-        break;
-      case 19: // VecMul
-        for (let k = 0; k < b; k++) {
-          const av = t[a + k] ?? 0;
-          const bv = t[c + k] ?? 0;
-          t[i + k] = av * bv;
-          dt[i + k] = av * (dt[c + k] ?? 0) + (dt[a + k] ?? 0) * bv;
-        }
-        break;
-      case 20: // VecNeg
-        for (let k = 0; k < b; k++) {
-          t[i + k] = -(t[a + k] ?? 0);
-          dt[i + k] = -(dt[a + k] ?? 0);
-        }
-        break;
-      case 21: // VecSubscript
-        t[i] = t[a + c] ?? 0;
-        dt[i] = dt[a + c] ?? 0;
-        break;
-      case 0: // Nop
-        break;
-    }
+function getArenaExprVariables(arena: ArenaDAEBuilder, exprId: number, vars: Set<number>) {
+  if (exprId < 0) return;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Name) {
+    vars.add(arena.getExprData1(exprId));
   }
-
-  return { t, dt };
+  const left = arena.getExprLeft(exprId);
+  const right = arena.getExprRight(exprId);
+  if (left >= 0) getArenaExprVariables(arena, left, vars);
+  if (right >= 0) getArenaExprVariables(arena, right, vars);
 }
 
-/**
- * Build a sparse AD Jacobian evaluator from a ModelicaDAE.
- *
- * At compile time:
- *   1. Extract derivative equations from the DAE
- *   2. Compute structural sparsity pattern
- *   3. Color the column intersection graph
- *   4. Build per-equation AD tapes
- *
- * Returns a closure `(t, y) → SparseJacobian` that evaluates the exact
- * Jacobian using compressed forward-mode AD with `numColors` sweeps.
- *
- * @param dae The flattened DAE
- * @returns Sparse Jacobian evaluator, or null if no derivative equations found
- */
+function extractDerArena(arena: ArenaDAEBuilder, exprId: number): string | null {
+  if (exprId < 0) return null;
+  if (arena.getExprKind(exprId) === ExprKind.Der) {
+    const argId = arena.getExprData1(exprId);
+    if (arena.getExprKind(argId) === ExprKind.Name) {
+      return arena.interner.resolve(arena.getExprData1(argId)) || null;
+    }
+  }
+  return null;
+}
+
 export function buildSparseAdJacobian(
-  dae: ModelicaDAE,
+  dae: ArenaDAEBuilder,
   stateNames: string[],
 ): { evaluator: (time: number, y: number[]) => SparseJacobian; numColors: number; nnz: number } | null {
-  // ── Step 1: Extract derivative equations in the order of stateNames ──
-  const derEqsMap = new Map<string, ModelicaExpression>();
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    const ld = extractDer(se.expression1);
-    const rd = extractDer(se.expression2);
+  const derEqs: { state: string; rhsExprId: number }[] = [];
 
-    if (eq instanceof ModelicaArrayEquation) {
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind !== EqKind.Simple && kind !== EqKind.Array) continue;
+
+    const lhsId = dae.getEqLhs(i);
+    const rhsId = dae.getEqRhs(i);
+
+    const ld = extractDerArena(dae, lhsId);
+    const rd = extractDerArena(dae, rhsId);
+
+    if (kind === EqKind.Array) {
       const baseName = ld || rd;
       if (!baseName) continue;
-      const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.arenaGetVarByName(baseName);
-      const dims = v?.arrayDimensions ?? [];
-      const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
+      const rhs = ld ? rhsId : lhsId;
 
-      if (baseName.includes("[") || size === 1) {
-        derEqsMap.set(baseName, rhs);
-      } else {
-        for (let i = 0; i < size; i++) {
-          derEqsMap.set(`${baseName}[${i + 1}]`, rhs);
-        }
+      const vIdx = dae.getVarIdxByName(baseName);
+      const dims = vIdx >= 0 ? dae.getVarShape(vIdx) : [];
+      const size = dims && dims.length > 0 ? dims.reduce((a, b) => a * b, 1) : 1;
+
+      for (let j = 0; j < size; j++) {
+        derEqs.push({ state: `${baseName}[${j + 1}]`, rhsExprId: rhs });
       }
       continue;
     }
 
-    if (ld) derEqsMap.set(ld, se.expression2);
-    else if (rd) derEqsMap.set(rd, se.expression1);
+    if (ld) derEqs.push({ state: ld, rhsExprId: rhsId });
+    else if (rd) derEqs.push({ state: rd, rhsExprId: lhsId });
   }
 
-  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
+  const orderedDerEqs: { state: string; rhsExprId: number }[] = [];
+  const derEqsMap = new Map<string, number>();
+  for (const eq of derEqs) {
+    derEqsMap.set(eq.state, eq.rhsExprId);
+  }
+
   for (const name of stateNames) {
     const rhs = derEqsMap.get(name);
-    if (!rhs) {
-      console.error(
-        `buildSparseAdJacobian failed: Missing derivative for state ${name}. Available keys: ${Array.from(derEqsMap.keys()).join(", ")}`,
-      );
-      return null; // Missing derivative for state variable
+    if (rhs !== undefined) {
+      orderedDerEqs.push({ state: name, rhsExprId: rhs });
+    } else {
+      return null;
     }
-    derEqs.push({ state: name, rhs });
-  }
-
-  if (derEqs.length === 0) {
-    console.error(`buildSparseAdJacobian failed: derEqs is empty.`);
-    console.error(`Requested stateNames: ${stateNames.join(", ")}`);
-    console.error(`Available keys in derEqsMap: ${Array.from(derEqsMap.keys()).join(", ")}`);
-    return null;
   }
 
   const n = stateNames.length;
+  const row_indices: number[] = [];
+  const col_ptr: number[] = [0];
 
-  // ── Step 2: Compute sparsity pattern ──
-  const { ccs } = computeJacobianSparsity(dae);
+  for (let col = 0; col < n; col++) {
+    const stateName = stateNames[col];
+    const stateNameId = stateName ? dae.interner.intern(stateName) : -1;
 
-  // ── Step 3: Color the column intersection graph ──
-  const coloring = colorJacobianColumns(ccs, n);
-
-  // ── Step 4: Build per-equation AD tapes ──
-  const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
-  for (const eq of derEqs) {
-    const tape = new StaticTapeBuilder();
-    const outIdx = tape.walk(eq.rhs);
-    tapeData.push({ ops: tape, outputIndex: outIdx });
+    for (let row = 0; row < n; row++) {
+      const eq = orderedDerEqs[row];
+      if (eq) {
+        const deps = new Set<number>();
+        getArenaExprVariables(dae, eq.rhsExprId, deps);
+        if (stateNameId >= 0 && deps.has(stateNameId)) {
+          row_indices.push(row);
+        }
+      }
+    }
+    col_ptr.push(row_indices.length);
   }
 
-  // ── Step 5: Build CSR structure from CCS ──
-  // Convert CCS (column-oriented) to CSR (row-oriented) for output
+  const ccs = {
+    row_indices: row_indices,
+    col_ptr: col_ptr,
+    m: n,
+    n: n,
+    nnz: row_indices.length,
+  };
+
+  const coloring = colorJacobianColumns(ccs, n);
+
   const rowCounts = new Int32Array(n);
   for (let col = 0; col < n; col++) {
     const start = ccs.col_ptr[col] ?? 0;
@@ -324,9 +131,8 @@ export function buildSparseAdJacobian(
   }
   const nnz = rowPtr[n] ?? 0;
   const colIdx = new Int32Array(nnz);
-  const csrFillPos = new Int32Array(n); // temp counter
+  const csrFillPos = new Int32Array(n);
 
-  // Build row → (col, csrIndex) mapping for decompression
   for (let col = 0; col < n; col++) {
     const start = ccs.col_ptr[col] ?? 0;
     const end = ccs.col_ptr[col + 1] ?? 0;
@@ -339,7 +145,6 @@ export function buildSparseAdJacobian(
     }
   }
 
-  // Sort each row's column indices (CSR convention)
   for (let row = 0; row < n; row++) {
     const start = rowPtr[row] ?? 0;
     const end = rowPtr[row + 1] ?? 0;
@@ -350,73 +155,58 @@ export function buildSparseAdJacobian(
     }
   }
 
-  // Build lookup: for each (row, color), which CSR index does the decompressed value go?
-  // decompressMap[color] = array of { row, csrIndex }
-  const decompressMap: { row: number; csrIndex: number }[][] = [];
-  for (let c = 0; c < coloring.numColors; c++) {
-    decompressMap.push([]);
-  }
-  for (let row = 0; row < n; row++) {
-    const start = rowPtr[row] ?? 0;
-    const end = rowPtr[row + 1] ?? 0;
-    for (let p = start; p < end; p++) {
-      const col = colIdx[p] ?? 0;
-      const color = coloring.colors[col] ?? 0;
-      const dMap = decompressMap[color];
-      if (dMap) dMap.push({ row, csrIndex: p });
-    }
-  }
-
-  // ── Return the runtime evaluator closure ──
   const values = new Float64Array(nnz);
   const sparseJ: SparseJacobian = { n, rowPtr, colIdx, values, nnz };
 
   const evaluator = (time: number, y: number[]): SparseJacobian => {
-    // Build variable value map
-    const varValues = new Map<string, number>();
-    varValues.set("time", time);
-    for (let i = 0; i < n; i++) {
-      const name = stateNames[i];
-      if (name) varValues.set(name, y[i] ?? 0);
-    }
-    for (const v of dae.arenaVariables()) {
-      if (!varValues.has(v.name) && v.expression) {
-        varValues.set(v.name, 0);
-      }
-    }
-
-    // Zero out values
     values.fill(0);
 
-    // For each color, run compressed forward-mode sweep on all equations
     for (let c = 0; c < coloring.numColors; c++) {
       const group = coloring.colorGroups[c];
-      if (!group) continue;
+      if (!group || group.length === 0) continue;
 
-      // Build seed: all columns with this color get seed = 1
-      const seeds = new Map<string, number>();
-      for (const col of group) {
-        const name = stateNames[col];
-        if (name) seeds.set(name, 1);
+      const dualVarsByStringId: Dual[] = new Array(dae.interner.size).fill(Dual.constant(0));
+
+      const timeId = dae.interner.intern("time");
+      dualVarsByStringId[timeId] = Dual.constant(time);
+
+      for (let i = 0; i < n; i++) {
+        const sName = stateNames[i];
+        if (sName) {
+          const nameId = dae.interner.intern(sName);
+          dualVarsByStringId[nameId] = Dual.constant(y[i] ?? 0);
+        }
       }
 
-      // Evaluate each equation tape with this seed
+      for (let i = 0; i < dae.varCount; i++) {
+        if (dae.isVarRemoved(i)) continue;
+        const nameId = dae.getVarNameId(i);
+        if ((dualVarsByStringId[nameId]?.val ?? 0) === 0 && dae.getVarExpression(i) !== undefined) {
+          dualVarsByStringId[nameId] = Dual.constant(dae.getVarStartValue(i));
+        }
+      }
+
+      for (const col of group) {
+        const sName = stateNames[col];
+        if (sName) {
+          const nameId = dae.interner.intern(sName);
+          const v = dualVarsByStringId[nameId]?.val ?? 0;
+          dualVarsByStringId[nameId] = new Dual(v, 1);
+        }
+      }
+
       for (let row = 0; row < n; row++) {
-        const td = tapeData[row];
-        if (!td) continue;
+        const eq = orderedDerEqs[row];
+        if (!eq) continue;
 
-        const { dt } = evaluateTapeForwardDual(td.ops, varValues, seeds);
-        const dVal = dt[td.outputIndex] ?? 0;
-
-        if (dVal !== 0) {
-          // Decompress: find which column in this color group has a non-zero
-          // in this row, and store the derivative there
+        const res = evaluateArenaDualExpression(dae, eq.rhsExprId, dualVarsByStringId);
+        if (res && res.dot !== 0) {
           const rStart = rowPtr[row] ?? 0;
           const rEnd = rowPtr[row + 1] ?? 0;
           for (let p = rStart; p < rEnd; p++) {
             const col = colIdx[p] ?? 0;
             if (coloring.colors[col] === c) {
-              values[p] = dVal;
+              values[p] = res.dot;
               break;
             }
           }
@@ -430,10 +220,6 @@ export function buildSparseAdJacobian(
   return { evaluator, numColors: coloring.numColors, nnz };
 }
 
-/**
- * Convert a SparseJacobian (CSR) to a dense number[][] for compatibility
- * with the existing BDF integrator.
- */
 export function sparseJacobianToDense(sj: SparseJacobian): number[][] {
   const J: number[][] = [];
   for (let i = 0; i < sj.n; i++) {

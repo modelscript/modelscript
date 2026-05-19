@@ -183,4 +183,64 @@ export class ArenaSimulator {
 
     return { t: t_out, y: y_out };
   }
+
+  async simulateAsync(
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    options?: { signal?: AbortSignal },
+  ) {
+    const t_out: number[] = [];
+    const y_out: Float64Array[] = [];
+    let currentTime = 0;
+
+    for (let s = 0; s <= steps; s++) {
+      if (options?.signal?.aborted) {
+        throw new Error("Simulation aborted");
+      }
+
+      // Yield to the event loop every 100 steps
+      if (s % 100 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      // Set current time
+      const timeId = this.arena.interner.intern("time");
+      valuesByStringId[timeId] = currentTime;
+
+      // 1. Evaluate blocks to compute derivatives
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const val = evaluateArenaRuntime(this.arena, block.exprId, valuesByStringId);
+          const varNameId = this.arena.getVarNameId(block.varIdx);
+          valuesByStringId[varNameId] = val;
+        } else if (block.type === "system") {
+          // Non-linear system solving goes here.
+          // For now, we skip or use a simple Newton step in a real implementation.
+        }
+      }
+
+      // Save state output
+      const currentState = new Float64Array(stateStringIds.length);
+      for (let i = 0; i < stateStringIds.length; i++) {
+        currentState[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+      }
+      t_out.push(currentTime);
+      y_out.push(currentState);
+
+      for (let i = 0; i < stateStringIds.length; i++) {
+        const stateId = stateStringIds[i] ?? -1;
+        const derivId = derivStringIds[i] ?? -1;
+        if (derivId !== -1 && stateId !== -1) {
+          valuesByStringId[stateId] = (valuesByStringId[stateId] ?? 0) + step * (valuesByStringId[derivId] ?? 0);
+        }
+      }
+
+      currentTime += step;
+    }
+
+    return { t: t_out, y: y_out };
+  }
 }

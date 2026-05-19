@@ -2139,7 +2139,7 @@ export class ModelicaSimulator {
     let sparseAdEvaluator: ((time: number, y: number[]) => import("./sparse-jacobian.js").SparseJacobian) | undefined =
       undefined;
     if (solverOpts.jacobian === "ad-colored") {
-      const res = buildSparseAdJacobian(this.dae, stateList);
+      const res = buildSparseAdJacobian(this.dae.arena, stateList);
       if (res) {
         sparseAdEvaluator = res.evaluator;
         console.error(
@@ -3828,7 +3828,7 @@ export class ModelicaSimulator {
     let sparseAdEvaluator: ((time: number, y: number[]) => import("./sparse-jacobian.js").SparseJacobian) | undefined =
       undefined;
     if (solverOpts.jacobian === "ad-colored") {
-      const res = buildSparseAdJacobian(this.dae, stateList);
+      const res = buildSparseAdJacobian(this.dae.arena, stateList);
       if (res) {
         sparseAdEvaluator = res.evaluator;
       }
@@ -4698,5 +4698,10 @@ export interface SimulationDebugger {
   onStatement?: (
     stmt: import("@modelscript/symbolics").ModelicaStatement,
     evaluator: import("@modelscript/symbolics").ExpressionEvaluator,
+  ) => Promise<void>;
+  onArenaStatement?: (
+    arena: import("@modelscript/compiler").ArenaDAEBuilder,
+    stmtIdx: number,
+    valuesByStringId: Float64Array,
   ) => Promise<void>;
 }
