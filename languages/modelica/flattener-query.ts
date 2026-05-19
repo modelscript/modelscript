@@ -99,9 +99,9 @@ export interface ConnectionPair {
 }
 
 import {
+  ArenaDAEBuilder,
   BinOp,
   Causality,
-  DAEArenaBuilder,
   eliminateArenaAliases,
   EqKind,
   evaluateArenaExpression,
@@ -119,7 +119,7 @@ import {
   ModelicaWhenEquationSyntaxNode,
 } from "./ast.js";
 
-// We remove FlatDAE and FlatVariable interfaces since we emit directly to DAEArenaBuilder.
+// We remove FlatDAE and FlatVariable interfaces since we emit directly to ArenaDAEBuilder.
 // ---------------------------------------------------------------------------
 // Predefined Type Detection
 // ---------------------------------------------------------------------------
@@ -151,11 +151,11 @@ export class ArenaQueryFlattener {
    * @param rootClassId - The SymbolId of the top-level model to flatten
    * @returns A FlatDAE containing all variables, equations, and connections
    */
-  flatten(rootClassId: SymbolId): DAEArenaBuilder {
+  flatten(rootClassId: SymbolId): ArenaDAEBuilder {
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "<unknown>";
 
-    const dae = new DAEArenaBuilder(undefined, className, "");
+    const dae = new ArenaDAEBuilder(undefined, className, "");
 
     // Use the instantiate query to get the resolved element tree
     const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
@@ -180,8 +180,8 @@ export class ArenaQueryFlattener {
    * Flatten a hybrid system from a SysML TopologyGraph.
    * Walks the topology, instantiating Modelica artifacts bound to each node.
    */
-  flattenFromTopology(graph: TopologyGraph): DAEArenaBuilder {
-    const dae = new DAEArenaBuilder(undefined, "HybridSystem", "");
+  flattenFromTopology(graph: TopologyGraph): ArenaDAEBuilder {
+    const dae = new ArenaDAEBuilder(undefined, "HybridSystem", "");
 
     const processTopologyNode = (nodeId: SymbolId, prefix: string) => {
       const node = graph.nodes.get(nodeId);
@@ -229,7 +229,7 @@ export class ArenaQueryFlattener {
   // Element Processing
   // -------------------------------------------------------------------------
 
-  private flattenElements(elementIds: SymbolId[], prefix: string, dae: DAEArenaBuilder): void {
+  private flattenElements(elementIds: SymbolId[], prefix: string, dae: ArenaDAEBuilder): void {
     for (const eid of elementIds) {
       const entry = this.db.symbol(eid);
       if (!entry) continue;
@@ -271,7 +271,7 @@ export class ArenaQueryFlattener {
   // Component Flattening
   // -------------------------------------------------------------------------
 
-  private flattenComponent(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenComponent(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
     const meta = entry.metadata as Record<string, unknown>;
     const typeName = meta?.typeSpecifier as string | undefined;
@@ -352,7 +352,7 @@ export class ArenaQueryFlattener {
     classInstanceId: SymbolId,
     shape: number[],
     entry: SymbolEntry,
-    dae: DAEArenaBuilder,
+    dae: ArenaDAEBuilder,
   ): void {
     // For a multi-dimensional array, expand recursively
     // e.g., Real[3,2] x → x[1,1], x[1,2], x[2,1], ...
@@ -405,7 +405,7 @@ export class ArenaQueryFlattener {
   // Variable Emission
   // -------------------------------------------------------------------------
 
-  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: DAEArenaBuilder): number {
+  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
     const meta = componentEntry.metadata as Record<string, unknown>;
 
     // Extract modification values for start, unit, etc.
@@ -469,7 +469,7 @@ export class ArenaQueryFlattener {
     mod: ModelicaModArgs | null,
     attrName: string,
     typeName: string,
-    dae: DAEArenaBuilder,
+    dae: ArenaDAEBuilder,
   ): unknown {
     if (mod) {
       const arg = mod.args.find((a) => a.name === attrName);
@@ -519,7 +519,7 @@ export class ArenaQueryFlattener {
   // Equation Flattening
   // -------------------------------------------------------------------------
 
-  private flattenEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenEquation(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (cstNode) {
       const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
@@ -562,7 +562,7 @@ export class ArenaQueryFlattener {
    * Unroll a for-equation by evaluating the index range at compile time
    * and emitting one copy of each inner equation per iteration.
    */
-  private flattenForEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenForEquation(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (!cstNode) return;
 
@@ -581,7 +581,7 @@ export class ArenaQueryFlattener {
     indexPos: number,
     equations: any[],
     prefix: string,
-    dae: DAEArenaBuilder,
+    dae: ArenaDAEBuilder,
     loopVars: Map<string, number>,
   ): void {
     if (indexPos >= forIndexes.length) {
@@ -619,7 +619,7 @@ export class ArenaQueryFlattener {
    * Evaluate a for-index range expression to an array of integer values.
    * Handles `start:stop` and `start:step:stop` patterns.
    */
-  private evaluateForRange(forIndex: ModelicaForIndexSyntaxNode, dae: DAEArenaBuilder): number[] | null {
+  private evaluateForRange(forIndex: ModelicaForIndexSyntaxNode, dae: ArenaDAEBuilder): number[] | null {
     if (!forIndex.expression) return null;
 
     const visitor = new ArenaExprVisitor(dae);
@@ -661,7 +661,7 @@ export class ArenaQueryFlattener {
   /**
    * Flatten a single CST equation node with loop variable substitution.
    */
-  private flattenCstEquation(eqNode: any, prefix: string, dae: DAEArenaBuilder, loopVars: Map<string, number>): void {
+  private flattenCstEquation(eqNode: any, prefix: string, dae: ArenaDAEBuilder, loopVars: Map<string, number>): void {
     if (!eqNode) return;
 
     // Check node type for dispatch
@@ -697,7 +697,7 @@ export class ArenaQueryFlattener {
    * Flatten an if-equation. Attempts compile-time branch elimination;
    * if the condition is not statically evaluable, emits EqKind.If.
    */
-  private flattenIfEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenIfEquation(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (!cstNode) return;
 
@@ -710,7 +710,7 @@ export class ArenaQueryFlattener {
   private flattenIfEquationAst(
     ifEq: ModelicaIfEquationSyntaxNode,
     prefix: string,
-    dae: DAEArenaBuilder,
+    dae: ArenaDAEBuilder,
     loopVars: Map<string, number>,
   ): void {
     // Try to evaluate the condition at compile time
@@ -776,7 +776,7 @@ export class ArenaQueryFlattener {
    * Flatten a when-equation. Always emits EqKind.When since when-equations
    * are event-driven and cannot be eliminated at compile time.
    */
-  private flattenWhenEquation(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenWhenEquation(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (!cstNode) return;
 
@@ -789,7 +789,7 @@ export class ArenaQueryFlattener {
   private flattenWhenEquationAst(
     whenEq: ModelicaWhenEquationSyntaxNode,
     prefix: string,
-    dae: DAEArenaBuilder,
+    dae: ArenaDAEBuilder,
     loopVars: Map<string, number>,
   ): void {
     if (!whenEq.condition) return;
@@ -835,7 +835,7 @@ export class ArenaQueryFlattener {
   /**
    * Flatten an algorithm section into statement-level assignments in the arena.
    */
-  private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private flattenAlgorithm(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const cstNode = this.db.cstNodeRange(entry.startByte, entry.endByte, entry);
     if (!cstNode) return;
 
@@ -863,7 +863,7 @@ export class ArenaQueryFlattener {
   // Connection Handling
   // -------------------------------------------------------------------------
 
-  private recordConnection(entry: SymbolEntry, prefix: string, dae: DAEArenaBuilder): void {
+  private recordConnection(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const meta = entry.metadata as Record<string, unknown>;
     const from = meta?.from as string;
     const to = meta?.to as string;
@@ -878,7 +878,7 @@ export class ArenaQueryFlattener {
     dae.addEquation(EqKind.Connect, lhsId, rhsId);
   }
 
-  private expandConnections(dae: DAEArenaBuilder): void {
+  private expandConnections(dae: ArenaDAEBuilder): void {
     class IntUnionFind {
       private parent: Int32Array;
       private rank: Int32Array;

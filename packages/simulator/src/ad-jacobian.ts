@@ -13,10 +13,10 @@ import { StaticTapeBuilder } from "@modelscript/compiler";
  * finite-difference approximations with exact analytical derivatives.
  */
 
-import { DAEArenaBuilder, EqKind, ExprKind } from "@modelscript/compiler";
+import { ArenaDAEBuilder, EqKind, ExprKind } from "@modelscript/compiler";
 
 /** Extract derivative name from expression like der(x). */
-function extractDer(arena: DAEArenaBuilder, exprId: number): string | null {
+function extractDer(arena: ArenaDAEBuilder, exprId: number): string | null {
   if (exprId < 0) return null;
   if (arena.getExprKind(exprId) === ExprKind.Der) {
     const argId = arena.getExprData1(exprId);
@@ -269,7 +269,7 @@ export function evaluateTapeReverse(
  * @param dae The flattened DAE
  * @returns Jacobian evaluator closure, or null if no derivative equations found
  */
-export function buildAdJacobian(dae: DAEArenaBuilder): ((t: number, y: number[]) => number[][]) | null {
+export function buildAdJacobian(dae: ArenaDAEBuilder): ((t: number, y: number[]) => number[][]) | null {
   // Gather derivative equations: der(x) = f(x, u)
   const derEqs: { state: string; rhsExprId: number }[] = [];
 

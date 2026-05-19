@@ -1,4 +1,4 @@
-import { DAEArenaBuilder, EqKind, ExprKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind, ExprKind } from "./dae-arena.js";
 
 /**
  * Union-Find data structure for zero-allocation integer aliasing.
@@ -47,7 +47,7 @@ export class IntUnionFind {
  * Identifies equations of the form `Name(a) = Name(b)` and canonicalizes all
  * Name references throughout the arena expressions to the root variable.
  */
-export function eliminateArenaAliases(dae: DAEArenaBuilder): void {
+export function eliminateArenaAliases(dae: ArenaDAEBuilder): void {
   const uf = new IntUnionFind(dae.varCount);
 
   // 1. Gather all connection/alias equations

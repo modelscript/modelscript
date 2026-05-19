@@ -12,7 +12,7 @@ parser.setLanguage(Modelica);
 Context.registerParser(".mo", parser);
 
 describe("Phase 3: Flattener Dual-Write Validation", () => {
-  it("populates DAEArenaBuilder alongside ModelicaDAE during flattening", async () => {
+  it("populates ArenaDAEBuilder alongside ModelicaDAE during flattening", async () => {
     const ctx = new Context(new NodeFileSystem());
 
     // Create a temporary Modelica file

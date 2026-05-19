@@ -4,9 +4,9 @@
 
 export * from "@modelscript/salsa";
 export {
+  ArenaDAEBuilder,
   BinOp,
   Causality,
-  DAEArenaBuilder,
   EqKind,
   ExprKind,
   StmtKind,

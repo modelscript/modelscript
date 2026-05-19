@@ -8,7 +8,7 @@
  * eliminating object allocations and pointer chasing.
  */
 
-import type { DAEArenaBuilder } from "../dae-arena.js";
+import type { ArenaDAEBuilder } from "../dae-arena.js";
 import { BinOp, ExprKind, UnaryOp } from "../dae-arena.js";
 import { StringInterner } from "../interner.js";
 
@@ -114,7 +114,7 @@ export class StaticTapeBuilder {
     return idx;
   }
 
-  public addExpression(exprId: number, arena: DAEArenaBuilder): number {
+  public addExpression(exprId: number, arena: ArenaDAEBuilder): number {
     if (exprId < 0) return this.pushScalarOp(TapeOpKind.Const, 0, 0, 0, 0);
 
     const kind = arena.getExprKind(exprId);
@@ -223,7 +223,7 @@ export class StaticTapeBuilder {
     }
   }
 
-  public addArrayExpression(exprId: number, arena: DAEArenaBuilder): number[] {
+  public addArrayExpression(exprId: number, arena: ArenaDAEBuilder): number[] {
     const kind = arena.getExprKind(exprId);
     if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
       const count = arena.getExprData1(exprId);
@@ -238,7 +238,7 @@ export class StaticTapeBuilder {
     return [this.addExpression(exprId, arena)];
   }
 
-  public walkArrayVectorized(exprId: number, arena: DAEArenaBuilder): { startIdx: number; size: number } {
+  public walkArrayVectorized(exprId: number, arena: ArenaDAEBuilder): { startIdx: number; size: number } {
     const kind = arena.getExprKind(exprId);
     if (kind !== ExprKind.ArrayCtor && kind !== ExprKind.Tuple) {
       return { startIdx: this.addExpression(exprId, arena), size: 1 };

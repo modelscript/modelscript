@@ -1,4 +1,4 @@
-import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -18,12 +18,12 @@ import {
 
 /**
  * Translates a Modelica CST/AST expression tree into integer-based `ExprId`s
- * inside the given `DAEArenaBuilder`.
+ * inside the given `ArenaDAEBuilder`.
  */
 export class ArenaExprVisitor {
   private loopVars: Map<string, number>;
   constructor(
-    private dae: DAEArenaBuilder,
+    private dae: ArenaDAEBuilder,
     loopVars?: Map<string, number>,
   ) {
     this.loopVars = loopVars ?? new Map();

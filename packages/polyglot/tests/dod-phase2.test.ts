@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 import {
+  ArenaDAEBuilder,
   BinOp,
   Causality,
-  DAEArenaBuilder,
   EqKind,
   ExprKind,
   UnaryOp,
@@ -15,9 +15,9 @@ import {
 // Variables
 // ---------------------------------------------------------------------------
 
-describe("DAEArenaBuilder — Variables", () => {
+describe("ArenaDAEBuilder — Variables", () => {
   it("adds and reads back variable fields", () => {
-    const b = new DAEArenaBuilder(undefined, "TestModel");
+    const b = new ArenaDAEBuilder(undefined, "TestModel");
 
     const idx = b.addVariable("resistor1.R", VarType.Real, Variability.Parameter, Causality.Local, 100.0);
 
@@ -31,7 +31,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("handles multiple variable types", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addVariable("x", VarType.Real, Variability.Continuous, Causality.Local, 0.0);
     b.addVariable("n", VarType.Integer, Variability.Discrete, Causality.Local, 42);
@@ -46,7 +46,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("preserves Float64 start values with full precision", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const pi = 3.141592653589793;
     b.addVariable("pi", VarType.Real, Variability.Constant, Causality.Local, pi);
@@ -62,7 +62,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("supports variable flags", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     // isProtected=1, isState=2, isAlias=4, isFlow=8
     b.addVariable("v", VarType.Real, Variability.Continuous, Causality.Local, 0, 0b1010); // isState + isFlow
@@ -74,7 +74,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("supports array dimensions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addVariable("T", VarType.Real);
     b.setVarShape(0, [10, 3]);
@@ -84,7 +84,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("supports alias variables", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addVariable("a", VarType.Real);
     b.addVariable("b", VarType.Real);
@@ -97,7 +97,7 @@ describe("DAEArenaBuilder — Variables", () => {
   });
 
   it("grows automatically for many variables", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     for (let i = 0; i < 1000; i++) {
       b.addVariable(`var_${i}`, VarType.Real, Variability.Continuous, Causality.Local, i * 0.1);
@@ -113,9 +113,9 @@ describe("DAEArenaBuilder — Variables", () => {
 // Equations
 // ---------------------------------------------------------------------------
 
-describe("DAEArenaBuilder — Equations", () => {
+describe("ArenaDAEBuilder — Equations", () => {
   it("adds and reads back equation fields", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const lhs = b.addNameExpr("x");
     const rhs = b.addRealLiteral(1.0);
@@ -129,7 +129,7 @@ describe("DAEArenaBuilder — Equations", () => {
   });
 
   it("supports multiple equation kinds", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addEquation(EqKind.Simple, 0, 1);
     b.addEquation(EqKind.Array, 2, 3);
@@ -146,9 +146,9 @@ describe("DAEArenaBuilder — Equations", () => {
 // Expressions
 // ---------------------------------------------------------------------------
 
-describe("DAEArenaBuilder — Expressions", () => {
+describe("ArenaDAEBuilder — Expressions", () => {
   it("creates name expressions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const id = b.addNameExpr("resistor1.v");
 
@@ -158,7 +158,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates integer literals", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const id = b.addIntLiteral(42);
 
@@ -167,7 +167,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates real literals with full precision", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const id = b.addRealLiteral(3.14159);
 
@@ -176,7 +176,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates boolean literals", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const t = b.addBoolLiteral(true);
     const f = b.addBoolLiteral(false);
@@ -186,7 +186,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates binary expressions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const lhs = b.addNameExpr("x");
     const rhs = b.addRealLiteral(2.0);
@@ -199,7 +199,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates unary expressions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const x = b.addNameExpr("x");
     const neg = b.addUnaryExpr(UnaryOp.Negate, x);
@@ -210,7 +210,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates der() expressions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const x = b.addNameExpr("x");
     const derX = b.addDerExpr(x);
@@ -220,7 +220,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("creates function call expressions", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     const arg1 = b.addNameExpr("x");
     const arg2 = b.addRealLiteral(1.0);
@@ -233,7 +233,7 @@ describe("DAEArenaBuilder — Expressions", () => {
   });
 
   it("builds a complete expression tree: der(x) = -k * x", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     // LHS: der(x)
     const xRef = b.addNameExpr("x");
@@ -264,9 +264,9 @@ describe("DAEArenaBuilder — Expressions", () => {
 // Memory & Lifecycle
 // ---------------------------------------------------------------------------
 
-describe("DAEArenaBuilder — Memory", () => {
+describe("ArenaDAEBuilder — Memory", () => {
   it("estimates memory usage", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     for (let i = 0; i < 100; i++) {
       b.addVariable(`v_${i}`, VarType.Real, Variability.Continuous, Causality.Local, i);
@@ -282,7 +282,7 @@ describe("DAEArenaBuilder — Memory", () => {
   });
 
   it("clear resets counts but keeps buffers", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addVariable("x", VarType.Real);
     b.addEquation(EqKind.Simple, 0, 0);
@@ -295,7 +295,7 @@ describe("DAEArenaBuilder — Memory", () => {
   });
 
   it("release frees buffers", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     for (let i = 0; i < 50; i++) b.addVariable(`v_${i}`);
 
@@ -306,7 +306,7 @@ describe("DAEArenaBuilder — Memory", () => {
   });
 
   it("provides bulk views", () => {
-    const b = new DAEArenaBuilder();
+    const b = new ArenaDAEBuilder();
 
     b.addVariable("x", VarType.Real);
     b.addVariable("y", VarType.Integer);
@@ -317,7 +317,7 @@ describe("DAEArenaBuilder — Memory", () => {
   });
 
   it("handles a realistic model size (1000 equations)", () => {
-    const b = new DAEArenaBuilder(undefined, "HeatConduction1D_1000");
+    const b = new ArenaDAEBuilder(undefined, "HeatConduction1D_1000");
 
     // 1000 temperature variables + 999 equations
     for (let i = 0; i < 1000; i++) {

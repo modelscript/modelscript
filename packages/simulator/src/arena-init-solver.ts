@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEArenaBuilder, EqKind, Variability, differentiateArenaExpressionWrt } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, EqKind, Variability, differentiateArenaExpressionWrt } from "@modelscript/compiler";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
 
 /** Result of initial equation solving natively on the arena. */
@@ -66,14 +66,14 @@ function solveLU(A: number[][], b: number[], n: number): number[] {
 }
 
 /**
- * Solve the initial equations natively on the DAEArenaBuilder using Newton-Raphson
+ * Solve the initial equations natively on the ArenaDAEBuilder using Newton-Raphson
  * with exact symbolic analytical Jacobians computed directly on the integer arena buffer.
  *
- * @param arena The DAEArenaBuilder containing the equations.
+ * @param arena The ArenaDAEBuilder containing the equations.
  * @param initialValues A Float64Array populated with start values and parameters.
  * @returns Solver result with computed initial values.
  */
-export function solveInitialEquationsArena(arena: DAEArenaBuilder, initialValues: Float64Array): ArenaInitSolverResult {
+export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues: Float64Array): ArenaInitSolverResult {
   const result: ArenaInitSolverResult = {
     valuesByStringId: new Float64Array(initialValues),
     iterations: 0,

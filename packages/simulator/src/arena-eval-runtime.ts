@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "@modelscript/compiler";
 
 /**
  * Highly optimized, zero-garbage runtime evaluator.
  * Evaluates an arena expression using a dense, flat Float64Array for variable lookups.
  * The array is indexed by the variable's StringId.
  */
-export function evaluateArenaRuntime(arena: DAEArenaBuilder, exprId: number, valuesByStringId: Float64Array): number {
+export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, valuesByStringId: Float64Array): number {
   if (exprId < 0) return 0;
 
   const kind = arena.getExprKind(exprId);

@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { BinOp, DAEArenaBuilder, ExprKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, BinOp, ExprKind } from "./dae-arena.js";
 import type { StringId } from "./interner.js";
 
 /**
  * Symbolically differentiates an expression with respect to time.
- * @param arena The DAEArenaBuilder containing the expressions.
+ * @param arena The ArenaDAEBuilder containing the expressions.
  * @param exprId The ID of the expression to differentiate.
  * @param stateVars The set of state variables (StringIds) that are functions of time.
  * @returns The ExprId of the differentiated expression.
  */
-export function differentiateArenaExpression(arena: DAEArenaBuilder, exprId: number, stateVars: Set<StringId>): number {
+export function differentiateArenaExpression(arena: ArenaDAEBuilder, exprId: number, stateVars: Set<StringId>): number {
   const kind = arena.getExprKind(exprId);
 
   switch (kind) {
@@ -94,7 +94,7 @@ export function differentiateArenaExpression(arena: DAEArenaBuilder, exprId: num
 /**
  * Simplifies an arena expression (constant folding and algebraic identities).
  */
-export function simplifyArenaExpression(arena: DAEArenaBuilder, exprId: number): number {
+export function simplifyArenaExpression(arena: ArenaDAEBuilder, exprId: number): number {
   const kind = arena.getExprKind(exprId);
 
   if (kind === ExprKind.Negate) {
@@ -157,12 +157,12 @@ export function simplifyArenaExpression(arena: DAEArenaBuilder, exprId: number):
  * Symbolically computes the partial derivative of an expression with respect to a specific variable.
  * Used for building analytical Jacobians.
  *
- * @param arena The DAEArenaBuilder.
+ * @param arena The ArenaDAEBuilder.
  * @param exprId The ID of the expression to differentiate.
  * @param wrtVarId The StringId of the variable to differentiate with respect to.
  * @returns The ExprId of the differentiated expression.
  */
-export function differentiateArenaExpressionWrt(arena: DAEArenaBuilder, exprId: number, wrtVarId: StringId): number {
+export function differentiateArenaExpressionWrt(arena: ArenaDAEBuilder, exprId: number, wrtVarId: StringId): number {
   if (exprId < 0) return arena.addRealLiteral(0.0);
 
   const kind = arena.getExprKind(exprId);

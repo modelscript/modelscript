@@ -2,7 +2,7 @@
 
 import { collectArenaExprDeps } from "./arena-blt.js";
 import { differentiateArenaExpression, simplifyArenaExpression } from "./arena-cas.js";
-import { DAEArenaBuilder, EqKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind } from "./dae-arena.js";
 import type { StringId } from "./interner.js";
 
 /**
@@ -16,11 +16,11 @@ export interface ArenaPantelidesResult {
 }
 
 /**
- * Pantelides index reduction using DAEArenaBuilder indices.
+ * Pantelides index reduction using ArenaDAEBuilder indices.
  * Identifies algebraic constraints between states and differentiates them.
  */
 export function pantelidesIndexReductionArena(
-  arena: DAEArenaBuilder,
+  arena: ArenaDAEBuilder,
   stateVars: Set<number>,
   derivativeVars: Set<number>,
   parameters: Set<number>,

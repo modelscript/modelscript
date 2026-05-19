@@ -176,7 +176,7 @@ interface FlattenerContext {
 /**
  * Factory for building Modelica AST objects during flattening.
  * This is the first step toward Phase 3c (arena-backed expressions).
- * Eventually, this factory will emit ExprIds to the DAEArenaBuilder instead of instantiating objects.
+ * Eventually, this factory will emit ExprIds to the ArenaDAEBuilder instead of instantiating objects.
  */
 const _intCache = new Map<number, ModelicaIntegerLiteral>();
 const _realCache = new Map<number, ModelicaRealLiteral>();

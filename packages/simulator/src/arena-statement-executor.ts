@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DAEArenaBuilder, ExprKind, StmtKind } from "@modelscript/compiler";
+import { ArenaDAEBuilder, ExprKind, StmtKind } from "@modelscript/compiler";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
 
 /** Sentinel thrown when a `return` statement is executed. */
@@ -18,16 +18,16 @@ const MAX_CALL_DEPTH = 256;
 let currentCallDepth = 0;
 
 /**
- * Execute a range of statements from the DAEArenaBuilder.
+ * Execute a range of statements from the ArenaDAEBuilder.
  *
- * @param arena The DAEArenaBuilder.
+ * @param arena The ArenaDAEBuilder.
  * @param startStmtIdx The index of the first statement to execute.
  * @param stmtCount The number of statements to execute.
  * @param valuesByStringId The environment containing variable values.
  * @param functionLookup Callback for user-defined function calls.
  */
 export function executeArenaStatements(
-  arena: DAEArenaBuilder,
+  arena: ArenaDAEBuilder,
   startStmtIdx: number,
   stmtCount: number,
   valuesByStringId: Float64Array,
@@ -245,7 +245,7 @@ export function executeArenaStatements(
 }
 
 function executeArenaForStatement(
-  arena: DAEArenaBuilder,
+  arena: ArenaDAEBuilder,
   indexNameId: number,
   rangeExprId: number,
   bodyStartIdx: number,
@@ -312,7 +312,7 @@ function executeArenaForStatement(
 }
 
 function executeArenaWhileStatement(
-  arena: DAEArenaBuilder,
+  arena: ArenaDAEBuilder,
   condExprId: number,
   bodyStartIdx: number,
   bodyStmtCount: number,
@@ -339,13 +339,13 @@ function executeArenaWhileStatement(
 /**
  * Execute a user-defined Modelica function DAE using its native arena.
  *
- * @param funcArena The DAEArenaBuilder of the function.
+ * @param funcArena The ArenaDAEBuilder of the function.
  * @param argValues Positional argument values.
  * @param parentLookup Parent function lookup callback.
  * @returns The value of the first output variable, or null on failure.
  */
 export function executeArenaFunction(
-  funcArena: DAEArenaBuilder,
+  funcArena: ArenaDAEBuilder,
   argValues: number[],
   parentLookup?: (nameId: number, args: number[]) => number | null,
 ): number | null {

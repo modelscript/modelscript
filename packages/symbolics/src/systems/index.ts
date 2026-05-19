@@ -2,9 +2,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
 import {
+  ArenaDAEBuilder,
   BinOp,
   Causality,
-  DAEArenaBuilder,
   EqKind,
   ExprKind,
   StmtKind,
@@ -106,7 +106,7 @@ export interface SourceLocation {
  *
  * The backing array preserves insertion order for serialization and test output.
  */
-export function materializeVariable(arena: DAEArenaBuilder, idx: number): ModelicaVariable {
+export function materializeVariable(arena: ArenaDAEBuilder, idx: number): ModelicaVariable {
   const name = arena.getVarName(idx);
   const type = arena.getVarType(idx);
   const variabilityNum = arena.getVarVariability(idx);
@@ -257,7 +257,7 @@ const unaryOpMap = new Map<UnaryOp, ModelicaUnaryOperator>([
   [UnaryOp.Not, ModelicaUnaryOperator.LOGICAL_NEGATION],
 ]);
 
-export function materializeExpression(arena: DAEArenaBuilder, id: number): ModelicaExpression {
+export function materializeExpression(arena: ArenaDAEBuilder, id: number): ModelicaExpression {
   if (id < 0) return new ModelicaNameExpression("");
   const kind = arena.getExprKind(id);
 
@@ -352,7 +352,7 @@ export function materializeExpression(arena: DAEArenaBuilder, id: number): Model
   return new ModelicaNameExpression("");
 }
 
-export function materializeEquation(arena: DAEArenaBuilder, id: number): ModelicaEquation | null {
+export function materializeEquation(arena: ArenaDAEBuilder, id: number): ModelicaEquation | null {
   const kind = arena.getEqKind(id);
   const lhs = materializeExpression(arena, arena.getEqLhs(id)!);
   const rhs = materializeExpression(arena, arena.getEqRhs(id)!);
@@ -364,9 +364,9 @@ export function materializeEquation(arena: DAEArenaBuilder, id: number): Modelic
 }
 
 export class SymbolTable {
-  private _arena?: DAEArenaBuilder | undefined;
+  private _arena?: ArenaDAEBuilder | undefined;
 
-  constructor(arena?: DAEArenaBuilder) {
+  constructor(arena?: ArenaDAEBuilder) {
     this._arena = arena;
   }
 
@@ -641,7 +641,7 @@ export class SymbolTable {
   }
 }
 
-export function mirrorExpressionToArena(arena: DAEArenaBuilder, expr: ModelicaExpression): number {
+export function mirrorExpressionToArena(arena: ArenaDAEBuilder, expr: ModelicaExpression): number {
   if (expr instanceof ModelicaNameExpression) return arena.addNameExpr(expr.name);
   if (expr instanceof ModelicaIntegerLiteral) return arena.addIntLiteral(expr.value);
   if (expr instanceof ModelicaRealLiteral) return arena.addRealLiteral(expr.value);
@@ -816,7 +816,7 @@ export class ModelicaDAE {
   legacyVariables: SymbolTable;
 
   /** Arena-backed builder populated during dual-write phase. */
-  arena: DAEArenaBuilder;
+  arena: ArenaDAEBuilder;
 
   stateMachines: ModelicaStateMachine[] = [];
   /** Clock partitions identified by the synchronous clock inference pass. */
@@ -867,7 +867,7 @@ export class ModelicaDAE {
   constructor(name: string, description?: string | null) {
     this.name = name;
     this.description = description ?? null;
-    this.arena = new DAEArenaBuilder(undefined, name, this.description ?? "");
+    this.arena = new ArenaDAEBuilder(undefined, name, this.description ?? "");
     this.legacyVariables = new SymbolTable(this.arena);
 
     // Override equations array push to intercept dual-write hooks
@@ -3349,7 +3349,7 @@ export abstract class ModelicaVariable extends ModelicaPrimaryExpression {
   cadAnnotationString: string | null;
   /** Dynamic animation bindings extracted from DynamicSelect() expressions in CAD annotations. */
   cadDynamicBindings: { property: string; index: number; variable: string }[] | null;
-  /** The assigned index in DAEArenaBuilder when pushed into the SymbolTable. */
+  /** The assigned index in ArenaDAEBuilder when pushed into the SymbolTable. */
   _arenaIdx?: number;
 
   constructor(

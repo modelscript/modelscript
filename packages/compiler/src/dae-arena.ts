@@ -2,12 +2,12 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
- * DAEArenaBuilder — Flat, arena-backed storage for flattened DAE data.
+ * ArenaDAEBuilder — Flat, arena-backed storage for flattened DAE data.
  *
  * ## Usage
  *
  * ```typescript
- * const builder = new DAEArenaBuilder(interner);
+ * const builder = new ArenaDAEBuilder(interner);
  *
  * // Flattener appends variables
  * builder.addVariable("resistor1.R", VarType.Real, Variability.Parameter, Causality.Local, 100.0);
@@ -214,7 +214,7 @@ const STMT_LEFT = 2; // Left child
 const STMT_RIGHT = 3; // Right child
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DAEArenaBuilder
+// ArenaDAEBuilder
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Default capacity for each arena segment. */
@@ -223,7 +223,7 @@ const DEFAULT_EQ_CAP = 1024;
 const DEFAULT_STMT_CAP = 256;
 const DEFAULT_EXPR_CAP = 4096;
 
-export class DAEArenaBuilder {
+export class ArenaDAEBuilder {
   // ── Variable arena ──
   private varData: Int32Array;
   private _varCount = 0;
@@ -300,7 +300,7 @@ export class DAEArenaBuilder {
   externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
 
   /** Child function DAEs. */
-  functions = new Map<StringId, DAEArenaBuilder>();
+  functions = new Map<StringId, ArenaDAEBuilder>();
 
   /** Variable attribute ExprIds: varIndex → Map<attrName, ExprId>. */
   private varAttrExprIds = new Map<number, Map<string, number>>();

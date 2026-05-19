@@ -302,7 +302,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         daeObj = flattener.flatten(firstId);
       }
 
-      // `daeObj` is now a DAEArenaBuilder instance.
+      // `daeObj` is now a ArenaDAEBuilder instance.
       // Pass the Arena directly to the simulator.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const simulator = new ModelicaSimulator(daeObj as any);

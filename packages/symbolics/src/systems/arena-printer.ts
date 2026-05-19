@@ -2,19 +2,19 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 /**
- * Arena-based DAE printer — reads directly from DAEArenaBuilder
+ * Arena-based DAE printer — reads directly from ArenaDAEBuilder
  * without materializing any legacy ModelicaExpression objects.
  */
 
 import {
   BinOp,
-  type DAEArenaBuilder,
   EqKind,
   ExprKind,
   StmtKind,
   UnaryOp,
   Variability,
   VarType,
+  type ArenaDAEBuilder,
 } from "@modelscript/compiler";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import type { Writer } from "@modelscript/utils";
@@ -64,9 +64,9 @@ const LOW_PREC_OPS = new Set([
 export class ArenaDAEPrinter {
   private out: Writer;
   private depth = 0;
-  private arena: DAEArenaBuilder;
+  private arena: ArenaDAEBuilder;
 
-  constructor(out: Writer, arena: DAEArenaBuilder) {
+  constructor(out: Writer, arena: ArenaDAEBuilder) {
     this.out = out;
     this.arena = arena;
   }
@@ -526,9 +526,11 @@ export class ArenaDAEPrinter {
 
   // ── Top-level DAE printing ──
 
-  printDAE(dae: DAEArenaBuilder): void {
+  printDAE(dae: ArenaDAEBuilder): void {
     // Emit function definitions
-    const sortedFns = [...dae.functions].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const sortedFns = Array.from(dae.functions.values()).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
     for (const fn of sortedFns) {
       this.printFunction(fn);
       this.out.write("\n\n");
@@ -590,7 +592,7 @@ export class ArenaDAEPrinter {
     this.out.write("end " + dae.name + ";\n");
   }
 
-  printFunction(fn: DAEArenaBuilder): void {
+  printFunction(fn: ArenaDAEBuilder): void {
     if (fn.isImpure) this.out.write("impure ");
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
@@ -621,7 +623,7 @@ export class ArenaDAEPrinter {
     if (fn.externalDecl) this.out.write("\n  " + fn.externalDecl + "\n");
     this.out.write("end " + fn.name + ";");
 
-    for (const nested of fn.functions) {
+    for (const nested of fn.functions.values()) {
       this.out.write("\n\n");
       this.printFunction(nested);
     }

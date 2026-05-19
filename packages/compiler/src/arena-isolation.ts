@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DAEArenaBuilder, ExprKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, ExprKind } from "./dae-arena.js";
 
 /**
  * Checks if the arena equation is explicitly solvable for the target variable.
@@ -9,7 +9,7 @@ import { DAEArenaBuilder, ExprKind } from "./dae-arena.js";
  *
  * @returns The ExprId of the isolated expression, or -1 if not explicitly solvable.
  */
-export function isExplicitlySolvableArena(arena: DAEArenaBuilder, eqIdx: number, targetVarIdx: number): number {
+export function isExplicitlySolvableArena(arena: ArenaDAEBuilder, eqIdx: number, targetVarIdx: number): number {
   const left = arena.getEqLhs(eqIdx);
   const right = arena.getEqRhs(eqIdx);
 
@@ -67,7 +67,7 @@ export function isExplicitlySolvableArena(arena: DAEArenaBuilder, eqIdx: number,
  * E.g., if equation is `x + 5 = y` and target is `x`, it returns `y - 5`.
  * Currently implements basic linear isolation.
  */
-export function isolateSymbolicallyArena(arena: DAEArenaBuilder, eqIdx: number, targetVarIdx: number): number {
+export function isolateSymbolicallyArena(arena: ArenaDAEBuilder, eqIdx: number, targetVarIdx: number): number {
   const explicitRhs = isExplicitlySolvableArena(arena, eqIdx, targetVarIdx);
   if (explicitRhs !== -1) return explicitRhs;
 

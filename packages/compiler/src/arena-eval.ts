@@ -1,7 +1,7 @@
-import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "./dae-arena.js";
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "./dae-arena.js";
 
 /**
- * Evaluates an expression tree stored in a `DAEArenaBuilder` and attempts
+ * Evaluates an expression tree stored in a `ArenaDAEBuilder` and attempts
  * to reduce it to a constant value (number, boolean, string).
  *
  * This effectively replaces the legacy AST-based `ExpressionEvaluator` and
@@ -14,7 +14,7 @@ import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "./dae-arena.js";
  */
 export type ArenaValue = number | boolean | string | ArenaValue[];
 
-function getSequenceElements(dae: DAEArenaBuilder, baseExprId: number, count: number, firstElement: number): number[] {
+function getSequenceElements(dae: ArenaDAEBuilder, baseExprId: number, count: number, firstElement: number): number[] {
   if (count === 0) return [];
   const elements = [firstElement];
   for (let i = 1; i < count; i++) {
@@ -25,7 +25,7 @@ function getSequenceElements(dae: DAEArenaBuilder, baseExprId: number, count: nu
 }
 
 export function evaluateArenaExpression(
-  dae: DAEArenaBuilder,
+  dae: ArenaDAEBuilder,
   exprId: number,
   parameters = new Map<string, number>(),
 ): ArenaValue | null {

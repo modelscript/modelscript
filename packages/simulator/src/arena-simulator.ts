@@ -1,5 +1,5 @@
 import {
-  DAEArenaBuilder,
+  ArenaDAEBuilder,
   ExprKind,
   Variability,
   evaluateArenaExpression,
@@ -22,7 +22,7 @@ export class ArenaSimulator {
   public dummyDerivatives = new Set<number>();
   public executionBlocks: import("@modelscript/compiler").ArenaExecutionBlock[] = [];
 
-  constructor(public arena: DAEArenaBuilder) {}
+  constructor(public arena: ArenaDAEBuilder) {}
 
   prepare() {
     this.resolveParameters();

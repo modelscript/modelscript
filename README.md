@@ -22,7 +22,7 @@ Designed for modern workflows, it features a robust engine for incremental compi
 ## Architecture Highlights
 
 - **Salsa-Based Incremental Compiler**: Powered by a query-based incremental compilation architecture (inspired by Rust's Salsa). ModelScript caches intermediate representations and only recompiles what has changed, enabling instantaneous feedback in the IDE.
-- **Arena Data-Oriented Simulator**: The simulator utilizes a zero-garbage, Data-Oriented Design (DoD) architecture (`DAEArenaBuilder`). By moving from legacy recursive AST visitors to direct flat-buffer indexing, it provides high-performance equation sorting, Pantelides index reduction, and bipartite matching with zero allocation overhead.
+- **Arena Data-Oriented Simulator**: The simulator utilizes a zero-garbage, Data-Oriented Design (DoD) architecture (`ArenaDAEBuilder`). By moving from legacy recursive AST visitors to direct flat-buffer indexing, it provides high-performance equation sorting, Pantelides index reduction, and bipartite matching with zero allocation overhead.
 - **Polyglot & Cross-Domain**: Unified AST querying and cross-language interoperability between Modelica (Simulation), SysML v2 (Architecture/Requirements), and STEP (CAD/Manufacturing).
 
 ## Monorepo Structure

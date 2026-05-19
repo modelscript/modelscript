@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DAEArenaBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
 
 /**
  * Collects all variable indices referenced in an expression.
  */
-export function collectArenaExprDeps(arena: DAEArenaBuilder, exprId: number, deps: Set<number>): void {
+export function collectArenaExprDeps(arena: ArenaDAEBuilder, exprId: number, deps: Set<number>): void {
   if (exprId === -1) return;
   const kind = arena.getExprKind(exprId);
 
@@ -13,7 +13,7 @@ export function collectArenaExprDeps(arena: DAEArenaBuilder, exprId: number, dep
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       // We need to resolve NameId to VarIdx.
-      // DAEArenaBuilder has varCount, but no fast NameId -> VarIdx lookup yet.
+      // ArenaDAEBuilder has varCount, but no fast NameId -> VarIdx lookup yet.
       // We must build it or assume we have it.
       // For now, let's assume `resolveArenaVarIdx(arena, nameId)` exists.
       const varIdx = resolveArenaVarIdx(arena, nameId);
@@ -49,9 +49,9 @@ export function collectArenaExprDeps(arena: DAEArenaBuilder, exprId: number, dep
 
 /**
  * Resolves a StringId to a VarIdx.
- * Note: DAEArenaBuilder should ideally have a Map<StringId, number> for O(1) lookup.
+ * Note: ArenaDAEBuilder should ideally have a Map<StringId, number> for O(1) lookup.
  */
-function resolveArenaVarIdx(arena: DAEArenaBuilder, nameId: number): number {
+function resolveArenaVarIdx(arena: ArenaDAEBuilder, nameId: number): number {
   // O(N) fallback if not cached
   for (let i = 0; i < arena.varCount; i++) {
     if (!arena.isVarRemoved(i) && arena.getVarNameId(i) === nameId) {
@@ -69,7 +69,7 @@ export interface ArenaBltResult {
 /**
  * Performs Block Lower Triangular (BLT) Transformation natively on the DAE arena.
  */
-export function performBltTransformationArena(arena: DAEArenaBuilder): ArenaBltResult {
+export function performBltTransformationArena(arena: ArenaDAEBuilder): ArenaBltResult {
   const unknowns = new Set<number>();
   const unknownList: number[] = [];
 

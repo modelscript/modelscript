@@ -26,7 +26,7 @@
  */
 
 import {
-  DAEArenaBuilder,
+  ArenaDAEBuilder,
   Interval,
   StaticTapeBuilder,
   evaluateTapeInterval,
@@ -377,7 +377,7 @@ function solveLULocal(A: number[][], b: number[], n: number): number[] {
  * Convenience function for integrating with the ModelScript pipeline.
  */
 export function buildSbbFromDAE(
-  dae: DAEArenaBuilder,
+  dae: ArenaDAEBuilder,
   objectiveExprId: number,
   constraintExprIds: number[],
 ): {
@@ -408,7 +408,7 @@ export function buildSbbFromDAE(
  * @param dae       DAE for variable metadata (arrayDimensions)
  * @returns Expanded domain box with per-element entries
  */
-export function expandArrayBounds(box: DomainBox, dae: DAEArenaBuilder): DomainBox {
+export function expandArrayBounds(box: DomainBox, dae: ArenaDAEBuilder): DomainBox {
   const expanded: DomainBox = new Map();
   for (const [name, interval] of box) {
     const vIdx = dae.getVarIdxByName(name);
