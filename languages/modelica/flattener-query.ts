@@ -467,6 +467,9 @@ export class ArenaQueryFlattener {
       typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
 
     const varIdx = dae.addVariable(name, varType, variability, causality, initialValue, flags);
+    if (meta?.flowPrefix === "stream") {
+      dae.setVarFlowPrefix(varIdx, "stream");
+    }
 
     // If there's a binding expression, emit a binding equation
     if (mod?.bindingExpression) {
@@ -1124,6 +1127,7 @@ export class ArenaQueryFlattener {
     }
 
     const uf = new IntUnionFind(dae.varCount);
+    const resolvedPairs: [number, number][] = [];
     const connectPairs: [number, number][] = [];
 
     // 1. Gather all explicit connect() equation pairs
@@ -1157,8 +1161,31 @@ export class ArenaQueryFlattener {
           const targetIdx = dae.getVarIdxByName(targetName);
           if (targetIdx >= 0) {
             uf.union(i, targetIdx);
+            resolvedPairs.push([i, targetIdx]);
           }
         }
+      }
+    }
+
+    // Generate inStream equations for stream variable pairs
+    for (const [idxA, idxB] of resolvedPairs) {
+      if (dae.getVarFlowPrefix(idxA) === "stream") {
+        const nameA = dae.getVarName(idxA);
+        const nameB = dae.getVarName(idxB);
+
+        // inStream(A) = B
+        const inStreamA = `$inStream(${nameA})`;
+        dae.addVariable(inStreamA, 0, 0, 0, 0.0, 0); // Real, Continuous, Local
+        const inStreamAId = dae.addExpression(1, dae.interner.intern(inStreamA)); // ExprKind.Name = 1
+        const exprBId = dae.addExpression(1, dae.getVarNameId(idxB));
+        dae.addEquation(1, inStreamAId, exprBId); // EqKind.Simple = 1
+
+        // inStream(B) = A
+        const inStreamB = `$inStream(${nameB})`;
+        dae.addVariable(inStreamB, 0, 0, 0, 0.0, 0);
+        const inStreamBId = dae.addExpression(1, dae.interner.intern(inStreamB));
+        const exprAId = dae.addExpression(1, dae.getVarNameId(idxA));
+        dae.addEquation(1, inStreamBId, exprAId);
       }
     }
 
@@ -1172,10 +1199,24 @@ export class ArenaQueryFlattener {
 
     // 4. Emit flow-balance and potential equality equations
     for (const [root, group] of roots) {
-      if (group.length <= 1) continue;
+      const isStream = dae.getVarFlowPrefix(root) === "stream";
+      const isFlow = dae.isVarFlow(root) && !isStream;
 
-      const isFlow = dae.isVarFlow(root);
+      if (group.length <= 1) {
+        if (isFlow) {
+          // Unconnected flow variable: emit flow = 0
+          const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
+          const zeroExpr = dae.addRealLiteral(0.0);
+          dae.addEquation(EqKind.Simple, vExpr, zeroExpr);
+        }
+        continue;
+      }
 
+      if (isStream) {
+        // Stream variables do not generate potential equality or flow sum equations here.
+        // Their inStream equations were generated above.
+        continue;
+      }
       if (!isFlow) {
         // Potential variables: emit v1 = root, v2 = root...
         const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(root));

@@ -22,6 +22,7 @@ import {
  */
 export class ArenaExprVisitor {
   private loopVars: Map<string, number>;
+  private inNoEvent = false;
   constructor(
     private dae: ArenaDAEBuilder,
     loopVars?: Map<string, number>,
@@ -227,7 +228,23 @@ export class ArenaExprVisitor {
         return undefined;
     }
 
-    return this.dae.addBinaryExpr(binOp, leftId, rightId);
+    const resultId = this.dae.addBinaryExpr(binOp, leftId, rightId);
+
+    // Extract zero-crossing event indicators (operand1 - operand2)
+    if (
+      !this.inNoEvent &&
+      (binOp === BinOp.Eq ||
+        binOp === BinOp.Neq ||
+        binOp === BinOp.Lt ||
+        binOp === BinOp.Lte ||
+        binOp === BinOp.Gt ||
+        binOp === BinOp.Gte)
+    ) {
+      const diffId = this.dae.addBinaryExpr(BinOp.Sub, leftId, rightId);
+      this.dae.eventIndicatorExprIds.push(diffId);
+    }
+
+    return resultId;
   }
 
   private visitUnaryExpression(node: ModelicaUnaryExpressionSyntaxNode): number | undefined {
@@ -342,7 +359,10 @@ export class ArenaExprVisitor {
 
     // Specialized: noEvent(x) — pass through
     if (funcName === "noEvent") {
+      const oldNoEvent = this.inNoEvent;
+      this.inNoEvent = true;
       const argIds = getArgExprs();
+      this.inNoEvent = oldNoEvent;
       if (argIds.length > 0) {
         return argIds[0] as number;
       }
