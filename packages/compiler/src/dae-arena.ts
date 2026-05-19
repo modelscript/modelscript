@@ -71,6 +71,51 @@ export enum EqKind {
   InitialFor = 8,
 }
 
+// ── State Machine Types ──
+
+/** A transition in an arena state machine. */
+export interface ArenaStateMachineTransition {
+  /** Name of the source state. */
+  fromState: string;
+  /** Name of the destination state. */
+  toState: string;
+  /** ExprId of the transition condition. */
+  conditionExprId: number;
+  /** If true, transition fires in the same tick as the condition becomes true ("immediate" transition).
+   *  If false, the transition is "deferred" — the condition is sampled but the transition fires at the next event instant. */
+  immediate: boolean;
+  /** If true, reset the destination state's variables on entry. */
+  reset: boolean;
+  /** If true, wait for all sub-state machines in the source state to reach a final state before firing. */
+  synchronize: boolean;
+  /** Transition priority (lower = higher priority). */
+  priority: number;
+}
+
+/** A state in an arena state machine. */
+export interface ArenaStateMachineState {
+  /** State name. */
+  name: string;
+  /** Per-state equations: target variable StringId → value ExprId. */
+  equations: { targetNameId: number; exprId: number; isDerivative: boolean }[];
+  /** Per-state variable initializers: variable StringId → initial value. */
+  variables: { nameId: number; startValue: number }[];
+  /** Nested sub-state machines within this state (for hierarchical SM composition). */
+  stateMachines: ArenaStateMachine[];
+}
+
+/** An arena-native state machine. */
+export interface ArenaStateMachine {
+  /** State machine name. */
+  name: string;
+  /** States in this machine. */
+  states: ArenaStateMachineState[];
+  /** Transitions (sorted by priority). */
+  transitions: ArenaStateMachineTransition[];
+  /** Name of the initial state. */
+  initialState: string;
+}
+
 /** Expression kind tag. */
 export enum ExprKind {
   /** Variable reference: data1 = StringId of the variable name. */
@@ -298,6 +343,12 @@ export class ArenaDAEBuilder {
 
   /** External object descriptors. */
   externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
+
+  /**
+   * State machines for Modelica state machine semantics.
+   * Each machine has states (with per-state equations), transitions, and an initial state.
+   */
+  stateMachines: ArenaStateMachine[] = [];
 
   /** Child function DAEs. */
   functions = new Map<StringId, ArenaDAEBuilder>();

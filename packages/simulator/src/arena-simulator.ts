@@ -7,6 +7,7 @@ import {
   isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
   performBltTransformationArena,
+  type ArenaStateMachine,
 } from "@modelscript/compiler";
 import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
@@ -57,6 +58,31 @@ interface ArenaEventIndicator {
   prevValue: number;
 }
 
+/** Runtime state for a single state machine during arena simulation. */
+interface ArenaStateMachineRuntime {
+  /** Reference to the source definition. */
+  def: ArenaStateMachine;
+  /** Name of the currently active state. */
+  activeState: string;
+  /** Name of the previously active state (for `activeState()` intrinsic). */
+  previousState: string;
+  /** Number of simulation ticks spent in the current state. */
+  ticksInState: number;
+  /** Real-valued time spent in the current state (seconds). */
+  timeInState: number;
+  /**
+   * Deferred transition conditions: tracks which transition conditions were true at
+   * the *previous* event instant. Deferred transitions (immediate=false) only fire
+   * when the condition was true at the end of the previous event iteration, not the
+   * current one. Key = transition index in def.transitions, value = previous condition.
+   */
+  deferredConditions: boolean[];
+  /** State name → ordinal mapping for activeState() intrinsic (0-indexed). */
+  stateOrdinals: Map<string, number>;
+  /** Child state machine runtimes for hierarchical composition. */
+  children: ArenaStateMachineRuntime[];
+}
+
 export class ArenaSimulator {
   public parameters = new Map<string, number>();
 
@@ -78,6 +104,9 @@ export class ArenaSimulator {
 
   /** Event indicator functions for zero-crossing detection. */
   public eventIndicators: ArenaEventIndicator[] = [];
+
+  /** State machine runtimes. */
+  public stateMachineRuntimes: ArenaStateMachineRuntime[] = [];
 
   /** Warm-start cache for algebraic loop variables (varNameId → value). */
   private algWarmStart = new Map<number, number>();
@@ -107,6 +136,7 @@ export class ArenaSimulator {
     this.extractWhenClauses();
     this.extractAssertions();
     this.extractEventIndicators();
+    this.extractStateMachines();
   }
 
   private buildExecutionBlocks() {
@@ -288,6 +318,195 @@ export class ArenaSimulator {
     for (const exprId of this.arena.eventIndicatorExprIds) {
       this.eventIndicators.push({ exprId, prevValue: 0 });
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // State Machine Extraction
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractStateMachines() {
+    this.stateMachineRuntimes = [];
+    for (const sm of this.arena.stateMachines) {
+      this.stateMachineRuntimes.push(this.buildStateMachineRuntime(sm));
+    }
+  }
+
+  /** Recursively build a runtime for a state machine and any nested sub-state machines. */
+  private buildStateMachineRuntime(sm: ArenaStateMachine): ArenaStateMachineRuntime {
+    const stateOrdinals = new Map<string, number>();
+    for (let i = 0; i < sm.states.length; i++) {
+      const state = sm.states[i];
+      if (state) stateOrdinals.set(state.name, i);
+    }
+
+    // Recursively build children for each state that has sub-state machines
+    const children: ArenaStateMachineRuntime[] = [];
+    for (const state of sm.states) {
+      if (state.stateMachines) {
+        for (const childSm of state.stateMachines) {
+          children.push(this.buildStateMachineRuntime(childSm));
+        }
+      }
+    }
+
+    return {
+      def: sm,
+      activeState: sm.initialState,
+      previousState: sm.initialState,
+      ticksInState: 0,
+      timeInState: 0,
+      deferredConditions: new Array(sm.transitions.length).fill(false),
+      stateOrdinals,
+      children,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // State Machine Execution (Modelica 3.3 §17)
+  //
+  // Transition semantics:
+  //   immediate=true  → fires at the CURRENT event instant when condition becomes true
+  //   immediate=false → fires at the NEXT event instant after condition was true (deferred)
+  //
+  // synchronize=true → transition only fires when ALL sub-state machines
+  //                    of the source state have reached a final state
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private executeStateMachines(valuesByStringId: Float64Array): void {
+    for (const rt of this.stateMachineRuntimes) {
+      this.executeSingleStateMachine(rt, valuesByStringId);
+    }
+  }
+
+  /** Get the simulation step size from the time variable delta (or a default). */
+  private getStepSize(valuesByStringId: Float64Array): number {
+    const timeId = this.arena.interner.intern("time");
+    const t = valuesByStringId[timeId] ?? 0;
+    // Use a stored previous time to compute dt; fallback to 0.001
+    const prevTimeId = this.arena.interner.intern("$__prevTime");
+    const prevT = valuesByStringId[prevTimeId] ?? t;
+    const dt = t - prevT;
+    valuesByStringId[prevTimeId] = t;
+    return dt > 0 ? dt : 0;
+  }
+
+  private executeSingleStateMachine(rt: ArenaStateMachineRuntime, valuesByStringId: Float64Array): void {
+    const dt = this.getStepSize(valuesByStringId);
+
+    // ── Phase 1: Evaluate transitions from the current active state (priority-ordered) ──
+    let transitioned = false;
+    for (let ti = 0; ti < rt.def.transitions.length; ti++) {
+      const tr = rt.def.transitions[ti];
+      if (!tr) continue;
+      if (tr.fromState !== rt.activeState) continue;
+
+      const condVal = evaluateArenaRuntime(this.arena, tr.conditionExprId, valuesByStringId);
+      const condTrue = condVal !== 0;
+
+      // Synchronize guard: if synchronize=true, only fire when all child state
+      // machines in the current state have reached a final state (no outgoing transitions)
+      if (condTrue && tr.synchronize && rt.children.length > 0) {
+        const allFinal = rt.children.every((child) => {
+          // A child SM is in a "final" state when no transitions can fire from its active state
+          return !child.def.transitions.some((ct) => ct.fromState === child.activeState);
+        });
+        if (!allFinal) continue; // Not ready — skip this transition
+      }
+
+      let shouldFire: boolean;
+      if (tr.immediate) {
+        // Immediate: fires at the current event instant
+        shouldFire = condTrue;
+      } else {
+        // Deferred: fires only if the condition was true at the *previous* event instant
+        shouldFire = rt.deferredConditions[ti] ?? false;
+      }
+
+      // Update deferred condition tracking for next iteration
+      rt.deferredConditions[ti] = condTrue;
+
+      if (shouldFire) {
+        // Transition fires
+        rt.previousState = rt.activeState;
+        rt.activeState = tr.toState;
+        rt.ticksInState = 0;
+        rt.timeInState = 0;
+
+        // Apply reset: initialize variables of the destination state
+        if (tr.reset) {
+          const destState = rt.def.states.find((s) => s.name === tr.toState);
+          if (destState) {
+            for (const v of destState.variables) {
+              valuesByStringId[v.nameId] = v.startValue;
+            }
+            // Also reset child state machines within the destination state
+            if (destState.stateMachines) {
+              for (const childSm of destState.stateMachines) {
+                const childRt = rt.children.find((c) => c.def.name === childSm.name);
+                if (childRt) {
+                  childRt.activeState = childSm.initialState;
+                  childRt.previousState = childSm.initialState;
+                  childRt.ticksInState = 0;
+                  childRt.timeInState = 0;
+                  childRt.deferredConditions.fill(false);
+                }
+              }
+            }
+          }
+        }
+
+        transitioned = true;
+        break; // Only one transition per tick (highest priority wins)
+      }
+    }
+
+    if (!transitioned) {
+      rt.ticksInState++;
+      rt.timeInState += dt;
+    }
+
+    // ── Phase 2: Activate equations for the current state ──
+    const activeStateDef = rt.def.states.find((s) => s.name === rt.activeState);
+    if (activeStateDef) {
+      for (const eq of activeStateDef.equations) {
+        const val = evaluateArenaRuntime(this.arena, eq.exprId, valuesByStringId);
+        if (eq.isDerivative) {
+          // For derivative equations: write to der(varName)
+          const varName = this.arena.interner.resolve(eq.targetNameId);
+          const derNameId = this.arena.interner.intern(`der(${varName})`);
+          valuesByStringId[derNameId] = isFinite(val) ? val : 0;
+        } else {
+          valuesByStringId[eq.targetNameId] = isFinite(val) ? val : 0;
+        }
+      }
+    }
+
+    // ── Phase 3: Recursively execute child state machines of the active state ──
+    if (activeStateDef?.stateMachines) {
+      for (const childSm of activeStateDef.stateMachines) {
+        const childRt = rt.children.find((c) => c.def.name === childSm.name);
+        if (childRt) {
+          this.executeSingleStateMachine(childRt, valuesByStringId);
+        }
+      }
+    }
+
+    // ── Phase 4: Expose state machine intrinsics ──
+    // activeState(sm) → ordinal of current active state (0-indexed)
+    const activeStateIntrinsicId = this.arena.interner.intern(`$activeState(${rt.def.name})`);
+    valuesByStringId[activeStateIntrinsicId] = rt.stateOrdinals.get(rt.activeState) ?? 0;
+
+    // ticksInState(sm) → integer tick count
+    const ticksIntrinsicId = this.arena.interner.intern(`$ticksInState(${rt.def.name})`);
+    valuesByStringId[ticksIntrinsicId] = rt.ticksInState;
+
+    // timeInState(sm) → real-valued time spent in current state
+    const timeInStateId = this.arena.interner.intern(`$timeInState(${rt.def.name})`);
+    valuesByStringId[timeInStateId] = rt.timeInState;
+
+    // previousState(sm) → ordinal of previously active state
+    const prevStateId = this.arena.interner.intern(`$previousState(${rt.def.name})`);
+    valuesByStringId[prevStateId] = rt.stateOrdinals.get(rt.previousState) ?? 0;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -478,6 +697,7 @@ export class ArenaSimulator {
       }
       // Evaluate all blocks
       this.evaluateBlocks(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       this.checkAssertions(valuesByStringId, t);
 
@@ -531,6 +751,7 @@ export class ArenaSimulator {
       }
       // Process when-clauses at event time (may reinit state variables)
       this.evaluateBlocks(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
 
       // Read back possibly-modified state
@@ -597,6 +818,7 @@ export class ArenaSimulator {
     for (let s = 0; s <= steps; s++) {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       this.checkAssertions(valuesByStringId, currentTime);
 
@@ -822,6 +1044,7 @@ export class ArenaSimulator {
 
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
+      this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       this.checkAssertions(valuesByStringId, currentTime);
 
