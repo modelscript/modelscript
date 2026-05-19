@@ -134,6 +134,7 @@ import {
   buildSurrogate,
   registerMonteCarloDeps,
   registerSimulateDeps,
+  simulateArena,
 } from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
 import { mapStepToMultiBody } from "@modelscript/step/mapper";
@@ -3765,6 +3766,37 @@ connection.onRequest(
         if (eq) {
           connection.console.info(`[simulate]   eq[${i}] ${eq.toString()}`);
         }
+      }
+
+      // ── Arena-native path: bypass legacy ModelicaSimulator ──
+      if (params.solver === "arena") {
+        const exp = dae.experiment;
+        const startTime = params.startTime ?? exp.startTime ?? 0;
+        const stopTime = params.stopTime ?? exp.stopTime ?? 10;
+        const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
+
+        connection.console.info(`[simulate] Arena path: startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
+
+        const arenaResult = simulateArena(dae.arena, {
+          startTime,
+          stopTime,
+          step,
+          solver: "rk4",
+          parameterOverrides: params.parameterOverrides
+            ? new Map(Object.entries(params.parameterOverrides))
+            : undefined,
+        });
+
+        connection.console.info(
+          `[simulate] Arena result: ${arenaResult.t.length} time points, ${arenaResult.states.length} states`,
+        );
+
+        return {
+          t: arenaResult.t,
+          y: arenaResult.y,
+          states: arenaResult.states,
+          experiment: exp,
+        };
       }
 
       const simulator = new ModelicaSimulator(dae);

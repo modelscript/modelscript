@@ -30,7 +30,9 @@ export type IntegratorMethod =
   /** SUNDIALS CVODE via WASM (production-grade variable-order BDF/Adams). */
   | "cvode"
   /** SUNDIALS IDA via WASM (implicit DAE solver). */
-  | "ida";
+  | "ida"
+  /** Arena-native DoD pipeline (RK4, Newton algebraic loops, event handling). */
+  | "arena";
 
 // ── Nonlinear Solver ──
 

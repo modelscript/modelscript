@@ -28,6 +28,7 @@ import {
   ModelicaRealLiteral,
   ModelicaStringLiteral,
 } from "@modelscript/symbolics";
+import { simulateArena } from "./simulate-arena.js";
 
 /**
  * Callback type for evaluating an expression node within a scope.
@@ -150,13 +151,24 @@ export function evaluateSimulate(
   let result: { t: number[]; y: number[][]; states: string[] };
   let messages = "";
   try {
-    const simulator = new deps.Simulator(dae);
-    simulator.prepare();
-    result = simulator.simulate(startTime, stopTime, step, {
-      atol: tolerance,
-      rtol: tolerance,
-      solverOptions,
-    });
+    // Arena-native path: when integrator is set to "arena"
+    if (solverOptions.integrator === "arena") {
+      const arenaResult = simulateArena(dae.arena, {
+        startTime,
+        stopTime,
+        step,
+        solver: "rk4",
+      });
+      result = arenaResult;
+    } else {
+      const simulator = new deps.Simulator(dae);
+      simulator.prepare();
+      result = simulator.simulate(startTime, stopTime, step, {
+        atol: tolerance,
+        rtol: tolerance,
+        solverOptions,
+      });
+    }
   } catch (e) {
     messages = e instanceof Error ? e.message : String(e);
     return buildResultRecord(startTime, stopTime, numberOfIntervals, tolerance, messages);

@@ -3,7 +3,13 @@
 import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaSimulator, runWasmSimulation, snapshotMemory, type MemorySnapshot } from "@modelscript/simulator";
+import {
+  ModelicaSimulator,
+  runWasmSimulation,
+  simulateArena,
+  snapshotMemory,
+  type MemorySnapshot,
+} from "@modelscript/simulator";
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -84,9 +90,10 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         type: "number",
       })
       .option("engine", {
-        description: "simulation backend: js (pure JavaScript), wasm (WebAssembly via emcc), c (native compiled)",
+        description:
+          "simulation backend: js (pure JavaScript), arena (arena-native DoD), wasm (WebAssembly via emcc), c (native compiled)",
         type: "string",
-        choices: ["js", "wasm", "c"],
+        choices: ["js", "arena", "wasm", "c"],
         default: "js",
       })
       .option("timing", {
@@ -161,6 +168,9 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 
     // Dispatch to the selected engine
     switch (args.engine) {
+      case "arena":
+        simulateArenaEngine(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        break;
       case "wasm":
         await simulateWasm(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
@@ -238,6 +248,38 @@ function simulateJs(
 
     outputResults(result.t, result.y, states, args.format);
   }
+}
+
+// ── Arena Engine ──
+
+function simulateArenaEngine(
+  dae: ModelicaDAE,
+  args: SimulateArgs,
+  profiler: Profiler,
+  startTime: number,
+  stopTime: number,
+  step: number,
+  memProfiles: Record<string, unknown>,
+  lastSnap: MemorySnapshot | null,
+): void {
+  profiler.start("simulation");
+
+  const solver = args.solver === "rk4" ? ("rk4" as const) : ("rk4" as const); // Arena only supports rk4/euler
+  const result = simulateArena(dae.arena, {
+    startTime,
+    stopTime,
+    step,
+    solver,
+  });
+
+  profiler.end("simulation");
+
+  if (args.memoryProfile && lastSnap) {
+    const snap = snapshotMemory(true);
+    memProfiles["simulation"] = { before: lastSnap, after: snap };
+  }
+
+  outputResults(result.t, result.y, result.states, args.format);
 }
 
 // ── WASM Engine ──
