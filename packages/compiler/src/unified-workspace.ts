@@ -1,4 +1,6 @@
 import { AdapterRegistry } from "./adapter-registry.js";
+import type { OWL2AxiomDelta } from "./owl2-axioms.js";
+import { OWL2OntologyStore } from "./owl2-ontology-store.js";
 import type { SymbolEntry, SymbolIndex } from "./runtime.js";
 
 export interface IWorkspaceIndex {
@@ -17,6 +19,9 @@ export class UnifiedWorkspace {
   private indices = new Map<string, IWorkspaceIndex>();
   public adapterRegistry: AdapterRegistry;
 
+  /** OWL2 ontology store — incrementally maintained from all source language projections. */
+  public owl2Store: OWL2OntologyStore;
+
   /** Cached result of toUnifiedPartial() — reused when underlying partials haven't changed. */
   private partialCache: SymbolIndex | null = null;
   /** Version numbers of each workspace at the time the cache was built. */
@@ -26,6 +31,7 @@ export class UnifiedWorkspace {
 
   constructor() {
     this.adapterRegistry = new AdapterRegistry();
+    this.owl2Store = new OWL2OntologyStore(this.adapterRegistry);
   }
 
   /**
@@ -47,6 +53,11 @@ export class UnifiedWorkspace {
       byName: new Map(),
       childrenOf: new Map(),
     });
+
+    // Register as an OWL2 source language (all languages can project into OWL2)
+    if (language !== "owl2") {
+      this.owl2Store.registerSourceLanguage(language);
+    }
   }
 
   /**
@@ -328,5 +339,31 @@ export class UnifiedWorkspace {
     }
 
     return { symbols, byName, childrenOf };
+  }
+
+  // =========================================================================
+  // OWL2 Ontology Projection
+  // =========================================================================
+
+  /**
+   * Incrementally update the OWL2 ontology store.
+   * Checks which workspaces changed and re-projects only those.
+   *
+   * @returns The incremental delta, or null if nothing changed.
+   */
+  updateOntology(): OWL2AxiomDelta | null {
+    const versions = new Map<string, number>();
+    for (const [language, workspace] of this.indices.entries()) {
+      versions.set(language, workspace.version);
+    }
+    return this.owl2Store.update(versions);
+  }
+
+  /**
+   * Perform a full OWL2 ontology projection from all source languages.
+   * Use this for initial workspace setup or after major structural changes.
+   */
+  fullOntologyProjection(): void {
+    this.owl2Store.fullProjection();
   }
 }
