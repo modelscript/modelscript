@@ -128,7 +128,7 @@ export function evaluateArenaDualExpression(
 
       const arg0 = argCount > 0 ? evaluateArenaDualExpression(arena, firstArg, dualVarsByStringId) : null;
       const arg1 =
-        argCount > 1 ? evaluateArenaDualExpression(arena, arena.getExprLeft(firstArg + 1), dualVarsByStringId) : null;
+        argCount > 1 ? evaluateArenaDualExpression(arena, arena.getExprLeft(exprId + 1), dualVarsByStringId) : null;
 
       switch (name) {
         case "edge":

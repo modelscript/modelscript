@@ -3,6 +3,22 @@
 import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "@modelscript/compiler";
 
 /**
+ * Collect argument ExprIds from a Call or Subscript expression that uses
+ * the Tuple-chaining convention. The first element is stored in `left`;
+ * subsequent elements are stored as Tuple entries at consecutive expression
+ * indices after `baseExprId`.
+ */
+function collectArgIds(arena: ArenaDAEBuilder, baseExprId: number, firstElem: number, count: number): number[] {
+  if (count === 0) return [];
+  const ids = [firstElem];
+  for (let i = 1; i < count; i++) {
+    // Tuple entries are stored at baseExprId + i, with the child in the `left` field
+    ids.push(arena.getExprLeft(baseExprId + i));
+  }
+  return ids;
+}
+
+/**
  * Highly optimized, zero-garbage runtime evaluator.
  * Evaluates an arena expression using a dense, flat Float64Array for variable lookups.
  * The array is indexed by the variable's StringId.
@@ -27,6 +43,10 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
 
     case ExprKind.EnumLiteral:
       return arena.getExprData1(exprId);
+
+    case ExprKind.StringLiteral:
+      // Strings have no numeric representation; return 0 in numeric context
+      return 0;
 
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
@@ -117,19 +137,59 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
     }
 
     case ExprKind.Subscript: {
-      // x[i]: data1 = base ExprId, left = index ExprId, right = index count
-      // For a single subscript into a flat array variable:
+      // x[i]: data1 = base ExprId, left = first index ExprId, right = index count
       // In the arena, array variables are stored as separate scalar variables
       // with names like "x[1]", "x[2]", etc. If the base is a Name and the
-      // index is evaluable, we construct the subscripted name and look it up.
+      // indices are evaluable, we construct the subscripted name and look it up.
       const baseId = arena.getExprData1(exprId);
-      const indexId = arena.getExprLeft(exprId);
+      const indexCount = arena.getExprRight(exprId);
+      const firstIndexId = arena.getExprLeft(exprId);
+
       if (arena.getExprKind(baseId) === ExprKind.Name) {
         const baseName = arena.interner.resolve(arena.getExprData1(baseId));
-        const idx = evaluateArenaRuntime(arena, indexId, valuesByStringId);
-        const subscriptedNameId = arena.interner.intern(`${baseName}[${Math.round(idx)}]`);
+        if (indexCount === 1) {
+          // Single subscript (most common case — fast path)
+          const idx = evaluateArenaRuntime(arena, firstIndexId, valuesByStringId);
+          const subscriptedNameId = arena.interner.intern(`${baseName}[${Math.round(idx)}]`);
+          return valuesByStringId[subscriptedNameId] ?? 0;
+        }
+        // Multi-subscript: x[i,j] → "x[i,j]"
+        const indexIds = collectArgIds(arena, exprId, firstIndexId, indexCount);
+        const indices = indexIds.map((id) => Math.round(evaluateArenaRuntime(arena, id, valuesByStringId)));
+        const subscriptedNameId = arena.interner.intern(`${baseName}[${indices.join(",")}]`);
         return valuesByStringId[subscriptedNameId] ?? 0;
       }
+      return 0;
+    }
+
+    case ExprKind.ArrayCtor: {
+      // Array constructors in a scalar runtime context: return the first element
+      // (full array semantics require a vector evaluator, which is outside the
+      // scope of the scalar runtime path).
+      const count = arena.getExprData1(exprId);
+      const firstElem = arena.getExprLeft(exprId);
+      if (count > 0) {
+        return evaluateArenaRuntime(arena, firstElem, valuesByStringId);
+      }
+      return 0;
+    }
+
+    case ExprKind.Range: {
+      // Range in scalar context: return the start value.
+      // Full range expansion is handled at compile time by the flattener.
+      const startId = arena.getExprData1(exprId);
+      return evaluateArenaRuntime(arena, startId, valuesByStringId);
+    }
+
+    case ExprKind.Colon:
+      // Whole-dimension slice — no scalar value
+      return 0;
+
+    case ExprKind.Comprehension: {
+      // Reduction expressions like sum(f(i) for i in 1:n)
+      // data1 = StringId of reduction function name, left = body ExprId, right = iterator count
+      // At runtime with unrolled for-equations, these should already have been expanded
+      // by the flattener. Return 0 as a fallback.
       return 0;
     }
 
@@ -153,9 +213,9 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
         case "/*Boolean*/":
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId) : 0;
         case "smooth":
-          // smooth(order, expr) → just evaluate expr
+          // smooth(order, expr) → just evaluate expr (second arg)
           if (argCount > 1) {
-            const secondArgId = arena.getExprLeft(firstArgId + 1);
+            const secondArgId = arena.getExprLeft(exprId + 1);
             return evaluateArenaRuntime(arena, secondArgId, valuesByStringId);
           }
           return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId) : 0;
@@ -208,6 +268,13 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
             return Math.floor(arg);
           case "integer":
             return Math.floor(arg);
+          case "round":
+            return Math.round(arg);
+          // Type conversion
+          case "Real":
+          case "Integer":
+          case "Boolean":
+            return arg;
           // der(x) as a function call
           case "der": {
             if (arena.getExprKind(firstArgId) === ExprKind.Name) {
@@ -221,13 +288,18 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
           // pre(x) as a function call
           case "pre":
             return arg; // Returns the argument value (pre-values updated between steps)
+          // Modelica scalar max/min with single argument
+          case "max":
+          case "min":
+            return arg;
         }
       }
 
       // ── Two-argument functions ──
       if (argCount === 2) {
         const arg0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
-        const secondArgId = arena.getExprLeft(firstArgId + 1);
+        // Second argument is in the Tuple entry at exprId + 1
+        const secondArgId = arena.getExprLeft(exprId + 1);
         const arg1 = evaluateArenaRuntime(arena, secondArgId, valuesByStringId);
         switch (funcName) {
           case "atan2":
@@ -247,22 +319,76 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
             return arg1 !== 0 ? Math.trunc(arg0 / arg1) : 0;
           case "pow":
             return Math.pow(arg0, arg1);
+          case "cross":
+            // cross product requires 3D vectors; scalar context returns 0
+            return 0;
         }
       }
 
       // ── N-argument functions ──
       if (funcName === "max" || funcName === "min") {
         if (argCount > 0) {
-          let result = evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+          const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+          let result = evaluateArenaRuntime(arena, argIds[0] as number, valuesByStringId);
           for (let a = 1; a < argCount; a++) {
-            const argId = arena.getExprLeft(firstArgId + a);
-            const val = evaluateArenaRuntime(arena, argId, valuesByStringId);
+            const val = evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId);
             result = funcName === "max" ? Math.max(result, val) : Math.min(result, val);
           }
           return result;
         }
       }
 
+      // ── cat(dim, A, B, ...) — concatenation in scalar context: sum elements ──
+      if (funcName === "cat" && argCount > 1) {
+        // Skip first arg (dimension), evaluate remaining
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        let result = 0;
+        for (let a = 1; a < argIds.length; a++) {
+          result += evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId);
+        }
+        return result;
+      }
+
+      // ── fill(val, n1, n2, ...) — returns scalar fill value ──
+      if (funcName === "fill" && argCount > 0) {
+        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+      }
+
+      // ── zeros(n) / ones(n) ──
+      if (funcName === "zeros") return 0;
+      if (funcName === "ones") return 1;
+
+      // ── identity(n) / diagonal(v) — matrix ops, no scalar representation ──
+      if (funcName === "identity" || funcName === "diagonal") return 0;
+
+      // ── size(A, dim) ──
+      if (funcName === "size") return 0; // Cannot determine at runtime without array metadata
+
+      // ── ndims(A) ──
+      if (funcName === "ndims") return 0;
+
+      // ── transpose(A) / symmetric(A) — pass through first arg ──
+      if ((funcName === "transpose" || funcName === "symmetric") && argCount > 0) {
+        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+      }
+
+      // ── sum / product reductions ──
+      if ((funcName === "sum" || funcName === "product") && argCount > 0) {
+        if (argCount === 1) {
+          return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+        }
+        const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
+        let result = funcName === "product" ? 1 : 0;
+        for (const id of argIds) {
+          const val = evaluateArenaRuntime(arena, id, valuesByStringId);
+          result = funcName === "product" ? result * val : result + val;
+        }
+        return result;
+      }
+
+      // ── User-defined function: execute via the arena statement executor ──
+      // This is handled by the simulator layer, not the raw evaluator.
+      // Return 0 for unrecognized functions.
       return 0;
     }
   }
