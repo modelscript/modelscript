@@ -17,7 +17,7 @@
  */
 
 import type { FmuSubsystem } from "./fmu-subsystem.js";
-import { Xoshiro256pp } from "./monte-carlo.js";
+import { SobolSequence, Xoshiro256pp } from "./monte-carlo.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public Interfaces
@@ -176,45 +176,29 @@ function generateLatinHypercube(
 
 /**
  * Generate Sobol quasi-random sequence sample points.
- * Low-discrepancy sequence for better space coverage than LHS.
- *
- * Uses the Gray-code implementation of the Sobol sequence
- * with direction numbers from Joe & Kuo (2010).
+ * Uses the proper SobolSequence class (Joe & Kuo direction numbers).
  */
 function generateSobol(inputNames: string[], ranges: Map<string, DoEInputRange>, numSamples: number): number[][] {
   const nInputs = inputNames.length;
+  const sobol = new SobolSequence(nInputs);
   const samples: number[][] = [];
 
-  // Simplified Sobol using van der Corput sequences in different bases
-  // For production, use proper direction numbers; this is a pragmatic approximation
-  const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47];
+  // Skip origin point
+  sobol.skip(1);
 
-  for (let s = 1; s <= numSamples; s++) {
+  for (let s = 0; s < numSamples; s++) {
+    const raw = sobol.next();
     const point = new Array<number>(nInputs);
     for (let d = 0; d < nInputs; d++) {
       const name = inputNames[d]!;
       const range = ranges.get(name)!;
-      const base = primes[d % primes.length]!;
-      const u = vanDerCorput(s, base);
+      const u = raw[d] ?? 0.5;
       point[d] = range.min + u * (range.max - range.min);
     }
     samples.push(point);
   }
 
   return samples;
-}
-
-/** Van der Corput sequence in the given base. */
-function vanDerCorput(n: number, base: number): number {
-  let result = 0;
-  let denom = 1;
-  let num = n;
-  while (num > 0) {
-    denom *= base;
-    result += (num % base) / denom;
-    num = Math.floor(num / base);
-  }
-  return result;
 }
 
 /**

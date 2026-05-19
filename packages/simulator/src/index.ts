@@ -4,6 +4,7 @@ export * from "./ad-jacobian.js";
 export * from "./arena-simulator.js";
 export * from "./bdf.js";
 export * from "./branch-and-bound.js";
+export * from "./doe-arena.js";
 export * from "./doe.js";
 export { dopri5, type Dopri5Options, type Dopri5Result, type EventCallback, type RhsFunction } from "./dopri5.js";
 export * from "./dual-evaluator.js";
