@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Variability } from "@modelscript/compiler";
+import { ExprKind, Variability, evaluateArenaExpression } from "@modelscript/compiler";
 import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import {
   ExpressionEvaluator,
@@ -1465,7 +1465,8 @@ export class ModelicaSimulator {
   private resolveParameters(): void {
     this.parameters.clear();
     const evaluator = new ExpressionEvaluator();
-    const unresolved: { name: string; expr: ModelicaExpression }[] = [];
+    const unresolvedArena: { name: string; exprId: number }[] = [];
+    const unresolvedLegacy: { name: string; expr: ModelicaExpression }[] = [];
 
     // First pass: resolve all directly evaluable parameters
     const arena = this.dae.arena;
@@ -1475,13 +1476,23 @@ export class ModelicaSimulator {
       if (variability === Variability.Parameter || variability === Variability.Constant) {
         const expr = arena.getVarExpression(i);
         const name = arena.getVarName(i);
-        if (expr) {
-          const val = evaluator.evaluate(expr as ModelicaExpression);
-          if (val !== null) {
-            this.parameters.set(name, val);
-            evaluator.env.set(name, val);
+        if (expr !== undefined && expr !== null) {
+          if (typeof expr === "number") {
+            const val = evaluateArenaExpression(arena, expr, this.parameters);
+            if (val !== null && typeof val === "number") {
+              this.parameters.set(name, val);
+              evaluator.env.set(name, val);
+            } else {
+              unresolvedArena.push({ name, exprId: expr });
+            }
           } else {
-            unresolved.push({ name: name, expr: expr as ModelicaExpression });
+            const val = evaluator.evaluate(expr as ModelicaExpression);
+            if (val !== null) {
+              this.parameters.set(name, val);
+              evaluator.env.set(name, val);
+            } else {
+              unresolvedLegacy.push({ name: name, expr: expr as ModelicaExpression });
+            }
           }
         }
       }
@@ -1489,11 +1500,41 @@ export class ModelicaSimulator {
 
     // Iterative passes: resolve parameters that reference other parameters
     let changed = true;
-    while (changed && unresolved.length > 0) {
+    while (changed && (unresolvedArena.length > 0 || unresolvedLegacy.length > 0)) {
       changed = false;
 
-      // Populate env with suffix-based alias matches for unresolved NameExpression bindings
-      for (const p of unresolved) {
+      // Populate env with suffix-based alias matches for unresolved Name bindings
+      for (const p of unresolvedArena) {
+        if (arena.getExprKind(p.exprId) === ExprKind.Name) {
+          const refName = arena.interner.resolve(arena.getExprData1(p.exprId));
+          if (refName && !this.parameters.has(refName)) {
+            let dotIdx = refName.indexOf(".");
+            while (dotIdx > 0) {
+              const suffix = refName.substring(dotIdx + 1);
+              const direct = this.parameters.get(suffix);
+              if (direct !== undefined) {
+                this.parameters.set(refName, direct);
+                evaluator.env.set(refName, direct);
+                changed = true;
+                break;
+              }
+              let found = false;
+              for (const [pName, pVal] of this.parameters) {
+                if (pName.endsWith("." + suffix) || pName === suffix) {
+                  this.parameters.set(refName, pVal);
+                  evaluator.env.set(refName, pVal);
+                  changed = true;
+                  found = true;
+                  break;
+                }
+              }
+              if (found) break;
+              dotIdx = refName.indexOf(".", dotIdx + 1);
+            }
+          }
+        }
+      }
+      for (const p of unresolvedLegacy) {
         if (p.expr instanceof ModelicaNameExpression) {
           const refName = p.expr.name;
           if (!evaluator.env.has(refName)) {
@@ -1522,15 +1563,28 @@ export class ModelicaSimulator {
         }
       }
 
-      // Try to evaluate remaining unresolved parameters
-      for (let i = unresolved.length - 1; i >= 0; i--) {
-        const p = unresolved[i];
+      // Try to evaluate remaining unresolved arena parameters
+      for (let i = unresolvedArena.length - 1; i >= 0; i--) {
+        const p = unresolvedArena[i];
+        if (!p) continue;
+        const val = evaluateArenaExpression(arena, p.exprId, this.parameters);
+        if (val !== null && typeof val === "number") {
+          this.parameters.set(p.name, val);
+          evaluator.env.set(p.name, val);
+          unresolvedArena.splice(i, 1);
+          changed = true;
+        }
+      }
+
+      // Try to evaluate remaining unresolved legacy parameters
+      for (let i = unresolvedLegacy.length - 1; i >= 0; i--) {
+        const p = unresolvedLegacy[i];
         if (!p) continue;
         const val = evaluator.evaluate(p.expr);
         if (val !== null) {
           this.parameters.set(p.name, val);
           evaluator.env.set(p.name, val);
-          unresolved.splice(i, 1);
+          unresolvedLegacy.splice(i, 1);
           changed = true;
         }
       }

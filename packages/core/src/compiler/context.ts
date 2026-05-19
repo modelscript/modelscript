@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { QueryEngine } from "@modelscript/compiler";
+import { eliminateArenaAliases, type QueryEngine } from "@modelscript/compiler";
 import type { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
@@ -340,6 +340,9 @@ export class Context extends Scope {
     if (dae.classKind !== "optimization") {
       findAlgebraicLoops(dae);
     }
+
+    // O(N) Arena-native alias elimination
+    eliminateArenaAliases(dae.arena);
 
     return dae;
   }

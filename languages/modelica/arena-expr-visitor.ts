@@ -1,4 +1,4 @@
-import { BinOp, DAEArenaBuilder, UnaryOp } from "@modelscript/compiler";
+import { BinOp, DAEArenaBuilder, ExprKind, UnaryOp } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -105,12 +105,50 @@ export class ArenaExprVisitor {
   }
 
   private visitComponentReference(node: ModelicaComponentReferenceSyntaxNode): number | undefined {
-    // Build the full dotted path from component reference parts
-    const path = node.parts
-      .map((p) => p.identifier?.text)
-      .filter((t): t is string => t != null)
-      .join(".");
-    if (!path) return undefined;
+    let path = "";
+    let baseId: number | undefined = undefined;
+
+    for (const part of node.parts) {
+      const ident = part.identifier?.text;
+      if (!ident) return undefined;
+
+      // If we had a dynamic subscript previously, we cannot easily append '.ident' natively.
+      // So if baseId is already set (meaning we emitted a dynamic Subscript), we're in trouble.
+      // But standard Modelica flattening assumes array indices can be resolved statically.
+      if (path.length > 0) path += ".";
+      path += ident;
+
+      if (part.arraySubscripts && part.arraySubscripts.subscripts.length > 0) {
+        const subIds: number[] = [];
+        let allStatic = true;
+        let staticSuffix = "";
+
+        for (const sub of part.arraySubscripts.subscripts) {
+          if (!sub.expression) continue;
+          const subId = this.visit(sub.expression);
+          if (subId === undefined) return undefined;
+          subIds.push(subId);
+
+          if (this.dae.getExprKind(subId) === ExprKind.IntLiteral) {
+            staticSuffix += `[${this.dae.getExprData1(subId)}]`;
+          } else {
+            allStatic = false;
+          }
+        }
+
+        if (allStatic) {
+          path += staticSuffix;
+        } else {
+          // Dynamic subscript. We emit a Name expr for the path so far, then a Subscript expr.
+          const currentBase = this.dae.addNameExpr(path);
+          baseId = this.dae.addSubscriptExpr(currentBase, subIds);
+        }
+      }
+    }
+
+    if (baseId !== undefined) {
+      return baseId; // Return the dynamic subscript expression
+    }
 
     // Check if this reference is a loop variable — substitute with IntLiteral
     if (this.loopVars.has(path)) {

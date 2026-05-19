@@ -27,7 +27,7 @@ globalThis.WeakRef = class WeakRefMock {
   }
 } as unknown as typeof WeakRef;
 
-import { ModelicaClassKind, ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
+import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/symbolics";
 import { StringWriter } from "@modelscript/utils";
@@ -38,7 +38,6 @@ import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 
 import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
-import { ModelicaLinter } from "../src/compiler/modelica/linter.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
@@ -319,21 +318,6 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
       range: import("../src/util/tree-sitter.js").Range | null;
     }
     const diagnostics: DiagEntry[] = [];
-    const linter = new ModelicaLinter(
-      (
-        type: string,
-        code: number,
-        message: string,
-        resource: string | null | undefined,
-        range: import("../src/util/tree-sitter.js").Range | null | undefined,
-      ) => {
-        // Collect diagnostics, excluding noisy rules for flattening tests
-        if (code !== 4004) {
-          diagnostics.push({ type, code, message, resource: resource ?? null, range: range ?? null });
-        }
-      },
-    );
-
     const extractDAEDiagnostics = (d: DAEOutput) => {
       for (const diag of d.diagnostics) {
         diagnostics.push({
@@ -348,21 +332,28 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
     };
     if (dae) extractDAEDiagnostics(dae as unknown as DAEOutput);
 
-    const targetClass = context.query(lastClassName);
-    const classesToLint = new Set<ModelicaClassInstance>();
-    if (targetClass instanceof ModelicaClassInstance) classesToLint.add(targetClass);
-    for (const cls of context.classes) {
-      if (cls.name === "Modelica" || cls.name === "Complex" || cls.name === "ModelicaServices") continue;
-      classesToLint.add(cls);
-    }
     const t_lint_start = Date.now();
-    const tree = context.parse(testCase.file.endsWith(".mos") ? ".mos" : ".mo", testCase.source);
-    const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-    if (storedDef) linter.lint(storedDef, testCase.file);
-    for (const cls of classesToLint) {
-      linter.lint(cls, testCase.file);
-      if (cls.abstractSyntaxNode) {
-        linter.lint(cls.abstractSyntaxNode, testCase.file);
+    for (const d of context.queryEngine.runAllLints()) {
+      // Collect diagnostics, excluding noisy rules for flattening tests
+      // Note: context.runAllLints returns d.rule instead of d.code, we can map rules to codes if needed, or just ignore 4004 (unbalanced_model)
+      if (d.rule !== "unbalanced-model") {
+        // Find code from string if possible, or just default to 0
+        let code = 0;
+        const codeMatch = d.message.match(/^\\[M(\\d+)\\]/);
+        if (codeMatch) code = parseInt(codeMatch[1], 10);
+
+        diagnostics.push({
+          type: d.severity,
+          code,
+          message: d.message,
+          resource: null, // we don't have file paths easily from the polyglot linter right now
+          range: d.node
+            ? {
+                startPosition: { row: d.node.startPosition.row, column: d.node.startPosition.column },
+                endPosition: { row: d.node.endPosition.row, column: d.node.endPosition.column },
+              }
+            : null,
+        });
       }
     }
     console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);

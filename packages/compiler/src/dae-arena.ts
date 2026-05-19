@@ -220,6 +220,7 @@ const STMT_RIGHT = 3; // Right child
 /** Default capacity for each arena segment. */
 const DEFAULT_VAR_CAP = 512;
 const DEFAULT_EQ_CAP = 1024;
+const DEFAULT_STMT_CAP = 256;
 const DEFAULT_EXPR_CAP = 4096;
 
 export class DAEArenaBuilder {
@@ -299,7 +300,7 @@ export class DAEArenaBuilder {
   externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
 
   /** Child function DAEs. */
-  functions: DAEArenaBuilder[] = [];
+  functions = new Map<StringId, DAEArenaBuilder>();
 
   /** Variable attribute ExprIds: varIndex → Map<attrName, ExprId>. */
   private varAttrExprIds = new Map<number, Map<string, number>>();
@@ -347,7 +348,7 @@ export class DAEArenaBuilder {
     this.varData = new Int32Array(DEFAULT_VAR_CAP * VAR_STRIDE);
     this.eqData = new Int32Array(DEFAULT_EQ_CAP * EQ_STRIDE);
     this.exprData = new Int32Array(DEFAULT_EXPR_CAP * EXPR_STRIDE);
-    this.stmtData = new Int32Array(DEFAULT_EQ_CAP * STMT_STRIDE);
+    this.stmtData = new Int32Array(DEFAULT_STMT_CAP * STMT_STRIDE);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -872,6 +873,10 @@ export class DAEArenaBuilder {
 
   getExprData1(idx: number): number {
     return this.exprData[idx * EXPR_STRIDE + EXPR_DATA1]!;
+  }
+
+  setExprData1(idx: number, value: number): void {
+    this.exprData[idx * EXPR_STRIDE + EXPR_DATA1] = value;
   }
 
   getExprLeft(idx: number): number {

@@ -31,6 +31,8 @@ declare module "@modelscript/compiler" {
     dumpMemos(): Map<string, any>;
     [key: string]: any;
   }
+
+  export function eliminateArenaAliases(dae: any): void;
 }
 
 declare module "@modelscript/compiler/resolver" {

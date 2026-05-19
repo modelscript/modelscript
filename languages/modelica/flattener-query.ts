@@ -102,6 +102,7 @@ import {
   BinOp,
   Causality,
   DAEArenaBuilder,
+  eliminateArenaAliases,
   EqKind,
   evaluateArenaExpression,
   ExprKind,
@@ -169,6 +170,9 @@ export class ArenaQueryFlattener {
     // Post-processing: expand connections into equations
     this.expandConnections(dae);
 
+    // O(N) Arena-native alias elimination
+    eliminateArenaAliases(dae);
+
     return dae;
   }
 
@@ -214,6 +218,9 @@ export class ArenaQueryFlattener {
     }
 
     this.expandConnections(dae);
+
+    // O(N) Arena-native alias elimination
+    eliminateArenaAliases(dae);
 
     return dae;
   }

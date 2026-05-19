@@ -12,6 +12,7 @@ export * from "./symbolics/tape.js";
 
 // Language workbench infrastructure
 export * from "./adapter-registry.js";
+export * from "./arena-alias.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";
