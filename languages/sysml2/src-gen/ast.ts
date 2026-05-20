@@ -30,6 +30,10 @@ export class UsageNode extends SemanticNode {
   get targetFeature(): string | null {
     return this.field("targetFeature");
   }
+  /** Field: trigger */
+  get trigger(): string | null {
+    return this.field("trigger");
+  }
   /** Field: guard */
   get guard(): string | null {
     return this.field("guard");

@@ -7588,8 +7588,12 @@
                   "value": "accept"
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "PayloadFeatureMember"
+                  "type": "FIELD",
+                  "name": "trigger",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "PayloadFeatureMember"
+                  }
                 }
               ]
             },

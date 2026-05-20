@@ -936,7 +936,7 @@ export default grammar({
         "transition",
         optional(seq(optional($._UsageDeclaration), "first")),
         field("source", $.QualifiedName),
-        optional(seq("accept", $.PayloadFeatureMember)),
+        optional(seq("accept", field("trigger", $.PayloadFeatureMember))),
         optional(seq("if", field("guard", $.OwnedExpression))),
         optional(seq("do", field("effect", $.StateActionUsage))),
         "then",

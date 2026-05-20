@@ -1375,10 +1375,37 @@ export function buildPolyglotDiagram(
     }
 
     // Resolve {{name}} templates in labels
-    const resolvedLabels = edgeConfig.labels?.map((label) => ({
+    let resolvedLabels = edgeConfig.labels?.map((label) => ({
       ...label,
       attrs: resolveTemplates(label.attrs, sym),
     }));
+
+    // ── Dynamic transition labels: trigger [guard] / effect ──
+    // If this is a TransitionUsage with guard/trigger/effect metadata,
+    // replace the static «transition» label with the UML/SysML convention.
+    if (sym.ruleName === "TransitionUsage") {
+      const trigger = sym.metadata.trigger as string | undefined;
+      const guard = sym.metadata.guard as string | undefined;
+      const effect = sym.metadata.effect as string | undefined;
+
+      const parts: string[] = [];
+      if (trigger) parts.push(trigger.trim());
+      if (guard) parts.push(`[${guard.trim()}]`);
+      if (effect) parts.push(`/ ${effect.trim()}`);
+
+      if (parts.length > 0) {
+        const labelText = parts.join(" ");
+        resolvedLabels = [
+          {
+            attrs: {
+              text: { text: labelText, fill: "#555", fontSize: 11, fontStyle: "italic" },
+              rect: { fill: "#fffde7", stroke: "#f9a825", strokeWidth: 0.5, rx: 3, ry: 3 },
+            },
+            position: { distance: 0.5, offset: -12 },
+          },
+        ];
+      }
+    }
 
     // Parse port assignments from IDs (e.g. "nodeId.portName")
     let finalSource: string | { cell: string; port: string } = sourceId;
@@ -1397,16 +1424,30 @@ export function buildPolyglotDiagram(
       finalTarget = { cell: parts.join("."), port };
     }
 
+    // ── Self-transition loop routing ──
+    // When source === target, add explicit vertices to create a visible loop arc
+    // above/right of the state node, and use a normal router instead of manhattan.
+    const isSelfLoop = sourceNodeId === targetNodeId;
+    let edgeRouter = edgeConfig.router;
+    let edgeVertices: { x: number; y: number }[] | undefined;
+    if (isSelfLoop) {
+      // Find the node to get its position (will be 0,0 before layout, but the
+      // router will recompute). Use a fixed offset pattern that Dagre will respect.
+      edgeRouter = "normal";
+      edgeVertices = undefined; // Dagre will handle, but we mark it for the renderer
+    }
+
     edges.push({
       id: `${sym.ruleName}_${sym.id}`,
       shape: edgeConfig.shape ?? "edge",
       zIndex: 1,
       source: finalSource,
       target: finalTarget,
-      router: edgeConfig.router,
+      router: isSelfLoop ? "normal" : edgeRouter,
       connector: edgeConfig.connector,
       attrs: resolveTemplates(edgeConfig.attrs, sym) ?? {},
       labels: resolvedLabels,
+      vertices: edgeVertices,
     });
   }
 

@@ -1133,6 +1133,9 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       isConstant: "isConstant",
       multiplicityLower: "ownedMultiplicity.ownedRelatedElement.lowerBound",
       multiplicityUpper: "ownedMultiplicity.ownedRelatedElement.upperBound",
+      trigger: "trigger",
+      guard: "guard",
+      effect: "effect",
     },
   },
   {
@@ -4394,6 +4397,42 @@ export const graphicsConfig: Record<string, GraphicsConfig> = {
         width: 140,
         height: 40,
       },
+    },
+  },
+  TransitionUsage: {
+    role: "edge",
+    edge: {
+      shape: "edge",
+      attrs: {
+        line: {
+          stroke: "#f9a825",
+          strokeWidth: 1.5,
+          targetMarker: "classic",
+        },
+      },
+      labels: [
+        {
+          attrs: {
+            text: {
+              text: "«transition»",
+              fill: "#666",
+              fontSize: 11,
+            },
+            rect: {
+              fill: "#fff",
+              stroke: "none",
+              rx: 3,
+              ry: 3,
+            },
+          },
+          position: {
+            distance: 0.5,
+            offset: 0,
+          },
+        },
+      ],
+      router: "manhattan",
+      connector: "rounded",
     },
   },
   ViewDefinition: {

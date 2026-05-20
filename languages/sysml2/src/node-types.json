@@ -21186,6 +21186,16 @@
             "named": true
           }
         ]
+      },
+      "trigger": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "PayloadFeatureMember",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -21306,10 +21316,6 @@
         },
         {
           "type": "PartUsage",
-          "named": true
-        },
-        {
-          "type": "PayloadFeatureMember",
           "named": true
         },
         {
