@@ -294,9 +294,9 @@ export function materializeExpression(arena: ArenaDAEBuilder, id: number): Model
     for (let i = 1; i < argCount; i++) args.push(materializeExpression(arena, arena.getExprLeft(id + i)!));
     return new ModelicaFunctionCallExpression(name, args);
   } else if (kind === ExprKind.Der) {
-    return new ModelicaFunctionCallExpression("der", [materializeExpression(arena, arena.getExprLeft(id)!)]);
+    return new ModelicaFunctionCallExpression("der", [materializeExpression(arena, arena.getExprData1(id)!)]);
   } else if (kind === ExprKind.Pre) {
-    return new ModelicaFunctionCallExpression("pre", [materializeExpression(arena, arena.getExprLeft(id)!)]);
+    return new ModelicaFunctionCallExpression("pre", [materializeExpression(arena, arena.getExprData1(id)!)]);
   } else if (kind === ExprKind.IfElse) {
     return new ModelicaIfElseExpression(
       materializeExpression(arena, arena.getExprData1(id)!),

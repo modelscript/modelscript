@@ -1657,10 +1657,113 @@ export default language({
           },
           /** Stubs for Batch 4 and 5 remaining ClassDefinition lints */
           connectFlowMismatch: () => null,
-          nonConnectorType: () => null,
+          /**
+           * Error when connect() uses a non-connector component.
+           * Both arguments to connect() must be of connector type.
+           */
+          nonConnectorType: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+            if (!resolve) return null;
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "ConnectEquation") {
+                const ref1 = node.childForFieldName("ref1");
+                const ref2 = node.childForFieldName("ref2");
+                for (const ref of [ref1, ref2]) {
+                  if (!ref) continue;
+                  const refName = ref.text.split(".")[0].split("[")[0].trim();
+                  const resolved = resolve(refName);
+                  if (resolved?.kind === "Component") {
+                    const isConn = db.query<boolean>("isConnectorType", resolved.id);
+                    if (isConn === false) {
+                      if (typeof ref.startIndex === "number") {
+                        results.push(
+                          error(`'${refName}' is not a connector type`, {
+                            startByte: ref.startIndex,
+                            endByte: ref.endIndex,
+                          }),
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+              for (const child of node.children || []) walk(child);
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "EquationSection") walk(child);
+            }
+            return results.length > 0 ? results : null;
+          },
           functionArgVariability: () => null,
           functionDefaultArgCycle: () => null,
-          unusedInputVariable: () => null,
+          /**
+           * Warn when a function has input variables that are never referenced
+           * in its algorithm body. Helps catch unused parameter bugs.
+           */
+          unusedInputVariable: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            const prefix = meta?.classPrefixes as string | undefined;
+            if (prefix !== "function") return null;
+
+            // Collect input variable names
+            const inputs: string[] = [];
+            for (const child of db.childrenOf(self.id)) {
+              if (child.kind !== "Component") continue;
+              const cMeta = child.metadata as Record<string, unknown>;
+              if (cMeta?.causality === "input") {
+                inputs.push(child.name);
+              }
+            }
+            if (inputs.length === 0) return null;
+
+            // Scan algorithm sections for references
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const referenced = new Set<string>();
+            const walkForIdents = (node: any) => {
+              if (node.type === "IDENT" || node.type === "ComponentReference") {
+                const name =
+                  node.type === "ComponentReference"
+                    ? (node.children?.find((c: any) => c.type === "IDENT")?.text ??
+                      node.text.split(".")[0].split("[")[0].trim())
+                    : node.text;
+                if (name) referenced.add(name);
+              }
+              for (const child of node.children || []) walkForIdents(child);
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "AlgorithmSection") walkForIdents(child);
+              if (child.type === "EquationSection") walkForIdents(child);
+            }
+
+            const results: any[] = [];
+            for (const inputName of inputs) {
+              if (!referenced.has(inputName)) {
+                const inputEntry = db.childrenOf(self.id).find((c) => c.name === inputName);
+                if (inputEntry) {
+                  results.push(
+                    warning(`Input variable '${inputName}' is never used in the function body`, {
+                      startByte: inputEntry.startByte,
+                      endByte: inputEntry.endByte,
+                    }),
+                  );
+                }
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
           /**
            * Warn when a model has an equation/variable count mismatch.
            * For structurally balanced models, the number of equations
@@ -1876,7 +1979,99 @@ export default language({
             }
             return results.length > 0 ? results : null;
           },
-          binaryOpTypeMismatch: () => null,
+          /**
+           * Error when a binary operator has incompatible operand types.
+           * e.g. `Boolean b = true + 1;` or `String s = "a" * 2;`
+           */
+          binaryOpTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+
+            // Map CST literal types to Modelica types
+            const literalTypes: Record<string, string> = {
+              UNSIGNED_INTEGER: "Integer",
+              UNSIGNED_REAL: "Real",
+              BOOLEAN: "Boolean",
+              STRING: "String",
+            };
+
+            const inferType = (node: any): string | null => {
+              if (!node) return null;
+              const lit = literalTypes[node.type];
+              if (lit) return lit;
+              if (node.text === "true" || node.text === "false") return "Boolean";
+              if (node.type === "ComponentReference") {
+                const refName = node.text.split(".")[0].split("[")[0].trim();
+                if (resolve) {
+                  const resolved = resolve(refName);
+                  if (resolved?.kind === "Component") {
+                    return ((resolved.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
+                  }
+                }
+                const globals = db.byName(refName);
+                if (globals.length > 0 && globals[0].kind === "Component") {
+                  return ((globals[0].metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
+                }
+              }
+              return null;
+            };
+
+            // Arithmetic ops require numeric operands (Real/Integer)
+            const arithmeticOps = new Set(["+", "-", "*", "/", "^"]);
+            // Comparison ops require compatible types
+            const comparisonOps = new Set(["<", ">", "<=", ">="]);
+            // Logical ops require Boolean
+            const logicalOps = new Set(["and", "or"]);
+            const numericTypes = new Set(["Real", "Integer"]);
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "BinaryExpression") {
+                const op = node.childForFieldName("operator")?.text;
+                const lhs = node.childForFieldName("operand1");
+                const rhs = node.childForFieldName("operand2");
+                if (op && lhs && rhs) {
+                  const t1 = inferType(lhs);
+                  const t2 = inferType(rhs);
+                  if (t1 && t2) {
+                    let mismatch = false;
+                    if (arithmeticOps.has(op)) {
+                      // Both must be numeric
+                      if (!numericTypes.has(t1) || !numericTypes.has(t2)) {
+                        mismatch = true;
+                      }
+                    } else if (comparisonOps.has(op)) {
+                      if (!numericTypes.has(t1) || !numericTypes.has(t2)) {
+                        mismatch = true;
+                      }
+                    } else if (logicalOps.has(op)) {
+                      if (t1 !== "Boolean" || t2 !== "Boolean") {
+                        mismatch = true;
+                      }
+                    }
+                    if (mismatch && typeof node.startIndex === "number") {
+                      results.push(
+                        error(`Type mismatch in '${op}': left operand is ${t1}, right operand is ${t2}`, {
+                          startByte: node.startIndex,
+                          endByte: node.endIndex,
+                        }),
+                      );
+                    }
+                  }
+                }
+              }
+              for (const child of node.children || []) walk(child);
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "EquationSection" || child.type === "AlgorithmSection") walk(child);
+            }
+            return results.length > 0 ? results : null;
+          },
           /**
            * Error when a `within` directive appears in a script-mode file.
            * Script files should not have `within` — it's only valid in package-structured files.
@@ -1903,7 +2098,170 @@ export default language({
             }
             return null;
           },
-          arrayDimensionMismatch: () => null,
+          /**
+           * Error when an equation has mismatched array dimensions on LHS vs RHS.
+           * e.g. `Real[3] x = {1,2};` at the equation level.
+           */
+          arrayDimensionMismatch: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+            if (!resolve) return null;
+
+            const getDims = (refName: string): number[] | null => {
+              const resolved = resolve(refName);
+              if (!resolved || resolved.kind !== "Component") return null;
+              const dims = db.query<Array<{ kind: string; value?: number }> | null>("arrayDimensions", resolved.id);
+              if (!dims || dims.length === 0) return null;
+              return dims.map((d) => (d.kind === "literal" && d.value ? d.value : -1));
+            };
+
+            const results: any[] = [];
+            const walk = (node: any) => {
+              if (node.type === "SimpleEquation") {
+                const lhs = node.childForFieldName("expression1");
+                const rhs = node.childForFieldName("expression2");
+                if (lhs?.type === "ComponentReference" && rhs?.type === "ComponentReference") {
+                  const lhsDims = getDims(lhs.text.split("[")[0].trim());
+                  const rhsDims = getDims(rhs.text.split("[")[0].trim());
+                  if (lhsDims && rhsDims) {
+                    const lhsStr = `[${lhsDims.map((d) => (d === -1 ? ":" : d)).join(",")}]`;
+                    const rhsStr = `[${rhsDims.map((d) => (d === -1 ? ":" : d)).join(",")}]`;
+                    if (lhsStr !== rhsStr) {
+                      if (typeof node.startIndex === "number") {
+                        results.push(
+                          error(
+                            `Array dimension mismatch in equation: '${lhs.text}' has dimensions ${lhsStr}, '${rhs.text}' has dimensions ${rhsStr}`,
+                            {
+                              startByte: node.startIndex,
+                              endByte: node.endIndex,
+                            },
+                          ),
+                        );
+                      }
+                    }
+                  }
+                }
+              }
+              for (const child of node.children || []) walk(child);
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "EquationSection") walk(child);
+            }
+            return results.length > 0 ? results : null;
+          },
+          /**
+           * Error when a variable in a package is not declared as constant.
+           * Modelica spec: all variables in a package must be constant.
+           * (Migrated from flattener-only M4036 package-variable-not-constant)
+           */
+          packageVariableNotConstant: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "package") return null;
+
+            const results: any[] = [];
+            for (const child of db.childrenOf(self.id)) {
+              if (child.kind !== "Component") continue;
+              const cMeta = child.metadata as Record<string, unknown>;
+              if (cMeta?.variability !== "constant") {
+                results.push(
+                  error(`Variable '${child.name}' in package '${self.name}' is not constant.`, {
+                    startByte: child.startByte,
+                    endByte: child.endByte,
+                  }),
+                );
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /**
+           * Error when equations or algorithms appear in a restricted class kind.
+           * e.g. `type`, `connector`, `record` should not have equation sections.
+           * (Migrated from flattener-only M4017 restriction-violation)
+           */
+          restrictionViolation: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const meta = self.metadata as Record<string, unknown>;
+            const prefix = meta?.classPrefixes as string | undefined;
+            if (!prefix) return null;
+
+            // These class kinds cannot have equations or algorithms
+            const noEquations = new Set([
+              "type",
+              "connector",
+              "expandable connector",
+              "record",
+              "operator record",
+              "package",
+            ]);
+            const noAlgorithms = new Set(["type", "connector", "expandable connector", "package"]);
+
+            if (!noEquations.has(prefix) && !noAlgorithms.has(prefix)) return null;
+
+            const results: any[] = [];
+            for (const child of classSpec.children) {
+              if (child.type === "EquationSection" && noEquations.has(prefix)) {
+                if (typeof child.startIndex === "number") {
+                  results.push(
+                    error(`Equation sections are not allowed in ${prefix}.`, {
+                      startByte: child.startIndex,
+                      endByte: child.endIndex,
+                    }),
+                  );
+                }
+              }
+              if (child.type === "AlgorithmSection" && noAlgorithms.has(prefix)) {
+                if (typeof child.startIndex === "number") {
+                  results.push(
+                    error(`Algorithm sections are not allowed in ${prefix}.`, {
+                      startByte: child.startIndex,
+                      endByte: child.endIndex,
+                    }),
+                  );
+                }
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
+          /**
+           * Error when a component's type is declared as partial.
+           * Cannot instantiate partial classes.
+           * (Migrated from flattener-only M4018 partial-instantiation)
+           */
+          partialInstantiation: (db: QueryDB, self: SymbolEntry) => {
+            const results: any[] = [];
+            for (const child of db.childrenOf(self.id)) {
+              if (child.kind !== "Component") continue;
+              const cMeta = child.metadata as Record<string, unknown>;
+              const typeName = cMeta?.typeSpecifier as string | undefined;
+              if (!typeName) continue;
+
+              // Resolve the type
+              const typeEntries = db.byName(typeName);
+              const typeEntry = typeEntries?.find((e) => e.kind === "Class");
+              if (!typeEntry) continue;
+
+              const typeMeta = typeEntry.metadata as Record<string, unknown>;
+              const typePrefix = typeMeta?.classPrefixes as string | undefined;
+              if (typePrefix?.includes("partial")) {
+                results.push(
+                  error(`Illegal to instantiate partial class '${typeName}'.`, {
+                    startByte: child.startByte,
+                    endByte: child.endByte,
+                  }),
+                );
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
         },
         adapters: {
           sysml2: {
