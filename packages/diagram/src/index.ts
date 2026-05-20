@@ -21,6 +21,8 @@ export interface DiagramRendererOptions {
   ) => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
+  onMessage?: (msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) => void;
 }
 
 let currentOptions: DiagramRendererOptions | null = null;
@@ -34,10 +36,20 @@ function enqueueDiagramAction(action: /* eslint-disable-line @typescript-eslint/
 }
 
 function postMessageToHost(msg: /* eslint-disable-line @typescript-eslint/no-explicit-any */ any) {
-  if (msg.type === "undo" && currentOptions?.onUndo) currentOptions.onUndo();
-  if (msg.type === "redo" && currentOptions?.onRedo) currentOptions.onRedo();
-  if (msg.type === "getProperties" && currentOptions?.onShowProperties)
+  if (msg.type === "undo" && currentOptions?.onUndo) {
+    currentOptions.onUndo();
+    return;
+  }
+  if (msg.type === "redo" && currentOptions?.onRedo) {
+    currentOptions.onRedo();
+    return;
+  }
+  if (msg.type === "getProperties" && currentOptions?.onShowProperties) {
     currentOptions.onShowProperties(msg.componentName, undefined, true);
+    return;
+  }
+  // Forward all other messages (revealSource, navigateTo, changeDiagramType, etc.)
+  if (currentOptions?.onMessage) currentOptions.onMessage(msg);
 }
 
 let graph: Graph | null = null;
@@ -568,6 +580,16 @@ export function initGraph(isDark: boolean): Graph {
       postMessageToHost({ type: "getProperties", componentName: node.id });
     }
 
+    // Reveal the source location of the clicked element in the text editor
+    const props = data?.properties;
+    if (props?.sourceRange) {
+      postMessageToHost({
+        type: "revealSource",
+        startByte: props.sourceRange.startByte,
+        endByte: props.sourceRange.endByte,
+      });
+    }
+
     // Smoothly pan to center the node horizontally in the visible portion
     const bbox = node.getBBox();
     const scale = g.scale().sx;
@@ -597,6 +619,40 @@ export function initGraph(isDark: boolean): Graph {
       }
     };
     requestAnimationFrame(animate);
+  });
+
+  // ── Double-click navigation: drill into child diagram views ──
+  // E.g., double-click a StateDefinition in BDD → open StateMachine view for it.
+  g.on("node:dblclick", ({ node }) => {
+    const data = node.getData();
+    const props = data?.properties;
+    if (!props?.ruleName) return;
+
+    // Determine which diagram type to navigate to based on the element's type
+    const navigationMap: Record<string, string> = {
+      PartDefinition: "IBD",
+      PartUsage: "IBD",
+      StateDefinition: "StateMachine",
+      StateUsage: "StateMachine",
+      ActionDefinition: "Activity",
+      ActionUsage: "Activity",
+      UseCaseDefinition: "UseCase",
+      UseCaseUsage: "UseCase",
+      RequirementDefinition: "Requirement",
+      RequirementUsage: "Requirement",
+      ConstraintDefinition: "Parametric",
+      ConstraintUsage: "Parametric",
+      Package: "Package",
+    };
+
+    const targetDiagramType = navigationMap[props.ruleName];
+    if (targetDiagramType) {
+      postMessageToHost({
+        type: "navigateTo",
+        className: props.description, // the element name
+        diagramType: targetDiagramType,
+      });
+    }
   });
 
   g.on("blank:click", () => {
@@ -1295,6 +1351,15 @@ window.addEventListener("message", (event: MessageEvent) => {
       }
       break;
     }
+
+    case "setDiagramType": {
+      // Update the diagram type dropdown to match the host's navigation
+      const diagramTypeSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement | null;
+      if (diagramTypeSelect && message.diagramType) {
+        diagramTypeSelect.value = message.diagramType;
+      }
+      break;
+    }
   }
 });
 
@@ -1415,6 +1480,38 @@ export function disposeDiagram() {
     graph = null;
   }
   currentOptions = null;
+}
+
+/**
+ * Optimistically patch the SVG text label of a component in the diagram
+ * when a parameter value changes. This avoids a full diagram re-render and
+ * gives the user instant visual feedback as they type.
+ *
+ * The function walks all `<text>` elements inside the node's SVG and replaces
+ * text content that matches the old parameter value pattern with the new one.
+ */
+export function updateParameterText(nodeId: string, paramName: string, oldValue: string, newValue: string): void {
+  if (!graph) return;
+  const cell = graph.getCellById(nodeId);
+  if (!cell || !cell.isNode()) return;
+
+  const view = graph.findViewByCell(cell);
+  if (!view) return;
+
+  const svgEl = view.container;
+  if (!svgEl) return;
+
+  const texts = svgEl.querySelectorAll("text");
+  for (const textEl of texts) {
+    const content = textEl.textContent ?? "";
+    if (!content) continue;
+
+    // Match patterns like "R=100", "100 Ω", or just "100"
+    // Be specific: only replace if the text contains the exact old value
+    if (oldValue && content.includes(oldValue)) {
+      textEl.textContent = content.replace(oldValue, newValue);
+    }
+  }
 }
 
 export function dropComponentGhost(

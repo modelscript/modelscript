@@ -3,7 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { dropComponentGhost, initGraph, setDiagramOptions } from "@modelscript/diagram";
+import { dropComponentGhost, initGraph, setDiagramOptions, updateParameterText } from "@modelscript/diagram";
 
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {
@@ -108,6 +108,7 @@ window.addEventListener("DOMContentLoaded", () => {
     },
     onUndo: () => vscode.postMessage({ type: "undo" }),
     onRedo: () => vscode.postMessage({ type: "redo" }),
+    onMessage: (msg) => vscode.postMessage(msg),
   });
 });
 
@@ -295,21 +296,46 @@ function showProperties(nodeData: any) {
   }
 
   const paramInputs = document.querySelectorAll(".prop-input-param");
+  // Debounce timers per parameter to avoid flooding the LSP with edits
+  const paramDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
   paramInputs.forEach((input) => {
-    input.addEventListener("change", (e) => {
+    // Use `input` event for real-time updates as the user types
+    input.addEventListener("input", (e) => {
       const target = e.target as HTMLInputElement;
       const paramName = target.getAttribute("data-param");
       const newValue = target.value;
-      if (paramName) {
-        // Send LSP edit
-        enqueueDiagramAction({ type: "updateParameter", name: nodeData.id, parameter: paramName, value: newValue });
-        // Optimistically update prop model
-        if (props?.parameters) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const p = props.parameters.find((param: any) => param.name === paramName);
-          if (p) p.value = newValue;
-        }
+      if (!paramName) return;
+
+      // Optimistically update the prop model
+      const oldValue =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        props?.parameters?.find((param: any) => param.name === paramName)?.value ?? "";
+      if (props?.parameters) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const p = props.parameters.find((param: any) => param.name === paramName);
+        if (p) p.value = newValue;
       }
+
+      // Optimistically patch the diagram SVG text in-place (instant, no re-render)
+      updateParameterText(nodeData.id, paramName, oldValue, newValue);
+
+      // Debounce the LSP text edit (100ms) to avoid overwhelming on rapid typing
+      const timerKey = `${nodeData.id}:${paramName}`;
+      const existing = paramDebounceTimers.get(timerKey);
+      if (existing) clearTimeout(existing);
+      paramDebounceTimers.set(
+        timerKey,
+        setTimeout(() => {
+          paramDebounceTimers.delete(timerKey);
+          enqueueDiagramAction({
+            type: "updateParameter",
+            name: nodeData.id,
+            parameter: paramName,
+            value: newValue,
+          });
+        }, 100),
+      );
     });
   });
 }

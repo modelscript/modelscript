@@ -388,7 +388,9 @@ export function processDiagramEditBatch(
         break;
       case "updateParameter":
         allEdits.push(...computeParameterEdit(classInstance, action.name, action.parameter, action.value));
-        needsRender = "debounced";
+        // Parameter edits are treated as optimistic — the webview patches the
+        // diagram text in-place without a full re-render.
+        if (needsRender === "none") needsRender = "none";
         break;
     }
   }

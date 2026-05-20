@@ -231,21 +231,53 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "error":
               vscode.window.showInformationMessage(message.message);
               break;
+            case "revealSource": {
+              // Reveal the source location of a diagram element in the text editor.
+              // The message contains byte offsets — we convert to Position using the document.
+              const doc = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uriString);
+              if (doc && typeof message.startByte === "number") {
+                const startPos = doc.positionAt(message.startByte);
+                const endPos = doc.positionAt(message.endByte ?? message.startByte);
+                // Find or show the text editor for this document and reveal the range
+                vscode.window.showTextDocument(doc, {
+                  viewColumn: vscode.ViewColumn.One,
+                  preserveFocus: true, // don't steal focus from the diagram
+                  selection: new vscode.Range(startPos, endPos),
+                });
+              }
+              break;
+            }
+            case "navigateTo": {
+              // Cross-diagram navigation: switch diagram type and optionally focus a class.
+              // E.g., double-click a StateDefinition in BDD → open StateMachine diagram.
+              if (message.diagramType) {
+                currentDiagramType = message.diagramType;
+                // Update the diagram type dropdown in the webview
+                webviewPanel.webview.postMessage({
+                  type: "setDiagramType",
+                  diagramType: message.diagramType,
+                });
+                immediateUpdate();
+              }
+              break;
+            }
           }
 
           if (actions) {
             console.log("[diagramEditorProvider] received actions from webview:", actions);
 
-            // Determine if this is a purely spatial edit (move/resize/edgeMove).
-            // Spatial edits don't change the model topology — only annotation
-            // coordinates change. These can be applied optimistically without
-            // showing a spinner or triggering a diagram re-render.
-            const isSpatialOnly = actions.every(
+            // Determine if this is a purely spatial edit (move/resize/edgeMove)
+            // or a parameter-only edit (updateParameter). These don't change the
+            // model topology — only annotation coordinates or modification values
+            // change. They can be applied optimistically without showing a spinner
+            // or triggering a diagram re-render.
+            const isOptimisticOnly = actions.every(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (a: any) => a.type === "move" || a.type === "resize" || a.type === "moveEdge",
+              (a: any) =>
+                a.type === "move" || a.type === "resize" || a.type === "moveEdge" || a.type === "updateParameter",
             );
 
-            if (isSpatialOnly) {
+            if (isOptimisticOnly) {
               // ── Optimistic path: silent text update, no spinner, no re-render ──
               diagramEditQueue = diagramEditQueue
                 .then(async () => {
@@ -257,7 +289,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   });
 
                   if (response?.edits?.length > 0) {
-                    // Mark as spatial so onDidChangeTextDocument skips re-render
+                    // Mark as optimistic so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
                     await applyTextEdits(uriString, response.edits);
                     // Wait for the document change event to fire and consume the hint
@@ -270,7 +302,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   }
                 })
                 .catch((e) => {
-                  console.error("[diagram] Error applying spatial edit:", e);
+                  console.error("[diagram] Error applying optimistic edit:", e);
                   pendingRenderHint = null;
                 });
             } else {

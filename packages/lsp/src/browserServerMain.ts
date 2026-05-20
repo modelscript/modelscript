@@ -3728,6 +3728,13 @@ async function handleGetDiagramData(params: { uri: string; className?: string; d
         isLoading: true,
       };
     }
+    // MSL is ready but class instance not yet available (re-validation in progress).
+    // Return last cached data to avoid blanking the diagram during the brief window
+    // between MSL loading and re-validation completing.
+    if (cached) {
+      connection.console.info(`[diagram-perf] class not resolved, returning stale cache for ${params.uri}`);
+      return cached.data;
+    }
     return null;
   }
 
