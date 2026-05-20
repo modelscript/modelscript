@@ -113,6 +113,8 @@ export interface SymbolEntry {
   parentId: SymbolId | null;
   metadata: Record<string, unknown>;
   resourceId?: string;
+  startByte?: number;
+  endByte?: number;
 }
 export interface SymbolIndex {
   symbols: Map<SymbolId, SymbolEntry>;
@@ -151,6 +153,10 @@ export interface PolyglotDiagramNode {
     className: string;
     description: string;
     parameters: { name: string; value: string }[];
+    /** Source byte range for reveal-on-click. */
+    sourceRange?: { startByte: number; endByte: number };
+    /** Grammar rule name, used for cross-diagram navigation. */
+    ruleName?: string;
   };
   /** Whether this node should be auto-laid-out by Dagre. */
   autoLayout: boolean;
@@ -1669,6 +1675,146 @@ export function buildPolyglotDiagram(
     const kids = childrenMap.get(node.id);
     if (kids && kids.length > 0) {
       node.children = kids;
+    }
+  }
+
+  // ── Post-process: synthesize initial/final pseudo-state nodes for StateMachine ──
+  if (diagramType === "StateMachine" && edges.length > 0) {
+    // Analyze edge topology to find states with no incoming/outgoing transitions
+    const hasIncoming = new Set<string>();
+    const hasOutgoing = new Set<string>();
+    for (const edge of edges) {
+      const src = typeof edge.source === "string" ? edge.source : (edge.source as any).cell;
+      const tgt = typeof edge.target === "string" ? edge.target : (edge.target as any).cell;
+      if (src && actualNodeIds.has(src)) hasOutgoing.add(src);
+      if (tgt && actualNodeIds.has(tgt)) hasIncoming.add(tgt);
+    }
+
+    // States with no incoming transitions get an initial pseudo-state (● → state)
+    const noIncoming = [...actualNodeIds].filter((id) => !hasIncoming.has(id));
+    if (noIncoming.length > 0) {
+      const targetId = noIncoming[0]; // First unreachable state is the entry point
+      const initialId = "__pseudo_initial__";
+      const pseudoSize = 20;
+
+      nodes.push({
+        id: initialId,
+        x: 0,
+        y: 0,
+        width: pseudoSize,
+        height: pseudoSize,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: [{ tagName: "circle", selector: "body" }],
+        attrs: {
+          body: {
+            r: pseudoSize / 2,
+            cx: pseudoSize / 2,
+            cy: pseudoSize / 2,
+            fill: "#333",
+            stroke: "#333",
+            strokeWidth: 1,
+          },
+        },
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        autoLayout: true,
+      });
+
+      // Add edge from initial → first state
+      edges.push({
+        id: `e_initial_${targetId}`,
+        shape: "edge",
+        zIndex: 5,
+        source: initialId,
+        target: targetId,
+        attrs: {
+          line: {
+            stroke: "#333",
+            strokeWidth: 1.5,
+            targetMarker: { name: "classic", size: 8 },
+          },
+        },
+      });
+    }
+
+    // States with no outgoing transitions get a final pseudo-state (state → ◎)
+    const noOutgoing = [...actualNodeIds].filter((id) => !hasOutgoing.has(id));
+    if (noOutgoing.length > 0) {
+      const sourceId = noOutgoing[noOutgoing.length - 1]; // Last dead-end state
+      const finalId = "__pseudo_final__";
+      const pseudoSize = 24;
+
+      nodes.push({
+        id: finalId,
+        x: 0,
+        y: 0,
+        width: pseudoSize,
+        height: pseudoSize,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: [
+          { tagName: "circle", selector: "outer" },
+          { tagName: "circle", selector: "inner" },
+        ],
+        attrs: {
+          outer: {
+            r: pseudoSize / 2,
+            cx: pseudoSize / 2,
+            cy: pseudoSize / 2,
+            fill: "none",
+            stroke: "#333",
+            strokeWidth: 2,
+          },
+          inner: {
+            r: pseudoSize / 2 - 4,
+            cx: pseudoSize / 2,
+            cy: pseudoSize / 2,
+            fill: "#333",
+            stroke: "none",
+          },
+        },
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        autoLayout: true,
+      });
+
+      // Add edge from last state → final
+      edges.push({
+        id: `e_final_${sourceId}`,
+        shape: "edge",
+        zIndex: 5,
+        source: sourceId,
+        target: finalId,
+        attrs: {
+          line: {
+            stroke: "#333",
+            strokeWidth: 1.5,
+            targetMarker: { name: "classic", size: 8 },
+          },
+        },
+      });
+    }
+  }
+
+  // ── Post-process: enrich nodes with source location from the symbol index ──
+  // This enables source-line reveal on selection and cross-diagram navigation.
+  const nodeIdToSymbolId = new Map<string, SymbolId>();
+  for (const [symId, nodeId] of symbolIdToNodeId) {
+    nodeIdToSymbolId.set(nodeId, symId);
+  }
+  for (const node of nodes) {
+    const symId = nodeIdToSymbolId.get(node.id);
+    if (symId !== undefined) {
+      const sym = index.symbols.get(symId);
+      if (sym && node.properties) {
+        if (typeof sym.startByte === "number" && typeof sym.endByte === "number") {
+          node.properties.sourceRange = { startByte: sym.startByte, endByte: sym.endByte };
+        }
+        node.properties.ruleName = sym.ruleName;
+      }
     }
   }
 
