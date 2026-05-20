@@ -33,7 +33,13 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "./diagramApi";
-import { buildComponentProperties, buildDiagramData, getClassIconSvg, type DiagramData } from "./diagramData";
+import {
+  buildComponentProperties,
+  buildDiagramData,
+  clearIconCache,
+  getClassIconSvg,
+  type DiagramData,
+} from "./diagramData";
 import { computeComponentInsert } from "./diagramEdits";
 import type { DiagramApplyEditsParams } from "./diagramProtocol";
 import { DiagramMethods } from "./diagramProtocol";
@@ -726,6 +732,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
         })
         .then(async () => {
           mslStdlibReady = true;
+          clearIconCache(); // Icons rendered before MSL was ready may be incomplete
+          diagramCache.clear(); // Force diagram rebuild with full MSL types
           connection.console.info(`[lsp] Background indexing complete. Re-validating documents.`);
           // Re-validate with full index for cross-file resolution
           for (let pass = 1; pass <= 2; pass++) {
@@ -738,6 +746,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     } else {
       // No MSL files to index (or all already indexed) — mark ready immediately
       mslStdlibReady = true;
+      clearIconCache();
+      diagramCache.clear();
       connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
     }
 
@@ -3843,9 +3853,30 @@ function getDiagramDispatch() {
           const unified = unifiedWorkspace.toUnified();
           const resolver = createSysML2ScopeResolver(unified);
           const diagramTypeRaw = params.diagramType ?? "All";
-          const validTypes = ["All", "BDD", "IBD", "StateMachine"];
+          const validTypes = [
+            "All",
+            "BDD",
+            "IBD",
+            "StateMachine",
+            "Activity",
+            "UseCase",
+            "Requirement",
+            "Parametric",
+            "Sequence",
+            "Package",
+          ];
           const diagramType = validTypes.includes(diagramTypeRaw)
-            ? (diagramTypeRaw as "All" | "BDD" | "IBD" | "StateMachine")
+            ? (diagramTypeRaw as
+                | "All"
+                | "BDD"
+                | "IBD"
+                | "StateMachine"
+                | "Activity"
+                | "UseCase"
+                | "Requirement"
+                | "Parametric"
+                | "Sequence"
+                | "Package")
             : "All";
           const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
 
@@ -3884,6 +3915,48 @@ function getDiagramDispatch() {
       computeNameEdit: computeSysML2NameEdit,
       computeDescriptionEdit: computeSysML2DescriptionEdit,
       computeParameterEdit: computeSysML2ParameterEdit,
+      getSymbolData: (uri, componentName) => {
+        try {
+          const unified = unifiedWorkspace.toUnifiedPartial();
+          // Find the symbol matching the component name in this document
+          for (const [, sym] of unified.symbols) {
+            if (sym.resourceId === uri && sym.name === componentName) {
+              // Get children of this symbol
+              const childIds = unified.childrenOf?.get(sym.id) ?? [];
+              const children: { name: string; ruleName: string; value?: string; description?: string }[] = [];
+              for (const childId of childIds) {
+                const child = unified.symbols.get(childId);
+                if (child && child.name) {
+                  children.push({
+                    name: child.name,
+                    ruleName: child.ruleName,
+                    value: (child.metadata as any)?.defaultValue ?? undefined,
+                    description: (child.metadata as any)?.description ?? undefined,
+                  });
+                }
+              }
+              // Try to extract doc comment from source text
+              let description: string | undefined;
+              const docText = documents.get(uri)?.getText();
+              if (docText && typeof sym.startByte === "number" && typeof sym.endByte === "number") {
+                const snippet = docText.substring(sym.startByte, sym.endByte);
+                const docMatch = snippet.match(/doc\s*\/\*\s*(.*?)\s*\*\//);
+                if (docMatch) description = docMatch[1];
+              }
+              return {
+                ruleName: sym.ruleName,
+                name: sym.name,
+                description,
+                children,
+              };
+            }
+          }
+          return null;
+        } catch (e) {
+          connection.console.error(`[sysml2] Error getting symbol data: ${e}`);
+          return null;
+        }
+      },
     });
 
     diagramDispatch = createDiagramDispatch({

@@ -67,6 +67,18 @@ const ELEMENT_TEMPLATES: Record<string, (name: string, indent: string) => string
 
   // Meta
   OccurrenceDefinition: (name, ind) => `${ind}occurrence def ${name} {\n${ind}}\n`,
+
+  // Activity Control Nodes
+  ForkNode: (name, ind) => `${ind}fork ${name};\n`,
+  JoinNode: (name, ind) => `${ind}join ${name};\n`,
+  DecisionNode: (name, ind) => `${ind}decide ${name};\n`,
+  MergeNode: (name, ind) => `${ind}merge ${name};\n`,
+  AcceptActionNode: (name, ind) => `${ind}accept ${name};\n`,
+  SendActionNode: (name, ind) => `${ind}send ${name};\n`,
+
+  // Actors
+  ActorDefinition: (name, ind) => `${ind}actor def ${name} {\n${ind}}\n`,
+  ActorUsage: (name, ind) => `${ind}actor ${name};\n`,
 };
 
 // ── Insert new element ──

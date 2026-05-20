@@ -4121,6 +4121,14 @@ export default language({
         symbol: usageAttrs("transition"),
         queries: usageQueries,
         model: usageModel,
+        graphics: () =>
+          sysmlEdgeGraphics({
+            label: "«transition»",
+            stroke: "#f9a825",
+            targetMarker: "classic",
+            router: "manhattan",
+            connector: "rounded",
+          }),
       }),
 
     // =====================================================================

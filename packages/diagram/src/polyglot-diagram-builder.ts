@@ -191,7 +191,17 @@ export function buildPolyglotDiagram(
   gfxConfig: Record<string, GraphicsConfig>,
   resourceId?: string,
   resolver?: ScopeResolver,
-  diagramType: "All" | "BDD" | "IBD" | "StateMachine" = "All",
+  diagramType:
+    | "All"
+    | "BDD"
+    | "IBD"
+    | "StateMachine"
+    | "Activity"
+    | "UseCase"
+    | "Requirement"
+    | "Parametric"
+    | "Sequence"
+    | "Package" = "All",
 ): PolyglotDiagramData {
   const nodes: PolyglotDiagramNode[] = [];
   const edges: PolyglotDiagramEdge[] = [];
@@ -214,14 +224,80 @@ export function buildPolyglotDiagram(
       if (sym.ruleName === "Package" || sym.ruleName === "LibraryPackage") continue;
       if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
     } else if (diagramType === "StateMachine") {
-      // Hide generic structure
+      // Only show state machine elements
       if (
         sym.ruleName !== "StateDefinition" &&
         sym.ruleName !== "StateUsage" &&
+        sym.ruleName !== "ExhibitStateUsage" &&
         sym.ruleName !== "TransitionUsage" &&
         sym.ruleName !== "ActionUsage" &&
         sym.ruleName !== "Package"
       ) {
+        continue;
+      }
+    } else if (diagramType === "Activity") {
+      // Only show activity/action elements and control nodes
+      if (
+        sym.ruleName !== "ActionDefinition" &&
+        sym.ruleName !== "ActionUsage" &&
+        sym.ruleName !== "PerformActionUsage" &&
+        sym.ruleName !== "ForkNode" &&
+        sym.ruleName !== "JoinNode" &&
+        sym.ruleName !== "DecisionNode" &&
+        sym.ruleName !== "MergeNode" &&
+        sym.ruleName !== "AcceptActionNode" &&
+        sym.ruleName !== "SendActionNode" &&
+        sym.ruleName !== "AssignActionNode" &&
+        sym.ruleName !== "SuccessionAsUsage" &&
+        sym.ruleName !== "SuccessionFlowUsage" &&
+        sym.ruleName !== "Package"
+      ) {
+        continue;
+      }
+    } else if (diagramType === "UseCase") {
+      // Only show use case elements and actors
+      if (
+        sym.ruleName !== "UseCaseDefinition" &&
+        sym.ruleName !== "UseCaseUsage" &&
+        sym.ruleName !== "IncludeUseCaseUsage" &&
+        sym.ruleName !== "ActorUsage" &&
+        sym.ruleName !== "ActorDefinition" &&
+        sym.ruleName !== "SubjectUsage" &&
+        sym.ruleName !== "Package"
+      ) {
+        continue;
+      }
+    } else if (diagramType === "Requirement") {
+      // Only show requirement elements and satisfy/verify relationships
+      if (
+        sym.ruleName !== "RequirementDefinition" &&
+        sym.ruleName !== "RequirementUsage" &&
+        sym.ruleName !== "SatisfyRequirementUsage" &&
+        sym.ruleName !== "VerifyRequirementUsage" &&
+        sym.ruleName !== "ConcernDefinition" &&
+        sym.ruleName !== "ConcernUsage" &&
+        sym.ruleName !== "ConstraintDefinition" &&
+        sym.ruleName !== "ConstraintUsage" &&
+        sym.ruleName !== "Package"
+      ) {
+        continue;
+      }
+    } else if (diagramType === "Parametric") {
+      // Only show constraint/calculation blocks and bindings
+      if (
+        sym.ruleName !== "ConstraintDefinition" &&
+        sym.ruleName !== "ConstraintUsage" &&
+        sym.ruleName !== "CalculationDefinition" &&
+        sym.ruleName !== "CalculationUsage" &&
+        sym.ruleName !== "AttributeUsage" &&
+        sym.ruleName !== "BindingConnectorAsUsage" &&
+        sym.ruleName !== "Package"
+      ) {
+        continue;
+      }
+    } else if (diagramType === "Package") {
+      // Only show packages and their direct children (definitions)
+      if (sym.ruleName !== "Package" && sym.ruleName !== "LibraryPackage" && !sym.ruleName.endsWith("Definition")) {
         continue;
       }
     }
@@ -665,6 +741,329 @@ export function buildPolyglotDiagram(
 
       actualNodeIds.add(node.id);
       nodes.push(node);
+      continue;
+    }
+
+    // ── Special case: State bubble rendering (StateMachine diagram) ──
+    if (
+      diagramType === "StateMachine" &&
+      (sym.ruleName === "StateDefinition" || sym.ruleName === "StateUsage" || sym.ruleName === "ExhibitStateUsage")
+    ) {
+      // Collect entry/do/exit actions as compartment lines
+      const stateChildren = compartmentsByParent.get(sym.id) ?? [];
+      const actionLines: string[] = [];
+      for (const child of stateChildren) {
+        if (child.ruleName === "StateActionUsage" || child.ruleName === "ActionUsage") {
+          const label = child.name ?? "";
+          if (label) actionLines.push(label);
+        }
+      }
+
+      // Check metadata for entry/do/exit (from EntryActionMember etc.)
+      const childSymbols = index.childrenOf.get(sym.id) ?? [];
+      for (const childId of childSymbols) {
+        const childSym = index.symbols.get(childId);
+        if (!childSym) continue;
+        const fm = (childSym.metadata as any)?.fieldName;
+        if (fm === "entry" || fm === "do" || fm === "exit") {
+          actionLines.push(`${fm} / ${childSym.name ?? "..."}`);
+        }
+      }
+
+      const hasCompartments = actionLines.length > 0;
+      const LINE_HEIGHT = 15;
+      const HEADER_H = 36;
+      const bubbleWidth = Math.max(140, nameText.length * 9 + 40);
+      const bubbleHeight = hasCompartments ? HEADER_H + actionLines.length * LINE_HEIGHT + 12 : 44;
+
+      const stateMarkup: any[] = [
+        { tagName: "rect", selector: "body" },
+        { tagName: "text", selector: "label" },
+      ];
+      const stateAttrs: Record<string, any> = {
+        body: {
+          fill: fillColor,
+          stroke: strokeColor,
+          strokeWidth: isDef ? 2.5 : 1.5,
+          rx: 16,
+          ry: 16,
+          refWidth: "100%",
+          refHeight: "100%",
+        },
+        label: {
+          text: nameText,
+          fill: labelColor,
+          fontSize: 14,
+          fontWeight: "bold",
+          textAnchor: "middle",
+          textVerticalAnchor: "top",
+          refX: 0.5,
+          refY: hasCompartments ? 8 : 14,
+        },
+      };
+
+      if (hasCompartments) {
+        stateMarkup.push({ tagName: "line", selector: "separator" });
+        stateAttrs.separator = {
+          x1: 0,
+          y1: HEADER_H - 4,
+          x2: bubbleWidth,
+          y2: HEADER_H - 4,
+          stroke: strokeColor,
+          strokeWidth: 0.5,
+        };
+        for (let ai = 0; ai < actionLines.length; ai++) {
+          const sel = `action_${ai}`;
+          stateMarkup.push({ tagName: "text", selector: sel });
+          stateAttrs[sel] = {
+            text: actionLines[ai],
+            fill: textColor,
+            fontSize: 11,
+            textAnchor: "start",
+            textVerticalAnchor: "top",
+            refX: 12,
+            refY: HEADER_H + ai * LINE_HEIGHT,
+          };
+        }
+      }
+
+      const parameters: { name: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(sym.metadata)) {
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          parameters.push({ name: key, value: String(value) });
+        }
+      }
+
+      const stateNode: PolyglotDiagramNode = {
+        id: nodeId,
+        x: 0,
+        y: 0,
+        width: bubbleWidth,
+        height: bubbleHeight,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: stateMarkup,
+        attrs: stateAttrs,
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        properties: {
+          className: sym.ruleName,
+          description: sym.name ?? "",
+          parameters,
+        },
+        autoLayout: true,
+      };
+
+      // Resolve parent group embedding
+      if (sym.parentId !== null) {
+        let ancestorId: SymbolId | null = sym.parentId;
+        while (ancestorId !== null) {
+          const ancestorSym = index.symbols.get(ancestorId);
+          if (!ancestorSym) break;
+          if (groupKinds.has(ancestorSym.ruleName)) {
+            stateNode.parent = symbolIdToNodeId.get(ancestorId);
+            stateNode.autoLayout = false;
+            break;
+          }
+          ancestorId = ancestorSym.parentId;
+        }
+      }
+
+      actualNodeIds.add(stateNode.id);
+      nodes.push(stateNode);
+      continue;
+    }
+
+    // ── Special case: Activity diagram — Fork/Join bars, Decision/Merge diamonds ──
+    if (
+      diagramType === "Activity" &&
+      (sym.ruleName === "ForkNode" ||
+        sym.ruleName === "JoinNode" ||
+        sym.ruleName === "DecisionNode" ||
+        sym.ruleName === "MergeNode")
+    ) {
+      const isForkJoin = sym.ruleName === "ForkNode" || sym.ruleName === "JoinNode";
+      const parameters: { name: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(sym.metadata)) {
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          parameters.push({ name: key, value: String(value) });
+        }
+      }
+
+      let controlMarkup: any[];
+      let controlAttrs: Record<string, any>;
+      let controlWidth: number;
+      let controlHeight: number;
+
+      if (isForkJoin) {
+        // Fork/Join: thick horizontal bar
+        controlWidth = 120;
+        controlHeight = 8;
+        controlMarkup = [{ tagName: "rect", selector: "body" }];
+        controlAttrs = {
+          body: {
+            fill: "#333",
+            stroke: "#333",
+            strokeWidth: 1,
+            rx: 2,
+            ry: 2,
+            refWidth: "100%",
+            refHeight: "100%",
+          },
+        };
+      } else {
+        // Decision/Merge: diamond shape (rotated square)
+        controlWidth = 40;
+        controlHeight = 40;
+        controlMarkup = [
+          { tagName: "polygon", selector: "body" },
+          { tagName: "text", selector: "label" },
+        ];
+        controlAttrs = {
+          body: {
+            points: "20,0 40,20 20,40 0,20",
+            fill: "#fff8e1",
+            stroke: "#f9a825",
+            strokeWidth: 1.5,
+          },
+          label: {
+            text: nameText || (sym.ruleName === "DecisionNode" ? "?" : ""),
+            fill: "#333",
+            fontSize: 12,
+            fontWeight: "bold",
+            textAnchor: "middle",
+            textVerticalAnchor: "middle",
+            refX: 0.5,
+            refY: 0.5,
+          },
+        };
+      }
+
+      const controlNode: PolyglotDiagramNode = {
+        id: nodeId,
+        x: 0,
+        y: 0,
+        width: controlWidth,
+        height: controlHeight,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: controlMarkup,
+        attrs: controlAttrs,
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        properties: {
+          className: sym.ruleName,
+          description: sym.name ?? "",
+          parameters,
+        },
+        autoLayout: true,
+      };
+
+      // Resolve parent group embedding
+      if (sym.parentId !== null) {
+        let ancestorId: SymbolId | null = sym.parentId;
+        while (ancestorId !== null) {
+          const ancestorSym = index.symbols.get(ancestorId);
+          if (!ancestorSym) break;
+          if (groupKinds.has(ancestorSym.ruleName)) {
+            controlNode.parent = symbolIdToNodeId.get(ancestorId);
+            controlNode.autoLayout = false;
+            break;
+          }
+          ancestorId = ancestorSym.parentId;
+        }
+      }
+
+      actualNodeIds.add(controlNode.id);
+      nodes.push(controlNode);
+      continue;
+    }
+
+    // ── Special case: Use Case ellipse rendering ──
+    if (
+      diagramType === "UseCase" &&
+      (sym.ruleName === "UseCaseDefinition" ||
+        sym.ruleName === "UseCaseUsage" ||
+        sym.ruleName === "IncludeUseCaseUsage")
+    ) {
+      const ucWidth = Math.max(160, nameText.length * 9 + 40);
+      const ucHeight = 60;
+      const ucIsInclude = sym.ruleName === "IncludeUseCaseUsage";
+
+      const ucMarkup: any[] = [
+        { tagName: "ellipse", selector: "body" },
+        { tagName: "text", selector: "label" },
+      ];
+      const ucAttrs: Record<string, any> = {
+        body: {
+          cx: ucWidth / 2,
+          cy: ucHeight / 2,
+          rx: ucWidth / 2,
+          ry: ucHeight / 2,
+          fill: ucIsInclude ? "#f3e5f5" : "#e8eaf6",
+          stroke: ucIsInclude ? "#7b1fa2" : "#283593",
+          strokeWidth: 1.5,
+          ...(ucIsInclude ? { strokeDasharray: "6 3" } : {}),
+        },
+        label: {
+          text: nameText,
+          fill: "#1a1a1a",
+          fontSize: 13,
+          fontWeight: "bold",
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+          refX: 0.5,
+          refY: 0.5,
+        },
+      };
+
+      const parameters: { name: string; value: string }[] = [];
+      for (const [key, value] of Object.entries(sym.metadata)) {
+        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          parameters.push({ name: key, value: String(value) });
+        }
+      }
+
+      const ucNode: PolyglotDiagramNode = {
+        id: nodeId,
+        x: 0,
+        y: 0,
+        width: ucWidth,
+        height: ucHeight,
+        angle: 0,
+        opacity: 1,
+        zIndex: 10,
+        markup: ucMarkup,
+        attrs: ucAttrs,
+        shape: "rect",
+        ports: { groups: {}, items: [] },
+        properties: {
+          className: sym.ruleName,
+          description: sym.name ?? "",
+          parameters,
+        },
+        autoLayout: true,
+      };
+
+      // Resolve parent group embedding
+      if (sym.parentId !== null) {
+        let ancestorId: SymbolId | null = sym.parentId;
+        while (ancestorId !== null) {
+          const ancestorSym = index.symbols.get(ancestorId);
+          if (!ancestorSym) break;
+          if (groupKinds.has(ancestorSym.ruleName)) {
+            ucNode.parent = symbolIdToNodeId.get(ancestorId);
+            ucNode.autoLayout = false;
+            break;
+          }
+          ancestorId = ancestorSym.parentId;
+        }
+      }
+
+      actualNodeIds.add(ucNode.id);
+      nodes.push(ucNode);
       continue;
     }
 

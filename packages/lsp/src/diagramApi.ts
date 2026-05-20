@@ -126,6 +126,16 @@ export interface SysML2BackendDeps {
   computeNameEdit: (tree: unknown, text: string, oldName: string, newName: string) => TextEdit[];
   computeDescriptionEdit: (tree: unknown, text: string, name: string, desc: string) => TextEdit[];
   computeParameterEdit: (tree: unknown, text: string, name: string, param: string, value: string) => TextEdit[];
+  /** Query symbol data from the unified index for the component properties panel. */
+  getSymbolData?: (
+    uri: string,
+    componentName: string,
+  ) => {
+    ruleName: string;
+    name: string;
+    description?: string;
+    children?: { name: string; ruleName: string; value?: string; description?: string; direction?: string }[];
+  } | null;
 }
 
 export class SysML2DiagramBackend implements DiagramBackend {
@@ -135,10 +145,36 @@ export class SysML2DiagramBackend implements DiagramBackend {
     return this.deps.buildDiagramData(params);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
-    // SysML2 doesn't have on-demand component properties yet
-    return null;
+    if (!this.deps.getSymbolData) return null;
+    const data = this.deps.getSymbolData(params.uri, params.componentName);
+    if (!data) return null;
+
+    // Build parameters from child attribute/usage entries
+    const parameters: ComponentPropertyData["parameters"] = [];
+    if (data.children) {
+      for (const child of data.children) {
+        // Only show attribute-like children as parameters
+        if (
+          child.ruleName.includes("Attribute") ||
+          child.ruleName.includes("Usage") ||
+          child.ruleName.includes("Port")
+        ) {
+          parameters.push({
+            name: child.name,
+            value: child.value ?? "",
+            description: child.description,
+          });
+        }
+      }
+    }
+
+    return {
+      className: data.ruleName.replace(/(Definition|Usage)$/, ""),
+      name: data.name,
+      description: data.description ?? "",
+      parameters,
+    };
   }
 
   applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {

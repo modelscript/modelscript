@@ -498,6 +498,12 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       <option value="BDD">BDD (Block Definition)</option>
       <option value="IBD">IBD (Internal Block)</option>
       <option value="StateMachine">State Machine</option>
+      <option value="Activity">Activity</option>
+      <option value="UseCase">Use Case</option>
+      <option value="Requirement">Requirement</option>
+      <option value="Parametric">Parametric</option>
+      <option value="Sequence">Sequence</option>
+      <option value="Package">Package</option>
     </select>
   </div>
   <div id="container"></div>

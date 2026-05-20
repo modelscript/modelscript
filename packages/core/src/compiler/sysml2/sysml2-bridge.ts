@@ -115,7 +115,17 @@ export function buildSysML2DiagramData(
   index: any,
   documentUri: string,
   resolver?: any,
-  diagramType: "All" | "BDD" | "IBD" | "StateMachine" = "All",
+  diagramType:
+    | "All"
+    | "BDD"
+    | "IBD"
+    | "StateMachine"
+    | "Activity"
+    | "UseCase"
+    | "Requirement"
+    | "Parametric"
+    | "Sequence"
+    | "Package" = "All",
 ): PolyglotDiagramData {
   return buildPolyglotDiagram(index, gfxConfig, documentUri, resolver, diagramType);
 }
