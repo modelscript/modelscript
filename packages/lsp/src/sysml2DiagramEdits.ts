@@ -182,8 +182,16 @@ export function computeSysML2ElementDelete(docText: string, elementNames: string
 
 /**
  * Insert a `connection` usage connecting two elements.
+ * If the document contains state definitions/usages (state machine context),
+ * inserts a `transition` usage instead.
  */
 export function computeSysML2ConnectionInsert(docText: string, source: string, target: string): TextEdit[] {
+  // Auto-detect state machine context — if source text contains state keywords,
+  // insert a transition instead of a generic connection
+  if (/\bstate\s+(def\s+)?\w+/.test(docText)) {
+    return computeSysML2TransitionInsert(docText, source, target);
+  }
+
   const lines = docText.split("\n");
 
   // Find insertion point — before the last `}` of the enclosing body
@@ -202,6 +210,60 @@ export function computeSysML2ConnectionInsert(docText: string, source: string, t
   // Generate a connection name from source and target
   const connName = `${source}_to_${target}`;
   const snippet = `${indent}connection ${connName} : Connect\n${indent}${INDENT}connect ${source} to ${target};\n\n`;
+
+  return [TextEdit.insert({ line: targetLine, character: 0 }, snippet)];
+}
+
+// ── Insert transition (state machine) ──
+
+/**
+ * Insert a `transition` usage connecting two states.
+ * Generates: `transition first sourceState then targetState;`
+ */
+export function computeSysML2TransitionInsert(docText: string, source: string, target: string): TextEdit[] {
+  const lines = docText.split("\n");
+
+  // Find the enclosing state body — look for the innermost `}` that follows a state definition
+  // containing the source state
+  let targetLine = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim() === "}") {
+      targetLine = i;
+      break;
+    }
+  }
+  if (targetLine === -1) targetLine = lines.length;
+
+  const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+  const indent = braceIndent + INDENT;
+
+  const snippet = `${indent}transition first ${source} then ${target};\n`;
+
+  return [TextEdit.insert({ line: targetLine, character: 0 }, snippet)];
+}
+
+// ── Insert succession (activity diagram) ──
+
+/**
+ * Insert a `succession` usage connecting two actions in an activity diagram.
+ * Generates: `first source then target;`
+ */
+export function computeSysML2SuccessionInsert(docText: string, source: string, target: string): TextEdit[] {
+  const lines = docText.split("\n");
+
+  let targetLine = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].trim() === "}") {
+      targetLine = i;
+      break;
+    }
+  }
+  if (targetLine === -1) targetLine = lines.length;
+
+  const braceIndent = lines[targetLine]?.match(/^(\s*)/)?.[1] ?? "";
+  const indent = braceIndent + INDENT;
+
+  const snippet = `${indent}first ${source} then ${target};\n`;
 
   return [TextEdit.insert({ line: targetLine, character: 0 }, snippet)];
 }

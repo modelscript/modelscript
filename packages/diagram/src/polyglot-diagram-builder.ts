@@ -174,6 +174,8 @@ export interface PolyglotDiagramData {
   edges: PolyglotDiagramEdge[];
   coordinateSystem: { x: number; y: number; width: number; height: number };
   diagramBackground: null;
+  /** Optional: the type of diagram, used by the renderer to select layout algorithms */
+  diagramType?: string;
 }
 
 // ── Builder ──
@@ -298,6 +300,22 @@ export function buildPolyglotDiagram(
     } else if (diagramType === "Package") {
       // Only show packages and their direct children (definitions)
       if (sym.ruleName !== "Package" && sym.ruleName !== "LibraryPackage" && !sym.ruleName.endsWith("Definition")) {
+        continue;
+      }
+    } else if (diagramType === "Sequence") {
+      // Sequence: participants (parts/actions), messages (flows/successions/send/accept)
+      if (
+        sym.ruleName !== "PartDefinition" &&
+        sym.ruleName !== "PartUsage" &&
+        sym.ruleName !== "ActionDefinition" &&
+        sym.ruleName !== "ActionUsage" &&
+        sym.ruleName !== "FlowConnectionUsage" &&
+        sym.ruleName !== "SuccessionFlowUsage" &&
+        sym.ruleName !== "SuccessionAsUsage" &&
+        sym.ruleName !== "SendActionNode" &&
+        sym.ruleName !== "AcceptActionNode" &&
+        sym.ruleName !== "Package"
+      ) {
         continue;
       }
     }
@@ -1664,6 +1682,7 @@ export function buildPolyglotDiagram(
       height: csHeight,
     },
     diagramBackground: null,
+    diagramType,
   };
 }
 

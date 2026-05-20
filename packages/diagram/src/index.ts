@@ -7,6 +7,7 @@ import { DagreLayout } from "@antv/layout";
 import { Cell, Graph, Selection, Transform } from "@antv/x6";
 
 import { applySequenceLayout } from "./sequence-layout.js";
+import * as Spinner from "./spinner.js";
 
 export interface DiagramRendererOptions {
   container: HTMLElement;
@@ -537,7 +538,7 @@ export function initGraph(isDark: boolean): Graph {
 
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        showSpinner();
+        Spinner.show();
         if (e.shiftKey) {
           postMessageToHost({ type: "redo" });
         } else {
@@ -545,7 +546,7 @@ export function initGraph(isDark: boolean): Graph {
         }
       } else if (mod && e.key.toLowerCase() === "y") {
         e.preventDefault();
-        showSpinner();
+        Spinner.show();
         postMessageToHost({ type: "redo" });
       }
     }
@@ -1117,13 +1118,13 @@ document.addEventListener(
         const pd = pendingDiagramData;
         pendingDiagramData = null;
         if (pd.data?.isLoading) {
-          showSpinner();
+          Spinner.show();
         }
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             renderDiagram(pd.data, pd.isDark);
             if (!pd.data?.isLoading) {
-              hideSpinner();
+              Spinner.hide();
             }
           });
         });
@@ -1137,37 +1138,9 @@ document.addEventListener(
 const diagramSelect = document.getElementById("diagramTypeSelect") as HTMLSelectElement;
 if (diagramSelect) {
   diagramSelect.addEventListener("change", (e) => {
-    showSpinner();
+    Spinner.show();
     postMessageToHost({ type: "changeDiagramType", diagramType: (e.target as HTMLSelectElement).value });
   });
-}
-
-// Safety timeout: auto-hide the spinner if it's been visible for too long
-// (e.g., due to a dropped message or unhandled error path)
-let spinnerSafetyTimer: ReturnType<typeof setTimeout> | null = null;
-const SPINNER_SAFETY_TIMEOUT_MS = 10_000;
-
-function showSpinner() {
-  const spinner = document.getElementById("spinner");
-  if (spinner) spinner.style.display = "block";
-  if (spinnerSafetyTimer) clearTimeout(spinnerSafetyTimer);
-  spinnerSafetyTimer = setTimeout(() => {
-    const s = document.getElementById("spinner");
-    if (s && s.style.display !== "none") {
-      console.warn("[diagram] Spinner safety timeout — auto-hiding after 10s");
-      s.style.display = "none";
-    }
-    spinnerSafetyTimer = null;
-  }, SPINNER_SAFETY_TIMEOUT_MS);
-}
-
-function hideSpinner() {
-  const spinner = document.getElementById("spinner");
-  if (spinner) spinner.style.display = "none";
-  if (spinnerSafetyTimer) {
-    clearTimeout(spinnerSafetyTimer);
-    spinnerSafetyTimer = null;
-  }
 }
 
 // Listen for messages from the extension host
@@ -1175,11 +1148,11 @@ window.addEventListener("message", (event: MessageEvent) => {
   const message = event.data;
   switch (message.type) {
     case "loading": {
-      showSpinner();
+      Spinner.show();
       break;
     }
     case "stopLoading": {
-      hideSpinner();
+      Spinner.hide();
       break;
     }
     case "diagramData": {
@@ -1187,13 +1160,13 @@ window.addEventListener("message", (event: MessageEvent) => {
         pendingDiagramData = { data: message.data, isDark: message.isDark ?? true };
       } else {
         if (message.data?.isLoading) {
-          showSpinner();
+          Spinner.show();
         }
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             renderDiagram(message.data, message.isDark ?? true);
             if (!message.data?.isLoading) {
-              hideSpinner();
+              Spinner.hide();
             }
           });
         });
@@ -1212,7 +1185,7 @@ window.addEventListener("message", (event: MessageEvent) => {
       break;
     }
     case "empty": {
-      hideSpinner();
+      Spinner.hide();
       const placeholder = document.getElementById("placeholder");
       if (placeholder) {
         placeholder.style.display = "flex";
@@ -1284,7 +1257,7 @@ window.addEventListener("message", (event: MessageEvent) => {
     }
 
     case "error": {
-      hideSpinner();
+      Spinner.hide();
       const placeholder2 = document.getElementById("placeholder");
       if (placeholder2) {
         placeholder2.style.display = "flex";
@@ -1310,6 +1283,15 @@ window.addEventListener("message", (event: MessageEvent) => {
         if (selectedNodeId === componentName) {
           showProperties({ id: componentName, properties: fullProps });
         }
+      }
+      break;
+    }
+
+    case "setLanguage": {
+      // Show the diagram type selector only for SysML2 files
+      const toolbar = document.getElementById("toolbar");
+      if (toolbar) {
+        toolbar.style.display = message.language === "sysml" ? "flex" : "none";
       }
       break;
     }
