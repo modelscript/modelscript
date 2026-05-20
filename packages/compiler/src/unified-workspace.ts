@@ -103,6 +103,10 @@ export class UnifiedWorkspace {
       }
     }
 
+    // Inject synthetic entries for projected OWL2 axioms
+    // This enables cross-language IRI resolution in OWL2 lint queries
+    this.mergeOWL2Synthetics(symbols, byName, childrenOf);
+
     return { symbols, byName, childrenOf };
   }
 
@@ -139,6 +143,9 @@ export class UnifiedWorkspace {
         }
       }
     }
+
+    // Inject synthetic entries for projected OWL2 axioms
+    this.mergeOWL2Synthetics(symbols, byName, childrenOf);
 
     return { symbols, byName, childrenOf };
   }
@@ -253,6 +260,10 @@ export class UnifiedWorkspace {
       }
 
       this.partialCache.symbolsByResource = actualSymbolsByResource;
+
+      // Re-inject synthetic OWL2 entries (they may have changed if a source language changed)
+      this.mergeOWL2Synthetics(symbols, byName, childrenOf);
+
       return this.partialCache;
     }
 
@@ -299,6 +310,9 @@ export class UnifiedWorkspace {
         }
       }
     }
+
+    // Inject synthetic entries for projected OWL2 axioms
+    this.mergeOWL2Synthetics(symbols, byName, childrenOf);
 
     this.partialCache = { symbols, byName, childrenOf, symbolsByResource };
     return this.partialCache;
@@ -365,5 +379,59 @@ export class UnifiedWorkspace {
    */
   fullOntologyProjection(): void {
     this.owl2Store.fullProjection();
+  }
+
+  // =========================================================================
+  // Private — OWL2 Synthetic Entry Injection
+  // =========================================================================
+
+  /**
+   * Merge synthetic SymbolEntry objects from the OWL2 ontology store into
+   * the unified symbol index. This enables cross-language IRI resolution:
+   * when an OWL2 file references `mo:Motor` and Motor only exists in a
+   * Modelica file, the projected ClassDeclaration axiom produces a synthetic
+   * entry with `{ kind: "Class", name: "mo:Motor" }` that the lint query
+   * can find via `db.byName("mo:Motor")`.
+   */
+  private mergeOWL2Synthetics(
+    symbols: Map<number, SymbolEntry>,
+    byName: Map<string, number[]>,
+    childrenOf: Map<number | null, number[]>,
+  ): void {
+    if (this.owl2Store.size === 0) return;
+
+    const synthetics = this.owl2Store.toSyntheticSymbolEntries();
+
+    for (const [id, entry] of synthetics.symbols) {
+      // Skip if a real entry with this name and kind already exists
+      // (avoids duplicates when an OWL2 file also declares the same class)
+      const existingIds = byName.get(entry.name);
+      if (existingIds) {
+        const alreadyExists = existingIds.some((eid) => {
+          const existing = symbols.get(eid);
+          return existing && existing.kind === entry.kind;
+        });
+        if (alreadyExists) continue;
+      }
+
+      symbols.set(id, entry);
+      const nameIds = byName.get(entry.name);
+      if (nameIds) {
+        nameIds.push(id);
+      } else {
+        byName.set(entry.name, [id]);
+      }
+    }
+
+    for (const [parentId, ids] of synthetics.childrenOf) {
+      const existing = childrenOf.get(parentId);
+      if (existing) {
+        for (const cid of ids) {
+          if (!existing.includes(cid)) existing.push(cid);
+        }
+      } else {
+        childrenOf.set(parentId, [...ids]);
+      }
+    }
   }
 }

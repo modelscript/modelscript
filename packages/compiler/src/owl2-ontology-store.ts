@@ -36,7 +36,7 @@
 import type { AdapterRegistry } from "./adapter-registry.js";
 import type { OWL2Axiom, OWL2AxiomDelta } from "./owl2-axioms.js";
 import { projectionToAxioms } from "./owl2-projection.js";
-import type { SymbolEntry } from "./runtime.js";
+import type { SymbolEntry, SymbolIndex } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
 // OWL2 Ontology Store
@@ -267,6 +267,41 @@ export class OWL2OntologyStore {
     return lines.join("\n");
   }
 
+  /**
+   * Generate synthetic SymbolEntry objects for projected axioms.
+   *
+   * This enables cross-language IRI resolution: when an OWL2 lint query
+   * does `db.byName("mo:Motor")`, it will find the synthetic entry
+   * created from a Modelica-projected ClassDeclaration axiom.
+   *
+   * Synthetic entries use negative IDs (starting from -1_000_000) to
+   * avoid collisions with real CST-derived symbol IDs.
+   */
+  toSyntheticSymbolEntries(): SymbolIndex {
+    const symbols = new Map<number, SymbolEntry>();
+    const byName = new Map<string, number[]>();
+    const childrenOf = new Map<number | null, number[]>();
+
+    // Start synthetic IDs at a large negative offset to avoid collisions
+    let nextId = -1_000_000;
+
+    for (const axiom of this._axioms) {
+      const entry = axiomToSymbolEntry(axiom, nextId);
+      if (entry) {
+        symbols.set(entry.id, entry);
+        const nameIds = byName.get(entry.name);
+        if (nameIds) {
+          nameIds.push(entry.id);
+        } else {
+          byName.set(entry.name, [entry.id]);
+        }
+        nextId--;
+      }
+    }
+
+    return { symbols, byName, childrenOf };
+  }
+
   /** Clear all axioms and reset state. */
   clear(): void {
     this._axioms = [];
@@ -383,5 +418,39 @@ function axiomToFSS(axiom: OWL2Axiom): string {
       return `SubClassOf(owl:Thing ObjectSomeValuesFrom(${axiom.propertyIri} ${axiom.fillerClassIri}))`;
     case "DataSomeValuesFrom":
       return `SubClassOf(owl:Thing DataSomeValuesFrom(${axiom.propertyIri} ${axiom.dataRange}))`;
+  }
+}
+
+/**
+ * Convert a projected axiom into a synthetic SymbolEntry for cross-language
+ * IRI resolution. Only declaration axioms produce entries — assertion axioms
+ * don't introduce new names.
+ */
+function axiomToSymbolEntry(axiom: OWL2Axiom, id: number): SymbolEntry | null {
+  const base: Omit<SymbolEntry, "id" | "kind" | "name"> = {
+    ruleName: "owl2:projected",
+    namePath: "iri",
+    startByte: 0,
+    endByte: 0,
+    parentId: null,
+    exports: [],
+    inherits: [],
+    metadata: { sourceLang: axiom.sourceLang, projected: true },
+    fieldRanges: undefined,
+    fieldName: null,
+    language: "owl2",
+  };
+
+  switch (axiom.type) {
+    case "ClassDeclaration":
+      return { ...base, id, kind: "Class", name: axiom.iri };
+    case "ObjectPropertyDeclaration":
+      return { ...base, id, kind: "ObjectProperty", name: axiom.iri };
+    case "DataPropertyDeclaration":
+      return { ...base, id, kind: "DataProperty", name: axiom.iri };
+    case "IndividualDeclaration":
+      return { ...base, id, kind: "Individual", name: axiom.iri };
+    default:
+      return null;
   }
 }

@@ -18,7 +18,7 @@ import {
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { executeQueryString, formatQueryResult, OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
-import { ModelicaSimulator } from "@modelscript/simulator";
+import { type ArenaSimulateOptions, ModelicaSimulator, simulateArena } from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";
@@ -186,12 +186,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   server.tool(
     "modelica_simulate",
-    "Flatten and simulate a Modelica model, returning time-series results.",
+    "Flatten and simulate a Modelica model, returning time-series results. Uses the high-performance arena simulation pipeline.",
     {
       name: z.string().describe("Fully qualified class name to simulate"),
       startTime: z.number().optional().describe("Simulation start time (default: from annotation or 0)"),
       stopTime: z.number().optional().describe("Simulation stop time (default: from annotation or 10)"),
-      interval: z.number().optional().describe("Output interval (default: (stopTime-startTime)/1000)"),
+      interval: z.number().optional().describe("Output interval (default: (stopTime-startTime)/500)"),
       solver: z.enum(["rk4", "dopri5", "bdf", "auto"]).optional().describe("ODE solver (default: dopri5)"),
       format: z.enum(["csv", "json"]).optional().describe("Output format (default: json)"),
     },
@@ -203,59 +203,91 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         };
       }
 
-      const instance = ctx.current.query(name);
-      if (!instance) {
-        return {
-          content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
-          isError: true,
-        };
-      }
+      // Try arena path first (query-based flattening)
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
 
-      // Flatten
-      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (instance as any).accept(new ModelicaFlattener(), ["", dae]);
-
-      // Check for errors
-      const errors: string[] = [];
-
-      if (errors.length > 0) {
-        return {
-          content: [{ type: "text" as const, text: `Flatten errors:\n${errors.join("\n")}` }],
-          isError: true,
-        };
-      }
-
-      // Simulate
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-
-      const exp = dae.experiment;
-      const t0 = startTime ?? exp.startTime ?? 0;
-      const t1 = stopTime ?? exp.stopTime ?? 10;
-      const dt = interval ?? exp.interval ?? (t1 - t0) / 1000;
-
-      const result = simulator.simulate(t0, t1, dt, {
-        solver: (solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
-      });
-      const states = result.states;
-
-      if ((format ?? "json") === "csv") {
-        const lines = [`time,${states.join(",")}`];
-        for (let i = 0; i < result.t.length; i++) {
-          const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
-          lines.push(values.join(","));
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
         }
-        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
-      } else {
-        const rows = result.t.map((t: number, i: number) => {
-          const row: Record<string, number> = { time: t };
-          states.forEach((state: string, vi: number) => {
-            row[state] = result.y[i]?.[vi] ?? 0;
+
+        const arena = flattener.flatten(firstId);
+        const simOpts: ArenaSimulateOptions = {
+          solver: (solver ?? "dopri5") as "euler" | "rk4" | "dopri5" | "bdf" | "auto",
+        };
+        if (startTime !== undefined) simOpts.startTime = startTime;
+        if (stopTime !== undefined) simOpts.stopTime = stopTime;
+        if (interval !== undefined) simOpts.step = interval;
+        const result = simulateArena(arena, simOpts);
+        const states = result.states;
+
+        if ((format ?? "json") === "csv") {
+          const lines = [`time,${states.join(",")}`];
+          for (let i = 0; i < result.t.length; i++) {
+            const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+            lines.push(values.join(","));
+          }
+          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        } else {
+          const rows = result.t.map((t: number, i: number) => {
+            const row: Record<string, number> = { time: t };
+            states.forEach((state: string, vi: number) => {
+              row[state] = result.y[i]?.[vi] ?? 0;
+            });
+            return row;
           });
-          return row;
+          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+        }
+      } catch {
+        // Fallback to legacy simulator path
+        const instance = ctx.current.query(name);
+        if (!instance) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+
+        const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (instance as any).accept(new ModelicaFlattener(), ["", dae]);
+
+        const simulator = new ModelicaSimulator(dae);
+        simulator.prepare();
+
+        const exp = dae.experiment;
+        const t0 = startTime ?? exp.startTime ?? 0;
+        const t1 = stopTime ?? exp.stopTime ?? 10;
+        const dt = interval ?? exp.interval ?? (t1 - t0) / 1000;
+
+        const result = simulator.simulate(t0, t1, dt, {
+          solver: (solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
         });
-        return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+        const states = result.states;
+
+        if ((format ?? "json") === "csv") {
+          const lines = [`time,${states.join(",")}`];
+          for (let i = 0; i < result.t.length; i++) {
+            const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
+            lines.push(values.join(","));
+          }
+          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        } else {
+          const rows = result.t.map((t: number, i: number) => {
+            const row: Record<string, number> = { time: t };
+            states.forEach((state: string, vi: number) => {
+              row[state] = result.y[i]?.[vi] ?? 0;
+            });
+            return row;
+          });
+          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
+        }
       }
     },
   );
@@ -315,12 +347,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         daeObj = flattener.flatten(firstId);
       }
 
-      // `daeObj` is now a ArenaDAEBuilder instance.
-      // Pass the Arena directly to the simulator.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const simulator = new ModelicaSimulator(daeObj as any);
-      simulator.prepare();
-      const result = simulator.simulate(startTime ?? 0, stopTime ?? 10, 0.1, { solver: "dopri5" });
+      // `daeObj` is now an ArenaDAEBuilder instance — use the arena simulation path directly.
+      const result = simulateArena(daeObj, {
+        startTime: startTime ?? 0,
+        stopTime: stopTime ?? 10,
+        solver: "dopri5",
+      });
 
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     },

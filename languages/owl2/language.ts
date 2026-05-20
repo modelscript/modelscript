@@ -51,7 +51,14 @@ export default language({
 
     Ontology: ($) =>
       def({
-        syntax: seq("Ontology", "(", optional(field("iri", $.IRI)), repeat(field("axiom", $._Axiom)), ")"),
+        syntax: seq(
+          "Ontology",
+          "(",
+          optional(field("iri", $.IRI)),
+          repeat(field("import", $.ImportDeclaration)),
+          repeat(field("axiom", $._Axiom)),
+          ")",
+        ),
         symbol: () => ({
           kind: "Ontology",
           name: self.iri,
@@ -59,6 +66,15 @@ export default language({
         queries: {
           axioms: (db: QueryDB, self: SymbolEntry) => db.childrenOf(self.id),
         },
+      }),
+
+    ImportDeclaration: ($) =>
+      def({
+        syntax: seq("Import", "(", field("iri", $.IRI), ")"),
+        symbol: () => ({
+          kind: "Import",
+          name: self.iri,
+        }),
       }),
 
     _Axiom: ($) =>
