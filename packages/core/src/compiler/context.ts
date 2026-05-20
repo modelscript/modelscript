@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { eliminateArenaAliases, type QueryEngine } from "@modelscript/compiler";
+import { printArenaDAE } from "@modelscript/compiler/arena-printer";
 import { type ArenaDAEBuilder } from "@modelscript/compiler/dae-arena";
 import type { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
@@ -390,6 +391,22 @@ export class Context {
     const queryDB = this.#queryEngine.toQueryDB();
     const flattener = new ArenaQueryFlattener(queryDB);
     return flattener.flatten(firstId);
+  }
+
+  /**
+   * Flatten a Modelica class and return the textual DAE representation
+   * using the arena-native pipeline.
+   *
+   * This replaces the legacy `flatten()` method for consumers that need
+   * a string output. Uses `ArenaDAEPrinter` directly on `ArenaDAEBuilder`.
+   *
+   * @param name - The fully qualified name of the Modelica class to flatten.
+   * @returns The flattened DAE text, or null if the class is not found.
+   */
+  flattenText(name: string): string | null {
+    const arena = this.flattenArena(name);
+    if (!arena) return null;
+    return printArenaDAE(arena);
   }
 
   /**

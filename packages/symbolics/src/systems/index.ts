@@ -1015,10 +1015,25 @@ export class ModelicaDAE {
     } else if (eq instanceof ModelicaFunctionCallEquation) {
       const callExprId = this._mirrorExpressionToArena(eq.call);
       this.arena.addEquation(EqKind.FunctionCall, callExprId, 0);
-    } else if (eq.constructor.name === "ModelicaForEquation") {
-      this.arena.addEquation(initial ? EqKind.InitialFor : EqKind.For, 0, 0);
-    } else if (eq.constructor.name === "ModelicaIfEquation") {
-      this.arena.addEquation(EqKind.If, 0, 0);
+    } else if (eq instanceof ModelicaForEquation) {
+      const indexNameId = this.arena.interner.intern(eq.indexName);
+      const rangeExprId = this._mirrorExpressionToArena(eq.range);
+      const bodyEquations = this._mirrorBodyEquationsInline(eq.equations);
+      this.arena.addForEquation(indexNameId, rangeExprId, bodyEquations, initial);
+    } else if (eq instanceof ModelicaIfEquation) {
+      const condExprId = this._mirrorExpressionToArena(eq.condition);
+      const thenEquations = this._mirrorBodyEquationsInline(eq.equations);
+      const elseIfClauses: {
+        conditionExprId: number;
+        bodyEquations: { kind: import("@modelscript/compiler").EqKind; lhsExprId: number; rhsExprId: number }[];
+      }[] = [];
+      for (const clause of eq.elseIfClauses) {
+        const clauseCondId = this._mirrorExpressionToArena(clause.condition);
+        const clauseBody = this._mirrorBodyEquationsInline(clause.equations);
+        elseIfClauses.push({ conditionExprId: clauseCondId, bodyEquations: clauseBody });
+      }
+      const elseEquations = this._mirrorBodyEquationsInline(eq.elseEquations);
+      this.arena.addIfEquation(condExprId, thenEquations, elseIfClauses, elseEquations);
     } else {
       // Unknown equation type — add as simple with no data
       this.arena.addEquation(initial ? EqKind.InitialSimple : EqKind.Simple, 0, 0);

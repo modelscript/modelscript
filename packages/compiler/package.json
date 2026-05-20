@@ -86,6 +86,10 @@
     "./dae-arena": {
       "types": "./dist/dae-arena.d.ts",
       "default": "./dist/dae-arena.js"
+    },
+    "./arena-printer": {
+      "types": "./dist/arena-printer.d.ts",
+      "default": "./dist/arena-printer.js"
     }
   },
   "main": "dist/index.js",

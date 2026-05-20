@@ -374,6 +374,36 @@ export class ArenaDAEBuilder {
     }
   >();
 
+  /**
+   * Maps equation index → compound for-equation data.
+   * Stores iterator name, range expression, and body equations.
+   */
+  private forEquationMeta = new Map<
+    number,
+    {
+      indexNameId: number;
+      rangeExprId: number;
+      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    }
+  >();
+
+  /**
+   * Maps equation index → compound if-equation data.
+   * Stores condition, then-equations, elseif clauses, and else-equations.
+   */
+  private ifEquationMeta = new Map<
+    number,
+    {
+      conditionExprId: number;
+      thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      elseIfClauses: {
+        conditionExprId: number;
+        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      }[];
+      elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    }
+  >();
+
   /** Variable attribute ExprIds: varIndex → Map<attrName, ExprId>. */
   private varAttrExprIds = new Map<number, Map<string, number>>();
 
@@ -535,6 +565,13 @@ export class ArenaDAEBuilder {
     INT32_VIEW[0] = this.varData[offset + VAR_START_HI]!;
     INT32_VIEW[1] = this.varData[offset + VAR_START_LO]!;
     return FLOAT64_VIEW[0]!;
+  }
+
+  setVarStartValue(idx: number, value: number): void {
+    FLOAT64_VIEW[0] = value;
+    const offset = idx * VAR_STRIDE;
+    this.varData[offset + VAR_START_HI] = INT32_VIEW[0]!;
+    this.varData[offset + VAR_START_LO] = INT32_VIEW[1]!;
   }
 
   getVarFlags(idx: number): number {
@@ -807,6 +844,76 @@ export class ArenaDAEBuilder {
       }
     | undefined {
     return this.whenEquationMeta.get(idx);
+  }
+
+  /**
+   * Add a for-equation with compound metadata.
+   * Body equations are stored in the side-table.
+   *
+   * @param indexNameId - StringId of the iterator variable name.
+   * @param rangeExprId - ExprId of the range expression.
+   * @param bodyEquations - Inline body equation descriptors.
+   * @param initial - Whether this is an initial for-equation.
+   * @returns The equation index.
+   */
+  addForEquation(
+    indexNameId: number,
+    rangeExprId: number,
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    initial = false,
+  ): number {
+    const idx = this.addEquation(initial ? EqKind.InitialFor : EqKind.For, rangeExprId, 0, bodyEquations.length);
+    this.forEquationMeta.set(idx, { indexNameId, rangeExprId, bodyEquations });
+    return idx;
+  }
+
+  /** Get for-equation compound metadata. */
+  getForEquationMeta(idx: number):
+    | {
+        indexNameId: number;
+        rangeExprId: number;
+        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      }
+    | undefined {
+    return this.forEquationMeta.get(idx);
+  }
+
+  /**
+   * Add an if-equation with compound metadata.
+   *
+   * @param conditionExprId - ExprId of the condition.
+   * @param thenEquations - Body equations for the `then` branch.
+   * @param elseIfClauses - Elseif clause metadata.
+   * @param elseEquations - Body equations for the `else` branch.
+   * @returns The equation index.
+   */
+  addIfEquation(
+    conditionExprId: number,
+    thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    elseIfClauses: {
+      conditionExprId: number;
+      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    }[] = [],
+    elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [],
+  ): number {
+    const idx = this.addEquation(EqKind.If, conditionExprId, 0, thenEquations.length);
+    this.ifEquationMeta.set(idx, { conditionExprId, thenEquations, elseIfClauses, elseEquations });
+    return idx;
+  }
+
+  /** Get if-equation compound metadata. */
+  getIfEquationMeta(idx: number):
+    | {
+        conditionExprId: number;
+        thenEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+        elseIfClauses: {
+          conditionExprId: number;
+          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+        }[];
+        elseEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      }
+    | undefined {
+    return this.ifEquationMeta.get(idx);
   }
 
   /** Number of expressions stored. */
@@ -1200,11 +1307,23 @@ export class ArenaDAEBuilder {
       const newWhenMeta = new Map<number, typeof this.whenEquationMeta extends Map<number, infer V> ? V : never>();
       for (const [oldIdx, meta] of this.whenEquationMeta) {
         const newIdx = remap.get(oldIdx);
-        if (newIdx !== undefined) {
-          newWhenMeta.set(newIdx, meta); // body equations are inline, no index remapping needed
-        }
+        if (newIdx !== undefined) newWhenMeta.set(newIdx, meta);
       }
       this.whenEquationMeta = newWhenMeta;
+
+      const newForMeta = new Map<number, typeof this.forEquationMeta extends Map<number, infer V> ? V : never>();
+      for (const [oldIdx, meta] of this.forEquationMeta) {
+        const newIdx = remap.get(oldIdx);
+        if (newIdx !== undefined) newForMeta.set(newIdx, meta);
+      }
+      this.forEquationMeta = newForMeta;
+
+      const newIfMeta = new Map<number, typeof this.ifEquationMeta extends Map<number, infer V> ? V : never>();
+      for (const [oldIdx, meta] of this.ifEquationMeta) {
+        const newIdx = remap.get(oldIdx);
+        if (newIdx !== undefined) newIfMeta.set(newIdx, meta);
+      }
+      this.ifEquationMeta = newIfMeta;
     }
   }
 
@@ -1212,6 +1331,8 @@ export class ArenaDAEBuilder {
   clearEquations(): void {
     this._eqCount = 0;
     this.whenEquationMeta.clear();
+    this.forEquationMeta.clear();
+    this.ifEquationMeta.clear();
   }
 
   /** Reset all statements. */
@@ -1240,6 +1361,8 @@ export class ArenaDAEBuilder {
     this._algorithmSections.length = 0;
     this._initialAlgorithmSections.length = 0;
     this.whenEquationMeta.clear();
+    this.forEquationMeta.clear();
+    this.ifEquationMeta.clear();
   }
 
   /** Release all buffers for GC. */
