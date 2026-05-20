@@ -38,6 +38,7 @@ export {
   type SundialsWasmOptions,
   type SundialsWasmResult,
 } from "./sundials-wasm.js";
+export * from "./surrogate-pipeline-arena.js";
 export * from "./surrogate-pipeline.js";
 export * from "./system-initializer.js";
 export * from "./tape.js";
