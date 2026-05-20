@@ -6,6 +6,8 @@
 import { DagreLayout } from "@antv/layout";
 import { Cell, Graph, Selection, Transform } from "@antv/x6";
 
+import { applySequenceLayout } from "./sequence-layout.js";
+
 export interface DiagramRendererOptions {
   container: HTMLElement;
   isDark?: boolean;
@@ -743,205 +745,210 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
 
   const cs = data.coordinateSystem;
 
-  // ── Layout Strategy ──
-  // The layout runs in 3 phases:
-  //   Phase 1: Sub-Dagre for each container to compute actual child bounding boxes
-  //   Phase 2: Top-level Dagre with expanded container sizes
-  //   Phase 3: Reposition children relative to final parent positions
+  // ── Sequence Diagram: use custom layout instead of Dagre ──
+  if (data.diagramType === "Sequence") {
+    applySequenceLayout(nodes, edges, isDark);
+  } else {
+    // ── Layout Strategy ──
+    // The layout runs in 3 phases:
+    //   Phase 1: Sub-Dagre for each container to compute actual child bounding boxes
+    //   Phase 2: Top-level Dagre with expanded container sizes
+    //   Phase 3: Reposition children relative to final parent positions
 
-  const PAD = { top: 60, left: 40, right: 40, bottom: 40 };
+    const PAD = { top: 60, left: 40, right: 40, bottom: 40 };
 
-  // Build parent → children map from the node data
-  const parentChildMap = new Map<string, typeof nodes>();
-  for (const node of nodes) {
-    if (node.parent) {
-      const list = parentChildMap.get(node.parent) ?? [];
-      list.push(node);
-      parentChildMap.set(node.parent, list);
-    }
-  }
-
-  // ── Phase 1: Sub-Dagre layout for children inside each group container ──
-  // This computes the bounding box for each container and expands the parent
-  // node dimensions BEFORE the top-level layout runs.
-  // We store relative offsets so we can reposition after Phase 2.
-  const childRelativePositions = new Map<string, { dx: number; dy: number }>();
-
-  for (const [parentId, childNodes] of parentChildMap) {
-    const parentNode = nodes.find((n) => n.id === parentId);
-    if (!parentNode) continue;
-
-    const childIds = new Set(childNodes.map((c) => c.id));
-
-    const subDagre = new DagreLayout({
-      type: "dagre",
-      rankdir: "TB",
-      align: "UL",
-      ranksep: 40,
-      nodesep: 40,
-      begin: [0, 0],
-      controlPoints: true,
-    });
-
-    const subEdges = edges
-      .filter((e) => {
-        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
-        return childIds.has(s) && childIds.has(t);
-      })
-      .map((e) => ({
-        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
-      }));
-
-    // Inject fake edges to wrap isolated nodes into 2 rows for a compact layout
-    const connectedSub = new Set<string>();
-    subEdges.forEach((e) => {
-      connectedSub.add(e.source);
-      connectedSub.add(e.target);
-    });
-    const isolatedSub = childNodes.filter((n) => !connectedSub.has(n.id)).map((n) => n.id);
-    if (isolatedSub.length > 2) {
-      const cols = Math.ceil(Math.sqrt(isolatedSub.length));
-      for (let i = 0; i < isolatedSub.length - cols; i++) {
-        subEdges.push({ source: isolatedSub[i], target: isolatedSub[i + cols] });
+    // Build parent → children map from the node data
+    const parentChildMap = new Map<string, typeof nodes>();
+    for (const node of nodes) {
+      if (node.parent) {
+        const list = parentChildMap.get(node.parent) ?? [];
+        list.push(node);
+        parentChildMap.set(node.parent, list);
       }
     }
 
-    const subModel = {
-      nodes: childNodes.map((c) => ({
-        id: c.id,
-        width: c.width,
-        height: c.height,
-        size: [c.width || 220, c.height || 50],
-      })),
-      edges: subEdges,
-    };
+    // ── Phase 1: Sub-Dagre layout for children inside each group container ──
+    // This computes the bounding box for each container and expands the parent
+    // node dimensions BEFORE the top-level layout runs.
+    // We store relative offsets so we can reposition after Phase 2.
+    const childRelativePositions = new Map<string, { dx: number; dy: number }>();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const subResult = subDagre.layout(subModel as any);
+    for (const [parentId, childNodes] of parentChildMap) {
+      const parentNode = nodes.find((n) => n.id === parentId);
+      if (!parentNode) continue;
 
-    let minX = Infinity;
-    let minY = Infinity;
-    const layoutCoords = new Map<string, { leftX: number; topY: number }>();
+      const childIds = new Set(childNodes.map((c) => c.id));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    subResult.nodes?.forEach((laid: any) => {
-      const childNode = childNodes.find((c) => c.id === laid.id);
-      if (childNode) {
-        // Dagre returns coordinates of the center of the node. Convert to top-left for X6.
-        const leftX = laid.x - childNode.width / 2;
-        const topY = laid.y - childNode.height / 2;
-        minX = Math.min(minX, leftX);
-        minY = Math.min(minY, topY);
-        layoutCoords.set(childNode.id, { leftX, topY });
+      const subDagre = new DagreLayout({
+        type: "dagre",
+        rankdir: "TB",
+        align: "UL",
+        ranksep: 40,
+        nodesep: 40,
+        begin: [0, 0],
+        controlPoints: true,
+      });
+
+      const subEdges = edges
+        .filter((e) => {
+          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          return childIds.has(s) && childIds.has(t);
+        })
+        .map((e) => ({
+          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+        }));
+
+      // Inject fake edges to wrap isolated nodes into 2 rows for a compact layout
+      const connectedSub = new Set<string>();
+      subEdges.forEach((e) => {
+        connectedSub.add(e.source);
+        connectedSub.add(e.target);
+      });
+      const isolatedSub = childNodes.filter((n) => !connectedSub.has(n.id)).map((n) => n.id);
+      if (isolatedSub.length > 2) {
+        const cols = Math.ceil(Math.sqrt(isolatedSub.length));
+        for (let i = 0; i < isolatedSub.length - cols; i++) {
+          subEdges.push({ source: isolatedSub[i], target: isolatedSub[i + cols] });
+        }
       }
-    });
 
-    let maxRight = 0;
-    let maxBottom = 0;
-
-    for (const childNode of childNodes) {
-      const coords = layoutCoords.get(childNode.id);
-      if (coords) {
-        // Normalize against minX/minY so children start exactly inside PAD, handling negative Dagre bounds
-        const dx = PAD.left + (coords.leftX - minX);
-        const dy = PAD.top + (coords.topY - minY);
-        childRelativePositions.set(childNode.id, { dx, dy });
-        maxRight = Math.max(maxRight, dx + childNode.width + PAD.right);
-        maxBottom = Math.max(maxBottom, dy + childNode.height + PAD.bottom);
-      }
-    }
-
-    // Expand parent to fit children
-    parentNode.width = Math.max(maxRight, 220);
-    parentNode.height = Math.max(maxBottom, 80);
-  }
-
-  // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
-  const nodesToLayout: string[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  nodes.forEach((node: any) => {
-    if (node.autoLayout && !node.parent) {
-      nodesToLayout.push(node.id ?? "");
-    }
-  });
-
-  if (nodesToLayout.length > 0) {
-    const dagreLayout = new DagreLayout({
-      type: "dagre",
-      rankdir: "TB",
-      align: "UL",
-      ranksep: 60,
-      nodesep: 60,
-      begin: [20, 20],
-      controlPoints: true,
-    });
-
-    const modelEdges = edges
-      .filter((e) => {
-        const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
-        const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
-        return nodesToLayout.includes(s) && nodesToLayout.includes(t);
-      })
-      .map((e) => ({
-        source: typeof e.source === "string" ? e.source : (e.source.cell as string),
-        target: typeof e.target === "string" ? e.target : (e.target.cell as string),
-      }));
-
-    // Inject fake edges to wrap isolated top-level packages into 2 rows
-    const connectedTop = new Set<string>();
-    modelEdges.forEach((e) => {
-      connectedTop.add(e.source);
-      connectedTop.add(e.target);
-    });
-    const isolatedTop = nodes
-      .filter((n) => nodesToLayout.includes(n.id ?? ""))
-      .filter((n) => !connectedTop.has(n.id ?? ""))
-      .map((n) => n.id ?? "");
-    if (isolatedTop.length > 2) {
-      const cols = Math.ceil(Math.sqrt(isolatedTop.length));
-      for (let i = 0; i < isolatedTop.length - cols; i++) {
-        modelEdges.push({ source: isolatedTop[i], target: isolatedTop[i + cols] });
-      }
-    }
-
-    const model = {
-      nodes: nodes
-        .filter((n) => nodesToLayout.includes(n.id ?? ""))
-        .map((n) => ({
-          ...n,
-          size: [n.width || 220, n.height || 100],
+      const subModel = {
+        nodes: childNodes.map((c) => ({
+          id: c.id,
+          width: c.width,
+          height: c.height,
+          size: [c.width || 220, c.height || 50],
         })),
-      edges: modelEdges,
-    };
+        edges: subEdges,
+      };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const newModel = dagreLayout.layout(model as any);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    newModel.nodes?.forEach((n: any) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const node = nodes.find((no: any) => no.id === n.id);
-      if (node) {
-        node.x = n.x - (node.width ?? 0) / 2;
-        node.y = n.y - (node.height ?? 0) / 2;
+      const subResult = subDagre.layout(subModel as any);
+
+      let minX = Infinity;
+      let minY = Infinity;
+      const layoutCoords = new Map<string, { leftX: number; topY: number }>();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      subResult.nodes?.forEach((laid: any) => {
+        const childNode = childNodes.find((c) => c.id === laid.id);
+        if (childNode) {
+          // Dagre returns coordinates of the center of the node. Convert to top-left for X6.
+          const leftX = laid.x - childNode.width / 2;
+          const topY = laid.y - childNode.height / 2;
+          minX = Math.min(minX, leftX);
+          minY = Math.min(minY, topY);
+          layoutCoords.set(childNode.id, { leftX, topY });
+        }
+      });
+
+      let maxRight = 0;
+      let maxBottom = 0;
+
+      for (const childNode of childNodes) {
+        const coords = layoutCoords.get(childNode.id);
+        if (coords) {
+          // Normalize against minX/minY so children start exactly inside PAD, handling negative Dagre bounds
+          const dx = PAD.left + (coords.leftX - minX);
+          const dy = PAD.top + (coords.topY - minY);
+          childRelativePositions.set(childNode.id, { dx, dy });
+          maxRight = Math.max(maxRight, dx + childNode.width + PAD.right);
+          maxBottom = Math.max(maxBottom, dy + childNode.height + PAD.bottom);
+        }
+      }
+
+      // Expand parent to fit children
+      parentNode.width = Math.max(maxRight, 220);
+      parentNode.height = Math.max(maxBottom, 80);
+    }
+
+    // ── Phase 2: Top-level Dagre layout with expanded container sizes ──
+    const nodesToLayout: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    nodes.forEach((node: any) => {
+      if (node.autoLayout && !node.parent) {
+        nodesToLayout.push(node.id ?? "");
       }
     });
-  }
 
-  // ── Phase 3: Reposition children relative to final parent positions ──
-  for (const [parentId, childNodes] of parentChildMap) {
-    const parentNode = nodes.find((n) => n.id === parentId);
-    if (!parentNode) continue;
+    if (nodesToLayout.length > 0) {
+      const dagreLayout = new DagreLayout({
+        type: "dagre",
+        rankdir: "TB",
+        align: "UL",
+        ranksep: 60,
+        nodesep: 60,
+        begin: [20, 20],
+        controlPoints: true,
+      });
 
-    for (const child of childNodes) {
-      const rel = childRelativePositions.get(child.id);
-      if (rel) {
-        child.x = parentNode.x + rel.dx;
-        child.y = parentNode.y + rel.dy;
+      const modelEdges = edges
+        .filter((e) => {
+          const s = typeof e.source === "string" ? e.source : (e.source.cell as string);
+          const t = typeof e.target === "string" ? e.target : (e.target.cell as string);
+          return nodesToLayout.includes(s) && nodesToLayout.includes(t);
+        })
+        .map((e) => ({
+          source: typeof e.source === "string" ? e.source : (e.source.cell as string),
+          target: typeof e.target === "string" ? e.target : (e.target.cell as string),
+        }));
+
+      // Inject fake edges to wrap isolated top-level packages into 2 rows
+      const connectedTop = new Set<string>();
+      modelEdges.forEach((e) => {
+        connectedTop.add(e.source);
+        connectedTop.add(e.target);
+      });
+      const isolatedTop = nodes
+        .filter((n) => nodesToLayout.includes(n.id ?? ""))
+        .filter((n) => !connectedTop.has(n.id ?? ""))
+        .map((n) => n.id ?? "");
+      if (isolatedTop.length > 2) {
+        const cols = Math.ceil(Math.sqrt(isolatedTop.length));
+        for (let i = 0; i < isolatedTop.length - cols; i++) {
+          modelEdges.push({ source: isolatedTop[i], target: isolatedTop[i + cols] });
+        }
+      }
+
+      const model = {
+        nodes: nodes
+          .filter((n) => nodesToLayout.includes(n.id ?? ""))
+          .map((n) => ({
+            ...n,
+            size: [n.width || 220, n.height || 100],
+          })),
+        edges: modelEdges,
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const newModel = dagreLayout.layout(model as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      newModel.nodes?.forEach((n: any) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const node = nodes.find((no: any) => no.id === n.id);
+        if (node) {
+          node.x = n.x - (node.width ?? 0) / 2;
+          node.y = n.y - (node.height ?? 0) / 2;
+        }
+      });
+    }
+
+    // ── Phase 3: Reposition children relative to final parent positions ──
+    for (const [parentId, childNodes] of parentChildMap) {
+      const parentNode = nodes.find((n) => n.id === parentId);
+      if (!parentNode) continue;
+
+      for (const child of childNodes) {
+        const rel = childRelativePositions.get(child.id);
+        if (rel) {
+          child.x = parentNode.x + rel.dx;
+          child.y = parentNode.y + rel.dy;
+        }
       }
     }
-  }
+  } // end of non-Sequence layout else-block
 
   // X6's fromJSON has a bug where it only partially wires up parent/child
   // relationships when fed raw JSON (it sets the parent pointer on the child,
@@ -1209,7 +1216,15 @@ window.addEventListener("message", (event: MessageEvent) => {
       const placeholder = document.getElementById("placeholder");
       if (placeholder) {
         placeholder.style.display = "flex";
-        placeholder.textContent = "No diagram data available for this model";
+        placeholder.innerHTML = `
+          <div style="text-align: center; max-width: 400px; padding: 20px;">
+            <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.4;">📐</div>
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">No diagram data available</div>
+            <div style="font-size: 12px; opacity: 0.7; line-height: 1.5;">
+              This model may not have graphical annotations, or the class could not be resolved.
+              Try adding <code style="background: rgba(128,128,128,0.2); padding: 2px 4px; border-radius: 2px;">annotation(Diagram(...))</code> to your model.
+            </div>
+          </div>`;
       }
       if (graph) {
         graph.clearCells();
@@ -1273,7 +1288,15 @@ window.addEventListener("message", (event: MessageEvent) => {
       const placeholder2 = document.getElementById("placeholder");
       if (placeholder2) {
         placeholder2.style.display = "flex";
-        placeholder2.textContent = `Error: ${message.message}`;
+        const errorMsg = String(message.message || "Unknown error")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        placeholder2.innerHTML = `
+          <div style="text-align: center; max-width: 500px; padding: 20px;">
+            <div style="font-size: 32px; margin-bottom: 12px;">⚠️</div>
+            <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--vscode-errorForeground, #f48771);">Diagram Error</div>
+            <div style="font-size: 12px; opacity: 0.8; line-height: 1.5; text-align: left; background: rgba(128,128,128,0.1); padding: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; font-family: var(--vscode-editor-font-family, monospace); white-space: pre-wrap; word-break: break-word;">${errorMsg}</div>
+          </div>`;
       }
       break;
     }

@@ -143,6 +143,12 @@ window.addEventListener("message", (event) => {
     }
   } else if (message.type === "properties") {
     showProperties({ id: message.componentName, properties: message.properties });
+  } else if (message.type === "setLanguage") {
+    // Show the diagram type selector only for SysML2 files
+    const toolbar = document.getElementById("toolbar");
+    if (toolbar) {
+      toolbar.style.display = message.language === "sysml" ? "flex" : "none";
+    }
   }
 });
 

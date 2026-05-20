@@ -64,6 +64,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     let updateTimeout: ReturnType<typeof setTimeout> | null = null;
     let diagramRequestNonce = 0;
     const uriString = document.uri.toString();
+    const isSysML = uriString.endsWith(".sysml");
     let currentDiagramType = "All";
     let diagramEditQueue = Promise.resolve();
     let isSpatialEditPending = false;
@@ -211,45 +212,86 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
           if (actions) {
             console.log("[diagramEditorProvider] received actions from webview:", actions);
-            diagramRequestNonce++; // Cancel incoming stale diagramData
-            diagramEditQueue = diagramEditQueue
-              .then(async () => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
-                  uri: uriString,
-                  seq: 1,
-                  actions,
+
+            // Determine if this is a purely spatial edit (move/resize/edgeMove).
+            // Spatial edits don't change the model topology — only annotation
+            // coordinates change. These can be applied optimistically without
+            // showing a spinner or triggering a diagram re-render.
+            const isSpatialOnly = actions.every(
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (a: any) => a.type === "move" || a.type === "resize" || a.type === "moveEdge",
+            );
+
+            if (isSpatialOnly) {
+              // ── Optimistic path: silent text update, no spinner, no re-render ──
+              diagramEditQueue = diagramEditQueue
+                .then(async () => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+                    uri: uriString,
+                    seq: 1,
+                    actions,
+                  });
+
+                  if (response?.edits?.length > 0) {
+                    // Mark as spatial so onDidChangeTextDocument skips re-render
+                    pendingRenderHint = "none";
+                    await applyTextEdits(uriString, response.edits);
+                    // Wait briefly for the document change event to fire
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    // Consume the hint if the change event didn't fire
+                    if (pendingRenderHint !== null) {
+                      pendingRenderHint = null;
+                      isSpatialEditPending = true;
+                    }
+                  }
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error applying spatial edit:", e);
+                  pendingRenderHint = null;
                 });
+            } else {
+              // ── Semantic path: full re-render cycle with spinner ──
+              diagramRequestNonce++; // Cancel incoming stale diagramData
+              diagramEditQueue = diagramEditQueue
+                .then(async () => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const response: any = await this.client.sendRequest(DiagramMethods.applyEdits, {
+                    uri: uriString,
+                    seq: 1,
+                    actions,
+                  });
 
-                console.log("[diagramEditorProvider] applyEdits LSP response:", response);
+                  console.log("[diagramEditorProvider] applyEdits LSP response:", response);
 
-                if (response && response.edits && response.edits.length > 0) {
-                  pendingRenderHint = response.renderHint;
-                  await applyTextEdits(uriString, response.edits);
-                  // Wait briefly to allow the document change event to fire and propagate to LSP
-                  await new Promise((resolve) => setTimeout(resolve, 50));
+                  if (response && response.edits && response.edits.length > 0) {
+                    pendingRenderHint = response.renderHint;
+                    await applyTextEdits(uriString, response.edits);
+                    // Wait briefly to allow the document change event to fire and propagate to LSP
+                    await new Promise((resolve) => setTimeout(resolve, 50));
 
-                  // If the document change event didn't fire (e.g. text didn't change despite edits)
-                  if (pendingRenderHint !== null) {
-                    const hint = pendingRenderHint;
-                    pendingRenderHint = null;
-                    if (hint === "immediate") immediateUpdate();
-                    else if (hint === "debounced") debouncedUpdate();
+                    // If the document change event didn't fire (e.g. text didn't change despite edits)
+                    if (pendingRenderHint !== null) {
+                      const hint = pendingRenderHint;
+                      pendingRenderHint = null;
+                      if (hint === "immediate") immediateUpdate();
+                      else if (hint === "debounced") debouncedUpdate();
+                      else webviewPanel.webview.postMessage({ type: "stopLoading" });
+                    }
+                  } else {
+                    // No edits generated or response was null.
+                    // We must trigger an update to clear the loading spinner which was shown when the request was canceled.
+                    if (response?.renderHint === "immediate") immediateUpdate();
+                    else if (response?.renderHint === "debounced") debouncedUpdate();
                     else webviewPanel.webview.postMessage({ type: "stopLoading" });
                   }
-                } else {
-                  // No edits generated or response was null.
-                  // We must trigger an update to clear the loading spinner which was shown when the request was canceled.
-                  if (response?.renderHint === "immediate") immediateUpdate();
-                  else if (response?.renderHint === "debounced") debouncedUpdate();
-                  else webviewPanel.webview.postMessage({ type: "stopLoading" });
-                }
-              })
-              .catch((e) => {
-                console.error("[diagram] Error applying diagram edit:", e);
-                pendingRenderHint = null;
-                webviewPanel.webview.postMessage({ type: "stopLoading" }); // Always recover
-              });
+                })
+                .catch((e) => {
+                  console.error("[diagram] Error applying diagram edit:", e);
+                  pendingRenderHint = null;
+                  webviewPanel.webview.postMessage({ type: "stopLoading" }); // Always recover
+                });
+            }
           }
         } catch (e) {
           console.error("[diagram] Message handler error:", e);
@@ -314,6 +356,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     // Initial load
+    // Tell the webview whether this is a SysML2 file (shows diagram type selector)
+    webviewPanel.webview.postMessage({ type: "setLanguage", language: isSysML ? "sysml" : "modelica" });
     debouncedUpdate();
   }
 
@@ -491,7 +535,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   </style>
 </head>
 <body>
-  <div id="toolbar">
+  <div id="toolbar" style="display: none;">
     <span>Diagram View:</span>
     <select id="diagramTypeSelect">
       <option value="All">All (Flat Canvas)</option>
