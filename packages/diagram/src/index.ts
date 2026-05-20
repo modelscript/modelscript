@@ -742,10 +742,6 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 
   const cs = data.coordinateSystem;
-  const isFirstRender = g.getCells().length === 0;
-
-  // Clear property cache on re-render (model state may have changed)
-  propertyCache.clear();
 
   // ── Layout Strategy ──
   // The layout runs in 3 phases:
@@ -964,6 +960,94 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     }
   }
 
+  // ── Diff-based incremental update ──
+  // If the graph already has cells and the topology hasn't changed (same set of
+  // node/edge IDs), update positions and properties in-place instead of
+  // destroying the entire DOM via fromJSON. This avoids visible flicker and
+  // is ~5-10x faster for spatial-only edits (move, resize, annotation changes).
+  const existingCells = g.getCells();
+  const isFirstRender = existingCells.length === 0;
+
+  if (!isFirstRender) {
+    const existingNodeIds = new Set<string>();
+    const existingEdgeIds = new Set<string>();
+    for (const cell of existingCells) {
+      if (cell.isNode()) existingNodeIds.add(cell.id);
+      else if (cell.isEdge()) existingEdgeIds.add(cell.id);
+    }
+
+    const newNodeIds = new Set(nodes.map((n: { id: string }) => n.id));
+    const newEdgeIds = new Set(edges.map((e: { id: string }) => e.id));
+
+    // Check if topology changed (different node/edge sets)
+    const topologyChanged =
+      existingNodeIds.size !== newNodeIds.size ||
+      existingEdgeIds.size !== newEdgeIds.size ||
+      [...existingNodeIds].some((id) => !newNodeIds.has(id)) ||
+      [...existingEdgeIds].some((id) => !newEdgeIds.has(id));
+
+    if (!topologyChanged) {
+      // ── Fast path: incremental update ──
+      g.batchUpdate("diagram-diff", () => {
+        for (const nodeData of nodes) {
+          const cell = g.getCellById(nodeData.id);
+          if (!cell || !cell.isNode()) continue;
+
+          // Update position if changed
+          const pos = cell.getPosition();
+          if (Math.abs(pos.x - nodeData.x) > 0.5 || Math.abs(pos.y - nodeData.y) > 0.5) {
+            cell.setPosition(nodeData.x, nodeData.y, { silent: false });
+          }
+
+          // Update size if changed
+          const size = cell.getSize();
+          if (Math.abs(size.width - nodeData.width) > 0.5 || Math.abs(size.height - nodeData.height) > 0.5) {
+            cell.setSize(nodeData.width, nodeData.height);
+          }
+
+          // Update angle if changed
+          const angle = cell.getAngle();
+          if (Math.abs(angle - (nodeData.angle ?? 0)) > 0.5) {
+            cell.rotate(nodeData.angle ?? 0, { absolute: true });
+          }
+
+          // Update data (properties)
+          if (nodeData.data) {
+            cell.setData(nodeData.data, { overwrite: true });
+          }
+        }
+
+        // Update edge vertices
+        for (const edgeData of edges) {
+          const cell = g.getCellById(edgeData.id);
+          if (!cell || !cell.isEdge()) continue;
+
+          if (edgeData.vertices) {
+            cell.setVertices(edgeData.vertices);
+          }
+        }
+      });
+
+      // Clear property cache on re-render (model state may have changed)
+      propertyCache.clear();
+
+      // Restore property panel for previously selected node after re-render
+      if (selectedNodeId) {
+        const restoredNode = g.getCellById(selectedNodeId);
+        if (restoredNode && restoredNode.isNode()) {
+          const data = restoredNode.getData();
+          showProperties({ id: restoredNode.id, properties: data?.properties, isLoading: true });
+          postMessageToHost({ type: "getProperties", componentName: restoredNode.id });
+        }
+      }
+
+      updateSolderDots(g);
+      return;
+    }
+  }
+
+  // ── Full render path (first render or topology changed) ──
+
   // 2. Load the flat graph
   g.fromJSON({ nodes, edges });
 
@@ -986,6 +1070,9 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     };
     g.zoomToRect(expandedRect);
   }
+
+  // Clear property cache on re-render (model state may have changed)
+  propertyCache.clear();
 
   // Restore property panel for previously selected node after re-render
   if (selectedNodeId) {

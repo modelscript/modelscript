@@ -405,7 +405,12 @@ function renderDiagramX6(classInstance: ModelicaClassInstance): X6Markup | null 
   };
 }
 
-const iconCache = new Map<string, string>(); // name -> JSON stringified { svg: X6Markup, defs: X6Markup[] }
+const iconCache = new Map<string, { svg: X6Markup; defs: X6Markup[] }>();
+
+/** Clear the cached icon markup. Call when MSL finishes loading or the model changes. */
+export function clearIconCache() {
+  iconCache.clear();
+}
 
 export function renderIconX6(
   classInstance: ModelicaClassInstance,
@@ -424,16 +429,11 @@ export function renderIconX6(
   if (canCache && cacheKey) {
     const cached = iconCache.get(cacheKey);
     if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed.defs && parsed.defs.length > 0) {
-          localDefs.push(...parsed.defs);
-        }
-        // Return a clone to avoid mutating the cached SVG if it gets modified later
-        return JSON.parse(JSON.stringify(parsed.svg));
-      } catch {
-        // Fallback to re-rendering
+      if (cached.defs && cached.defs.length > 0) {
+        localDefs.push(...cached.defs);
       }
+      // Return a clone to avoid mutating the cached SVG if it gets modified later
+      return structuredClone(cached.svg);
     }
   }
 
@@ -540,18 +540,14 @@ export function renderIconX6(
   }
 
   if (canCache && cacheKey) {
-    try {
-      const defsAdded = localDefs.slice(defsStartLength);
-      // We don't cache the root-injected `<defs>` element, we cache the raw svg + defsAdded
-      // to allow the caller to handle defs injection consistently.
-      if (isRoot && svg.children?.[0]?.tagName === "defs") {
-        const svgWithoutDefs = { ...svg, children: svg.children.slice(1) };
-        iconCache.set(cacheKey, JSON.stringify({ svg: svgWithoutDefs, defs: defsAdded }));
-      } else {
-        iconCache.set(cacheKey, JSON.stringify({ svg, defs: defsAdded }));
-      }
-    } catch {
-      // Ignore circular reference errors if any
+    const defsAdded = localDefs.slice(defsStartLength);
+    // We don't cache the root-injected `<defs>` element, we cache the raw svg + defsAdded
+    // to allow the caller to handle defs injection consistently.
+    if (isRoot && svg.children?.[0]?.tagName === "defs") {
+      const svgWithoutDefs = { ...svg, children: svg.children.slice(1) };
+      iconCache.set(cacheKey, { svg: svgWithoutDefs, defs: defsAdded });
+    } else {
+      iconCache.set(cacheKey, { svg, defs: defsAdded });
     }
   }
 
