@@ -18,7 +18,13 @@ import {
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { executeQueryString, formatQueryResult, OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
-import { type ArenaSimulateOptions, ModelicaSimulator, simulateArena } from "@modelscript/simulator";
+import {
+  type ArenaSimulateOptions,
+  ModelicaSimulator,
+  runArenaDoE,
+  runSensitivityAnalysisArena,
+  simulateArena,
+} from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";
@@ -355,6 +361,173 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       });
 
       return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  // ── modelica_doe ───────────────────────────────────────────────────────
+
+  server.tool(
+    "modelica_doe",
+    "Run a Design of Experiments on a Modelica model. Samples the parameter space and returns input-output datasets for response surface analysis or ROM training.",
+    {
+      name: z.string().describe("Fully qualified class name to analyze"),
+      inputs: z
+        .record(z.object({ min: z.number(), max: z.number() }))
+        .describe("Parameter ranges: name → { min, max }"),
+      outputs: z.array(z.string()).describe("Output variable names to record"),
+      strategy: z
+        .enum(["full-factorial", "latin-hypercube", "sobol", "central-composite"])
+        .optional()
+        .describe("Sampling strategy (default: sobol)"),
+      numSamples: z.number().optional().describe("Number of samples (default: 50)"),
+      stopTime: z.number().optional().describe("Simulation stop time (default: from annotation or 10)"),
+    },
+    async ({ name, inputs, outputs, strategy, numSamples, stopTime }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+
+        const arena = flattener.flatten(firstId);
+
+        // Convert input record to Map
+        const inputMap = new Map<string, { min: number; max: number }>();
+        for (const [key, val] of Object.entries(inputs)) {
+          inputMap.set(key, val);
+        }
+
+        const simOpts: ArenaSimulateOptions = {};
+        if (stopTime !== undefined) simOpts.stopTime = stopTime;
+
+        const doeResult = runArenaDoE(arena, {
+          inputs: inputMap,
+          outputs,
+          strategy: strategy ?? "sobol",
+          numSamples: numSamples ?? 50,
+          simulateOptions: simOpts,
+        });
+
+        const summary = {
+          totalSamples: doeResult.totalSamples,
+          failedSamples: doeResult.failedSamples,
+          wallClockMs: Math.round(doeResult.wallClockMs),
+          inputNames: doeResult.inputNames,
+          outputNames: doeResult.outputNames,
+          inputs: doeResult.inputs,
+          outputs: doeResult.outputs,
+        };
+
+        return { content: [{ type: "text" as const, text: JSON.stringify(summary, null, 2) }] };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `DoE failed: ${e instanceof Error ? e.message : String(e)}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // ── modelica_sensitivity ───────────────────────────────────────────────
+
+  server.tool(
+    "modelica_sensitivity",
+    "Run a One-At-a-Time (OAT) sensitivity analysis on a Modelica model. Perturbs each parameter individually and reports normalized sensitivity coefficients.",
+    {
+      name: z.string().describe("Fully qualified class name to analyze"),
+      parameters: z
+        .record(z.object({ nominal: z.number(), perturbation: z.number().optional() }))
+        .describe("Parameters to analyze: name → { nominal, perturbation? (default: 0.01) }"),
+      outputs: z.array(z.string()).describe("Output variable names to observe"),
+      stopTime: z.number().optional().describe("Simulation stop time (default: from annotation or 10)"),
+    },
+    async ({ name, parameters, outputs, stopTime }) => {
+      if (!ctx.current) {
+        return {
+          content: [{ type: "text" as const, text: "No libraries loaded. Call modelica_load first." }],
+          isError: true,
+        };
+      }
+
+      try {
+        const queryDB = ctx.current.queryEngine.toQueryDB();
+        const flattener = new ArenaQueryFlattener(queryDB);
+
+        const entries = ctx.current.queryEngine.index.byName.get(name) || [];
+        const firstId = entries[0];
+        if (firstId === undefined) {
+          return {
+            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
+            isError: true,
+          };
+        }
+
+        const arena = flattener.flatten(firstId);
+
+        const simOpts: ArenaSimulateOptions = { solver: "rk4" };
+        if (stopTime !== undefined) simOpts.stopTime = stopTime;
+
+        // Build nominal values map and parameter names list
+        const parameterNames: string[] = [];
+        const nominalValues = new Map<string, number>();
+        let perturbationFactor = 0.01;
+        for (const [paramName, spec] of Object.entries(parameters)) {
+          parameterNames.push(paramName);
+          nominalValues.set(paramName, spec.nominal);
+          if (spec.perturbation !== undefined) perturbationFactor = spec.perturbation;
+        }
+
+        const result = runSensitivityAnalysisArena(arena, parameterNames, nominalValues, perturbationFactor, simOpts);
+
+        // Convert Maps to plain objects for JSON serialization
+        const serialized: Record<string, Record<string, number>> = {};
+        for (const [param, sensMap] of result.sensitivities) {
+          const obj: Record<string, number> = {};
+          // Only include requested outputs
+          for (const outName of outputs) {
+            const val = sensMap.get(outName);
+            if (val !== undefined) obj[outName] = val;
+          }
+          serialized[param] = obj;
+        }
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { sensitivities: serialized, perturbationFactor: result.perturbationFactor },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (e) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Sensitivity analysis failed: ${e instanceof Error ? e.message : String(e)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 
