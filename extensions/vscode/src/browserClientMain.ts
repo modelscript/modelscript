@@ -2971,7 +2971,7 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml,step,stp,p21}");
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml,step,stp,p21,owl}");
       console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts/.step rules`);
       for (const uri of moFiles) {
         try {

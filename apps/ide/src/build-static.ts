@@ -70,6 +70,16 @@ if (existsSync(sysml2WasmSrc)) {
   console.warn("  Warning: tree-sitter-sysml2.wasm not found, SysML support will be disabled");
 }
 
+// Ensure tree-sitter-owl2.wasm is also copied
+const owl2WasmSrc = resolve(__dirname, "..", "..", "..", "languages", "owl2", "tree-sitter-owl2.wasm");
+const owl2WasmDest = join(extDestDir, "server", "dist", "tree-sitter-owl2.wasm");
+if (existsSync(owl2WasmSrc)) {
+  cpSync(owl2WasmSrc, owl2WasmDest);
+  console.log(`  Copied tree-sitter-owl2.wasm to ${owl2WasmDest}`);
+} else {
+  console.warn("  Warning: tree-sitter-owl2.wasm not found, OWL2 support will be disabled");
+}
+
 // 3. Copy GitHub FS extension
 console.log("  Copying GitHub FS extension...");
 cpSync(GITHUB_FS_EXT_DIR, join(OUT_DIR, "static", "extensions", "github-fs"), {

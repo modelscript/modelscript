@@ -6,13 +6,22 @@ export default grammar({
     OntologyDocument: ($) => seq(repeat($.PrefixDeclaration), $.Ontology),
     PrefixDeclaration: ($) =>
       seq("Prefix", "(", field("name", optional($.PrefixName)), "=", field("iri", $.FullIRI), ")"),
-    PrefixName: ($) => /[a-zA-Z][a-zA-Z0-9_]*:/,
-    FullIRI: ($) => /<[^>]*>/,
-    AbbreviatedIRI: ($) => /[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_]+/,
-    IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
     IDENT: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    PrefixName: ($) => seq($.IDENT, ":"),
+    FullIRI: ($) => /<[^>]*>/,
+    AbbreviatedIRI: ($) => seq($.IDENT, ":", $.IDENT),
+    IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
     StringLiteral: ($) => /"[^"]*"/,
-    Ontology: ($) => seq("Ontology", "(", optional(field("iri", $.IRI)), repeat(field("axiom", $._Axiom)), ")"),
+    Ontology: ($) =>
+      seq(
+        "Ontology",
+        "(",
+        optional(field("iri", $.IRI)),
+        repeat(field("import", $.ImportDeclaration)),
+        repeat(field("axiom", $._Axiom)),
+        ")",
+      ),
+    ImportDeclaration: ($) => seq("Import", "(", field("iri", $.IRI), ")"),
     _Axiom: ($) =>
       choice(
         $.Declaration,

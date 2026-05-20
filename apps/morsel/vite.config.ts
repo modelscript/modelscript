@@ -55,6 +55,10 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
+              src: "../../languages/owl2/tree-sitter-owl2.wasm",
+              dest: "lsp/server/dist",
+            },
+            {
               src: "../../node_modules/occt-import-js/dist/occt-import-js.wasm",
               dest: "lsp/server/dist",
             },

@@ -100,6 +100,7 @@ import {
   PositionIndex,
   QueryEngine,
   Scope,
+  WorkspaceIndex,
   buildSysML2DiagramData,
   createModelicaLSPBridge,
   createModelicaQueryEngine,
@@ -139,6 +140,13 @@ import {
 import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
 import { mapStepToMultiBody } from "@modelscript/step/mapper";
 import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query-hooks";
+// @ts-ignore
+import { INDEXER_HOOKS as owl2IndexerHooks, REF_HOOKS as owl2RefHooks } from "@modelscript/owl2/config";
+// @ts-ignore
+import { QUERY_HOOKS as owl2QueryHooks } from "@modelscript/owl2/query-hooks";
+// @ts-ignore
+import owl2LangFallback from "@modelscript/owl2/language";
+import { TableauReasoner } from "@modelscript/reasoner";
 import { ModelicaDAEPrinter } from "@modelscript/symbolics";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
 import { StringWriter } from "@modelscript/utils";
@@ -426,6 +434,7 @@ const allWorkspaceIndices = new Map<string, any>();
 /* LSP-Bridge polyglot indexing */
 const globalWorkspaceIndex = createModelicaWorkspaceIndex();
 const sysml2WorkspaceIndex = createSysML2WorkspaceIndex();
+const owl2WorkspaceIndex = new WorkspaceIndex(owl2IndexerHooks);
 
 import { UnifiedWorkspace } from "@modelscript/compiler";
 import modelicaLangFallback from "@modelscript/modelica/language";
@@ -436,6 +445,7 @@ const unifiedWorkspace = new UnifiedWorkspace();
 const stepWorkspaceIndex = new StepWorkspaceIndex();
 unifiedWorkspace.registerWorkspace("modelica", globalWorkspaceIndex, modelicaLangFallback);
 unifiedWorkspace.registerWorkspace("sysml2", sysml2WorkspaceIndex, sysml2LangFallback);
+unifiedWorkspace.registerWorkspace("owl2", owl2WorkspaceIndex, owl2LangFallback);
 unifiedWorkspace.registerWorkspace("step", stepWorkspaceIndex, {
   name: "step",
   adapters: {
@@ -474,6 +484,7 @@ const documentLSPBridges = new Map<string, LSPBridge>();
 let globalModelicaQueryEngine: QueryEngine | null = null;
 let globalSysML2QueryEngine: QueryEngine | null = null;
 let globalStepQueryEngine: QueryEngine | null = null;
+let globalOWL2QueryEngine: QueryEngine | null = null;
 /* SysML2 parser (separate from Modelica) */
 let sysml2Parser: Parser | null = null;
 let sysml2ParserReady = false;
@@ -481,6 +492,9 @@ let sysml2StdlibReady = false;
 
 let stepParser: Parser | null = null;
 let stepParserReady = false;
+
+let owl2Parser: Parser | null = null;
+let owl2ParserReady = false;
 
 /* Whether MSL background indexing has completed */
 let mslStdlibReady = false;
@@ -645,6 +659,18 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       connection.console.info("Tree-sitter STEP parser initialized");
     } catch (e) {
       connection.console.warn(`[tree-sitter] Failed to load STEP language: ${e}`);
+    }
+
+    // Initialize OWL2 parser
+    try {
+      const Owl2Lang = await Language.load(`${serverDistBase}/tree-sitter-owl2.wasm`);
+      owl2Parser = new Parser();
+      owl2Parser.setLanguage(Owl2Lang);
+      Context.registerParser(".owl", owl2Parser as any);
+      owl2ParserReady = true;
+      connection.console.info("Tree-sitter OWL2 parser initialized");
+    } catch (e) {
+      connection.console.warn(`[tree-sitter] Failed to load OWL2 language: ${e}`);
     }
 
     // Load the Modelica Standard Library from the bundled zip
@@ -1326,6 +1352,33 @@ async function runSemanticPipeline(
   }
 }
 
+function findRangeForIri(
+  iri: string,
+  currentUri: string,
+): { start: { line: number; character: number }; end: { line: number; character: number } } | null {
+  const db = unifiedWorkspace.toUnifiedPartial();
+  const nameIds = db.byName.get(iri);
+  if (nameIds && nameIds.length > 0) {
+    for (const id of nameIds) {
+      const entry = db.symbols.get(id);
+      if (
+        entry &&
+        entry.resourceId === currentUri &&
+        typeof entry.startByte === "number" &&
+        typeof entry.endByte === "number"
+      ) {
+        const bridge = documentLSPBridges.get(currentUri);
+        if (bridge) {
+          const start = bridge["positions"].offsetToPosition(entry.startByte);
+          const end = bridge["positions"].offsetToPosition(entry.endByte);
+          return { start, end };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   const diagnostics: Diagnostic[] = [];
   const text = textDocument.getText();
@@ -1477,6 +1530,228 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       }, 300);
     } catch (e: any) {
       connection.console.error(`[step] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
+    }
+    return;
+  }
+
+  // Handle OWL2 files via the polyglot reasoner pipeline
+  if (textDocument.uri.endsWith(".owl") && owl2ParserReady && owl2Parser) {
+    try {
+      const oldCached = documentTrees.get(textDocument.uri);
+      let tree: any;
+
+      if (oldCached && oldCached.text !== text) {
+        const edit = computeTreeEdit(oldCached.text, text);
+        oldCached.tree.edit(edit as never);
+        tree = owl2Parser.parse(text, oldCached.tree as never);
+      } else if (oldCached) {
+        tree = oldCached.tree;
+      } else {
+        tree = owl2Parser.parse(text);
+      }
+
+      if (!tree) {
+        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+        return;
+      }
+
+      // Store in documentTrees
+      documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
+
+      const textChanged = lastIndexedText.get(textDocument.uri) !== text;
+
+      // Register/update in OWL2 workspace index
+      if (textChanged) {
+        let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+        const lastText = lastIndexedText.get(textDocument.uri);
+        if (lastText) {
+          const edit = computeTreeEdit(lastText, text);
+          editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+        }
+
+        if (owl2WorkspaceIndex.has(textDocument.uri)) {
+          owl2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+        } else {
+          owl2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+        }
+
+        owl2WorkspaceIndex.getFileIndex(textDocument.uri);
+        lastIndexedText.set(textDocument.uri, text);
+      }
+
+      const changedIds = owl2WorkspaceIndex.takeGlobalChangedIds();
+      const changedNames = owl2WorkspaceIndex.takeGlobalChangedNames();
+
+      const unifiedIndex = unifiedWorkspace.toUnifiedPartial();
+
+      if (changedNames && changedNames.size > 0) {
+        if (revalidationTimer) clearTimeout(revalidationTimer);
+        revalidationTimer = setTimeout(() => {
+          for (const doc of documents.all()) {
+            if (doc.uri !== textDocument.uri) {
+              validateTextDocument(doc);
+            }
+          }
+        }, 500);
+      }
+
+      if (globalOWL2QueryEngine) {
+        if (changedIds && typeof globalOWL2QueryEngine.swapIndex === "function") {
+          globalOWL2QueryEngine.swapIndex(unifiedIndex, changedIds);
+        } else {
+          globalOWL2QueryEngine.updateIndex(unifiedIndex);
+        }
+      } else {
+        globalOWL2QueryEngine = new QueryEngine(unifiedIndex, owl2QueryHooks as any);
+      }
+      const engine = globalOWL2QueryEngine;
+
+      let resolver = (engine as any).__resolverCache;
+      if (!resolver) {
+        resolver = new ScopeResolver(unifiedIndex, owl2RefHooks as any, owl2IndexerHooks as any);
+        (engine as any).__resolverCache = resolver;
+      } else {
+        resolver.updateIndex(unifiedIndex);
+      }
+
+      const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
+      documentLSPBridges.set(textDocument.uri, bridge);
+
+      const owl2Diagnostics: Diagnostic[] = [];
+
+      // Collect parse errors from the tree
+      const collectErrors = (node: SyntaxNode | any) => {
+        if (!node) return;
+        if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
+        if (node.type === "ERROR" || node.isMissing) {
+          const start = bridge["positions"].offsetToPosition(node.startIndex);
+          const end = bridge["positions"].offsetToPosition(node.endIndex);
+          owl2Diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: node.isMissing ? `Missing syntax element` : `Syntax error`,
+            source: "owl2",
+          });
+        }
+        const children = node.children || [];
+        for (let i = 0; i < children.length; i++) {
+          collectErrors(children[i]);
+        }
+      };
+      collectErrors(tree.rootNode);
+
+      const hasSyntaxErrors = owl2Diagnostics.length > 0;
+
+      if (!hasSyntaxErrors) {
+        // Run Polyglot declarative lints from query hooks
+        const engineDiags = await (engine as any).runAllLintsAsync(textDocument.uri, async () => {
+          await new Promise<void>((r) => setTimeout(r, 0));
+          return false;
+        });
+        for (const d of engineDiags) {
+          const start = bridge["positions"].offsetToPosition(d.startByte);
+          const end = bridge["positions"].offsetToPosition(d.endByte);
+          let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
+          if (d.severity === "error") severity = DiagnosticSeverity.Error;
+          if (d.severity === "info") severity = DiagnosticSeverity.Information;
+
+          owl2Diagnostics.push({
+            severity,
+            range: { start, end },
+            message: d.message,
+            source: "owl2",
+          });
+        }
+
+        // Collect unresolved references
+        const unresolvedRefs = await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
+          await new Promise<void>((r) => setTimeout(r, 0));
+          return false;
+        });
+        for (const r of unresolvedRefs) {
+          const start = bridge["positions"].offsetToPosition(r.startByte);
+          const end = bridge["positions"].offsetToPosition(r.endByte);
+          let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+          if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+          if (r.severity === "info") severity = DiagnosticSeverity.Information;
+
+          owl2Diagnostics.push({
+            severity,
+            range: { start, end },
+            message: r.message,
+            source: "owl2",
+          });
+        }
+
+        // Run tableau reasoner check
+        try {
+          const store = unifiedWorkspace.owl2Store;
+          const reasoner = new TableauReasoner();
+          await reasoner.init();
+          reasoner.loadOntology(store.axioms);
+          const consistency = reasoner.checkConsistency();
+
+          if (!consistency.isConsistent) {
+            const explanation = consistency.explanation || "Ontology inconsistency detected";
+
+            let reported = false;
+            if (consistency.conflictingAxioms) {
+              for (const axiom of consistency.conflictingAxioms) {
+                let targetIri: string | null = null;
+                if (axiom.type === "SubClassOf") {
+                  targetIri = axiom.subClassIri;
+                } else if (axiom.type === "DisjointClasses" && axiom.classIris && axiom.classIris.length > 0) {
+                  for (const iri of axiom.classIris) {
+                    if (findRangeForIri(iri, textDocument.uri)) {
+                      targetIri = iri;
+                      break;
+                    }
+                  }
+                  if (!targetIri) targetIri = axiom.classIris[0];
+                } else if (axiom.type === "ClassAssertion") {
+                  targetIri = axiom.individualIri;
+                } else if (axiom.type === "ObjectPropertyAssertion") {
+                  targetIri = axiom.subjectIri;
+                } else if ((axiom as any).iri) {
+                  targetIri = (axiom as any).iri;
+                }
+
+                if (targetIri) {
+                  const range = findRangeForIri(targetIri, textDocument.uri);
+                  if (range) {
+                    owl2Diagnostics.push({
+                      severity: DiagnosticSeverity.Error,
+                      range,
+                      message: `Ontology inconsistency: ${explanation}`,
+                      source: "owl2-reasoner",
+                    });
+                    reported = true;
+                  }
+                }
+              }
+            }
+
+            if (!reported) {
+              owl2Diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: {
+                  start: { line: 0, character: 0 },
+                  end: { line: 0, character: 10 },
+                },
+                message: `Ontology inconsistency: ${explanation}`,
+                source: "owl2-reasoner",
+              });
+            }
+          }
+        } catch (reasonerError: any) {
+          connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
+        }
+      }
+
+      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: owl2Diagnostics });
+      connection.sendNotification("modelscript/projectTreeChanged");
+    } catch (e: any) {
+      connection.console.error(`[owl2] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
     }
     return;
   }

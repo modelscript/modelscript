@@ -16,6 +16,8 @@
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/optimizer": "*",
+    "@modelscript/owl2": "*",
+    "@modelscript/reasoner": "*",
     "@modelscript/simulator": "*",
     "@modelscript/step": "*",
     "@modelscript/symbolics": "*",

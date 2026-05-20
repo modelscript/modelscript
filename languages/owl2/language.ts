@@ -42,11 +42,11 @@ export default language({
     PrefixDeclaration: ($) =>
       seq("Prefix", "(", field("name", optional($.PrefixName)), "=", field("iri", $.FullIRI), ")"),
 
-    PrefixName: () => /[a-zA-Z][a-zA-Z0-9_]*:/,
-    FullIRI: () => /<[^>]*>/,
-    AbbreviatedIRI: () => /[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_]+/,
-    IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
     IDENT: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    PrefixName: ($) => seq($.IDENT, ":"),
+    FullIRI: () => /<[^>]*>/,
+    AbbreviatedIRI: ($) => seq($.IDENT, ":", $.IDENT),
+    IRI: ($) => choice($.FullIRI, $.AbbreviatedIRI),
     StringLiteral: () => /"[^"]*"/,
 
     Ontology: ($) =>
@@ -59,7 +59,7 @@ export default language({
           repeat(field("axiom", $._Axiom)),
           ")",
         ),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Ontology",
           name: self.iri,
         }),
@@ -71,7 +71,7 @@ export default language({
     ImportDeclaration: ($) =>
       def({
         syntax: seq("Import", "(", field("iri", $.IRI), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Import",
           name: self.iri,
         }),
@@ -92,7 +92,7 @@ export default language({
     Declaration: ($) =>
       def({
         syntax: seq("Declaration", "(", field("entity", $._Entity), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Declaration",
           name: self.entity,
         }),
@@ -103,7 +103,7 @@ export default language({
     ClassEntity: ($) =>
       def({
         syntax: seq("Class", "(", field("iri", $.IRI), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Class",
           name: self.iri,
           exports: [self.iri],
@@ -114,7 +114,7 @@ export default language({
     ObjectPropertyEntity: ($) =>
       def({
         syntax: seq("ObjectProperty", "(", field("iri", $.IRI), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "ObjectProperty",
           name: self.iri,
           exports: [self.iri],
@@ -125,7 +125,7 @@ export default language({
     DataPropertyEntity: ($) =>
       def({
         syntax: seq("DataProperty", "(", field("iri", $.IRI), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "DataProperty",
           name: self.iri,
           exports: [self.iri],
@@ -135,7 +135,7 @@ export default language({
     NamedIndividualEntity: ($) =>
       def({
         syntax: seq("NamedIndividual", "(", field("iri", $.IRI), ")"),
-        symbol: () => ({
+        symbol: (self: Record<string, string>) => ({
           kind: "Individual",
           name: self.iri,
           exports: [self.iri],

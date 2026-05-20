@@ -68,6 +68,62 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
+  // EquivalentClassesAxiom: lint
+  {
+    const $ = new Proxy(
+      {},
+      {
+        get(_, p) {
+          return { type: "sym", name: p };
+        },
+      },
+    );
+    const rule = (langDef.rules as Record<string, unknown>)["EquivalentClassesAxiom"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
+      if (opts?.queries) Object.assign(merged, opts.queries);
+      // Register lint functions as lint__<name> queries
+      if (opts?.lints) {
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        hooks.set("EquivalentClassesAxiom", merged);
+      }
+    }
+  }
+
+  // DisjointClassesAxiom: lint
+  {
+    const $ = new Proxy(
+      {},
+      {
+        get(_, p) {
+          return { type: "sym", name: p };
+        },
+      },
+    );
+    const rule = (langDef.rules as Record<string, unknown>)["DisjointClassesAxiom"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
+      if (opts?.queries) Object.assign(merged, opts.queries);
+      // Register lint functions as lint__<name> queries
+      if (opts?.lints) {
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        hooks.set("DisjointClassesAxiom", merged);
+      }
+    }
+  }
+
   // ObjectPropertyAssertionAxiom: lint
   {
     const $ = new Proxy(
@@ -94,6 +150,92 @@ function buildQueryHooks(): Map<string, QueryHooks> {
       }
       if (Object.keys(merged).length > 0) {
         hooks.set("ObjectPropertyAssertionAxiom", merged);
+      }
+    }
+  }
+
+  // DataPropertyAssertionAxiom: lint
+  {
+    const $ = new Proxy(
+      {},
+      {
+        get(_, p) {
+          return { type: "sym", name: p };
+        },
+      },
+    );
+    const rule = (langDef.rules as Record<string, unknown>)["DataPropertyAssertionAxiom"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
+      if (opts?.queries) Object.assign(merged, opts.queries);
+      // Register lint functions as lint__<name> queries
+      if (opts?.lints) {
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        hooks.set("DataPropertyAssertionAxiom", merged);
+      }
+    }
+  }
+
+  // ClassAssertionAxiom: lint
+  {
+    const $ = new Proxy(
+      {},
+      {
+        get(_, p) {
+          return { type: "sym", name: p };
+        },
+      },
+    );
+    const rule = (langDef.rules as Record<string, unknown>)["ClassAssertionAxiom"] as (args: unknown) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
+      if (opts?.queries) Object.assign(merged, opts.queries);
+      // Register lint functions as lint__<name> queries
+      if (opts?.lints) {
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        hooks.set("ClassAssertionAxiom", merged);
+      }
+    }
+  }
+
+  // TransitiveObjectPropertyAxiom: lint
+  {
+    const $ = new Proxy(
+      {},
+      {
+        get(_, p) {
+          return { type: "sym", name: p };
+        },
+      },
+    );
+    const rule = (langDef.rules as Record<string, unknown>)["TransitiveObjectPropertyAxiom"] as (
+      args: unknown,
+    ) => unknown;
+    const ruleAst = rule ? rule($) : null;
+    if (ruleAst && (ruleAst as Record<string, unknown>).type === "def") {
+      const opts = (ruleAst as Record<string, unknown>).options as Record<string, unknown>;
+      const merged = {} as QueryHooks;
+      if (opts?.queries) Object.assign(merged, opts.queries);
+      // Register lint functions as lint__<name> queries
+      if (opts?.lints) {
+        for (const [name, fn] of Object.entries(opts.lints as Record<string, unknown>)) {
+          (merged as Record<string, unknown>)["lint__" + name] = fn;
+        }
+      }
+      if (Object.keys(merged).length > 0) {
+        hooks.set("TransitiveObjectPropertyAxiom", merged);
       }
     }
   }

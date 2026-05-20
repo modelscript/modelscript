@@ -1,5 +1,20 @@
 [
   {
+    "type": "AbbreviatedIRI",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "IDENT",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ClassAssertionAxiom",
     "named": true,
     "fields": {
@@ -307,6 +322,22 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "ImportDeclaration",
+    "named": true,
+    "fields": {
+      "iri": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "IRI",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -634,6 +665,16 @@
           }
         ]
       },
+      "import": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "ImportDeclaration",
+            "named": true
+          }
+        ]
+      },
       "iri": {
         "multiple": false,
         "required": false,
@@ -690,6 +731,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "PrefixName",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "IDENT",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -799,12 +855,12 @@
     "named": false
   },
   {
-    "type": "=",
+    "type": ":",
     "named": false
   },
   {
-    "type": "AbbreviatedIRI",
-    "named": true
+    "type": "=",
+    "named": false
   },
   {
     "type": "Class",
@@ -847,6 +903,14 @@
     "named": true
   },
   {
+    "type": "IDENT",
+    "named": true
+  },
+  {
+    "type": "Import",
+    "named": false
+  },
+  {
     "type": "NamedIndividual",
     "named": false
   },
@@ -885,10 +949,6 @@
   {
     "type": "Prefix",
     "named": false
-  },
-  {
-    "type": "PrefixName",
-    "named": true
   },
   {
     "type": "StringLiteral",

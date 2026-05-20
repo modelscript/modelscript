@@ -18,6 +18,14 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     metadataFieldPaths: {},
   },
   {
+    ruleName: "ImportDeclaration",
+    kind: "Import",
+    namePath: "iri",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
     ruleName: "Declaration",
     kind: "Declaration",
     namePath: "entity",

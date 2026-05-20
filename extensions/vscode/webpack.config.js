@@ -72,6 +72,10 @@ const browserClientConfig = {
           to: path.join(__dirname, "server", "dist", "tree-sitter-step.wasm"),
         },
         {
+          from: path.resolve(__dirname, "..", "..", "languages", "owl2", "tree-sitter-owl2.wasm"),
+          to: path.join(__dirname, "server", "dist", "tree-sitter-owl2.wasm"),
+        },
+        {
           from: path.resolve(__dirname, "..", "..", "node_modules", "occt-import-js", "dist", "occt-import-js.wasm"),
           to: path.join(__dirname, "server", "dist", "occt-import-js.wasm"),
         },

@@ -5,10 +5,13 @@
 ; ─── Keywords ───────────────────────────────────────────────────────
 [
   "Class" "ClassAssertion" "DataAllValuesFrom" "DataProperty" "DataPropertyAssertion" "DataSomeValuesFrom"
-  "Declaration" "DisjointClasses" "EquivalentClasses" "NamedIndividual" "ObjectAllValuesFrom" "ObjectComplementOf"
-  "ObjectIntersectionOf" "ObjectProperty" "ObjectPropertyAssertion" "ObjectSomeValuesFrom" "ObjectUnionOf" "Ontology"
-  "Prefix" "SubClassOf" "TransitiveObjectProperty"
+  "Declaration" "DisjointClasses" "EquivalentClasses" "Import" "NamedIndividual" "ObjectAllValuesFrom"
+  "ObjectComplementOf" "ObjectIntersectionOf" "ObjectProperty" "ObjectPropertyAssertion" "ObjectSomeValuesFrom" "ObjectUnionOf"
+  "Ontology" "Prefix" "SubClassOf" "TransitiveObjectProperty"
 ] @keyword
+
+; ─── Import paths ─────────────────────────────────────────────────
+(ImportDeclaration (QualifiedName) @string.special)
 
 ; ─── Operators ────────────────────────────────────────────────────
 [
@@ -17,6 +20,9 @@
 
 ; ─── Brackets ─────────────────────────────────────────────────────
 ["(" ")"] @punctuation.bracket
+
+; ─── Delimiters ───────────────────────────────────────────────────
+[":"] @punctuation.delimiter
 
 ; ─── Comments ─────────────────────────────────────────────────────
 
