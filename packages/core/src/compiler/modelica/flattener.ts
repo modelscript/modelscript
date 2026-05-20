@@ -8278,7 +8278,8 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
     // Validate: external functions cannot have algorithm sections (directly or inherited)
     if (fnDae.externalDecl && [...resolved.algorithmSections].length > 0) {
-      fnDae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, null));
+      const diagNode = resolved.abstractSyntaxNode?.classSpecifier ?? null;
+      fnDae.diagnostics.push(makeDiagnostic(ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM, diagNode));
     }
   }
 

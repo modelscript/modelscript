@@ -1099,8 +1099,17 @@ export default language({
         },
         lints: {
           /** Warn if class name starts with lowercase letter. */
-          classNamingConvention: (_db: QueryDB, self: SymbolEntry) => {
+          classNamingConvention: (db: QueryDB, self: SymbolEntry) => {
             if (self.name && /^[a-z]/.test(self.name)) {
+              // Narrow to the class identifier token
+              const cst = db.cstNode(self.id) as any;
+              const identNode = cst?.childForFieldName("classSpecifier")?.childForFieldName("identifier");
+              if (identNode && typeof identNode.startIndex === "number") {
+                return warning(`Class '${self.name}' should start with an uppercase letter`, {
+                  startByte: identNode.startIndex,
+                  endByte: identNode.endIndex,
+                });
+              }
               return warning(`Class '${self.name}' should start with an uppercase letter`, { field: "classSpecifier" });
             }
             return null;
@@ -1108,6 +1117,15 @@ export default language({
           /** Warn if the class body is empty (no members at all). */
           emptyClass: (db: QueryDB, self: SymbolEntry) => {
             if (db.childrenOf(self.id).filter((c: any) => c.kind !== "Reference").length === 0) {
+              // Narrow to the class identifier token
+              const cst = db.cstNode(self.id) as any;
+              const identNode = cst?.childForFieldName("classSpecifier")?.childForFieldName("identifier");
+              if (identNode && typeof identNode.startIndex === "number") {
+                return info(`Class '${self.name}' has no members`, {
+                  startByte: identNode.startIndex,
+                  endByte: identNode.endIndex,
+                });
+              }
               return info(`Class '${self.name}' has no members`);
             }
             return null;
@@ -1119,8 +1137,16 @@ export default language({
             const classSpec = cst.childForFieldName("classSpecifier");
             if (classSpec) {
               const startId = classSpec.childForFieldName("identifier")?.text;
-              const endId = classSpec.childForFieldName("endIdentifier")?.text;
+              const endIdNode = classSpec.childForFieldName("endIdentifier");
+              const endId = endIdNode?.text;
               if (startId && endId && startId !== endId) {
+                // Narrow to the endIdentifier token
+                if (endIdNode && typeof endIdNode.startIndex === "number") {
+                  return error(`Class end identifier '${endId}' does not match class name '${startId}'`, {
+                    startByte: endIdNode.startIndex,
+                    endByte: endIdNode.endIndex,
+                  });
+                }
                 return error(`Class end identifier '${endId}' does not match class name '${startId}'`);
               }
             }
@@ -1143,7 +1169,18 @@ export default language({
             if (duplicates.size > 0) {
               const results = [];
               for (const dup of duplicates) {
-                results.push(error(`Duplicate element '${dup}' in class '${self.name}'`));
+                // Narrow to the duplicate element's byte range
+                const dupEl = elements.find((e) => e.name === dup && names.has(e.name));
+                if (dupEl) {
+                  results.push(
+                    error(`Duplicate element '${dup}' in class '${self.name}'`, {
+                      startByte: dupEl.startByte,
+                      endByte: dupEl.endByte,
+                    }),
+                  );
+                } else {
+                  results.push(error(`Duplicate element '${dup}' in class '${self.name}'`));
+                }
               }
               return results;
             }
@@ -1159,9 +1196,11 @@ export default language({
               if (el.kind === "Component") {
                 const elMeta = el.metadata as Record<string, unknown>;
                 if (!elMeta?.causality && !elMeta?.isProtected) {
+                  // Narrow to the offending component's byte range
                   results.push(
                     error(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
-                      field: "classSpecifier",
+                      startByte: el.startByte,
+                      endByte: el.endByte,
                     }),
                   );
                 }
@@ -1182,15 +1221,22 @@ export default language({
             const hasExternal = !!classSpec.childForFieldName("externalFunctionClause");
             if (!hasExternal) return null;
 
-            let hasAlgorithm = false;
+            let algoNode: any = null;
             for (const child of classSpec.children) {
               if (child.type === "AlgorithmSection") {
-                hasAlgorithm = true;
+                algoNode = child;
                 break;
               }
             }
 
-            if (hasAlgorithm) {
+            if (algoNode) {
+              // Narrow to the AlgorithmSection node (the `algorithm` keyword + body)
+              if (typeof algoNode.startIndex === "number") {
+                return error(`Function '${self.name}' cannot have both an external clause and an algorithm section`, {
+                  startByte: algoNode.startIndex,
+                  endByte: algoNode.endIndex,
+                });
+              }
               return error(`Function '${self.name}' cannot have both an external clause and an algorithm section`, {
                 field: "classSpecifier",
               });
@@ -1219,10 +1265,11 @@ export default language({
                         prefix === "connector" ||
                         prefix === "expandable connector"
                       ) {
+                        // Narrow to the offending component's byte range
                         results.push(
                           error(
                             `Function '${self.name}' cannot have an input/output variable '${el.name}' of type '${typeName}'`,
-                            { field: "classSpecifier" },
+                            { startByte: el.startByte, endByte: el.endByte },
                           ),
                         );
                       }
@@ -1243,9 +1290,11 @@ export default language({
               if (el.kind === "Component") {
                 const elMeta = el.metadata as Record<string, unknown>;
                 if (elMeta?.causality && elMeta?.isProtected) {
+                  // Narrow to the offending component's byte range
                   results.push(
                     error(`Function input/output variable '${el.name}' cannot be protected`, {
-                      field: "classSpecifier",
+                      startByte: el.startByte,
+                      endByte: el.endByte,
                     }),
                   );
                 }
@@ -1264,7 +1313,17 @@ export default language({
             const walk = (node: any, inWhen: boolean) => {
               if (node.type === "WhenStatement" || node.type === "WhenEquation") {
                 if (inWhen) {
-                  results.push(error(`Nested when-statements are not allowed`, { field: "classSpecifier" }));
+                  // Narrow to the nested when-statement/equation node
+                  if (typeof node.startIndex === "number") {
+                    results.push(
+                      error(`Nested when-statements are not allowed`, {
+                        startByte: node.startIndex,
+                        endByte: node.endIndex,
+                      }),
+                    );
+                  } else {
+                    results.push(error(`Nested when-statements are not allowed`, { field: "classSpecifier" }));
+                  }
                 } else {
                   inWhen = true;
                 }
@@ -1292,14 +1351,33 @@ export default language({
                 if (node.childForFieldName("operator")?.text === "/") {
                   const op2 = node.childForFieldName("operand2");
                   if (op2 && op2.text && op2.text.trim() === "0") {
-                    results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                    // Narrow to the binary expression (a / 0)
+                    if (typeof node.startIndex === "number") {
+                      results.push(
+                        error(`Division by zero`, {
+                          startByte: node.startIndex,
+                          endByte: node.endIndex,
+                        }),
+                      );
+                    } else {
+                      results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                    }
                   } else if (
                     op2 &&
                     op2.type === "UnaryExpression" &&
                     op2.childForFieldName("operator")?.text === "-" &&
                     op2.childForFieldName("operand")?.text?.trim() === "0"
                   ) {
-                    results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                    if (typeof node.startIndex === "number") {
+                      results.push(
+                        error(`Division by zero`, {
+                          startByte: node.startIndex,
+                          endByte: node.endIndex,
+                        }),
+                      );
+                    } else {
+                      results.push(error(`Division by zero`, { field: "classSpecifier" }));
+                    }
                   }
                 }
               }
@@ -1333,9 +1411,19 @@ export default language({
                   if (resolved) {
                     const meta = resolved.metadata as Record<string, unknown>;
                     if (meta?.variability === "constant") {
-                      results.push(
-                        error(`Cannot assign to constant '${targetNode.text}'`, { field: "classSpecifier" }),
-                      );
+                      // Narrow to the assignment target node
+                      if (typeof targetNode.startIndex === "number") {
+                        results.push(
+                          error(`Cannot assign to constant '${targetNode.text}'`, {
+                            startByte: targetNode.startIndex,
+                            endByte: targetNode.endIndex,
+                          }),
+                        );
+                      } else {
+                        results.push(
+                          error(`Cannot assign to constant '${targetNode.text}'`, { field: "classSpecifier" }),
+                        );
+                      }
                     }
                   }
                 }
@@ -1375,9 +1463,17 @@ export default language({
                       const shape = `Integer[${outerLen}, ${innerLen}]`;
                       const varName = node.childForFieldName("identifier")?.text || "?";
                       results.push(
-                        error(`For loop iterator '${varName}' must be a 1-dimensional array, got shape ${shape}`, {
-                          field: "classSpecifier",
-                        }),
+                        error(
+                          `For loop iterator '${varName}' must be a 1-dimensional array, got shape ${shape}`,
+                          typeof expr.startIndex === "number"
+                            ? {
+                                startByte: expr.startIndex,
+                                endByte: expr.endIndex,
+                              }
+                            : {
+                                field: "classSpecifier",
+                              },
+                        ),
                       );
                     }
                   }
@@ -1450,10 +1546,19 @@ export default language({
                     } // sometimes allowed
                     else {
                       const kind = node.type === "SimpleEquation" ? "Equation" : "Assignment";
+                      // Narrow to the equation/assignment node
                       results.push(
-                        error(`${kind} type mismatch: '${lhs.text}' is ${t1}, but '${rhs.text}' is ${t2}`, {
-                          field: "classSpecifier",
-                        }),
+                        error(
+                          `${kind} type mismatch: '${lhs.text}' is ${t1}, but '${rhs.text}' is ${t2}`,
+                          typeof node.startIndex === "number"
+                            ? {
+                                startByte: node.startIndex,
+                                endByte: node.endIndex,
+                              }
+                            : {
+                                field: "classSpecifier",
+                              },
+                        ),
                       );
                     }
                   }
@@ -1472,10 +1577,19 @@ export default language({
                 if (cond) {
                   const cType = getType(cond);
                   if (cType && cType !== "Boolean") {
+                    // Narrow to the condition expression
                     results.push(
-                      error(`Condition expression must be Boolean, got ${cType} for '${cond.text}'`, {
-                        field: "classSpecifier",
-                      }),
+                      error(
+                        `Condition expression must be Boolean, got ${cType} for '${cond.text}'`,
+                        typeof cond.startIndex === "number"
+                          ? {
+                              startByte: cond.startIndex,
+                              endByte: cond.endIndex,
+                            }
+                          : {
+                              field: "classSpecifier",
+                            },
+                      ),
                     );
                   }
                 }
@@ -1506,10 +1620,19 @@ export default language({
                     count++;
                 }
                 if (count > 1 && !isValidContext) {
+                  // Narrow to the tuple expression node
                   results.push(
-                    error(`Tuple expression '${node.text}' can only be used in a function call assignment`, {
-                      field: "classSpecifier",
-                    }),
+                    error(
+                      `Tuple expression '${node.text}' can only be used in a function call assignment`,
+                      typeof node.startIndex === "number"
+                        ? {
+                            startByte: node.startIndex,
+                            endByte: node.endIndex,
+                          }
+                        : {
+                            field: "classSpecifier",
+                          },
+                    ),
                   );
                 }
                 return; // Avoid descending into child expressions if we already handled the output list
@@ -1538,11 +1661,248 @@ export default language({
           functionArgVariability: () => null,
           functionDefaultArgCycle: () => null,
           unusedInputVariable: () => null,
-          unbalancedModel: () => null,
+          /**
+           * Warn when a model has an equation/variable count mismatch.
+           * For structurally balanced models, the number of equations
+           * should equal the number of non-parameter, non-constant unknowns.
+           */
+          unbalancedModel: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            const prefix = meta?.classPrefixes as string | undefined;
+            // Only apply to models and blocks
+            if (prefix !== "model" && prefix !== "block") return null;
+            if (meta?.isPartial) return null;
+
+            const children = db.childrenOf(self.id);
+
+            // Count unknowns: components that are not parameter, constant, or input
+            let unknowns = 0;
+            for (const child of children) {
+              if (child.kind !== "Component") continue;
+              const cMeta = child.metadata as Record<string, unknown>;
+              const variability = cMeta?.variability as string | undefined;
+              const causality = cMeta?.causality as string | undefined;
+              if (variability === "parameter" || variability === "constant") continue;
+              if (causality === "input") continue;
+              // Count array dimensions if available
+              const dims = db.query<Array<{ kind: string; value?: number }> | null>("arrayDimensions", child.id);
+              if (dims && dims.length > 0) {
+                let dimProduct = 1;
+                for (const d of dims) {
+                  if (d.kind === "literal" && d.value) dimProduct *= d.value;
+                  else {
+                    dimProduct = -1;
+                    break;
+                  }
+                }
+                if (dimProduct > 0) {
+                  unknowns += dimProduct;
+                  continue;
+                }
+              }
+              unknowns += 1;
+            }
+
+            // Count equations from equation sections
+            let equations = 0;
+            const cst = db.cstNode(self.id) as any;
+            if (cst) {
+              const classSpec = cst.childForFieldName("classSpecifier");
+              if (classSpec) {
+                const countEqs = (node: any): number => {
+                  let count = 0;
+                  for (const child of node.children || []) {
+                    if (child.type === "SimpleEquation" || child.type === "ConnectEquation") count++;
+                    else if (child.type === "ForEquation") count += countEqs(child);
+                    else if (child.type === "IfEquation") count += countEqs(child);
+                    else if (child.type === "WhenEquation") count += countEqs(child);
+                  }
+                  return count;
+                };
+                for (const child of classSpec.children) {
+                  if (child.type === "EquationSection") {
+                    equations += countEqs(child);
+                  }
+                }
+              }
+            }
+
+            if (unknowns > 0 && equations > 0 && unknowns !== equations) {
+              // Narrow to the class identifier
+              const identNode = cst?.childForFieldName("classSpecifier")?.childForFieldName("identifier");
+              if (identNode && typeof identNode.startIndex === "number") {
+                return warning(
+                  `Model '${self.name}' is not balanced: ${equations} equation(s) and ${unknowns} unknown(s)`,
+                  { startByte: identNode.startIndex, endByte: identNode.endIndex },
+                );
+              }
+              return warning(
+                `Model '${self.name}' is not balanced: ${equations} equation(s) and ${unknowns} unknown(s)`,
+              );
+            }
+            return null;
+          },
           missingInner: () => null,
-          nameNotFound: () => null,
+          /**
+           * Error when an identifier in an equation or algorithm body
+           * cannot be resolved in the enclosing scope.
+           */
+          nameNotFound: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec) return null;
+
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+            if (!resolve) return null;
+
+            const builtins = new Set([
+              "Real",
+              "Integer",
+              "Boolean",
+              "String",
+              "true",
+              "false",
+              "time",
+              "der",
+              "pre",
+              "edge",
+              "change",
+              "initial",
+              "terminal",
+              "sample",
+              "noEvent",
+              "smooth",
+              "reinit",
+              "assert",
+              "abs",
+              "sign",
+              "sqrt",
+              "sin",
+              "cos",
+              "tan",
+              "asin",
+              "acos",
+              "atan",
+              "atan2",
+              "exp",
+              "log",
+              "log10",
+              "max",
+              "min",
+              "mod",
+              "rem",
+              "ceil",
+              "floor",
+              "div",
+              "fill",
+              "zeros",
+              "ones",
+              "identity",
+              "linspace",
+              "sum",
+              "product",
+              "ndims",
+              "size",
+              "scalar",
+              "vector",
+              "matrix",
+              "cat",
+              "diagonal",
+              "transpose",
+              "outerProduct",
+              "symmetric",
+              "cross",
+              "skew",
+              "delay",
+              "cardinality",
+              "inStream",
+              "actualStream",
+              "homotopy",
+              "semiLinear",
+              "spatialDistribution",
+              "getInstanceName",
+              "String",
+              "Integer",
+              "Modelica",
+              "StateSelect",
+              "end",
+            ]);
+
+            const results: any[] = [];
+            const reported = new Set<string>();
+
+            const walkForRefs = (node: any) => {
+              if (node.type === "ComponentReference") {
+                // Extract the root identifier (first part before dots or subscripts)
+                const firstIdent = node.children?.find((c: any) => c.type === "IDENT");
+                const refName = firstIdent ? firstIdent.text : node.text.split(".")[0].split("[")[0].trim();
+                if (!refName || builtins.has(refName) || reported.has(refName)) return;
+
+                // Try to resolve
+                const resolved = resolve(refName);
+                if (!resolved) {
+                  const globals = db.byName(refName);
+                  if (globals.length === 0) {
+                    reported.add(refName);
+                    if (typeof node.startIndex === "number") {
+                      results.push(
+                        error(`Variable '${refName}' not found in scope '${self.name}'`, {
+                          startByte: node.startIndex,
+                          endByte: node.endIndex,
+                        }),
+                      );
+                    } else {
+                      results.push(error(`Variable '${refName}' not found in scope '${self.name}'`));
+                    }
+                  }
+                }
+                return; // Don't recurse into ComponentReference children
+              }
+              // Skip function call names — they're resolved separately
+              if (node.type === "FunctionCall") {
+                // Only recurse into arguments, not the function reference
+                const args = node.childForFieldName("functionCallArguments");
+                if (args) walkForRefs(args);
+                return;
+              }
+              for (const child of node.children || []) walkForRefs(child);
+            };
+
+            for (const child of classSpec.children) {
+              if (child.type === "EquationSection" || child.type === "AlgorithmSection") {
+                walkForRefs(child);
+              }
+            }
+            return results.length > 0 ? results : null;
+          },
           binaryOpTypeMismatch: () => null,
-          withinInScript: () => null,
+          /**
+           * Error when a `within` directive appears in a script-mode file.
+           * Script files should not have `within` — it's only valid in package-structured files.
+           */
+          withinInScript: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            // Walk up to the root stored_definition
+            let root = cst;
+            while (root.parent) root = root.parent;
+
+            // Check for a "within" keyword at the top level
+            for (const child of root.children) {
+              if (child.type === "within" || child.type === "WithinClause") {
+                if (typeof child.startIndex === "number") {
+                  return error("The 'within' directive is not allowed in script mode", {
+                    startByte: child.startIndex,
+                    endByte: child.endIndex,
+                  });
+                }
+                return error("The 'within' directive is not allowed in script mode");
+              }
+            }
+            return null;
+          },
           arrayDimensionMismatch: () => null,
         },
         adapters: {
@@ -2022,7 +2382,9 @@ export default language({
             let current: SymbolEntry | undefined = self;
             while (current) {
               if (visited.has(current.name)) {
-                return error(`Extends cycle detected: ${[...visited, current.name].join(" → ")}`);
+                return error(`Extends cycle detected: ${[...visited, current.name].join(" → ")}`, {
+                  field: "typeSpecifier",
+                });
               }
               visited.add(current.name);
               const baseEntries = db.byName(current.name);
@@ -2478,10 +2840,19 @@ export default language({
         },
         lints: {
           /** Warn if component name starts with an uppercase letter. */
-          componentNamingConvention: (_db: QueryDB, self: SymbolEntry) => {
+          componentNamingConvention: (db: QueryDB, self: SymbolEntry) => {
             if (self.name && /^[A-Z]/.test(self.name)) {
+              // Narrow to the component identifier token
+              const cst = db.cstNode(self.id) as any;
+              const identNode = cst?.childForFieldName("declaration")?.childForFieldName("identifier");
+              if (identNode && typeof identNode.startIndex === "number") {
+                return warning(`Component '${self.name}' should start with a lowercase letter`, {
+                  startByte: identNode.startIndex,
+                  endByte: identNode.endIndex,
+                });
+              }
               return warning(`Component '${self.name}' should start with a lowercase letter`, {
-                field: "componentDeclaration",
+                field: "declaration.identifier",
               });
             }
             return null;
@@ -2531,7 +2902,7 @@ export default language({
               if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
                 results.push(
                   error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
-                    field: "componentDeclaration",
+                    field: "declaration.modification",
                   }),
                 );
               }
@@ -2564,7 +2935,7 @@ export default language({
                   if (modExpr) {
                     if (paths.includes(path)) {
                       results.push(
-                        error(`Duplicate modification of element '${path}'`, { field: "componentDeclaration" }),
+                        error(`Duplicate modification of element '${path}'`, { field: "declaration.modification" }),
                       );
                     } else {
                       paths.push(path);
@@ -2605,7 +2976,7 @@ export default language({
 
             if (!foundSysML) {
               return error(`SysML implements target '${targetName}' could not be resolved in the workspace`, {
-                field: "componentDeclaration",
+                field: "description",
               });
             }
             return null;
@@ -2712,7 +3083,7 @@ export default language({
             // The type is composite but has a scalar binding — this is a type error
             return error(
               `Type mismatch: '${typeName}' is a composite type with ${members.length} member(s), cannot assign a scalar value`,
-              { field: "componentDeclaration" },
+              { field: "declaration.modification" },
             );
           },
           /**
@@ -2814,7 +3185,7 @@ export default language({
                 if (refDimStr !== selfDimStr) {
                   return error(
                     `Type mismatch in binding '${self.name} = ${refName}', expected array dimensions ${selfDimStr}, got ${refDimStr}`,
-                    { field: "componentDeclaration" },
+                    { field: "declaration.modification" },
                   );
                 }
               }
@@ -2822,7 +3193,7 @@ export default language({
 
             if (exprType && !isSubtypeOf(exprType, declaredType)) {
               return error(`Type mismatch in binding: expected subtype of ${declaredType}, got type ${exprType}`, {
-                field: "componentDeclaration",
+                field: "declaration.modification",
               });
             }
 
@@ -2881,7 +3252,7 @@ export default language({
             if (elementCount !== declaredSize) {
               return error(
                 `Array shape mismatch: declared size [${declaredSize}] but initializer has ${elementCount} element(s)`,
-                { field: "componentDeclaration" },
+                { field: "declaration.modification" },
               );
             }
 
@@ -2977,7 +3348,7 @@ export default language({
               if (!isCompatible(elemType, typeName)) {
                 return error(
                   `Array type mismatch. Argument ${argIndex} (${child.text.trim()}) has type ${elemType} whereas ${typeName}${dimSuffix} expects type ${typeName}`,
-                  { field: "componentDeclaration" },
+                  { field: "declaration.modification" },
                 );
               }
             }
@@ -3057,7 +3428,7 @@ export default language({
               const scopeName = self.parentId !== null ? (db.symbol(self.parentId)?.name ?? "<unknown>") : "<global>";
 
               return error(`Variable '${unresolvedRefs[0]}' not found in scope ${scopeName}`, {
-                field: "componentDeclaration",
+                field: "declaration.modification",
               });
             }
 
@@ -3228,7 +3599,7 @@ export default language({
 
                 return error(
                   `No matching function found for ${qualName}(${actualSig}).\nCandidates are:\n  ${qualName}(${candidateSig}) => ${outputType}`,
-                  { field: "componentDeclaration" },
+                  { field: "declaration.modification" },
                 );
               }
 
@@ -3249,7 +3620,7 @@ export default language({
 
                   return error(
                     `Type mismatch for positional argument ${i + 1} in ${qualName}(${inputs[i].name}=${argText}). The argument has type:\n  ${actualType}\nexpected type:\n  ${expectedType}`,
-                    { field: "componentDeclaration" },
+                    { field: "declaration.modification" },
                   );
                 }
 
@@ -3285,7 +3656,7 @@ export default language({
                       const vectorized = `{${qualName}(${argText}[$i1]) for $i1 in 1:${argDims[0]?.value ?? "n"}}`;
                       return error(
                         `Type mismatch in binding '${self.name} = ${vectorized}', expected array dimensions ${selfDimStr}, got ${argDimStr}`,
-                        { field: "componentDeclaration" },
+                        { field: "declaration.modification" },
                       );
                     }
                   }
@@ -3301,7 +3672,7 @@ export default language({
               const currMeta = self.metadata as Record<string, unknown>;
               if (prevMeta.visibility === "public" && currMeta.visibility === "protected") {
                 return error("Breaking API Change: Cannot narrow visibility of an existing component.", {
-                  field: "componentDeclaration",
+                  field: "declaration.identifier",
                 });
               }
             }
