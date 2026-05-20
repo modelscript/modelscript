@@ -3,7 +3,7 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 
-import { dropComponentGhost, initGraph, renderDiagram, setDiagramOptions } from "@modelscript/diagram";
+import { dropComponentGhost, initGraph, setDiagramOptions } from "@modelscript/diagram";
 
 // Add global binding for close button
 window.addEventListener("DOMContentLoaded", () => {
@@ -111,46 +111,10 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// Expose render mechanism
-window.addEventListener("message", (event) => {
-  const message = event.data;
-  const isDark =
-    document.documentElement.classList.contains("vscode-dark") ||
-    document.documentElement.classList.contains("vscode-high-contrast");
-
-  if (message.type === "render") {
-    const spinner = document.getElementById("spinner");
-    try {
-      renderDiagram(message.data, isDark);
-      // Hide spinner after successful render unless MSL is still loading
-      if (spinner && !message.data?.isLoading) {
-        spinner.style.display = "none";
-      }
-    } catch (e) {
-      console.error("[diagram] renderDiagram error:", e);
-      if (spinner) spinner.style.display = "none";
-      const placeholder = document.getElementById("placeholder");
-      if (placeholder) {
-        placeholder.style.display = "flex";
-        placeholder.textContent = `Diagram render error: ${e}`;
-      }
-    }
-  } else if (message.type === "startPlacement") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).__startPlacement) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__startPlacement(message);
-    }
-  } else if (message.type === "properties") {
-    showProperties({ id: message.componentName, properties: message.properties });
-  } else if (message.type === "setLanguage") {
-    // Show the diagram type selector only for SysML2 files
-    const toolbar = document.getElementById("toolbar");
-    if (toolbar) {
-      toolbar.style.display = message.language === "sysml" ? "flex" : "none";
-    }
-  }
-});
+// The diagram.ts bridge no longer needs its own message listener.
+// All message types (diagramData, loading, stopLoading, startPlacement,
+// empty, error, componentProperties, autoLayout, setLanguage) are handled
+// by @modelscript/diagram's canonical message handler in index.ts.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function showProperties(nodeData: any) {

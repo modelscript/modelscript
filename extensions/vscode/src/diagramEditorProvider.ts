@@ -109,6 +109,29 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       await vscode.workspace.applyEdit(workspaceEdit);
     };
 
+    /**
+     * Wait for the next `onDidChangeTextDocument` event for our document,
+     * with a safety timeout. Replaces the old `setTimeout(50)` hack.
+     *
+     * Returns a promise that resolves once the change event fires (and
+     * the `pendingRenderHint` is consumed by the change handler), or
+     * after `timeoutMs` if the event never fires (e.g., text didn't
+     * actually change despite edits, or the event was dropped).
+     */
+    let pendingDocChangeResolve: (() => void) | null = null;
+    const waitForDocumentChange = (timeoutMs = 200): Promise<void> => {
+      return new Promise<void>((resolve) => {
+        pendingDocChangeResolve = resolve;
+        setTimeout(() => {
+          // Safety: if the event hasn't fired by now, resolve anyway
+          if (pendingDocChangeResolve === resolve) {
+            pendingDocChangeResolve = null;
+            resolve();
+          }
+        }, timeoutMs);
+      });
+    };
+
     // Listen for messages from the webview (diagram mutations)
     webviewPanel.webview.onDidReceiveMessage(
       (message) => {
@@ -237,8 +260,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     // Mark as spatial so onDidChangeTextDocument skips re-render
                     pendingRenderHint = "none";
                     await applyTextEdits(uriString, response.edits);
-                    // Wait briefly for the document change event to fire
-                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    // Wait for the document change event to fire and consume the hint
+                    await waitForDocumentChange();
                     // Consume the hint if the change event didn't fire
                     if (pendingRenderHint !== null) {
                       pendingRenderHint = null;
@@ -267,8 +290,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   if (response && response.edits && response.edits.length > 0) {
                     pendingRenderHint = response.renderHint;
                     await applyTextEdits(uriString, response.edits);
-                    // Wait briefly to allow the document change event to fire and propagate to LSP
-                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    // Wait for the document change event to fire and consume the render hint
+                    await waitForDocumentChange();
 
                     // If the document change event didn't fire (e.g. text didn't change despite edits)
                     if (pendingRenderHint !== null) {
@@ -308,6 +331,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
       const hint = pendingRenderHint;
       pendingRenderHint = null; // Consume the flag
+
+      // Signal the waitForDocumentChange() promise that the event has fired
+      if (pendingDocChangeResolve) {
+        const resolve = pendingDocChangeResolve;
+        pendingDocChangeResolve = null;
+        resolve();
+      }
 
       if (hint === "none") {
         // Spatial edit — no re-render needed natively.
@@ -374,7 +404,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         const isDark =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-        webviewPanel.webview.postMessage({ type: "render", data, isDark });
+        webviewPanel.webview.postMessage({ type: "diagramData", data, isDark });
       } else {
         webviewPanel.webview.postMessage({ type: "empty" });
       }
