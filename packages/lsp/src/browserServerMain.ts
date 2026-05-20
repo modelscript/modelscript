@@ -6596,7 +6596,17 @@ connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
 
     if (isSimulatable) {
       try {
-        let nEqs = instance.equations?.length || 0;
+        // Count only continuous equations — exclude `when` and standalone function-call
+        // equations (e.g. assert()) since they don't contribute to the DAE balance.
+        let nEqs = 0;
+        for (const eq of instance.equations ?? []) {
+          const ctorName = eq?.constructor?.name ?? "";
+          if (ctorName === "ModelicaWhenEquationSyntaxNode" || ctorName === "ModelicaWhenEquation") continue;
+          if (ctorName === "ModelicaFunctionCallEquation") continue;
+          // Also filter AST-level connect equations (handled separately)
+          if (ctorName === "ModelicaConnectEquationSyntaxNode") continue;
+          nEqs++;
+        }
         let nVars = 0;
         for (const c of instance.components) {
           if (c.variability !== "parameter" && c.variability !== "constant") nVars++;
