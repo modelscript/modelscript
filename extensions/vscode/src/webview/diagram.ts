@@ -119,7 +119,22 @@ window.addEventListener("message", (event) => {
     document.documentElement.classList.contains("vscode-high-contrast");
 
   if (message.type === "render") {
-    renderDiagram(message.data, isDark);
+    const spinner = document.getElementById("spinner");
+    try {
+      renderDiagram(message.data, isDark);
+      // Hide spinner after successful render unless MSL is still loading
+      if (spinner && !message.data?.isLoading) {
+        spinner.style.display = "none";
+      }
+    } catch (e) {
+      console.error("[diagram] renderDiagram error:", e);
+      if (spinner) spinner.style.display = "none";
+      const placeholder = document.getElementById("placeholder");
+      if (placeholder) {
+        placeholder.style.display = "flex";
+        placeholder.textContent = `Diagram render error: ${e}`;
+      }
+    }
   } else if (message.type === "startPlacement") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).__startPlacement) {
