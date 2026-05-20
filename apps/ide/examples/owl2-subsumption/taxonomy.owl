@@ -1,0 +1,35 @@
+Prefix(mo: = <http://modelscript.org/modelica#>)
+Prefix(sysml: = <http://modelscript.org/sysml2#>)
+
+Ontology(<http://modelscript.org/examples/subsumption>
+
+  Import(<http://modelscript.org/modelica#>)
+  Import(<http://modelscript.org/sysml2#>)
+
+  # Actuator taxonomy — projected from Modelica extends hierarchy
+  Declaration(Class(mo:Actuator))
+  Declaration(Class(mo:ServoMotor))
+  Declaration(Class(mo:StepperMotor))
+  Declaration(Class(mo:LinearActuator))
+
+  SubClassOf(mo:ServoMotor mo:Actuator)
+  SubClassOf(mo:StepperMotor mo:Actuator)
+  SubClassOf(mo:LinearActuator mo:Actuator)
+
+  # High-voltage actuator classification
+  # Only actuators with V_supply >= 200V qualify
+  Declaration(Class(mo:HighVoltageActuator))
+  SubClassOf(mo:HighVoltageActuator mo:Actuator)
+
+  # ServoMotor qualifies (V_supply = 380V)
+  SubClassOf(mo:ServoMotor mo:HighVoltageActuator)
+
+  # Cross-language bridge: SysML requirement maps to OWL2 class constraint
+  SubClassOf(sysml:HighVoltageActuator mo:HighVoltageActuator)
+
+  # Voltage data properties
+  Declaration(DataProperty(mo:supplyVoltage))
+  DataPropertyAssertion(mo:supplyVoltage mo:ServoMotor "380")
+  DataPropertyAssertion(mo:supplyVoltage mo:StepperMotor "48")
+  DataPropertyAssertion(mo:supplyVoltage mo:LinearActuator "120")
+)

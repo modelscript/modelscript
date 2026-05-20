@@ -1,0 +1,41 @@
+Prefix(mo: = <http://modelscript.org/modelica#>)
+Prefix(fmea: = <http://modelscript.org/fmea#>)
+
+Ontology(<http://modelscript.org/examples/fmea>
+
+  Import(<http://modelscript.org/modelica#>)
+
+  # Connection property — declared as transitive so that
+  # reachability analysis works via transitive closure
+  Declaration(ObjectProperty(mo:isConnectedTo))
+  TransitiveObjectProperty(mo:isConnectedTo)
+
+  # Component instances (projected from Modelica component declarations)
+  Declaration(NamedIndividual(mo:sensor1))
+  Declaration(NamedIndividual(mo:controller1))
+  Declaration(NamedIndividual(mo:actuator1))
+  Declaration(NamedIndividual(mo:plant1))
+
+  # Component type assertions
+  ClassAssertion(mo:Sensor mo:sensor1)
+  ClassAssertion(mo:Controller mo:controller1)
+  ClassAssertion(mo:Actuator mo:actuator1)
+  ClassAssertion(mo:Plant mo:plant1)
+
+  # Connections (projected from Modelica connect() statements)
+  ObjectPropertyAssertion(mo:isConnectedTo mo:sensor1 mo:controller1)
+  ObjectPropertyAssertion(mo:isConnectedTo mo:controller1 mo:actuator1)
+  ObjectPropertyAssertion(mo:isConnectedTo mo:actuator1 mo:plant1)
+
+  # Fault taxonomy
+  Declaration(Class(fmea:FaultMode))
+  Declaration(Class(fmea:SensorDrift))
+  Declaration(Class(fmea:ActuatorStuck))
+  SubClassOf(fmea:SensorDrift fmea:FaultMode)
+  SubClassOf(fmea:ActuatorStuck fmea:FaultMode)
+
+  # Fault propagation rule: any component connected to a faulty
+  # component via isConnectedTo is a potential propagation target
+  Declaration(ObjectProperty(fmea:propagatesFaultTo))
+  TransitiveObjectProperty(fmea:propagatesFaultTo)
+)

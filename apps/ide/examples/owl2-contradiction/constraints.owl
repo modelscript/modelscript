@@ -1,0 +1,24 @@
+Prefix(mo: = <http://modelscript.org/modelica#>)
+Prefix(owl: = <http://www.w3.org/2002/07/owl#>)
+
+Ontology(<http://modelscript.org/examples/contradiction>
+
+  Import(<http://modelscript.org/modelica#>)
+
+  Declaration(Class(mo:ElectricalDevice))
+  Declaration(Class(mo:MechanicalDevice))
+
+  # Electrical and Mechanical devices are disjoint categories —
+  # a component cannot be both at the same time.
+  DisjointClasses(mo:ElectricalDevice mo:MechanicalDevice)
+
+  # Additional domain constraints
+  Declaration(ObjectProperty(mo:hasPowerSource))
+  Declaration(DataProperty(mo:ratedVoltage))
+
+  # All electrical devices must have a power source
+  SubClassOf(mo:ElectricalDevice
+    ObjectSomeValuesFrom(mo:hasPowerSource mo:PowerGrid))
+
+  Declaration(Class(mo:PowerGrid))
+)

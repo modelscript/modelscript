@@ -1,0 +1,48 @@
+Prefix(mo: = <http://modelscript.org/modelica#>)
+Prefix(unit: = <http://modelscript.org/units#>)
+
+Ontology(<http://modelscript.org/examples/units>
+
+  Import(<http://modelscript.org/modelica#>)
+
+  # SI Unit hierarchy
+  Declaration(Class(unit:SIUnit))
+  Declaration(Class(unit:PressureUnit))
+  Declaration(Class(unit:TemperatureUnit))
+  Declaration(Class(unit:ForceUnit))
+  Declaration(Class(unit:LengthUnit))
+
+  SubClassOf(unit:PressureUnit unit:SIUnit)
+  SubClassOf(unit:TemperatureUnit unit:SIUnit)
+  SubClassOf(unit:ForceUnit unit:SIUnit)
+  SubClassOf(unit:LengthUnit unit:SIUnit)
+
+  # Pressure and Temperature units are disjoint —
+  # they are fundamentally incompatible quantities
+  DisjointClasses(unit:PressureUnit unit:TemperatureUnit)
+  DisjointClasses(unit:PressureUnit unit:ForceUnit)
+  DisjointClasses(unit:TemperatureUnit unit:LengthUnit)
+
+  # Concrete unit individuals
+  Declaration(NamedIndividual(unit:Pascal))
+  Declaration(NamedIndividual(unit:Kelvin))
+  Declaration(NamedIndividual(unit:Newton))
+  Declaration(NamedIndividual(unit:Meter))
+
+  ClassAssertion(unit:PressureUnit unit:Pascal)
+  ClassAssertion(unit:TemperatureUnit unit:Kelvin)
+  ClassAssertion(unit:ForceUnit unit:Newton)
+  ClassAssertion(unit:LengthUnit unit:Meter)
+
+  # Port unit assignments — the reasoner will flag PressurePort
+  # connected to TemperaturePort as inconsistent
+  Declaration(ObjectProperty(mo:hasOutputUnit))
+  Declaration(ObjectProperty(mo:hasInputUnit))
+
+  # PressureSensor produces Pascal, TemperatureController expects Kelvin
+  ObjectPropertyAssertion(mo:hasOutputUnit mo:pressureSensor unit:Pascal)
+  ObjectPropertyAssertion(mo:hasInputUnit mo:tempController unit:Kelvin)
+
+  Declaration(NamedIndividual(mo:pressureSensor))
+  Declaration(NamedIndividual(mo:tempController))
+)
