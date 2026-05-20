@@ -395,18 +395,21 @@ export class Context {
 
   /**
    * Flatten a Modelica class and return the textual DAE representation
-   * using the arena-native pipeline.
+   * using the arena-native printer.
    *
-   * This replaces the legacy `flatten()` method for consumers that need
-   * a string output. Uses `ArenaDAEPrinter` directly on `ArenaDAEBuilder`.
+   * Uses the legacy `flattenDAE()` pipeline (which populates `dae.arena`
+   * via dual-write) and then prints directly from the `ArenaDAEBuilder`.
+   * This gives us arena-native output for all models the legacy flattener
+   * handles, without needing the `ArenaQueryFlattener` to reach feature parity.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.
+   * @param options - Compiler options forwarded to flattenDAE.
    * @returns The flattened DAE text, or null if the class is not found.
    */
-  flattenText(name: string): string | null {
-    const arena = this.flattenArena(name);
-    if (!arena) return null;
-    return printArenaDAE(arena);
+  flattenText(name: string, options?: ModelicaCompilerOptions): string | null {
+    const dae = this.flattenDAE(name, options);
+    if (!dae) return null;
+    return printArenaDAE(dae.arena);
   }
 
   /**

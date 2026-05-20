@@ -381,11 +381,146 @@ export class ArenaDAEPrinter {
 
   printEq(idx: number): void {
     const a = this.arena;
+    const kind = a.getEqKind(idx);
+
+    switch (kind) {
+      case EqKind.Simple:
+      case EqKind.InitialSimple:
+      case EqKind.Array:
+        this.out.write(this.indent());
+        this.printExpr(a.getEqLhs(idx));
+        this.out.write(" = ");
+        this.printExpr(a.getEqRhs(idx));
+        this.out.write(";\n");
+        break;
+
+      case EqKind.When: {
+        const meta = a.getWhenEquationMeta(idx);
+        if (meta) {
+          this.out.write(this.indent() + "when ");
+          this.printExpr(meta.conditionExprId);
+          this.out.write(" then\n");
+          this.depth++;
+          for (const body of meta.bodyEquations) {
+            this.printInlineEq(body);
+          }
+          this.depth--;
+          for (const ew of meta.elseWhenClauses) {
+            this.out.write(this.indent() + "elsewhen ");
+            this.printExpr(ew.conditionExprId);
+            this.out.write(" then\n");
+            this.depth++;
+            for (const body of ew.bodyEquations) {
+              this.printInlineEq(body);
+            }
+            this.depth--;
+          }
+          this.out.write(this.indent() + "end when;\n");
+        } else {
+          // Fallback: print as simple
+          this.out.write(this.indent());
+          this.printExpr(a.getEqLhs(idx));
+          this.out.write(" = ");
+          this.printExpr(a.getEqRhs(idx));
+          this.out.write(";\n");
+        }
+        break;
+      }
+
+      case EqKind.For:
+      case EqKind.InitialFor: {
+        const meta = a.getForEquationMeta(idx);
+        if (meta) {
+          const indexName = a.interner.resolve(meta.indexNameId);
+          this.out.write(this.indent() + "for " + indexName + " in ");
+          this.printExpr(meta.rangeExprId);
+          this.out.write(" loop\n");
+          this.depth++;
+          for (const body of meta.bodyEquations) {
+            this.printInlineEq(body);
+          }
+          this.depth--;
+          this.out.write(this.indent() + "end for;\n");
+        } else {
+          // Fallback: print as simple
+          this.out.write(this.indent());
+          this.printExpr(a.getEqLhs(idx));
+          this.out.write(" = ");
+          this.printExpr(a.getEqRhs(idx));
+          this.out.write(";\n");
+        }
+        break;
+      }
+
+      case EqKind.If: {
+        const meta = a.getIfEquationMeta(idx);
+        if (meta) {
+          this.out.write(this.indent() + "if ");
+          this.printExpr(meta.conditionExprId);
+          this.out.write(" then\n");
+          this.depth++;
+          for (const body of meta.thenEquations) {
+            this.printInlineEq(body);
+          }
+          this.depth--;
+          for (const clause of meta.elseIfClauses) {
+            this.out.write(this.indent() + "elseif ");
+            this.printExpr(clause.conditionExprId);
+            this.out.write(" then\n");
+            this.depth++;
+            for (const body of clause.bodyEquations) {
+              this.printInlineEq(body);
+            }
+            this.depth--;
+          }
+          if (meta.elseEquations.length > 0) {
+            this.out.write(this.indent() + "else\n");
+            this.depth++;
+            for (const body of meta.elseEquations) {
+              this.printInlineEq(body);
+            }
+            this.depth--;
+          }
+          this.out.write(this.indent() + "end if;\n");
+        } else {
+          // Fallback: print as simple
+          this.out.write(this.indent());
+          this.printExpr(a.getEqLhs(idx));
+          this.out.write(" = ");
+          this.printExpr(a.getEqRhs(idx));
+          this.out.write(";\n");
+        }
+        break;
+      }
+
+      case EqKind.FunctionCall:
+        this.out.write(this.indent());
+        this.printExpr(a.getEqLhs(idx));
+        this.out.write(";\n");
+        break;
+
+      default:
+        // Unknown equation kind: fall back to simple printing
+        this.out.write(this.indent());
+        this.printExpr(a.getEqLhs(idx));
+        this.out.write(" = ");
+        this.printExpr(a.getEqRhs(idx));
+        this.out.write(";\n");
+    }
+  }
+
+  /** Print an inline body equation (from when/for/if side-tables). */
+  private printInlineEq(body: { kind: EqKind; lhsExprId: number; rhsExprId: number }): void {
     this.out.write(this.indent());
-    this.printExpr(a.getEqLhs(idx));
-    this.out.write(" = ");
-    this.printExpr(a.getEqRhs(idx));
-    this.out.write(";\n");
+    if (body.kind === EqKind.FunctionCall) {
+      this.printExpr(body.lhsExprId);
+      this.out.write(";\n");
+    } else {
+      this.printExpr(body.lhsExprId);
+      this.out.write(" = ");
+      this.printExpr(body.rhsExprId);
+      this.out.write(";\n");
+    }
   }
 
   // ── Statement printing ──
