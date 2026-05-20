@@ -281,24 +281,17 @@ export class ArenaSimulator {
         const argId = this.arena.getExprData1(i);
         if (this.arena.getExprKind(argId) === ExprKind.Name) {
           const nameId = this.arena.getExprData1(argId);
-          // Find VarIdx for nameId
-          let varIdx = -1;
-          for (let v = 0; v < this.arena.varCount; v++) {
-            if (!this.arena.isVarRemoved(v) && this.arena.getVarNameId(v) === nameId) {
-              varIdx = v;
-              break;
-            }
-          }
+          // O(1): resolve StringId → name → VarIdx via name index
+          const name = this.arena.interner.resolve(nameId);
+          if (!name) continue;
+          const varIdx = this.arena.getVarIdxByName(name);
           if (varIdx !== -1) {
             this.stateVars.add(varIdx);
-            // Also find the derivative variable if it exists
-            const derName = `der(${this.arena.getVarName(varIdx)})`;
-            const derNameId = this.arena.interner.intern(derName);
-            for (let v = 0; v < this.arena.varCount; v++) {
-              if (!this.arena.isVarRemoved(v) && this.arena.getVarNameId(v) === derNameId) {
-                this.derivativeVars.add(v);
-                break;
-              }
+            // O(1): look up derivative variable
+            const derName = `der(${name})`;
+            const derVarIdx = this.arena.getVarIdxByName(derName);
+            if (derVarIdx !== -1) {
+              this.derivativeVars.add(derVarIdx);
             }
           }
         }
@@ -315,40 +308,69 @@ export class ArenaSimulator {
     for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
       if (this.arena.getEqKind(eqIdx) !== EqKind.When) continue;
 
-      // When equation layout: lhs = condition ExprId, rhs = body eq count, aux = elsewhen count
-      const condExprId = this.arena.getEqLhs(eqIdx);
-      const bodyCount = this.arena.getEqRhs(eqIdx);
+      // Read compound metadata from the side-table
+      const meta = this.arena.getWhenEquationMeta(eqIdx);
+      if (!meta) continue;
 
-      // Extract actions from body equations (immediately following this When eq)
-      const actions = this.extractWhenActions(eqIdx + 1, bodyCount);
+      // Main when-clause
+      const actions = this.extractWhenActionsFromMeta(meta.bodyEquations);
       if (actions.length > 0) {
-        this.whenClauses.push({ conditionExprId: condExprId, actions, wasActive: false });
+        this.whenClauses.push({ conditionExprId: meta.conditionExprId, actions, wasActive: false });
+      }
+
+      // Else-when clauses
+      for (const ew of meta.elseWhenClauses) {
+        const ewActions = this.extractWhenActionsFromMeta(ew.bodyEquations);
+        if (ewActions.length > 0) {
+          this.whenClauses.push({ conditionExprId: ew.conditionExprId, actions: ewActions, wasActive: false });
+        }
       }
     }
   }
 
-  private extractWhenActions(startEqIdx: number, count: number): ArenaWhenAction[] {
+  private extractWhenActionsFromMeta(
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+  ): ArenaWhenAction[] {
     const actions: ArenaWhenAction[] = [];
-    for (let i = 0; i < count; i++) {
-      const bodyIdx = startEqIdx + i;
-      if (bodyIdx >= this.arena.eqCount) break;
-
-      const kind = this.arena.getEqKind(bodyIdx);
-      if (kind === EqKind.Simple) {
-        const lhs = this.arena.getEqLhs(bodyIdx);
-        const rhs = this.arena.getEqRhs(bodyIdx);
-        // Check if this is a reinit() call
+    for (const body of bodyEquations) {
+      if (body.kind === EqKind.FunctionCall) {
+        // Function call — check for reinit(var, expr)
+        const callExprId = body.lhsExprId;
+        if (this.arena.getExprKind(callExprId) === ExprKind.Call) {
+          const funcNameId = this.arena.getExprData1(callExprId);
+          const funcName = this.arena.interner.resolve(funcNameId);
+          if (funcName === "reinit") {
+            const argCount = this.arena.getExprRight(callExprId);
+            if (argCount >= 2) {
+              const firstArgId = this.arena.getExprLeft(callExprId);
+              const secondArgId = firstArgId + 1;
+              if (this.arena.getExprKind(firstArgId) === ExprKind.Name) {
+                const targetNameId = this.arena.getExprData1(firstArgId);
+                actions.push({ type: "reinit", targetNameId, exprId: secondArgId });
+              }
+            }
+          }
+        }
+      } else if (body.kind === EqKind.Simple) {
+        // Regular assignment: lhs = rhs
+        const lhs = body.lhsExprId;
+        const rhs = body.rhsExprId;
+        // Check if RHS is a reinit() call
         if (this.arena.getExprKind(rhs) === ExprKind.Call) {
           const funcNameId = this.arena.getExprData1(rhs);
           const funcName = this.arena.interner.resolve(funcNameId);
           if (funcName === "reinit" && this.arena.getExprKind(lhs) === ExprKind.Name) {
             const targetNameId = this.arena.getExprData1(lhs);
-            const valueExprId = this.arena.getExprLeft(rhs);
-            actions.push({ type: "reinit", targetNameId, exprId: valueExprId });
+            // reinit stored as simple eq: lhs=target, rhs=reinit(target, newValue)
+            // The actual new value is the second argument of the call
+            const argCount = this.arena.getExprRight(rhs);
+            if (argCount >= 2) {
+              const valueExprId = this.arena.getExprLeft(rhs) + 1; // second arg
+              actions.push({ type: "reinit", targetNameId, exprId: valueExprId });
+            }
             continue;
           }
         }
-        // Regular assignment: lhs = rhs
         if (this.arena.getExprKind(lhs) === ExprKind.Name) {
           const targetNameId = this.arena.getExprData1(lhs);
           actions.push({ type: "assign", targetNameId, exprId: rhs });

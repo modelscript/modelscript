@@ -52,13 +52,10 @@ export function collectArenaExprDeps(arena: ArenaDAEBuilder, exprId: number, dep
  * Note: ArenaDAEBuilder should ideally have a Map<StringId, number> for O(1) lookup.
  */
 function resolveArenaVarIdx(arena: ArenaDAEBuilder, nameId: number): number {
-  // O(N) fallback if not cached
-  for (let i = 0; i < arena.varCount; i++) {
-    if (!arena.isVarRemoved(i) && arena.getVarNameId(i) === nameId) {
-      return i;
-    }
-  }
-  return -1;
+  // O(1): resolve StringId → name string → VarIdx via name index
+  const name = arena.interner.resolve(nameId);
+  if (!name) return -1;
+  return arena.getVarIdxByName(name);
 }
 
 export interface ArenaBltResult {
