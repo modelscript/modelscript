@@ -353,6 +353,27 @@ export class ArenaDAEBuilder {
   /** Child function DAEs. */
   functions = new Map<StringId, ArenaDAEBuilder>();
 
+  /** Inline body equation descriptor for when-clause metadata. */
+
+  /**
+   * When-equation metadata side-table.
+   * Maps equation index → compound when-clause data stored inline (not referencing the main equation array).
+   * This prevents when-clause body equations from polluting the BLT equation count.
+   */
+  private whenEquationMeta = new Map<
+    number,
+    {
+      conditionExprId: number;
+      /** Body equations stored inline: each has a kind (Simple or FunctionCall) and expression IDs. */
+      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      /** Else-when clauses, each with a condition and inline body equations. */
+      elseWhenClauses: {
+        conditionExprId: number;
+        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+      }[];
+    }
+  >();
+
   /** Variable attribute ExprIds: varIndex → Map<attrName, ExprId>. */
   private varAttrExprIds = new Map<number, Map<string, number>>();
 
@@ -752,9 +773,41 @@ export class ArenaDAEBuilder {
     return this.eqData[idx * EQ_STRIDE + EQ_AUX]!;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Expression API
-  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * Add a when-equation with compound metadata.
+   * Body equations are stored inline in the side-table (not in the main equation array).
+   *
+   * @param conditionExprId - ExprId of the when-clause condition (e.g., `h <= 0`).
+   * @param bodyEquations - Inline body equation descriptors (kind + expression IDs).
+   * @param elseWhenClauses - Else-when clause metadata with inline body equations.
+   * @returns The equation index.
+   */
+  addWhenEquation(
+    conditionExprId: number,
+    bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+    elseWhenClauses: {
+      conditionExprId: number;
+      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    }[] = [],
+  ): number {
+    const idx = this.addEquation(EqKind.When, conditionExprId, 0, bodyEquations.length);
+    this.whenEquationMeta.set(idx, { conditionExprId, bodyEquations, elseWhenClauses });
+    return idx;
+  }
+
+  /** Get when-equation compound metadata for a When-kind equation. */
+  getWhenEquationMeta(idx: number):
+    | {
+        conditionExprId: number;
+        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+        elseWhenClauses: {
+          conditionExprId: number;
+          bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+        }[];
+      }
+    | undefined {
+    return this.whenEquationMeta.get(idx);
+  }
 
   /** Number of expressions stored. */
   get exprCount(): number {
@@ -1121,12 +1174,15 @@ export class ArenaDAEBuilder {
 
   /** Clear all equations of a specific kind, shifting remaining equations to fill gaps. O(N) */
   clearEquationsByKindFilter(filterFn: (kind: EqKind) => boolean): void {
+    // Build old→new index remap for side-table updates
+    const remap = new Map<number, number>();
     let writeIdx = 0;
     for (let readIdx = 0; readIdx < this._eqCount; readIdx++) {
       const offset = readIdx * EQ_STRIDE;
       const kind = this.eqData[offset]! as EqKind;
       if (!filterFn(kind)) {
         // Keep this equation
+        remap.set(readIdx, writeIdx);
         if (writeIdx !== readIdx) {
           const writeOffset = writeIdx * EQ_STRIDE;
           this.eqData[writeOffset] = this.eqData[offset]!;
@@ -1138,11 +1194,24 @@ export class ArenaDAEBuilder {
       }
     }
     this._eqCount = writeIdx;
+
+    // Remap side-table keys (body equations are inline, so only equation index keys need remapping)
+    if (remap.size > 0 && remap.size < this._eqCount + 100) {
+      const newWhenMeta = new Map<number, typeof this.whenEquationMeta extends Map<number, infer V> ? V : never>();
+      for (const [oldIdx, meta] of this.whenEquationMeta) {
+        const newIdx = remap.get(oldIdx);
+        if (newIdx !== undefined) {
+          newWhenMeta.set(newIdx, meta); // body equations are inline, no index remapping needed
+        }
+      }
+      this.whenEquationMeta = newWhenMeta;
+    }
   }
 
   /** Reset all equations. */
   clearEquations(): void {
     this._eqCount = 0;
+    this.whenEquationMeta.clear();
   }
 
   /** Reset all statements. */
@@ -1170,6 +1239,7 @@ export class ArenaDAEBuilder {
     this._causalityIndex.clear();
     this._algorithmSections.length = 0;
     this._initialAlgorithmSections.length = 0;
+    this.whenEquationMeta.clear();
   }
 
   /** Release all buffers for GC. */

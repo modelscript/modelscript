@@ -16,6 +16,17 @@ import type {
   ModelicaElement as ModelicaNamedElement,
 } from "./modelica/factory.js";
 
+/**
+ * Minimal subset of the QueryDB interface used for arena-backed name resolution.
+ * This avoids a direct import of `@modelscript/compiler` which would create a
+ * circular dependency. The full QueryDB is injected at runtime via `setQueryDB()`.
+ */
+interface ScopeQueryDB {
+  byName(name: string): { id: number; name: string; kind: string }[];
+  symbol(id: number): { id: number; name: string; kind: string; parentId: number | null } | undefined;
+  childrenOf(id: number): { id: number; name: string; kind: string }[];
+}
+
 // ── Dependency-injected callbacks ───────────────────────────────────────────
 let _resolveBuiltIn: ((name: string) => ModelicaNamedElement | null) | null = null;
 export function setBuiltInResolver(fn: (name: string) => ModelicaNamedElement | null) {
@@ -30,6 +41,22 @@ export function setAnnotationScopeGetter(fn: () => ModelicaNamedElement | null) 
 let _getScriptingScope: (() => ModelicaNamedElement | null) | null = null;
 export function setScriptingScopeGetter(fn: () => ModelicaNamedElement | null) {
   _getScriptingScope = fn;
+}
+
+/**
+ * Optional QueryDB for arena-backed name resolution.
+ * When set, Scope.resolveSimpleName() can fall back to the query engine
+ * for global name lookups (e.g., resolving type names, built-in types).
+ *
+ * This is injected at startup (e.g., by the LSP or CLI) and shared across
+ * all Scope instances. It does NOT replace the scope chain — it augments it.
+ */
+let _queryDB: ScopeQueryDB | null = null;
+export function setQueryDB(db: ScopeQueryDB | null) {
+  _queryDB = db;
+}
+export function getQueryDB(): ScopeQueryDB | null {
+  return _queryDB;
 }
 
 export abstract class Scope {

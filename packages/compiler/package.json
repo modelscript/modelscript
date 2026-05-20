@@ -82,6 +82,10 @@
     "./symbol-arena": {
       "types": "./dist/symbol-arena.d.ts",
       "default": "./dist/symbol-arena.js"
+    },
+    "./dae-arena": {
+      "types": "./dist/dae-arena.d.ts",
+      "default": "./dist/dae-arena.js"
     }
   },
   "main": "dist/index.js",

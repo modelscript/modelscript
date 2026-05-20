@@ -35,6 +35,7 @@ import {
   ModelicaWhenEquation,
   egraphSimplify,
   isolateSymbolically,
+  materializeExpression,
   materializeVariable,
   pantelidesIndexReduction,
 } from "@modelscript/symbolics";
@@ -2173,12 +2174,21 @@ export class ModelicaSimulator {
       for (let _i = 0; _i < _arena.varCount; _i++) {
         if (_arena.isVarRemoved(_i)) continue;
         const _name = _arena.getVarName(_i);
-        // Apply start attribute
+        // Apply start attribute — check legacy storage first, then arena expression IDs
         const startAttr = _arena.getVarStartAttr(_i);
         if (startAttr) {
           const initEval = new ExpressionEvaluator(new Map(this.parameters));
           const val = initEval.evaluate(startAttr as ModelicaExpression);
           if (val !== null) startValues.set(_name, val);
+        } else {
+          // Fallback: arena-native start attribute stored as expression ID
+          const startExprId = _arena.getVarAttrExprId(_i, "start");
+          if (startExprId !== undefined) {
+            const startExpr = materializeExpression(_arena, startExprId);
+            const initEval = new ExpressionEvaluator(new Map(this.parameters));
+            const val = initEval.evaluate(startExpr);
+            if (val !== null) startValues.set(_name, val);
+          }
         }
         // Apply binding expression for non-parameter variables
         const expr = _arena.getVarExpression(_i);
@@ -3845,12 +3855,21 @@ export class ModelicaSimulator {
       for (let _i = 0; _i < _arena.varCount; _i++) {
         if (_arena.isVarRemoved(_i)) continue;
         const _name = _arena.getVarName(_i);
-        // Apply start attribute
+        // Apply start attribute — check legacy storage first, then arena expression IDs
         const startAttr = _arena.getVarStartAttr(_i);
         if (startAttr) {
           const initEval = new ExpressionEvaluator(new Map(this.parameters));
           const val = initEval.evaluate(startAttr as ModelicaExpression);
           if (val !== null) startValues.set(_name, val);
+        } else {
+          // Fallback: arena-native start attribute stored as expression ID
+          const startExprId = _arena.getVarAttrExprId(_i, "start");
+          if (startExprId !== undefined) {
+            const startExpr = materializeExpression(_arena, startExprId);
+            const initEval = new ExpressionEvaluator(new Map(this.parameters));
+            const val = initEval.evaluate(startExpr);
+            if (val !== null) startValues.set(_name, val);
+          }
         }
         // Apply binding expression for non-parameter variables
         const expr = _arena.getVarExpression(_i);

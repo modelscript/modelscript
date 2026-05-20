@@ -354,13 +354,72 @@ export function materializeExpression(arena: ArenaDAEBuilder, id: number): Model
 
 export function materializeEquation(arena: ArenaDAEBuilder, id: number): ModelicaEquation | null {
   const kind = arena.getEqKind(id);
-  const lhs = materializeExpression(arena, arena.getEqLhs(id)!);
-  const rhs = materializeExpression(arena, arena.getEqRhs(id)!);
+  const lhsExprId = arena.getEqLhs(id);
+  const rhsExprId = arena.getEqRhs(id);
 
-  if (kind === EqKind.Simple) return new ModelicaSimpleEquation(lhs, rhs);
-  if (kind === EqKind.Array) return new ModelicaArrayEquation(lhs as any, rhs as any);
-  // Default fallback
+  if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+    const lhs = materializeExpression(arena, lhsExprId);
+    const rhs = materializeExpression(arena, rhsExprId);
+    return new ModelicaSimpleEquation(lhs, rhs);
+  }
+  if (kind === EqKind.Array) {
+    const lhs = materializeExpression(arena, lhsExprId);
+    const rhs = materializeExpression(arena, rhsExprId);
+    return new ModelicaArrayEquation(lhs as any, rhs as any);
+  }
+  if (kind === EqKind.When) {
+    const meta = arena.getWhenEquationMeta(id);
+    if (meta) {
+      const condition = materializeExpression(arena, meta.conditionExprId);
+      const equations = materializeInlineBodyEquations(arena, meta.bodyEquations);
+      const elseWhenClauses: ModelicaElseWhenClause[] = [];
+      for (const ewMeta of meta.elseWhenClauses) {
+        const ewCondition = materializeExpression(arena, ewMeta.conditionExprId);
+        const ewEquations = materializeInlineBodyEquations(arena, ewMeta.bodyEquations);
+        elseWhenClauses.push({ condition: ewCondition, equations: ewEquations });
+      }
+      return new ModelicaWhenEquation(condition, equations, elseWhenClauses);
+    }
+    // Fallback: when-equation without metadata (shouldn't happen with fixed mirroring)
+    const condition = materializeExpression(arena, lhsExprId);
+    return new ModelicaWhenEquation(condition, [], []);
+  }
+  if (kind === EqKind.FunctionCall) {
+    // For standalone FunctionCall equations, lhsExprId holds the call expression ID
+    const call = materializeExpression(arena, lhsExprId);
+    if (call instanceof ModelicaFunctionCallExpression) {
+      return new ModelicaFunctionCallEquation(call);
+    }
+    return null;
+  }
+  // Default fallback for For, If, etc. — materialize as simple equation
+  const lhs = materializeExpression(arena, lhsExprId);
+  const rhs = materializeExpression(arena, rhsExprId);
   return new ModelicaSimpleEquation(lhs, rhs);
+}
+
+/**
+ * Materialize inline body equation descriptors from when-clause metadata
+ * into full ModelicaEquation objects.
+ */
+function materializeInlineBodyEquations(
+  arena: ArenaDAEBuilder,
+  bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+): ModelicaEquation[] {
+  const result: ModelicaEquation[] = [];
+  for (const desc of bodyEquations) {
+    if (desc.kind === EqKind.FunctionCall) {
+      const call = materializeExpression(arena, desc.lhsExprId);
+      if (call instanceof ModelicaFunctionCallExpression) {
+        result.push(new ModelicaFunctionCallEquation(call));
+      }
+    } else {
+      const lhs = materializeExpression(arena, desc.lhsExprId);
+      const rhs = materializeExpression(arena, desc.rhsExprId);
+      result.push(new ModelicaSimpleEquation(lhs, rhs));
+    }
+  }
+  return result;
 }
 
 export class SymbolTable {
@@ -874,6 +933,8 @@ export class ModelicaDAE {
     const originalPush = this.equations.push.bind(this.equations);
     this.equations.push = (...eqs) => {
       for (const eq of eqs) {
+        // Skip WhenEquations here — they are mirrored separately via whenClauses.push
+        if (eq instanceof ModelicaWhenEquation) continue;
         this._mirrorEquationToArena(eq);
       }
       return originalPush(...eqs);
@@ -922,26 +983,70 @@ export class ModelicaDAE {
   }
 
   private _mirrorEquationToArena(eq: ModelicaEquation, initial = false): void {
-    if (this.arena) {
-      let kind = initial ? EqKind.InitialSimple : EqKind.Simple;
-      if (eq.constructor.name === "ModelicaForEquation") kind = initial ? EqKind.InitialFor : EqKind.For;
-      else if (eq.constructor.name === "ModelicaIfEquation") kind = EqKind.If;
-      else if (eq.constructor.name === "ModelicaWhenEquation") kind = EqKind.When;
-      else if (eq.constructor.name === "ModelicaFunctionCallEquation") kind = EqKind.FunctionCall;
-      else if (eq.constructor.name === "ModelicaArrayEquation") kind = EqKind.Array;
+    if (!this.arena) return;
 
-      let lhsId = 0;
-      let rhsId = 0;
-      if (eq instanceof ModelicaSimpleEquation) {
-        lhsId = this._mirrorExpressionToArena(eq.expression1);
-        rhsId = this._mirrorExpressionToArena(eq.expression2);
-      } else if (eq instanceof ModelicaArrayEquation) {
-        lhsId = this._mirrorExpressionToArena(eq.expression1);
-        rhsId = this._mirrorExpressionToArena(eq.expression2);
+    if (eq instanceof ModelicaSimpleEquation) {
+      const lhsId = this._mirrorExpressionToArena(eq.expression1);
+      const rhsId = this._mirrorExpressionToArena(eq.expression2);
+      this.arena.addEquation(initial ? EqKind.InitialSimple : EqKind.Simple, lhsId, rhsId);
+    } else if (eq instanceof ModelicaArrayEquation) {
+      const lhsId = this._mirrorExpressionToArena(eq.expression1);
+      const rhsId = this._mirrorExpressionToArena(eq.expression2);
+      this.arena.addEquation(initial ? EqKind.InitialSimple : EqKind.Array, lhsId, rhsId);
+    } else if (eq instanceof ModelicaWhenEquation) {
+      // Mirror condition expression
+      const condExprId = this._mirrorExpressionToArena(eq.condition);
+
+      // Mirror body equations as inline descriptors (not added to main equation array)
+      const bodyEquations = this._mirrorBodyEquationsInline(eq.equations);
+
+      // Mirror else-when clauses
+      const elseWhenClauses: {
+        conditionExprId: number;
+        bodyEquations: { kind: import("@modelscript/compiler").EqKind; lhsExprId: number; rhsExprId: number }[];
+      }[] = [];
+      for (const elseWhen of eq.elseWhenClauses) {
+        const ewCondExprId = this._mirrorExpressionToArena(elseWhen.condition);
+        const ewBodyEquations = this._mirrorBodyEquationsInline(elseWhen.equations);
+        elseWhenClauses.push({ conditionExprId: ewCondExprId, bodyEquations: ewBodyEquations });
       }
 
-      this.arena.addEquation(kind, lhsId, rhsId);
+      this.arena.addWhenEquation(condExprId, bodyEquations, elseWhenClauses);
+    } else if (eq instanceof ModelicaFunctionCallEquation) {
+      const callExprId = this._mirrorExpressionToArena(eq.call);
+      this.arena.addEquation(EqKind.FunctionCall, callExprId, 0);
+    } else if (eq.constructor.name === "ModelicaForEquation") {
+      this.arena.addEquation(initial ? EqKind.InitialFor : EqKind.For, 0, 0);
+    } else if (eq.constructor.name === "ModelicaIfEquation") {
+      this.arena.addEquation(EqKind.If, 0, 0);
+    } else {
+      // Unknown equation type — add as simple with no data
+      this.arena.addEquation(initial ? EqKind.InitialSimple : EqKind.Simple, 0, 0);
     }
+  }
+
+  /**
+   * Mirror a list of body equations (from a when-clause) into inline descriptors.
+   * Does NOT add them to the main equation array — they live only in the when-clause metadata.
+   */
+  private _mirrorBodyEquationsInline(
+    equations: ModelicaEquation[],
+  ): { kind: import("@modelscript/compiler").EqKind; lhsExprId: number; rhsExprId: number }[] {
+    const result: { kind: import("@modelscript/compiler").EqKind; lhsExprId: number; rhsExprId: number }[] = [];
+    for (const bodyEq of equations) {
+      if (bodyEq instanceof ModelicaFunctionCallEquation) {
+        const callExprId = this._mirrorExpressionToArena(bodyEq.call);
+        result.push({ kind: EqKind.FunctionCall, lhsExprId: callExprId, rhsExprId: 0 });
+      } else if (bodyEq instanceof ModelicaSimpleEquation) {
+        const lhsId = this._mirrorExpressionToArena(bodyEq.expression1);
+        const rhsId = this._mirrorExpressionToArena(bodyEq.expression2);
+        result.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
+      } else {
+        // Unknown body equation type — store as simple with zero expressions
+        result.push({ kind: EqKind.Simple, lhsExprId: 0, rhsExprId: 0 });
+      }
+    }
+    return result;
   }
 
   /**
@@ -1083,8 +1188,11 @@ export class ModelicaDAE {
    * and when-clause removal.
    */
   replaceEquations(eqs: ModelicaEquation[]): void {
-    // Clear only non-initial equations from the arena (InitialSimple=7, InitialFor=8)
-    this.arena.clearEquationsByKindFilter((kind: number) => kind !== 7 && kind !== 8);
+    // Clear non-initial, non-when equations from the arena.
+    // When-kind (4) equations are preserved (written by whenClauses.push interceptor).
+    // InitialSimple (7) and InitialFor (8) are also preserved.
+    // FunctionCall body equations are inline in the when-clause side-table, not in the main array.
+    this.arena.clearEquationsByKindFilter((kind: number) => kind !== 7 && kind !== 8 && kind !== 4);
     this.equations.length = 0;
     for (const eq of eqs) {
       this.equations.push(eq); // triggers the dual-write interceptor
@@ -1176,7 +1284,9 @@ export class ModelicaDAE {
   *arenaEquations(): IterableIterator<ModelicaEquation> {
     for (let i = 0; i < this.arena.eqCount; i++) {
       const kind = this.arena.getEqKind(i);
-      if (kind !== EqKind.InitialSimple && kind !== EqKind.InitialFor) {
+      // Skip initial equations (served by arenaInitialEquations) and
+      // When equations (served by arenaWhenClauses — they are event equations, not continuous-time)
+      if (kind !== EqKind.InitialSimple && kind !== EqKind.InitialFor && kind !== EqKind.When) {
         const eq = materializeEquation(this.arena, i);
         if (eq) yield eq;
       }

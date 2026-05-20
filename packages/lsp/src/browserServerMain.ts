@@ -5868,7 +5868,7 @@ connection.onRequest("modelscript/runScript", async (params: { uri: string }) =>
     output += msg + "\n";
   });
 
-  const scriptScope = new ModelicaScriptScope(context);
+  const scriptScope = new ModelicaScriptScope(context as any);
 
   try {
     interpreter.visitStoredDefinition(storedDef, scriptScope);
@@ -5894,7 +5894,7 @@ connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: 
   // Get or create session scope
   let scope = notebookSessions.get(params.sessionId);
   if (!scope) {
-    scope = new ModelicaScriptScope(ctx);
+    scope = new ModelicaScriptScope(ctx as any);
     notebookSessions.set(params.sessionId, scope);
   }
 
@@ -6412,7 +6412,7 @@ connection.onRequest(
       for (let i = 0; i < binaryStr.length; i++) {
         fmuBytes[i] = binaryStr.charCodeAt(i);
       }
-      const fmuEntity = ModelicaFmuEntity.fromFmu(context, params.name, fmuBytes);
+      const fmuEntity = ModelicaFmuEntity.fromFmu(context as any, params.name, fmuBytes);
       fmuEntity.load();
       fmuEntity.instantiate();
       const uri = `__fmu__:${params.name}`;
@@ -6473,7 +6473,7 @@ connection.onRequest(
       // Extract modelDescription.xml from ZIP
       // Re-use the inline extraction or parse directly from ModelicaFmuEntity
       const context = sharedContext ?? new Context(sharedFs);
-      const fmuEntity = ModelicaFmuEntity.fromFmu(context, params.name, fmuBytes);
+      const fmuEntity = ModelicaFmuEntity.fromFmu(context as any, params.name, fmuBytes);
       fmuEntity.load();
 
       // Parse the model description for wrapper generation

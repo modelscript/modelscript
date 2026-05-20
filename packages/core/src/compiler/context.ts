@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { eliminateArenaAliases, type QueryEngine } from "@modelscript/compiler";
+import { type ArenaDAEBuilder } from "@modelscript/compiler/dae-arena";
 import type { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
 import { StringWriter } from "@modelscript/utils";
+import type { ModelicaElement } from "./modelica/factory.js";
 import {
   ModelicaClassInstance,
   createModelicaQueryEngine,
@@ -14,7 +17,6 @@ import {
 } from "./modelica/factory.js";
 import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
-import { Scope } from "./scope.js";
 export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
 export type PreconditionerMode = "none" | "branch-and-bound";
 export interface InitSolverConfig {
@@ -67,8 +69,13 @@ export class ModelicaLibrary {
 
 /**
  * The polyglot compiler context managing file system resources and loaded Modelica code.
+ *
+ * NOTE: Context no longer extends Scope. It was historically the root scope with
+ * no parent, but it doesn't participate in name resolution chains. Instead, it
+ * owns a QueryEngine (Salsa-style incremental computation) and a WorkspaceIndex
+ * (arena-backed symbol storage). Name resolution is handled by the QueryDB.
  */
-export class Context extends Scope {
+export class Context {
   #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
@@ -100,7 +107,6 @@ export class Context extends Scope {
    * @param maxMemos - Optional max number of memos to keep in memory
    */
   constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number) {
-    super(null);
     this.#fs = fs;
     this.#workspaceIndex = createModelicaWorkspaceIndex();
 
@@ -143,6 +149,54 @@ export class Context extends Scope {
   }
 
   readonly hash = "root";
+
+  get elements(): IterableIterator<any> {
+    const classes = this.#classes;
+    const libraries = this.#libraries;
+    return (function* () {
+      yield* classes;
+      yield* libraries;
+    })();
+  }
+
+  readonly parent: null = null;
+
+  getNamedElement(name: string): ModelicaElement | null {
+    for (const element of this.elements) {
+      if ("name" in element && (element as { name?: string }).name === name) {
+        return element as ModelicaElement;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Resolve a dot-separated name to a named element within the loaded classes.
+   * This replaces the `Scope.query()` method that was previously inherited.
+   */
+  query(name: string): ModelicaElement | null {
+    return this.resolveName(name.split("."));
+  }
+
+  /**
+   * Resolve a name (as an array of parts) through the loaded class hierarchy.
+   * This replaces the `Scope.resolveName()` method that was previously inherited.
+   */
+  resolveName(parts: string[] | null | undefined): ModelicaElement | null {
+    if (!parts || parts.length === 0) return null;
+    const first = parts[0];
+    if (!first) return null;
+    let element = this.getNamedElement(first);
+    if (!element) return null;
+    for (let i = 1; i < parts.length; i++) {
+      const nameStr = parts[i];
+      if (!nameStr) return null;
+      if (typeof (element as any).resolveSimpleName !== "function") return null;
+      element = (element as any).resolveSimpleName(nameStr, false, true) as any;
+      if (!element) return null;
+    }
+    return element;
+  }
 
   /**
    * Adds and parses a Modelica library from the specified file system path.
@@ -266,7 +320,10 @@ export class Context extends Scope {
     }
   }
 
-  get elements(): IterableIterator<any> {
+  /**
+   * @deprecated Use `classes` or `listLibraries()` instead.
+   */
+  get allElements(): IterableIterator<any> {
     const classes = this.#classes;
     const libraries = this.#libraries;
     return (function* () {
@@ -302,6 +359,43 @@ export class Context extends Scope {
     return out.toString();
   }
 
+  /**
+   * Flatten a Modelica class using the arena-native pipeline.
+   *
+   * This is the new canonical flattening API. It bypasses `ModelicaDAE` entirely,
+   * using `ArenaQueryFlattener` → `ArenaDAEBuilder` directly.
+   *
+   * @param name - The fully qualified name of the Modelica class to flatten.
+   * @returns An `ArenaDAEBuilder` containing the flattened DAE, or null if the class is not found.
+   */
+  flattenArena(name: string): ArenaDAEBuilder | null {
+    // Resolve the class name to a SymbolId via the workspace index
+    const symbolIds = this.#queryEngine.index.byName.get(name);
+    if (!symbolIds || symbolIds.length === 0) {
+      // Try multi-part resolution: "A.B.C" — look for root "A" first
+      const parts = name.split(".");
+      const rootName = parts[0];
+      if (parts.length > 1 && rootName) {
+        const rootIds = this.#queryEngine.index.byName.get(rootName);
+        if (!rootIds || rootIds.length === 0) return null;
+        // TODO: Walk children for nested classes when the workspace index
+        // doesn't have the full FQN registered directly.
+      }
+      return null;
+    }
+
+    const firstId = symbolIds[0];
+    if (firstId === undefined) return null;
+
+    const queryDB = this.#queryEngine.toQueryDB();
+    const flattener = new ArenaQueryFlattener(queryDB);
+    return flattener.flatten(firstId);
+  }
+
+  /**
+   * @deprecated Use `flattenArena()` instead. This method uses the legacy
+   * `ModelicaFlattener` → `ModelicaDAE` pipeline which is being phased out.
+   */
   flattenDAE(name: string, options?: ModelicaCompilerOptions): ModelicaDAE | null {
     const parts = name.split(".");
     let instance: ModelicaClassInstance | undefined = this.classes.find((c) => c.name === parts[0]);
