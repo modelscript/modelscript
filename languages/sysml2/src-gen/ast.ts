@@ -14,6 +14,10 @@ export class UsageNode extends SemanticNode {
   get ownedRelationship(): string | null {
     return this.field("ownedRelationship");
   }
+  /** Field: guard */
+  get guard(): string | null {
+    return this.field("guard");
+  }
   /** Field: sentItem */
   get sentItem(): string | null {
     return this.field("sentItem");
@@ -33,10 +37,6 @@ export class UsageNode extends SemanticNode {
   /** Field: trigger */
   get trigger(): string | null {
     return this.field("trigger");
-  }
-  /** Field: guard */
-  get guard(): string | null {
-    return this.field("guard");
   }
   /** Field: effect */
   get effect(): string | null {

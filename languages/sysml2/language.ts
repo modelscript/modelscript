@@ -3147,9 +3147,16 @@ export default language({
           $.ConnectorEndMember,
           "then",
           $.ConnectorEndMember,
+          optional(seq("if", field("guard", $.OwnedExpression))),
           $._DefinitionBody,
         ),
-        symbol: usageAttrs("succession"),
+        symbol: (self: any) => ({
+          ...usageAttrs("succession")(self),
+          attributes: {
+            ...usageAttrs("succession")(self).attributes,
+            guard: self.guard,
+          },
+        }),
         queries: usageQueries,
         model: usageModel,
         lints: usageLints,
@@ -3401,13 +3408,33 @@ export default language({
 
     ControlNode: ($) => choice($.MergeNode, $.DecisionNode, $.JoinNode, $.ForkNode),
 
-    MergeNode: ($) => seq(repeat($._usage_modifier), "merge", optional($._UsageDeclaration), $._ActionBody),
+    MergeNode: ($) =>
+      def({
+        syntax: seq(repeat($._usage_modifier), "merge", optional($._UsageDeclaration), $._ActionBody),
+        symbol: usageAttrs("merge"),
+        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+      }),
 
-    DecisionNode: ($) => seq(repeat($._usage_modifier), "decide", optional($._UsageDeclaration), $._ActionBody),
+    DecisionNode: ($) =>
+      def({
+        syntax: seq(repeat($._usage_modifier), "decide", optional($._UsageDeclaration), $._ActionBody),
+        symbol: usageAttrs("decide"),
+        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+      }),
 
-    JoinNode: ($) => seq(repeat($._usage_modifier), "join", optional($._UsageDeclaration), $._ActionBody),
+    JoinNode: ($) =>
+      def({
+        syntax: seq(repeat($._usage_modifier), "join", optional($._UsageDeclaration), $._ActionBody),
+        symbol: usageAttrs("join"),
+        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+      }),
 
-    ForkNode: ($) => seq(repeat($._usage_modifier), "fork", optional($._UsageDeclaration), $._ActionBody),
+    ForkNode: ($) =>
+      def({
+        syntax: seq(repeat($._usage_modifier), "fork", optional($._UsageDeclaration), $._ActionBody),
+        symbol: usageAttrs("fork"),
+        graphics: () => ({ role: "node", node: { shape: "rect", attrs: {} } }),
+      }),
 
     ActionUsage: ($) =>
       def({

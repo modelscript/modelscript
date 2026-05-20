@@ -20721,6 +20721,16 @@
           }
         ]
       },
+      "guard": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "OwnedExpression",
+            "named": true
+          }
+        ]
+      },
       "isAbstract": {
         "multiple": true,
         "required": false,

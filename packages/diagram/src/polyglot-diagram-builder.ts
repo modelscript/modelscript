@@ -388,6 +388,22 @@ export function buildPolyglotDiagram(
     if (cfg.role === "group") groupKinds.add(kind);
   }
 
+  // If we're building a StateMachine diagram, treat states as groups so they can nest children
+  if (diagramType === "StateMachine") {
+    groupKinds.add("StateDefinition");
+    groupKinds.add("StateUsage");
+    groupKinds.add("ExhibitStateUsage");
+  }
+
+  // If we're building an Activity diagram, treat structural allocations (actors, parts)
+  // as groups so they act as swimlane partitions.
+  if (diagramType === "Activity") {
+    groupKinds.add("ActorUsage");
+    groupKinds.add("SubjectUsage");
+    groupKinds.add("PartUsage");
+    groupKinds.add("PartDefinition");
+  }
+
   // Kinds that should NOT be absorbed into compartment text — they get their own
   // diagram nodes (PartUsage/PartDefinition) or become X6 ports (PortUsage).
   const STANDALONE_CHILD_KINDS = new Set([
@@ -398,6 +414,13 @@ export function buildPolyglotDiagram(
     "ActorUsage",
     "StakeholderUsage",
   ]);
+
+  // In StateMachine diagrams, nested states get their own nodes (for composite states)
+  if (diagramType === "StateMachine") {
+    STANDALONE_CHILD_KINDS.add("StateDefinition");
+    STANDALONE_CHILD_KINDS.add("StateUsage");
+    STANDALONE_CHILD_KINDS.add("ExhibitStateUsage");
+  }
 
   for (const sym of allSymbols) {
     if (sym.parentId === null) continue;
@@ -1381,9 +1404,9 @@ export function buildPolyglotDiagram(
     }));
 
     // ── Dynamic transition labels: trigger [guard] / effect ──
-    // If this is a TransitionUsage with guard/trigger/effect metadata,
-    // replace the static «transition» label with the UML/SysML convention.
-    if (sym.ruleName === "TransitionUsage") {
+    // If this is a TransitionUsage or SuccessionAsUsage with guard/trigger/effect metadata,
+    // replace the static label with the UML/SysML convention.
+    if (sym.ruleName === "TransitionUsage" || sym.ruleName === "SuccessionAsUsage") {
       const trigger = sym.metadata.trigger as string | undefined;
       const guard = sym.metadata.guard as string | undefined;
       const effect = sym.metadata.effect as string | undefined;
@@ -1395,11 +1418,16 @@ export function buildPolyglotDiagram(
 
       if (parts.length > 0) {
         const labelText = parts.join(" ");
+        // Choose colors based on whether it's a state transition or an activity succession
+        const isTransition = sym.ruleName === "TransitionUsage";
+        const strokeColor = isTransition ? "#f9a825" : "#455a64";
+        const bgColor = isTransition ? "#fffde7" : "#f5f5f5";
+
         resolvedLabels = [
           {
             attrs: {
               text: { text: labelText, fill: "#555", fontSize: 11, fontStyle: "italic" },
-              rect: { fill: "#fffde7", stroke: "#f9a825", strokeWidth: 0.5, rx: 3, ry: 3 },
+              rect: { fill: bgColor, stroke: strokeColor, strokeWidth: 0.5, rx: 3, ry: 3 },
             },
             position: { distance: 0.5, offset: -12 },
           },

@@ -812,8 +812,6 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     //   Phase 2: Top-level Dagre with expanded container sizes
     //   Phase 3: Reposition children relative to final parent positions
 
-    const PAD = { top: 60, left: 40, right: 40, bottom: 40 };
-
     // Build parent → children map from the node data
     const parentChildMap = new Map<string, typeof nodes>();
     for (const node of nodes) {
@@ -833,6 +831,10 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
     for (const [parentId, childNodes] of parentChildMap) {
       const parentNode = nodes.find((n) => n.id === parentId);
       if (!parentNode) continue;
+
+      // Dynamically compute padding to ensure children don't overlap with the parent's
+      // header or compartments (whose size is encoded in the initial parentNode.height).
+      const PAD = { top: Math.max(60, parentNode.height || 60), left: 40, right: 40, bottom: 40 };
 
       const childIds = new Set(childNodes.map((c) => c.id));
 

@@ -460,6 +460,7 @@ export default grammar({
         $.ConnectorEndMember,
         "then",
         $.ConnectorEndMember,
+        optional(seq("if", field("guard", $.OwnedExpression))),
         $._DefinitionBody,
       ),
     InterfaceDefinition: ($) =>
