@@ -659,4 +659,123 @@ export class StaticTapeBuilder {
     }
     return lines;
   }
+
+  public emitReverseC(outputIndex: number): { code: string[]; gradients: Map<string, number> } {
+    const lines: string[] = [];
+    if (this.length === 0 || outputIndex < 0 || outputIndex >= this.length) {
+      return { code: [], gradients: new Map() };
+    }
+
+    lines.push(`  double dt[${this.length}];`);
+    lines.push(`  memset(dt, 0, ${this.length} * sizeof(double));`);
+    lines.push(`  dt[${outputIndex}] = 1.0; /* Seed the gradient */`);
+
+    // Reverse topological traversal
+    for (let i = this.length - 1; i >= 0; i--) {
+      const offset = i * TAPE_STRIDE;
+      const kind = this.opData[offset + TAPE_OP_KIND]!;
+      const a = this.opData[offset + TAPE_DATA1]!;
+      const b = this.opData[offset + TAPE_DATA2]!;
+      const c = this.opData[offset + TAPE_DATA3]!;
+
+      if (
+        kind === TapeOpKind.Const ||
+        kind === TapeOpKind.Var ||
+        kind === TapeOpKind.VecVar ||
+        kind === TapeOpKind.VecConst ||
+        kind === TapeOpKind.Nop
+      ) {
+        continue;
+      }
+
+      // Optimization: if dt is 0, skip branching
+      lines.push(`  if (dt[${i}] != 0.0) {`);
+      switch (kind) {
+        case TapeOpKind.Add:
+          lines.push(`    dt[${a}] += dt[${i}];`);
+          lines.push(`    dt[${b}] += dt[${i}];`);
+          break;
+        case TapeOpKind.Sub:
+          lines.push(`    dt[${a}] += dt[${i}];`);
+          lines.push(`    dt[${b}] -= dt[${i}];`);
+          break;
+        case TapeOpKind.Mul:
+          lines.push(`    dt[${a}] += dt[${i}] * t[${b}];`);
+          lines.push(`    dt[${b}] += dt[${i}] * t[${a}];`);
+          break;
+        case TapeOpKind.Div:
+          lines.push(`    dt[${a}] += dt[${i}] / t[${b}];`);
+          lines.push(`    dt[${b}] -= dt[${i}] * t[${a}] / (t[${b}] * t[${b}]);`);
+          break;
+        case TapeOpKind.Pow:
+          lines.push(`    dt[${a}] += dt[${i}] * t[${b}] * pow(t[${a}], t[${b}] - 1.0);`);
+          lines.push(`    dt[${b}] += dt[${i}] * t[${i}] * log(t[${a}]);`); // t[i] is a^b
+          break;
+        case TapeOpKind.Neg:
+          lines.push(`    dt[${a}] -= dt[${i}];`);
+          break;
+        case TapeOpKind.Sin:
+          lines.push(`    dt[${a}] += dt[${i}] * cos(t[${a}]);`);
+          break;
+        case TapeOpKind.Cos:
+          lines.push(`    dt[${a}] -= dt[${i}] * sin(t[${a}]);`);
+          break;
+        case TapeOpKind.Tan:
+          lines.push(`    dt[${a}] += dt[${i}] * (1.0 + t[${i}] * t[${i}]);`); // 1 + tan²x
+          break;
+        case TapeOpKind.Exp:
+          lines.push(`    dt[${a}] += dt[${i}] * t[${i}];`);
+          break;
+        case TapeOpKind.Log:
+          lines.push(`    dt[${a}] += dt[${i}] / t[${a}];`);
+          break;
+        case TapeOpKind.Sqrt:
+          lines.push(`    dt[${a}] += dt[${i}] / (2.0 * t[${i}]);`);
+          break;
+        // ── Vector ops ──
+        case TapeOpKind.VecAdd:
+          lines.push(`    for (int _k = 0; _k < ${b}; _k++) {`);
+          lines.push(`      dt[${a}+_k] += dt[${i}+_k]; dt[${c}+_k] += dt[${i}+_k];`);
+          lines.push(`    }`);
+          break;
+        case TapeOpKind.VecSub:
+          lines.push(`    for (int _k = 0; _k < ${b}; _k++) {`);
+          lines.push(`      dt[${a}+_k] += dt[${i}+_k]; dt[${c}+_k] -= dt[${i}+_k];`);
+          lines.push(`    }`);
+          break;
+        case TapeOpKind.VecMul:
+          lines.push(`    for (int _k = 0; _k < ${b}; _k++) {`);
+          lines.push(`      dt[${a}+_k] += dt[${i}+_k] * t[${c}+_k];`);
+          lines.push(`      dt[${c}+_k] += dt[${i}+_k] * t[${a}+_k];`);
+          lines.push(`    }`);
+          break;
+        case TapeOpKind.VecNeg:
+          lines.push(`    for (int _k = 0; _k < ${b}; _k++) dt[${a}+_k] -= dt[${i}+_k];`);
+          break;
+        case TapeOpKind.VecSubscript:
+          lines.push(`    dt[${a + c}] += dt[${i}];`);
+          break;
+      }
+      lines.push(`  }`);
+    }
+
+    // Extract gradients mapping
+    const gradients = new Map<string, number>();
+    for (let i = 0; i < this.length; i++) {
+      const offset = i * TAPE_STRIDE;
+      const kind = this.opData[offset + TAPE_OP_KIND]!;
+      const a = this.opData[offset + TAPE_DATA1]!;
+      const b = this.opData[offset + TAPE_DATA2]!;
+      if (kind === TapeOpKind.Var) {
+        gradients.set(this.interner.resolve(a) || "", i);
+      } else if (kind === TapeOpKind.VecVar) {
+        const baseName = this.interner.resolve(a) || "";
+        for (let k = 0; k < b; k++) {
+          gradients.set(`${baseName}[${k + 1}]`, i + k);
+        }
+      }
+    }
+
+    return { code: lines, gradients };
+  }
 }

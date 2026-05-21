@@ -2,19 +2,9 @@
 
 /**
  * SUNDIALS C glue-code generator.
- *
- * Emits a standalone `main.c` that bridges the model instance (from
- * fmu-codegen.ts) to the SUNDIALS solver wrappers in sundials-interface.c.
- *
- * The generated code:
- *   1. Allocates and initializes a {id}_Instance
- *   2. Extracts initial state/derivative vectors from model start values
- *   3. Populates a SundialsModelCallbacks struct
- *   4. Calls sundials_cvode_run() or sundials_ida_run()
- *   5. Writes results to CSV on stdout
  */
 
-import type { ModelicaDAE } from "@modelscript/symbolics";
+import type { ArenaDAEBuilder } from "@modelscript/compiler";
 import type { FmuResult } from "./fmi.js";
 import type { SolverOptions } from "./solver-options.js";
 import { formatCDouble } from "./transpiler-utils.js";
@@ -59,7 +49,7 @@ export interface SundialsCodegenResult {
  * Generate SUNDIALS simulation driver C code from a DAE and FMU result.
  */
 export function generateSundialsMainC(
-  dae: ModelicaDAE,
+  dae: ArenaDAEBuilder,
   fmuResult: FmuResult,
   options: SundialsCodegenOptions,
 ): SundialsCodegenResult {
@@ -319,12 +309,8 @@ target_link_libraries(\${PROJECT_NAME} PRIVATE
 // ── Helpers ──
 
 /** Detect whether to use CVODE or IDA based on DAE structure. */
-function detectSolverChoice(dae: ModelicaDAE): "cvode" | "ida" {
-  // If the DAE has algebraic loops, use IDA (implicit solver)
-  if (dae.algebraicLoops && dae.algebraicLoops.length > 0) {
-    return "ida";
-  }
-  // Default to CVODE for explicit ODE systems
+function detectSolverChoice(_dae: ArenaDAEBuilder): "cvode" | "ida" {
+  void _dae;
   return "cvode";
 }
 

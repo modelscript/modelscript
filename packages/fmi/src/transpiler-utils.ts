@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaBinaryOperator } from "@modelscript/modelica/ast";
+import { BinOp } from "@modelscript/compiler";
 
 /** Sanitize a Modelica name into a valid C/JS identifier. */
 export function sanitizeIdentifier(name: string): string {
@@ -12,38 +12,38 @@ export function sanitizeIdentifier(name: string): string {
 }
 
 /** Map binary operator to C operator. */
-export function binaryOpToC(op: ModelicaBinaryOperator): string {
+export function binaryOpToC(op: BinOp): string {
   switch (op) {
-    case ModelicaBinaryOperator.ADDITION:
-    case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+    case BinOp.Add:
+    case BinOp.ElemAdd:
       return "+";
-    case ModelicaBinaryOperator.SUBTRACTION:
-    case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+    case BinOp.Sub:
+    case BinOp.ElemSub:
       return "-";
-    case ModelicaBinaryOperator.MULTIPLICATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+    case BinOp.Mul:
+    case BinOp.ElemMul:
       return "*";
-    case ModelicaBinaryOperator.DIVISION:
-    case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+    case BinOp.Div:
+    case BinOp.ElemDiv:
       return "/";
-    case ModelicaBinaryOperator.EXPONENTIATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+    case BinOp.Pow:
+    case BinOp.ElemPow:
       return "pow";
-    case ModelicaBinaryOperator.LESS_THAN:
+    case BinOp.Lt:
       return "<";
-    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+    case BinOp.Lte:
       return "<=";
-    case ModelicaBinaryOperator.GREATER_THAN:
+    case BinOp.Gt:
       return ">";
-    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+    case BinOp.Gte:
       return ">=";
-    case ModelicaBinaryOperator.EQUALITY:
+    case BinOp.Eq:
       return "==";
-    case ModelicaBinaryOperator.INEQUALITY:
+    case BinOp.Neq:
       return "!=";
-    case ModelicaBinaryOperator.LOGICAL_AND:
+    case BinOp.And:
       return "&&";
-    case ModelicaBinaryOperator.LOGICAL_OR:
+    case BinOp.Or:
       return "||";
     default:
       return "+";
@@ -51,38 +51,38 @@ export function binaryOpToC(op: ModelicaBinaryOperator): string {
 }
 
 /** Map binary operator to JS operator. */
-export function binaryOpToJs(op: ModelicaBinaryOperator): string {
+export function binaryOpToJs(op: BinOp): string {
   switch (op) {
-    case ModelicaBinaryOperator.ADDITION:
-    case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+    case BinOp.Add:
+    case BinOp.ElemAdd:
       return "+";
-    case ModelicaBinaryOperator.SUBTRACTION:
-    case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+    case BinOp.Sub:
+    case BinOp.ElemSub:
       return "-";
-    case ModelicaBinaryOperator.MULTIPLICATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+    case BinOp.Mul:
+    case BinOp.ElemMul:
       return "*";
-    case ModelicaBinaryOperator.DIVISION:
-    case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+    case BinOp.Div:
+    case BinOp.ElemDiv:
       return "/";
-    case ModelicaBinaryOperator.EXPONENTIATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+    case BinOp.Pow:
+    case BinOp.ElemPow:
       return "pow";
-    case ModelicaBinaryOperator.LESS_THAN:
+    case BinOp.Lt:
       return "<";
-    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+    case BinOp.Lte:
       return "<=";
-    case ModelicaBinaryOperator.GREATER_THAN:
+    case BinOp.Gt:
       return ">";
-    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+    case BinOp.Gte:
       return ">=";
-    case ModelicaBinaryOperator.EQUALITY:
+    case BinOp.Eq:
       return "===";
-    case ModelicaBinaryOperator.INEQUALITY:
+    case BinOp.Neq:
       return "!==";
-    case ModelicaBinaryOperator.LOGICAL_AND:
+    case BinOp.And:
       return "&&";
-    case ModelicaBinaryOperator.LOGICAL_OR:
+    case BinOp.Or:
       return "||";
     default:
       return "+";
@@ -175,23 +175,4 @@ export function escapeCString(s: string): string {
 /** Escape special characters for JS string literals. */
 export function escapeJsString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-}
-
-/** Extract the derivative name from an expression. */
-export function extractDerName(expr: unknown): string | null {
-  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
-    const fe = expr as { functionName: string; args: unknown[] };
-    if (fe.functionName === "der" && fe.args.length === 1) {
-      const a = fe.args[0];
-      if (a && typeof a === "object" && "name" in a) {
-        const n = (a as { name: unknown }).name;
-        if (typeof n === "string") return n;
-      }
-    }
-  }
-  if (expr && typeof expr === "object" && "name" in expr) {
-    const n = (expr as { name: unknown }).name;
-    if (typeof n === "string" && n.startsWith("der(") && n.endsWith(")")) return n.substring(4, n.length - 1);
-  }
-  return null;
 }

@@ -16,7 +16,16 @@
  *     model.json          (serialized DAE for JS-based runtime)
  */
 
-import type { ModelicaDAE } from "@modelscript/symbolics";
+import {
+  type ArenaDAEBuilder,
+  BinOp,
+  Causality,
+  EqKind,
+  ExprKind,
+  UnaryOp,
+  Variability,
+  VarType,
+} from "@modelscript/compiler";
 import { deflateRaw } from "pako";
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { generateFmu } from "./fmi.js";
@@ -54,6 +63,235 @@ export interface FmuArchiveResult {
   files: string[];
 }
 
+/** Serialize ArenaDAEBuilder into a JSON structure matching the legacy DAE schema. */
+export function serializeArenaToJson(dae: ArenaDAEBuilder): Record<string, unknown> {
+  const serializeExpr = (exprId: number): unknown => {
+    if (exprId < 0) return null;
+    const kind = dae.getExprKind(exprId);
+    switch (kind) {
+      case ExprKind.Name:
+        return {
+          "@type": "VariableReference",
+          name: dae.interner.resolve(dae.getExprData1(exprId)) || "",
+        };
+      case ExprKind.IntLiteral:
+        return {
+          "@type": "IntegerLiteral",
+          value: dae.getExprData1(exprId),
+        };
+      case ExprKind.RealLiteral:
+        return {
+          "@type": "RealLiteral",
+          value: dae.getExprRealValue(exprId),
+        };
+      case ExprKind.BoolLiteral:
+        return {
+          "@type": "BooleanLiteral",
+          value: dae.getExprData1(exprId) !== 0,
+        };
+      case ExprKind.StringLiteral:
+        return {
+          "@type": "StringLiteral",
+          value: dae.interner.resolve(dae.getExprData1(exprId)) || "",
+        };
+      case ExprKind.Binary: {
+        const op = dae.getExprData1(exprId) as BinOp;
+        let opStr = "=";
+        switch (op) {
+          case BinOp.Add:
+            opStr = "+";
+            break;
+          case BinOp.Sub:
+            opStr = "-";
+            break;
+          case BinOp.Mul:
+            opStr = "*";
+            break;
+          case BinOp.Div:
+            opStr = "/";
+            break;
+          case BinOp.Pow:
+            opStr = "^";
+            break;
+          case BinOp.ElemAdd:
+            opStr = ".+";
+            break;
+          case BinOp.ElemSub:
+            opStr = ".-";
+            break;
+          case BinOp.ElemMul:
+            opStr = ".*";
+            break;
+          case BinOp.ElemDiv:
+            opStr = "./";
+            break;
+          case BinOp.ElemPow:
+            opStr = ".^";
+            break;
+          case BinOp.And:
+            opStr = "and";
+            break;
+          case BinOp.Or:
+            opStr = "or";
+            break;
+          case BinOp.Eq:
+            opStr = "==";
+            break;
+          case BinOp.Neq:
+            opStr = "<>";
+            break;
+          case BinOp.Lt:
+            opStr = "<";
+            break;
+          case BinOp.Gt:
+            opStr = ">";
+            break;
+          case BinOp.Lte:
+            opStr = "<=";
+            break;
+          case BinOp.Gte:
+            opStr = ">=";
+            break;
+        }
+        return {
+          "@type": "BinaryExpression",
+          operator: opStr,
+          expression1: serializeExpr(dae.getExprLeft(exprId)),
+          expression2: serializeExpr(dae.getExprRight(exprId)),
+        };
+      }
+      case ExprKind.Unary: {
+        const op = dae.getExprData1(exprId) as UnaryOp;
+        const opStr = op === UnaryOp.Negate ? "-" : "!";
+        return {
+          "@type": "UnaryExpression",
+          operator: opStr,
+          operand: serializeExpr(dae.getExprLeft(exprId)),
+        };
+      }
+      case ExprKind.Negate:
+        return {
+          "@type": "UnaryExpression",
+          operator: "-",
+          operand: serializeExpr(dae.getExprLeft(exprId)),
+        };
+      case ExprKind.Call: {
+        const funcName = dae.interner.resolve(dae.getExprData1(exprId)) || "";
+        const count = dae.getExprRight(exprId);
+        const args: unknown[] = [];
+        if (count > 0) {
+          args.push(serializeExpr(dae.getExprLeft(exprId)));
+          for (let i = 1; i < count; i++) {
+            const argId = exprId + i;
+            if (dae.getExprKind(argId) === ExprKind.Tuple) {
+              args.push(serializeExpr(dae.getExprLeft(argId)));
+            }
+          }
+        }
+        return {
+          "@type": "FunctionCallExpression",
+          name: funcName,
+          arguments: args,
+        };
+      }
+      case ExprKind.Der:
+        return {
+          "@type": "FunctionCallExpression",
+          name: "der",
+          arguments: [serializeExpr(dae.getExprData1(exprId))],
+        };
+      case ExprKind.Pre:
+        return {
+          "@type": "FunctionCallExpression",
+          name: "pre",
+          arguments: [serializeExpr(dae.getExprData1(exprId))],
+        };
+      case ExprKind.IfElse:
+        return {
+          "@type": "IfExpression",
+          condition: serializeExpr(dae.getExprData1(exprId)),
+          trueExpression: serializeExpr(dae.getExprLeft(exprId)),
+          falseExpression: serializeExpr(dae.getExprRight(exprId)),
+        };
+      default:
+        return null;
+    }
+  };
+
+  const variables: unknown[] = [];
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const name = dae.getVarName(i);
+    const type = dae.getVarType(i);
+    const variabilityNum = dae.getVarVariability(i);
+    const causalityNum = dae.getVarCausality(i);
+
+    let vtype = "RealVariable";
+    if (type === VarType.Integer) vtype = "IntegerVariable";
+    else if (type === VarType.Boolean) vtype = "BooleanVariable";
+    else if (type === VarType.String) vtype = "StringVariable";
+    else if (type === VarType.Clock) vtype = "ClockVariable";
+    else if (type === VarType.Enumeration) vtype = "EnumerationVariable";
+
+    let variability: string | undefined;
+    if (variabilityNum === Variability.Discrete) variability = "discrete";
+    else if (variabilityNum === Variability.Parameter) variability = "parameter";
+    else if (variabilityNum === Variability.Constant) variability = "constant";
+
+    let causality: string | undefined;
+    if (causalityNum === Causality.Input) causality = "input";
+    else if (causalityNum === Causality.Output) causality = "output";
+
+    const vJson: Record<string, unknown> = {
+      "@type": vtype,
+      name,
+    };
+    if (variability) vJson.variability = variability;
+    if (causality) vJson.causality = causality;
+
+    const exprId = dae.getVarExpression(i);
+    if (typeof exprId === "number" && exprId >= 0) {
+      vJson.expression = serializeExpr(exprId);
+    }
+
+    const startAttr = dae.getVarStartAttr(i);
+    if (startAttr !== undefined) {
+      if (typeof startAttr === "number") {
+        vJson.start = serializeExpr(startAttr);
+      } else {
+        vJson.start = startAttr;
+      }
+    } else {
+      const startVal = dae.getVarStartValue(i);
+      if (startVal !== 0) {
+        vJson.start = startVal;
+      }
+    }
+
+    variables.push(vJson);
+  }
+
+  const equations: unknown[] = [];
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind === EqKind.Simple || kind === EqKind.InitialSimple) {
+      equations.push({
+        "@type": "SimpleEquation",
+        expression1: serializeExpr(dae.getEqLhs(i)),
+        operator: "=",
+        expression2: serializeExpr(dae.getEqRhs(i)),
+      });
+    }
+  }
+
+  return {
+    "@type": "DAE",
+    name: dae.interner.resolve(dae.nameId) || "",
+    variables,
+    equations,
+  };
+}
+
 /**
  * Build a complete FMU 2.0 archive (.fmu ZIP file).
  *
@@ -63,7 +301,7 @@ export interface FmuArchiveResult {
  * @returns FMU archive result with the ZIP bytes
  */
 export function buildFmuArchive(
-  dae: ModelicaDAE,
+  dae: ArenaDAEBuilder,
   options: FmuArchiveOptions,
   stateVars: Set<string> = new Set<string>(),
 ): FmuArchiveResult {
@@ -145,7 +383,7 @@ export function buildFmuArchive(
 
   // ── model.json (serialized DAE for JS runtime) ──
   if (options.includeModelJson !== false) {
-    const modelJson = JSON.stringify(dae.toJSON, null, 2);
+    const modelJson = JSON.stringify(serializeArenaToJson(dae), null, 2);
     files.set("resources/model.json", encoder.encode(modelJson));
   }
 
@@ -158,13 +396,13 @@ export function buildFmuArchive(
 
   // ── Inject JS/TS Dependencies ──
   const crawledJsPaths = new Set<string>();
-  const crawlDaeForJs = (d: ModelicaDAE) => {
+  const crawlDaeForJs = (d: ArenaDAEBuilder) => {
     if (d.jsSource && d.jsPath && !crawledJsPaths.has(d.jsPath)) {
       crawledJsPaths.add(d.jsPath);
       const basename = d.jsPath.split(/[/\\]/).pop() ?? "dependency.js";
       files.set(`resources/${basename}`, encoder.encode(d.jsSource));
     }
-    for (const fn of d.functions) crawlDaeForJs(fn);
+    for (const fn of d.functions.values()) crawlDaeForJs(fn);
   };
   crawlDaeForJs(dae);
 

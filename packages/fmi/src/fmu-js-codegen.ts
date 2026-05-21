@@ -1,26 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaUnaryOperator } from "@modelscript/modelica/ast";
-import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
-import {
-  ModelicaBinaryExpression,
-  ModelicaBooleanLiteral,
-  ModelicaFunctionCallExpression,
-  ModelicaIfElseExpression,
-  ModelicaIntegerLiteral,
-  ModelicaNameExpression,
-  ModelicaRealLiteral,
-  ModelicaSimpleEquation,
-  ModelicaStringLiteral,
-  ModelicaUnaryExpression,
-} from "@modelscript/symbolics";
+import { type ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp } from "@modelscript/compiler";
+
 import type { FmuOptions, FmuResult } from "./fmi.js";
 import { binaryOpToJs, escapeJsString, mapFunctionNameJs, sanitizeIdentifier } from "./transpiler-utils.js";
 
 /**
  * Generate FMI 2.0 compatible Javascript source file from a DAE and FMU result.
  */
-export function generateFmuJsSources(dae: ModelicaDAE, fmuResult: FmuResult, options: FmuOptions): string {
+export function generateFmuJsSources(dae: ArenaDAEBuilder, fmuResult: FmuResult, options: FmuOptions): string {
   const id = options.modelIdentifier;
   const vars = fmuResult.scalarVariables;
   const nStates = fmuResult.modelStructure.derivatives.length;
@@ -29,54 +17,64 @@ export function generateFmuJsSources(dae: ModelicaDAE, fmuResult: FmuResult, opt
   return generateModelJs(id, nVars, nStates, dae, fmuResult);
 }
 
-function exprToJs(expr: ModelicaExpression): string {
-  if (expr instanceof ModelicaRealLiteral) return `${expr.value}`;
-  if (expr instanceof ModelicaIntegerLiteral) return `${expr.value}`;
-  if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "1" : "0";
-  if (expr instanceof ModelicaStringLiteral) return `"${escapeJsString(expr.value)}"`;
-  if (expr instanceof ModelicaNameExpression) return varToJs(expr.name);
-  if (expr instanceof ModelicaUnaryExpression) {
-    const op = expr.operator === ModelicaUnaryOperator.UNARY_MINUS ? "-" : "!";
-    return `(${op}${exprToJs(expr.operand)})`;
-  }
-  if (expr instanceof ModelicaBinaryExpression) {
-    const lhs = exprToJs(expr.operand1);
-    const rhs = exprToJs(expr.operand2);
-    const op = binaryOpToJs(expr.operator);
-    if (op === "pow") return `Math.pow(${lhs}, ${rhs})`;
-    return `(${lhs} ${op} ${rhs})`;
-  }
-  if (expr instanceof ModelicaFunctionCallExpression) {
-    if (expr.functionName === "initial") return "this.isInitPhase";
-    if (expr.functionName === "terminal") return "0";
-    if (expr.functionName === "assert" && expr.args.length >= 2) {
-      const cond = exprToJs(expr.args[0] as ModelicaExpression);
-      const msgExpr = expr.args[1];
-      const msg = msgExpr instanceof ModelicaStringLiteral ? msgExpr.value.replace(/"/g, '\\"') : "Assertion failed";
-      return `((${cond}) ? 0.0 : (console.error("${msg}"), this.terminate = true, 0.0))`;
+function exprToJs(dae: ArenaDAEBuilder, id: number): string {
+  if (id < 0) return "0.0";
+  switch (dae.getExprKind(id)) {
+    case ExprKind.RealLiteral:
+      return `${dae.getExprRealValue(id)}`;
+    case ExprKind.IntLiteral:
+      return `${dae.getExprData1(id)}`;
+    case ExprKind.BoolLiteral:
+      return dae.getExprData1(id) !== 0 ? "1" : "0";
+    case ExprKind.StringLiteral:
+      return `"${escapeJsString(dae.interner.resolve(dae.getExprData1(id)))}"`;
+    case ExprKind.Name:
+      return varToJs(dae.interner.resolve(dae.getExprData1(id)));
+    case ExprKind.Unary: {
+      const uop = dae.getExprData1(id) as UnaryOp;
+      const op = uop === UnaryOp.Negate ? "-" : "!";
+      return `(${op}${exprToJs(dae, dae.getExprLeft(id))})`;
     }
-    const args = expr.args.map((a: ModelicaExpression) => exprToJs(a)).join(", ");
-    const fname = mapFunctionNameJs(expr.functionName);
-    return `${fname}(${args})`;
-  }
-  if (expr instanceof ModelicaIfElseExpression) {
-    const cond = exprToJs(expr.condition);
-    const then = exprToJs(expr.thenExpression);
-    const els = exprToJs(expr.elseExpression);
-    if (expr.elseIfClauses.length > 0) {
-      let result = `(${cond} ? ${then} : `;
-      for (const clause of expr.elseIfClauses) {
-        result += `${exprToJs(clause.condition)} ? ${exprToJs(clause.expression)} : `;
+    case ExprKind.Negate:
+      return `(-${exprToJs(dae, dae.getExprLeft(id))})`;
+    case ExprKind.Binary: {
+      const op = dae.getExprData1(id) as BinOp;
+      const lhs = exprToJs(dae, dae.getExprLeft(id));
+      const rhs = exprToJs(dae, dae.getExprRight(id));
+      const opStr = binaryOpToJs(op);
+      if (opStr === "pow") return `Math.pow(${lhs}, ${rhs})`;
+      return `(${lhs} ${opStr} ${rhs})`;
+    }
+    case ExprKind.Call: {
+      const fname = dae.interner.resolve(dae.getExprData1(id));
+      const argCount = dae.getExprRight(id);
+      if (fname === "initial") return "this.isInitPhase";
+      if (fname === "terminal") return "0";
+      if (fname === "assert" && argCount >= 2) {
+        const cond = exprToJs(dae, dae.getExprLeft(id));
+        const msgExpr = dae.getExprLeft(id + 1);
+        const msg =
+          dae.getExprKind(msgExpr) === ExprKind.StringLiteral
+            ? dae.interner.resolve(dae.getExprData1(msgExpr)).replace(/"/g, '\\"')
+            : "Assertion failed";
+        return `((${cond}) ? 0.0 : (console.error("${msg}"), this.terminate = true, 0.0))`;
       }
-      result += `${els})`;
-      return result;
+      const args: string[] = [];
+      for (let i = 0; i < argCount; i++) {
+        args.push(exprToJs(dae, dae.getExprLeft(id + i)));
+      }
+      const mappedName = mapFunctionNameJs(fname);
+      return `${mappedName}(${args.join(", ")})`;
     }
-    return `(${cond} ? ${then} : ${els})`;
+    case ExprKind.IfElse: {
+      const cond = exprToJs(dae, dae.getExprData1(id));
+      const then = exprToJs(dae, dae.getExprLeft(id));
+      const els = exprToJs(dae, dae.getExprRight(id));
+      return `(${cond} ? ${then} : ${els})`;
+    }
+    default:
+      return "0.0";
   }
-  if (expr && typeof expr === "object" && "name" in expr) {
-    return varToJs((expr as { name: string }).name);
-  }
-  return "0.0";
 }
 
 function varToJs(name: string): string {
@@ -84,7 +82,7 @@ function varToJs(name: string): string {
   return `this.vars[VR_${sanitizeIdentifier(name).toUpperCase()}]`;
 }
 
-function generateModelJs(id: string, nVars: number, nStates: number, dae: ModelicaDAE, result: FmuResult): string {
+function generateModelJs(id: string, nVars: number, nStates: number, dae: ArenaDAEBuilder, result: FmuResult): string {
   const lines: string[] = [];
   lines.push("/* Auto-generated by ModelScript — Javascript FMI */");
 
@@ -131,9 +129,13 @@ function generateModelJs(id: string, nVars: number, nStates: number, dae: Modeli
     lines.push(`    this.states[${i}] = this.vars[${stateVRs[i]}];`);
   }
 
-  for (const eq of dae.arenaEquations()) {
-    if (eq instanceof ModelicaSimpleEquation && eq.expression1 instanceof ModelicaNameExpression) {
-      lines.push(`    ${varToJs(eq.expression1.name)} = ${exprToJs(eq.expression2)};`);
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) !== EqKind.Simple) continue;
+    const lhs = dae.getEqLhs(idx);
+    const rhs = dae.getEqRhs(idx);
+    if (dae.getExprKind(lhs) === ExprKind.Name) {
+      const name = dae.interner.resolve(dae.getExprData1(lhs));
+      lines.push(`    ${varToJs(name)} = ${exprToJs(dae, rhs)};`);
     }
   }
 

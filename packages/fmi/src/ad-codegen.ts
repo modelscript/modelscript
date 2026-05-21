@@ -1,18 +1,14 @@
-import { ModelicaArrayEquation, ModelicaDAE, type ModelicaExpression, StaticTapeBuilder } from "@modelscript/symbolics";
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { type ArenaDAEBuilder, EqKind, ExprKind, StaticTapeBuilder } from "@modelscript/compiler";
 
 import { type Fmi3Variable } from "./fmi3.js";
 
 /** Extract derivative name (like der(x)) from expression without depending on external module. */
-function extractDer(expr: ModelicaExpression): string | null {
-  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
-    const fn = (expr as { functionName: string }).functionName;
-    if (
-      fn === "der" &&
-      Array.isArray((expr as { args: unknown[] }).args) &&
-      (expr as { args: unknown[] }).args.length === 1
-    ) {
-      const a = (expr as { args: unknown[] }).args[0];
-      if (a && typeof a === "object" && "name" in a) return (a as { name: string }).name;
+function extractDer(dae: ArenaDAEBuilder, exprId: number): string | null {
+  if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Der) {
+    const operand = dae.getExprData1(exprId);
+    if (operand >= 0 && dae.getExprKind(operand) === ExprKind.Name) {
+      return dae.interner.resolve(dae.getExprData1(operand));
     }
   }
   return null;
@@ -22,7 +18,7 @@ function extractDer(expr: ModelicaExpression): string | null {
  * Compiles the entire system of derivative equations into a single C-function
  * that calculates the exact Jacobian Matrix via Reverse-Mode AD.
  */
-export function generateModelEvaluateJacobian(id: string, dae: ModelicaDAE, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateJacobian(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Jacobian via Static C-Tape AD */`);
   L.push(`void ${id}_evaluate_jacobian(${id}_Instance* inst, double* jac_out) {`);
@@ -35,34 +31,35 @@ export function generateModelEvaluateJacobian(id: string, dae: ModelicaDAE, vars
   varMap.set("time", `inst->time`);
 
   // Gather target equations (der(x) = f(x,u))
-  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    const ld = extractDer(se.expression1);
-    const rd = extractDer(se.expression2);
+  const derEqs: { state: string; rhs: number }[] = [];
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    const kind = dae.getEqKind(idx);
+    const lhs = dae.getEqLhs(idx);
+    const rhs = dae.getEqRhs(idx);
+    const ld = extractDer(dae, lhs);
+    const rd = extractDer(dae, rhs);
 
-    if (eq instanceof ModelicaArrayEquation) {
+    if (kind === EqKind.Array) {
       const baseName = ld || rd;
       if (!baseName) continue;
-      const rhs = ld ? se.expression2 : se.expression1;
-      const v = dae.arenaGetVarByName(baseName);
-      const dims = v?.arrayDimensions ?? [];
+      const targetRhs = ld ? rhs : lhs;
+      const vIdx = dae.getVarIdxByName(baseName);
+      const dims = vIdx >= 0 ? dae.getVarShape(vIdx) : [];
       const size = dims.length > 0 ? dims.reduce((a: number, b: number) => a * b, 1) : 1;
       for (let i = 0; i < size; i++) {
-        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs });
+        derEqs.push({ state: `${baseName}[${i + 1}]`, rhs: targetRhs });
       }
       continue;
     }
 
-    if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
-    else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
+    if (ld) derEqs.push({ state: ld, rhs: rhs });
+    else if (rd) derEqs.push({ state: rd, rhs: lhs });
   }
 
   const tape = new StaticTapeBuilder();
   const outputIndices: number[] = [];
   for (const eq of derEqs) {
-    outputIndices.push(tape.walk(eq.rhs));
+    outputIndices.push(tape.addExpression(eq.rhs, dae));
   }
 
   // Generate Forward Pass (value population)
@@ -105,7 +102,7 @@ export function generateModelEvaluateJacobian(id: string, dae: ModelicaDAE, vars
 /**
  * Compiles the exact analytical gradient of the objective function via Reverse-Mode AD.
  */
-export function generateModelEvaluateObjective(id: string, dae: ModelicaDAE, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateObjective(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Objective */`);
   L.push(`void ${id}_evaluate_objective(${id}_Instance* inst, double* obj_out) {`);
@@ -116,14 +113,14 @@ export function generateModelEvaluateObjective(id: string, dae: ModelicaDAE, var
   }
   varMap.set("time", `inst->time`);
 
-  if (!dae.objective) {
+  if (dae.objectiveExprId < 0) {
     L.push(`  *obj_out = 0.0;`);
     L.push(`}`);
     return L;
   }
 
   const tape = new StaticTapeBuilder();
-  const objIdx = tape.walk(dae.objective);
+  const objIdx = tape.addExpression(dae.objectiveExprId, dae);
 
   L.push("  /* --- Forward Pass --- */");
   const fwdCode = tape.emitForwardC((name: string) => {
@@ -143,7 +140,7 @@ export function generateModelEvaluateObjective(id: string, dae: ModelicaDAE, var
   // we compute gradients w.r.t the continuous model states and inputs.
   const optVars = vars.filter((v) => v.causality === "input" || v.causality === "local");
 
-  if (!dae.objective) {
+  if (dae.objectiveExprId < 0) {
     for (let i = 0; i < optVars.length; i++) L.push(`  grad_out[${i}] = 0.0;`);
     L.push(`}`);
     return L;
@@ -173,7 +170,7 @@ export function generateModelEvaluateObjective(id: string, dae: ModelicaDAE, var
 /**
  * Compiles the exact Hessian Matrix of the Lagrangian via Reverse-Over-Forward AD.
  */
-export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars: Fmi3Variable[]): string[] {
+export function generateModelEvaluateHessian(id: string, dae: ArenaDAEBuilder, vars: Fmi3Variable[]): string[] {
   const L: string[] = [];
   L.push(`/* Exact Analytical Hessian of Lagrangian via Reverse-Over-Forward AD */`);
   L.push(`void ${id}_evaluate_hessian(${id}_Instance* inst, double obj_factor, double* lambda, double* hess_out) {`);
@@ -184,15 +181,15 @@ export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars:
   }
   varMap.set("time", `inst->time`);
 
-  const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
-  for (const eq of dae.sortedEquations.length > 0 ? dae.sortedEquations : Array.from(dae.arenaEquations())) {
-    if (eq instanceof ModelicaArrayEquation) continue;
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    const ld = extractDer(se.expression1);
-    const rd = extractDer(se.expression2);
-    if (ld) derEqs.push({ state: ld, rhs: se.expression2 });
-    else if (rd) derEqs.push({ state: rd, rhs: se.expression1 });
+  const derEqs: { state: string; rhs: number }[] = [];
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) === EqKind.Array) continue;
+    const lhs = dae.getEqLhs(idx);
+    const rhs = dae.getEqRhs(idx);
+    const ld = extractDer(dae, lhs);
+    const rd = extractDer(dae, rhs);
+    if (ld) derEqs.push({ state: ld, rhs: rhs });
+    else if (rd) derEqs.push({ state: rd, rhs: lhs });
   }
 
   const tape = new StaticTapeBuilder();
@@ -204,7 +201,7 @@ export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars:
 
   const eqIndices: number[] = [];
   for (const eq of derEqs) {
-    eqIndices.push(tape.walk(eq.rhs));
+    eqIndices.push(tape.addExpression(eq.rhs, dae));
   }
 
   let lagrangianNode = tape.pushOp({ type: "const", val: 0.0 });
@@ -229,8 +226,8 @@ export function generateModelEvaluateHessian(id: string, dae: ModelicaDAE, vars:
   L.push(...revCode);
 
   L.push("  /* --- Hessian computation via Reverse-Over-Forward --- */");
-  L.push(`  double dot_t[${tape.ops.length}];`);
-  L.push(`  double dot_dt[${tape.ops.length}];`);
+  L.push(`  double dot_t[${tape.length}];`);
+  L.push(`  double dot_dt[${tape.length}];`);
 
   const indepVarIndices: number[] = [];
   for (const v of indepVars) {
@@ -278,7 +275,7 @@ export function generateNlpC(
   nVars: number,
   nConstraints: number,
   nnzJacobian: number,
-  dae: ModelicaDAE,
+  dae: ArenaDAEBuilder,
   vars: Fmi3Variable[],
 ): string[] {
   const L: string[] = [];
@@ -304,9 +301,9 @@ export function generateNlpC(
   }
 
   // Objective function tape
-  if (dae.objective) {
+  if (dae.objectiveExprId >= 0) {
     const tape = new StaticTapeBuilder();
-    const objIdx = tape.walk(dae.objective);
+    const objIdx = tape.addExpression(dae.objectiveExprId, dae);
 
     L.push(`/* eval_f: Objective function */`);
     L.push(`double eval_f(const double* x) {`);
