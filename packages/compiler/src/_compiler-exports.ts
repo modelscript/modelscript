@@ -11,6 +11,7 @@ export * from "./symbolics/arithmetic/interval.js";
 export * from "./symbolics/arithmetic/mccormick.js";
 export * from "./symbolics/calculus/derivative.js";
 export * from "./symbolics/calculus/integrate.js";
+export * from "./symbolics/simplify/egraph.js";
 export * from "./symbolics/tape.js";
 
 // Language workbench infrastructure
