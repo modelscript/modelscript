@@ -2163,6 +2163,9 @@ export class ArenaQueryFlattener {
         "semiLinear",
         "inStream",
         "actualStream",
+        "spatialDistribution",
+        "getInstanceName",
+        "outerProduct",
       ].includes(funcName)
     ) {
       return;
