@@ -210,6 +210,12 @@ export class ArenaExprVisitor {
         let staticSuffix = "";
 
         for (const sub of part.arraySubscripts.subscripts) {
+          // Handle flexible subscript (:) — whole-dimension slice
+          if (sub.flexible) {
+            subIds.push(this.dae.addColonExpr());
+            allStatic = false;
+            continue;
+          }
           if (!sub.expression) continue;
           const subId = this.visit(sub.expression);
           if (subId === undefined) return undefined;
@@ -225,7 +231,7 @@ export class ArenaExprVisitor {
         if (allStatic) {
           path += staticSuffix;
         } else {
-          // Dynamic subscript. We emit a Name expr for the path so far, then a Subscript expr.
+          // Dynamic subscript or slice. We emit a Name expr for the path so far, then a Subscript expr.
           const currentBase = this.dae.addNameExpr(path);
           baseId = this.dae.addSubscriptExpr(currentBase, subIds);
         }
