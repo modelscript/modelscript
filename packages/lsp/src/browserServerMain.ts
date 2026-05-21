@@ -81,10 +81,20 @@ import { QUERY_HOOKS as sysml2QueryHooks } from "@modelscript/sysml2/query-hooks
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
 import {
+  ArenaDAEBuilder,
+  ArenaDAEPrinter,
+  Causality,
+  EqKind,
+  ExprKind,
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
   LineIndex,
+  VarType,
+  Variability,
   VerificationRunner,
+  foldArenaConstants,
+  performBltTransformationArena,
+  printArenaDAE,
   type TokenData,
 } from "@modelscript/compiler";
 import { ScopeResolver } from "@modelscript/compiler/resolver";
@@ -98,7 +108,6 @@ import {
   ModelicaComponentInstance,
   ModelicaDAE,
   ModelicaElement,
-  ModelicaFlattener,
   ModelicaInterpreter,
   ModelicaNamedElement,
   ModelicaScriptScope,
@@ -119,7 +128,6 @@ import {
   emitVerificationDiagnostics,
   generateMultiBodyModelica,
   injectPredefinedTypes,
-  performBltTransformation,
 } from "@modelscript/core";
 import {
   ModelicaFmuEntity,
@@ -128,19 +136,13 @@ import {
   generateMultiModelWrapper,
   generateRomWasmSource,
 } from "@modelscript/fmi";
-import {
-  ModelicaCalibrator,
-  ModelicaOptimizer,
-  parseCsvMeasurements,
-  registerCalibrateDeps,
-  registerOptimizeDeps,
-} from "@modelscript/optimizer";
+import { ModelicaCalibrator, ModelicaOptimizer, parseCsvMeasurements } from "@modelscript/optimizer";
 import type { DoEInputRange } from "@modelscript/simulator";
 import {
+  ArenaSimulator,
   ModelicaSimulator,
   buildSurrogate,
-  registerMonteCarloDeps,
-  registerSimulateDeps,
+  runMonteCarloArena,
   simulateArena,
 } from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
@@ -153,9 +155,7 @@ import { QUERY_HOOKS as owl2QueryHooks } from "@modelscript/owl2/query-hooks";
 // @ts-ignore
 import owl2LangFallback from "@modelscript/owl2/language";
 import { TableauReasoner } from "@modelscript/reasoner";
-import { ModelicaDAEPrinter } from "@modelscript/symbolics";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2/constraint-extractor";
-import { StringWriter } from "@modelscript/utils";
 import { formatModelicaTree } from "./formatting/modelica-formatter";
 import { getRequirements, getTraceabilityMatrix } from "./requirements";
 import { BrowserFileSystem } from "./vfs/browser-file-system";
@@ -167,12 +167,80 @@ import {
   type RegistryPackageInfo,
 } from "./vfs/library-loader";
 
-// Register flattener/simulator constructors for the scripting simulate() function.
-// This breaks the circular dependency: interpreter → evaluate-simulate → flattener.
-registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
-registerOptimizeDeps({ Flattener: ModelicaFlattener, Optimizer: ModelicaOptimizer });
-registerCalibrateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator, Calibrator: ModelicaCalibrator });
-registerMonteCarloDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
+/**
+ * Flatten a class instance using the arena-native pipeline.
+ * Bridges the LSP's ModelicaClassInstance world with Context.flattenArena().
+ */
+function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context: Context): ArenaDAEBuilder {
+  const className = classInstance.compositeName || classInstance.name;
+  if (!className) throw new Error("Class instance has no name");
+
+  const arena = context.flattenArena(className);
+  if (!arena) throw new Error(`Failed to flatten class '${className}'`);
+  return arena;
+}
+
+/**
+ * Port getParameterInfo to work on ArenaDAEBuilder.
+ */
+function getArenaParameterInfo(arena: ArenaDAEBuilder): any[] {
+  const infos: any[] = [];
+  for (let i = 0; i < arena.varCount; i++) {
+    if (arena.isVarRemoved(i)) continue;
+    if (arena.getVarVariability(i) !== Variability.Parameter) continue;
+    const name = arena.getVarName(i);
+    const startVal = arena.getVarStartValue(i);
+    const varType = arena.getVarType(i);
+    let type: "real" | "integer" | "boolean" | "enumeration" = "real";
+    let step = 0.1;
+    if (varType === VarType.Boolean) {
+      type = "boolean";
+      step = 1;
+    } else if (varType === VarType.Integer) {
+      type = "integer";
+      step = 1;
+    }
+    infos.push({ name, type, defaultValue: startVal, step });
+  }
+  return infos;
+}
+
+function printArenaExpression(arena: ArenaDAEBuilder, exprId: number): string {
+  const chunks: string[] = [];
+  const writer = {
+    write: (s: string) => {
+      chunks.push(s);
+    },
+  };
+  const printer = new ArenaDAEPrinter(writer, arena);
+  printer.printExpr(exprId);
+  return chunks.join("");
+}
+
+function evaluateArenaExprToNum(arena: ArenaDAEBuilder, exprId: number | undefined): number | null {
+  if (exprId === undefined || exprId < 0) return null;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.RealLiteral) {
+    return arena.getExprRealValue(exprId);
+  }
+  if (kind === ExprKind.IntLiteral) {
+    return arena.getExprData1(exprId);
+  }
+  return null;
+}
+
+/**
+ * Bridge helper to convert ArenaDAEBuilder into a thin ModelicaDAE wrapper
+ * for FMI / FMU functions that still require ModelicaDAE.
+ */
+function convertArenaToLegacyDAE(arena: ArenaDAEBuilder, name: string): ModelicaDAE {
+  const dae = new ModelicaDAE(name);
+  dae.arena = arena;
+  dae.experiment = arena.experiment;
+  dae.description = arena.description || null;
+  dae.eventIndicators = Array(arena.eventIndicatorExprIds.length).fill(null);
+  return dae;
+}
 
 console.log("ModelScript language server starting...");
 
@@ -3807,23 +3875,23 @@ connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) =
   const classInstance = instances[0];
 
   try {
-    if (!classInstance.instantiated) {
-      classInstance.instantiate();
+    const context = documentContexts.get(params.uri);
+    if (!context) return [];
+
+    const arena = flattenArenaFromInstance(classInstance, context);
+
+    const data: any[] = [];
+    for (let i = 0; i < arena.varCount; i++) {
+      if (arena.isVarRemoved(i)) continue;
+      const cad = arena.getVarCadAnnotation(i);
+      if (cad) {
+        data.push({
+          name: arena.getVarName(i),
+          cad: cad,
+          dynamicBindings: [],
+        });
+      }
     }
-    const dae = new ModelicaDAE(classInstance.name || "Model");
-    const flattener = new ModelicaFlattener();
-    classInstance.accept(flattener, ["", dae]);
-
-    // Extract variables with CAD annotations
-    const data = [...dae.arenaVariables()]
-
-      .filter((v: any) => v.cadAnnotationString)
-
-      .map((v: any) => ({
-        name: v.name,
-        cad: v.cadAnnotationString,
-        dynamicBindings: v.cadDynamicBindings ?? [],
-      }));
     cadComponentsCache.set(params.uri, { version, data });
     return data;
   } catch (e) {
@@ -4086,81 +4154,17 @@ connection.onRequest(
           : instances[0];
       }
 
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        return { t: [], y: [], states: [], error: `No Modelica context found for URI '${params.uri}'` };
       }
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(classInstance, context);
 
-      connection.console.info(`[simulate] DAE variables: ${dae.arenaVarCount}`);
-      connection.console.info(`[simulate] DAE equations: ${dae.arena.eqCount}`);
-      let initialEqCount = 0;
-      for (const _eq of dae.arenaInitialEquations()) initialEqCount++;
-      connection.console.info(`[simulate] DAE initial equations: ${initialEqCount}`);
-      connection.console.info(`[simulate] DAE algorithms: ${dae.algorithms.length}`);
-      connection.console.info(`[simulate] DAE functions: ${dae.functions.length}`);
-      // Log first 20 variables with their types and expressions
-      let varIdx = 0;
-      for (const v of dae.arenaVariables()) {
-        if (varIdx < 20) {
-          const startAttr = v.attributes.get("start");
-          connection.console.info(
-            `[simulate]   var[${varIdx}] ${v.variability ?? "continuous"} ${v.name} = ${v.expression?.toString() ?? "null"} (start=${startAttr?.toString() ?? "none"})`,
-          );
-        }
-        varIdx++;
-      }
-      // Log first 10 equations
-      const eqArray = Array.from(dae.arenaEquations());
-      for (let i = 0; i < Math.min(10, eqArray.length); i++) {
-        const eq = eqArray[i];
-        if (eq) {
-          connection.console.info(`[simulate]   eq[${i}] ${eq.toString()}`);
-        }
-      }
+      connection.console.info(`[simulate] Arena active variables: ${arena.activeVarCount}`);
+      connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);
 
-      // ── Arena-native path: bypass legacy ModelicaSimulator ──
-      if (params.solver === "arena") {
-        const exp = dae.experiment;
-        const startTime = params.startTime ?? exp.startTime ?? 0;
-        const stopTime = params.stopTime ?? exp.stopTime ?? 10;
-        const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
-
-        connection.console.info(`[simulate] Arena path: startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
-
-        const arenaResult = simulateArena(dae.arena, {
-          startTime,
-          stopTime,
-          step,
-          solver: "rk4",
-          parameterOverrides: params.parameterOverrides
-            ? new Map(Object.entries(params.parameterOverrides))
-            : undefined,
-        });
-
-        connection.console.info(
-          `[simulate] Arena result: ${arenaResult.t.length} time points, ${arenaResult.states.length} states`,
-        );
-
-        return {
-          t: arenaResult.t,
-          y: arenaResult.y,
-          states: arenaResult.states,
-          experiment: exp,
-        };
-      }
-
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-
-      connection.console.info(`[simulate] State vars: ${[...simulator.stateVars].join(", ")}`);
-      connection.console.info(`[simulate] Algebraic vars: ${[...simulator.algebraicVars].join(", ")}`);
-
-      const exp = simulator.dae.experiment;
+      const exp = arena.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 10;
       const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
@@ -4171,66 +4175,47 @@ connection.onRequest(
         const { parameterName, start, end, steps } = params.sweepConfig;
         const sweepResults: { value: number; y: number[][] }[] = [];
         let baseT: number[] = [];
+        let baseStates: string[] = [];
 
         for (let i = 0; i < steps; i++) {
           const val = steps > 1 ? start + i * ((end - start) / (steps - 1)) : start;
-          const overrides = params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : new Map();
-          overrides.set(parameterName, val);
+          const overrides = params.parameterOverrides ? { ...params.parameterOverrides } : {};
+          overrides[parameterName] = val;
 
-          // Force equidistant output to ensure the time vectors align perfectly
-          const result = simulator.simulate(startTime, stopTime, step, {
-            solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
-            equidistantOutput: true,
-            parameterOverrides: overrides,
+          const arenaResult = simulateArena(arena, {
+            startTime,
+            stopTime,
+            step,
+            solver: (params.solver ?? "dopri5") as any,
+            parameterOverrides: new Map(Object.entries(overrides)),
           });
 
           if (i === 0) {
-            baseT = result.t;
+            baseT = arenaResult.t;
+            baseStates = arenaResult.states;
           }
-          sweepResults.push({ value: val, y: result.y });
+          sweepResults.push({ value: val, y: arenaResult.y });
         }
 
         return {
           t: baseT,
           y: sweepResults[0]?.y ?? [],
-          states: [...simulator.dae.arenaVariables()]
-            .filter((v) => simulator.stateVars.has(v.name) || simulator.algebraicVars.has(v.name))
-            .map((v) => v.name),
-          parameters: simulator.getParameterInfo(),
+          states: baseStates,
+          parameters: getArenaParameterInfo(arena),
           experiment: exp,
           sweepResults,
         };
       }
 
-      const result = simulator.simulate(startTime, stopTime, step, {
-        solver: (params.solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
-        equidistantOutput: params.equidistant ?? exp.__modelscript_equidistantOutput ?? true,
+      const result = simulateArena(arena, {
+        startTime,
+        stopTime,
+        step,
+        solver: (params.solver ?? "dopri5") as any,
         parameterOverrides: params.parameterOverrides ? new Map(Object.entries(params.parameterOverrides)) : undefined,
       });
 
       connection.console.info(`[simulate] Result: ${result.t.length} time points, ${result.states.length} states`);
-      connection.console.info(`[simulate] States: ${result.states.join(", ")}`);
-      if (result.t.length > 0 && result.y.length > 0) {
-        connection.console.info(`[simulate] y[0]: ${result.y[0]?.map((v: number) => v.toFixed(6)).join(", ")}`);
-        const last = result.y[result.y.length - 1];
-        if (last) {
-          connection.console.info(`[simulate] y[last]: ${last.map((v: number) => v.toFixed(6)).join(", ")}`);
-        }
-        // Check if all zeros
-        let allZeros = true;
-        for (const row of result.y) {
-          if (row) {
-            for (const val of row) {
-              if (Math.abs(val) > 1e-15) {
-                allZeros = false;
-                break;
-              }
-            }
-          }
-          if (!allZeros) break;
-        }
-        connection.console.info(`[simulate] All zeros? ${allZeros}`);
-      }
 
       if (params.format === "csv") {
         const lines = [`time,${result.states.join(",")}`];
@@ -4238,14 +4223,12 @@ connection.onRequest(
           const values = [result.t[i], ...result.states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
           lines.push(values.join(","));
         }
-        // Return CSV as a text field alongside the structured data
         return {
           t: result.t,
           y: result.y,
           states: result.states,
-          parameters: simulator.getParameterInfo(),
+          parameters: getArenaParameterInfo(arena),
           experiment: exp,
-          error: undefined,
         };
       }
 
@@ -4253,7 +4236,7 @@ connection.onRequest(
         t: result.t,
         y: result.y,
         states: result.states,
-        parameters: simulator.getParameterInfo(),
+        parameters: getArenaParameterInfo(arena),
         experiment: exp,
       };
     } catch (e) {
@@ -4320,31 +4303,33 @@ connection.onRequest(
         if (found) classInstance = found;
       }
 
-      if (!classInstance.instantiated) classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        return { success: false, error: `No Modelica context found for URI '${params.uri}'` };
+      }
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-
-      const exp = simulator.dae.experiment;
+      const arena = flattenArenaFromInstance(classInstance, context);
+      const exp = arena.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 1;
       const stepSize = params.stepSize ?? exp.interval ?? (stopTime - startTime) / 100;
 
-      // 2. Create a SimulatorFmuSubsystem that wraps ModelicaSimulator as FmuSubsystem
+      // 2. Create a SimulatorFmuSubsystem that wraps simulateArena as FmuSubsystem
       const inputRanges = new Map<string, DoEInputRange>();
       for (const [name, range] of Object.entries(params.inputs)) {
         inputRanges.set(name, range);
       }
 
-      // If no outputs specified, use all state + algebraic variables
-      const outputNames =
-        params.outputs.length > 0 ? params.outputs : [...simulator.stateVars, ...simulator.algebraicVars];
+      // If no outputs specified, use all state + algebraic variables from arena
+      const outputNames = params.outputs.length > 0 ? params.outputs : [];
+      if (outputNames.length === 0) {
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.isVarRemoved(i)) continue;
+          const varVariability = arena.getVarVariability(i);
+          if (varVariability === Variability.Parameter || varVariability === Variability.Constant) continue;
+          outputNames.push(arena.getVarName(i));
+        }
+      }
 
       // Build a lightweight FmuSubsystem adapter around the simulator
       const fmuAdapter = {
@@ -4364,9 +4349,11 @@ connection.onRequest(
         doStep() {
           // Run a full simulation with the current inputs as parameter overrides
           const overrides = new Map(this._inputs);
-          const result = simulator.simulate(startTime, stopTime, stepSize, {
+          const result = simulateArena(arena, {
+            startTime,
+            stopTime,
+            step: stepSize,
             solver: "dopri5" as const,
-            equidistantOutput: false,
             parameterOverrides: overrides,
           });
           // Extract final-time values
@@ -4533,23 +4520,25 @@ connection.onRequest(
           : instances[0];
       }
 
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        throw new Error(`No Modelica context found for URI '${params.uri}'`);
       }
 
-      const dae = new ModelicaDAE(classInstance.name || "OptimizationModel");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const exp = dae.experiment;
+      const arena = flattenArenaFromInstance(classInstance, context);
+      const exp = arena.experiment;
 
       // In Optimica, the controls are usually identified by looking at variables with free=true.
       // But we accept overrides from the UI if present.
       let finalControls = params.controls;
       if (!finalControls || finalControls.length === 0) {
-        finalControls = [...dae.arenaVariables()].filter((v) => v.attributes.has("free")).map((v) => v.name);
+        finalControls = [];
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.isVarRemoved(i)) continue;
+          if (arena.getVarAttrExprId(i, "free") !== undefined) {
+            finalControls.push(arena.getVarName(i));
+          }
+        }
       }
       if (!finalControls || finalControls.length === 0) {
         // Fallback or testing
@@ -4582,7 +4571,7 @@ connection.onRequest(
         }
       }
 
-      const optimizer = new ModelicaOptimizer(dae, {
+      const optimizer = new ModelicaOptimizer(arena, {
         objective: params.objective ?? "u^2",
         controls: finalControls,
         controlBounds: params.controlBounds ? new Map(Object.entries(params.controlBounds)) : new Map(),
@@ -4682,16 +4671,12 @@ connection.onRequest(
     }
 
     try {
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        throw new Error(`No Modelica context found for URI '${params.uri}'`);
       }
 
-      // Flatten
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(classInstance, context);
 
       // Parse CSV
       const csvOptions: any = { skipNaN: true };
@@ -4716,11 +4701,10 @@ connection.onRequest(
       }
 
       // Initialize Simulator
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
+      const simulator = new ArenaSimulator(arena);
 
       // Run Calibrator
-      const calibrator = new ModelicaCalibrator(dae, simulator, {
+      const calibrator = new ModelicaCalibrator(arena, simulator, {
         parameters: params.parameters,
         parameterBounds,
         measurements,
@@ -4814,11 +4798,11 @@ connection.onRequest(
 
         // Check for experiment annotation
         try {
-          const dae = new ModelicaDAE(instance.name || "Model");
-          const flattener = new ModelicaFlattener();
-          instance.accept(flattener, ["", dae]);
+          const context = documentContexts.get(uri);
+          if (!context) continue;
 
-          const exp = dae.experiment;
+          const arena = flattenArenaFromInstance(instance, context);
+          const exp = arena.experiment;
           // Only consider classes with actual experiment data (not the default empty {})
           if (
             exp &&
@@ -4926,18 +4910,13 @@ connection.onRequest(
     }
 
     try {
-      if (!classInstance.instantiated) classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        throw new Error(`No Modelica context found for URI '${params.uri}'`);
+      }
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-
-      const exp = simulator.dae.experiment;
+      const arena = flattenArenaFromInstance(classInstance, context);
+      const exp = arena.experiment;
       const startTime = params.startTime ?? exp.startTime ?? 0;
       const stopTime = params.stopTime ?? exp.stopTime ?? 10;
       const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
@@ -4968,27 +4947,27 @@ connection.onRequest(
         return { name: p.name, distribution };
       });
 
-      const simulateFn = (overrides: Map<string, number>) => {
-        return simulator.simulate(startTime, stopTime, step, {
-          solver: "dopri5",
-          equidistantOutput: true,
-          parameterOverrides: overrides,
-        });
-      };
-
-      const mcResult = runMonteCarloSimulation(simulateFn, randomVars, {
+      const mcResult = runMonteCarloArena(arena, randomVars, {
         numSamples: params.numSamples ?? 200,
         ...(params.seed != null ? { seed: params.seed } : {}),
         confidenceLevel: params.confidenceLevel ?? 0.95,
         latinHypercube: params.method === "lhs",
         antithetic: params.method === "antithetic",
         storeTrajectories: false,
+        simulateOptions: {
+          startTime,
+          stopTime,
+          step,
+          solver: "dopri5",
+        },
       });
 
       // Build time vector from first simulation
-      const tResult = simulator.simulate(startTime, stopTime, step, {
+      const tResult = simulateArena(arena, {
+        startTime,
+        stopTime,
+        step,
         solver: "dopri5",
-        equidistantOutput: true,
       });
 
       // Convert statistics to serializable format
@@ -5048,10 +5027,7 @@ connection.onRequest(
 const cosimSimulators = new Map<
   string,
   {
-    simulator: {
-      simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
-    };
-    dae: ModelicaDAE;
+    arena: ArenaDAEBuilder;
     currentValues: Map<string, number>;
     stepSize: number;
   }
@@ -5063,10 +5039,8 @@ connection.onRequest(
   (params: {
     uri: string;
     participantId: string;
-    className?: string;
-    startTime?: number;
-    stopTime?: number;
     stepSize?: number;
+    className?: string;
   }): {
     ok: boolean;
     variables?: { name: string; causality: string }[];
@@ -5084,46 +5058,42 @@ connection.onRequest(
     }
 
     try {
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) {
+        return { ok: false, error: `No Modelica context found for URI '${params.uri}'` };
       }
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
+      const arena = flattenArenaFromInstance(classInstance, context);
 
       // Initialize current values from start attributes
       const currentValues = new Map<string, number>();
-      for (const v of dae.arenaVariables()) {
-        const startAttr = v.attributes.get("start");
-        if (startAttr && "value" in startAttr) {
-          const val = (startAttr as { value: number }).value;
-          if (typeof val === "number") {
-            currentValues.set(v.name, val);
-          }
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        const startVal = arena.getVarStartValue(i);
+        if (startVal !== undefined && typeof startVal === "number") {
+          currentValues.set(arena.getVarName(i), startVal);
         }
       }
 
-      // Store the simulator instance
+      // Store the simulation state
       cosimSimulators.set(params.participantId, {
-        simulator: simulator as unknown as {
-          simulate(start: number, stop: number, step: number): { t: number[]; y: number[][]; states: string[] };
-        },
-        dae,
+        arena,
         currentValues,
         stepSize: params.stepSize ?? 0.01,
       });
 
       // Build variable list with causality info
-      const variables = [...dae.arenaVariables()].map((v) => ({
-        name: v.name,
-        causality: v.causality ?? "local",
-      }));
+      const variables: { name: string; causality: string }[] = [];
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        const causalityVal = arena.getVarCausality(i);
+        const causalityStr =
+          causalityVal === Causality.Input ? "input" : causalityVal === Causality.Output ? "output" : "local";
+        variables.push({
+          name: arena.getVarName(i),
+          causality: causalityStr,
+        });
+      }
 
       return { ok: true, variables };
     } catch (e) {
@@ -5160,12 +5130,25 @@ connection.onRequest(
         }
       }
 
+      // Write all current values to the arena's start values before simulating
+      for (const [name, val] of entry.currentValues) {
+        try {
+          const idx = entry.arena.getVarIdxByName(name);
+          if (idx !== -1) {
+            entry.arena.setVarStartValue(idx, val);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       // Step the simulation by one communication interval
-      const result = entry.simulator.simulate(
-        params.currentTime,
-        params.currentTime + params.stepSize,
-        params.stepSize,
-      );
+      const result = simulateArena(entry.arena, {
+        startTime: params.currentTime,
+        stopTime: params.currentTime + params.stepSize,
+        step: params.stepSize,
+        solver: "rk4",
+      });
 
       // Extract values from the last time point
       const lastIdx = result.t.length - 1;
@@ -5182,12 +5165,14 @@ connection.onRequest(
       // Collect outputs (variables with causality "output")
       const outputs: Record<string, number> = {};
       const allValues: Record<string, number> = {};
-      for (const v of entry.dae.arenaVariables()) {
-        const val = entry.currentValues.get(v.name);
+      for (let i = 0; i < entry.arena.varCount; i++) {
+        if (entry.arena.isVarRemoved(i)) continue;
+        const name = entry.arena.getVarName(i);
+        const val = entry.currentValues.get(name);
         if (val !== undefined) {
-          allValues[v.name] = val;
-          if (v.causality === "output") {
-            outputs[v.name] = val;
+          allValues[name] = val;
+          if (entry.arena.getVarCausality(i) === Causality.Output) {
+            outputs[name] = val;
           }
         }
       }
@@ -6076,19 +6061,16 @@ connection.onRequest(
         }
       }
 
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
+      let context = params.uri ? documentContexts.get(params.uri) : undefined;
+      if (!context) {
+        context = documentContexts.values().next().value;
+      }
+      if (!context) {
+        return { text: null, error: "No Modelica context found." };
       }
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
-
-      const out = new StringWriter();
-      dae.accept(new ModelicaDAEPrinter(out));
-      return { text: out.toString() };
+      const arena = flattenArenaFromInstance(classInstance, context);
+      return { text: printArenaDAE(arena) };
     } catch (e) {
       return { text: null, error: e instanceof Error ? e.stack : String(e) };
     }
@@ -6238,11 +6220,8 @@ connection.onRequest(
     const targetClass = targetInstance.name;
     if (!targetClass) throw new Error("Could not determine model name.");
 
-    const dae = new ModelicaDAE(targetClass);
-    const flattener = new ModelicaFlattener();
-    (targetInstance as any).accept(flattener, ["", dae]);
-    flattener.generateFlowBalanceEquations(dae);
-    flattener.foldDAEConstants(dae);
+    const arena = flattenArenaFromInstance(targetInstance, ctx);
+    const dae = convertArenaToLegacyDAE(arena, targetClass);
 
     const { archive } = buildFmuArchive(dae, {
       modelIdentifier: targetClass,
@@ -6375,11 +6354,8 @@ connection.onRequest("modelscript/compileWasm", async (params: { uri: string }) 
   const targetClass = targetInstance.name;
   if (!targetClass) throw new Error("Could not determine model name.");
 
-  const dae = new ModelicaDAE(targetClass);
-  const flattener = new ModelicaFlattener();
-  (targetInstance as any).accept(flattener, ["", dae]);
-  flattener.generateFlowBalanceEquations(dae);
-  flattener.foldDAEConstants(dae);
+  const arena = flattenArenaFromInstance(targetInstance, ctx);
+  const dae = convertArenaToLegacyDAE(arena, targetClass);
 
   // Generate the FMU result for scalar variable metadata
   const { generateFmu } = await import("@modelscript/fmi");
@@ -6752,52 +6728,52 @@ connection.onRequest(
     }
 
     try {
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
+
+      const arena = flattenArenaFromInstance(target, context);
 
       // Run BLT transformation
-      const { algebraicLoops } = performBltTransformation(dae);
+      const { blocks } = performBltTransformationArena(arena);
 
-      // Serialize equation text via toJSON
-      const eqTexts = Array.from(dae.arenaEquations())
-        .filter((eq) => eq.constructor.name !== "ModelicaFunctionCallEquation")
-        .map((eq) => {
-          try {
-            const json = eq.toJSON;
-            if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
-              return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
-            }
-            return JSON.stringify(json);
-          } catch {
-            return "<equation>";
-          }
-        });
+      // Serialize equation text
+      const eqTexts: string[] = [];
+      for (let i = 0; i < arena.eqCount; i++) {
+        if (arena.getEqKind(i) !== EqKind.Simple) continue;
+        const lhsStr = printArenaExpression(arena, arena.getEqLhs(i));
+        const rhsStr = printArenaExpression(arena, arena.getEqRhs(i));
+        eqTexts.push(`${lhsStr} = ${rhsStr}`);
+      }
 
-      const varNames = [...dae.arenaVariables()].map((v) => v.name);
+      const varNames: string[] = [];
+      let unknownCount = 0;
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        const name = arena.getVarName(i);
+        varNames.push(name);
+        const variability = arena.getVarVariability(i);
+        if (variability === Variability.Continuous || variability === Variability.Discrete) {
+          unknownCount++;
+        }
+      }
 
-      const unknownCount = [...dae.arenaVariables()].filter(
-        (v) => (v as { variability?: unknown }).variability === null || (v as { name: string }).name.startsWith("der("),
-      ).length;
+      const algebraicLoops = blocks
+        .filter((block) => block.eqIdxs.length > 1)
+        .map((block) => ({
+          variables: block.vars.map((vIdx) => arena.getVarName(vIdx)),
+          equations: block.eqIdxs.map((eqIdx) => {
+            const lhsStr = printArenaExpression(arena, arena.getEqLhs(eqIdx));
+            const rhsStr = printArenaExpression(arena, arena.getEqRhs(eqIdx));
+            return `${lhsStr} = ${rhsStr}`;
+          }),
+        }));
 
       return {
         className: target.name || "Model",
         variables: varNames,
         equations: eqTexts,
-        algebraicLoops: algebraicLoops.map((loop) => ({
-          variables: loop.variables,
-          equations: loop.equations.map((eq) => {
-            try {
-              return JSON.stringify(eq.toJSON);
-            } catch {
-              return "<equation>";
-            }
-          }),
-        })),
-        equationCount: Array.from(dae.arenaEquations()).filter(
-          (eq) => eq.constructor.name !== "ModelicaFunctionCallEquation",
-        ).length,
+        algebraicLoops,
+        equationCount: eqTexts.length,
         unknownCount,
       };
     } catch (e) {
@@ -6922,33 +6898,27 @@ connection.onRequest(
     }
 
     try {
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
 
-      // Helper to extract a numeric value from a ModelicaExpression attribute
-      const exprToNum = (e: unknown): number | null => {
-        if (e && typeof e === "object" && "value" in e && typeof (e as { value: unknown }).value === "number") {
-          return (e as { value: number }).value;
-        }
-        return null;
-      };
+      const arena = flattenArenaFromInstance(target, context);
 
       const bounds: IntervalBound[] = [];
-      for (const v of dae.arenaVariables()) {
-        const attrs = v.attributes;
-        const minVal = exprToNum(attrs.get("min"));
-        const maxVal = exprToNum(attrs.get("max"));
-        const startVal = exprToNum(attrs.get("start"));
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        const name = arena.getVarName(i);
+        const minVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "min"));
+        const maxVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "max"));
+        const startVal = arena.getVarStartValue(i);
 
         const lower = minVal ?? -Infinity;
         const upper = maxVal ?? Infinity;
         const isComputed = minVal !== null || maxVal !== null;
 
         bounds.push({
-          variable: v.name,
-          lower: isFinite(lower) ? lower : startVal !== null ? startVal - 1000 : -1e6,
-          upper: isFinite(upper) ? upper : startVal !== null ? startVal + 1000 : 1e6,
+          variable: name,
+          lower: isFinite(lower) ? lower : startVal - 1000,
+          upper: isFinite(upper) ? upper : startVal + 1000,
           isComputed,
         });
       }
@@ -6956,7 +6926,7 @@ connection.onRequest(
       return {
         className: target.name || "Model",
         bounds,
-        totalVariables: dae.arenaVarCount,
+        totalVariables: arena.varCount,
         boundedCount: bounds.filter((b) => b.isComputed).length,
       };
     } catch (e) {
@@ -6997,25 +6967,24 @@ connection.onRequest(
     }
 
     try {
-      if (!target.instantiated) target.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
 
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(target, context);
 
       // Build a simple optimization problem from the DAE
       const controls: string[] = [];
       const controlBounds = new Map<string, { min: number; max: number }>();
-      for (const v of dae.arenaVariables()) {
-        if (v.causality === "input") {
-          controls.push(v.name);
-          controlBounds.set(v.name, { min: -1e6, max: 1e6 });
+      for (let i = 0; i < arena.varCount; i++) {
+        if (arena.isVarRemoved(i)) continue;
+        if (arena.getVarCausality(i) === Causality.Input) {
+          const name = arena.getVarName(i);
+          controls.push(name);
+          controlBounds.set(name, { min: -1e6, max: 1e6 });
         }
       }
 
-      const exp = dae.experiment;
+      const exp = arena.experiment;
       const problem = {
         startTime: exp.startTime ?? 0,
         stopTime: exp.stopTime ?? 10,
@@ -7025,7 +6994,7 @@ connection.onRequest(
         objective: "u^2",
       };
 
-      const optimizer = new ModelicaOptimizer(dae, problem);
+      const optimizer = new ModelicaOptimizer(arena, problem);
       const result = optimizer.solve();
 
       const parameters: { name: string; value: number }[] = [];
@@ -7092,18 +7061,12 @@ connection.onRequest(
     }
 
     try {
-      if (!target.instantiated) target.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
 
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(target, context);
 
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-
-      return { parameters: simulator.getParameterInfo() };
+      return { parameters: getArenaParameterInfo(arena) };
     } catch (e) {
       console.error("[getCalibrationParameters] Error:", e);
       return null;
@@ -7183,19 +7146,15 @@ connection.onRequest(
     }
 
     try {
-      if (!target.instantiated) target.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) return errorResult("No Modelica context found.");
 
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(target, context);
 
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
+      const simulator = new ArenaSimulator(arena);
 
       // Determine parameters to calibrate
-      const paramInfo = simulator.getParameterInfo();
+      const paramInfo = getArenaParameterInfo(arena);
       let paramNames = params.parameters;
       if (!paramNames || paramNames.length === 0) {
         // Auto-detect: all Real parameters
@@ -7209,10 +7168,24 @@ connection.onRequest(
       const parameterBounds = new Map<string, { min: number; max: number }>();
       for (const name of paramNames) {
         const userBounds = params.parameterBounds?.[name];
-        const pInfo = paramInfo.find((p) => p.name === name);
+        let arenaMin = -1e6;
+        let arenaMax = 1e6;
+        try {
+          const varIdx = arena.getVarIdxByName(name);
+          if (varIdx !== -1) {
+            const minExpr = arena.getVarAttrExprId(varIdx, "min");
+            const maxExpr = arena.getVarAttrExprId(varIdx, "max");
+            const minNum = evaluateArenaExprToNum(arena, minExpr);
+            const maxNum = evaluateArenaExprToNum(arena, maxExpr);
+            if (minNum !== null) arenaMin = minNum;
+            if (maxNum !== null) arenaMax = maxNum;
+          }
+        } catch {
+          // ignore
+        }
         parameterBounds.set(name, {
-          min: userBounds?.min ?? pInfo?.min ?? -1e6,
-          max: userBounds?.max ?? pInfo?.max ?? 1e6,
+          min: userBounds?.min ?? arenaMin,
+          max: userBounds?.max ?? arenaMax,
         });
       }
 
@@ -7238,7 +7211,7 @@ connection.onRequest(
       }
 
       // Run calibration
-      const calibrator = new ModelicaCalibrator(dae, simulator, {
+      const calibrator = new ModelicaCalibrator(arena, simulator, {
         parameters: paramNames,
         parameterBounds,
         initialGuess,
@@ -7352,55 +7325,70 @@ connection.onRequest(
     }
 
     try {
-      if (!target.instantiated) target.instantiate();
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
 
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(target, context);
 
       // Extract initial parameter values
       const fittedParameters: { name: string; initial: number; fitted: number }[] = [];
       for (const paramName of params.parametersToFit) {
-        const v = dae.arenaGetVarByName(paramName);
-        const startAttr = v?.attributes.get("start");
-        const initial =
-          startAttr && typeof (startAttr as unknown as { value?: unknown }).value === "number"
-            ? (startAttr as unknown as { value: number }).value
-            : 0;
+        let initial = 0;
+        try {
+          const varIdx = arena.getVarIdxByName(paramName);
+          if (varIdx !== -1) {
+            initial = arena.getVarStartValue(varIdx);
+          }
+        } catch {
+          // ignore
+        }
         fittedParameters.push({ name: paramName, initial, fitted: initial });
       }
 
-      // Simple gradient-free Nelder-Mead style parameter estimation
       const timeData = params.data.time;
       const signalData = params.data.signals;
 
       // Cost function: simulate and compute residual
-
-      const simulate = async (_paramValues: number[]): Promise<number> => {
-        for (const pName of params.parametersToFit) {
-          if (!pName) continue;
-          // Parameters are set via the expression, not attributes, for simulation
-          // This is a simplified approach
+      const simulate = async (paramValues: number[]): Promise<number> => {
+        // Set the parameter values in the arena
+        for (let i = 0; i < params.parametersToFit.length; i++) {
+          const pName = params.parametersToFit[i];
+          const pVal = paramValues[i];
+          if (pName && pVal !== undefined) {
+            try {
+              const varIdx = arena.getVarIdxByName(pName);
+              if (varIdx !== -1) {
+                arena.setVarStartValue(varIdx, pVal);
+              }
+            } catch {
+              // ignore
+            }
+          }
         }
+
         try {
-          const simulator = new ModelicaSimulator(dae);
-          simulator.prepare();
           const start = timeData[0] ?? 0;
           const stop = timeData[timeData.length - 1] ?? 10;
           const step = (stop - start) / Math.max(timeData.length - 1, 1);
-          const result = await simulator.simulateAsync(start, stop, step);
+
+          const result = simulateArena(arena, {
+            startTime: start,
+            stopTime: stop,
+            step,
+          });
+
           if (!result || typeof result !== "object") return Infinity;
 
           let residual = 0;
-          const resultVars = result as Record<string, unknown>;
           for (const [sigName, measured] of Object.entries(signalData)) {
-            const simulated = resultVars[sigName];
-            if (Array.isArray(simulated) && Array.isArray(measured)) {
-              for (let j = 0; j < Math.min(simulated.length, measured.length); j++) {
-                const diff = (simulated[j] as number) - (measured[j] as number);
-                residual += diff * diff;
+            const idx = result.states.indexOf(sigName);
+            if (idx !== -1 && Array.isArray(measured)) {
+              for (let j = 0; j < Math.min(result.t.length, measured.length); j++) {
+                const simulatedVal = result.y[j]?.[idx];
+                if (simulatedVal !== undefined) {
+                  const diff = simulatedVal - (measured[j] as number);
+                  residual += diff * diff;
+                }
               }
             }
           }
@@ -7499,43 +7487,24 @@ connection.onRequest(
     }
 
     try {
-      const dae = new ModelicaDAE(target.name || "Model");
-      const flattener = new ModelicaFlattener();
-      target.accept(flattener, ["", dae]);
+      const context = documentContexts.get(params.uri);
+      if (!context) return null;
+
+      const arena = flattenArenaFromInstance(target, context);
 
       const eqIdx = params.equationIndex ?? 0;
-      const equations = Array.from(dae.arenaEquations());
-      if (eqIdx >= equations.length) return null;
+      if (eqIdx >= arena.eqCount) return null;
 
-      const eq = equations[eqIdx];
-      const original = (() => {
-        try {
-          const json = eq.toJSON;
-          if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
-            return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
-          }
-          return JSON.stringify(json);
-        } catch {
-          return "<equation>";
-        }
-      })();
+      const originalLhs = arena.getEqLhs(eqIdx);
+      const originalRhs = arena.getEqRhs(eqIdx);
+      const original = `${printArenaExpression(arena, originalLhs)} = ${printArenaExpression(arena, originalRhs)}`;
 
       // Run constant folding and collect trace
-      flattener.foldDAEConstants(dae);
+      foldArenaConstants(arena);
 
-      const simplified = (() => {
-        try {
-          const foldedEqs = Array.from(dae.arenaEquations());
-          const foldedEq = eqIdx < foldedEqs.length ? foldedEqs[eqIdx] : eq;
-          const json = foldedEq.toJSON;
-          if (json && typeof json === "object" && "expression1" in json && "expression2" in json) {
-            return `${JSON.stringify(json.expression1)} = ${JSON.stringify(json.expression2)}`;
-          }
-          return JSON.stringify(json);
-        } catch {
-          return original;
-        }
-      })();
+      const foldedLhs = arena.getEqLhs(eqIdx);
+      const foldedRhs = arena.getEqRhs(eqIdx);
+      const simplified = `${printArenaExpression(arena, foldedLhs)} = ${printArenaExpression(arena, foldedRhs)}`;
 
       const steps: SymbolicRewriteStep[] = [];
       if (original !== simplified) {
@@ -7641,15 +7610,11 @@ connection.onRequest(
     }
 
     try {
-      if (!classInstance.instantiated) {
-        classInstance.instantiate();
-      }
+      const context = documentContexts.get(params.uri);
+      if (!context) return { error: "No context found" };
 
-      const dae = new ModelicaDAE(classInstance.name || "Model");
-      const flattener = new ModelicaFlattener();
-      classInstance.accept(flattener, ["", dae]);
-      flattener.generateFlowBalanceEquations(dae);
-      flattener.foldDAEConstants(dae);
+      const arena = flattenArenaFromInstance(classInstance, context);
+      const dae = convertArenaToLegacyDAE(arena, classInstance.name || "Model");
 
       stepMode = true; // Reset step mode on new simulation run
 
@@ -8319,20 +8284,29 @@ async function runVerificationForUri(uri: string): Promise<{ ok: boolean }> {
       const targetModel = new ModelicaClassInstance(simTargetId, targetDB) as any;
       targetModel.instantiate();
 
-      const dae = new ModelicaDAE(targetModel.name || "Model");
-      const mFlattener = new ModelicaFlattener();
-      targetModel.accept(mFlattener, ["", dae]);
-      mFlattener.generateFlowBalanceEquations(dae);
-      mFlattener.foldDAEConstants(dae);
+      const context = sharedContext ?? new Context(sharedFs);
+      const arena = flattenArenaFromInstance(targetModel, context);
 
-      const simulator = new ModelicaSimulator(dae);
-      simulator.prepare();
-      const simResult = await simulator.simulateAsync(0, 10, 0.1, {
-        signal,
-        realtimeFactor: 1000000,
+      const arenaSimResult = simulateArena(arena, {
+        startTime: 0,
+        stopTime: 10,
+        step: 0.1,
       });
 
       if (signal.aborted) return { ok: false };
+
+      const simParameters: { name: string; value: number }[] = [];
+      const paramInfo = getArenaParameterInfo(arena);
+      for (const p of paramInfo) {
+        simParameters.push({ name: p.name, value: p.defaultValue });
+      }
+
+      const simResult = {
+        t: arenaSimResult.t,
+        states: arenaSimResult.states,
+        y: arenaSimResult.y,
+        parameters: simParameters,
+      };
 
       const runner = new VerificationRunner(sysmlDB, topo.variableMap);
       const vResults = runner.verifyCase(verifyUsage.id, simResult);
