@@ -18,6 +18,8 @@ export * from "./symbolics/calculus/derivative.js";
 export * from "./symbolics/calculus/integrate.js";
 export * from "./symbolics/graphs/sparse.js";
 export * from "./symbolics/simplify/egraph.js";
+export * from "./symbolics/simplify/expand.js";
+export * from "./symbolics/simplify/factor.js";
 export * from "./symbolics/tape.js";
 
 // Language workbench infrastructure
