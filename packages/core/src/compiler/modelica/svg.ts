@@ -25,8 +25,8 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
+import { evaluateCondition } from "./annotation-evaluator.js";
 import { ModelicaClassInstance, ModelicaComponentInstance, ModelicaRealClassInstance } from "./factory.js";
-import { evaluateCondition } from "./interpreter.js";
 import {
   Arrow,
   FillPattern,
