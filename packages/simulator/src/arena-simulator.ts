@@ -59,6 +59,13 @@ interface ArenaEventIndicator {
   exprId: number;
   /** Previous value of g() for sign-change detection. */
   prevValue: number;
+  /**
+   * Crossing direction to trigger the event:
+   *  -1 = positive→negative only (e.g., h <= 0 triggers when h crosses zero downward)
+   *  +1 = negative→positive only (e.g., h >= 0)
+   *   0 = both directions
+   */
+  direction: -1 | 0 | 1;
 }
 
 /** Runtime state for a single state machine during arena simulation. */
@@ -475,7 +482,7 @@ export class ArenaSimulator {
     this.eventIndicators = [];
     // Event indicators from the DAE builder (query-based flattener path)
     for (const exprId of this.arena.eventIndicatorExprIds) {
-      this.eventIndicators.push({ exprId, prevValue: 0 });
+      this.eventIndicators.push({ exprId, prevValue: 0, direction: 0 });
     }
     // If no explicit event indicators exist, derive them from when-clause conditions.
     // For adaptive solvers (Dopri5/BDF), event indicators must be CONTINUOUS functions
@@ -487,8 +494,8 @@ export class ArenaSimulator {
     //   etc.
     if (this.eventIndicators.length === 0) {
       for (const clause of this.whenClauses) {
-        const indicatorExprId = this.buildContinuousEventIndicator(clause.conditionExprId);
-        this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0 });
+        const { exprId: indicatorExprId, direction } = this.buildContinuousEventIndicator(clause.conditionExprId);
+        this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0, direction });
       }
     }
   }
@@ -500,10 +507,15 @@ export class ArenaSimulator {
    *   g(t,y) = lhs - rhs
    * The sign change of g() corresponds to the exact event instant.
    *
+   * The crossing direction determines which sign transition triggers the event:
+   *   Lt/Lte (e.g., h <= 0): g = h - 0; event fires on positive→negative crossing (dir = -1)
+   *   Gt/Gte (e.g., h >= 0): g = h - 0; event fires on negative→positive crossing (dir = +1)
+   *   Eq/Neq: both directions (dir = 0)
+   *
    * For non-relational conditions (already continuous or complex), fall back
    * to using the expression directly (may produce 0/1 jumps, but better than nothing).
    */
-  private buildContinuousEventIndicator(condExprId: number): number {
+  private buildContinuousEventIndicator(condExprId: number): { exprId: number; direction: -1 | 0 | 1 } {
     const kind = this.arena.getExprKind(condExprId);
     if (kind === ExprKind.Binary) {
       const op = this.arena.getExprData1(condExprId) as BinOp;
@@ -519,11 +531,22 @@ export class ArenaSimulator {
         const lhsId = this.arena.getExprLeft(condExprId);
         const rhsId = this.arena.getExprRight(condExprId);
         // Create a synthetic expression: lhs - rhs
-        return this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+        const exprId = this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+        // Determine crossing direction:
+        //   Lt/Lte: condition becomes true when lhs < rhs, i.e., g = lhs - rhs crosses from + to - → dir = -1
+        //   Gt/Gte: condition becomes true when lhs > rhs, i.e., g = lhs - rhs crosses from - to + → dir = +1
+        //   Eq/Neq: any crossing → dir = 0
+        let direction: -1 | 0 | 1 = 0;
+        if (op === BinOp.Lt || op === BinOp.Lte) {
+          direction = -1;
+        } else if (op === BinOp.Gt || op === BinOp.Gte) {
+          direction = 1;
+        }
+        return { exprId, direction };
       }
     }
     // Fall back to the raw condition expression
-    return condExprId;
+    return { exprId: condExprId, direction: 0 };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1158,9 +1181,10 @@ export class ArenaSimulator {
     // Build RHS function
     const rhsFn = this.buildRhsFunction(valuesByStringId, stateStringIds, derivStringIds, timeId);
 
-    // Build event functions and callback
+    // Build event functions, callback, and crossing directions
     const eventFns = this.buildEventFunctions(valuesByStringId, stateStringIds, timeId);
     const eventCb = eventFns.length > 0 ? this.buildEventCallback(valuesByStringId, stateStringIds, timeId) : undefined;
+    const eventDirs = this.eventIndicators.map((ei) => ei.direction);
 
     let rawResult: { times: number[]; states: number[][] };
 
@@ -1189,6 +1213,7 @@ export class ArenaSimulator {
         { atol, rtol },
         eventFns.length > 0 ? eventFns : undefined,
         eventCb,
+        eventDirs,
       );
     }
 

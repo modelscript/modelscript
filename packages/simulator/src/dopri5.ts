@@ -94,6 +94,8 @@ export type EventCallback = (t: number, y: number[], eventIdx: number, dir: 1 | 
  * @param options Solver options (tolerances, max step, etc.)
  * @param eventFunctions  Optional array of event functions g_i(t, y); events trigger on sign change
  * @param eventCallback   Optional callback when an event is detected
+ * @param eventDirections Optional crossing directions per event: -1 = positive→negative only,
+ *                        +1 = negative→positive only, 0 = both directions (default: 0).
  * @returns Solver result with output states and statistics
  */
 export function dopri5(
@@ -105,6 +107,7 @@ export function dopri5(
   options: Dopri5Options = {},
   eventFunctions?: ((t: number, y: number[]) => number)[],
   eventCallback?: EventCallback,
+  eventDirections?: number[],
 ): Dopri5Result {
   const atol = options.atol ?? 1e-6;
   const rtol = options.rtol ?? 1e-6;
@@ -158,7 +161,8 @@ export function dopri5(
   }
 
   let totalSteps = 0;
-  let skipEventSteps = 0; // Chattering guard: skip event detection for N steps after an event
+  let lastEventTime = -Infinity;
+  let consecutiveEvents = 0; // Count of events at the same time (for Zeno detection)
 
   while (t < tEnd && totalSteps < maxSteps) {
     totalSteps++;
@@ -213,12 +217,29 @@ export function dopri5(
 
       // ── Event Detection & Dense Output ──
       let eventOccurred = false;
-      if (eventFunctions && prevEventValues && eventCallback && skipEventSteps <= 0) {
+      if (eventFunctions && prevEventValues && eventCallback) {
         const newEventValues = eventFunctions.map((g) => g(tNew, yNew));
         for (let ei = 0; ei < eventFunctions.length; ei++) {
           const prev = prevEventValues[ei] ?? 0;
           const curr = newEventValues[ei] ?? 0;
+
+          // Direction-aware sign-change detection:
+          //   dir = -1: only positive→negative crossings (prev > 0, curr < 0)
+          //   dir = +1: only negative→positive crossings (prev < 0, curr > 0)
+          //   dir =  0: both directions (any sign change)
+          const reqDir = eventDirections?.[ei] ?? 0;
+          let signChange = false;
           if (prev * curr < 0) {
+            if (reqDir === 0) {
+              signChange = true;
+            } else if (reqDir < 0 && prev > 0 && curr < 0) {
+              signChange = true;
+            } else if (reqDir > 0 && prev < 0 && curr > 0) {
+              signChange = true;
+            }
+          }
+
+          if (signChange) {
             eventOccurred = true;
             const eventFn = eventFunctions[ei];
             if (!eventFn) continue;
@@ -257,6 +278,37 @@ export function dopri5(
             const dir = curr < 0 ? -1 : 1;
             const yAfter = eventCallback(tEvent, yEvent, ei, dir);
 
+            // ── Zeno detection ──
+            // If the callback didn't meaningfully change the state, or if
+            // too many events fire at the same time, the system has reached
+            // a Zeno limit (e.g., ball stopped bouncing with v ≈ 0).
+            // Disable further event detection to prevent infinite chattering.
+            let maxChange = 0;
+            for (let si = 0; si < n; si++) {
+              maxChange = Math.max(maxChange, Math.abs((yAfter[si] ?? 0) - (yEvent[si] ?? 0)));
+            }
+
+            // Track temporal clustering of events
+            if (Math.abs(tEvent - lastEventTime) < 1e-10) {
+              consecutiveEvents++;
+            } else {
+              consecutiveEvents = 1;
+              lastEventTime = tEvent;
+            }
+
+            if (maxChange < atol || consecutiveEvents >= 3) {
+              // Zeno: output the final resting state and disable events
+              result.times.push(tEvent);
+              result.states.push([...yAfter]);
+              t = tEvent;
+              y = yAfter;
+              k1 = f(t, y);
+              result.fEvals++;
+              k[0] = k1;
+              prevEventValues = null; // Disable all future event detection
+              break;
+            }
+
             // Output explicit post-event state so the plot shows instantaneous jump
             result.times.push(tEvent);
             result.states.push([...yAfter]);
@@ -267,8 +319,19 @@ export function dopri5(
             k1 = f(t, y);
             result.fEvals++;
             k[0] = k1;
-            prevEventValues = eventFunctions.map((g) => g(t, y));
-            skipEventSteps = 1; // Skip event detection for 1 step to depart the zero surface
+
+            // Nudge prevEventValues away from zero after the event.
+            // The projection sets g ≈ 0; a directional nudge ensures the next
+            // real crossing (in the required direction) is properly detected.
+            prevEventValues = eventFunctions.map((g) => {
+              const gVal = g(t, y);
+              if (Math.abs(gVal) < 1e-10) {
+                // Nudge in the departure direction: after a negative crossing
+                // the system departs positive, and vice versa.
+                return dir < 0 ? 1e-10 : -1e-10;
+              }
+              return gVal;
+            });
 
             // Reset step size after the discontinuity.
             // The Hermite interpolation polynomial is inaccurate across
@@ -282,11 +345,8 @@ export function dopri5(
         }
       }
       // Update event values after a non-event step
-      if (!eventOccurred) {
-        if (eventFunctions && prevEventValues) {
-          prevEventValues = eventFunctions.map((g) => g(tNew, yNew));
-        }
-        if (skipEventSteps > 0) skipEventSteps--;
+      if (!eventOccurred && eventFunctions && prevEventValues) {
+        prevEventValues = eventFunctions.map((g) => g(tNew, yNew));
       }
 
       // ── Dense output for intermediate output times if NO event interrupted this step ──
