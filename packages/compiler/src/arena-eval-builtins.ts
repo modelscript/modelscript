@@ -218,12 +218,12 @@ function evalCross(args: ArenaValue[]): ArenaValue | null {
     y2 = y[1],
     y3 = y[2];
   if (
-    x1 === undefined ||
-    x2 === undefined ||
-    x3 === undefined ||
-    y1 === undefined ||
-    y2 === undefined ||
-    y3 === undefined
+    typeof x1 !== "number" ||
+    typeof x2 !== "number" ||
+    typeof x3 !== "number" ||
+    typeof y1 !== "number" ||
+    typeof y2 !== "number" ||
+    typeof y3 !== "number"
   )
     return null;
   return [x2 * y3 - x3 * y2, x3 * y1 - x1 * y3, x1 * y2 - x2 * y1];
