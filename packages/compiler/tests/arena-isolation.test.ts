@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isExplicitlySolvableArena, isolateSymbolicallyArena } from "../src/arena-isolation.js";
+import {
+  isExplicitlySolvableArena,
+  isolateSymbolicallyArena,
+  tryOptimizeLoopWithGroebner,
+} from "../src/arena-isolation.js";
 import { ArenaDAEBuilder, BinOp, EqKind, ExprKind } from "../src/dae-arena.js";
 
 // Helper to recursively stringify an expression in the arena
@@ -194,5 +198,81 @@ describe("isolateSymbolicallyArena", () => {
     const isolatedId = isolateSymbolicallyArena(arena, eqExp, xIdx);
     // exp(2*x + 1) = y -> 2*x + 1 = log(y) -> 2*x = log(y) - 1 -> x = (log(y) - 1) / 2
     expect(printExpr(arena, isolatedId)).toBe("((log(y) - 1) / 2)");
+  });
+});
+
+describe("tryOptimizeLoopWithGroebner", () => {
+  it("should decouple a linear 2D algebraic loop", () => {
+    const arena = new ArenaDAEBuilder();
+    const xIdx = arena.addVariable("x");
+    const yIdx = arena.addVariable("y");
+    arena.addVariable("u");
+    arena.addVariable("v");
+
+    const xExpr = arena.addNameExpr("x");
+    const yExpr = arena.addNameExpr("y");
+    const uExpr = arena.addNameExpr("u");
+    const vExpr = arena.addNameExpr("v");
+
+    // Eq 1: x + y = u
+    const eq1 = arena.addEquation(EqKind.Simple, arena.addBinaryExpr(BinOp.Add, xExpr, yExpr), uExpr);
+    // Eq 2: x - y = v
+    const eq2 = arena.addEquation(EqKind.Simple, arena.addBinaryExpr(BinOp.Sub, xExpr, yExpr), vExpr);
+
+    const blocks = tryOptimizeLoopWithGroebner(arena, [eq1, eq2], [xIdx, yIdx]);
+    expect(blocks).not.toBeNull();
+    // Since it's linear and decoupled, it should return two single blocks
+    expect(blocks?.length).toBe(2);
+    expect(blocks?.[0]?.type).toBe("single");
+    expect(blocks?.[1]?.type).toBe("single");
+
+    // Verify the solved expressions
+    const block0 = blocks?.[0] as { type: "single"; varIdx: number; exprId: number };
+    const block1 = blocks?.[1] as { type: "single"; varIdx: number; exprId: number };
+
+    expect([block0.varIdx, block1.varIdx]).toContain(xIdx);
+    expect([block0.varIdx, block1.varIdx]).toContain(yIdx);
+  });
+
+  it("should partially triangularize a coupled non-linear loop", () => {
+    const arena = new ArenaDAEBuilder();
+    const xIdx = arena.addVariable("x");
+    const yIdx = arena.addVariable("y");
+    arena.addVariable("u");
+    arena.addVariable("v");
+
+    const xExpr = arena.addNameExpr("x");
+    const yExpr = arena.addNameExpr("y");
+    const uExpr = arena.addNameExpr("u");
+    const vExpr = arena.addNameExpr("v");
+
+    // Eq 1: x^2 + y = u
+    const xSq = arena.addBinaryExpr(BinOp.Pow, xExpr, arena.addIntLiteral(2));
+    const eq1 = arena.addEquation(EqKind.Simple, arena.addBinaryExpr(BinOp.Add, xSq, yExpr), uExpr);
+
+    // Eq 2: x + y^2 = v
+    const ySq = arena.addBinaryExpr(BinOp.Pow, yExpr, arena.addIntLiteral(2));
+    const eq2 = arena.addEquation(EqKind.Simple, arena.addBinaryExpr(BinOp.Add, xExpr, ySq), vExpr);
+
+    const blocks = tryOptimizeLoopWithGroebner(arena, [eq1, eq2], [xIdx, yIdx]);
+    expect(blocks).not.toBeNull();
+    // We expect it to split into:
+    // 1. A 1x1 system for y (since y^4 ... cannot be isolated simply)
+    // 2. A single block for x (since x + y^2 = v is linear in x once y is known)
+    expect(blocks?.length).toBe(2);
+
+    // One block should be a system of size 1 (for y), and one single (for x)
+    const systemBlock = blocks?.find((b) => b.type === "system");
+    const singleBlock = blocks?.find((b) => b.type === "single");
+
+    expect(systemBlock).toBeDefined();
+    expect(singleBlock).toBeDefined();
+
+    if (systemBlock?.type === "system") {
+      expect(systemBlock.vars).toEqual([yIdx]);
+    }
+    if (singleBlock?.type === "single") {
+      expect(singleBlock.varIdx).toBe(xIdx);
+    }
   });
 });

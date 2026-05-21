@@ -9,6 +9,7 @@ import {
   isolateSymbolicallyArena,
   pantelidesIndexReductionArena,
   performBltTransformationArena,
+  tryOptimizeLoopWithGroebner,
   type ArenaStateMachine,
 } from "@modelscript/compiler";
 import { buildAdJacobian } from "./ad-jacobian.js";
@@ -368,7 +369,12 @@ export class ArenaSimulator {
           this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
         }
       } else {
-        this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+        const optimized = tryOptimizeLoopWithGroebner(this.arena, block.eqIdxs, block.vars);
+        if (optimized) {
+          this.executionBlocks.push(...optimized);
+        } else {
+          this.executionBlocks.push({ type: "system", eqIdxs: block.eqIdxs, vars: block.vars });
+        }
       }
     }
 
