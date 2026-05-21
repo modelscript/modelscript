@@ -221,10 +221,22 @@ export class ArenaExprVisitor {
           if (subId === undefined) return undefined;
           subIds.push(subId);
 
-          if (this.dae.getExprKind(subId) === ExprKind.IntLiteral) {
+          // Check if subscript is a compile-time constant integer.
+          // This handles both literal subscripts (x[3]) and loop variable
+          // expressions (x[i+1] where i is substituted during for-loop unrolling).
+          const exprKind = this.dae.getExprKind(subId);
+          if (exprKind === ExprKind.IntLiteral) {
             staticSuffix += `[${this.dae.getExprData1(subId)}]`;
           } else {
-            allStatic = false;
+            // Try to evaluate non-literal subscript expressions (e.g., i+1, 2*j-1)
+            const evaluated = evaluateArenaExpression(this.dae, subId);
+            if (typeof evaluated === "number" && Number.isInteger(evaluated)) {
+              staticSuffix += `[${evaluated}]`;
+              // Replace the complex expression with a plain IntLiteral for downstream use
+              subIds[subIds.length - 1] = this.dae.addIntLiteral(evaluated);
+            } else {
+              allStatic = false;
+            }
           }
         }
 
