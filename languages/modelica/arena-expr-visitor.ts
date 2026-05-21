@@ -1,4 +1,4 @@
-import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, VarType } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -8,6 +8,7 @@ import {
   ModelicaFunctionCallSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaLiteralSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
   ModelicaRangeExpressionSyntaxNode,
   ModelicaStringLiteralSyntaxNode,
   ModelicaUnaryExpressionSyntaxNode,
@@ -60,6 +61,8 @@ export class ArenaExprVisitor {
       return this.visitFunctionCall(n);
     } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
       return this.visitIfElseExpression(n);
+    } else if (n instanceof ModelicaOutputExpressionListSyntaxNode) {
+      return this.visitOutputExpressionList(n);
     } else if (n instanceof ModelicaRangeExpressionSyntaxNode) {
       return this.visitRangeExpression(n);
     } else if (n instanceof ModelicaArrayConstructorSyntaxNode) {
@@ -80,6 +83,24 @@ export class ArenaExprVisitor {
     // Unhandled node type
     console.warn(`ArenaExprVisitor: Unhandled expression node type: ${n.constructor?.name}`);
     return undefined;
+  }
+
+  private visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode): number | undefined {
+    if (node.outputs.length === 1) {
+      return this.visit(node.outputs[0]);
+    }
+    const elementIds: number[] = [];
+    for (const output of node.outputs) {
+      if (output) {
+        const id = this.visit(output);
+        if (id !== undefined) {
+          elementIds.push(id);
+          continue;
+        }
+      }
+      elementIds.push(-1);
+    }
+    return this.dae.addTupleExpr(elementIds);
   }
 
   /**
@@ -162,9 +183,18 @@ export class ArenaExprVisitor {
   }
 
   private visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode): number | undefined {
-    const leftId = this.visit(node.operand1);
-    const rightId = this.visit(node.operand2);
+    let leftId = this.visit(node.operand1);
+    let rightId = this.visit(node.operand2);
     if (leftId === undefined || rightId === undefined) return undefined;
+
+    // Coerce operands if one is Real-typed and the other is not
+    const leftReal = this.isRealTypedExpr(leftId);
+    const rightReal = this.isRealTypedExpr(rightId);
+    if (leftReal && !rightReal) {
+      rightId = this.castToRealExpr(rightId);
+    } else if (rightReal && !leftReal) {
+      leftId = this.castToRealExpr(leftId);
+    }
 
     const op = node.operator;
     let binOp: BinOp;
@@ -269,6 +299,19 @@ export class ArenaExprVisitor {
         return undefined;
     }
 
+    if (unOp === UnaryOp.Negate) {
+      const operandKind = this.dae.getExprKind(exprId);
+      if (operandKind === ExprKind.Binary) {
+        const binOp = this.dae.getExprData1(exprId);
+        if (binOp === BinOp.Mul || binOp === BinOp.ElemMul) {
+          const a = this.dae.getExprLeft(exprId);
+          const b = this.dae.getExprRight(exprId);
+          const negatedA = this.dae.addUnaryExpr(UnaryOp.Negate, a);
+          return this.dae.addBinaryExpr(binOp, negatedA, b);
+        }
+      }
+    }
+
     return this.dae.addUnaryExpr(unOp, exprId);
   }
 
@@ -368,5 +411,75 @@ export class ArenaExprVisitor {
     }
     const argIds = getArgExprs();
     return this.dae.addCallExpr(funcName, argIds);
+  }
+
+  public isRealTypedExpr(exprId: number): boolean {
+    const kind = this.dae.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const nameId = this.dae.getExprData1(exprId);
+      const name = this.dae.interner.resolve(nameId);
+      if (name) {
+        const varIdx = this.dae.getVarIdxByName(name);
+        if (varIdx >= 0) {
+          return this.dae.getVarType(varIdx) === VarType.Real;
+        }
+      }
+    }
+    if (kind === ExprKind.RealLiteral) {
+      return true;
+    }
+    if (kind === ExprKind.Binary) {
+      const op1 = this.dae.getExprLeft(exprId);
+      const op2 = this.dae.getExprRight(exprId);
+      return this.isRealTypedExpr(op1) || this.isRealTypedExpr(op2);
+    }
+    if (kind === ExprKind.Unary) {
+      const operand = this.dae.getExprLeft(exprId);
+      return this.isRealTypedExpr(operand);
+    }
+    if (kind === ExprKind.Der) {
+      return true;
+    }
+    return false;
+  }
+
+  public castToRealExpr(exprId: number): number {
+    const kind = this.dae.getExprKind(exprId);
+    if (kind === ExprKind.IntLiteral) {
+      const val = this.dae.getExprData1(exprId);
+      return this.dae.addRealLiteral(val);
+    }
+    if (kind === ExprKind.ArrayCtor) {
+      const count = this.dae.getExprData1(exprId);
+      if (count === 0) return exprId;
+      const firstElem = this.dae.getExprLeft(exprId);
+      const elements: number[] = [];
+      elements.push(this.castToRealExpr(firstElem));
+      for (let i = 1; i < count; i++) {
+        const tupleExprId = firstElem + i;
+        const elemId = this.dae.getExprRight(tupleExprId);
+        elements.push(this.castToRealExpr(elemId));
+      }
+      return this.dae.addArrayCtorExpr(elements);
+    }
+    if (kind === ExprKind.Unary) {
+      const op = this.dae.getExprData1(exprId);
+      const operand = this.dae.getExprLeft(exprId);
+      const casted = this.castToRealExpr(operand);
+      if (casted !== operand) {
+        return this.dae.addUnaryExpr(op, casted);
+      }
+    }
+    if (kind === ExprKind.Binary) {
+      const op = this.dae.getExprData1(exprId);
+      const op1 = this.dae.getExprLeft(exprId);
+      const op2 = this.dae.getExprRight(exprId);
+      const casted1 = this.castToRealExpr(op1);
+      const casted2 = this.castToRealExpr(op2);
+      if (casted1 !== op1 || casted2 !== op2) {
+        return this.dae.addBinaryExpr(op, casted1, casted2);
+      }
+    }
+    return exprId;
   }
 }

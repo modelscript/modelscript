@@ -106,12 +106,18 @@ import {
   EqKind,
   evaluateArenaExpression,
   ExprKind,
+  foldArenaConstants,
   Variability,
   VarType,
 } from "@modelscript/compiler";
 import { ArenaExprVisitor } from "./arena-expr-visitor.js";
 import {
+  ModelicaAlgorithmSectionSyntaxNode,
   ModelicaBreakStatementSyntaxNode,
+  ModelicaClassDefinitionSyntaxNode,
+  ModelicaComponentReferenceSyntaxNode,
+  ModelicaConnectEquationSyntaxNode,
+  ModelicaEquationSectionSyntaxNode,
   ModelicaForEquationSyntaxNode,
   ModelicaForIndexSyntaxNode,
   ModelicaForStatementSyntaxNode,
@@ -172,14 +178,21 @@ export class ArenaQueryFlattener {
       return dae;
     }
 
-    // Walk the resolved elements and emit DAE entries
+    // Walk the resolved elements and emit DAE entries (components, connections)
     this.flattenElements(elements, "", dae);
+
+    // Walk the CST to extract equation/algorithm sections
+    // (Equations are not indexed in the symbol table — they live as CST nodes)
+    this.flattenClassSections(rootClassId, "", dae);
 
     // Post-processing: expand connections into equations
     this.expandConnections(dae);
 
     // Extract experiment annotation from root class
     this.extractExperimentAnnotation(rootClassId, dae);
+
+    // Fold constant and parameter binding expressions
+    foldArenaConstants(dae);
 
     // O(N) Arena-native alias elimination
     eliminateArenaAliases(dae);
@@ -234,6 +247,126 @@ export class ArenaQueryFlattener {
     eliminateArenaAliases(dae);
 
     return dae;
+  }
+
+  // -------------------------------------------------------------------------
+  // CST-Based Section Extraction (Equations & Algorithms)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Walk the CST of a class definition to extract and flatten
+   * EquationSection and AlgorithmSection nodes.
+   *
+   * Equations are NOT indexed in the symbol table — they exist only as
+   * CST nodes within the class body. This method fills that gap by
+   * walking the concrete syntax tree directly.
+   */
+  private flattenClassSections(classId: SymbolId, prefix: string, dae: ArenaDAEBuilder): void {
+    const cstNode = this.db.cstNode(classId) as any;
+    if (!cstNode) return;
+
+    const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
+    if (!classDef) return;
+
+    for (const section of classDef.sections) {
+      if (section instanceof ModelicaEquationSectionSyntaxNode) {
+        this.flattenEquationSection(section, prefix, dae);
+      } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+        this.flattenAlgorithmSection(section, prefix, dae);
+      }
+    }
+  }
+
+  /**
+   * Flatten all equations within an EquationSection AST node.
+   */
+  private flattenEquationSection(
+    sectionNode: ModelicaEquationSectionSyntaxNode,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+  ): void {
+    const isInitial = sectionNode.initial;
+    const eqKind = isInitial ? EqKind.InitialSimple : EqKind.Simple;
+
+    for (const eq of sectionNode.equations) {
+      if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
+        const visitor = this.createExprVisitor(dae);
+        const lhsId = eq.expression1 ? visitor.visit(eq.expression1) : undefined;
+        const rhsId = eq.expression2 ? visitor.visit(eq.expression2) : undefined;
+        if (lhsId !== undefined && rhsId !== undefined) {
+          dae.addEquation(eqKind, lhsId, rhsId);
+        }
+      } else if (eq instanceof ModelicaForEquationSyntaxNode) {
+        this.unrollForIndexes(eq.forIndexes, 0, eq.equations, prefix, dae, new Map());
+      } else if (eq instanceof ModelicaIfEquationSyntaxNode) {
+        this.flattenIfEquationAst(eq, prefix, dae, new Map());
+      } else if (eq instanceof ModelicaWhenEquationSyntaxNode) {
+        this.flattenWhenEquationAst(eq, prefix, dae, new Map());
+      } else if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+        const lhs = eq.componentReference1;
+        const rhs = eq.componentReference2;
+        if (lhs && rhs) {
+          const lhsRef = this.serializeRef(lhs);
+          const rhsRef = this.serializeRef(rhs);
+          if (lhsRef && rhsRef) {
+            const lhsName = prefix ? `${prefix}.${lhsRef}` : lhsRef;
+            const rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
+            const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhsName));
+            const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhsName));
+            dae.addEquation(EqKind.Connect, lhsId, rhsId);
+          }
+        }
+      }
+    }
+  }
+
+  private serializeRef(ref: ModelicaComponentReferenceSyntaxNode): string | undefined {
+    let path = "";
+    for (const part of ref.parts) {
+      const ident = part.identifier?.text;
+      if (!ident) return undefined;
+      if (path.length > 0) path += ".";
+      path += ident;
+      if (part.arraySubscripts && part.arraySubscripts.subscripts.length > 0) {
+        for (const sub of part.arraySubscripts.subscripts) {
+          if (sub.expression) {
+            const expr = sub.expression as any;
+            const subText = expr.text ?? expr.concreteSyntaxNode?.text ?? "";
+            if (subText) {
+              path += `[${subText}]`;
+            }
+          }
+        }
+      }
+    }
+    return path;
+  }
+
+  /**
+   * Flatten an AlgorithmSection AST node into arena statements.
+   */
+  private flattenAlgorithmSection(
+    sectionNode: ModelicaAlgorithmSectionSyntaxNode,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+  ): void {
+    const isInitial = sectionNode.initial;
+    const stmtNodes: ModelicaStatementSyntaxNode[] = sectionNode.statements ?? [];
+
+    const stmtStartIdx = dae.stmtCount;
+
+    for (const stmt of stmtNodes) {
+      this.flattenStatement(stmt, dae);
+    }
+
+    const stmtCount = dae.stmtCount - stmtStartIdx;
+    if (stmtCount > 0) {
+      if (isInitial) {
+        dae.addInitialAlgorithmSection(stmtStartIdx, stmtCount);
+      } else {
+        dae.addAlgorithmSection(stmtStartIdx, stmtCount);
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -294,37 +427,24 @@ export class ArenaQueryFlattener {
 
   private flattenComponent(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
-    const meta = entry.metadata as Record<string, unknown>;
-    const typeName = meta?.typeSpecifier as string | undefined;
 
-    if (!typeName) {
-      dae.diagnostics.push({
-        code: 4004,
-        rule: "arena-flattener",
-        severity: "error",
-        message: `Component '${fullName}' has no type specifier`,
-        range: null,
-      });
-      return;
-    }
-
-    // Check if it's a predefined scalar type
-    if (isPredefinedScalar(typeName)) {
-      this.emitVariable(fullName, typeName, entry, dae);
-      return;
-    }
-
-    // Compound type — resolve via classInstance query and recurse
+    // Resolve the type specifier using the classInstance query.
+    // This walks the CST up to the ComponentClause to find the typeSpecifier
+    // and resolves it to a class entry via scope resolution.
     const classInstanceId = this.db.query<SymbolId | null>("classInstance", entry.id);
 
     if (classInstanceId === null) {
-      dae.diagnostics.push({
-        code: 4004,
-        rule: "arena-flattener",
-        severity: "error",
-        message: `Cannot resolve type '${typeName}' for component '${fullName}'`,
-        range: null,
-      });
+      // Fallback: try resolvedType query for diagnostics
+      const resolvedType = this.db.query<SymbolEntry | null>("resolvedType", entry.id);
+      if (!resolvedType) {
+        dae.diagnostics.push({
+          code: 4004,
+          rule: "arena-flattener",
+          severity: "error",
+          message: `Cannot resolve type for component '${fullName}'`,
+          range: null,
+        });
+      }
       return;
     }
 
@@ -334,16 +454,17 @@ export class ArenaQueryFlattener {
         code: 4004,
         rule: "arena-flattener",
         severity: "error",
-        message: `Type '${typeName}' resolved to invalid symbol for '${fullName}'`,
+        message: `Type resolved to invalid symbol for '${fullName}'`,
         range: null,
       });
       return;
     }
 
-    // Check if the resolved type is actually a predefined type
+    // Check if the resolved type is a predefined scalar type
     const classMeta = classEntry.metadata as Record<string, unknown>;
-    if (classMeta?.isPredefined) {
-      this.emitVariable(fullName, classEntry.name, entry, dae);
+    const resolvedTypeName = classEntry.name;
+    if (classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName)) {
+      this.emitVariable(fullName, resolvedTypeName, entry, dae);
       return;
     }
 
@@ -427,8 +548,6 @@ export class ArenaQueryFlattener {
   // -------------------------------------------------------------------------
 
   private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
-    const meta = componentEntry.metadata as Record<string, unknown>;
-
     // Extract outer modification from specialization
     const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
     const outerMod = specArgs?.data ?? null;
@@ -444,23 +563,27 @@ export class ArenaQueryFlattener {
     else if (typeName === "Boolean") varType = VarType.Boolean;
     else if (typeName === "String") varType = VarType.String;
 
-    // Resolve variability: check modification first, then CST metadata, then default
+    // Resolve variability via the query system (reads from ComponentClause CST)
     let variability = Variability.Continuous;
-    const modVariability = this.resolveModAttribute(mod, "variability", typeName, dae) as string;
-    const vStr = modVariability ?? (meta?.variability as string) ?? "continuous";
+    const modVariability = this.resolveModAttribute(mod, "variability", typeName, dae, componentEntry) as string;
+    const qVariability = this.db.query<string | null>("variability", componentEntry.id);
+    const vStr = modVariability ?? qVariability ?? "continuous";
     if (vStr === "discrete") variability = Variability.Discrete;
     else if (vStr === "parameter") variability = Variability.Parameter;
     else if (vStr === "constant") variability = Variability.Constant;
 
-    // Resolve causality: check modification first, then CST metadata, then default
+    // Resolve causality via the query system
     let causality = Causality.Local;
-    const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae) as string;
-    const cStr = modCausality ?? (meta?.causality as string) ?? "local";
+    const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae, componentEntry) as string;
+    const qCausality = this.db.query<string | null>("causality", componentEntry.id);
+    const cStr = modCausality ?? qCausality ?? "local";
     if (cStr === "input") causality = Causality.Input;
     else if (cStr === "output") causality = Causality.Output;
 
+    // Resolve flow prefix via the query system
+    const qFlowPrefix = this.db.query<string | null>("flowPrefix", componentEntry.id);
     let flags = 0;
-    if (meta?.flowPrefix === "flow" || meta?.flowPrefix === "stream") {
+    if (qFlowPrefix === "flow" || qFlowPrefix === "stream") {
       flags |= 8; // isFlow
     }
 
@@ -476,17 +599,35 @@ export class ArenaQueryFlattener {
       flags |= 16;
     }
 
-    // Resolve start value
-    const startVal = this.resolveModAttribute(mod, "start", typeName, dae) ?? 0.0;
+    // Resolve start value and set as attribute expression
+    const startVal = this.resolveModAttribute(mod, "start", typeName, dae, componentEntry) ?? 0.0;
     const initialValue =
       typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
 
     const varIdx = dae.addVariable(name, varType, variability, causality, initialValue, flags);
-    if (meta?.flowPrefix === "stream") {
+    if (qFlowPrefix === "stream") {
       dae.setVarFlowPrefix(varIdx, "stream");
     }
 
+    // Set start value as an attribute expression for the printer
+    // (if explicitly modified, or if non-default: non-zero for Real, non-false for Boolean)
+    const hasExplicitStart = mod?.args.some((a) => a.name === "start");
+    const isDefaultStart =
+      (varType === VarType.Real && initialValue === 0.0) ||
+      (varType === VarType.Integer && initialValue === 0) ||
+      (varType === VarType.Boolean && initialValue === 0.0);
+    if (!isDefaultStart || hasExplicitStart) {
+      const startExprId =
+        varType === VarType.Boolean
+          ? dae.addBoolLiteral(initialValue !== 0)
+          : varType === VarType.Integer
+            ? dae.addIntLiteral(initialValue)
+            : dae.addRealLiteral(initialValue);
+      dae.setVarAttrExprId(varIdx, "start", startExprId);
+    }
+
     // Set variable description string from CST description field
+    const meta = componentEntry.metadata as Record<string, unknown>;
     const descNode = meta?.description as { descriptionString?: string } | undefined;
     if (descNode?.descriptionString) {
       // Strip quotes from the description string literal
@@ -500,30 +641,51 @@ export class ArenaQueryFlattener {
       dae.setVarFixed(varIdx);
     }
 
-    // If there's a binding expression, emit a binding equation
+    // If there's a binding expression, set it as the variable's expression
+    // (for parameters/constants this produces `parameter Real a = 2.0`,
+    //  for continuous vars we still emit an equation)
     if (mod?.bindingExpression) {
       if (mod.bindingExpression.kind === "expression") {
         const bytes = mod.bindingExpression.cstBytes;
-        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
+        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], componentEntry);
         if (cstNode) {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const visitor = this.createExprVisitor(dae);
-          const exprId = visitor.visit(astNode);
+          let exprId = visitor.visit(astNode);
           if (exprId !== undefined) {
-            const nameExpr = dae.addNameExpr(name);
-            dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            if (varType === VarType.Real) {
+              exprId = visitor.castToRealExpr(exprId);
+            }
+            if (variability === Variability.Parameter || variability === Variability.Constant) {
+              // Set as variable expression (printed as `parameter Real a = 2.0`)
+              dae.setVarExpression(varIdx, exprId);
+            } else {
+              // Emit as equation (printed in the equation section)
+              const nameExpr = dae.addNameExpr(name);
+              dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            }
           }
         }
       } else if (mod.bindingExpression.kind === "literal") {
         const val = mod.bindingExpression.value;
-        const exprId =
-          typeof val === "number"
-            ? dae.addRealLiteral(val)
-            : typeof val === "boolean"
-              ? dae.addBoolLiteral(val as boolean)
-              : dae.addStringLiteral(val as string);
-        const nameExpr = dae.addNameExpr(name);
-        dae.addEquation(EqKind.Simple, nameExpr, exprId);
+        let exprId: number;
+        if (typeof val === "number") {
+          if (varType === VarType.Integer) {
+            exprId = dae.addIntLiteral(Math.round(val));
+          } else {
+            exprId = dae.addRealLiteral(val);
+          }
+        } else if (typeof val === "boolean") {
+          exprId = dae.addBoolLiteral(val);
+        } else {
+          exprId = dae.addStringLiteral(val as string);
+        }
+        if (variability === Variability.Parameter || variability === Variability.Constant) {
+          dae.setVarExpression(varIdx, exprId);
+        } else {
+          const nameExpr = dae.addNameExpr(name);
+          dae.addEquation(EqKind.Simple, nameExpr, exprId);
+        }
       }
     }
 
@@ -535,6 +697,7 @@ export class ArenaQueryFlattener {
     attrName: string,
     typeName: string,
     dae: ArenaDAEBuilder,
+    contextEntry?: SymbolEntry,
   ): unknown {
     if (mod) {
       const arg = mod.args.find((a) => a.name === attrName);
@@ -542,7 +705,14 @@ export class ArenaQueryFlattener {
         if (arg.value.kind === "literal") return arg.value.value;
         if (arg.value.kind === "expression") {
           const bytes = arg.value.cstBytes;
-          const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], undefined);
+          // Use the text property directly if available (avoids CST tree lookup)
+          if (arg.value.text) {
+            const numVal = Number(arg.value.text);
+            if (!isNaN(numVal)) return numVal;
+            if (arg.value.text === "true") return true;
+            if (arg.value.text === "false") return false;
+          }
+          const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], contextEntry);
           if (cstNode) {
             const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
             const visitor = this.createExprVisitor(dae);
