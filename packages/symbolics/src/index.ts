@@ -1,4 +1,3 @@
-export * from "./algebra/groebner.js";
 export * from "./algebra/linalg.js";
 export * from "./algebra/solve.js";
 export * from "./algebra/tensor.js";
