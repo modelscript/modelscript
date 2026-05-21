@@ -107,6 +107,9 @@ export class ArenaSimulator {
   /** Event indicator functions for zero-crossing detection. */
   public eventIndicators: ArenaEventIndicator[] = [];
 
+  /** Extracted derivative equations: der(x) = expr. */
+  public derivativeEquations: { derivNameId: number; rhsExprId: number }[] = [];
+
   /** State machine runtimes. */
   public stateMachineRuntimes: ArenaStateMachineRuntime[] = [];
 
@@ -145,6 +148,7 @@ export class ArenaSimulator {
     this.blocks = bltRes.blocks;
 
     this.buildExecutionBlocks();
+    this.extractDerivativeEquations();
     this.extractWhenClauses();
     this.extractAssertions();
     this.extractEventIndicators();
@@ -220,6 +224,10 @@ export class ArenaSimulator {
 
   private buildExecutionBlocks() {
     for (const block of this.blocks) {
+      // Skip blocks with no equations — these are unmatched state variables
+      // managed by the ODE integrator, not algebraic unknowns.
+      if (block.eqIdxs.length === 0) continue;
+
       if (block.eqIdxs.length === 1 && block.vars.length === 1) {
         const eqIdx = block.eqIdxs[0] ?? -1;
         const varIdx = block.vars[0] ?? -1;
@@ -300,6 +308,54 @@ export class ArenaSimulator {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Derivative Equation Extraction
+  //
+  // Equations of the form `der(x) = rhs` are NOT handled by the BLT
+  // (the BLT intentionally excludes der() dependencies). Instead, they
+  // are explicitly evaluated each RHS call to populate der(x) in the
+  // environment so the ODE integrator can read dy/dt.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  private extractDerivativeEquations() {
+    this.derivativeEquations = [];
+    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
+      if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+
+      const lhsId = this.arena.getEqLhs(eqIdx);
+      const rhsId = this.arena.getEqRhs(eqIdx);
+
+      // Check if LHS is der(x)
+      if (this.arena.getExprKind(lhsId) === ExprKind.Der) {
+        const argId = this.arena.getExprData1(lhsId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const varNameId = this.arena.getExprData1(argId);
+          const varName = this.arena.interner.resolve(varNameId);
+          const derivNameId = this.arena.interner.intern(`der(${varName})`);
+          this.derivativeEquations.push({ derivNameId, rhsExprId: rhsId });
+        }
+      }
+      // Also check if RHS is der(x) (for equations written as `expr = der(x)`)
+      else if (this.arena.getExprKind(rhsId) === ExprKind.Der) {
+        const argId = this.arena.getExprData1(rhsId);
+        if (this.arena.getExprKind(argId) === ExprKind.Name) {
+          const varNameId = this.arena.getExprData1(argId);
+          const varName = this.arena.interner.resolve(varNameId);
+          const derivNameId = this.arena.interner.intern(`der(${varName})`);
+          this.derivativeEquations.push({ derivNameId, rhsExprId: lhsId });
+        }
+      }
+    }
+  }
+
+  /** Evaluate all derivative equations, writing der(x) values to the environment. */
+  private evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
+    for (const deq of this.derivativeEquations) {
+      const val = evaluateArenaRuntime(this.arena, deq.rhsExprId, valuesByStringId);
+      valuesByStringId[deq.derivNameId] = isFinite(val) ? val : 0;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // When-Clause Extraction
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -343,7 +399,8 @@ export class ArenaSimulator {
             const argCount = this.arena.getExprRight(callExprId);
             if (argCount >= 2) {
               const firstArgId = this.arena.getExprLeft(callExprId);
-              const secondArgId = firstArgId + 1;
+              // Second arg stored in the Tuple at callExprId+1
+              const secondArgId = this.arena.getExprLeft(callExprId + 1);
               if (this.arena.getExprKind(firstArgId) === ExprKind.Name) {
                 const targetNameId = this.arena.getExprData1(firstArgId);
                 actions.push({ type: "reinit", targetNameId, exprId: secondArgId });
@@ -365,7 +422,7 @@ export class ArenaSimulator {
             // The actual new value is the second argument of the call
             const argCount = this.arena.getExprRight(rhs);
             if (argCount >= 2) {
-              const valueExprId = this.arena.getExprLeft(rhs) + 1; // second arg
+              const valueExprId = this.arena.getExprLeft(rhs + 1); // second arg in Tuple at rhs+1
               actions.push({ type: "reinit", targetNameId, exprId: valueExprId });
             }
             continue;
@@ -418,6 +475,13 @@ export class ArenaSimulator {
     // Event indicators from the DAE builder
     for (const exprId of this.arena.eventIndicatorExprIds) {
       this.eventIndicators.push({ exprId, prevValue: 0 });
+    }
+    // If no explicit event indicators exist, derive them from when-clause conditions.
+    // This ensures adaptive solvers can detect zero-crossings for when/elsewhen.
+    if (this.eventIndicators.length === 0) {
+      for (const clause of this.whenClauses) {
+        this.eventIndicators.push({ exprId: clause.conditionExprId, prevValue: 0 });
+      }
     }
   }
 
@@ -796,8 +860,9 @@ export class ArenaSimulator {
       for (let i = 0; i < n; i++) {
         valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
       }
-      // Evaluate all blocks
+      // Evaluate all blocks and derivative equations
       this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
@@ -853,6 +918,7 @@ export class ArenaSimulator {
       }
       // Process when-clauses at event time (may reinit state variables)
       this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
@@ -890,6 +956,7 @@ export class ArenaSimulator {
     // Initialize when-clause wasActive flags
     valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
     for (const clause of this.whenClauses) {
       const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
       clause.wasActive = condVal !== 0;
@@ -921,6 +988,7 @@ export class ArenaSimulator {
     for (let s = 0; s <= steps; s++) {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
@@ -1052,7 +1120,7 @@ export class ArenaSimulator {
     const y0 = new Float64Array(n);
     for (let i = 0; i < n; i++) y0[i] = vals[stateIds[i] ?? -1] ?? 0;
 
-    // k1 = f(t, y0) — already evaluated by evaluateBlocks
+    // k1 = f(t, y0) — already evaluated by evaluateBlocks + evaluateDerivativeEquations
     const k1 = new Float64Array(n);
     for (let i = 0; i < n; i++) k1[i] = vals[derivIds[i] ?? -1] ?? 0;
 
@@ -1062,6 +1130,7 @@ export class ArenaSimulator {
     }
     vals[timeId] = t + 0.5 * h;
     this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
     const k2 = new Float64Array(n);
     for (let i = 0; i < n; i++) k2[i] = vals[derivIds[i] ?? -1] ?? 0;
 
@@ -1070,6 +1139,7 @@ export class ArenaSimulator {
       vals[stateIds[i] ?? -1] = (y0[i] as number) + 0.5 * h * (k2[i] as number);
     }
     this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
     const k3 = new Float64Array(n);
     for (let i = 0; i < n; i++) k3[i] = vals[derivIds[i] ?? -1] ?? 0;
 
@@ -1079,6 +1149,7 @@ export class ArenaSimulator {
     }
     vals[timeId] = t + h;
     this.evaluateBlocks(vals);
+    this.evaluateDerivativeEquations(vals);
     const k4 = new Float64Array(n);
     for (let i = 0; i < n; i++) k4[i] = vals[derivIds[i] ?? -1] ?? 0;
 
@@ -1111,6 +1182,7 @@ export class ArenaSimulator {
     // Initialize when-clause wasActive flags
     valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
     for (const clause of this.whenClauses) {
       const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
       clause.wasActive = condVal !== 0;
@@ -1151,6 +1223,7 @@ export class ArenaSimulator {
 
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
