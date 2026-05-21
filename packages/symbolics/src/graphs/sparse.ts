@@ -1,10 +1,27 @@
 /* eslint-disable @typescript-eslint/prefer-for-of */
-import { type CCSMatrix, buildCCS } from "@modelscript/compiler";
-import { ModelicaArrayEquation, ModelicaDAE, ModelicaExpression } from "../systems/index.js";
-import { StaticTapeBuilder } from "../tape.js";
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Re-export CCSMatrix and buildCCS from @modelscript/compiler (canonical location)
-export { buildCCS, type CCSMatrix } from "@modelscript/compiler";
+/**
+ * @deprecated This module delegates to `@modelscript/compiler` for the
+ * arena-native implementation. The legacy `computeJacobianSparsity` and
+ * `computeHessianSparsity` functions that operated on `ModelicaDAE` are
+ * preserved for backward compatibility. New code should use
+ * `computeJacobianSparsityArena` and `computeHessianSparsityArena` directly.
+ */
+
+// Re-export all arena-native symbols from the compiler
+export {
+  buildCCS,
+  computeHessianSparsityArena,
+  computeJacobianSparsityArena,
+  generateSparsityArraysC,
+  type CCSMatrix,
+} from "@modelscript/compiler";
+
+// ── Legacy API (backward compatibility) ──
+
+import { buildCCS, StaticTapeBuilder, type CCSMatrix } from "@modelscript/compiler";
+import { ModelicaArrayEquation, type ModelicaDAE, type ModelicaExpression } from "../systems/index.js";
 
 /** Extract derivative name (like der(x)) from expression without depending on external module. */
 function extractDer(expr: ModelicaExpression): string | null {
@@ -23,9 +40,7 @@ function extractDer(expr: ModelicaExpression): string | null {
 }
 
 /**
- * Computes the Bipartite Dependency Graph for the Jacobian of the given DAE.
- * Rows = Equations (derEqs)
- * Cols = State Variables
+ * @deprecated Use `computeJacobianSparsityArena` from `@modelscript/compiler` instead.
  */
 export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; states: string[] } {
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
@@ -68,14 +83,11 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
     const outIdx = tape.walk(eq.rhs);
     const deps = tape.getDependencies(outIdx);
 
-    console.error(`[DEBUG] state=${eq.state}, deps=${Array.from(deps).join(",")}`);
-
     // Keep only dependencies that are in our independent variables list
     const filteredDeps = new Set<string>();
     for (const d of deps) {
       if (indepVars.has(d)) filteredDeps.add(d);
     }
-    console.error(`[DEBUG] state=${eq.state}, filteredDeps=${Array.from(filteredDeps).join(",")}`);
 
     rowsDeps.push(filteredDeps);
   }
@@ -88,8 +100,7 @@ export function computeJacobianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; sta
 }
 
 /**
- * Computes the Bipartite Dependency Graph for the Hessian of the Lagrangian.
- * For the Hessian, the matrix is symmetric, covering all independent variables.
+ * @deprecated Use `computeHessianSparsityArena` from `@modelscript/compiler` instead.
  */
 export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; states: string[] } {
   const derEqs: { state: string; rhs: ModelicaExpression }[] = [];
@@ -137,79 +148,78 @@ export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; stat
     lagrangianNode = tape.pushOp({ type: "add", a: lagrangianNode, b: term });
   }
 
-  // To find the sparsity of the Hessian, we want to know which inputs interact with which inputs.
-  // We can do this by running a forward pass on the Tape structural dependencies logic,
-  // or simply assuming the Hessian is dense for NLP (which is often true for small models),
-  // but let's do structural interaction:
-  // If `t_i = f(t_a, t_b)`, any variable in `deps(a)` interacts with `deps(b)`!
-  // This means the upper/lower triangular Hessian matrix has non-zeros at `(v1, v2)`
-  // for all `v1 in deps(a)` and `v2 in deps(b)`.
+  // Per-op dependency tracking via the DOD tape layout
+  const TAPE_STRIDE = 4;
+  const TAPE_OP_KIND = 0;
+  const TAPE_DATA1 = 1;
+  const TAPE_DATA2 = 2;
 
   const depsForOp = new Map<number, Set<string>>();
-  for (let i = 0; i < tape.ops.length; i++) {
-    const op = tape.ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+  for (let i = 0; i < tape.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = tape.opData[offset + TAPE_OP_KIND]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const a = tape.opData[offset + TAPE_DATA1]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const b = tape.opData[offset + TAPE_DATA2]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
     const d = new Set<string>();
-    if (op.type === "var" && indepVars.has(op.name)) {
-      d.add(op.name);
+    // TapeOpKind.Var = 1
+    if (kind === 1 && indepVars.has(tape.interner.resolve(a) ?? "")) {
+      d.add(tape.interner.resolve(a) ?? "");
     } else {
-      if ("a" in op && typeof op.a === "number") {
-        const ad = depsForOp.get(op.a);
+      if (kind >= 2 && kind <= 6) {
+        // Binary: Add, Sub, Mul, Div, Pow
+        const ad = depsForOp.get(a);
         if (ad) for (const v of ad) d.add(v);
-      }
-      if ("b" in op && typeof op.b === "number") {
-        const bd = depsForOp.get(op.b);
+        const bd = depsForOp.get(b);
         if (bd) for (const v of bd) d.add(v);
+      } else if (kind >= 7 && kind <= 13) {
+        // Unary: Neg, Sin, Cos, Tan, Exp, Log, Sqrt
+        const ad = depsForOp.get(a);
+        if (ad) for (const v of ad) d.add(v);
       }
     }
     depsForOp.set(i, d);
   }
 
-  // Interaction graph (Adjacency List)
-  const interactions = new Map<string, Set<string>>();
-  for (const s of states) interactions.set(s, new Set([s])); // Diagonal is usually non-zero
+  // Suppress unused variable warning
+  void lagrangianNode;
 
-  for (let i = 0; i < tape.ops.length; i++) {
-    const op = tape.ops[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-    // Binary operators mix their operands
-    if (op.type === "mul" || op.type === "div" || op.type === "pow") {
-      const ad = depsForOp.get(op.a)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      const bd = depsForOp.get(op.b)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
-      for (const v1 of ad) {
-        for (const v2 of bd) {
-          interactions.get(v1)!.add(v2); // eslint-disable-line @typescript-eslint/no-non-null-assertion
-          interactions.get(v2)!.add(v1); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+  const interactions = new Map<string, Set<string>>();
+  for (const s of states) interactions.set(s, new Set([s]));
+
+  for (let i = 0; i < tape.length; i++) {
+    const offset = i * TAPE_STRIDE;
+    const kind = tape.opData[offset + TAPE_OP_KIND]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const a = tape.opData[offset + TAPE_DATA1]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const b = tape.opData[offset + TAPE_DATA2]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+    // Binary nonlinear (Mul=4, Div=5, Pow=6)
+    if (kind === 4 || kind === 5 || kind === 6) {
+      const ad = depsForOp.get(a);
+      const bd = depsForOp.get(b);
+      if (ad && bd) {
+        for (const v1 of ad) {
+          for (const v2 of bd) {
+            interactions.get(v1)?.add(v2);
+            interactions.get(v2)?.add(v1);
+          }
         }
       }
     }
-    // Unary nonlinear operators self-interact all their dependencies
-    if (
-      op.type === "sin" ||
-      op.type === "cos" ||
-      op.type === "tan" ||
-      op.type === "exp" ||
-      op.type === "log" ||
-      op.type === "sqrt" ||
-      op.type === "pow" ||
-      op.type === "div" ||
-      op.type === "mul"
-    ) {
-      // Wait, `add` and `sub` are linear, they do NOT create cross-interactions in the Hessian!
-      // But nonlinear ops do. If `f(x+y) = sin(x+y)`, the Hessian contains cross term dxdy.
-      // So we interact all combinations of `deps(a)`.
-      if ("a" in op && typeof op.a === "number") {
-        const ad = depsForOp.get(op.a)!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+
+    // Nonlinear operators (Sin=8..Sqrt=13, Mul=4, Div=5, Pow=6)
+    if ((kind >= 4 && kind <= 6) || (kind >= 8 && kind <= 13)) {
+      const ad = depsForOp.get(a);
+      if (ad) {
         for (const v1 of ad) {
           for (const v2 of ad) {
-            interactions.get(v1)!.add(v2); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+            interactions.get(v1)?.add(v2);
           }
         }
       }
     }
   }
 
-  // Lower triangular format for IPOPT!
   const rowsDeps: Set<string>[] = [];
-
   for (let r = 0; r < states.length; r++) {
     const rowId = states[r]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
     const d = new Set<string>();
@@ -226,16 +236,4 @@ export function computeHessianSparsity(dae: ModelicaDAE): { ccs: CCSMatrix; stat
     ccs: buildCCS(rowsDeps, states),
     states,
   };
-}
-
-/**
- * Emits the C-code static arrays for a given CCS matrix.
- * Example prefix: `ModelName_jacobian` -> generates `int ModelName_jacobian_row_idx[]`
- */
-export function generateSparsityArraysC(ccs: CCSMatrix, prefix: string): string[] {
-  const lines: string[] = [];
-  lines.push(`const int ${prefix}_nnz = ${ccs.nnz};`);
-  lines.push(`const int ${prefix}_row_idx[] = {${ccs.row_indices.join(", ")}};`);
-  lines.push(`const int ${prefix}_col_ptr[] = {${ccs.col_ptr.join(", ")}};`);
-  return lines;
 }
