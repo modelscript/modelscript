@@ -46,9 +46,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelscript/compiler": "*",
     "@modelscript/diagram": "*",
     "@modelscript/polyglot": "*",
-    "@modelscript/salsa": "*",
     "@modelscript/simulator": "*",
     "commander": "^11.0.0",
     "tree-sitter-cli": "^0.24.7",

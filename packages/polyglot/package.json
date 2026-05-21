@@ -21,7 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@modelscript/salsa": "*",
+    "@modelscript/compiler": "*",
     "@types/ws": "^8.18.1",
     "web-tree-sitter": "^0.26.8",
     "ws": "^8.20.0"

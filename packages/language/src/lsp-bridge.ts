@@ -1,5 +1,5 @@
 /* eslint-disable */
-import type { QueryEngine } from "@modelscript/salsa";
+import type { QueryEngine } from "@modelscript/compiler";
 import type { ScopeResolver } from "./resolver.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 

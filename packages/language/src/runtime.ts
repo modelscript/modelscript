@@ -1,4 +1,4 @@
-export * from "@modelscript/salsa";
+export * from "@modelscript/compiler";
 
 /**
  * Configuration for one indexable rule, extracted from a `def()` call.

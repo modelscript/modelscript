@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { QueryEngine } from "@modelscript/salsa";
+import { QueryEngine } from "@modelscript/compiler";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";

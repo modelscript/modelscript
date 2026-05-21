@@ -2,7 +2,7 @@
 // Rule Nodes — Named generic interfaces for type-level field extraction
 // ---------------------------------------------------------------------------
 
-export * from "@modelscript/salsa";
+export * from "@modelscript/compiler";
 export {
   ArenaDAEBuilder,
   BinOp,
