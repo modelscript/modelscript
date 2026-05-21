@@ -1,5 +1,6 @@
 import {
   ArenaDAEBuilder,
+  BinOp,
   EqKind,
   ExprKind,
   Variability,
@@ -472,17 +473,57 @@ export class ArenaSimulator {
 
   private extractEventIndicators() {
     this.eventIndicators = [];
-    // Event indicators from the DAE builder
+    // Event indicators from the DAE builder (query-based flattener path)
     for (const exprId of this.arena.eventIndicatorExprIds) {
       this.eventIndicators.push({ exprId, prevValue: 0 });
     }
     // If no explicit event indicators exist, derive them from when-clause conditions.
-    // This ensures adaptive solvers can detect zero-crossings for when/elsewhen.
+    // For adaptive solvers (Dopri5/BDF), event indicators must be CONTINUOUS functions
+    // that smoothly cross zero — not boolean conditions that jump between 0 and 1.
+    //
+    // Relational conditions are decomposed:
+    //   h <= 0  → indicator = lhs - rhs = h - 0 = h  (sign change at h=0)
+    //   a >= b  → indicator = lhs - rhs = a - b       (sign change at a=b)
+    //   etc.
     if (this.eventIndicators.length === 0) {
       for (const clause of this.whenClauses) {
-        this.eventIndicators.push({ exprId: clause.conditionExprId, prevValue: 0 });
+        const indicatorExprId = this.buildContinuousEventIndicator(clause.conditionExprId);
+        this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0 });
       }
     }
+  }
+
+  /**
+   * Convert a boolean condition expression into a continuous zero-crossing indicator.
+   *
+   * For relational expressions (Binary with Lt/Gt/Lte/Gte/Eq/Neq):
+   *   g(t,y) = lhs - rhs
+   * The sign change of g() corresponds to the exact event instant.
+   *
+   * For non-relational conditions (already continuous or complex), fall back
+   * to using the expression directly (may produce 0/1 jumps, but better than nothing).
+   */
+  private buildContinuousEventIndicator(condExprId: number): number {
+    const kind = this.arena.getExprKind(condExprId);
+    if (kind === ExprKind.Binary) {
+      const op = this.arena.getExprData1(condExprId) as BinOp;
+      // Relational operators: convert to continuous lhs - rhs
+      if (
+        op === BinOp.Lt ||
+        op === BinOp.Lte ||
+        op === BinOp.Gt ||
+        op === BinOp.Gte ||
+        op === BinOp.Eq ||
+        op === BinOp.Neq
+      ) {
+        const lhsId = this.arena.getExprLeft(condExprId);
+        const rhsId = this.arena.getExprRight(condExprId);
+        // Create a synthetic expression: lhs - rhs
+        return this.arena.addBinaryExpr(BinOp.Sub, lhsId, rhsId);
+      }
+    }
+    // Fall back to the raw condition expression
+    return condExprId;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -860,11 +901,13 @@ export class ArenaSimulator {
       for (let i = 0; i < n; i++) {
         valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
       }
-      // Evaluate all blocks and derivative equations
+      // Evaluate all blocks and derivative equations.
+      // NOTE: When-clauses and state machines are NOT evaluated here because
+      // they have memory (wasActive, activeState) that would be corrupted by
+      // the intermediate trial-point evaluations of adaptive RK stages.
+      // They are processed exclusively in the event callback.
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
-      this.executeStateMachines(valuesByStringId);
-      this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
       this.checkAssertions(valuesByStringId, t);
 
@@ -910,24 +953,82 @@ export class ArenaSimulator {
     timeId: number,
   ): (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[] {
     const n = stateStringIds.length;
-    return (t: number, y: number[]): number[] => {
+    return (t: number, y: number[], eventIdx: number): number[] => {
       // Write state at event time
       valuesByStringId[timeId] = t;
       for (let i = 0; i < n; i++) {
         valuesByStringId[stateStringIds[i] ?? -1] = y[i] ?? 0;
       }
-      // Process when-clauses at event time (may reinit state variables)
+      // Evaluate blocks and derivative equations at the event state
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
-      this.processWhenClauses(valuesByStringId);
+
+      // Fire the when-clause actions DIRECTLY for the detected event.
+      // We do NOT re-evaluate the boolean condition (processWhenClauses)
+      // because the bisection may leave the state slightly on the wrong side
+      // of the zero-crossing surface, causing the boolean to be false even
+      // though the event was correctly detected by continuous sign-change.
+      if (eventIdx >= 0 && eventIdx < this.whenClauses.length) {
+        const clause = this.whenClauses[eventIdx];
+        if (clause) {
+          for (const action of clause.actions) {
+            const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId);
+            valuesByStringId[action.targetNameId] = val;
+          }
+        }
+      }
+
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
+
+      // Reset wasActive for all when-clauses so future events can fire
+      for (const clause of this.whenClauses) {
+        clause.wasActive = false;
+      }
 
       // Read back possibly-modified state
       const yAfter = new Array<number>(n);
       for (let i = 0; i < n; i++) {
         yAfter[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
       }
+
+      // Project state onto the zero-crossing surface to prevent chattering.
+      // The bisection locates events to ~1e-12 precision, but the residual
+      // non-zero g value can trigger immediate re-detection. By projecting
+      // the state variable(s) involved in the event indicator to g=0, the
+      // solver restarts cleanly on the correct side.
+      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
+        const ei = this.eventIndicators[eventIdx];
+        if (ei) {
+          // If the event indicator is a synthetic Sub expression (lhs - rhs),
+          // find which state variable is the LHS and project it.
+          const eiKind = this.arena.getExprKind(ei.exprId);
+          if (eiKind === ExprKind.Binary) {
+            const op = this.arena.getExprData1(ei.exprId) as BinOp;
+            if (op === BinOp.Sub) {
+              const lhsId = this.arena.getExprLeft(ei.exprId);
+              // Check if LHS is a state variable reference
+              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
+                const nameId = this.arena.getExprData1(lhsId);
+                for (let i = 0; i < n; i++) {
+                  if (stateStringIds[i] === nameId) {
+                    // Project: set state[i] so that lhs - rhs = 0 → state = rhs
+                    const rhsVal = evaluateArenaRuntime(
+                      this.arena,
+                      this.arena.getExprRight(ei.exprId),
+                      valuesByStringId,
+                    );
+                    yAfter[i] = rhsVal;
+                    valuesByStringId[nameId] = rhsVal;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       return yAfter;
     };
   }

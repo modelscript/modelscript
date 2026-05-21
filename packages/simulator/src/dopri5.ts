@@ -158,6 +158,7 @@ export function dopri5(
   }
 
   let totalSteps = 0;
+  let skipEventSteps = 0; // Chattering guard: skip event detection for N steps after an event
 
   while (t < tEnd && totalSteps < maxSteps) {
     totalSteps++;
@@ -212,7 +213,7 @@ export function dopri5(
 
       // ── Event Detection & Dense Output ──
       let eventOccurred = false;
-      if (eventFunctions && prevEventValues && eventCallback) {
+      if (eventFunctions && prevEventValues && eventCallback && skipEventSteps <= 0) {
         const newEventValues = eventFunctions.map((g) => g(tNew, yNew));
         for (let ei = 0; ei < eventFunctions.length; ei++) {
           const prev = prevEventValues[ei] ?? 0;
@@ -267,12 +268,25 @@ export function dopri5(
             result.fEvals++;
             k[0] = k1;
             prevEventValues = eventFunctions.map((g) => g(t, y));
+            skipEventSteps = 1; // Skip event detection for 1 step to depart the zero surface
+
+            // Reset step size after the discontinuity.
+            // The Hermite interpolation polynomial is inaccurate across
+            // state discontinuities; a smaller initial step lets the
+            // adaptive controller grow back to an appropriate size.
+            const t0Out = outputTimes[0] ?? 0;
+            const t1Out = outputTimes[1] ?? 0;
+            h = Math.min(h, outputTimes.length > 1 ? t1Out - t0Out : h * 0.1);
             break; // process one event per step
           }
         }
-        if (!eventOccurred) {
-          prevEventValues = newEventValues;
+      }
+      // Update event values after a non-event step
+      if (!eventOccurred) {
+        if (eventFunctions && prevEventValues) {
+          prevEventValues = eventFunctions.map((g) => g(tNew, yNew));
         }
+        if (skipEventSteps > 0) skipEventSteps--;
       }
 
       // ── Dense output for intermediate output times if NO event interrupted this step ──
