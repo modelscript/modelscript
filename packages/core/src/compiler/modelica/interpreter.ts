@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/**
+ * @deprecated Use arena-native evaluation and statement execution in `@modelscript/compiler` instead.
+ * This class is preserved solely for legacy flattener compatibility and will be removed once the legacy flattener is retired.
+ */
+
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
@@ -738,9 +743,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
     this.#componentRefDepth++;
 
     const parts = node.parts;
-    if (parts.length > 0 && parts[0].identifier?.text && this.evaluatingDimensionFor.has(parts[0].identifier.text)) {
+    const refText = parts[0].identifier?.text;
+    const isEvaluatingRef =
+      refText &&
+      (this.evaluatingDimensionFor.has(refText) ||
+        Array.from(this.evaluatingDimensionFor).some((name) => name.split(":")[0] === refText));
+    if (isEvaluatingRef) {
       this.#componentRefDepth--;
-      throw new Error("CyclicDependencyError:" + parts[0].identifier.text);
+      throw new Error("CyclicDependencyError:" + refText);
     }
     if (this.#evaluatingNodes.has(node as unknown as ModelicaSyntaxNode)) {
       this.#componentRefDepth--;
@@ -1256,10 +1266,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
 
       // Check for cyclic dimension dependency using resolvedDimensions
       const refName = (namedElement as any)?.name;
-      if (refName && this.evaluatingDimensionFor.has(refName)) {
+      const dimIndex = dimArg instanceof ModelicaIntegerLiteral ? dimArg.value - 1 : -1;
+      const isVariableEvaluating =
+        refName &&
+        (this.evaluatingDimensionFor.has(refName) ||
+          Array.from(this.evaluatingDimensionFor).some((name) => name.split(":")[0] === refName));
+      if (isVariableEvaluating) {
         const resolved = this.resolvedDimensions.get(refName);
-        if (dimArg instanceof ModelicaIntegerLiteral && resolved) {
-          const dimIndex = dimArg.value - 1;
+        if (dimIndex !== -1 && resolved) {
           const resolvedVal = resolved[dimIndex];
           // If this dimension is already resolved (not NaN), return it safely
           if (!isNaN(resolvedVal) && resolvedVal > 0) {
@@ -1276,13 +1290,14 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
       if (refName && this.evaluatingDimensionFor.size > 0 && arrayClassInstance) {
         const subs = (arrayClassInstance as any).arraySubscripts;
         if (subs && dimArg instanceof ModelicaIntegerLiteral) {
-          const dimIndex = dimArg.value - 1;
-          const sub = subs[dimIndex];
+          const dimIdx = dimArg.value - 1;
+          const sub = subs[dimIdx];
           // If this dimension is an expression (not a literal value), it could create a cycle
           if (sub?.expression && sub.expression.kind === "expression" && sub.expression.text) {
             // Check if the expression text references any variable currently being evaluated
             for (const evaluatingName of this.evaluatingDimensionFor) {
-              if (sub.expression.text.includes(evaluatingName)) {
+              const baseName = evaluatingName.split(":")[0];
+              if (sub.expression.text.includes(baseName)) {
                 throw new Error("CyclicDependencyError:" + refName);
               }
             }

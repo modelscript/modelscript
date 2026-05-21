@@ -296,6 +296,371 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
   return current;
 }
 
+// Stacks for tracking dimension evaluation and queries to detect cycles
+interface DimensionStackFrame {
+  symbolId: SymbolId;
+  dimIndex: number;
+  exprText: string;
+}
+
+interface ActiveDimQuery {
+  symbolId: SymbolId;
+  dimIndex: number;
+}
+
+let evaluatingDimensionsStack: DimensionStackFrame[] = [];
+let activeDimQueriesStack: ActiveDimQuery[] = [];
+const cyclicDimensionDiagnostics = new Map<SymbolId, Array<{ dimIndex: number; exprText: string }>>();
+let activeQueryDB: QueryDB | null = null;
+
+function addCyclicDiagnostic(symbolId: SymbolId, dimIndex: number, exprText: string) {
+  let list = cyclicDimensionDiagnostics.get(symbolId);
+  if (!list) {
+    list = [];
+    cyclicDimensionDiagnostics.set(symbolId, list);
+  }
+  if (!list.some((d) => d.dimIndex === dimIndex)) {
+    list.push({ dimIndex, exprText });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dimension Expression Evaluator (for resolvedArrayDimensions Salsa query)
+// ---------------------------------------------------------------------------
+
+/**
+ * Evaluate a dimension expression to a concrete integer value.
+ *
+ * Walks the CST node for the expression and evaluates it in the Salsa
+ * query context. Supports:
+ *   - Integer literals
+ *   - Name references to parameters/constants (reads their binding value)
+ *   - size(x, d) calls → recursively queries resolvedArrayDimensions (cycle-safe)
+ *   - Basic arithmetic (+, -, *, integer(), ndims())
+ *   - Enumeration type references (returns literal count)
+ *
+ * Returns null if the expression cannot be statically evaluated.
+ */
+function evaluateDimExpr(
+  db: QueryDB,
+  self: SymbolEntry,
+  dim: { kind: "expression"; cstBytes: readonly [number, number]; text?: string },
+): number | null {
+  // Try to get the CST node for this expression
+  const cst = db.cstNodeRange(dim.cstBytes[0], dim.cstBytes[1], self) as any;
+  if (!cst) {
+    // Fallback: try to parse the text directly as an integer
+    if (dim.text) {
+      const parsed = parseInt(dim.text, 10);
+      if (!isNaN(parsed) && String(parsed) === dim.text.trim()) return parsed;
+    }
+    return null;
+  }
+  return evaluateDimCSTNode(db, self, cst);
+}
+
+/**
+ * Recursively evaluate a CST node to an integer value in a Salsa context.
+ */
+function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number | null {
+  if (!node) return null;
+  const type = node.type;
+
+  // Integer literal
+  if (type === "UNSIGNED_INTEGER") {
+    return parseInt(node.text, 10);
+  }
+
+  // Parenthesized expression — unwrap
+  if (type === "ParenthesizedExpression") {
+    const inner = node.childForFieldName("expression");
+    return evaluateDimCSTNode(db, self, inner);
+  }
+
+  // Binary expression (a + b, a * b, a - b)
+  if (type === "BinaryExpression") {
+    const op1 = node.childForFieldName("operand1");
+    const op = node.childForFieldName("operator");
+    const op2 = node.childForFieldName("operand2");
+    const left = evaluateDimCSTNode(db, self, op1);
+    const right = evaluateDimCSTNode(db, self, op2);
+    if (left === null || right === null) return null;
+    const opText = op?.text;
+    if (opText === "+") return left + right;
+    if (opText === "-") return left - right;
+    if (opText === "*") return left * right;
+    if (opText === "/") return right !== 0 ? Math.floor(left / right) : null;
+    if (opText === "^") return Math.pow(left, right);
+    return null;
+  }
+
+  // Unary expression (-a, +a)
+  if (type === "UnaryExpression") {
+    const op = node.childForFieldName("operator");
+    const operand = node.childForFieldName("operand");
+    const val = evaluateDimCSTNode(db, self, operand);
+    if (val === null) return null;
+    return op?.text === "-" ? -val : val;
+  }
+
+  // Function call — handle size(), integer(), ndims()
+  if (type === "FunctionCall") {
+    const funcRef = node.childForFieldName("functionReference");
+    const funcName = funcRef?.text;
+
+    if (funcName === "size") {
+      return evaluateDimSizeCall(db, self, node);
+    }
+    if (funcName === "integer") {
+      // integer(expr) — evaluate the inner expression
+      const args = node.childForFieldName("functionCallArguments");
+      const firstArg = args?.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",");
+      return evaluateDimCSTNode(db, self, firstArg);
+    }
+    if (funcName === "ndims") {
+      return evaluateDimNdimsCall(db, self, node);
+    }
+    return null;
+  }
+
+  // Component reference — resolve to a parameter/constant value
+  if (type === "ComponentReference" || type === "ComponentReferencePart") {
+    const refText = node.text;
+    if (!refText) return null;
+    return evaluateDimNameRef(db, self, refText);
+  }
+
+  // Name — sometimes dimension expressions are just names
+  if (type === "Name") {
+    return evaluateDimNameRef(db, self, node.text);
+  }
+
+  // If the node is a simple text that looks like an integer
+  if (node.text) {
+    const parsed = parseInt(node.text, 10);
+    if (!isNaN(parsed) && String(parsed) === node.text.trim()) return parsed;
+  }
+
+  return null;
+}
+
+/**
+ * Helper to safely get or evaluate a single dimension index of a component.
+ * If the component is already on evaluatingDimensionsStack, we evaluate only
+ * the requested dimension index directly (bypassing the Salsa query for the component
+ * as a whole) to avoid false-positive circular dependency detections in Salsa.
+ */
+function getOrEvaluateSingleDimension(db: QueryDB, resolved: SymbolEntry, idx: number): number | null {
+  const isCurrentlyEvaluating = evaluatingDimensionsStack.some((f) => f.symbolId === resolved.id);
+  if (!isCurrentlyEvaluating) {
+    const resolvedDims = db.query<number[] | null>("resolvedArrayDimensions", resolved.id);
+    return resolvedDims ? (resolvedDims[idx] ?? null) : null;
+  }
+
+  // Fallback: evaluate only the requested dimension index directly to avoid false cycles
+  const rawDims = db.query<Array<
+    | { kind: "literal"; value: number }
+    | { kind: "flexible" }
+    | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
+  > | null>("arrayDimensions", resolved.id);
+  if (!rawDims || idx < 0 || idx >= rawDims.length) return null;
+
+  const dim = rawDims[idx];
+  if (dim.kind === "literal") {
+    return dim.value;
+  } else if (dim.kind === "flexible") {
+    return 0;
+  } else if (dim.kind === "expression") {
+    const isEvaluatingThisDim = evaluatingDimensionsStack.some((f) => f.symbolId === resolved.id && f.dimIndex === idx);
+    if (isEvaluatingThisDim) {
+      // Actual cycle detected! Report it.
+      const frame = evaluatingDimensionsStack[evaluatingDimensionsStack.length - 1];
+      if (frame) {
+        addCyclicDiagnostic(frame.symbolId, frame.dimIndex, frame.exprText);
+      } else {
+        addCyclicDiagnostic(resolved.id, idx, dim.text ?? "?");
+      }
+      return null;
+    }
+    evaluatingDimensionsStack.push({
+      symbolId: resolved.id,
+      dimIndex: idx,
+      exprText: dim.text ?? "?",
+    });
+    let value: number | null = null;
+    try {
+      value = evaluateDimExpr(db, resolved, dim);
+    } finally {
+      evaluatingDimensionsStack.pop();
+    }
+    return value;
+  }
+  return null;
+}
+
+/**
+ * Helper to get the number of dimensions (ndims) of a component.
+ */
+function getOrEvaluateNdims(db: QueryDB, resolved: SymbolEntry): number | null {
+  const rawDims = db.query<Array<
+    | { kind: "literal"; value: number }
+    | { kind: "flexible" }
+    | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
+  > | null>("arrayDimensions", resolved.id);
+  return rawDims?.length ?? null;
+}
+
+/**
+ * Evaluate a `size(x, d)` call in a dimension context.
+ */
+function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
+  const args = node.childForFieldName("functionCallArguments");
+  if (!args) return null;
+
+  // Extract the two arguments: size(arrayRef, dimIndex)
+  const argNodes = args.namedChildren?.filter((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ?? [];
+
+  if (argNodes.length < 2) return null;
+
+  const arrayRefNode = argNodes[0];
+  const dimArgNode = argNodes[1];
+  const dimIndex = evaluateDimCSTNode(db, self, dimArgNode);
+  if (dimIndex === null) return null;
+
+  // Resolve the array reference to a symbol
+  const refName = arrayRefNode?.text;
+  if (!refName) return null;
+
+  // Find the component in the parent scope
+  const parentId = self.parentId;
+  if (parentId === null) return null;
+
+  const resolver = db.query<((name: string) => SymbolEntry | null) | null>("resolveSimpleName", parentId);
+  if (!resolver) return null;
+
+  // Handle dot-separated references (e.g., pkg.x)
+  const parts = refName.split(".");
+  let resolved = resolver(parts[0]!);
+  for (let i = 1; i < parts.length && resolved; i++) {
+    const subResolver = db.query<((name: string) => SymbolEntry | null) | null>("resolveSimpleName", resolved.id);
+    if (!subResolver) {
+      resolved = null;
+      break;
+    }
+    resolved = subResolver(parts[i]!);
+  }
+
+  if (!resolved) return null;
+
+  activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: dimIndex - 1 });
+  try {
+    return getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
+  } finally {
+    activeDimQueriesStack.pop();
+  }
+}
+
+/**
+ * Evaluate an `ndims(x)` call in a dimension context.
+ */
+function evaluateDimNdimsCall(db: QueryDB, self: SymbolEntry, node: any): number | null {
+  const args = node.childForFieldName("functionCallArguments");
+  if (!args) return null;
+
+  const argNodes = args.namedChildren?.filter((c: any) => c.type !== "(" && c.type !== ")" && c.type !== ",") ?? [];
+
+  if (argNodes.length < 1) return null;
+
+  const refName = argNodes[0]?.text;
+  if (!refName) return null;
+
+  const parentId = self.parentId;
+  if (parentId === null) return null;
+
+  const resolver = db.query<((name: string) => SymbolEntry | null) | null>("resolveSimpleName", parentId);
+  if (!resolver) return null;
+  const resolved = resolver(refName);
+  if (!resolved) return null;
+
+  activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: 0 });
+  try {
+    return getOrEvaluateNdims(db, resolved);
+  } finally {
+    activeDimQueriesStack.pop();
+  }
+}
+
+/**
+ * Resolve a name reference (e.g., `n`, `N`, `pkg.n`) to an integer value.
+ *
+ * Looks up the symbol and reads its binding value if it's a parameter or constant.
+ */
+function evaluateDimNameRef(db: QueryDB, self: SymbolEntry, name: string): number | null {
+  const parentId = self.parentId;
+  if (parentId === null) return null;
+
+  const resolver = db.query<((name: string) => SymbolEntry | null) | null>("resolveSimpleName", parentId);
+  if (!resolver) return null;
+
+  // Handle dot-separated names
+  const parts = name.split(".");
+  let resolved = resolver(parts[0]!);
+  for (let i = 1; i < parts.length && resolved; i++) {
+    const subResolver = db.query<((name: string) => SymbolEntry | null) | null>("resolveSimpleName", resolved.id);
+    if (!subResolver) {
+      resolved = null;
+      break;
+    }
+    resolved = subResolver(parts[i]!);
+  }
+  if (!resolved) return null;
+
+  // Check if it's an enumeration type (return literal count)
+  if (resolved.kind === "Class") {
+    const meta = resolved.metadata as Record<string, unknown>;
+    const classPrefixes = meta?.classPrefixes;
+    if (typeof classPrefixes === "string" && classPrefixes.includes("enumeration")) {
+      const children = db.childrenOf(resolved.id);
+      return children.filter((c) => c.kind === "Component").length;
+    }
+  }
+
+  // Must be a parameter or constant with an integer binding
+  if (resolved.kind !== "Component") return null;
+  const meta = resolved.metadata as Record<string, unknown>;
+  const variability = meta?.variability;
+  if (variability !== "parameter" && variability !== "constant") return null;
+
+  // Try to read the binding value from the modification
+  const mod = db.query<any>("effectiveModification", resolved.id);
+  if (mod?.bindingExpression?.text) {
+    const val = parseInt(mod.bindingExpression.text, 10);
+    if (!isNaN(val) && String(val) === mod.bindingExpression.text.trim()) return val;
+    // If it's not a plain integer, try to get the CST and evaluate
+    if (mod.bindingExpression.cstBytes) {
+      const exprCst = db.cstNodeRange(
+        mod.bindingExpression.cstBytes[0],
+        mod.bindingExpression.cstBytes[1],
+        resolved,
+      ) as any;
+      if (exprCst) {
+        evaluatingDimensionsStack.push({
+          symbolId: resolved.id,
+          dimIndex: -1,
+          exprText: mod.bindingExpression.text,
+        });
+        try {
+          return evaluateDimCSTNode(db, resolved, exprCst);
+        } finally {
+          evaluatingDimensionsStack.pop();
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Precedence constants (matching grammar.js)
 // ---------------------------------------------------------------------------
@@ -3140,7 +3505,7 @@ export default language({
                   } else {
                     subs.push({
                       kind: "expression",
-                      cstBytes: [exprChild.startByte, exprChild.endByte],
+                      cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
                       text: exprChild.text,
                     });
                   }
@@ -3172,6 +3537,92 @@ export default language({
 
             return subscripts.length > 0 ? subscripts : null;
           },
+
+          /**
+           * Resolve array dimensions to concrete numeric values.
+           *
+           * For literal dimensions, returns the value directly.
+           * For expression dimensions (e.g. `size(y,1)`, `n+1`), evaluates
+           * the expression by walking the CST and resolving name references.
+           * For flexible dimensions (`:`), returns 0 (inferred from binding later).
+           *
+           * Uses Salsa cycle recovery: if evaluating a dimension expression
+           * triggers a cycle (e.g. `x[size(y,1)], y[size(x,1)]`), the recovery
+           * function returns null, signalling an unresolvable cycle.
+           */
+          resolvedArrayDimensions: {
+            execute: (db: QueryDB, self: SymbolEntry): number[] | null => {
+              if (evaluatingDimensionsStack.length === 0) {
+                cyclicDimensionDiagnostics.clear();
+                activeDimQueriesStack = [];
+              }
+              activeQueryDB = db;
+
+              const rawDims = db.query<Array<
+                | { kind: "literal"; value: number }
+                | { kind: "flexible" }
+                | { kind: "expression"; cstBytes: readonly [number, number]; text?: string }
+              > | null>("arrayDimensions", self.id);
+              if (!rawDims || rawDims.length === 0) return null;
+
+              const shape: number[] = [];
+              for (let i = 0; i < rawDims.length; i++) {
+                const dim = rawDims[i];
+                if (dim.kind === "literal") {
+                  shape.push(dim.value);
+                } else if (dim.kind === "flexible") {
+                  shape.push(0); // Inferred from binding later
+                } else if (dim.kind === "expression") {
+                  evaluatingDimensionsStack.push({
+                    symbolId: self.id,
+                    dimIndex: i,
+                    exprText: dim.text ?? "?",
+                  });
+                  let value: number | null = null;
+                  try {
+                    value = evaluateDimExpr(db, self, dim);
+                  } finally {
+                    evaluatingDimensionsStack.pop();
+                  }
+                  if (value === null) return null; // Could not resolve
+                  shape.push(value);
+                }
+              }
+              return shape;
+            },
+            // Salsa cycle recovery: trace the circular dependency and record diagnostic
+            recovery: (cycle: any, self: SymbolEntry): number[] | null => {
+              if (activeQueryDB) {
+                const db = activeQueryDB;
+                const firstIdx = evaluatingDimensionsStack.findIndex((f) => f.symbolId === self.id);
+                if (firstIdx !== -1) {
+                  const requestedDimIndex = activeDimQueriesStack[activeDimQueriesStack.length - 1]?.dimIndex ?? 0;
+                  const rawDims = db.query<any[] | null>("arrayDimensions", self.id);
+                  const requestedExprText = rawDims?.[requestedDimIndex]?.text ?? "?";
+
+                  const cycleStartIdx = evaluatingDimensionsStack.findIndex((frame) => {
+                    const name = db.symbol(frame.symbolId)?.name;
+                    if (!name) return false;
+                    const regex = new RegExp(`\\b${name}\\b`);
+                    return regex.test(requestedExprText);
+                  });
+
+                  const cycleFrames =
+                    cycleStartIdx !== -1
+                      ? evaluatingDimensionsStack.slice(cycleStartIdx)
+                      : evaluatingDimensionsStack.slice(firstIdx);
+
+                  for (const frame of cycleFrames) {
+                    if (frame.dimIndex !== -1) {
+                      addCyclicDiagnostic(frame.symbolId, frame.dimIndex, frame.exprText);
+                    }
+                  }
+                  addCyclicDiagnostic(self.id, requestedDimIndex, requestedExprText);
+                }
+              }
+              return null;
+            },
+          },
         },
         model: {
           name: "ComponentDeclaration",
@@ -3185,6 +3636,7 @@ export default language({
             classInstance: "SymbolId | null",
             arrayDimensions:
               "({ kind: 'literal'; value: number } | { kind: 'flexible' } | { kind: 'expression'; cstBytes: readonly [number, number] })[] | null",
+            resolvedArrayDimensions: "number[] | null",
             variability: "string | null",
             causality: "string | null",
             isFinal: "boolean",
@@ -3197,6 +3649,20 @@ export default language({
           },
         },
         lints: {
+          /** Error when a cyclic dependency is detected in array dimensions. */
+          cyclicDimensionDependency: (db: QueryDB, self: SymbolEntry) => {
+            // Trigger evaluation to run recovery if circular
+            db.query<number[] | null>("resolvedArrayDimensions", self.id);
+
+            const diags = cyclicDimensionDiagnostics.get(self.id);
+            if (diags && diags.length > 0) {
+              const diag = diags[0];
+              return error(
+                `Dimension ${diag.dimIndex + 1} of ${self.name}, '${diag.exprText}', could not be evaluated due to a cyclic dependency.`,
+              );
+            }
+            return null;
+          },
           /** Warn if component name starts with an uppercase letter. */
           componentNamingConvention: (db: QueryDB, self: SymbolEntry) => {
             if (self.name && /^[A-Z]/.test(self.name)) {
