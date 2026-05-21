@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
+import { Context } from "@modelscript/core";
 import { generateRomWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
-import type { DoEInputRange } from "@modelscript/simulator";
-import { ModelicaSimulator, buildSurrogate } from "@modelscript/simulator";
+import type { ArenaDoEInputRange } from "@modelscript/simulator";
+import { buildArenaSurrogate } from "@modelscript/simulator";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
@@ -105,25 +105,17 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
+    const arena = context.flattenArena(args.name);
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
       process.exit(1);
     }
-
-    // Flatten the model
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // @ts-expect-error - visitor type mismatch
-    instance.accept(new ModelicaFlattener(), ["", dae]);
-
-    const simulator = new ModelicaSimulator(dae);
-    simulator.prepare();
 
     const inputNames = args.inputs.split(",").map((s) => s.trim());
     const outputNames = args.outputs.split(",").map((s) => s.trim());
 
     // Parse input bounds
-    const inputRanges = new Map<string, DoEInputRange>();
+    const inputRanges = new Map<string, ArenaDoEInputRange>();
     if (args.inputBounds) {
       for (const part of args.inputBounds.split(",")) {
         const pieces = part.trim().split(":");
@@ -142,68 +134,33 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
       }
     }
 
-    const exp = dae.experiment;
+    const exp = arena.experiment;
     const startTime = args.startTime ?? exp.startTime ?? 0;
     const stopTime = args.stopTime ?? exp.stopTime ?? 1;
     const stepSize = exp.interval ?? (stopTime - startTime) / 100;
 
-    // FmuSubsystem adapter
-    const fmuAdapter = {
-      modelName: args.name,
-      inputNames: Array.from(inputRanges.keys()),
-      outputNames,
-      parameterNames: [] as string[],
-      _inputs: new Map<string, number>(),
-      _outputs: new Map<string, number>(),
-      initialize() {
-        this._inputs.clear();
-        this._outputs.clear();
-      },
-      setInputs(inputs: Map<string, number>) {
-        for (const [k, v] of inputs) this._inputs.set(k, v);
-      },
-      doStep() {
-        const overrides = new Map(this._inputs);
-        const result = simulator.simulate(startTime, stopTime, stepSize, {
-          solver: "dopri5" as const,
-          equidistantOutput: false,
-          parameterOverrides: overrides,
-        });
-        const lastY = result.y[result.y.length - 1];
-        if (lastY) {
-          for (let i = 0; i < result.states.length; i++) {
-            this._outputs.set(result.states[i] ?? "", lastY[i] ?? 0);
-          }
-        }
-      },
-      getOutputs() {
-        return new Map(this._outputs);
-      },
-      terminate() {
-        this._inputs.clear();
-        this._outputs.clear();
-      },
-    };
-
     console.error(`Training ${args.architecture.toUpperCase()} surrogate for ${args.name}...`);
-    const surrogateResult = buildSurrogate(
-      fmuAdapter,
+    const surrogateResult = buildArenaSurrogate(
+      arena,
       {
         doe: {
           inputs: inputRanges,
           outputs: outputNames,
           strategy: args.strategy,
           numSamples: args.numSamples,
-          startTime,
-          stopTime,
-          stepSize,
+          simulateOptions: {
+            startTime,
+            stopTime,
+            step: stepSize,
+            solver: "dopri5",
+          },
         },
         rom: {
           architecture: args.architecture,
         },
       },
       (phase, progress, detail) => {
-        console.error(`[${Math.round(progress)}%] ${phase}: ${detail}`);
+        console.error(`[${Math.round(progress * 100)}%] ${phase}: ${detail}`);
       },
     );
 

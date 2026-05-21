@@ -1,11 +1,6 @@
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
+import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
-import {
-  type Distribution,
-  type RandomVariable,
-  ModelicaSimulator,
-  runMonteCarloSimulation,
-} from "@modelscript/simulator";
+import { type Distribution, type RandomVariable, runMonteCarloArena } from "@modelscript/simulator";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";
@@ -83,21 +78,13 @@ export const MC: CommandModule<{}, McArgs> = {
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
+    const arena = context.flattenArena(args.name);
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
       process.exit(1);
     }
 
-    // Flatten the model
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // @ts-expect-error - visitor type mismatch
-    instance.accept(new ModelicaFlattener(), ["", dae]);
-
-    const simulator = new ModelicaSimulator(dae);
-    simulator.prepare();
-
-    const exp = dae.experiment;
+    const exp = arena.experiment;
     const startTime = exp.startTime ?? 0;
     const stopTime = exp.stopTime ?? 10;
     const stepSize = exp.interval ?? (stopTime - startTime) / 100;
@@ -145,25 +132,23 @@ export const MC: CommandModule<{}, McArgs> = {
       console.warn("Worker pool not yet implemented. Running synchronously on a single thread.");
     }
 
-    // Run simulation
-    const simulateFn = (overrides: Map<string, number>) => {
-      return simulator.simulate(startTime, stopTime, stepSize, {
-        solver: "dopri5",
-        parameterOverrides: overrides,
-      });
-    };
-
-    const mcOpts: Parameters<typeof runMonteCarloSimulation>[2] = {
+    const mcOpts: Parameters<typeof runMonteCarloArena>[2] = {
       numSamples: args.runs,
       latinHypercube: args.lhs,
       storeTrajectories: false, // Too much memory for CLI
+      simulateOptions: {
+        startTime,
+        stopTime,
+        step: stepSize,
+        solver: "rk4",
+      },
     };
     if (args.seed !== undefined) {
       mcOpts.seed = args.seed;
     }
 
     console.error(`Running Monte Carlo with ${args.runs} runs...`);
-    const mcResult = runMonteCarloSimulation(simulateFn, randomVars, mcOpts);
+    const mcResult = runMonteCarloArena(arena, randomVars, mcOpts);
 
     console.error(`Finished ${mcResult.numSamples} valid runs.`);
 

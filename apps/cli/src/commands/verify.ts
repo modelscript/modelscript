@@ -3,7 +3,7 @@
 import { VerificationRunner } from "@modelscript/compiler";
 import { Context, createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaSimulator } from "@modelscript/simulator";
+import { simulateArenaAsync } from "@modelscript/simulator";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -145,10 +145,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     // Flatten the model
     profiler.start("flattening");
-    const dae = context.flattenDAE(targetEntry?.name || "");
+    const arena = context.flattenArena(targetEntry?.name || "");
     profiler.end("flattening");
 
-    if (!dae) {
+    if (!arena) {
       console.error(
         `Modelica target '${targetEntry?.name}' not found or had flattening errors. Ensure both sysml and modelica files are passed.`,
       );
@@ -157,15 +157,16 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     // Simulate the model
     profiler.start("simulation");
-    const simulator = new ModelicaSimulator(dae);
-    simulator.prepare();
-
-    const exp = dae.experiment;
+    const exp = arena.experiment;
     const startTime = exp.startTime ?? 0;
     const stopTime = exp.stopTime ?? 10;
     const step = exp.interval ?? (stopTime - startTime) / 1000;
 
-    const simResult = await simulator.simulateAsync(startTime, stopTime, step);
+    const simResult = await simulateArenaAsync(arena, {
+      startTime,
+      stopTime,
+      step,
+    });
     profiler.end("simulation");
 
     // Verify
