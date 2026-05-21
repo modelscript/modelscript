@@ -126,12 +126,23 @@ import {
   ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
+  ModelicaSpecialEquationSyntaxNode,
   ModelicaStatementSyntaxNode,
   ModelicaSyntaxNode,
   ModelicaWhenEquationSyntaxNode,
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "./ast.js";
+
+// ---------------------------------------------------------------------------
+// Compiler Options
+// ---------------------------------------------------------------------------
+
+export interface FlattenOptions {
+  arrayMode?: "scalarize" | "preserve";
+  functionInlining?: "inline" | "preserve";
+  canonicalizeEquations?: boolean;
+}
 
 // We remove FlatDAE and FlatVariable interfaces since we emit directly to ArenaDAEBuilder.
 // ---------------------------------------------------------------------------
@@ -157,6 +168,17 @@ function isPredefinedScalar(name: string): boolean {
  * The flattener is stateless between calls to `flatten()`.
  */
 export class ArenaQueryFlattener {
+  /** Connector cardinality map: flattened connector name → count of connect references. */
+  private connectorCardinality = new Map<string, number>();
+  /** Active class hierarchy for outer/inner resolution. */
+  private activeClassStack: { classId: SymbolId; prefix: string }[] = [];
+  /** Compiler options. */
+  private options: Required<Pick<FlattenOptions, "arrayMode" | "functionInlining">> & FlattenOptions = {
+    arrayMode: "scalarize",
+    functionInlining: "preserve",
+    canonicalizeEquations: false,
+  };
+
   constructor(private db: QueryDB) {}
 
   /**
@@ -165,7 +187,12 @@ export class ArenaQueryFlattener {
    * @param rootClassId - The SymbolId of the top-level model to flatten
    * @returns A FlatDAE containing all variables, equations, and connections
    */
-  flatten(rootClassId: SymbolId): ArenaDAEBuilder {
+  flatten(rootClassId: SymbolId, opts?: FlattenOptions): ArenaDAEBuilder {
+    // Apply options
+    if (opts) {
+      this.options = { ...this.options, ...opts };
+    }
+
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "<unknown>";
 
@@ -178,6 +205,16 @@ export class ArenaQueryFlattener {
       return dae;
     }
 
+    // Pre-pass: count connector cardinality for cardinality() built-in
+    this.connectorCardinality.clear();
+    this.countConnections(rootClassId, "");
+
+    // Pre-pass: augment expandable connectors with virtual members from connect equations
+    this.augmentExpandableConnectors(rootClassId, dae);
+
+    // Push root class onto active hierarchy stack (for outer/inner resolution)
+    this.activeClassStack.push({ classId: rootClassId, prefix: "" });
+
     // Walk the resolved elements and emit DAE entries (components, connections)
     this.flattenElements(elements, "", dae);
 
@@ -185,6 +222,9 @@ export class ArenaQueryFlattener {
     // (Equations are not indexed in the symbol table — they live as CST nodes)
     // Must walk the extends chain recursively to include parent class equations.
     this.flattenClassSectionsRecursive(rootClassId, "", dae, new Set());
+
+    // Pop root class from hierarchy stack
+    this.activeClassStack.pop();
 
     // Post-processing: expand connections into equations
     this.expandConnections(dae);
@@ -376,6 +416,8 @@ export class ArenaQueryFlattener {
             dae.addEquation(EqKind.Connect, lhsId, rhsId);
           }
         }
+      } else if (eq instanceof ModelicaSpecialEquationSyntaxNode) {
+        this.handleSpecialEquation(eq, prefix, dae);
       }
     }
   }
@@ -487,13 +529,35 @@ export class ArenaQueryFlattener {
   private flattenComponent(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
 
+    // --- Outer/inner resolution ---
+    // If the component is declared `outer` (and NOT also `inner`),
+    // skip emitting it — the matching `inner` in an enclosing scope provides the variable.
+    const isOuter = this.db.query<boolean>("isOuter", entry.id);
+    const isInner = this.db.query<boolean>("isInner", entry.id);
+    if (isOuter && !isInner) {
+      // Search the active class hierarchy for a matching `inner` component
+      let hasInner = false;
+      for (let i = this.activeClassStack.length - 1; i >= 0; i--) {
+        const ancestor = this.activeClassStack[i]!;
+        const ancestorChildren = this.db.childrenOf(ancestor.classId);
+        for (const child of ancestorChildren) {
+          if (child.kind === "Component" && child.name === entry.name) {
+            const childIsInner = this.db.query<boolean>("isInner", child.id);
+            if (childIsInner) {
+              hasInner = true;
+              break;
+            }
+          }
+        }
+        if (hasInner) break;
+      }
+      if (hasInner) return; // Skip — the `inner` declaration provides this variable
+    }
+
     // Resolve the type specifier using the classInstance query.
-    // This walks the CST up to the ComponentClause to find the typeSpecifier
-    // and resolves it to a class entry via scope resolution.
     const classInstanceId = this.db.query<SymbolId | null>("classInstance", entry.id);
 
     if (classInstanceId === null) {
-      // Fallback: try resolvedType query for diagnostics
       const resolvedType = this.db.query<SymbolEntry | null>("resolvedType", entry.id);
       if (!resolvedType) {
         dae.diagnostics.push({
@@ -519,11 +583,24 @@ export class ArenaQueryFlattener {
       return;
     }
 
-    // Check if the resolved type is a predefined scalar type
     const classMeta = classEntry.metadata as Record<string, unknown>;
     const resolvedTypeName = classEntry.name;
+
+    // --- Predefined scalar types ---
     if (classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName)) {
       this.emitVariable(fullName, resolvedTypeName, entry, dae);
+      return;
+    }
+
+    // --- Enumeration types ---
+    if (classMeta?.classPrefixes === "enumeration") {
+      this.emitEnumerationVariable(fullName, resolvedTypeName, entry, classInstanceId, dae);
+      return;
+    }
+
+    // --- Clock type ---
+    if (resolvedTypeName === "Clock") {
+      this.emitClockVariable(fullName, entry, dae);
       return;
     }
 
@@ -531,7 +608,13 @@ export class ArenaQueryFlattener {
     const arrayDims = this.db.query<number[] | null>("arrayDimensions", entry.id);
 
     if (arrayDims && arrayDims.length > 0) {
-      // Array component — expand each index
+      if (this.options.arrayMode === "preserve") {
+        // In preserve mode, emit a single variable with shape metadata
+        this.emitVariable(fullName, resolvedTypeName, entry, dae);
+        const varIdx = dae.getVarIdxByName(fullName);
+        if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
+        return;
+      }
       this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae);
       return;
     }
@@ -540,8 +623,11 @@ export class ArenaQueryFlattener {
     const subElements = this.db.query<SymbolId[]>("instantiate", classInstanceId);
 
     if (subElements) {
+      // Push compound type onto hierarchy stack for outer/inner resolution
+      this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
       this.flattenElements(subElements, fullName, dae);
       this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
+      this.activeClassStack.pop();
     }
   }
 
@@ -753,6 +839,343 @@ export class ArenaQueryFlattener {
     }
 
     return varIdx;
+  }
+
+  // -------------------------------------------------------------------------
+  // Enumeration Variable Emission
+  // -------------------------------------------------------------------------
+
+  /**
+   * Emit an enumeration variable. Enumerations are stored as VarType.Enumeration
+   * with their literal list attached via setVarEnumerationLiterals.
+   */
+  private emitEnumerationVariable(
+    name: string,
+    typeName: string,
+    componentEntry: SymbolEntry,
+    classInstanceId: SymbolId,
+    dae: ArenaDAEBuilder,
+  ): number {
+    // Resolve variability, causality, etc. — same as scalar variables
+    const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
+    const outerMod = specArgs?.data ?? null;
+    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
+    const mod = mergeModArgs(outerMod, inlineMod);
+
+    let variability = Variability.Discrete; // Enumerations are discrete by default
+    const qVariability = this.db.query<string | null>("variability", componentEntry.id);
+    const vStr = qVariability ?? "discrete";
+    if (vStr === "parameter") variability = Variability.Parameter;
+    else if (vStr === "constant") variability = Variability.Constant;
+
+    let causality = Causality.Local;
+    const qCausality = this.db.query<string | null>("causality", componentEntry.id);
+    const cStr = qCausality ?? "local";
+    if (cStr === "input") causality = Causality.Input;
+    else if (cStr === "output") causality = Causality.Output;
+
+    const startVal = this.resolveModAttribute(mod, "start", typeName, dae, componentEntry) ?? 0;
+    const initialValue = typeof startVal === "number" ? startVal : 0;
+
+    const varIdx = dae.addVariable(name, VarType.Enumeration, variability, causality, initialValue, 0);
+
+    // Attach enumeration literal metadata
+    const enumChildren = this.db.childrenOf(classInstanceId);
+    const literals: { ordinal: number; name: string }[] = [];
+    let ordinal = 1;
+    for (const child of enumChildren) {
+      if (child.kind === "EnumerationLiteral") {
+        literals.push({ ordinal: ordinal++, name: child.name });
+      }
+    }
+    if (literals.length > 0) {
+      dae.setVarEnumerationLiterals(varIdx, literals);
+    }
+
+    // Set enumeration type name for the printer
+    dae.setVarDescription(varIdx, `enumeration(${literals.map((l) => l.name).join(", ")})`);
+
+    // Handle binding expression (same logic as emitVariable)
+    if (mod?.bindingExpression) {
+      if (mod.bindingExpression.kind === "literal") {
+        const val = mod.bindingExpression.value;
+        const exprId = typeof val === "number" ? dae.addIntLiteral(Math.round(val)) : dae.addIntLiteral(0);
+        if (variability === Variability.Parameter || variability === Variability.Constant) {
+          dae.setVarExpression(varIdx, exprId);
+        } else {
+          const nameExpr = dae.addNameExpr(name);
+          dae.addEquation(EqKind.Simple, nameExpr, exprId);
+        }
+      } else if (mod.bindingExpression.kind === "expression") {
+        const bytes = mod.bindingExpression.cstBytes;
+        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], componentEntry);
+        if (cstNode) {
+          const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+          const visitor = this.createExprVisitor(dae);
+          const exprId = visitor.visit(astNode ?? cstNode);
+          if (exprId !== undefined) {
+            if (variability === Variability.Parameter || variability === Variability.Constant) {
+              dae.setVarExpression(varIdx, exprId);
+            } else {
+              const nameExpr = dae.addNameExpr(name);
+              dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            }
+          }
+        }
+      }
+    }
+
+    return varIdx;
+  }
+
+  // -------------------------------------------------------------------------
+  // Clock Variable Emission
+  // -------------------------------------------------------------------------
+
+  private emitClockVariable(name: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
+    const varIdx = dae.addVariable(name, VarType.Clock, Variability.Continuous, Causality.Local, 0.0, 0);
+    return varIdx;
+  }
+
+  // -------------------------------------------------------------------------
+  // Cardinality Pre-Pass (§9.3.1)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Count how many connect equations reference each connector.
+   * Populates this.connectorCardinality so that cardinality() calls
+   * in equations can be resolved at compile time.
+   */
+  private countConnections(classId: SymbolId, prefix: string): void {
+    const cstNode = this.db.cstNode(classId) as any;
+    if (!cstNode) return;
+
+    const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
+    if (!classDef) return;
+
+    for (const section of classDef.sections) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+      for (const eq of section.equations) {
+        if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+          const ref1 = eq.componentReference1;
+          const ref2 = eq.componentReference2;
+          if (ref1 && ref2) {
+            const name1 = this.serializeRefWithPrefix(ref1, prefix);
+            const name2 = this.serializeRefWithPrefix(ref2, prefix);
+            if (name1) this.connectorCardinality.set(name1, (this.connectorCardinality.get(name1) ?? 0) + 1);
+            if (name2) this.connectorCardinality.set(name2, (this.connectorCardinality.get(name2) ?? 0) + 1);
+          }
+        }
+        // Scan for-equations for nested connect statements
+        if (eq instanceof ModelicaForEquationSyntaxNode) {
+          this.countConnectionsInForEq(eq, prefix);
+        }
+      }
+    }
+
+    // Scan inherited sections from extends
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        const targetName = (child.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
+        if (!targetName) continue;
+        const targets = this.db.byName(targetName);
+        for (const target of targets) {
+          if (target.kind === "Class") {
+            this.countConnections(target.id, prefix);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  private countConnectionsInForEq(forEq: ModelicaForEquationSyntaxNode, prefix: string): void {
+    for (const eq of forEq.equations) {
+      if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+        const ref1 = eq.componentReference1;
+        const ref2 = eq.componentReference2;
+        if (ref1 && ref2) {
+          const name1 = this.serializeRefWithPrefix(ref1, prefix);
+          const name2 = this.serializeRefWithPrefix(ref2, prefix);
+          if (name1) this.connectorCardinality.set(name1, (this.connectorCardinality.get(name1) ?? 0) + 1);
+          if (name2) this.connectorCardinality.set(name2, (this.connectorCardinality.get(name2) ?? 0) + 1);
+        }
+      }
+      if (eq instanceof ModelicaForEquationSyntaxNode) {
+        this.countConnectionsInForEq(eq, prefix);
+      }
+    }
+  }
+
+  private serializeRefWithPrefix(ref: ModelicaComponentReferenceSyntaxNode, prefix: string): string | undefined {
+    const path = this.serializeRef(ref);
+    if (!path) return undefined;
+    return prefix ? `${prefix}.${path}` : path;
+  }
+
+  // -------------------------------------------------------------------------
+  // Expandable Connector Augmentation (§9.1.3)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Pre-pass: scan connect equations for references to expandable connector
+   * members that don't exist yet, and create virtual variables.
+   * Per §9.1.3, expandable connectors are dynamically augmented by connect equations.
+   */
+  private augmentExpandableConnectors(rootClassId: SymbolId, dae: ArenaDAEBuilder): void {
+    const cstNode = this.db.cstNode(rootClassId) as any;
+    if (!cstNode) return;
+
+    const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
+    if (!classDef) return;
+
+    for (const section of classDef.sections) {
+      if (!(section instanceof ModelicaEquationSectionSyntaxNode)) continue;
+      for (const eq of section.equations) {
+        if (!(eq instanceof ModelicaConnectEquationSyntaxNode)) continue;
+        const ref1 = eq.componentReference1;
+        const ref2 = eq.componentReference2;
+        if (!ref1 || !ref2) continue;
+
+        this.tryAugmentExpandableRef(ref1, ref2, rootClassId, dae);
+        this.tryAugmentExpandableRef(ref2, ref1, rootClassId, dae);
+      }
+    }
+  }
+
+  /**
+   * If `ref` points to a member of an expandable connector that doesn't exist,
+   * create a virtual variable using the type inferred from `otherRef`.
+   */
+  private tryAugmentExpandableRef(
+    ref: ModelicaComponentReferenceSyntaxNode,
+    otherRef: ModelicaComponentReferenceSyntaxNode,
+    scopeClassId: SymbolId,
+    dae: ArenaDAEBuilder,
+  ): void {
+    const parts = ref.parts;
+    if (parts.length < 2) return;
+
+    const rootName = parts[0]?.identifier?.text;
+    if (!rootName) return;
+
+    // Find the root component in the scope
+    const scopeChildren = this.db.childrenOf(scopeClassId);
+    let rootEntry: SymbolEntry | null = null;
+    for (const child of scopeChildren) {
+      if (child.kind === "Component" && child.name === rootName) {
+        rootEntry = child;
+        break;
+      }
+    }
+    if (!rootEntry) return;
+
+    // Resolve its type
+    const rootClassId = this.db.query<SymbolId | null>("classInstance", rootEntry.id);
+    if (!rootClassId) return;
+    const rootClassEntry = this.db.symbol(rootClassId);
+    if (!rootClassEntry) return;
+
+    const rootMeta = rootClassEntry.metadata as Record<string, unknown>;
+    if (rootMeta?.classKind !== "expandable connector" && !rootMeta?.isExpandable) {
+      return;
+    }
+
+    // Check if the referenced member already exists
+    const memberName = parts[1]?.identifier?.text;
+    if (!memberName) return;
+    const rootClassChildren = this.db.childrenOf(rootClassId);
+    for (const child of rootClassChildren) {
+      if (child.name === memberName) return; // Already exists
+    }
+
+    // Resolve the other side to determine the type
+    const otherRootName = otherRef.parts[0]?.identifier?.text;
+    if (!otherRootName) return;
+
+    let otherTypeEntry: SymbolEntry | null = null;
+    // Walk the other reference chain to find the leaf component's type
+    let currentScopeId = scopeClassId;
+    for (let i = 0; i < otherRef.parts.length; i++) {
+      const partName = otherRef.parts[i]?.identifier?.text;
+      if (!partName) break;
+
+      const currentChildren = this.db.childrenOf(currentScopeId);
+      let found = false;
+      for (const child of currentChildren) {
+        if (child.kind === "Component" && child.name === partName) {
+          const childClassId = this.db.query<SymbolId | null>("classInstance", child.id);
+          if (childClassId) {
+            currentScopeId = childClassId;
+            otherTypeEntry = this.db.symbol(childClassId);
+          }
+          found = true;
+          break;
+        }
+      }
+      if (!found) break;
+    }
+
+    if (!otherTypeEntry) return;
+
+    // Create a virtual variable for the missing expandable connector member
+    const virtualName = `${rootName}.${memberName}`;
+    const otherTypeName = otherTypeEntry.name;
+    if (isPredefinedScalar(otherTypeName)) {
+      let varType = VarType.Real;
+      if (otherTypeName === "Integer") varType = VarType.Integer;
+      else if (otherTypeName === "Boolean") varType = VarType.Boolean;
+      else if (otherTypeName === "String") varType = VarType.String;
+      dae.addVariable(virtualName, varType, Variability.Continuous, Causality.Local, 0.0, 0);
+    } else {
+      // Compound type — expand its elements under the virtual name
+      const subElements = this.db.query<SymbolId[]>("instantiate", currentScopeId);
+      if (subElements) {
+        this.flattenElements(subElements, virtualName, dae);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // State Machine Expansion (§17)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Handle `initialState(...)` and `transition(...)` special equations.
+   * These are emitted as function call equations in the arena with EqKind.Simple.
+   */
+  private handleSpecialEquation(eq: ModelicaSpecialEquationSyntaxNode, prefix: string, dae: ArenaDAEBuilder): void {
+    // Extract function name from functionReference (e.g., "initialState", "transition")
+    const funcRef = eq.functionReference;
+    if (!funcRef) return;
+    const funcName = this.serializeRef(funcRef);
+    if (!funcName) return;
+
+    // Collect arguments
+    const visitor = this.createExprVisitor(dae);
+    const argIds: number[] = [];
+    if (eq.functionCallArguments?.arguments) {
+      for (const arg of eq.functionCallArguments.arguments) {
+        const id = visitor.visit(arg.expression);
+        if (id !== undefined) argIds.push(id);
+      }
+    }
+
+    // Prefix component reference arguments
+    const prefixedArgIds = argIds.map((argId) => {
+      const kind = dae.getExprKind(argId);
+      if (kind === ExprKind.Name && prefix) {
+        const nameStr = dae.interner.resolve(dae.getExprData1(argId));
+        return dae.addNameExpr(`${prefix}.${nameStr}`);
+      }
+      return argId;
+    });
+
+    // Emit as a function call equation
+    const callExpr = dae.addCallExpr(funcName, prefixedArgIds);
+    const zero = dae.addExpression(ExprKind.IntLiteral, 0);
+    dae.addEquation(EqKind.Simple, callExpr, zero);
   }
 
   private resolveModAttribute(
@@ -1529,7 +1952,12 @@ export class ArenaQueryFlattener {
   }
 
   private createExprVisitor(dae: ArenaDAEBuilder, loopVars?: Map<string, number>): ArenaExprVisitor {
-    return new ArenaExprVisitor(dae, loopVars, (funcName) => this.collectFunctionDefinition(funcName, dae));
+    return new ArenaExprVisitor(
+      dae,
+      loopVars,
+      (funcName) => this.collectFunctionDefinition(funcName, dae),
+      this.connectorCardinality,
+    );
   }
 
   /**
@@ -1631,6 +2059,40 @@ export class ArenaQueryFlattener {
         "pre",
         "noEvent",
         "String",
+        "cardinality",
+        "initialState",
+        "transition",
+        "sample",
+        "delay",
+        "edge",
+        "change",
+        "reinit",
+        "smooth",
+        "terminal",
+        "assert",
+        "terminate",
+        "ndims",
+        "size",
+        "scalar",
+        "vector",
+        "matrix",
+        "identity",
+        "diagonal",
+        "zeros",
+        "ones",
+        "fill",
+        "linspace",
+        "transpose",
+        "cat",
+        "sum",
+        "product",
+        "cross",
+        "skew",
+        "symmetric",
+        "homotopy",
+        "semiLinear",
+        "inStream",
+        "actualStream",
       ].includes(funcName)
     ) {
       return;
@@ -1670,6 +2132,9 @@ export class ArenaQueryFlattener {
       if (elements) {
         this.flattenElements(elements, "", fnDae);
       }
+
+      // Flatten algorithm sections from the function body
+      this.flattenClassSectionsRecursive(resolvedId, "", fnDae, new Set());
 
       dae.functions.set(funcNameId, fnDae);
     } finally {

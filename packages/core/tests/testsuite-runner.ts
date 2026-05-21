@@ -334,27 +334,53 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = fal
 
     const t_lint_start = Date.now();
     for (const d of context.queryEngine.runAllLints()) {
-      // Collect diagnostics, excluding noisy rules for flattening tests
-      // Note: context.runAllLints returns d.rule instead of d.code, we can map rules to codes if needed, or just ignore 4004 (unbalanced_model)
-      if (d.rule !== "unbalanced-model") {
-        // Find code from string if possible, or just default to 0
-        let code = 0;
-        const codeMatch = d.message.match(/^\\[M(\\d+)\\]/);
-        if (codeMatch) code = parseInt(codeMatch[1], 10);
+      // At runtime, LintDiagnostic has `lintName` and `symbolId` (not `rule`/`node`
+      // as the stale polyglot-externals.d.ts declares).
+      const dd = d as Record<string, unknown>;
+      const lintName: string = dd.lintName ?? dd.rule ?? "";
 
-        diagnostics.push({
-          type: d.severity,
-          code,
-          message: d.message,
-          resource: null, // we don't have file paths easily from the polyglot linter right now
-          range: d.node
-            ? {
-                startPosition: { row: d.node.startPosition.row, column: d.node.startPosition.column },
-                endPosition: { row: d.node.endPosition.row, column: d.node.endPosition.column },
-              }
-            : null,
-        });
+      // Skip noisy rules
+      if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+
+      // Filter out diagnostics from built-in/synthetic resources (e.g. modelscript-cas.mo)
+      // to prevent CAS library warnings from polluting every test result.
+      if (dd.symbolId != null) {
+        const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
+        if (entry && typeof entry.resourceId === "string") {
+          if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
+            continue;
+          }
+        }
       }
+
+      // Find code from string if possible, or just default to 0
+      let code = 0;
+      const codeMatch = d.message.match(/^\[M(\d+)\]/);
+      if (codeMatch) code = parseInt(codeMatch[1], 10);
+
+      // Resolve position from the symbol entry's byte range + tree
+      let range: DiagEntry["range"] = null;
+      if (dd.node) {
+        range = {
+          startPosition: { row: dd.node.startPosition.row, column: dd.node.startPosition.column },
+          endPosition: { row: dd.node.endPosition.row, column: dd.node.endPosition.column },
+        };
+      } else if (dd.startByte != null && dd.endByte != null && dd.symbolId != null) {
+        const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
+        if (entry) {
+          // We don't have tree-sitter row/col here easily, but the byte range is available
+          // for future resolution. For now leave range null.
+          range = null;
+        }
+      }
+
+      diagnostics.push({
+        type: d.severity,
+        code,
+        message: d.message,
+        resource: null,
+        range,
+      });
     }
     console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
 

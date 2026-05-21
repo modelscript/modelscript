@@ -6,6 +6,7 @@ import {
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
+  ModelicaFunctionPartialApplicationSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaLiteralSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
@@ -28,6 +29,7 @@ export class ArenaExprVisitor {
     private dae: ArenaDAEBuilder,
     loopVars?: Map<string, number>,
     private onFunctionCall?: (funcName: string) => void,
+    private cardinalityMap?: Map<string, number>,
   ) {
     this.loopVars = loopVars ?? new Map();
   }
@@ -59,6 +61,8 @@ export class ArenaExprVisitor {
       return this.visitUnaryExpression(n);
     } else if (n instanceof ModelicaFunctionCallSyntaxNode) {
       return this.visitFunctionCall(n);
+    } else if (n instanceof ModelicaFunctionPartialApplicationSyntaxNode) {
+      return this.visitPartialApplication(n);
     } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
       return this.visitIfElseExpression(n);
     } else if (n instanceof ModelicaOutputExpressionListSyntaxNode) {
@@ -435,11 +439,54 @@ export class ArenaExprVisitor {
       return argIds.length > 0 ? (argIds[0] as number) : undefined;
     }
 
+    // Specialized: cardinality(x) — resolve from pre-computed cardinality map
+    if (funcName === "cardinality" && this.cardinalityMap) {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        const argId = argIds[0];
+        if (argId !== undefined) {
+          const argKind = this.dae.getExprKind(argId);
+          if (argKind === ExprKind.Name) {
+            const nameStr = this.dae.interner.resolve(this.dae.getExprData1(argId));
+            const count = this.cardinalityMap.get(nameStr) ?? 0;
+            return this.dae.addIntLiteral(count);
+          }
+        }
+      }
+      // Fallback: return 0
+      return this.dae.addIntLiteral(0);
+    }
+
     // General function call — trigger function collection callback
     if (this.onFunctionCall) {
       this.onFunctionCall(funcName);
     }
     const argIds = getArgExprs();
+    return this.dae.addCallExpr(funcName, argIds);
+  }
+
+  /**
+   * Handle partial function application: `function Foo(x = val, ...)`
+   * Emits a call expression with the bound arguments.
+   */
+  private visitPartialApplication(node: ModelicaFunctionPartialApplicationSyntaxNode): number | undefined {
+    const funcName = node.typeSpecifier?.text;
+    if (!funcName) return undefined;
+
+    // Collect named arguments from the partial application
+    const argIds: number[] = [];
+    const namedArgs = node.namedArguments ?? [];
+    for (const arg of namedArgs) {
+      const id = this.visit(arg.argument?.expression);
+      if (id !== undefined) argIds.push(id);
+    }
+
+    // Notify function collector
+    if (this.onFunctionCall) {
+      this.onFunctionCall(funcName);
+    }
+
+    // Emit as a regular call expression (monomorphized at this point)
     return this.dae.addCallExpr(funcName, argIds);
   }
 

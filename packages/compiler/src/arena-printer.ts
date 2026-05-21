@@ -134,11 +134,22 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         const isHigh = HIGH_PREC_OPS.has(op);
 
-        const needsParens = (childId: number): boolean => {
+        const needsParens = (childId: number, isRhs = false): boolean => {
           if (childId < 0) return false;
           const ck = a.getExprKind(childId);
-          if (isHigh && ck === ExprKind.Unary) return true;
-          if (isHigh && ck === ExprKind.Negate) return true;
+          // For `Unary` inside high-precedence ops: only parenthesize word-based
+          // unary ops (e.g. `not`), not numeric negation.  `-a * x` is unambiguous
+          // since unary minus binds tighter than multiplication.
+          if (isHigh && ck === ExprKind.Unary) {
+            const uop = a.getExprData1(childId) as UnaryOp;
+            if (uop !== UnaryOp.Negate) return true; // `not` etc. need parens
+            // Negate only needs parens on RHS of subtraction to avoid `a - -b`
+            return isRhs && op === BinOp.Sub;
+          }
+          // Dedicated Negate node: same logic
+          if (ck === ExprKind.Negate) {
+            return isRhs && op === BinOp.Sub;
+          }
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;
           if (ck === ExprKind.IfElse) return true;
           return false;
@@ -152,7 +163,7 @@ export class ArenaDAEPrinter {
 
         this.out.write(" " + (binOpStr[op] ?? "+") + " ");
 
-        if (needsParens(rhs)) {
+        if (needsParens(rhs, true)) {
           this.out.write("(");
           this.printExpr(rhs);
           this.out.write(")");
