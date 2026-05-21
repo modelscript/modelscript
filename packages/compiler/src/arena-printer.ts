@@ -300,9 +300,25 @@ export class ArenaDAEPrinter {
         break;
       }
 
-      case ExprKind.Object:
-        this.out.write("{}");
+      case ExprKind.Object: {
+        const fieldCount = a.getExprData1(id);
+        this.out.write("{");
+        if (fieldCount > 0) {
+          // First field: name in right, value in left of Object header
+          const firstName = a.interner.resolve(a.getExprRight(id));
+          this.out.write(firstName + " = ");
+          this.printExpr(a.getExprLeft(id));
+          // Subsequent fields: name in data1, value in left of Tuple entries
+          for (let i = 1; i < fieldCount; i++) {
+            this.out.write(", ");
+            const fieldName = a.interner.resolve(a.getExprData1(id + i));
+            this.out.write(fieldName + " = ");
+            this.printExpr(a.getExprLeft(id + i));
+          }
+        }
+        this.out.write("}");
         break;
+      }
 
       default:
         this.out.write("?");

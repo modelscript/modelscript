@@ -1,14 +1,13 @@
-import type { ArenaValue } from "@modelscript/compiler";
 import {
   ArenaDAEBuilder,
   BinOp,
   Causality,
   evaluateArenaExpression,
+  evaluateArenaFunctionCall,
   ExprKind,
-  StmtKind,
   UnaryOp,
-  Variability,
   VarType,
+  type ArenaValue,
 } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
@@ -924,6 +923,31 @@ export class ArenaExprVisitor {
   // -------------------------------------------------------------------------
 
   /**
+   * Helper to serialize an ArenaValue back to an ExprId in the DAE.
+   */
+  private addArenaValueAsExpr(value: ArenaValue, preferredType?: VarType): number {
+    if (typeof value === "number") {
+      if (preferredType === VarType.Integer) {
+        return this.dae.addIntLiteral(value);
+      } else if (preferredType === VarType.Real) {
+        return this.dae.addRealLiteral(value);
+      }
+      return Number.isInteger(value) ? this.dae.addIntLiteral(value) : this.dae.addRealLiteral(value);
+    }
+    if (typeof value === "boolean") {
+      return this.dae.addBoolLiteral(value);
+    }
+    if (typeof value === "string") {
+      return this.dae.addStringLiteral(value);
+    }
+    if (Array.isArray(value)) {
+      const ids = value.map((v) => this.addArenaValueAsExpr(v, preferredType));
+      return this.dae.addArrayCtorExpr(ids);
+    }
+    return -1;
+  }
+
+  /**
    * Try to inline a user-defined function call by interpreting its body
    * when all arguments are compile-time constants.
    *
@@ -946,191 +970,28 @@ export class ArenaExprVisitor {
       argValues.push(val);
     }
 
-    // Build parameter map: bind function input variables to argument values
-    const params = new Map<string, number>();
-    const inputVars: { name: string; idx: number }[] = [];
+    // Determine the type of the first output variable for type-preserving serialization
     const outputVars: { name: string; idx: number }[] = [];
-
     for (let i = 0; i < fnDae.varCount; i++) {
       const causality = fnDae.getVarCausality(i);
-      const name = fnDae.getVarName(i);
-      if (causality === Causality.Input) {
-        inputVars.push({ name, idx: i });
-      } else if (causality === Causality.Output) {
-        outputVars.push({ name, idx: i });
+      if (causality === Causality.Output) {
+        outputVars.push({ name: fnDae.getVarName(i), idx: i });
       }
     }
-
-    if (outputVars.length === 0) return undefined;
-
-    // Bind input arguments to their values
-    for (let i = 0; i < Math.min(argValues.length, inputVars.length); i++) {
-      const val = argValues[i];
-      const inputVar = inputVars[i];
-      if (typeof val === "number" && inputVar) {
-        params.set(inputVar.name, val);
-      } else {
-        return undefined; // Only numeric inlining for now
-      }
-    }
-
-    // Also bind constant/parameter variables with known start values
-    for (let i = 0; i < fnDae.varCount; i++) {
-      const variability = fnDae.getVarVariability(i);
-      if (variability === Variability.Constant || variability === Variability.Parameter) {
-        const name = fnDae.getVarName(i);
-        if (!params.has(name)) {
-          const startVal = fnDae.getVarStartValue(i);
-          if (startVal !== 0 || fnDae.isVarFixed(i)) {
-            params.set(name, startVal);
-          }
-          // Try binding expression
-          const bindExpr = fnDae.getVarExpression(i);
-          if (typeof bindExpr === "number" && bindExpr >= 0) {
-            const val = evaluateArenaExpression(fnDae, bindExpr, params);
-            if (typeof val === "number") {
-              params.set(name, val);
-            }
-          }
-        }
-      }
-    }
-
-    // Execute algorithm sections
-    for (const section of fnDae.algorithmSections) {
-      const success = this.interpretArenaStatements(fnDae, section.start, section.count, params);
-      if (!success) return undefined;
-    }
-
-    // Extract output value
     const outVar = outputVars[0];
-    if (!outVar) return undefined;
-    const outName = outVar.name;
-    const outVal = params.get(outName);
-    if (outVal === undefined) return undefined;
+    const outType = outVar ? fnDae.getVarType(outVar.idx) : undefined;
 
-    // Check output variable type to emit correct literal kind
-    const outIdx = outVar.idx;
-    const outType = fnDae.getVarType(outIdx);
+    // Evaluate function using the new evaluateArenaFunctionCall
+    const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues);
+    if (outVal === null) return undefined;
 
-    let resultExprId: number;
-    if (outType === VarType.Integer) {
-      resultExprId = this.dae.addIntLiteral(outVal);
-    } else {
-      resultExprId = this.dae.addRealLiteral(outVal);
-    }
+    const resultExprId = this.addArenaValueAsExpr(outVal, outType);
+    if (resultExprId === -1) return undefined;
 
     // Remove the function definition from the DAE since it was fully inlined
     // (matches OMC behavior — inlined functions don't appear in output)
     this.dae.functions.delete(funcNameId);
 
     return resultExprId;
-  }
-
-  /**
-   * Interpret arena algorithm statements with a simple stack-based executor.
-   * Only handles simple assignments (y := expr) and for-loops.
-   * Returns false if interpretation fails (unsupported statement kind).
-   */
-  private interpretArenaStatements(
-    fnDae: ArenaDAEBuilder,
-    start: number,
-    count: number,
-    params: Map<string, number>,
-  ): boolean {
-    for (let i = start; i < start + count; i++) {
-      const kind = fnDae.getStmtKind(i);
-
-      switch (kind) {
-        case StmtKind.Assignment: {
-          // data1 = target ExprId, left = source ExprId
-          const targetExprId = fnDae.getStmtData1(i);
-          const sourceExprId = fnDae.getStmtLeft(i);
-
-          // Evaluate the source expression
-          const val = evaluateArenaExpression(fnDae, sourceExprId, params);
-          if (val === null || typeof val !== "number") return false;
-
-          // Resolve the target name
-          const targetKind = fnDae.getExprKind(targetExprId);
-          if (targetKind === ExprKind.Name) {
-            const nameId = fnDae.getExprData1(targetExprId);
-            const name = fnDae.interner.resolve(nameId);
-            if (name) params.set(name, val);
-          } else {
-            return false; // Unsupported target (e.g., subscripted assignment)
-          }
-          break;
-        }
-
-        case StmtKind.For: {
-          // data1 = index name StringId, left = range ExprId, right = body stmt count
-          const indexNameId = fnDae.getStmtData1(i);
-          const rangeExprId = fnDae.getStmtLeft(i);
-          const bodyCount = fnDae.getStmtRight(i);
-          const indexName = fnDae.interner.resolve(indexNameId);
-          if (!indexName) return false;
-
-          const rangeVal = evaluateArenaExpression(fnDae, rangeExprId, params);
-          if (!Array.isArray(rangeVal)) return false;
-
-          for (const iterVal of rangeVal) {
-            if (typeof iterVal !== "number") return false;
-            params.set(indexName, iterVal);
-            const success = this.interpretArenaStatements(fnDae, i + 1, bodyCount, params);
-            if (!success) return false;
-          }
-          params.delete(indexName);
-
-          // Skip body statements (they were executed in the loop)
-          i += bodyCount;
-          break;
-        }
-
-        case StmtKind.If: {
-          // data1 = condition ExprId, left = then stmt count, right = else branch count
-          const condExprId = fnDae.getStmtData1(i);
-          const thenCount = fnDae.getStmtLeft(i);
-          const branchCount = fnDae.getStmtRight(i);
-
-          const condVal = evaluateArenaExpression(fnDae, condExprId, params);
-          if (condVal === true) {
-            const success = this.interpretArenaStatements(fnDae, i + 1, thenCount, params);
-            if (!success) return false;
-          }
-          // Skip the then-block and all else/elseif blocks
-          let skip = thenCount;
-          for (let b = 0; b < branchCount; b++) {
-            const blockIdx = i + 1 + skip;
-            if (blockIdx < fnDae.stmtCount && fnDae.getStmtKind(blockIdx) === StmtKind.Block) {
-              const blockStmtCount = fnDae.getStmtLeft(blockIdx);
-              if (condVal !== true) {
-                // Try elseif/else branch
-                const blockCondId = fnDae.getStmtData1(blockIdx);
-                const blockCond = blockCondId >= 0 ? evaluateArenaExpression(fnDae, blockCondId, params) : true;
-                if (blockCond === true) {
-                  const success = this.interpretArenaStatements(fnDae, blockIdx + 1, blockStmtCount, params);
-                  if (!success) return false;
-                }
-              }
-              skip += 1 + blockStmtCount;
-            }
-          }
-          i += skip;
-          break;
-        }
-
-        case StmtKind.Return:
-          return true; // Early return from function
-
-        case StmtKind.Block:
-          // Block markers are handled by If/When parent; skip if encountered standalone
-          break;
-
-        default:
-          return false; // Unsupported statement kind
-      }
-    }
-    return true;
   }
 }

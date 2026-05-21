@@ -1,3 +1,5 @@
+import { evaluateArenaFunctionCall } from "./arena-ceval.js";
+import { evaluateArrayBuiltin } from "./arena-eval-builtins.js";
 import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
 
 /**
@@ -12,7 +14,19 @@ import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-ar
  * @param parameters An optional map of parameter names to resolved values.
  * @returns The primitive evaluated value, or null if it cannot be fully evaluated (e.g. contains variables).
  */
-export type ArenaValue = number | boolean | string | ArenaValue[];
+
+/** A record/object value produced by evaluating an ExprKind.Object expression. */
+export interface ArenaObjectValue {
+  readonly __kind: "object";
+  readonly fields: Map<string, ArenaValue>;
+}
+
+export type ArenaValue = number | boolean | string | ArenaValue[] | ArenaObjectValue;
+
+/** Type guard: is this ArenaValue a record/object? */
+export function isArenaObject(v: ArenaValue): v is ArenaObjectValue {
+  return typeof v === "object" && v !== null && !Array.isArray(v) && (v as ArenaObjectValue).__kind === "object";
+}
 
 function getSequenceElements(dae: ArenaDAEBuilder, baseExprId: number, count: number, firstElement: number): number[] {
   if (count === 0) return [];
@@ -27,7 +41,7 @@ function getSequenceElements(dae: ArenaDAEBuilder, baseExprId: number, count: nu
 export function evaluateArenaExpression(
   dae: ArenaDAEBuilder,
   exprId: number,
-  parameters = new Map<string, number>(),
+  parameters = new Map<string, ArenaValue>(),
 ): ArenaValue | null {
   if (exprId < 0) return null;
 
@@ -54,7 +68,38 @@ export function evaluateArenaExpression(
     case ExprKind.Name: {
       const name = dae.interner.resolve(dae.getExprData1(exprId));
       if (!name) return null;
-      if (parameters.has(name)) return parameters.get(name) as number;
+      const paramVal = parameters.get(name);
+      if (paramVal !== undefined) return paramVal;
+
+      // Dotted member access: "a.b.c" → look up "a" in parameters and traverse fields
+      const dotIdx = name.indexOf(".");
+      if (dotIdx > 0) {
+        const root = name.substring(0, dotIdx);
+        const rest = name.substring(dotIdx + 1);
+        let obj: ArenaValue | null = parameters.get(root) ?? null;
+        if (obj === null) {
+          // Try variable lookup for the root
+          const rootIdx = dae.getVarIdxByName(root);
+          if (rootIdx >= 0) {
+            const bindExpr = dae.getVarExpression(rootIdx);
+            if (typeof bindExpr === "number" && bindExpr >= 0) {
+              obj = evaluateArenaExpression(dae, bindExpr, parameters);
+            }
+          }
+        }
+        if (obj !== null && isArenaObject(obj)) {
+          // Traverse dotted segments
+          const segments = rest.split(".");
+          let current: ArenaValue | undefined = obj;
+          for (const seg of segments) {
+            if (!isArenaObject(current)) return null;
+            current = current.fields.get(seg);
+            if (current === undefined) return null;
+          }
+          return current ?? null;
+        }
+      }
+
       const vIdx = dae.getVarIdxByName(name);
       if (vIdx >= 0) {
         if (dae.isVarFixed(vIdx)) {
@@ -183,18 +228,21 @@ export function evaluateArenaExpression(
       if (funcName === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
         return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
       }
-      if (funcName === "min") return Math.min(...(args as number[]));
-      if (funcName === "max") return Math.max(...(args as number[]));
-      if (funcName === "sum" && args.every((a) => typeof a === "number"))
-        return (args as number[]).reduce((a, b) => a + b, 0);
-      if (funcName === "product" && args.every((a) => typeof a === "number"))
-        return (args as number[]).reduce((a, b) => a * b, 1);
       if (funcName === "String") return String(args[0]);
       if (funcName === "noEvent" && args.length === 1) return args[0];
       if (funcName === "Real" && typeof args[0] === "number") return args[0];
       if (funcName === "Integer" && typeof args[0] === "number") return Math.floor(args[0]);
       if (funcName === "homotopy" && args.length >= 1) return args[0];
       if (funcName === "smooth" && args.length >= 2) return args[1];
+
+      // Array and reduction built-in functions
+      const arrayResult = evaluateArrayBuiltin(funcName, args as ArenaValue[]);
+      if (arrayResult !== undefined) return arrayResult;
+
+      // Fallback: User-defined compile-time function execution
+      const funcNameId = dae.getExprData1(exprId);
+      const userFuncResult = evaluateArenaFunctionCall(dae, funcNameId, args as ArenaValue[]);
+      if (userFuncResult !== null) return userFuncResult;
 
       return null;
     }
@@ -252,6 +300,24 @@ export function evaluateArenaExpression(
         current = current[idx - 1] as ArenaValue;
       }
       return current;
+    }
+
+    case ExprKind.Object: {
+      const fieldCount = dae.getExprData1(exprId);
+      const fields = new Map<string, ArenaValue>();
+      if (fieldCount > 0) {
+        // First field: name StringId in right, value ExprId in left
+        const firstName = dae.interner.resolve(dae.getExprRight(exprId));
+        const firstVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters);
+        if (firstName && firstVal !== null) fields.set(firstName, firstVal);
+        // Subsequent fields via Tuple entries: name StringId in data1, value ExprId in left
+        for (let i = 1; i < fieldCount; i++) {
+          const fieldName = dae.interner.resolve(dae.getExprData1(exprId + i));
+          const fieldVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId + i), parameters);
+          if (fieldName && fieldVal !== null) fields.set(fieldName, fieldVal);
+        }
+      }
+      return { __kind: "object" as const, fields };
     }
   }
 

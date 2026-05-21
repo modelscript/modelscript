@@ -158,7 +158,8 @@ export enum ExprKind {
   Comprehension = 18,
   /** Partial function application: data1 = StringId of func name, left = arg count. */
   PartialFunc = 19,
-  /** Object/record constructor: data1 = field count, left = first field ExprId. */
+  /** Object/record constructor: data1 = field count, left = first field value ExprId, right = first field name StringId.
+   *  Subsequent fields stored as Tuple entries: data1 = field name StringId, left = field value ExprId. */
   Object = 20,
 }
 
@@ -1074,6 +1075,23 @@ export class ArenaDAEBuilder {
       this.addExpression(ExprKind.Tuple, i, argIds[i]!);
     }
     return id;
+  }
+
+  /**
+   * Add an object/record constructor expression.
+   * Fields are stored as consecutive Tuple entries containing:
+   *   - left = field value ExprId
+   *   - right = field name StringId
+   * Layout: Object header (data1=count, left=firstValueId), then Tuple entries for i=1..count-1.
+   */
+  addObjectExpr(fields: { nameId: number; valueId: number }[]): number {
+    const firstValue = fields.length > 0 ? fields[0]!.valueId : -1;
+    const firstNameId = fields.length > 0 ? fields[0]!.nameId : -1;
+    const objId = this.addExpression(ExprKind.Object, fields.length, firstValue, firstNameId);
+    for (let i = 1; i < fields.length; i++) {
+      this.addExpression(ExprKind.Tuple, fields[i]!.nameId, fields[i]!.valueId);
+    }
+    return objId;
   }
 
   // ── Expression field readers ──

@@ -347,7 +347,21 @@ export function materializeExpression(arena: ArenaDAEBuilder, id: number): Model
       args.push({ name: "", value: materializeExpression(arena, arena.getExprLeft(id + i)!) });
     return new ModelicaPartialFunctionExpression(name, args);
   } else if (kind === ExprKind.Object) {
-    return new ModelicaObject(new Map());
+    const count = arena.getExprData1(id)!;
+    const elements = new Map<string, ModelicaExpression>();
+    if (count > 0) {
+      // First field: name in right, value in left of Object header
+      const firstName = arena.interner.resolve(arena.getExprRight(id)!);
+      const firstValue = materializeExpression(arena, arena.getExprLeft(id)!);
+      if (firstName) elements.set(firstName, firstValue);
+      // Subsequent fields: name in data1, value in left of Tuple entries
+      for (let i = 1; i < count; i++) {
+        const fieldName = arena.interner.resolve(arena.getExprData1(id + i)!);
+        const fieldValue = materializeExpression(arena, arena.getExprLeft(id + i)!);
+        if (fieldName) elements.set(fieldName, fieldValue);
+      }
+    }
+    return new ModelicaObject(elements);
   }
   return new ModelicaNameExpression("");
 }
@@ -844,14 +858,14 @@ export function mirrorExpressionToArena(arena: ArenaDAEBuilder, expr: ModelicaEx
     return arena.addComprehensionExpr(expr.functionName, bodyId, expr.iterators.length);
   }
   if (expr instanceof ModelicaObject) {
-    // Record constructor: store field name+value pairs as consecutive Name+value expressions
-    const fieldIds: number[] = [];
+    // Record constructor: store field name+value pairs as consecutive entries
+    const fields: { nameId: number; valueId: number }[] = [];
     for (const [fieldName, fieldValue] of expr.elements) {
-      arena.addNameExpr(fieldName); // field name
-      fieldIds.push(mirrorExpressionToArena(arena, fieldValue)); // field value
+      const nameId = arena.interner.intern(fieldName);
+      const valueId = mirrorExpressionToArena(arena, fieldValue);
+      fields.push({ nameId, valueId });
     }
-    const firstField = fieldIds.length > 0 ? (fieldIds[0] ?? -1) : -1;
-    return arena.addExpression(20 /* ExprKind.Object */, fieldIds.length, firstField);
+    return arena.addObjectExpr(fields);
   }
   if (expr instanceof ModelicaVariable) return arena.addNameExpr(expr.name);
   return 0; // fallback: unknown expression type

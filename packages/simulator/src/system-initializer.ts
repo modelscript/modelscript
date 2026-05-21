@@ -172,10 +172,14 @@ function collectExprVarNames(exprId: number, arena: ArenaDAEBuilder, names: Set<
       break;
     case ExprKind.Object: {
       const count = arena.getExprData1(exprId);
-      const firstFieldId = arena.getExprLeft(exprId);
-      for (let i = 0; i < count; i++) {
-        const fieldExprId = arena.getExprLeft(firstFieldId + i);
-        collectExprVarNames(fieldExprId, arena, names);
+      if (count > 0) {
+        // First field value is in left of the Object header
+        collectExprVarNames(arena.getExprLeft(exprId), arena, names);
+        // Subsequent field values are in left of Tuple entries
+        for (let i = 1; i < count; i++) {
+          const fieldValueId = arena.getExprLeft(exprId + i);
+          collectExprVarNames(fieldValueId, arena, names);
+        }
       }
       break;
     }
