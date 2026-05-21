@@ -828,7 +828,11 @@ export function runEqualitySaturation(
   rules: RewriteRule[],
   config: Partial<RunnerConfig> = {},
 ): RunReport {
-  const cfg = { ...DEFAULT_RUNNER_CONFIG, ...config };
+  const cfg = {
+    ...DEFAULT_RUNNER_CONFIG,
+    scheduler: config.scheduler ?? new BackoffScheduler(),
+    ...config,
+  };
   const start = Date.now();
   let iterations = 0;
   let stopReason: StopReason = "IterationLimit";
@@ -1626,7 +1630,7 @@ export function emitFusedKernelC(kernel: FusedKernel, _size: number): string[] {
 /**
  * Simplify a Modelica expression in the Arena using Equality Saturation.
  */
-export function egraphSimplify(arena: ArenaDAEBuilder, exprId: number, maxIterations = 20): number {
+export function egraphSimplify(arena: ArenaDAEBuilder, exprId: number, maxIterations = 2): number {
   const egraph = new EGraph();
   const rootId = egraph.add(arena, exprId);
   runEqualitySaturation(egraph, DEFAULT_RULES, { maxIterations, maxNodeCount: 10_000 });
