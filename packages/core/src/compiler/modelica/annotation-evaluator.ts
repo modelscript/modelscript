@@ -102,7 +102,7 @@ function resolveAnnotationName(name: string, evalScope: any): any {
  * Evaluate a CST expression node directly to a plain JS value.
  * Returns number | boolean | string | any[] | null.
  */
-function evaluateCSTExpression(node: ModelicaExpressionSyntaxNode | null | undefined, evalScope?: any): any {
+export function evaluateCSTExpression(node: ModelicaExpressionSyntaxNode | null | undefined, evalScope?: any): any {
   if (!node) return null;
 
   // Integer literal

@@ -4,12 +4,14 @@ export * from "@modelscript/modelica/ast";
 export * from "@modelscript/symbolics";
 export * from "@modelscript/utils";
 export * from "./compiler/context.js";
+export * from "./compiler/modelica/annotation-evaluator.js";
 export * from "./compiler/modelica/annotation.js";
 export * from "./compiler/modelica/factory.js";
 export * from "./compiler/modelica/flattener.js";
 export * from "./compiler/modelica/i18n.js";
 export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/multibody-generator.js";
+export * from "./compiler/modelica/script-executor.js";
 
 export {
   ModelicaArrayClassInstance as ModelicaArrayClassInstance,
