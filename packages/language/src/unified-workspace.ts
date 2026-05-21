@@ -37,16 +37,13 @@ export class UnifiedWorkspace {
   registerWorkspace(language: string, index: IWorkspaceIndex, config: unknown): void {
     this.indices.set(language, index);
 
-    // Create an empty, dummy SymbolIndex to pass to the adapter registry, since the
-    // AdapterRegistry expects a SymbolIndex there, but we will pass the unified index
-    // when we run `project()`. Actually, wait — `AdapterRegistry` takes `index: SymbolIndex`
-    // but uses it for standard queries inside the `project()` DB.
-    // We should pass a proxy or a placeholder, and handle the real lookups via `toUnified()`.
-    this.adapterRegistry.registerLanguage(config, {
-      symbols: new Map(),
-      byName: new Map(),
-      childrenOf: new Map(),
+    const indexProxy = new Proxy({} as SymbolIndex, {
+      get: (target, prop) => {
+        const liveIndex = index.toUnifiedPartial();
+        return Reflect.get(liveIndex, prop);
+      },
     });
+    this.adapterRegistry.registerLanguage(config, indexProxy);
   }
 
   /**
