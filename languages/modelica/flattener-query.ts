@@ -124,6 +124,7 @@ import {
   ModelicaForStatementSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
+  ModelicaLongClassSpecifierSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
@@ -2173,8 +2174,6 @@ export class ArenaQueryFlattener {
 
     try {
       // Resolve the function name globally (or via fully qualified path).
-      // In a fully featured version we'd pass scopeId from the visitor, but for Phase 1
-      // we assume functions are either built-in or resolvable by their fully qualified name.
       let resolvedId: number | null = null;
 
       // Attempt to resolve globally
@@ -2194,9 +2193,40 @@ export class ArenaQueryFlattener {
         return;
       }
 
+      // Get the CST to extract metadata (description, external decl, impure)
+      const cstNode = this.db.cstNode(resolvedId) as any;
+      const classDef = cstNode ? ModelicaClassDefinitionSyntaxNode.new(null, cstNode) : null;
+      const classSpecifier = classDef?.classSpecifier ?? null;
+
+      // Skip external "builtin" functions — they are platform-provided
+      if (classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+        const ext = classSpecifier.externalFunctionClause;
+        if (ext) {
+          const lang = ext.languageSpecification?.language?.text ?? "";
+          if (lang === "builtin") return;
+        }
+      }
+
       // Flatten the function into a new ArenaDAEBuilder
       const fnDae = new ArenaDAEBuilder();
 
+      // Set function metadata
+      fnDae.classKind = "function";
+      fnDae.nameId = fnDae.interner.intern(funcName);
+      if (classDef?.classPrefixes?.purity === "impure") {
+        fnDae.isImpure = true;
+      }
+
+      // Extract description string from the class specifier
+      const descStrings = classSpecifier?.description?.strings;
+      if (descStrings && descStrings.length > 0) {
+        const descText = descStrings.map((d: any) => d.text ?? "").join(" ");
+        // Strip quotes from string literal
+        const desc = descText.startsWith('"') && descText.endsWith('"') ? descText.slice(1, -1) : descText;
+        if (desc) fnDae.descriptionId = fnDae.interner.intern(desc);
+      }
+
+      // Flatten function elements (inputs, outputs, protected vars)
       const elements = this.db.query<number[]>("instantiate", resolvedId);
       if (elements) {
         this.flattenElements(elements, "", fnDae);
@@ -2204,6 +2234,50 @@ export class ArenaQueryFlattener {
 
       // Flatten algorithm sections from the function body
       this.flattenClassSectionsRecursive(resolvedId, "", fnDae, new Set());
+
+      // Handle external function clause
+      if (classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
+        const ext = classSpecifier.externalFunctionClause;
+        if (ext) {
+          const lang = ext.languageSpecification?.language?.text ?? "";
+          const call = ext.externalFunctionCall;
+          let declText = "external";
+          if (lang) declText += ` "${lang}"`;
+          if (call) {
+            const callName = call.functionName?.text ?? "";
+            const argNames: string[] = [];
+            for (const expr of call.arguments?.expressions ?? []) {
+              // External function arguments are typically simple identifiers
+              const exprAny = expr as any;
+              argNames.push(exprAny.concreteSyntaxNode?.text ?? exprAny.text ?? "");
+            }
+            const returnVar = call.output?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
+            if (returnVar) {
+              declText += ` ${returnVar} = ${callName}(${argNames.join(", ")})`;
+            } else if (callName) {
+              declText += ` ${callName}(${argNames.join(", ")})`;
+            }
+          } else {
+            // No explicit external call — synthesize default: output = functionName(inputs...)
+            const fnName = funcEntry.name;
+            const inputNames: string[] = [];
+            let outputName: string | null = null;
+            for (let i = 0; i < fnDae.varCount; i++) {
+              const causality = fnDae.getVarCausality(i);
+              const varName = fnDae.getVarName(i);
+              if (causality === Causality.Input) inputNames.push(varName);
+              else if (causality === Causality.Output && !outputName) outputName = varName;
+            }
+            if (outputName) {
+              declText += ` ${outputName} = ${fnName}(${inputNames.join(", ")})`;
+            } else {
+              declText += ` ${fnName}(${inputNames.join(", ")})`;
+            }
+          }
+          declText += ";";
+          fnDae.externalDecl = declText;
+        }
+      }
 
       dae.functions.set(funcNameId, fnDae);
     } finally {
