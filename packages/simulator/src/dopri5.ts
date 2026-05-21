@@ -245,7 +245,7 @@ export function dopri5(
             if (!eventFn) continue;
 
             // ── Bisection to find exact event time ──
-            const tEvent = bisectEvent(eventFn, t, tNew, y, yNew, k, h, n);
+            const tEvent = bisectEvent(eventFn, t, tNew, y, yNew, k, h, n, prev);
             const thetaEvent = (tEvent - t) / h;
             const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
 
@@ -474,15 +474,21 @@ function hermiteInterpolation(
   theta: number,
   n: number,
 ): number[] {
+  const theta2 = theta * theta;
+  const theta3 = theta2 * theta;
+
+  const h00 = 2 * theta3 - 3 * theta2 + 1;
+  const h10 = theta3 - 2 * theta2 + theta;
+  const h01 = -2 * theta3 + 3 * theta2;
+  const h11 = theta3 - theta2;
+
   const result = new Array(n) as number[];
-  const theta1 = 1 - theta;
   for (let i = 0; i < n; i++) {
     const y0 = y[i] ?? 0;
     const y1 = yNew[i] ?? 0;
     const f0 = (k1[i] ?? 0) * h;
     const f1 = (k7[i] ?? 0) * h;
-    // Cubic Hermite: P(θ) = (1-θ)·y0 + θ·y1 + θ·(θ-1)·[(1-2θ)·(y1-y0) + (θ-1)·f0 + θ·f1]
-    result[i] = y0 + theta * (y1 - y0) + theta * theta1 * ((1 - 2 * theta) * (y1 - y0) + theta1 * f0 + theta * f1);
+    result[i] = h00 * y0 + h10 * f0 + h01 * y1 + h11 * f1;
   }
   return result;
 }
@@ -499,13 +505,13 @@ function bisectEvent(
   k: number[][],
   h: number,
   n: number,
+  gLo: number,
 ): number {
   const maxIter = 50;
   const tol = 1e-12;
 
   let lo = tLo;
   let hi = tHi;
-  let gLo = eventFn(lo, yLo);
 
   for (let iter = 0; iter < maxIter; iter++) {
     const tMid = (lo + hi) / 2;

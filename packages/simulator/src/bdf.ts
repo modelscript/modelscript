@@ -327,7 +327,7 @@ export function bdf(
           if (!eventFn) continue;
 
           // ── Bisection to find exact event time ──
-          const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, fCurrent, fNew, h, n);
+          const tEvent = bisectEvent(eventFn, t, tNew, y, yNewton, fCurrent, fNew, h, n, prev);
           const thetaEvent = (tEvent - t) / h;
           const yEvent = cubicHermiteInterpolate(thetaEvent, y, yNewton, fCurrent, fNew, h, n);
 
@@ -646,13 +646,13 @@ function bisectEvent(
   fHi: number[],
   h: number,
   n: number,
+  gLo: number,
 ): number {
   const maxIter = 50;
   const tol = 1e-12;
 
   let lo = tLo;
   let hi = tHi;
-  let gLo = eventFn(lo, yLo);
 
   for (let iter = 0; iter < maxIter; iter++) {
     const tMid = (lo + hi) / 2;
