@@ -40,6 +40,98 @@
 1. **Always use abstract syntax nodes** (`ModelicaClassDefinitionSyntaxNode`, `ModelicaLongClassSpecifierSyntaxNode`, etc.) for accessing class elements, sections, and other structural information in the flattener, interpreter, and model.
 2. **Never access `concreteSyntaxNode` fields** for semantic analysis. They may be `null` on cloned or deserialized instances.
 3. Properties like `sections`, `elements`, `equations`, `statements` are populated at construction time from whichever source is available (concrete or abstract). After construction, always access them through the abstract syntax node wrappers.
+4. In the arena-native pipeline (`ArenaQueryFlattener`), CST nodes are retrieved via `db.cstNode(classId)` and **immediately** wrapped in AST nodes: `ModelicaClassDefinitionSyntaxNode.new(null, cstNode)`. Never hold raw CST references across function boundaries.
+
+## Compilation Pipeline Architecture
+
+There are **two flattening pipelines** in the codebase:
+
+| Pipeline         | Entry Point                                      | Status                    | Output                               |
+| ---------------- | ------------------------------------------------ | ------------------------- | ------------------------------------ |
+| **Legacy**       | `Context.flattenDAE()` → `ModelicaFlattener`     | Full-featured, 12k+ lines | `ModelicaDAE` object graph           |
+| **Arena-native** | `Context.flattenArena()` → `ArenaQueryFlattener` | New canonical pipeline    | `ArenaDAEBuilder` (struct-of-arrays) |
+
+The arena-native pipeline is the target architecture. All new work should go into the arena pipeline unless fixing a bug in the legacy flattener.
+
+### Pipeline Stages
+
+```
+Source (.mo) → tree-sitter → CST
+    → SymbolIndexer → SymbolIndex (flat symbol table)
+    → WorkspaceIndex → Unified SymbolIndex (multi-file)
+    → QueryEngine (Salsa memoization)
+    → Linting (lint__ query hooks)
+    → ArenaQueryFlattener → ArenaDAEBuilder
+    → BLT / Simulation
+```
+
+### Key Packages
+
+| Package               | Responsibility                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor` |
+| `packages/salsa/`     | Salsa-inspired incremental query engine, `QueryEngine`, `QueryDB`                           |
+| `packages/compiler/`  | `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver         |
+| `packages/core/`      | `Context` (orchestrator), legacy `ModelicaFlattener`, linter, test runner                   |
+| `packages/simulator/` | `ArenaSimulator`, ODE solvers (DOPRI5), event handling                                      |
+
+### SymbolIndex Data Model
+
+The `SymbolIndexer` walks the CST and produces a flat `SymbolIndex`:
+
+- `symbols: Map<SymbolId, SymbolEntry>` — all indexed declarations
+- `byName: Map<string, SymbolId[]>` — name-based lookup
+- `childrenOf: Map<SymbolId | null, SymbolId[]>` — parent→children tree
+
+Each `SymbolEntry` stores `startByte`/`endByte` ranges back into the source, allowing CST recovery via `db.cstNodeRange()`.
+
+**What is indexed:** class definitions, component declarations, extends clauses, connect equations, function definitions.
+
+**What is NOT indexed:** equations, algorithm statements, expression bodies, annotations. These exist only as CST nodes within the class body and must be extracted during flattening by retrieving the CST.
+
+### QueryEngine (Salsa)
+
+The `QueryEngine` wraps the `SymbolIndex` with memoized queries. Key queries:
+
+| Query               | Purpose                                                  |
+| ------------------- | -------------------------------------------------------- |
+| `instantiate`       | Resolve all elements of a class (components + inherited) |
+| `classInstance`     | Resolve a component's type to a specialized class ID     |
+| `resolveSimpleName` | Scope-based name resolution                              |
+| `variability`       | Determine parameter/continuous/discrete/constant         |
+| `causality`         | Determine input/output/local                             |
+
+**Salsa algorithm:** `fetch → deep_verify → execute → backdate`. Query results are cached and invalidated only when their transitive dependencies change.
+
+**AST nodes are NOT stored in Salsa.** The Salsa cache stores semantic query results (types, variabilities, resolved element lists). CST nodes are retrieved on-the-fly from `engine.tree`, and AST wrappers are constructed ephemerally during query execution.
+
+### ArenaQueryFlattener
+
+Located at `languages/modelica/flattener-query.ts`. Two-layer architecture:
+
+- **Layer 1 (Components):** Reads Salsa queries (`instantiate`, `classInstance`) to emit variables into the `ArenaDAEBuilder`.
+- **Layer 2 (Equations):** Retrieves the CST via `db.cstNode(classId)`, wraps it in AST nodes (`ModelicaClassDefinitionSyntaxNode`), iterates `classDef.sections`, and uses `ArenaExprVisitor` to compile expressions into arena expression IDs.
+
+### ArenaExprVisitor
+
+Located at `languages/modelica/arena-expr-visitor.ts`. Walks AST expression nodes and produces arena expression IDs.
+
+**Rules:**
+
+1. **Real coercion in binary expressions:** If one operand of a binary operator is Real-typed and the other is Integer, the Integer operand is cast to Real via `castToRealExpr()`.
+2. **Negation distribution:** `-(a * b)` is rewritten to `(-a) * b` to match OpenModelica's canonical form.
+3. **Real coercion in bindings:** When a `VarType.Real` variable has a binding expression, `castToRealExpr()` is applied to convert any integer literals to real (e.g., `parameter Real R = 100` → `parameter Real R = 100.0`).
+4. **Literal kind for bindings:** When a literal binding is set, check `varType` — use `addIntLiteral()` for `VarType.Integer`, `addRealLiteral()` for everything else numeric.
+
+### ArenaDAEBuilder
+
+Located at `packages/compiler/src/dae-arena.ts`. A **data-oriented** (struct-of-arrays) container:
+
+- `varData` — variable metadata (name, type, variability, causality, start, flags)
+- `exprData` — expression tree (kind, data1, left, right)
+- `eqData` — equations (kind, lhs, rhs, flags)
+
+Post-processing steps after flattening: constant folding → alias elimination → BLT transformation → simulation.
 
 ## Linter Rules
 
