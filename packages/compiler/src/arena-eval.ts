@@ -1,4 +1,4 @@
-import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp } from "./dae-arena.js";
+import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
 
 /**
  * Evaluates an expression tree stored in a `ArenaDAEBuilder` and attempts
@@ -56,8 +56,20 @@ export function evaluateArenaExpression(
       if (!name) return null;
       if (parameters.has(name)) return parameters.get(name) as number;
       const vIdx = dae.getVarIdxByName(name);
-      if (vIdx >= 0 && dae.isVarFixed(vIdx)) {
-        return dae.getVarStartValue(vIdx);
+      if (vIdx >= 0) {
+        if (dae.isVarFixed(vIdx)) {
+          return dae.getVarStartValue(vIdx);
+        }
+        // For parameter/constant variables, try to evaluate the binding expression
+        const variability = dae.getVarVariability(vIdx);
+        if (variability === Variability.Parameter || variability === Variability.Constant) {
+          const bindingExprId = dae.getVarExpression(vIdx);
+          if (typeof bindingExprId === "number" && bindingExprId >= 0) {
+            return evaluateArenaExpression(dae, bindingExprId, parameters);
+          }
+          // Fallback: use start value for parameters without binding expressions
+          return dae.getVarStartValue(vIdx);
+        }
       }
       return null;
     }

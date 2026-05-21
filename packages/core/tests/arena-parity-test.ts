@@ -6,8 +6,8 @@ import { ArenaDAEPrinter } from "@modelscript/compiler";
 import Modelica from "@modelscript/modelica/parser";
 import { StringWriter } from "@modelscript/utils";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
+import { NodeFileSystem } from "./node-filesystem.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

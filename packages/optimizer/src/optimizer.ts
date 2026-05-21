@@ -15,11 +15,9 @@
  * Pure TypeScript — no native dependencies.
  */
 
-import { ModelicaVariability } from "@modelscript/modelica/ast";
+import { ArenaDAEBuilder, Variability } from "@modelscript/compiler";
 import type { MonteCarloOptions, RandomVariable, SolverOptions } from "@modelscript/simulator";
-import { luFactor, luSolve, ModelicaSimulator, Tape, type TapeNode } from "@modelscript/simulator";
-import type { ModelicaDAE } from "@modelscript/symbolics";
-import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "@modelscript/symbolics";
+import { ArenaSimulator, luFactor, luSolve, simulateArena, Tape, type TapeNode } from "@modelscript/simulator";
 import {
   ProgressiveHedging,
   SampleAverageApproximation,
@@ -472,13 +470,13 @@ function sqpSolve(
 // ── ModelicaOptimizer ──
 
 export class ModelicaOptimizer {
-  private dae: ModelicaDAE;
-  private simulator: ModelicaSimulator;
+  private dae: ArenaDAEBuilder;
+  private simulator: ArenaSimulator;
   private problem: OptimizationProblem;
 
-  constructor(dae: ModelicaDAE, problem: OptimizationProblem) {
+  constructor(dae: ArenaDAEBuilder, problem: OptimizationProblem) {
     this.dae = dae;
-    this.simulator = new ModelicaSimulator(dae);
+    this.simulator = new ArenaSimulator(dae);
     this.problem = problem;
   }
 
@@ -553,7 +551,10 @@ export class ModelicaOptimizer {
     // Prepare the simulator (causalize equations, build execution blocks)
     this.simulator.prepare();
 
-    const stateNames = Array.from(this.simulator.stateVars);
+    const stateNames: string[] = [];
+    for (const varIdx of this.simulator.stateVars) {
+      stateNames.push(this.dae.getVarName(varIdx));
+    }
     const nStates = stateNames.length;
     const nControls = controls.length;
     const N = numIntervals;
@@ -579,40 +580,18 @@ export class ModelicaOptimizer {
 
     // Resolve initial state values
     const paramEnv = new Map<string, number>();
-    for (const v of this.dae.arenaVariables()) {
-      if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
-        if (v.expression) {
-          if (v.expression instanceof ModelicaRealLiteral) paramEnv.set(v.name, v.expression.value);
-          else if (v.expression instanceof ModelicaIntegerLiteral) paramEnv.set(v.name, v.expression.value);
-        }
+    for (let i = 0; i < this.dae.varCount; i++) {
+      if (this.dae.isVarRemoved(i)) continue;
+      const v = this.dae.getVarVariability(i);
+      if (v === Variability.Parameter || v === Variability.Constant) {
+        paramEnv.set(this.dae.getVarName(i), this.dae.getVarStartValue(i));
       }
     }
 
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;
-      let initVal = 0;
-      for (const v of this.dae.arenaVariables()) {
-        if (v.name === name) {
-          if (v.expression instanceof ModelicaRealLiteral) {
-            initVal = v.expression.value;
-            break;
-          }
-          if (v.expression instanceof ModelicaIntegerLiteral) {
-            initVal = v.expression.value;
-            break;
-          }
-          const startAttr = v.attributes.get("start");
-          if (startAttr instanceof ModelicaRealLiteral) {
-            initVal = startAttr.value;
-            break;
-          }
-          if (startAttr instanceof ModelicaIntegerLiteral) {
-            initVal = startAttr.value;
-            break;
-          }
-          break;
-        }
-      }
+      const varIdx = this.dae.getVarIdxByName(name);
+      const initVal = varIdx >= 0 ? this.dae.getVarStartValue(varIdx) : 0;
       // Set initial states at all grid points (crude initial guess)
       for (let k = 0; k < nPoints; k++) {
         z0[k * varsPerPoint + i] = initVal;
@@ -865,8 +844,17 @@ export class ModelicaOptimizer {
     const controlTrajectories = new Map<string, number[]>();
 
     const finalSimOpts = {
+      startTime,
+      stopTime,
+      step: dt,
       parameterOverrides: new Map<string, number>(this.problem.parameterOverrides ?? []),
-      ...(this.problem.solverOptions ? { solverOptions: this.problem.solverOptions } : {}),
+      ...(this.problem.solverOptions
+        ? {
+            solver: this.problem.solverOptions.solver,
+            atol: this.problem.solverOptions.atol,
+            rtol: this.problem.solverOptions.rtol,
+          }
+        : {}),
     };
     for (let k = 0; k < N; k++) {
       for (const name of controls) {
@@ -874,7 +862,7 @@ export class ModelicaOptimizer {
       }
     }
 
-    const simResult = this.simulator.simulate(startTime, stopTime, dt, finalSimOpts);
+    const simResult = simulateArena(this.dae, finalSimOpts);
 
     for (let i = 0; i < nStates; i++) {
       const name = stateNames[i]!;

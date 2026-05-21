@@ -138,7 +138,7 @@ export function evaluateOptimize(
   }
 
   const objective = getNamedArgStr("objective") ?? "u^2";
-  const exp = dae.experiment;
+  const exp = dae.arena.experiment;
   const startTime = getNamedArgNum("startTime") ?? exp.startTime ?? 0;
   const stopTime = getNamedArgNum("stopTime") ?? exp.stopTime ?? 10;
   const numIntervals = getNamedArgNum("numIntervals") ?? 50;
@@ -188,7 +188,7 @@ export function evaluateOptimize(
     messages: string;
   };
   try {
-    const optimizer = new deps.Optimizer(dae, {
+    const optimizer = new deps.Optimizer(dae.arena, {
       objective,
       controls: controlNames,
       controlBounds,

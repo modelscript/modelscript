@@ -3,8 +3,8 @@ import { writeFileSync } from "fs";
 import { join } from "path";
 import Parser from "tree-sitter";
 import { describe, expect, it } from "vitest";
-import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
+import { NodeFileSystem } from "./node-filesystem.js";
 
 // Register parser for test environment
 const parser = new Parser();

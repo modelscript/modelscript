@@ -9383,7 +9383,17 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
         let handled = false;
         for (const clause of node.elseIfEquationClauses ?? []) {
           const clauseCondition = clause.condition?.accept(this, cardinalityCtx);
-          if (clauseCondition instanceof ModelicaBooleanLiteral && clauseCondition.value) {
+          let clauseBool: boolean | null = null;
+          if (clauseCondition instanceof ModelicaBooleanLiteral) {
+            clauseBool = clauseCondition.value;
+          } else if (clause.condition) {
+            const interp = new ModelicaInterpreter(true);
+            const interpResult = clause.condition.accept(interp, ctx.classInstance as any);
+            if (interpResult instanceof ModelicaBooleanLiteral) {
+              clauseBool = interpResult.value;
+            }
+          }
+          if (clauseBool) {
             for (const eq of this.flattenEquations(clause.equations ?? [], ctx)) {
               ctx.dae.equations.push(eq);
             }

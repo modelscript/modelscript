@@ -1,0 +1,228 @@
+
+============================================================
+Test: Composite component (B x where B extends A)
+============================================================
+[BLT] Starting DFS matching for 2 equations and 2 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 1ms
+✅ MATCH
+class Top
+  Real comp.v(start = 0.0);
+  Real comp.i;
+equation
+  comp.v = 1.0;
+  comp.i = 2.0;
+end Top;
+
+============================================================
+Test: For-equation with integer range
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 1ms
+[DAE] BLT transformation took 1ms
+❌ MISMATCH
+--- Legacy ---
+class ForEq
+  Real[3] x;
+equation
+  for i in 1:3 loop
+    1 = 1;
+  end for;
+end ForEq;
+--- Arena ---
+class ForEq
+  Real x;
+equation
+  x[1] = 1.0 * 1.0;
+  x[2] = 2.0 * 1.0;
+  x[3] = 3.0 * 1.0;
+end ForEq;
+
+============================================================
+Test: When-equation (event-driven)
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class WhenModel
+  Real x(start = 1.0);
+  discrete Real y(start = 0.0);
+equation
+  when x < 0.5 then
+    y = x;
+  end when;
+  der(x) = -x;
+end WhenModel;
+
+============================================================
+Test: Multiple equation sections
+============================================================
+[BLT] Starting DFS matching for 2 equations and 2 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 1ms
+✅ MATCH
+class MultiSections
+  Real x(start = 1.0);
+  Real y(start = 0.0);
+equation
+  der(y) = x;
+  der(x) = -x;
+end MultiSections;
+
+============================================================
+Test: Initial equation section
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class InitEq
+  Real x;
+initial equation
+  x = 1.0;
+equation
+  der(x) = -x;
+end InitEq;
+
+============================================================
+Test: If-equation with elseif branches
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 1ms
+✅ MATCH
+class IfElseIf
+  parameter Integer mode = 2;
+  Real x(start = 1.0);
+equation
+  der(x) = -2.0 * x;
+end IfElseIf;
+
+============================================================
+Test: Algorithm section with if/assignment
+============================================================
+[BLT] Starting DFS matching for 1 equations and 2 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 1ms
+✅ MATCH
+class AlgoModel
+  Real x(start = 1.0);
+  Real y;
+equation
+  der(x) = -x;
+algorithm
+  if x > 0.5 then
+    y := 1.0;
+  else
+    y := 0.0;
+  end if;
+end AlgoModel;
+
+============================================================
+Test: Constant variable
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class WithConst
+  constant Real pi = 3.14159;
+  Real x(start = 0.0);
+equation
+  der(x) = 3.14159;
+end WithConst;
+
+============================================================
+Test: Discrete variable with start
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class DiscreteModel
+  Real x(start = 1.0);
+  discrete Real count(start = 0.0);
+equation
+  when x < 0.5 then
+    count = pre(count) + 1.0;
+  end when;
+  der(x) = -x;
+end DiscreteModel;
+
+============================================================
+Test: Negation distribution -(a*b) → (-a)*b
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class NegDist
+  parameter Real a = 2.0;
+  parameter Real b = 3.0;
+  Real x(start = 1.0);
+equation
+  der(x) = (-(a * b)) * x;
+end NegDist;
+
+============================================================
+Test: If-then-else expression
+============================================================
+[BLT] Starting DFS matching for 1 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+✅ MATCH
+class IfExpr
+  parameter Boolean flag = true;
+  Real x(start = 1.0);
+equation
+  der(x) = if flag then -x else -2.0 * x;
+end IfExpr;
+
+============================================================
+SUMMARY: 10 passed, 1 failed out of 11 tests
+============================================================

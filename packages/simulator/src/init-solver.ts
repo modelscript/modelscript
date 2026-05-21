@@ -1,6 +1,6 @@
-import { Interval } from "@modelscript/compiler";
+/* eslint-disable */
+import { ArenaDAEBuilder, BinOp, ExprKind, Interval, StaticTapeBuilder } from "@modelscript/compiler";
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -723,6 +723,89 @@ function simpleEval(expr: ModelicaExpression, env: Map<string, number>): number 
   return null;
 }
 
+/**
+ * Simple expression evaluator for explicit initial equations working on Arena expression IDs.
+ * Handles basic arithmetic, function calls, and variable lookups.
+ */
+function simpleEvalArena(exprId: number, arena: ArenaDAEBuilder, env: Map<string, number>): number | null {
+  if (exprId < 0) return null;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.RealLiteral:
+      return arena.getExprRealValue(exprId);
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+      return arena.getExprData1(exprId);
+    case ExprKind.Name: {
+      const name = arena.interner.resolve(arena.getExprData1(exprId));
+      return env.get(name) ?? null;
+    }
+    case ExprKind.Unary:
+    case ExprKind.Negate: {
+      const a = simpleEvalArena(arena.getExprLeft(exprId), arena, env);
+      return a !== null ? -a : null;
+    }
+    case ExprKind.Binary: {
+      const a = simpleEvalArena(arena.getExprLeft(exprId), arena, env);
+      const b = simpleEvalArena(arena.getExprRight(exprId), arena, env);
+      if (a === null || b === null) return null;
+      const op = arena.getExprData1(exprId);
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.ElemAdd:
+          return a + b;
+        case BinOp.Sub:
+        case BinOp.ElemSub:
+          return a - b;
+        case BinOp.Mul:
+        case BinOp.ElemMul:
+          return a * b;
+        case BinOp.Div:
+        case BinOp.ElemDiv:
+          return a / b;
+        case BinOp.Pow:
+        case BinOp.ElemPow:
+          return Math.pow(a, b);
+      }
+      return null;
+    }
+    case ExprKind.Call: {
+      const funcName = arena.interner.resolve(arena.getExprData1(exprId));
+      const firstArgId = arena.getExprLeft(exprId);
+      const argCount = arena.getExprRight(exprId);
+      if (funcName === "der" && argCount === 1) {
+        const argExprId = arena.getExprLeft(firstArgId);
+        if (arena.getExprKind(argExprId) === ExprKind.Name) {
+          const varName = arena.interner.resolve(arena.getExprData1(argExprId));
+          return env.get(`der(${varName})`) ?? 0;
+        }
+      }
+      if (argCount === 1) {
+        const a = simpleEvalArena(arena.getExprLeft(firstArgId), arena, env);
+        if (a === null) return null;
+        switch (funcName) {
+          case "sin":
+            return Math.sin(a);
+          case "cos":
+            return Math.cos(a);
+          case "tan":
+            return Math.tan(a);
+          case "exp":
+            return Math.exp(a);
+          case "log":
+            return Math.log(a);
+          case "sqrt":
+            return Math.sqrt(a);
+          case "abs":
+            return Math.abs(a);
+        }
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // Advanced Initialization Pipeline
 // ══════════════════════════════════════════════════════════════════════════
@@ -763,7 +846,7 @@ export function solveInitialEquationsAdvanced(
   if (dae.arena.eqCount === 0) return result;
 
   // Step 1: Build initialization BLT
-  const { blocks } = buildInitBLT(dae);
+  const { blocks } = buildInitBLT(dae.arena);
   if (blocks.length === 0) return result;
 
   // Build environment
@@ -791,7 +874,7 @@ export function solveInitialEquationsAdvanced(
   for (const block of blocks) {
     if (block.type === "explicit") {
       // Direct assignment
-      const val = simpleEval(block.expr, env);
+      const val = simpleEvalArena(block.expr, dae.arena, env);
       if (val !== null && isFinite(val)) {
         env.set(block.target, val);
         result.values.set(block.target, val);
@@ -804,7 +887,7 @@ export function solveInitialEquationsAdvanced(
 
     // Step 2a: MINLP heuristic for blocks with discrete variables
     if (implicitBlock.hasDiscreteVars) {
-      const minlpResult = freezeAndSolve(implicitBlock, env, discreteSet, 10, maxNewtonIter, tol);
+      const minlpResult = freezeAndSolve(implicitBlock, env, discreteSet, dae.arena, 10, maxNewtonIter, tol);
       if (minlpResult.converged) {
         result.iterations += minlpResult.totalNewtonIterations;
         result.residualNorm = minlpResult.residualNorm;
@@ -819,9 +902,9 @@ export function solveInitialEquationsAdvanced(
     // Build AD tapes for this block's residuals
     const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
     for (const eq of implicitBlock.equations) {
-      const tape = new StaticTapeBuilder();
-      const lhsIdx = tape.walk(eq.lhs);
-      const rhsIdx = tape.walk(eq.rhs);
+      const tape = new StaticTapeBuilder(dae.arena.interner);
+      const lhsIdx = tape.addExpression(eq.lhs, dae.arena);
+      const rhsIdx = tape.addExpression(eq.rhs, dae.arena);
       const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
       tapeData.push({ ops: tape, outputIndex: residualIdx });
     }

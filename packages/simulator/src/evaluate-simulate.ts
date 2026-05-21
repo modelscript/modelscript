@@ -151,24 +151,23 @@ export function evaluateSimulate(
   let result: { t: number[]; y: number[][]; states: string[] };
   let messages = "";
   try {
-    // Arena-native path: when integrator is set to "arena"
-    if (solverOptions.integrator === "arena") {
-      const arenaResult = simulateArena(dae.arena, {
-        startTime,
-        stopTime,
-        step,
-        solver: "rk4",
-      });
-      result = arenaResult;
-    } else {
-      const simulator = new deps.Simulator(dae);
-      simulator.prepare();
-      result = simulator.simulate(startTime, stopTime, step, {
-        atol: tolerance,
-        rtol: tolerance,
-        solverOptions,
-      });
-    }
+    let solver: "euler" | "rk4" | "dopri5" | "bdf" | "auto" = "rk4";
+    const integrator = solverOptions.integrator as string | undefined;
+    if (integrator === "euler") solver = "euler";
+    else if (integrator === "rk4") solver = "rk4";
+    else if (integrator === "dopri5") solver = "dopri5";
+    else if (integrator === "bdf") solver = "bdf";
+    else if (integrator === "auto") solver = "auto";
+
+    const arenaResult = simulateArena(dae.arena, {
+      startTime,
+      stopTime,
+      step,
+      solver,
+      atol: tolerance,
+      rtol: tolerance,
+    });
+    result = arenaResult;
   } catch (e) {
     messages = e instanceof Error ? e.message : String(e);
     return buildResultRecord(startTime, stopTime, numberOfIntervals, tolerance, messages);

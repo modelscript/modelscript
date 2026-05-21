@@ -10,6 +10,7 @@
  * - Complex initialization logic
  */
 
+import { Causality } from "@modelscript/compiler";
 import {
   ExpressionEvaluator,
   ModelicaArray,
@@ -18,6 +19,7 @@ import {
   ModelicaBreakStatement,
   ModelicaComplexAssignmentStatement,
   type ModelicaDAE,
+  ModelicaExpression,
   ModelicaForStatement,
   ModelicaFunctionCallExpression,
   ModelicaIfStatement,
@@ -31,6 +33,7 @@ import {
   ModelicaVariable,
   ModelicaWhenStatement,
   ModelicaWhileStatement,
+  materializeExpression,
 } from "@modelscript/symbolics";
 
 /**
@@ -367,8 +370,6 @@ function executeWhenStatement(
 //  Utility: extract a variable name from an assignment target
 // ──────────────────────────────────────────────────────────────────
 
-import type { ModelicaExpression } from "@modelscript/symbolics";
-
 /**
  * Extract the variable name from an assignment target expression.
  *
@@ -482,10 +483,36 @@ export function executeFunction(
   }
 
   try {
-    // Partition variables by role
-    const inputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "input");
-    const outputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "output");
-    const otherVars = [...funcDae.arenaVariables()].filter((v) => v.causality !== "input" && v.causality !== "output");
+    const funcArena = funcDae.arena;
+    const varCount = funcArena.varCount;
+
+    const inputVars: { name: string; expression: ModelicaExpression | null }[] = [];
+    const outputVars: { name: string; expression: ModelicaExpression | null }[] = [];
+    const otherVars: { name: string; expression: ModelicaExpression | null }[] = [];
+
+    for (let i = 0; i < varCount; i++) {
+      if (funcArena.isVarRemoved(i)) continue;
+      const causality = funcArena.getVarCausality(i);
+      const name = funcArena.getVarName(i);
+      const exprId = funcArena.getVarExpression(i) as number | undefined;
+      let expression: ModelicaExpression | null = null;
+      if (typeof exprId === "number") {
+        if (exprId !== -1) {
+          expression = materializeExpression(funcArena, exprId);
+        }
+      } else if (exprId) {
+        expression = exprId as ModelicaExpression;
+      }
+
+      const varInfo = { name, expression };
+      if (causality === Causality.Input) {
+        inputVars.push(varInfo);
+      } else if (causality === Causality.Output) {
+        outputVars.push(varInfo);
+      } else {
+        otherVars.push(varInfo);
+      }
+    }
 
     // Create a fresh evaluator scope for the function body
     const funcEnv = new Map<string, number>();
@@ -505,7 +532,6 @@ export function executeFunction(
         const defaultVal = funcEvaluator.evaluate(inputVar.expression);
         funcEnv.set(inputVar.name, defaultVal ?? 0);
       }
-      // If neither argument nor default, variable remains unset (will be null on access)
     }
 
     // Initialize output variables from their default expressions (if any)
@@ -602,9 +628,36 @@ export async function executeFunctionAsync(
   }
 
   try {
-    const inputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "input");
-    const outputVars = [...funcDae.arenaVariables()].filter((v) => v.causality === "output");
-    const otherVars = [...funcDae.arenaVariables()].filter((v) => v.causality !== "input" && v.causality !== "output");
+    const funcArena = funcDae.arena;
+    const varCount = funcArena.varCount;
+
+    const inputVars: { name: string; expression: ModelicaExpression | null }[] = [];
+    const outputVars: { name: string; expression: ModelicaExpression | null }[] = [];
+    const otherVars: { name: string; expression: ModelicaExpression | null }[] = [];
+
+    for (let i = 0; i < varCount; i++) {
+      if (funcArena.isVarRemoved(i)) continue;
+      const causality = funcArena.getVarCausality(i);
+      const name = funcArena.getVarName(i);
+      const exprId = funcArena.getVarExpression(i) as number | undefined;
+      let expression: ModelicaExpression | null = null;
+      if (typeof exprId === "number") {
+        if (exprId !== -1) {
+          expression = materializeExpression(funcArena, exprId);
+        }
+      } else if (exprId) {
+        expression = exprId as ModelicaExpression;
+      }
+
+      const varInfo = { name, expression };
+      if (causality === Causality.Input) {
+        inputVars.push(varInfo);
+      } else if (causality === Causality.Output) {
+        outputVars.push(varInfo);
+      } else {
+        otherVars.push(varInfo);
+      }
+    }
 
     const funcEnv = new Map<string, number>();
     const funcEvaluator = new ExpressionEvaluator(funcEnv);

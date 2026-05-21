@@ -1,4 +1,3 @@
-import { StaticTapeBuilder } from "@modelscript/compiler";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -18,7 +17,7 @@ import { StaticTapeBuilder } from "@modelscript/compiler";
  *   "Mixed-integer nonlinear optimization", Acta Numerica.
  */
 
-import type { ModelicaExpression } from "@modelscript/symbolics";
+import { ArenaDAEBuilder, BinOp, ExprKind, StaticTapeBuilder } from "@modelscript/compiler";
 import { evaluateTapeForward, evaluateTapeReverse } from "./ad-jacobian.js";
 import type { ImplicitInitBlock } from "./system-initializer.js";
 
@@ -43,6 +42,7 @@ export interface MinlpResult {
  * @param block       The implicit init block (must have hasDiscreteVars=true)
  * @param env         Current variable values (will be mutated with solution)
  * @param discreteSet Set of variable names that are Integer/Boolean
+ * @param arena       The Arena DAE builder containing expression metadata
  * @param maxOuter    Maximum outer freeze-and-solve iterations (default: 10)
  * @param maxNewton   Maximum inner Newton iterations per solve (default: 30)
  * @param tol         Convergence tolerance (default: 1e-10)
@@ -51,6 +51,7 @@ export function freezeAndSolve(
   block: ImplicitInitBlock,
   env: Map<string, number>,
   discreteSet: Set<string>,
+  arena: ArenaDAEBuilder,
   maxOuter = 10,
   maxNewton = 30,
   tol = 1e-10,
@@ -77,9 +78,9 @@ export function freezeAndSolve(
   // Build AD tapes for residuals: R_i = LHS_i - RHS_i
   const tapeData: { ops: StaticTapeBuilder; outputIndex: number }[] = [];
   for (const eq of block.equations) {
-    const tape = new StaticTapeBuilder();
-    const lhsIdx = tape.walk(eq.lhs);
-    const rhsIdx = tape.walk(eq.rhs);
+    const tape = new StaticTapeBuilder(arena.interner);
+    const lhsIdx = tape.addExpression(eq.lhs, arena);
+    const rhsIdx = tape.addExpression(eq.rhs, arena);
     const residualIdx = tape.pushOp({ type: "sub", a: lhsIdx, b: rhsIdx });
     tapeData.push({ ops: tape, outputIndex: residualIdx });
   }
@@ -165,7 +166,7 @@ export function freezeAndSolve(
       const oldVal = env.get(dv) ?? 0;
       // Evaluate the equation that computes this discrete variable
       // For now, use the residual evaluation to check consistency
-      const newVal = evaluateDiscreteFromResiduals(dv, block, env);
+      const newVal = evaluateDiscreteFromResiduals(dv, block, env, arena);
       if (newVal !== null && Math.abs(newVal - oldVal) > 0.5) {
         // Discrete value changed (round to nearest integer for Integer vars)
         env.set(dv, Math.round(newVal));
@@ -197,55 +198,72 @@ function evaluateDiscreteFromResiduals(
   varName: string,
   block: ImplicitInitBlock,
   env: Map<string, number>,
+  arena: ArenaDAEBuilder,
 ): number | null {
   for (const eq of block.equations) {
     // Check if LHS is just this variable
-    if (isSimpleName(eq.lhs, varName)) {
-      return simpleEvalMinlp(eq.rhs, env);
+    if (isSimpleName(eq.lhs, varName, arena)) {
+      return simpleEvalMinlp(eq.rhs, env, arena);
     }
-    if (isSimpleName(eq.rhs, varName)) {
-      return simpleEvalMinlp(eq.lhs, env);
+    if (isSimpleName(eq.rhs, varName, arena)) {
+      return simpleEvalMinlp(eq.lhs, env, arena);
     }
   }
   return null;
 }
 
-function isSimpleName(expr: ModelicaExpression, name: string): boolean {
-  if (!expr || typeof expr !== "object") return false;
-  if ("name" in expr && (expr as { name: string }).name === name) {
-    return !("operand" in expr) && !("operand1" in expr);
+function isSimpleName(exprId: number, name: string, arena: ArenaDAEBuilder): boolean {
+  if (exprId < 0) return false;
+  if (arena.getExprKind(exprId) === ExprKind.Name) {
+    const varName = arena.interner.resolve(arena.getExprData1(exprId));
+    return varName === name;
   }
   return false;
 }
 
 /** Simple expression evaluator for discrete variable re-evaluation. */
-function simpleEvalMinlp(expr: ModelicaExpression, env: Map<string, number>): number | null {
-  if (!expr) return null;
-  if (typeof expr === "number") return expr;
-  if ("value" in expr && typeof (expr as { value: unknown }).value === "number") {
-    return (expr as { value: number }).value;
-  }
-  if ("value" in expr && typeof (expr as { value: unknown }).value === "boolean") {
-    return (expr as { value: boolean }).value ? 1 : 0;
-  }
-  if ("name" in expr && !("operand" in expr) && !("operand1" in expr)) {
-    return env.get((expr as { name: string }).name) ?? null;
-  }
-  if ("operator" in expr && "operand" in expr) {
-    const a = simpleEvalMinlp((expr as { operand: ModelicaExpression }).operand, env);
-    return a !== null ? -a : null;
-  }
-  if ("operator" in expr && "operand1" in expr && "operand2" in expr) {
-    const a = simpleEvalMinlp((expr as { operand1: ModelicaExpression }).operand1, env);
-    const b = simpleEvalMinlp((expr as { operand2: ModelicaExpression }).operand2, env);
-    if (a === null || b === null) return null;
-    const op = (expr as { operator: number }).operator;
-    if (op <= 1) return a + b;
-    if (op <= 3) return a - b;
-    if (op <= 5) return a * b;
-    if (op <= 7) return a / b;
-    if (op <= 9) return Math.pow(a, b);
-    return a + b;
+function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: ArenaDAEBuilder): number | null {
+  if (exprId < 0) return null;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.RealLiteral:
+      return arena.getExprRealValue(exprId);
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+      return arena.getExprData1(exprId);
+    case ExprKind.Name: {
+      const name = arena.interner.resolve(arena.getExprData1(exprId));
+      return env.get(name) ?? null;
+    }
+    case ExprKind.Unary:
+    case ExprKind.Negate: {
+      const a = simpleEvalMinlp(arena.getExprLeft(exprId), env, arena);
+      return a !== null ? -a : null;
+    }
+    case ExprKind.Binary: {
+      const a = simpleEvalMinlp(arena.getExprLeft(exprId), env, arena);
+      const b = simpleEvalMinlp(arena.getExprRight(exprId), env, arena);
+      if (a === null || b === null) return null;
+      const op = arena.getExprData1(exprId);
+      switch (op) {
+        case BinOp.Add:
+        case BinOp.ElemAdd:
+          return a + b;
+        case BinOp.Sub:
+        case BinOp.ElemSub:
+          return a - b;
+        case BinOp.Mul:
+        case BinOp.ElemMul:
+          return a * b;
+        case BinOp.Div:
+        case BinOp.ElemDiv:
+          return a / b;
+        case BinOp.Pow:
+        case BinOp.ElemPow:
+          return Math.pow(a, b);
+      }
+      return null;
+    }
   }
   return null;
 }

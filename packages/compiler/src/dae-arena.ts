@@ -1105,6 +1105,20 @@ export class ArenaDAEBuilder {
     return FLOAT64_VIEW[0]!;
   }
 
+  /** Set the kind of an expression in-place (for constant folding). */
+  setExprKind(idx: number, kind: ExprKind): void {
+    this.exprData[idx * EXPR_STRIDE + EXPR_KIND] = kind;
+  }
+
+  /** Write a real literal value into an expression slot in-place. */
+  setExprRealValue(idx: number, value: number): void {
+    FLOAT64_VIEW[0] = value;
+    this.exprData[idx * EXPR_STRIDE + EXPR_DATA1] = INT32_VIEW[0]!;
+    this.exprData[idx * EXPR_STRIDE + EXPR_LEFT] = INT32_VIEW[1]!;
+    // Clear the right field (not used for literals)
+    this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT] = 0;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Statement API
   // ─────────────────────────────────────────────────────────────────────────
@@ -1389,6 +1403,74 @@ export class ArenaDAEBuilder {
       this._causalityIndex.size * 80 +
       this.interner.estimateMemoryBytes()
     );
+  }
+
+  /**
+   * Reorder equations so that When equations are placed first, continuous/simple
+   * equations second, and initial equations last. This is required for perfect
+   * parity with the legacy flattener's equation output order.
+   */
+  groupEquationsForParity(): void {
+    const whenEqs: number[] = [];
+    const simpleEqs: number[] = [];
+    const initialEqs: number[] = [];
+
+    for (let i = 0; i < this._eqCount; i++) {
+      const offset = i * EQ_STRIDE;
+      const kind = this.eqData[offset]! as EqKind;
+      if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
+        initialEqs.push(i);
+      } else if (kind === EqKind.When) {
+        whenEqs.push(i);
+      } else {
+        simpleEqs.push(i);
+      }
+    }
+
+    const order = [...whenEqs, ...simpleEqs, ...initialEqs];
+    if (order.length !== this._eqCount) return;
+
+    // Build new eqData
+    const newEqData = new Int32Array(this.eqData.length);
+    const remap = new Map<number, number>();
+
+    for (let newIdx = 0; newIdx < order.length; newIdx++) {
+      const oldIdx = order[newIdx]!;
+      remap.set(oldIdx, newIdx);
+
+      const oldOffset = oldIdx * EQ_STRIDE;
+      const newOffset = newIdx * EQ_STRIDE;
+      newEqData[newOffset] = this.eqData[oldOffset]!;
+      newEqData[newOffset + 1] = this.eqData[oldOffset + 1]!;
+      newEqData[newOffset + 2] = this.eqData[oldOffset + 2]!;
+      newEqData[newOffset + 3] = this.eqData[oldOffset + 3]!;
+    }
+
+    this.eqData = newEqData;
+
+    // Remap whenEquationMeta
+    const newWhenMeta = new Map<number, typeof this.whenEquationMeta extends Map<number, infer V> ? V : never>();
+    for (const [oldIdx, meta] of this.whenEquationMeta) {
+      const newIdx = remap.get(oldIdx);
+      if (newIdx !== undefined) newWhenMeta.set(newIdx, meta);
+    }
+    this.whenEquationMeta = newWhenMeta;
+
+    // Remap forEquationMeta
+    const newForMeta = new Map<number, typeof this.forEquationMeta extends Map<number, infer V> ? V : never>();
+    for (const [oldIdx, meta] of this.forEquationMeta) {
+      const newIdx = remap.get(oldIdx);
+      if (newIdx !== undefined) newForMeta.set(newIdx, meta);
+    }
+    this.forEquationMeta = newForMeta;
+
+    // Remap ifEquationMeta
+    const newIfMeta = new Map<number, typeof this.ifEquationMeta extends Map<number, infer V> ? V : never>();
+    for (const [oldIdx, meta] of this.ifEquationMeta) {
+      const newIdx = remap.get(oldIdx);
+      if (newIdx !== undefined) newIfMeta.set(newIdx, meta);
+    }
+    this.ifEquationMeta = newIfMeta;
   }
 
   // ─────────────────────────────────────────────────────────────────────────

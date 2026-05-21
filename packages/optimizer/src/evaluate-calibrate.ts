@@ -202,10 +202,10 @@ export function evaluateCalibrate(
   };
 
   try {
-    const simulator = new deps.Simulator(dae);
+    const simulator = new deps.Simulator(dae.arena);
     simulator.prepare();
 
-    const calibrator = new deps.Calibrator(dae, simulator, {
+    const calibrator = new deps.Calibrator(dae.arena, simulator, {
       parameters: paramNames,
       parameterBounds,
       measurements,

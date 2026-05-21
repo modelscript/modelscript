@@ -29,9 +29,8 @@
  * Pure TypeScript — no native dependencies.
  */
 
-import { type ModelicaSimulator, luFactor, luSolve } from "@modelscript/simulator";
-import type { ModelicaDAE } from "@modelscript/symbolics";
-import { ModelicaIntegerLiteral, ModelicaRealLiteral } from "@modelscript/symbolics";
+import { ArenaDAEBuilder } from "@modelscript/compiler";
+import { ArenaSimulator, luFactor, luSolve, simulateArena } from "@modelscript/simulator";
 
 // ── Public interfaces ──
 
@@ -81,11 +80,11 @@ export interface CalibrationResult {
 // ── Calibrator ──
 
 export class ModelicaCalibrator {
-  private dae: ModelicaDAE;
-  private simulator: ModelicaSimulator;
+  private dae: ArenaDAEBuilder;
+  private simulator: ArenaSimulator;
   private problem: CalibrationProblem;
 
-  constructor(dae: ModelicaDAE, simulator: ModelicaSimulator, problem: CalibrationProblem) {
+  constructor(dae: ArenaDAEBuilder, simulator: ArenaSimulator, problem: CalibrationProblem) {
     this.dae = dae;
     this.simulator = simulator;
     this.problem = problem;
@@ -606,7 +605,10 @@ export class ModelicaCalibrator {
     }
 
     const step = (stopTime - startTime) / 500;
-    return this.simulator.simulate(startTime, stopTime, step, {
+    return simulateArena(this.dae, {
+      startTime,
+      stopTime,
+      step,
       parameterOverrides: paramOverrides,
     });
   }
@@ -615,15 +617,9 @@ export class ModelicaCalibrator {
    * Extract the default value of a parameter from the DAE.
    */
   private extractDefaultValue(name: string): number {
-    for (const v of this.dae.arenaVariables()) {
-      if (v.name === name) {
-        if (v.expression instanceof ModelicaRealLiteral) return v.expression.value;
-        if (v.expression instanceof ModelicaIntegerLiteral) return v.expression.value;
-        const startAttr = v.attributes.get("start");
-        if (startAttr instanceof ModelicaRealLiteral) return startAttr.value;
-        if (startAttr instanceof ModelicaIntegerLiteral) return startAttr.value;
-        break;
-      }
+    const idx = this.dae.getVarIdxByName(name);
+    if (idx >= 0) {
+      return this.dae.getVarStartValue(idx);
     }
     return 0;
   }

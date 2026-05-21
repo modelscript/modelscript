@@ -14,7 +14,7 @@
  */
 
 import { ArenaDAEBuilder } from "@modelscript/compiler";
-import { SobolSequence, Xoshiro256pp } from "./monte-carlo.js";
+import { SobolSequence, Xoshiro256pp } from "./monte-carlo-arena.js";
 import { type ArenaSimulateOptions, type ArenaSimulationResult, simulateArena } from "./simulate-arena.js";
 
 // ─────────────────────────────────────────────────────────────────────

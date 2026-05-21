@@ -46,10 +46,18 @@ export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100):
       if (arena.isVarRemoved(i)) continue;
       const v = arena.getVarVariability(i);
       if (v === Variability.Constant || v === Variability.Parameter) {
+        const name = arena.getVarName(i);
         const startVal = arena.getVarStartValue(i);
-        if (startVal !== 0 || arena.isVarFixed(i)) {
-          paramMap.set(arena.getVarName(i), startVal);
+        // Use binding expression value if available, otherwise startVal
+        const exprId = arena.getVarExpression(i);
+        if (typeof exprId === "number" && exprId >= 0) {
+          const evaluated = evaluateArenaExpression(arena, exprId, paramMap);
+          if (evaluated !== null && typeof evaluated === "number") {
+            paramMap.set(name, evaluated);
+            continue;
+          }
         }
+        paramMap.set(name, startVal);
       }
     }
 
@@ -103,6 +111,28 @@ export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100):
             }
           }
         }
+      }
+    }
+
+    // Phase 3: Substitute constant Name references in expressions with literals.
+    // Walk all expressions and replace ExprKind.Name that refer to constant
+    // variables with their resolved literal values.
+    for (let e = 0; e < arena.exprCount; e++) {
+      if (arena.getExprKind(e) !== ExprKind.Name) continue;
+      const nameId = arena.getExprData1(e);
+      const name = arena.interner.resolve(nameId);
+      if (!name) continue;
+      const varIdx = nameToIdx.get(name);
+      if (varIdx === undefined) continue;
+      const vv = arena.getVarVariability(varIdx);
+      if (vv !== Variability.Constant) continue;
+      // Evaluate the constant to a literal value
+      const val = paramMap.get(name) ?? arena.getVarStartValue(varIdx);
+      if (val !== undefined && typeof val === "number") {
+        // Rewrite this expression slot in-place to a RealLiteral
+        arena.setExprKind(e, ExprKind.RealLiteral);
+        arena.setExprRealValue(e, val);
+        changed = true;
       }
     }
   }

@@ -12,7 +12,7 @@
  * Pure TypeScript — no TensorFlow/ONNX dependencies.
  */
 
-import type { DoEResult } from "./doe.js";
+import type { ArenaDoEResult } from "./doe-arena.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Public Interfaces
@@ -20,7 +20,7 @@ import type { DoEResult } from "./doe.js";
 
 export interface ROMTrainConfig {
   /** Training data from DoE. */
-  data: DoEResult;
+  data: ArenaDoEResult;
   /** ROM architecture. */
   architecture: "polynomial" | "rbf" | "mlp";
   /** MLP hidden layer sizes (default: [32, 16]). */

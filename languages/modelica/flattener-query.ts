@@ -183,7 +183,8 @@ export class ArenaQueryFlattener {
 
     // Walk the CST to extract equation/algorithm sections
     // (Equations are not indexed in the symbol table — they live as CST nodes)
-    this.flattenClassSections(rootClassId, "", dae);
+    // Must walk the extends chain recursively to include parent class equations.
+    this.flattenClassSectionsRecursive(rootClassId, "", dae, new Set());
 
     // Post-processing: expand connections into equations
     this.expandConnections(dae);
@@ -196,6 +197,9 @@ export class ArenaQueryFlattener {
 
     // O(N) Arena-native alias elimination
     eliminateArenaAliases(dae);
+
+    // Group equations for perfect print/AST ordering parity with legacy
+    dae.groupEquationsForParity();
 
     return dae;
   }
@@ -254,6 +258,60 @@ export class ArenaQueryFlattener {
   // -------------------------------------------------------------------------
 
   /**
+   * Recursively flatten equation/algorithm sections from a class and all
+   * its ancestors (via extends). This ensures that parent class equations
+   * are included when flattening a child class.
+   *
+   * For the root class: own sections first, then extends equations.
+   * For inherited classes: extends parents first (depth-first), then own.
+   * This matches the legacy flattener's `localEqs → extEqs` ordering
+   * where extEqs internally are depth-first (grandparent before parent).
+   *
+   * @param classId - The class to extract sections from
+   * @param prefix - Dot-path prefix for name resolution
+   * @param dae - The DAE builder to emit into
+   * @param visited - Set of already-visited class IDs to prevent cycles
+   * @param isRoot - True for the top-level class being flattened
+   */
+  private flattenClassSectionsRecursive(
+    classId: SymbolId,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+    visited: Set<SymbolId>,
+    isRoot = true,
+  ): void {
+    if (visited.has(classId)) return;
+    visited.add(classId);
+
+    // Root class: own sections first, then inherited
+    // Inherited classes: parents first (depth-first), then own
+    if (isRoot) {
+      this.flattenClassSections(classId, prefix, dae);
+    }
+
+    // Walk extends clauses to emit parent class sections
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        const targetName = (child.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
+        if (!targetName) continue;
+
+        const targets = this.db.byName(targetName);
+        for (const target of targets) {
+          if (target.kind === "Class") {
+            this.flattenClassSectionsRecursive(target.id, prefix, dae, visited, false);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!isRoot) {
+      this.flattenClassSections(classId, prefix, dae);
+    }
+  }
+
+  /**
    * Walk the CST of a class definition to extract and flatten
    * EquationSection and AlgorithmSection nodes.
    *
@@ -268,7 +326,9 @@ export class ArenaQueryFlattener {
     const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
     if (!classDef) return;
 
-    for (const section of classDef.sections) {
+    const sections = [...classDef.sections];
+    for (let i = sections.length - 1; i >= 0; i--) {
+      const section = sections[i]!;
       if (section instanceof ModelicaEquationSectionSyntaxNode) {
         this.flattenEquationSection(section, prefix, dae);
       } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
@@ -352,6 +412,7 @@ export class ArenaQueryFlattener {
   ): void {
     const isInitial = sectionNode.initial;
     const stmtNodes: ModelicaStatementSyntaxNode[] = sectionNode.statements ?? [];
+    if (stmtNodes.length === 0) return;
 
     const stmtStartIdx = dae.stmtCount;
 
@@ -359,13 +420,11 @@ export class ArenaQueryFlattener {
       this.flattenStatement(stmt, dae);
     }
 
-    const stmtCount = dae.stmtCount - stmtStartIdx;
-    if (stmtCount > 0) {
-      if (isInitial) {
-        dae.addInitialAlgorithmSection(stmtStartIdx, stmtCount);
-      } else {
-        dae.addAlgorithmSection(stmtStartIdx, stmtCount);
-      }
+    // Use top-level statement count (not total slot count including nested bodies)
+    if (isInitial) {
+      dae.addInitialAlgorithmSection(stmtStartIdx, stmtNodes.length);
+    } else {
+      dae.addAlgorithmSection(stmtStartIdx, stmtNodes.length);
     }
   }
 
@@ -482,6 +541,7 @@ export class ArenaQueryFlattener {
 
     if (subElements) {
       this.flattenElements(subElements, fullName, dae);
+      this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
     }
   }
 
@@ -521,6 +581,7 @@ export class ArenaQueryFlattener {
         const subElements = this.db.query<SymbolId[]>("instantiate", classInstanceId);
         if (subElements) {
           this.flattenElements(subElements, fullName, dae);
+          this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
         }
       }
     }
@@ -651,7 +712,9 @@ export class ArenaQueryFlattener {
         if (cstNode) {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const visitor = this.createExprVisitor(dae);
-          let exprId = visitor.visit(astNode);
+          // If the AST wrapper fails (e.g. raw "true"/"false" CST nodes),
+          // pass the CST node directly — the visitor has fallback handling.
+          let exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
             if (varType === VarType.Real) {
               exprId = visitor.castToRealExpr(exprId);
@@ -1066,7 +1129,8 @@ export class ArenaQueryFlattener {
     const condId = visitor.visit(whenEq.condition);
     if (condId === undefined) return;
 
-    // Flatten the body equations
+    // Collect body equations into structured metadata
+    const bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
     for (const eq of whenEq.equations) {
       const eqVisitor = this.createExprVisitor(dae, loopVars);
       const n = eq as any;
@@ -1074,18 +1138,23 @@ export class ArenaQueryFlattener {
         const lhsId = eqVisitor.visit(n.expression1);
         const rhsId = eqVisitor.visit(n.expression2);
         if (lhsId !== undefined && rhsId !== undefined) {
-          dae.addEquation(EqKind.When, lhsId, rhsId, condId);
+          bodyEquations.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
         }
       }
     }
 
-    // Handle elsewhen clauses
+    // Collect elsewhen clauses
+    const elseWhenClauses: {
+      conditionExprId: number;
+      bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[];
+    }[] = [];
     for (const elseWhen of whenEq.elseWhenEquationClauses) {
       if (!elseWhen.condition) continue;
       const ewVisitor = this.createExprVisitor(dae, loopVars);
       const ewCondId = ewVisitor.visit(elseWhen.condition);
       if (ewCondId === undefined) continue;
 
+      const ewBody: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
       for (const eq of elseWhen.equations) {
         const eqVisitor = this.createExprVisitor(dae, loopVars);
         const n = eq as any;
@@ -1093,11 +1162,15 @@ export class ArenaQueryFlattener {
           const lhsId = eqVisitor.visit(n.expression1);
           const rhsId = eqVisitor.visit(n.expression2);
           if (lhsId !== undefined && rhsId !== undefined) {
-            dae.addEquation(EqKind.When, lhsId, rhsId, ewCondId);
+            ewBody.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
           }
         }
       }
+      elseWhenClauses.push({ conditionExprId: ewCondId, bodyEquations: ewBody });
     }
+
+    // Use the compound addWhenEquation method for proper metadata storage
+    dae.addWhenEquation(condId, bodyEquations, elseWhenClauses);
   }
 
   /**
@@ -1123,12 +1196,12 @@ export class ArenaQueryFlattener {
       this.flattenStatement(stmt, dae);
     }
 
-    const stmtCount = dae.stmtCount - stmtStartIdx;
-    if (stmtCount > 0) {
+    // Use top-level statement count (not total slot count including nested bodies)
+    if (stmtNodes.length > 0) {
       if (isInitial) {
-        dae.addInitialAlgorithmSection(stmtStartIdx, stmtCount);
+        dae.addInitialAlgorithmSection(stmtStartIdx, stmtNodes.length);
       } else {
-        dae.addAlgorithmSection(stmtStartIdx, stmtCount);
+        dae.addAlgorithmSection(stmtStartIdx, stmtNodes.length);
       }
     }
   }
@@ -1153,85 +1226,83 @@ export class ArenaQueryFlattener {
         const indexNameId = dae.interner.intern(indexName);
         const visitor = this.createExprVisitor(dae);
         const rangeExprId = firstIdx.expression ? visitor.visit(firstIdx.expression) : undefined;
+        const bodyStmts = stmt.statements ?? [];
 
-        const bodyStartIdx = dae.stmtCount;
-        for (const inner of stmt.statements ?? []) {
+        // Header first, then body (prefix layout)
+        dae.addForStmt(indexNameId, rangeExprId ?? -1, bodyStmts.length);
+        for (const inner of bodyStmts) {
           this.flattenStatement(inner, dae);
         }
-        const bodyCount = dae.stmtCount - bodyStartIdx;
-        dae.addForStmt(indexNameId, rangeExprId ?? -1, bodyCount);
       }
     } else if (stmt instanceof ModelicaWhileStatementSyntaxNode) {
       const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
+      const bodyStmts = stmt.statements ?? [];
 
-      const bodyStartIdx = dae.stmtCount;
-      for (const inner of stmt.statements ?? []) {
+      // Header first, then body (prefix layout)
+      dae.addWhileStmt(condId ?? -1, bodyStmts.length);
+      for (const inner of bodyStmts) {
         this.flattenStatement(inner, dae);
       }
-      const bodyCount = dae.stmtCount - bodyStartIdx;
-      dae.addWhileStmt(condId ?? -1, bodyCount);
     } else if (stmt instanceof ModelicaIfStatementSyntaxNode) {
       const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
 
-      // Then branch
-      const thenStartIdx = dae.stmtCount;
-      for (const inner of stmt.statements ?? []) {
-        this.flattenStatement(inner, dae);
-      }
-      const thenCount = dae.stmtCount - thenStartIdx;
+      // Pre-count body statements for the then-branch
+      const thenStmts = stmt.statements ?? [];
 
-      // ElseIf branches + else branch → emit as Block stmts
+      // Pre-count elseif + else branches
       const elseIfClauses = stmt.elseIfStatementClauses ?? [];
       const elseStmts = stmt.elseStatements ?? [];
       const branchCount = elseIfClauses.length + (elseStmts.length > 0 ? 1 : 0);
 
+      // Emit header FIRST (printer expects prefix layout: header → body → branches)
+      dae.addIfStmt(condId ?? -1, thenStmts.length, branchCount);
+
+      // Then-branch body
+      for (const inner of thenStmts) {
+        this.flattenStatement(inner, dae);
+      }
+
+      // ElseIf branches: Block header → body for each
       for (const clause of elseIfClauses) {
         const eifVisitor = this.createExprVisitor(dae);
         const eifCondId = clause.condition ? eifVisitor.visit(clause.condition) : -1;
-        const branchStartIdx = dae.stmtCount;
-        for (const inner of clause.statements ?? []) {
+        const clauseStmts = clause.statements ?? [];
+        dae.addBlockStmt(eifCondId ?? -1, clauseStmts.length);
+        for (const inner of clauseStmts) {
           this.flattenStatement(inner, dae);
         }
-        const branchBodyCount = dae.stmtCount - branchStartIdx;
-        dae.addBlockStmt(eifCondId ?? -1, branchBodyCount);
       }
 
+      // Else branch: Block(-1, count) → body
       if (elseStmts.length > 0) {
-        const elseStartIdx = dae.stmtCount;
+        dae.addBlockStmt(-1, elseStmts.length);
         for (const inner of elseStmts) {
           this.flattenStatement(inner, dae);
         }
-        const elseCount = dae.stmtCount - elseStartIdx;
-        dae.addBlockStmt(-1, elseCount); // -1 condition = unconditional else
       }
-
-      dae.addIfStmt(condId ?? -1, thenCount, branchCount);
     } else if (stmt instanceof ModelicaWhenStatementSyntaxNode) {
       const visitor = this.createExprVisitor(dae);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
+      const bodyStmts = stmt.statements ?? [];
+      const elseWhenClauses = stmt.elseWhenStatementClauses ?? [];
 
-      const bodyStartIdx = dae.stmtCount;
-      for (const inner of stmt.statements ?? []) {
+      // Header first, then body, then elsewhen blocks (prefix layout)
+      dae.addWhenStmt(condId ?? -1, bodyStmts.length, elseWhenClauses.length);
+      for (const inner of bodyStmts) {
         this.flattenStatement(inner, dae);
       }
-      const bodyCount = dae.stmtCount - bodyStartIdx;
 
-      // ElseWhen clauses
-      const elseWhenClauses = stmt.elseWhenStatementClauses ?? [];
       for (const ew of elseWhenClauses) {
         const ewVisitor = this.createExprVisitor(dae);
         const ewCondId = ew.condition ? ewVisitor.visit(ew.condition) : -1;
-        const ewStartIdx = dae.stmtCount;
-        for (const inner of ew.statements ?? []) {
+        const ewStmts = ew.statements ?? [];
+        dae.addBlockStmt(ewCondId ?? -1, ewStmts.length);
+        for (const inner of ewStmts) {
           this.flattenStatement(inner, dae);
         }
-        const ewCount = dae.stmtCount - ewStartIdx;
-        dae.addBlockStmt(ewCondId ?? -1, ewCount);
       }
-
-      dae.addWhenStmt(condId ?? -1, bodyCount, elseWhenClauses.length);
     } else if (stmt instanceof ModelicaReturnStatementSyntaxNode) {
       dae.addReturnStmt();
     } else if (stmt instanceof ModelicaBreakStatementSyntaxNode) {

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import {
   ArenaDAEBuilder,
   BinOp,
@@ -17,7 +18,124 @@ import { bdf } from "./bdf.js";
 import { dopri5 } from "./dopri5.js";
 import { Dual } from "./dual.js";
 import { type FmuSubsystem, type FmuSubsystemRegistry } from "./fmu-subsystem.js";
-import { luFactor, luSolve } from "./simulator.js";
+/** Factorization result for dense LU solver. */
+export interface LUFactorization {
+  /** LU factorization matrix. */
+  lu: Float64Array[];
+  /** Pivot permutation vector. */
+  piv: Int32Array;
+  /** Row scaling factors for equilibration. */
+  rowScale: Float64Array;
+  /** Matrix dimension. */
+  n: number;
+}
+
+/** Factor a dense n×n matrix (given as array of Float64Array rows) into PA = LU
+ *  with row equilibration for numerical stability. */
+export function luFactor(A: Float64Array[], n: number): LUFactorization {
+  // Copy matrix
+  const lu = A.map((row) => new Float64Array(row));
+  const piv = new Int32Array(n);
+  for (let i = 0; i < n; i++) piv[i] = i;
+
+  // Row equilibration: scale each row by 1/max|entry|
+  const rowScale = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const row = lu[i];
+    if (!row) continue;
+    let maxVal = 0;
+    for (let j = 0; j < n; j++) {
+      maxVal = Math.max(maxVal, Math.abs(row[j] ?? 0));
+    }
+    const s = maxVal > 1e-30 ? 1.0 / maxVal : 1.0;
+    rowScale[i] = s;
+    for (let j = 0; j < n; j++) {
+      row[j] = (row[j] ?? 0) * s;
+    }
+  }
+
+  for (let k = 0; k < n; k++) {
+    const luK = lu[k];
+    if (!luK) continue;
+    // Find pivot
+    let maxVal = Math.abs(luK[k] ?? 0);
+    let maxIdx = k;
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const val = Math.abs(luI[k] ?? 0);
+      if (val > maxVal) {
+        maxVal = val;
+        maxIdx = i;
+      }
+    }
+    // Swap rows
+    if (maxIdx !== k) {
+      const rowK = lu[k];
+      const rowMax = lu[maxIdx];
+      if (rowK && rowMax) {
+        lu[k] = rowMax;
+        lu[maxIdx] = rowK;
+      }
+      const tmpP = piv[k] ?? k;
+      piv[k] = piv[maxIdx] ?? maxIdx;
+      piv[maxIdx] = tmpP;
+      // Also swap rowScale entries
+      const tmpS = rowScale[k] ?? 1;
+      rowScale[k] = rowScale[maxIdx] ?? 1;
+      rowScale[maxIdx] = tmpS;
+    }
+    const luKSwapped = lu[k];
+    if (!luKSwapped) continue;
+    const diagVal = luKSwapped[k] ?? 0;
+    if (Math.abs(diagVal) < 1e-30) continue; // Near-singular — skip
+
+    // Eliminate below
+    for (let i = k + 1; i < n; i++) {
+      const luI = lu[i];
+      if (!luI) continue;
+      const factor = (luI[k] ?? 0) / diagVal;
+      luI[k] = factor; // Store L
+      for (let j = k + 1; j < n; j++) {
+        luI[j] = (luI[j] ?? 0) - factor * (luKSwapped[j] ?? 0);
+      }
+    }
+  }
+  return { lu, piv, rowScale, n };
+}
+
+/** Solve LU·x = b (in-place, overwrites b with x).
+ *  Accounts for row equilibration applied during factorization. */
+export function luSolve(fact: LUFactorization, b: Float64Array): void {
+  const { lu, piv, rowScale, n } = fact;
+  // Apply permutation, then row scaling to RHS
+  // After pivoting, rowScale[i] = original scale for the row now at position i
+  const pb = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const pi = piv[i] ?? i;
+    pb[i] = (b[pi] ?? 0) * (rowScale[i] ?? 1);
+  }
+  // Forward substitution (L·z = pb)
+  for (let i = 1; i < n; i++) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = 0; j < i; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+  }
+  // Back substitution (U·x = z)
+  for (let i = n - 1; i >= 0; i--) {
+    const luI = lu[i];
+    if (!luI) continue;
+    for (let j = i + 1; j < n; j++) {
+      pb[i] = (pb[i] ?? 0) - (luI[j] ?? 0) * (pb[j] ?? 0);
+    }
+    const diag = luI[i] ?? 0;
+    pb[i] = Math.abs(diag) > 1e-30 ? (pb[i] ?? 0) / diag : 0;
+  }
+  // Copy result back
+  for (let i = 0; i < n; i++) b[i] = pb[i] ?? 0;
+}
 
 /** Maximum Newton iterations for algebraic loop solving. */
 const NEWTON_MAX_ITER = 20;
@@ -1380,5 +1498,170 @@ export class ArenaSimulator {
     }
 
     return { t: t_out, y: y_out };
+  }
+
+  /**
+   * Evaluate the RHS (derivatives) of the ODE system at a given point.
+   *
+   * @param time          Current time
+   * @param stateValues   Current state variable values
+   * @param controlValues Current control variable values (overrides parameters)
+   * @returns Map from state name to derivative value (dx/dt)
+   */
+  public evaluateRHS(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+  ): Map<string, number> {
+    const envSize = Math.max(this.arena.interner.size + 256, 4096);
+    const valuesByStringId = new Float64Array(envSize);
+
+    // Load parameters
+    for (const [name, val] of this.parameters) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+
+    // Load states
+    for (const [name, val] of stateValues) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+
+    // Load controls
+    if (controlValues) {
+      for (const [name, val] of controlValues) {
+        valuesByStringId[this.arena.interner.intern(name)] = val;
+      }
+    }
+
+    const timeId = this.arena.interner.intern("time");
+    valuesByStringId[timeId] = time;
+
+    // Evaluate blocks and derivatives
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+
+    const f = new Map<string, number>();
+    for (const varIdx of this.stateVars) {
+      const name = this.arena.getVarName(varIdx);
+      const derId = this.arena.interner.intern(`der(${name})`);
+      f.set(name, valuesByStringId[derId] ?? 0);
+    }
+    return f;
+  }
+
+  /**
+   * Evaluate the RHS and its Jacobian w.r.t a set of seed variables using forward-mode AD.
+   *
+   * @param time          Current time
+   * @param stateValues   Current state variable values
+   * @param controlValues Current control variable values
+   * @param seedVars      Variables to compute derivatives with respect to
+   * @returns { f: Map<stateName, dx/dt>, J: Map<stateName, Map<seedVar, ∂f/∂seedVar>> }
+   */
+  public evaluateRHSWithJacobian(
+    time: number,
+    stateValues: Map<string, number>,
+    controlValues?: Map<string, number>,
+    seedVars?: string[],
+  ): { f: Map<string, number>; J: Map<string, Map<string, number>> } {
+    const allSeedVars = seedVars ?? [
+      ...Array.from(stateValues.keys()),
+      ...(controlValues ? Array.from(controlValues.keys()) : []),
+    ];
+
+    // Compute base values using evaluateRHS
+    const envSize = Math.max(this.arena.interner.size + 256, 4096);
+    const valuesByStringId = new Float64Array(envSize);
+
+    for (const [name, val] of this.parameters) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+    for (const [name, val] of stateValues) {
+      valuesByStringId[this.arena.interner.intern(name)] = val;
+    }
+    if (controlValues) {
+      for (const [name, val] of controlValues) {
+        valuesByStringId[this.arena.interner.intern(name)] = val;
+      }
+    }
+    const timeId = this.arena.interner.intern("time");
+    valuesByStringId[timeId] = time;
+
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+
+    const f = new Map<string, number>();
+    for (const varIdx of this.stateVars) {
+      const name = this.arena.getVarName(varIdx);
+      const derId = this.arena.interner.intern(`der(${name})`);
+      f.set(name, valuesByStringId[derId] ?? 0);
+    }
+
+    const J = new Map<string, Map<string, number>>();
+    for (const varIdx of this.stateVars) {
+      J.set(this.arena.getVarName(varIdx), new Map());
+    }
+
+    // Propagate dual numbers for each seed variable
+    for (const seedVar of allSeedVars) {
+      const dualEnv = new Array<Dual>(envSize);
+
+      // Load all variables into the dual env from our base evaluation
+      for (let sid = 0; sid < envSize; sid++) {
+        const val = valuesByStringId[sid] ?? 0;
+        dualEnv[sid] = Dual.constant(val);
+      }
+
+      // Perturb the seed variable with dot = 1.0
+      const seedNameId = this.arena.interner.intern(seedVar);
+      if (seedNameId < envSize) {
+        const val = valuesByStringId[seedNameId] ?? 0;
+        dualEnv[seedNameId] = new Dual(val, 1.0);
+      }
+
+      // Propagate dual numbers through blocks in execution order
+      for (const block of this.executionBlocks) {
+        if (block.type === "single") {
+          const val = evaluateArenaDualExpression(this.arena, block.exprId, dualEnv);
+          if (val !== null) {
+            const varNameId = this.arena.getVarNameId(block.varIdx);
+            dualEnv[varNameId] = val;
+          }
+        } else if (block.type === "system") {
+          // Iterate system block equations to propagate derivatives
+          for (let iter = 0; iter < 5; iter++) {
+            for (let i = 0; i < block.vars.length; i++) {
+              const varIdx = block.vars[i]!;
+              const eqIdx = block.eqIdxs[i]!;
+              const rhsId = this.arena.getEqRhs(eqIdx);
+              const val = evaluateArenaDualExpression(this.arena, rhsId, dualEnv);
+              if (val !== null) {
+                const varNameId = this.arena.getVarNameId(varIdx);
+                dualEnv[varNameId] = val;
+              }
+            }
+          }
+        }
+      }
+
+      // Propagate through derivative equations
+      for (const deq of this.derivativeEquations) {
+        const val = evaluateArenaDualExpression(this.arena, deq.rhsExprId, dualEnv);
+        if (val !== null) {
+          dualEnv[deq.derivNameId] = val;
+        }
+      }
+
+      // Read sensitivities for each state
+      for (const varIdx of this.stateVars) {
+        const name = this.arena.getVarName(varIdx);
+        const derId = this.arena.interner.intern(`der(${name})`);
+        const dualDerVal = dualEnv[derId];
+        const sensitivity = dualDerVal ? dualDerVal.dot : 0;
+        J.get(name)!.set(seedVar, sensitivity);
+      }
+    }
+
+    return { f, J };
   }
 }

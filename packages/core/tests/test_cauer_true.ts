@@ -1,11 +1,11 @@
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
 import { ModelicaDAE, ModelicaDAEPrinter } from "../src/compiler/modelica/dae.js";
 import { ModelicaFlattener } from "../src/compiler/modelica/flattener.js";
 import { ModelicaSimulator } from "../src/compiler/modelica/simulator.js";
 import { StringWriter } from "../src/util/io.js";
+import { NodeFileSystem } from "./node-filesystem.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

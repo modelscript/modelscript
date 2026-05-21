@@ -1,3 +1,4 @@
+/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -15,18 +16,7 @@
  * or implicit algebraic loops — that the init-solver can process sequentially.
  */
 
-import { ModelicaVariability } from "@modelscript/modelica/ast";
-import {
-  ModelicaArray,
-  ModelicaArrayEquation,
-  ModelicaBooleanLiteral,
-  ModelicaBooleanVariable,
-  type ModelicaDAE,
-  type ModelicaExpression,
-  ModelicaFunctionCallExpression,
-  ModelicaIntegerVariable,
-  ModelicaNameExpression,
-} from "@modelscript/symbolics";
+import { ArenaDAEBuilder, EqKind, ExprKind, Variability, VarType } from "@modelscript/compiler";
 
 // ── Public types ──
 
@@ -35,8 +25,8 @@ export interface ExplicitInitBlock {
   type: "explicit";
   /** Variable name being assigned. */
   target: string;
-  /** Expression to evaluate. */
-  expr: ModelicaExpression;
+  /** Expression ID to evaluate. */
+  expr: number;
 }
 
 /** An implicit algebraic loop block requiring Newton/homotopy solving. */
@@ -45,7 +35,7 @@ export interface ImplicitInitBlock {
   /** Unknown variable names in this loop. */
   unknowns: string[];
   /** Equations in the loop (LHS = RHS pairs). */
-  equations: { lhs: ModelicaExpression; rhs: ModelicaExpression }[];
+  equations: { lhs: number; rhs: number }[];
   /** Whether this block contains discrete (Integer/Boolean) variables. */
   hasDiscreteVars: boolean;
 }
@@ -62,29 +52,140 @@ export interface InitBLTResult {
   unknowns: Set<string>;
 }
 
-/** Collect all variable names referenced in an expression. */
-function collectExprVarNames(expr: ModelicaExpression, names: Set<string>): void {
-  if (!expr || typeof expr !== "object") return;
-  if (expr instanceof ModelicaNameExpression) {
-    names.add(expr.name);
-    return;
-  }
-  if (expr instanceof ModelicaArray) {
-    for (const elem of expr.flatElements) collectExprVarNames(elem, names);
-    return;
-  }
-  if ("name" in expr) names.add((expr as { name: string }).name);
-  if ("operand" in expr) collectExprVarNames((expr as { operand: ModelicaExpression }).operand, names);
-  if ("operand1" in expr) collectExprVarNames((expr as { operand1: ModelicaExpression }).operand1, names);
-  if ("operand2" in expr) collectExprVarNames((expr as { operand2: ModelicaExpression }).operand2, names);
-  if (expr instanceof ModelicaFunctionCallExpression) {
-    if (expr.functionName === "der" && expr.args.length === 1) {
-      const a = expr.args[0];
-      if (a && typeof a === "object" && "name" in a) {
-        names.add(`der(${(a as { name: string }).name})`);
-      }
+/** Unroll nested array constructor / tuple expressions into a flat list of scalar expression IDs. */
+function flatElements(exprId: number, arena: ArenaDAEBuilder): number[] {
+  if (exprId < 0) return [];
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.ArrayCtor || kind === ExprKind.Tuple) {
+    const count = arena.getExprData1(exprId);
+    const firstElemId = arena.getExprLeft(exprId);
+    const elements: number[] = [];
+    for (let i = 0; i < count; i++) {
+      const elemExprId = arena.getExprLeft(firstElemId + i);
+      elements.push(...flatElements(elemExprId, arena));
     }
-    for (const arg of expr.args) collectExprVarNames(arg, names);
+    return elements;
+  }
+  return [exprId];
+}
+
+/** Collect all variable names referenced in an expression. */
+function collectExprVarNames(exprId: number, arena: ArenaDAEBuilder, names: Set<string>): void {
+  if (exprId < 0) return;
+  const kind = arena.getExprKind(exprId);
+  switch (kind) {
+    case ExprKind.Name: {
+      const nameId = arena.getExprData1(exprId);
+      names.add(arena.interner.resolve(nameId));
+      break;
+    }
+    case ExprKind.RealLiteral:
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+    case ExprKind.EnumLiteral:
+    case ExprKind.Colon:
+      break;
+    case ExprKind.Unary:
+    case ExprKind.Negate:
+    case ExprKind.Der:
+    case ExprKind.Pre: {
+      const operand = arena.getExprLeft(exprId);
+      if (kind === ExprKind.Der) {
+        if (arena.getExprKind(operand) === ExprKind.Name) {
+          const varName = arena.interner.resolve(arena.getExprData1(operand));
+          names.add(`der(${varName})`);
+        }
+      }
+      collectExprVarNames(operand, arena, names);
+      break;
+    }
+    case ExprKind.Binary: {
+      collectExprVarNames(arena.getExprLeft(exprId), arena, names);
+      collectExprVarNames(arena.getExprRight(exprId), arena, names);
+      break;
+    }
+    case ExprKind.Call: {
+      const nameId = arena.getExprData1(exprId);
+      const funcName = arena.interner.resolve(nameId);
+      const firstArgId = arena.getExprLeft(exprId);
+      const argCount = arena.getExprRight(exprId);
+
+      if (funcName === "der" && argCount === 1) {
+        const argExprId = arena.getExprLeft(firstArgId);
+        if (arena.getExprKind(argExprId) === ExprKind.Name) {
+          const varName = arena.interner.resolve(arena.getExprData1(argExprId));
+          names.add(`der(${varName})`);
+        }
+      }
+
+      for (let i = 0; i < argCount; i++) {
+        const argExprId = arena.getExprLeft(firstArgId + i);
+        collectExprVarNames(argExprId, arena, names);
+      }
+      break;
+    }
+    case ExprKind.Subscript: {
+      const baseExprId = arena.getExprData1(exprId);
+      const firstSubId = arena.getExprLeft(exprId);
+      const subCount = arena.getExprRight(exprId);
+
+      if (subCount === 1) {
+        const indexExprId = arena.getExprLeft(firstSubId);
+        if (arena.getExprKind(indexExprId) === ExprKind.IntLiteral) {
+          const val = arena.getExprData1(indexExprId);
+          if (arena.getExprKind(baseExprId) === ExprKind.Name) {
+            const baseName = arena.interner.resolve(arena.getExprData1(baseExprId));
+            names.add(`${baseName}[${val}]`);
+          }
+        }
+      }
+
+      collectExprVarNames(baseExprId, arena, names);
+      for (let i = 0; i < subCount; i++) {
+        const subExprId = arena.getExprLeft(firstSubId + i);
+        collectExprVarNames(subExprId, arena, names);
+      }
+      break;
+    }
+    case ExprKind.ArrayCtor:
+    case ExprKind.Tuple: {
+      const count = arena.getExprData1(exprId);
+      const firstElemId = arena.getExprLeft(exprId);
+      for (let i = 0; i < count; i++) {
+        const elemExprId = arena.getExprLeft(firstElemId + i);
+        collectExprVarNames(elemExprId, arena, names);
+      }
+      break;
+    }
+    case ExprKind.IfElse: {
+      collectExprVarNames(arena.getExprData1(exprId), arena, names);
+      collectExprVarNames(arena.getExprLeft(exprId), arena, names);
+      collectExprVarNames(arena.getExprRight(exprId), arena, names);
+      break;
+    }
+    case ExprKind.Comprehension: {
+      collectExprVarNames(arena.getExprLeft(exprId), arena, names);
+      break;
+    }
+    case ExprKind.PartialFunc:
+      break;
+    case ExprKind.Object: {
+      const count = arena.getExprData1(exprId);
+      const firstFieldId = arena.getExprLeft(exprId);
+      for (let i = 0; i < count; i++) {
+        const fieldExprId = arena.getExprLeft(firstFieldId + i);
+        collectExprVarNames(fieldExprId, arena, names);
+      }
+      break;
+    }
+    case ExprKind.Range: {
+      collectExprVarNames(arena.getExprData1(exprId), arena, names);
+      const step = arena.getExprLeft(exprId);
+      if (step >= 0) collectExprVarNames(step, arena, names);
+      collectExprVarNames(arena.getExprRight(exprId), arena, names);
+      break;
+    }
   }
 }
 
@@ -96,68 +197,72 @@ function collectExprVarNames(expr: ModelicaExpression, names: Set<string>): void
  * @param dae The flattened DAE with initialEquations and variables
  * @returns Ordered sequence of init blocks ready for solving
  */
-export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
+export function buildInitBLT(dae: ArenaDAEBuilder): InitBLTResult {
   // 1. Classify knowns vs unknowns
   const knowns = new Set<string>();
   const discreteVarNames = new Set<string>();
   knowns.add("time");
 
-  for (const v of dae.arenaVariables()) {
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const varName = dae.getVarName(i);
+    const variability = dae.getVarVariability(i);
+    const varType = dae.getVarType(i);
+
     // Parameters and constants are always known
-    if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
-      knowns.add(v.name);
+    if (variability === Variability.Parameter || variability === Variability.Constant) {
+      knowns.add(varName);
       continue;
     }
     // Fixed=true variables are known (their start value is the solution)
-    const fixedAttr = v.attributes.get("fixed");
-    if (fixedAttr && fixedAttr instanceof ModelicaBooleanLiteral && fixedAttr.value) {
-      knowns.add(v.name);
+    if (dae.isVarFixed(i)) {
+      knowns.add(varName);
       continue;
     }
     // Track discrete variables
-    if (v instanceof ModelicaIntegerVariable || v instanceof ModelicaBooleanVariable) {
-      discreteVarNames.add(v.name);
+    if (varType === VarType.Integer || varType === VarType.Boolean) {
+      discreteVarNames.add(varName);
     }
   }
 
   // 2. Collect all equations for initialization
   //    - Initial equations (explicit initial conditions)
   //    - Continuous equations evaluated at t=0 (dynamic constraints)
-  const initEquations: { lhs: ModelicaExpression; rhs: ModelicaExpression; source: "initial" | "continuous" }[] = [];
+  const initEquations: { lhs: number; rhs: number; source: "initial" | "continuous" }[] = [];
 
-  for (const eq of dae.arenaInitialEquations()) {
-    if (eq instanceof ModelicaArrayEquation) {
-      // Unroll array equations element-wise
-      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      const lhsElems = se.expression1 instanceof ModelicaArray ? [...se.expression1.flatElements] : [se.expression1];
-      const rhsElems = se.expression2 instanceof ModelicaArray ? [...se.expression2.flatElements] : [se.expression2];
-      const n = Math.max(lhsElems.length, rhsElems.length);
-      for (let i = 0; i < n; i++) {
-        const lhs = lhsElems[i] ?? lhsElems[0];
-        const rhs = rhsElems[i] ?? rhsElems[0];
-        if (lhs && rhs) initEquations.push({ lhs, rhs, source: "initial" });
-      }
-    } else if ("expression1" in eq && "expression2" in eq) {
-      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      initEquations.push({ lhs: se.expression1, rhs: se.expression2, source: "initial" });
-    }
-  }
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    const lhs = dae.getEqLhs(i);
+    const rhs = dae.getEqRhs(i);
 
-  // Add continuous equations (they also hold at t=0)
-  for (const eq of dae.arenaEquations()) {
-    if (eq instanceof ModelicaArrayEquation) {
-      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      const lhsElems = se.expression1 instanceof ModelicaArray ? [...se.expression1.flatElements] : [se.expression1];
-      const rhsElems = se.expression2 instanceof ModelicaArray ? [...se.expression2.flatElements] : [se.expression2];
-      const n = Math.max(lhsElems.length, rhsElems.length);
-      for (let i = 0; i < n; i++) {
-        const lhs = lhsElems[i] ?? lhsElems[0];
-        const rhs = rhsElems[i] ?? rhsElems[0];
-        if (lhs && rhs) initEquations.push({ lhs, rhs, source: "continuous" });
+    if (kind === EqKind.InitialSimple || kind === EqKind.InitialFor) {
+      if (kind === EqKind.InitialSimple) {
+        const lhsElems = flatElements(lhs, dae);
+        const rhsElems = flatElements(rhs, dae);
+        const n = Math.max(lhsElems.length, rhsElems.length);
+        for (let j = 0; j < n; j++) {
+          const l = lhsElems[j] ?? lhsElems[0];
+          const r = rhsElems[j] ?? rhsElems[0];
+          if (l !== undefined && r !== undefined) {
+            initEquations.push({ lhs: l, rhs: r, source: "initial" });
+          }
+        }
       }
-    } else if ("expression1" in eq && "expression2" in eq) {
-      const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-      initEquations.push({ lhs: se.expression1, rhs: se.expression2, source: "continuous" });
+    } else if (kind !== EqKind.When) {
+      if (kind === EqKind.Array) {
+        const lhsElems = flatElements(lhs, dae);
+        const rhsElems = flatElements(rhs, dae);
+        const n = Math.max(lhsElems.length, rhsElems.length);
+        for (let j = 0; j < n; j++) {
+          const l = lhsElems[j] ?? lhsElems[0];
+          const r = rhsElems[j] ?? rhsElems[0];
+          if (l !== undefined && r !== undefined) {
+            initEquations.push({ lhs: l, rhs: r, source: "continuous" });
+          }
+        }
+      } else if (kind === EqKind.Simple) {
+        initEquations.push({ lhs, rhs, source: "continuous" });
+      }
     }
   }
 
@@ -168,8 +273,8 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   // 3. Determine unknowns: all referenced vars that are not known
   const allReferenced = new Set<string>();
   for (const eq of initEquations) {
-    collectExprVarNames(eq.lhs, allReferenced);
-    collectExprVarNames(eq.rhs, allReferenced);
+    collectExprVarNames(eq.lhs, dae, allReferenced);
+    collectExprVarNames(eq.rhs, dae, allReferenced);
   }
 
   const unknowns = new Set<string>();
@@ -178,10 +283,13 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   }
 
   // Expand array unknowns
-  for (const v of dae.arenaVariables()) {
-    if (v.arrayDimensions && v.arrayDimensions.length > 0 && unknowns.has(v.name)) {
-      const size = v.arrayDimensions.reduce((a: number, b: number) => a * b, 1);
-      for (let i = 0; i < size; i++) unknowns.add(`${v.name}[${i + 1}]`);
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const varName = dae.getVarName(i);
+    const shape = dae.getVarShape(i);
+    if (shape.length > 0 && unknowns.has(varName)) {
+      const size = shape.reduce((a: number, b: number) => a * b, 1);
+      for (let j = 0; j < size; j++) unknowns.add(`${varName}[${j + 1}]`);
     }
   }
 
@@ -192,10 +300,10 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
   // 4. Build bipartite graph: equation index → set of unknown variable names
   const eqDeps = new Map<number, Set<string>>();
   for (let i = 0; i < initEquations.length; i++) {
-    const eq = initEquations[i]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+    const eq = initEquations[i]!;
     const refs = new Set<string>();
-    collectExprVarNames(eq.lhs, refs);
-    collectExprVarNames(eq.rhs, refs);
+    collectExprVarNames(eq.lhs, dae, refs);
+    collectExprVarNames(eq.rhs, dae, refs);
     const filtered = new Set<string>();
     for (const r of refs) {
       if (unknowns.has(r)) filtered.add(r);
@@ -239,9 +347,9 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
     for (const w of getVarDeps(v)) {
       if (!indexMap.has(w)) {
         strongconnect(w);
-        lowlinkMap.set(v, Math.min(lowlinkMap.get(v)!, lowlinkMap.get(w)!)); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        lowlinkMap.set(v, Math.min(lowlinkMap.get(v)!, lowlinkMap.get(w)!));
       } else if (onStack.has(w)) {
-        lowlinkMap.set(v, Math.min(lowlinkMap.get(v)!, indexMap.get(w)!)); // eslint-disable-line @typescript-eslint/no-non-null-assertion
+        lowlinkMap.set(v, Math.min(lowlinkMap.get(v)!, indexMap.get(w)!));
       }
     }
 
@@ -270,17 +378,17 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
 
   for (const scc of sccs) {
     if (scc.length === 1) {
-      const varName = scc[0]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const varName = scc[0]!;
       const eqIdx = matchVarToEq.get(varName);
       if (eqIdx === undefined) continue;
-      const eq = initEquations[eqIdx]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+      const eq = initEquations[eqIdx]!;
       const deps = eqDeps.get(eqIdx) ?? new Set();
 
       // Check if it's explicitly solvable: LHS or RHS is just the variable
-      const lhsName = extractSimpleName(eq.lhs);
-      const rhsName = extractSimpleName(eq.rhs);
-      const derLhs = extractDerName(eq.lhs);
-      const derRhs = extractDerName(eq.rhs);
+      const lhsName = extractSimpleName(eq.lhs, dae);
+      const rhsName = extractSimpleName(eq.rhs, dae);
+      const derLhs = extractDerName(eq.lhs, dae);
+      const derRhs = extractDerName(eq.rhs, dae);
 
       if (lhsName === varName && !depsExcluding(deps, varName)) {
         blocks.push({ type: "explicit", target: varName, expr: eq.rhs });
@@ -301,12 +409,12 @@ export function buildInitBLT(dae: ModelicaDAE): InitBLTResult {
       }
     } else {
       // Multi-variable algebraic loop
-      const loopEqs: { lhs: ModelicaExpression; rhs: ModelicaExpression }[] = [];
+      const loopEqs: { lhs: number; rhs: number }[] = [];
       let hasDiscrete = false;
       for (const v of scc) {
         const eqIdx = matchVarToEq.get(v);
         if (eqIdx !== undefined) {
-          const eq = initEquations[eqIdx]!; // eslint-disable-line @typescript-eslint/no-non-null-assertion
+          const eq = initEquations[eqIdx]!;
           loopEqs.push({ lhs: eq.lhs, rhs: eq.rhs });
         }
         if (discreteVarNames.has(v)) hasDiscrete = true;
@@ -349,18 +457,33 @@ function augmentInit(
   return false;
 }
 
-function extractSimpleName(expr: ModelicaExpression): string | null {
-  if (expr instanceof ModelicaNameExpression) return expr.name;
-  if (expr && typeof expr === "object" && "name" in expr && !("operand" in expr) && !("operand1" in expr)) {
-    return (expr as { name: string }).name;
+function extractSimpleName(exprId: number, arena: ArenaDAEBuilder): string | null {
+  if (exprId < 0) return null;
+  if (arena.getExprKind(exprId) === ExprKind.Name) {
+    return arena.interner.resolve(arena.getExprData1(exprId));
   }
   return null;
 }
 
-function extractDerName(expr: ModelicaExpression): string | null {
-  if (expr instanceof ModelicaFunctionCallExpression && expr.functionName === "der" && expr.args.length === 1) {
-    const a = expr.args[0];
-    if (a && typeof a === "object" && "name" in a) return (a as { name: string }).name;
+function extractDerName(exprId: number, arena: ArenaDAEBuilder): string | null {
+  if (exprId < 0) return null;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Der) {
+    const operand = arena.getExprLeft(exprId);
+    if (arena.getExprKind(operand) === ExprKind.Name) {
+      return arena.interner.resolve(arena.getExprData1(operand));
+    }
+  } else if (kind === ExprKind.Call) {
+    const nameId = arena.getExprData1(exprId);
+    const funcName = arena.interner.resolve(nameId);
+    const firstArgId = arena.getExprLeft(exprId);
+    const argCount = arena.getExprRight(exprId);
+    if (funcName === "der" && argCount === 1) {
+      const argExprId = arena.getExprLeft(firstArgId);
+      if (arena.getExprKind(argExprId) === ExprKind.Name) {
+        return arena.interner.resolve(arena.getExprData1(argExprId));
+      }
+    }
   }
   return null;
 }

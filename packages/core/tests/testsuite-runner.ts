@@ -34,8 +34,8 @@ import { StringWriter } from "@modelscript/utils";
 import fs from "node:fs";
 import path from "node:path";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../../apps/cli/src/util/filesystem.js";
 import { Context } from "../src/compiler/context.js";
+import { NodeFileSystem } from "./node-filesystem.js";
 
 import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";

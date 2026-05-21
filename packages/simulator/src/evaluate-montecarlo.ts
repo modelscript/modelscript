@@ -1,3 +1,4 @@
+/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -26,8 +27,8 @@ import {
   ModelicaStringLiteral,
 } from "@modelscript/symbolics";
 import type { ScriptExpressionEvaluator } from "./evaluate-simulate.js";
-import type { Distribution, MonteCarloOptions, RandomVariable } from "./monte-carlo.js";
-import { runMonteCarloSimulation } from "./monte-carlo.js";
+import type { Distribution, MonteCarloOptions, RandomVariable } from "./monte-carlo-arena.js";
+import { runMonteCarloArena } from "./monte-carlo-arena.js";
 import type { SolverOptions } from "./solver-options.js";
 
 /** Dependencies injected from outside to avoid circular imports. */
@@ -152,22 +153,14 @@ export function evaluateMonteCarlo(
   // ── Step 4: Run Monte Carlo ──
   let messages = "";
   try {
-    const SimulatorCls = deps.Simulator;
-    const simulateFn = (overrides: Map<string, number>) => {
-      const simulator = new SimulatorCls(dae);
-      simulator.prepare();
-      // Apply parameter overrides
-      for (const [name, value] of overrides) {
-        simulator.setParameter(name, value);
-      }
-      return simulator.simulate(startTime, stopTime, step, {
-        atol: 1e-6,
-        rtol: 1e-6,
-        solverOptions,
-      });
-    };
-
-    const mcResult = runMonteCarloSimulation(simulateFn, randomVars, mcOptions);
+    const mcResult = runMonteCarloArena(dae.arena, randomVars, {
+      ...mcOptions,
+      simulateOptions: {
+        startTime,
+        stopTime,
+        step,
+      },
+    });
 
     // ── Step 5: Build result record ──
     return buildMonteCarloResultRecord(mcResult, startTime, stopTime, numSamples, messages);

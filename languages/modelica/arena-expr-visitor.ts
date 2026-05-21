@@ -80,6 +80,18 @@ export class ArenaExprVisitor {
       return this.visit(n.factor);
     }
 
+    // Fallback for raw CST nodes that don't have AST wrapper classes.
+    // Tree-sitter produces "true"/"false" node types for Boolean literals,
+    // but the AST expects "BOOLEAN" type so ModelicaSyntaxNode.new returns null.
+    const cstType = n.concreteSyntaxNode?.type ?? n.type;
+    const cstText = n.concreteSyntaxNode?.text ?? n.text;
+    if (cstType === "true" || cstText === "true") {
+      return this.dae.addBoolLiteral(true);
+    }
+    if (cstType === "false" || cstText === "false") {
+      return this.dae.addBoolLiteral(false);
+    }
+
     // Unhandled node type
     console.warn(`ArenaExprVisitor: Unhandled expression node type: ${n.constructor?.name}`);
     return undefined;
@@ -300,13 +312,31 @@ export class ArenaExprVisitor {
     }
 
     if (unOp === UnaryOp.Negate) {
+      // Optimize: negate literal → negative literal (avoid Negate wrapper)
       const operandKind = this.dae.getExprKind(exprId);
+      if (operandKind === ExprKind.RealLiteral) {
+        const val = this.dae.getExprRealValue(exprId);
+        return this.dae.addRealLiteral(-val);
+      }
+      if (operandKind === ExprKind.IntLiteral) {
+        const val = this.dae.getExprData1(exprId);
+        return this.dae.addIntLiteral(-val);
+      }
+      // Negation distribution: -(a * b) → (-a) * b
       if (operandKind === ExprKind.Binary) {
         const binOp = this.dae.getExprData1(exprId);
         if (binOp === BinOp.Mul || binOp === BinOp.ElemMul) {
           const a = this.dae.getExprLeft(exprId);
           const b = this.dae.getExprRight(exprId);
-          const negatedA = this.dae.addUnaryExpr(UnaryOp.Negate, a);
+          let negatedA: number;
+          const aKind = this.dae.getExprKind(a);
+          if (aKind === ExprKind.RealLiteral) {
+            negatedA = this.dae.addRealLiteral(-this.dae.getExprRealValue(a));
+          } else if (aKind === ExprKind.IntLiteral) {
+            negatedA = this.dae.addIntLiteral(-this.dae.getExprData1(a));
+          } else {
+            negatedA = this.dae.addUnaryExpr(UnaryOp.Negate, a);
+          }
           return this.dae.addBinaryExpr(binOp, negatedA, b);
         }
       }
