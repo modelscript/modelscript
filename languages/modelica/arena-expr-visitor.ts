@@ -1,4 +1,4 @@
-import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, VarType } from "@modelscript/compiler";
+import { ArenaDAEBuilder, BinOp, evaluateArenaExpression, ExprKind, UnaryOp, VarType } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -17,6 +17,53 @@ import {
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
 } from "./ast.js";
+
+// ── Built-in function metadata for compile-time folding ──
+
+interface BuiltinFoldDef {
+  fold1?: (x: number) => number;
+  fold2?: (a: number, b: number) => number;
+  outputType?: string;
+  preserveIntegerType?: boolean;
+  identityValue?: number;
+  reduction?: boolean;
+  foldConstants?: (values: number[]) => number;
+}
+
+const ARENA_BUILTIN_FOLDS = new Map<string, BuiltinFoldDef>([
+  ["abs", { fold1: Math.abs, preserveIntegerType: true }],
+  ["sign", { fold1: Math.sign, outputType: "Integer", preserveIntegerType: true }],
+  ["sqrt", { fold1: Math.sqrt }],
+  ["integer", { fold1: Math.floor, outputType: "Integer" }],
+  ["sin", { fold1: Math.sin }],
+  ["cos", { fold1: Math.cos }],
+  ["tan", { fold1: Math.tan }],
+  ["asin", { fold1: Math.asin }],
+  ["acos", { fold1: Math.acos }],
+  ["atan", { fold1: Math.atan }],
+  ["atan2", { fold2: Math.atan2 }],
+  ["sinh", { fold1: Math.sinh }],
+  ["cosh", { fold1: Math.cosh }],
+  ["tanh", { fold1: Math.tanh }],
+  ["exp", { fold1: Math.exp }],
+  ["log", { fold1: Math.log }],
+  ["log10", { fold1: Math.log10 }],
+  ["ceil", { fold1: Math.ceil }],
+  ["floor", { fold1: Math.floor }],
+  ["div", { fold2: (a, b) => (b !== 0 ? Math.trunc(a / b) : NaN), outputType: "Integer" }],
+  ["mod", { fold2: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : NaN) }],
+  ["rem", { fold2: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : NaN) }],
+  [
+    "min",
+    { fold2: Math.min, reduction: true, foldConstants: (v) => Math.min(...v), identityValue: 8.777798510069901e304 },
+  ],
+  [
+    "max",
+    { fold2: Math.max, reduction: true, foldConstants: (v) => Math.max(...v), identityValue: -8.777798510069901e304 },
+  ],
+  ["sum", { reduction: true, foldConstants: (v) => v.reduce((a, b) => a + b, 0), identityValue: 0 }],
+  ["product", { reduction: true, foldConstants: (v) => v.reduce((a, b) => a * b, 1), identityValue: 1 }],
+]);
 
 /**
  * Translates a Modelica CST/AST expression tree into integer-based `ExprId`s
@@ -411,11 +458,31 @@ export class ArenaExprVisitor {
       if (node.functionCallArguments?.arguments) {
         for (const arg of node.functionCallArguments.arguments) {
           // Each FunctionArgumentSyntaxNode has an expression child
-          const id = this.visit(arg.expression);
-          if (id !== undefined) ids.push(id);
+          // Also handle function partial applications as arguments
+          if (arg.functionPartialApplication) {
+            const id = this.visitPartialApplication(arg.functionPartialApplication);
+            if (id !== undefined) ids.push(id);
+          } else {
+            const id = this.visit(arg.expression);
+            if (id !== undefined) ids.push(id);
+          }
         }
       }
       return ids;
+    };
+
+    // Collect named arguments from FunctionCallArguments.namedArguments[]
+    const getNamedArgs = (): { name: string; exprId: number }[] => {
+      const result: { name: string; exprId: number }[] = [];
+      if (node.functionCallArguments?.namedArguments) {
+        for (const namedArg of node.functionCallArguments.namedArguments) {
+          const argName = namedArg.identifier?.text;
+          if (!argName) continue;
+          const id = this.visit(namedArg.argument?.expression);
+          if (id !== undefined) result.push({ name: argName, exprId: id });
+        }
+      }
+      return result;
     };
 
     // Specialized: der(x)
@@ -457,12 +524,271 @@ export class ArenaExprVisitor {
       return this.dae.addIntLiteral(0);
     }
 
-    // General function call — trigger function collection callback
+    // Specialized: smooth(p, expr) — pass through as generic call (semantically a hint)
+    // Specialized: sample(start, interval) — pass through as generic call
+    // Specialized: initial() / terminal() — zero-arg built-ins
+    // Specialized: edge(b) / change(b) — pass through as generic call
+    // These are all correctly handled as generic calls below, no special arena treatment needed.
+
+    // Specialized: Integer(enumVal) — type cast from enumeration to integer
+    if (funcName === "Integer") {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        const argId = argIds[0];
+        if (argId !== undefined) {
+          // If the argument is an enum literal, extract its ordinal value
+          if (this.dae.getExprKind(argId) === ExprKind.EnumLiteral) {
+            return this.dae.addIntLiteral(this.dae.getExprData1(argId));
+          }
+          // Otherwise emit as a generic call
+          return this.dae.addCallExpr(funcName, argIds);
+        }
+      }
+      return undefined;
+    }
+
+    // Specialized: Real(x) — type cast to real
+    if (funcName === "Real") {
+      const argIds = getArgExprs();
+      if (argIds.length > 0) {
+        const argId = argIds[0];
+        if (argId !== undefined) {
+          return this.castToRealExpr(argId);
+        }
+      }
+      return undefined;
+    }
+
+    // Check for comprehension/reduction syntax: func(expr for i in range)
+    if (node.functionCallArguments?.comprehensionClause) {
+      const compClause = node.functionCallArguments.comprehensionClause;
+      const bodyId = this.visit(compClause.expression);
+      if (bodyId === undefined) return undefined;
+
+      // For reduction operators (sum, product, min, max), emit comprehension expr
+      const iteratorCount = compClause.forIndexes?.length ?? 0;
+      return this.dae.addComprehensionExpr(funcName, bodyId, iteratorCount);
+    }
+
+    // Specialized: fill(s, n1, n2, ...) — expand to array constructor
+    if (funcName === "fill") {
+      const argIds = getArgExprs();
+      if (argIds.length >= 2) {
+        return this.expandFill(argIds);
+      }
+    }
+
+    // Specialized: zeros(n1, n2, ...) — expand to array of zeros
+    if (funcName === "zeros") {
+      const argIds = getArgExprs();
+      if (argIds.length >= 1) {
+        return this.expandFillValue(argIds, 0);
+      }
+    }
+
+    // Specialized: ones(n1, n2, ...) — expand to array of ones
+    if (funcName === "ones") {
+      const argIds = getArgExprs();
+      if (argIds.length >= 1) {
+        return this.expandFillValue(argIds, 1);
+      }
+    }
+
+    // Specialized: identity(n) — expand to identity matrix
+    if (funcName === "identity") {
+      const argIds = getArgExprs();
+      if (argIds.length >= 1) {
+        const argId = argIds[0];
+        if (argId !== undefined) {
+          return this.expandIdentity(argId);
+        }
+      }
+    }
+
+    // General function call — collect positional + named arguments
+    const argIds = getArgExprs();
+    const namedArgs = getNamedArgs();
+
+    // Attempt compile-time constant folding for built-in functions
+    const folded = this.tryFoldBuiltinCall(funcName, argIds);
+    if (folded !== undefined) return folded;
+
+    // Trigger function collection callback for non-builtins
     if (this.onFunctionCall) {
       this.onFunctionCall(funcName);
     }
-    const argIds = getArgExprs();
+
+    // If there are named arguments, append them after positional args
+    // (named args are resolved positionally by the function definition)
+    if (namedArgs.length > 0) {
+      for (const na of namedArgs) {
+        argIds.push(na.exprId);
+      }
+    }
+
     return this.dae.addCallExpr(funcName, argIds);
+  }
+
+  /**
+   * Try to fold a built-in function call with literal arguments at compile time.
+   * Returns the folded expression ID, or undefined if folding is not possible.
+   */
+  private tryFoldBuiltinCall(funcName: string, argIds: number[]): number | undefined {
+    const def = ARENA_BUILTIN_FOLDS.get(funcName);
+    if (!def) return undefined;
+
+    // Zero-argument identity values for reduction functions over empty ranges
+    if (argIds.length === 0 && def.identityValue !== undefined) {
+      return Number.isInteger(def.identityValue)
+        ? this.dae.addIntLiteral(def.identityValue)
+        : this.dae.addRealLiteral(def.identityValue);
+    }
+
+    // Single-argument constant folding
+    if (argIds.length === 1 && def.fold1) {
+      const argId = argIds[0];
+      if (argId !== undefined) {
+        const val = this.tryGetLiteralValue(argId);
+        if (val !== null) {
+          const result = def.fold1(val);
+          if (!Number.isFinite(result)) return undefined;
+          // Type-preserving functions (abs, sign): Integer in → Integer out
+          if (def.preserveIntegerType && this.dae.getExprKind(argId) === ExprKind.IntLiteral) {
+            return this.dae.addIntLiteral(result);
+          }
+          if (def.outputType === "Integer") return this.dae.addIntLiteral(result);
+          return this.dae.addRealLiteral(result);
+        }
+      }
+    }
+
+    // Two-argument constant folding
+    if (argIds.length === 2 && def.fold2) {
+      const arg0 = argIds[0];
+      const arg1 = argIds[1];
+      if (arg0 !== undefined && arg1 !== undefined) {
+        const a = this.tryGetLiteralValue(arg0);
+        const b = this.tryGetLiteralValue(arg1);
+        if (a !== null && b !== null) {
+          const result = def.fold2(a, b);
+          if (!Number.isFinite(result)) return undefined;
+          const bothInt =
+            this.dae.getExprKind(arg0) === ExprKind.IntLiteral && this.dae.getExprKind(arg1) === ExprKind.IntLiteral;
+          if (def.outputType === "Integer" || (bothInt && Number.isInteger(result))) {
+            return this.dae.addIntLiteral(result);
+          }
+          return this.dae.addRealLiteral(result);
+        }
+      }
+    }
+
+    // Single-argument reduction over an array constructor: sum({1,2,3}) → 6
+    if (argIds.length === 1 && def.foldConstants) {
+      const argId = argIds[0];
+      if (argId !== undefined) {
+        if (this.dae.getExprKind(argId) === ExprKind.ArrayCtor) {
+          const values = this.tryGetArrayLiteralValues(argId);
+          if (values !== null) {
+            const result = def.foldConstants(values);
+            if (Number.isFinite(result)) {
+              return Number.isInteger(result) ? this.dae.addIntLiteral(result) : this.dae.addRealLiteral(result);
+            }
+          }
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Try to extract a numeric literal value from an expression ID.
+   * Returns the number, or null if the expression is not a numeric literal.
+   */
+  private tryGetLiteralValue(exprId: number): number | null {
+    const kind = this.dae.getExprKind(exprId);
+    if (kind === ExprKind.RealLiteral) return this.dae.getExprRealValue(exprId);
+    if (kind === ExprKind.IntLiteral) return this.dae.getExprData1(exprId);
+    // Try evaluating constant expressions
+    const val = evaluateArenaExpression(this.dae, exprId);
+    if (typeof val === "number") return val;
+    return null;
+  }
+
+  /**
+   * Try to extract all numeric values from an array constructor expression.
+   * Returns the array of numbers, or null if any element is not a literal.
+   */
+  private tryGetArrayLiteralValues(exprId: number): number[] | null {
+    const count = this.dae.getExprData1(exprId);
+    if (count === 0) return [];
+    const firstElem = this.dae.getExprLeft(exprId);
+    const values: number[] = [];
+    const firstVal = this.tryGetLiteralValue(firstElem);
+    if (firstVal === null) return null;
+    values.push(firstVal);
+    for (let i = 1; i < count; i++) {
+      const tupleId = exprId + i;
+      const elemId = this.dae.getExprRight(tupleId);
+      const val = this.tryGetLiteralValue(elemId);
+      if (val === null) return null;
+      values.push(val);
+    }
+    return values;
+  }
+
+  /**
+   * Expand fill(s, n1, n2, ...) into nested array constructors.
+   * fill(v, 3) → {v, v, v}
+   * fill(v, 2, 3) → {{v,v,v},{v,v,v}}
+   */
+  private expandFill(argIds: number[]): number | undefined {
+    const valueId = argIds[0];
+    if (valueId === undefined) return undefined;
+    const dimIds = argIds.slice(1);
+    return this.expandFillRecursive(valueId, dimIds, 0);
+  }
+
+  private expandFillRecursive(valueId: number, dimIds: number[], depth: number): number | undefined {
+    if (depth >= dimIds.length) return valueId;
+    const dimId = dimIds[depth];
+    if (dimId === undefined) return undefined;
+    const dimVal = this.tryGetLiteralValue(dimId);
+    if (dimVal === null || dimVal < 0) return undefined;
+    const n = Math.floor(dimVal);
+    const elements: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const elem = this.expandFillRecursive(valueId, dimIds, depth + 1);
+      if (elem === undefined) return undefined;
+      elements.push(elem);
+    }
+    return this.dae.addArrayCtorExpr(elements);
+  }
+
+  /**
+   * Expand zeros(n)/ones(n) into array constructors filled with 0 or 1.
+   */
+  private expandFillValue(dimArgIds: number[], fillValue: number): number | undefined {
+    const valueId = this.dae.addIntLiteral(fillValue);
+    return this.expandFillRecursive(valueId, dimArgIds, 0);
+  }
+
+  /**
+   * Expand identity(n) into an n×n identity matrix array constructor.
+   */
+  private expandIdentity(nId: number): number | undefined {
+    const n = this.tryGetLiteralValue(nId);
+    if (n === null || n < 0) return undefined;
+    const size = Math.floor(n);
+    const rows: number[] = [];
+    for (let i = 0; i < size; i++) {
+      const cols: number[] = [];
+      for (let j = 0; j < size; j++) {
+        cols.push(this.dae.addIntLiteral(i === j ? 1 : 0));
+      }
+      rows.push(this.dae.addArrayCtorExpr(cols));
+    }
+    return this.dae.addArrayCtorExpr(rows);
   }
 
   /**

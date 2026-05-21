@@ -169,11 +169,32 @@ export function evaluateArenaExpression(
       if (funcName === "abs" && typeof args[0] === "number") return Math.abs(args[0]);
       if (funcName === "sqrt" && typeof args[0] === "number") return Math.sqrt(args[0]);
       if (funcName === "sign" && typeof args[0] === "number") return Math.sign(args[0]);
-      if (funcName === "mod" && typeof args[0] === "number" && typeof args[1] === "number") return args[0] % args[1];
-      if (funcName === "rem" && typeof args[0] === "number" && typeof args[1] === "number") return args[0] % args[1];
+      if (funcName === "floor" && typeof args[0] === "number") return Math.floor(args[0]);
+      if (funcName === "ceil" && typeof args[0] === "number") return Math.ceil(args[0]);
+      if (funcName === "integer" && typeof args[0] === "number") return Math.floor(args[0]);
+      if (funcName === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
+        const b = args[1];
+        return b !== 0 ? args[0] - Math.floor(args[0] / b) * b : null;
+      }
+      if (funcName === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
+        const b = args[1];
+        return b !== 0 ? args[0] - Math.trunc(args[0] / b) * b : null;
+      }
+      if (funcName === "div" && typeof args[0] === "number" && typeof args[1] === "number") {
+        return args[1] !== 0 ? Math.trunc(args[0] / args[1]) : null;
+      }
       if (funcName === "min") return Math.min(...(args as number[]));
       if (funcName === "max") return Math.max(...(args as number[]));
+      if (funcName === "sum" && args.every((a) => typeof a === "number"))
+        return (args as number[]).reduce((a, b) => a + b, 0);
+      if (funcName === "product" && args.every((a) => typeof a === "number"))
+        return (args as number[]).reduce((a, b) => a * b, 1);
       if (funcName === "String") return String(args[0]);
+      if (funcName === "noEvent" && args.length === 1) return args[0];
+      if (funcName === "Real" && typeof args[0] === "number") return args[0];
+      if (funcName === "Integer" && typeof args[0] === "number") return Math.floor(args[0]);
+      if (funcName === "homotopy" && args.length >= 1) return args[0];
+      if (funcName === "smooth" && args.length >= 2) return args[1];
 
       return null;
     }
