@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { type ArenaDAEBuilder } from "@modelscript/compiler";
 import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
@@ -141,46 +142,66 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       lastSnap = snap;
     }
 
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
-      return;
-    }
+    if (args.engine === "arena") {
+      // Flatten using Arena directly
+      profiler.start("flattening");
+      const arena = context.flattenArena(args.name);
+      profiler.end("flattening");
 
-    // Flatten the model
-    profiler.start("flattening");
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
-    profiler.end("flattening");
+      if (args.memoryProfile && lastSnap) {
+        const snap = snapshotMemory(true);
+        memProfiles["flattening"] = { before: lastSnap, after: snap };
+        lastSnap = snap;
+      }
 
-    if (args.memoryProfile && lastSnap) {
-      const snap = snapshotMemory(true);
-      memProfiles["flattening"] = { before: lastSnap, after: snap };
-      lastSnap = snap;
-    }
+      if (!arena) {
+        console.error(`'${args.name}' not found or had flattening errors.`);
+        return;
+      }
 
-    // Resolve experiment parameters: CLI flags > annotation > defaults
-    const exp = dae.experiment;
-    const startTime = args.startTime ?? exp.startTime ?? 0;
-    const stopTime = args.stopTime ?? exp.stopTime ?? 10;
-    const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
+      const exp = arena.experiment;
+      const startTime = args.startTime ?? exp.startTime ?? 0;
+      const stopTime = args.stopTime ?? exp.stopTime ?? 10;
+      const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
-    // Dispatch to the selected engine
-    switch (args.engine) {
-      case "arena":
-        simulateArenaEngine(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "wasm":
-        await simulateWasm(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "c":
-        await simulateC(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
-      case "js":
-      default:
-        simulateJs(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-        break;
+      simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+    } else {
+      const instance = context.query(args.name);
+      if (!instance) {
+        console.error(`'${args.name}' not found`);
+        return;
+      }
+
+      // Flatten using Legacy flattener
+      profiler.start("flattening");
+      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (instance as any).accept(new ModelicaFlattener(), ["", dae]);
+      profiler.end("flattening");
+
+      if (args.memoryProfile && lastSnap) {
+        const snap = snapshotMemory(true);
+        memProfiles["flattening"] = { before: lastSnap, after: snap };
+        lastSnap = snap;
+      }
+
+      const exp = dae.experiment;
+      const startTime = args.startTime ?? exp.startTime ?? 0;
+      const stopTime = args.stopTime ?? exp.stopTime ?? 10;
+      const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
+
+      switch (args.engine) {
+        case "wasm":
+          await simulateWasm(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "c":
+          await simulateC(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+        case "js":
+        default:
+          simulateJs(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+          break;
+      }
     }
 
     if (args.memoryProfile) {
@@ -253,7 +274,7 @@ function simulateJs(
 // ── Arena Engine ──
 
 function simulateArenaEngine(
-  dae: ModelicaDAE,
+  arena: ArenaDAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -265,7 +286,7 @@ function simulateArenaEngine(
   profiler.start("simulation");
 
   const solver = args.solver === "rk4" ? ("rk4" as const) : ("rk4" as const); // Arena only supports rk4/euler
-  const result = simulateArena(dae.arena, {
+  const result = simulateArena(arena, {
     startTime,
     stopTime,
     step,

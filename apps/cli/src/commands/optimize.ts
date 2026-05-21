@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
+import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
 import { ModelicaOptimizer } from "@modelscript/optimizer";
 import Parser from "tree-sitter";
@@ -98,16 +98,11 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
+    const arena = context.flattenArena(args.name);
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
       return;
     }
-
-    // Flatten the model
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
 
     // Parse control names
     const controlNames = args.controls.split(",").map((s) => s.trim());
@@ -133,13 +128,13 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
     }
 
     // Resolve experiment parameters
-    const exp = dae.experiment;
+    const exp = arena.experiment;
     const startTime = args.startTime ?? exp.startTime ?? 0;
     const stopTime = args.stopTime ?? exp.stopTime ?? 10;
     const numIntervals = args.numIntervals ?? 50;
 
     // Run optimization
-    const optimizer = new ModelicaOptimizer(dae, {
+    const optimizer = new ModelicaOptimizer(arena, {
       objective: args.objective,
       controls: controlNames,
       controlBounds,

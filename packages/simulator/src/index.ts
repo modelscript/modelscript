@@ -5,6 +5,7 @@ export * from "./arena-simulator.js";
 export * from "./bdf.js";
 export * from "./branch-and-bound.js";
 export * from "./doe-arena.js";
+export { type DoEInputRange } from "./doe.js";
 export { dopri5, type Dopri5Options, type Dopri5Result, type EventCallback, type RhsFunction } from "./dopri5.js";
 export * from "./dual.js";
 export * from "./evaluate-montecarlo.js";
@@ -18,6 +19,7 @@ export * from "./monte-carlo-arena.js";
 export * from "./nn-fmu-subsystem.js";
 export * from "./rom-trainer.js";
 export * from "./simulate-arena.js";
+export { ModelicaSimulator } from "./simulator.js";
 export * from "./solver-options.js";
 export * from "./sparse-jacobian.js";
 export {
@@ -32,6 +34,7 @@ export {
   type SundialsWasmResult,
 } from "./sundials-wasm.js";
 export * from "./surrogate-pipeline-arena.js";
+export { buildSurrogate } from "./surrogate-pipeline.js";
 export * from "./system-initializer.js";
 export * from "./tape.js";
 export * from "./wasm-simulation-runner.js";

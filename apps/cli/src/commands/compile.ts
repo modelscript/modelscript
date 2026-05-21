@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaDAEPrinter, ModelicaFlattener } from "@modelscript/core";
+import { printArenaDAE } from "@modelscript/compiler";
+import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
 import { snapshotMemory } from "@modelscript/simulator";
 import path from "node:path";
@@ -74,17 +75,9 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       lastSnap = snap;
     }
 
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
-      return;
-    }
-
-    // Flatten the model
+    // Flatten the model using Arena
     profiler.start("flattening");
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
+    const arena = context.flattenArena(args.name);
     profiler.end("flattening");
 
     Context.gcBetweenPhases();
@@ -94,8 +87,14 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       memProfiles["flattening"] = { before: lastSnap, after: snap };
     }
 
-    // No errors: print flattened output
-    dae.accept(new ModelicaDAEPrinter(process.stdout));
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
+      return;
+    }
+
+    // Print flattened output
+    const text = printArenaDAE(arena);
+    process.stdout.write(text);
 
     if (args.memoryProfile) {
       console.error(JSON.stringify({ memory: memProfiles }, null, 2));
