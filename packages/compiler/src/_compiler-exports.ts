@@ -7,6 +7,7 @@ export * from "./indexeddb-cache-store.js";
 export * from "./memo-keys.js";
 export * from "./query-engine.js";
 export * from "./runtime.js";
+export * from "./symbolics/algebra/groebner.js";
 export * from "./symbolics/arithmetic/interval.js";
 export * from "./symbolics/arithmetic/mccormick.js";
 export * from "./symbolics/calculus/derivative.js";

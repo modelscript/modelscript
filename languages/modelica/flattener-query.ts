@@ -115,6 +115,7 @@ import {
   ModelicaAlgorithmSectionSyntaxNode,
   ModelicaBreakStatementSyntaxNode,
   ModelicaClassDefinitionSyntaxNode,
+  ModelicaComplexAssignmentStatementSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
   ModelicaConnectEquationSyntaxNode,
   ModelicaEquationSectionSyntaxNode,
@@ -123,6 +124,7 @@ import {
   ModelicaForStatementSyntaxNode,
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
+  ModelicaProcedureCallStatementSyntaxNode,
   ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
   ModelicaSimpleEquationSyntaxNode,
@@ -1142,18 +1144,35 @@ export class ArenaQueryFlattener {
   // -------------------------------------------------------------------------
 
   /**
-   * Handle `initialState(...)` and `transition(...)` special equations.
-   * These are emitted as function call equations in the arena with EqKind.Simple.
+   * Handle `assert(...)`, `terminate(...)`, `reinit(...)`, `initialState(...)`,
+   * `transition(...)` and other special equations.
+   * These are emitted as EqKind.FunctionCall so the printer produces
+   * `assert(...);` rather than `assert(...) = 0;`.
    */
   private handleSpecialEquation(eq: ModelicaSpecialEquationSyntaxNode, prefix: string, dae: ArenaDAEBuilder): void {
-    // Extract function name from functionReference (e.g., "initialState", "transition")
+    const callExpr = this.compileSpecialEquationExpr(eq, prefix, dae);
+    if (callExpr !== undefined) {
+      dae.addEquation(EqKind.FunctionCall, callExpr, 0);
+    }
+  }
+
+  /**
+   * Compile a special equation into a call expression ID.
+   * Used both for top-level special equations and for when/for/if body entries.
+   */
+  private compileSpecialEquationExpr(
+    eq: ModelicaSpecialEquationSyntaxNode,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+    loopVars?: Map<string, number>,
+  ): number | undefined {
     const funcRef = eq.functionReference;
-    if (!funcRef) return;
+    if (!funcRef) return undefined;
     const funcName = this.serializeRef(funcRef);
-    if (!funcName) return;
+    if (!funcName) return undefined;
 
     // Collect arguments
-    const visitor = this.createExprVisitor(dae);
+    const visitor = this.createExprVisitor(dae, loopVars);
     const argIds: number[] = [];
     if (eq.functionCallArguments?.arguments) {
       for (const arg of eq.functionCallArguments.arguments) {
@@ -1172,10 +1191,7 @@ export class ArenaQueryFlattener {
       return argId;
     });
 
-    // Emit as a function call equation
-    const callExpr = dae.addCallExpr(funcName, prefixedArgIds);
-    const zero = dae.addExpression(ExprKind.IntLiteral, 0);
-    dae.addEquation(EqKind.Simple, callExpr, zero);
+    return dae.addCallExpr(funcName, prefixedArgIds);
   }
 
   private resolveModAttribute(
@@ -1433,6 +1449,12 @@ export class ArenaQueryFlattener {
       this.flattenIfEquationAst(eqNode, prefix, dae, loopVars);
     } else if (eqNode instanceof ModelicaWhenEquationSyntaxNode) {
       this.flattenWhenEquationAst(eqNode, prefix, dae, loopVars);
+    } else if (eqNode instanceof ModelicaSpecialEquationSyntaxNode) {
+      // Handle assert, terminate, reinit, etc. inside for/if/when bodies
+      const callExpr = this.compileSpecialEquationExpr(eqNode, prefix, dae, loopVars);
+      if (callExpr !== undefined) {
+        dae.addEquation(EqKind.FunctionCall, callExpr, 0);
+      }
     } else {
       // Generic equation — try expression1/expression2 via duck typing
       const visitor = this.createExprVisitor(dae, loopVars);
@@ -1555,13 +1577,21 @@ export class ArenaQueryFlattener {
     // Collect body equations into structured metadata
     const bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
     for (const eq of whenEq.equations) {
-      const eqVisitor = this.createExprVisitor(dae, loopVars);
-      const n = eq as any;
-      if (n.expression1 && n.expression2) {
-        const lhsId = eqVisitor.visit(n.expression1);
-        const rhsId = eqVisitor.visit(n.expression2);
-        if (lhsId !== undefined && rhsId !== undefined) {
-          bodyEquations.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
+      if (eq instanceof ModelicaSpecialEquationSyntaxNode) {
+        // Handle reinit, assert, terminate, etc. inside when body
+        const callExpr = this.compileSpecialEquationExpr(eq, prefix, dae, loopVars);
+        if (callExpr !== undefined) {
+          bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: callExpr, rhsExprId: 0 });
+        }
+      } else {
+        const eqVisitor = this.createExprVisitor(dae, loopVars);
+        const n = eq as any;
+        if (n.expression1 && n.expression2) {
+          const lhsId = eqVisitor.visit(n.expression1);
+          const rhsId = eqVisitor.visit(n.expression2);
+          if (lhsId !== undefined && rhsId !== undefined) {
+            bodyEquations.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
+          }
         }
       }
     }
@@ -1579,13 +1609,21 @@ export class ArenaQueryFlattener {
 
       const ewBody: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] = [];
       for (const eq of elseWhen.equations) {
-        const eqVisitor = this.createExprVisitor(dae, loopVars);
-        const n = eq as any;
-        if (n.expression1 && n.expression2) {
-          const lhsId = eqVisitor.visit(n.expression1);
-          const rhsId = eqVisitor.visit(n.expression2);
-          if (lhsId !== undefined && rhsId !== undefined) {
-            ewBody.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
+        if (eq instanceof ModelicaSpecialEquationSyntaxNode) {
+          // Handle reinit, assert, terminate, etc. inside elsewhen body
+          const callExpr = this.compileSpecialEquationExpr(eq, prefix, dae, loopVars);
+          if (callExpr !== undefined) {
+            ewBody.push({ kind: EqKind.FunctionCall, lhsExprId: callExpr, rhsExprId: 0 });
+          }
+        } else {
+          const eqVisitor = this.createExprVisitor(dae, loopVars);
+          const n = eq as any;
+          if (n.expression1 && n.expression2) {
+            const lhsId = eqVisitor.visit(n.expression1);
+            const rhsId = eqVisitor.visit(n.expression2);
+            if (lhsId !== undefined && rhsId !== undefined) {
+              ewBody.push({ kind: EqKind.Simple, lhsExprId: lhsId, rhsExprId: rhsId });
+            }
           }
         }
       }
@@ -1730,35 +1768,66 @@ export class ArenaQueryFlattener {
       dae.addReturnStmt();
     } else if (stmt instanceof ModelicaBreakStatementSyntaxNode) {
       dae.addBreakStmt();
-    } else {
-      // Fallback: try to handle ProcedureCall and ComplexAssignment via duck-typing
-      const stmtAny = stmt as any;
-
-      // ProcedureCallStatement: functionReference + functionCallArguments
-      if (stmtAny.functionReferenceName && stmtAny.functionCallArguments) {
-        const visitor = this.createExprVisitor(dae);
-        const funcCallExprId = visitor.visit(stmt);
-        if (funcCallExprId !== undefined) {
-          dae.addProcedureCallStmt(funcCallExprId);
+    } else if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode) {
+      // Procedure call: e.g., assert(...), terminate(...), Modelica.Utilities.Streams.print(...)
+      const visitor = this.createExprVisitor(dae);
+      // Build a function call expression from functionReference + arguments
+      const funcRef = stmt.functionReference;
+      if (funcRef) {
+        const funcName = this.serializeRef(funcRef);
+        if (funcName) {
+          const argIds: number[] = [];
+          if (stmt.functionCallArguments?.arguments) {
+            for (const arg of stmt.functionCallArguments.arguments) {
+              const id = visitor.visit(arg.expression);
+              if (id !== undefined) argIds.push(id);
+            }
+          }
+          const callExprId = dae.addCallExpr(funcName, argIds);
+          dae.addProcedureCallStmt(callExprId);
         }
       }
-      // ComplexAssignmentStatement: outputExpressionList := func(args)
-      else if (stmtAny.outputExpressionList && stmtAny.functionReferenceName) {
-        const visitor = this.createExprVisitor(dae);
-        const callExprId = visitor.visit(stmtAny);
-        if (callExprId !== undefined) {
+    } else if (stmt instanceof ModelicaComplexAssignmentStatementSyntaxNode) {
+      // Complex assignment: (a, b, ...) := func(args)
+      const visitor = this.createExprVisitor(dae);
+      const funcRef = stmt.functionReference;
+      if (funcRef) {
+        const funcName = this.serializeRef(funcRef);
+        if (funcName) {
+          const argIds: number[] = [];
+          if (stmt.functionCallArguments?.arguments) {
+            for (const arg of stmt.functionCallArguments.arguments) {
+              const id = visitor.visit(arg.expression);
+              if (id !== undefined) argIds.push(id);
+            }
+          }
+          const callExprId = dae.addCallExpr(funcName, argIds);
           // Extract target expression IDs from the output list
           const targets: number[] = [];
-          const outList = stmtAny.outputExpressionList;
-          if (outList?.expressions) {
-            for (const expr of outList.expressions) {
-              const tid = visitor.visit(expr);
-              if (tid !== undefined) targets.push(tid);
+          if (stmt.outputExpressionList?.outputs) {
+            for (const expr of stmt.outputExpressionList.outputs) {
+              if (expr) {
+                const tid = visitor.visit(expr);
+                if (tid !== undefined) targets.push(tid);
+                else targets.push(-1); // placeholder for skipped outputs
+              } else {
+                targets.push(-1); // underscore/wildcard output
+              }
             }
           }
           if (targets.length > 0) {
             dae.addComplexAssignmentStmt(targets, callExprId);
           }
+        }
+      }
+    } else {
+      // Fallback: try to handle via duck-typing for any other statement types
+      const stmtAny = stmt as any;
+      if (stmtAny.functionReference && stmtAny.functionCallArguments) {
+        const visitor = this.createExprVisitor(dae);
+        const funcCallExprId = visitor.visit(stmt);
+        if (funcCallExprId !== undefined) {
+          dae.addProcedureCallStmt(funcCallExprId);
         }
       }
     }
