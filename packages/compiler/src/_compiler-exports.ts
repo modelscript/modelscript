@@ -1,4 +1,6 @@
+export * from "./arena-ceval.js";
 export * from "./arena-coloring.js";
+export * from "./arena-eval-builtins.js";
 export * from "./arena-eval.js";
 export * from "./cache-store.js";
 export * from "./dae-arena.js";
@@ -9,6 +11,7 @@ export * from "./query-engine.js";
 export * from "./runtime.js";
 export * from "./symbolics/algebra/groebner.js";
 export * from "./symbolics/algebra/linalg.js";
+export * from "./symbolics/algebra/solve.js";
 export * from "./symbolics/arithmetic/interval.js";
 export * from "./symbolics/arithmetic/mccormick.js";
 export * from "./symbolics/calculus/derivative.js";
