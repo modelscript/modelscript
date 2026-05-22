@@ -41,7 +41,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/compiler";
-import { isBroken, mergeModArgs, modelicaMod, subModification, type ModelicaModArgs } from "./modification-args.js";
+import { isBroken, type ModelicaModArgs } from "./modification-args.js";
 
 function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
   const args: any[] = [];
@@ -264,6 +264,178 @@ function splitTopLevel(text: string): string[] {
   const last = text.slice(start).trim();
   if (last) parts.push(last);
   return parts;
+}
+
+export interface ScopeData {
+  directByName: Record<string, SymbolId>;
+  qualifiedImports: Record<string, string>;
+  unqualifiedImportPkgs: string[];
+  compoundImports: Array<{ pkg: string; names: string[] }>;
+  isEncapsulated: boolean;
+  parentId: SymbolId | null;
+  id: SymbolId;
+}
+
+export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
+  const baseId = db.baseOf(self.id);
+  const sourceId = baseId ?? self.id;
+  const children = db.childrenOf(sourceId);
+
+  const directByName: Record<string, SymbolId> = {};
+  const qualifiedImports: Record<string, string> = {};
+  const unqualifiedImportPkgs: string[] = [];
+  const compoundImports: Array<{ pkg: string; names: string[] }> = [];
+
+  for (const child of children) {
+    if (child.kind === "Class" || child.kind === "Component") {
+      directByName[child.name] = child.id;
+    }
+
+    if (child.kind === "Import") {
+      const meta = child.metadata as Record<string, unknown>;
+      const importKind =
+        (meta?.importKind as string | undefined) ??
+        (child.ruleName === "UnqualifiedImportClause"
+          ? "unqualified"
+          : child.ruleName === "CompoundImportClause"
+            ? "compound"
+            : "simple");
+      const pkgName = (meta?.packageName ?? child.name) as string;
+
+      if (importKind === "simple") {
+        const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
+        qualifiedImports[shortName] = pkgName;
+      } else if (importKind === "unqualified") {
+        unqualifiedImportPkgs.push(pkgName);
+      } else if (importKind === "compound") {
+        const importNames = db
+          .childrenOfField(child.id, "importName")
+          .map((c) => c.name)
+          .filter(Boolean);
+        compoundImports.push({ pkg: pkgName, names: importNames });
+      }
+    }
+  }
+
+  const isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
+
+  return {
+    directByName,
+    qualifiedImports,
+    unqualifiedImportPkgs,
+    compoundImports,
+    isEncapsulated,
+    parentId: self.parentId,
+    id: self.id,
+  };
+}
+
+export function mergeInto(target: Record<string, SymbolId>, source: Record<string, SymbolId>) {
+  for (const [key, value] of Object.entries(source)) {
+    if (!(key in target)) {
+      target[key] = value;
+    }
+  }
+}
+
+export function resolveSimpleNameHelper(
+  db: QueryDB,
+  classId: SymbolId,
+  name: string,
+  encapsulated = false,
+  skipInherited = false,
+): SymbolEntry | null {
+  const unspecializedId = db.baseOf(classId) ?? classId;
+  const scope = db.query<ScopeData | null>("scopeData", unspecializedId);
+  if (!scope) return null;
+
+  // 1. Direct elements
+  const directId = scope.directByName[name];
+  if (directId !== undefined) return db.symbol(directId);
+
+  // 2. Inherited elements
+  if (!skipInherited) {
+    const inheritedMap = db.query<Record<string, SymbolId> | null>("inheritedSymbolsMap", unspecializedId);
+    const inheritedId = inheritedMap?.[name];
+    if (inheritedId !== undefined) return db.symbol(inheritedId);
+  }
+
+  // 2.5. Short class target
+  if (!skipInherited) {
+    const self = db.symbol(classId);
+    const meta = self?.metadata as Record<string, unknown>;
+    if (self && !meta?.isPredefined) {
+      const cst = db.cstNode(classId) as any;
+      const classSpecifier = cst?.childForFieldName?.("classSpecifier");
+      if (classSpecifier?.type === "ShortClassSpecifier") {
+        const typeSpec = classSpecifier.childForFieldName?.("typeSpecifier");
+        const typeName = typeSpec?.text;
+        if (typeName && self.parentId !== null) {
+          const parentResolver = db.query<(n: string) => { id: SymbolId } | null>("resolveName", self.parentId);
+          if (parentResolver) {
+            const resolved = parentResolver(typeName);
+            if (resolved?.id && resolved.id !== classId) {
+              const found = resolveSimpleNameHelper(db, resolved.id, name, encapsulated, skipInherited);
+              if (found) return found;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Qualified imports
+  const qualPkg = scope.qualifiedImports[name];
+  if (qualPkg) {
+    return resolveQualified(db, qualPkg);
+  }
+
+  // Helper to resolve an import path, respecting local aliases for the first segment
+  const resolveImportPath = (pathStr: string): SymbolEntry | null => {
+    const parts = pathStr.split(".");
+    const first = parts[0];
+    const aliasTarget = scope.qualifiedImports[first!];
+    if (aliasTarget) {
+      const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
+      return resolveQualified(db, fullPath);
+    } else {
+      return resolveQualified(db, pathStr);
+    }
+  };
+
+  // 4. Compound imports
+  for (const ci of scope.compoundImports) {
+    if (ci.names.includes(name)) {
+      const pkgEntry = resolveImportPath(ci.pkg);
+      if (pkgEntry) {
+        const foundEntry = db.childrenOf(pkgEntry.id).find((c) => c.name === name && c.kind !== "Reference");
+        if (foundEntry) return foundEntry;
+      }
+    }
+  }
+
+  // 5. Unqualified imports
+  for (const pkg of scope.unqualifiedImportPkgs) {
+    const pkgEntry = resolveImportPath(pkg);
+    if (pkgEntry) {
+      for (const pkgChild of db.childrenOf(pkgEntry.id)) {
+        if (pkgChild.name === name && pkgChild.kind !== "Reference") return pkgChild;
+      }
+    }
+  }
+
+  // 6. Parent scope walk (unless encapsulated)
+  if (!encapsulated && !scope.isEncapsulated && scope.parentId !== null && scope.parentId !== unspecializedId) {
+    const parentEntry = db.symbol(scope.parentId);
+    if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
+      const found = resolveSimpleNameHelper(db, parentEntry.id, name, false, skipInherited);
+      if (found) return found;
+    }
+  }
+
+  // 7. Predefined types fallback
+  const predefined = db.byName(name);
+  return predefined?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
 }
 
 /**
@@ -1023,101 +1195,37 @@ export default language({
            * This is a "factory query" — it computes the scope once and
            * returns a closure that callers invoke with specific names.
            */
-          resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
-            const baseId = db.baseOf(self.id);
-            const sourceId = baseId ?? self.id;
-            // Pre-compute lookup structures for O(1) name resolution
-            const children = db.childrenOf(sourceId);
-            const directByName = new Map<string, SymbolEntry>();
-            const qualifiedImports = new Map<string, string>(); // shortName → pkgName
-            const unqualifiedImportPkgs: string[] = [];
-            const compoundImports: Array<{ pkg: string; names: string[] }> = [];
+          scopeData: (db: QueryDB, self: SymbolEntry): ScopeData => {
+            return getScopeData(db, self);
+          },
 
-            for (const child of children) {
-              // Direct elements
-              if (child.kind === "Class" || child.kind === "Component") {
-                directByName.set(child.name, child);
-              }
+          /** Precompute inherited symbols mapping (memoized). */
+          inheritedSymbolsMap: {
+            execute: (db: QueryDB, self: SymbolEntry): Record<string, SymbolId> => {
+              const result: Record<string, SymbolId> = {};
+              const baseId = db.baseOf(self.id);
+              const sourceId = baseId ?? self.id;
+              const children = db.childrenOf(sourceId);
 
-              // Import processing
-              if (child.kind === "Import") {
-                const meta = child.metadata as Record<string, unknown>;
-                // Derive import kind from the CST rule name, since importKind string literals
-                // in the symbol config are not SelfAccessor proxies and get dropped during
-                // indexer hook generation.
-                const importKind =
-                  (meta?.importKind as string | undefined) ??
-                  (child.ruleName === "UnqualifiedImportClause"
-                    ? "unqualified"
-                    : child.ruleName === "CompoundImportClause"
-                      ? "compound"
-                      : "simple");
-                const pkgName = (meta?.packageName ?? child.name) as string;
-
-                if (importKind === "simple") {
-                  // import A = B.C.D  or  import B.C.D
-                  const shortName = (meta?.shortName as string) ?? pkgName.split(".").pop() ?? pkgName;
-                  qualifiedImports.set(shortName, pkgName);
-                } else if (importKind === "unqualified") {
-                  // import B.C.*
-                  unqualifiedImportPkgs.push(pkgName);
-                } else if (importKind === "compound") {
-                  // import B.C.{D, E}
-                  const importNames = db
-                    .childrenOfField(child.id, "importName")
-                    .map((c) => c.name)
-                    .filter(Boolean);
-                  compoundImports.push({ pkg: pkgName, names: importNames });
-                }
-              }
-            }
-
-            // Inherited elements for lookup (LAZY and RECURSIVE to reach base chains)
-            let inheritedByName: Map<string, SymbolEntry> | null = null;
-            const getInherited = () => {
-              if (inheritedByName) return inheritedByName;
-              inheritedByName = new Map<string, SymbolEntry>();
-
-              const visited = new Set<number>([self.id]);
-              const walk = (targetId: number) => {
-                if (visited.has(targetId)) return;
-                visited.add(targetId);
-
-                const targetChildren = db.childrenOf(targetId);
-                // First pass: add direct members
-                for (const child of targetChildren) {
-                  if (
-                    child.kind !== "Extends" &&
-                    child.name &&
-                    child.kind !== "Reference" &&
-                    child.kind !== "Import" &&
-                    !inheritedByName!.has(child.name)
-                  ) {
-                    // console.log("ADD", child.name, child.id, "to", targetEntry?.name);
-                    inheritedByName!.set(child.name, child);
-                  }
-                }
-
-                // Second pass: walk base classes
-                for (const child of targetChildren) {
-                  if (child.kind === "Extends") {
-                    const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
-                    if (baseClass) {
-                      walk(baseClass.id);
-                    }
-                  }
-                }
-              };
-
+              // First walk extends clauses in declaration order
               for (const child of children) {
                 if (child.kind === "Extends") {
                   const baseClass = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
-                  if (baseClass) walk(baseClass.id);
+                  if (baseClass) {
+                    const baseUnspecializedId = db.baseOf(baseClass.id) ?? baseClass.id;
+                    const baseInherited =
+                      db.query<Record<string, SymbolId>>("inheritedSymbolsMap", baseUnspecializedId) || {};
+                    mergeInto(result, baseInherited);
+                    const baseScope = db.query<ScopeData>("scopeData", baseUnspecializedId);
+                    if (baseScope) {
+                      mergeInto(result, baseScope.directByName);
+                    }
+                  }
                 }
               }
 
-              // NEW: handle extends in long class specifier!
-              const selfCst = db.cstNode(self.id) as any;
+              // Also handle extends in LongClassSpecifier
+              const selfCst = db.cstNode(sourceId) as any;
               const spec = selfCst?.childForFieldName?.("classSpecifier");
               if (spec?.type === "LongClassSpecifier") {
                 let hasExtends = false;
@@ -1154,56 +1262,14 @@ export default language({
                           }
                         }
                       }
-
                       if (resolved && resolved.kind !== "Reference") {
-                        walk(resolved.id);
-                      }
-                    }
-                  }
-                }
-              }
-
-              return inheritedByName;
-            };
-
-            const isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
-
-            // Return the resolver closure
-            return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
-              // 1. Direct elements
-              const direct = directByName.get(name);
-              if (direct) return direct;
-
-              // 2. Inherited elements
-              if (!skipInherited) {
-                const inherited = getInherited().get(name);
-                if (inherited) return inherited;
-              }
-
-              // 2.5. Short class target
-              if (!skipInherited) {
-                const meta = self.metadata as Record<string, unknown>;
-                if (!meta?.isPredefined) {
-                  const cst = db.cstNode(self.id) as any;
-                  const classSpecifier = cst?.childForFieldName?.("classSpecifier");
-                  if (classSpecifier?.type === "ShortClassSpecifier") {
-                    const typeSpec = classSpecifier.childForFieldName?.("typeSpecifier");
-                    const typeName = typeSpec?.text;
-                    if (typeName && self.parentId !== null) {
-                      const parentResolver = db.query<(n: string) => { id: SymbolId } | null>(
-                        "resolveName",
-                        self.parentId,
-                      );
-                      if (parentResolver) {
-                        const resolved = parentResolver(typeName);
-                        if (resolved?.id && resolved.id !== self.id) {
-                          const targetResolver = db.query<
-                            (n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null
-                          >("resolveSimpleName", resolved.id);
-                          if (targetResolver) {
-                            const found = targetResolver(name, encapsulated, skipInherited);
-                            if (found) return found;
-                          }
+                        const resolvedUnspecializedId = db.baseOf(resolved.id) ?? resolved.id;
+                        const baseInherited =
+                          db.query<Record<string, SymbolId>>("inheritedSymbolsMap", resolvedUnspecializedId) || {};
+                        mergeInto(result, baseInherited);
+                        const baseScope = db.query<ScopeData>("scopeData", resolvedUnspecializedId);
+                        if (baseScope) {
+                          mergeInto(result, baseScope.directByName);
                         }
                       }
                     }
@@ -1211,65 +1277,14 @@ export default language({
                 }
               }
 
-              // 3. Qualified imports
-              const qualPkg = qualifiedImports.get(name);
-              if (qualPkg) {
-                return resolveQualified(db, qualPkg);
-              }
+              return result;
+            },
+            recovery: () => ({}),
+          },
 
-              // Helper to resolve an import path, respecting local aliases for the first segment
-              const resolveImportPath = (path: string): SymbolEntry | null => {
-                const parts = path.split(".");
-                const first = parts[0];
-                const aliasTarget = qualifiedImports.get(first);
-                if (aliasTarget) {
-                  const fullPath = [aliasTarget, ...parts.slice(1)].join(".");
-                  return resolveQualified(db, fullPath);
-                } else {
-                  return resolveQualified(db, path);
-                }
-              };
-
-              // 4. Compound imports
-              for (const ci of compoundImports) {
-                if (ci.names.includes(name)) {
-                  const pkgEntry = resolveImportPath(ci.pkg);
-                  if (pkgEntry) {
-                    const foundEntry = db
-                      .childrenOf(pkgEntry.id)
-                      .find((c) => c.name === name && c.kind !== "Reference");
-                    if (foundEntry) return foundEntry;
-                  }
-                }
-              }
-
-              // 5. Unqualified imports
-              for (const pkg of unqualifiedImportPkgs) {
-                const pkgEntry = resolveImportPath(pkg);
-                if (pkgEntry) {
-                  for (const pkgChild of db.childrenOf(pkgEntry.id)) {
-                    if (pkgChild.name === name && pkgChild.kind !== "Reference") return pkgChild;
-                  }
-                }
-              }
-
-              // 6. Parent scope walk (unless encapsulated)
-              if (!encapsulated && !isEncapsulated && self.parentId !== null && self.parentId !== self.id) {
-                const parentEntry = db.symbol(self.parentId);
-                if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
-                  const parentResolver = db.query<(n: string, enc?: boolean, skip?: boolean) => SymbolEntry | null>(
-                    "resolveSimpleName",
-                    parentEntry.id,
-                  );
-                  if (parentResolver) return parentResolver(name, false, skipInherited);
-                }
-              }
-
-              // 7. Predefined types fallback
-              const predefined = db.byName(name);
-              return (
-                predefined?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null
-              );
+          resolveSimpleName: (db: QueryDB, self: SymbolEntry) => {
+            return (name: string, encapsulated = false, skipInherited = false): SymbolEntry | null => {
+              return resolveSimpleNameHelper(db, self.id, name, encapsulated, skipInherited);
             };
           },
 
@@ -1327,20 +1342,20 @@ export default language({
           // =================================================================
 
           /**
-           * Instantiate this class: resolve all elements, merge outer
-           * modifications (from SpecializationArgs), expand extends,
+           * Instantiate this class: resolve all elements, expand extends,
            * and filter redeclarations.
            *
            * This is the central query that replaces ModelicaClassInstance.instantiate().
            *
-           * For a base (non-specialized) symbol, returns direct children.
-           * For a specialized (virtual) symbol, applies outer modifications:
-           *   - Components get their sub-modification via specialize()
-           *   - Extends get their merged modification via specialize()
-           *   - Redeclared names are filtered out
-           *   - Broken names are removed
+           * Returns direct children, recursively inlining inherited elements
+           * from extends clauses and filtering redeclared names.
            *
-           * Returns a list of SymbolIds — some may be virtual (specialized).
+           * NOTE: This query no longer creates virtual (specialized) symbols.
+           * All modification propagation is handled by the flattener's
+           * ModificationStack during flattening. The `outerMod` path is retained
+           * only for backward compatibility with semantic-model.ts `clone()`.
+           *
+           * Returns a list of static (non-virtual) SymbolIds.
            */
           instantiate: {
             execute: (db: QueryDB, self: SymbolEntry) => {
@@ -1364,11 +1379,10 @@ export default language({
                   if (parentResolver) {
                     const resolved = parentResolver(typeName);
                     if (resolved && resolved.id !== self.id) {
-                      let targetId = resolved.id;
-                      if (outerMod) {
-                        targetId = db.specialize(resolved.id, modelicaMod(outerMod));
-                      }
-                      return db.query<SymbolId[]>("instantiate", targetId);
+                      // Short class alias: instantiate the resolved target directly.
+                      // Outer modifications are propagated by the flattener's ModificationStack,
+                      // eliminating the need for virtual specialized entries.
+                      return db.query<SymbolId[]>("instantiate", resolved.id);
                     }
                   }
                 }
@@ -1445,17 +1459,10 @@ export default language({
 
               for (const child of children) {
                 if (child.kind === "Component") {
-                  // Get this component's sub-modification from the outer mod
-                  const childSubMod = subModification(outerMod, child.name);
-
-                  if (childSubMod && (childSubMod.args.length > 0 || childSubMod.bindingExpression)) {
-                    // Specialize this component with its effective modification
-                    const specialized = db.specialize(child.id, modelicaMod(childSubMod));
-                    elements.push(specialized);
-                  } else {
-                    // No outer modification for this component — use as-is
-                    elements.push(child.id);
-                  }
+                  // Always use the static component SymbolId.
+                  // Outer modifications are resolved by the flattener's ModificationStack,
+                  // eliminating the need for virtual specialized component entries.
+                  elements.push(child.id);
                 } else if (child.kind === "Extends") {
                   // Check for break
                   if (isBroken(outerMod, child.name)) continue;
@@ -1476,27 +1483,10 @@ export default language({
                     continue;
                   }
 
-                  // Parse local modification of the extends clause
-                  const childCst = db.cstNode(child.id) as any;
-                  const localModNode = childCst?.childForFieldName("classOrInheritanceModification");
-                  const localMod = localModNode
-                    ? (parseModArgsFromCst(localModNode, self.id) as ModelicaModArgs)
-                    : null;
-
-                  // Merge local modification with outer modification
-                  const mergedMod = mergeModArgs(outerMod, localMod);
-
-                  // Specialize the base class with the merged modification
-                  // (extends modifications are propagated to the base)
-                  let specializedBaseId: SymbolId;
-                  if (mergedMod && mergedMod.args.length > 0) {
-                    specializedBaseId = db.specialize(baseClass.id, modelicaMod(mergedMod));
-                  } else {
-                    specializedBaseId = baseClass.id;
-                  }
-
-                  // Recursively get the base class's instantiated elements
-                  const baseElements = db.query<SymbolId[]>("instantiate", specializedBaseId);
+                  // Instantiate the base class directly (unmodified).
+                  // Extends modifications are propagated by the flattener's ModificationStack,
+                  // eliminating the need for virtual specialized base class entries.
+                  const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id);
 
                   // Inline inherited elements, filtering redeclared names
                   for (const eid of baseElements) {
@@ -1552,6 +1542,8 @@ export default language({
             allElements: "SemanticNode[]",
             isConnector: "boolean",
             resolveModification: "unknown",
+            scopeData: "unknown",
+            inheritedSymbolsMap: "unknown",
             resolveSimpleName: "((name: string, encapsulated?: boolean) => SemanticNode | null)",
             resolveName: "((qualifiedName: string) => SemanticNode | null)",
             instantiate: "SymbolId[]",
@@ -3182,6 +3174,22 @@ export default language({
             // The modification from the extends clause itself
             return (self.metadata as Record<string, unknown>)?.classOrInheritanceModification ?? null;
           },
+          /**
+           * Parse the extends clause's class-or-inheritance modification from the CST
+           * into a structured ModelicaModArgs object.
+           *
+           * This is the extends-clause equivalent of the component's effectiveModification
+           * query, providing the modification data needed by the flattener's ModificationStack.
+           *
+           * e.g., `extends Base(p = 1, redeclare type T = NewT)` →
+           *   { args: [{name:"p", value:{kind:"expression",...}}, {name:"T", isRedeclaration:true, ...}], ... }
+           */
+          extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            const modNode = cst?.childForFieldName("classOrInheritanceModification");
+            if (!modNode) return null;
+            return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
+          },
         },
         model: {
           name: "ExtendsClause",
@@ -3646,25 +3654,11 @@ export default language({
             }
             if (!typeEntry) return null;
 
-            // Outer modification (from enclosing class's instantiate)
-            const outerMod = specArgs?.data ?? null;
-
-            // Inline modification from the component's CST declaration
-            // e.g., `SineVoltage Vb(V=10, f=50)` → inline mod is (V=10, f=50)
-            // This is needed because the instantiate query of the parent class
-            // only propagates modifications from the parent's own outer mod,
-            // not from inline declarations in the source code.
-            const inlineMod = db.query<ModelicaModArgs | null>("effectiveModification", self.id);
-
-            // Merge: outer mod (from instantiation site) takes precedence over
-            // inline mod (from declaration site)
-            const effectiveMod = mergeModArgs(outerMod, inlineMod);
-
-            // If there's a modification, specialize the type class
-            if (effectiveMod && (effectiveMod.args.length > 0 || effectiveMod.bindingExpression)) {
-              return db.specialize(typeEntry.id, modelicaMod(effectiveMod));
-            }
-
+            // Return the unmodified type class ID.
+            // Value modifications (e.g., R=100) are resolved by the flattener's
+            // ModificationStack, eliminating the need for virtual specialized type entries.
+            // Note: Redeclarations (type replacement via extends) are still handled
+            // by extends specialization in the instantiate query (Phase 1b).
             return typeEntry.id;
           },
 

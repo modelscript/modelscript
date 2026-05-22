@@ -25,7 +25,46 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/compiler";
-import { type ModelicaModArgs, mergeModArgs } from "./modification-args.js";
+import { type ModelicaModArgs, isBroken, mergeModArgs, subModification } from "./modification-args.js";
+
+// ---------------------------------------------------------------------------
+// Modification Stack — replaces virtual symbol specialization
+// ---------------------------------------------------------------------------
+
+/**
+ * A frame on the modification stack, carrying the active modifications
+ * at one level of the class hierarchy during flattening.
+ *
+ * Instead of creating virtual (specialized) SymbolIds for each modified
+ * component, the flattener carries this stack through its recursion.
+ * The effective modification for a component is looked up by name
+ * from the nearest stack frame.
+ */
+interface ModificationFrame {
+  /** Modifications active at this level */
+  mods: ModelicaModArgs;
+  /** Scope where these mods were written (for CST byte-range evaluation) */
+  evaluationScopeId: SymbolId | null;
+}
+
+/**
+ * Stack of modification frames carried through the flattener's recursion.
+ * The topmost (last) frame has the highest priority.
+ */
+type ModificationStack = ModificationFrame[];
+
+/**
+ * Look up a sub-modification for a named element from the modification stack.
+ * Searches from the top (most recent) frame downward.
+ * Returns null if no modification targets this name.
+ */
+function lookupModInStack(stack: ModificationStack, name: string): ModelicaModArgs | null {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const sub = subModification(stack[i]!.mods, name);
+    if (sub) return sub;
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // DAE Output Types (mirrors dae.ts from modelscript)
@@ -201,13 +240,6 @@ export class ArenaQueryFlattener {
 
     const dae = new ArenaDAEBuilder(undefined, className, "");
 
-    // Use the instantiate query to get the resolved element tree
-    const elements = this.db.query<SymbolId[]>("instantiate", rootClassId);
-
-    if (!elements || elements.length === 0) {
-      return dae;
-    }
-
     // Pre-pass: count connector cardinality for cardinality() built-in
     this.connectorCardinality.clear();
     this.countConnections(rootClassId, "");
@@ -218,8 +250,12 @@ export class ArenaQueryFlattener {
     // Push root class onto active hierarchy stack (for outer/inner resolution)
     this.activeClassStack.push({ classId: rootClassId, prefix: "" });
 
-    // Walk the resolved elements and emit DAE entries (components, connections)
-    this.flattenElements(elements, "", dae);
+    // Walk the class hierarchy with modification tracking.
+    // This replaces the old instantiate+flattenElements approach:
+    // instead of relying on virtual specialized symbols for modification propagation,
+    // the flattener carries a ModificationStack through its own extends recursion.
+    const modStack: ModificationStack = [];
+    this.flattenClassWithMods(rootClassId, "", dae, modStack, new Set());
 
     // Walk the CST to extract equation/algorithm sections
     // (Equations are not indexed in the symbol table — they live as CST nodes)
@@ -264,7 +300,7 @@ export class ArenaQueryFlattener {
       if (node.targetClassId) {
         const elements = this.db.query<SymbolId[]>("instantiate", node.targetClassId);
         if (elements) {
-          this.flattenElements(elements, currentPrefix, dae);
+          this.flattenElements(elements, currentPrefix, dae, []);
         }
       }
 
@@ -393,7 +429,7 @@ export class ArenaQueryFlattener {
 
     for (const eq of sectionNode.equations) {
       if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
-        const visitor = this.createExprVisitor(dae);
+        const visitor = this.createExprVisitor(dae, undefined, prefix);
         const lhsId = eq.expression1 ? visitor.visit(eq.expression1) : undefined;
         const rhsId = eq.expression2 ? visitor.visit(eq.expression2) : undefined;
         if (lhsId !== undefined && rhsId !== undefined) {
@@ -474,10 +510,118 @@ export class ArenaQueryFlattener {
   }
 
   // -------------------------------------------------------------------------
-  // Element Processing
+  // Class Flattening with Modification Stack
   // -------------------------------------------------------------------------
 
-  private flattenElements(elementIds: SymbolId[], prefix: string, dae: ArenaDAEBuilder): void {
+  /**
+   * Flatten a class by walking its direct children and recursing into extends.
+   *
+   * This replaces the old `instantiate` + `flattenElements` pattern.
+   * Instead of relying on virtual specialized symbols, extends modifications
+   * are carried through the `modStack` and applied at each level.
+   *
+   * @param classId - The class to flatten
+   * @param prefix - Dot-separated prefix for variable names
+   * @param dae - The DAE builder to emit into
+   * @param modStack - Stack of active modifications from enclosing scopes
+   * @param visited - Set of class IDs already visited (cycle detection)
+   */
+  private flattenClassWithMods(
+    classId: SymbolId,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+    modStack: ModificationStack,
+    visited: Set<SymbolId>,
+  ): void {
+    // Cycle detection
+    if (visited.has(classId)) return;
+    visited.add(classId);
+
+    const children = this.db.childrenOf(classId);
+
+    // Pre-scan for body-level redeclares (names that shadow inherited elements)
+    const redeclaredNames = new Set<string>();
+    for (const child of children) {
+      const meta = child.metadata as Record<string, unknown>;
+      if (meta?.redeclare) {
+        redeclaredNames.add(child.name);
+      }
+    }
+
+    // Track which names we've already emitted (to filter duplicates from extends)
+    const emittedNames = new Set<string>();
+
+    // Process extends clauses FIRST — inherited elements come before local ones
+    // in the final element order (matching OpenModelica behavior)
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        // Check for `break` modification
+        const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+        if (isBroken(topMod, child.name)) continue;
+
+        // Resolve the base class
+        const baseEntry = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+        if (!baseEntry) continue;
+
+        // Parse the extends clause's local modification from CST
+        const localMod = this.db.query<ModelicaModArgs | null>("extendsModificationParsed", child.id);
+
+        // Merge: outer mod (from enclosing scope) with local extends mod
+        const mergedMod = mergeModArgs(topMod, localMod);
+
+        // Build child modification stack for the base class
+        const childStack: ModificationStack =
+          mergedMod && mergedMod.args.length > 0
+            ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId }]
+            : modStack;
+
+        // Recurse into the base class
+        this.flattenClassWithMods(baseEntry.id, prefix, dae, childStack, new Set(visited));
+      }
+    }
+
+    // Process direct children (components, equations, etc.)
+    for (const child of children) {
+      if (child.kind === "Component") {
+        // Skip redeclared components that were already inherited
+        // (body-level redeclares override inherited elements)
+        if (redeclaredNames.has(child.name) && emittedNames.has(child.name)) continue;
+
+        // Conditional component check: skip disabled components
+        const meta = child.metadata as Record<string, unknown>;
+        if (meta?.conditionAttribute !== undefined && meta.conditionAttribute !== null) {
+          const condVal = this.db.evaluate(meta.conditionAttribute, child.parentId ?? null);
+          if (condVal === false || condVal === 0) continue;
+        }
+
+        this.flattenComponent(child, prefix, dae, modStack);
+        emittedNames.add(child.name);
+      } else if (child.kind === "ConnectEquation") {
+        this.recordConnection(child, prefix, dae);
+      } else if (child.kind === "Extends") {
+        // Already handled above
+        continue;
+      } else if (child.kind === "Class" || child.kind === "Import" || child.kind === "Reference") {
+        // Nested classes, imports, and references are not flattened into variables
+        continue;
+      }
+      // Note: Equation, ForEquation, IfEquation, WhenEquation, AlgorithmSection
+      // are handled by flattenClassSectionsRecursive (CST-based)
+    }
+
+    visited.delete(classId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Element Processing (used by secondary paths: topology, expandable, inline functions)
+  // -------------------------------------------------------------------------
+
+  private flattenElements(
+    elementIds: SymbolId[],
+    prefix: string,
+    dae: ArenaDAEBuilder,
+    modStack: ModificationStack,
+  ): void {
     for (const eid of elementIds) {
       const entry = this.db.symbol(eid);
       if (!entry) continue;
@@ -494,7 +638,7 @@ export class ArenaQueryFlattener {
 
       switch (entry.kind) {
         case "Component":
-          this.flattenComponent(entry, prefix, dae);
+          this.flattenComponent(entry, prefix, dae, modStack);
           break;
         case "Class":
           // Nested class definitions are not flattened into variables
@@ -529,8 +673,18 @@ export class ArenaQueryFlattener {
   // Component Flattening
   // -------------------------------------------------------------------------
 
-  private flattenComponent(entry: SymbolEntry, prefix: string, dae: ArenaDAEBuilder): void {
+  private flattenComponent(
+    entry: SymbolEntry,
+    prefix: string,
+    dae: ArenaDAEBuilder,
+    modStack: ModificationStack,
+  ): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
+
+    // --- Compute effective modification from stack + inline CST ---
+    const outerMod = lookupModInStack(modStack, entry.name);
+    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", entry.id);
+    const effectiveMod = mergeModArgs(outerMod, inlineMod);
 
     // --- Outer/inner resolution ---
     // If the component is declared `outer` (and NOT also `inner`),
@@ -595,49 +749,49 @@ export class ArenaQueryFlattener {
     if (arrayDims && arrayDims.length > 0) {
       if (this.options.arrayMode === "preserve") {
         // In preserve mode, emit a single variable with shape metadata
-        this.emitVariable(fullName, resolvedTypeName, entry, dae);
+        this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
         const varIdx = dae.getVarIdxByName(fullName);
         if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
         return;
       }
-      this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae);
+      this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae, modStack, effectiveMod);
       return;
     }
 
     // --- Predefined scalar types ---
     if (classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName)) {
-      this.emitVariable(fullName, resolvedTypeName, entry, dae);
+      this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
       return;
     }
 
     // --- Enumeration types ---
     if (classMeta?.classPrefixes === "enumeration") {
-      this.emitEnumerationVariable(fullName, resolvedTypeName, entry, classInstanceId, dae);
+      this.emitEnumerationVariable(fullName, resolvedTypeName, entry, classInstanceId, dae, effectiveMod);
       return;
     }
 
     // --- Clock type ---
     if (resolvedTypeName === "Clock") {
-      this.emitClockVariable(fullName, entry, dae);
+      this.emitClockVariable(fullName, entry, dae, effectiveMod);
       return;
     }
 
     // --- Function / Partial Function types ---
     if (classMeta?.classKind === "function" || classMeta?.classKind === "operator function") {
-      this.emitFunctionVariable(fullName, resolvedTypeName, entry, dae);
+      this.emitFunctionVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
       return;
     }
 
-    // Recurse into the compound type's elements
-    const subElements = this.db.query<SymbolId[]>("instantiate", classInstanceId);
-
-    if (subElements) {
-      // Push compound type onto hierarchy stack for outer/inner resolution
-      this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
-      this.flattenElements(subElements, fullName, dae);
-      this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
-      this.activeClassStack.pop();
-    }
+    // Recurse into the compound type using flattenClassWithMods.
+    // Build child modification stack: push this component's effective mod
+    const childStack: ModificationStack = effectiveMod
+      ? [...modStack, { mods: effectiveMod, evaluationScopeId: entry.parentId }]
+      : modStack;
+    // Push compound type onto hierarchy stack for outer/inner resolution
+    this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
+    this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
+    this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
+    this.activeClassStack.pop();
   }
 
   // -------------------------------------------------------------------------
@@ -650,6 +804,8 @@ export class ArenaQueryFlattener {
     shape: number[],
     entry: SymbolEntry,
     dae: ArenaDAEBuilder,
+    modStack: ModificationStack,
+    effectiveMod: ModelicaModArgs | null,
   ): void {
     // For a multi-dimensional array, expand recursively
     // e.g., Real[3,2] x → x[1,1], x[1,2], x[2,1], ...
@@ -666,18 +822,18 @@ export class ArenaQueryFlattener {
       const fullName = `${baseName}[${indexStr}]`;
 
       if (isPredefinedScalar(typeName) || classEntry?.metadata?.isPredefined) {
-        const varIdx = this.emitVariable(fullName, typeName, entry, dae);
+        const varIdx = this.emitVariable(fullName, typeName, entry, dae, effectiveMod);
         // Set shape on the first expanded element to record the original array shape
         if (varIdx >= 0 && idx.every((v, i) => v === 1 || i > 0)) {
           dae.setVarShape(varIdx, shape);
         }
       } else {
-        // Compound array element — recurse
-        const subElements = this.db.query<SymbolId[]>("instantiate", classInstanceId);
-        if (subElements) {
-          this.flattenElements(subElements, fullName, dae);
-          this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
-        }
+        // Compound array element — recurse using flattenClassWithMods
+        const childStack: ModificationStack = effectiveMod
+          ? [...modStack, { mods: effectiveMod, evaluationScopeId: entry.parentId }]
+          : modStack;
+        this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
+        this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
       }
     }
   }
@@ -703,16 +859,16 @@ export class ArenaQueryFlattener {
   // Variable Emission
   // -------------------------------------------------------------------------
 
-  private emitVariable(name: string, typeName: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
-    // Extract outer modification from specialization
-    const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
-    const outerMod = specArgs?.data ?? null;
-
-    // Extract inline modification from CST declaration
-    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
-
-    // Merge modifications: outer takes precedence over inline
-    const mod = mergeModArgs(outerMod, inlineMod);
+  private emitVariable(
+    name: string,
+    typeName: string,
+    componentEntry: SymbolEntry,
+    dae: ArenaDAEBuilder,
+    effectiveMod: ModelicaModArgs | null = null,
+  ): number {
+    // Use the pre-computed effective modification from the caller.
+    // This replaces the old pattern of reading db.argsOf() from virtual symbol args.
+    const mod = effectiveMod;
 
     let varType = VarType.Real;
     if (typeName === "Integer") varType = VarType.Integer;
@@ -812,8 +968,6 @@ export class ArenaQueryFlattener {
         if (cstNode) {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const visitor = this.createExprVisitor(dae);
-          // If the AST wrapper fails (e.g. raw "true"/"false" CST nodes),
-          // pass the CST node directly — the visitor has fallback handling.
           let exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
             if (varType === VarType.Real) {
@@ -875,12 +1029,10 @@ export class ArenaQueryFlattener {
     componentEntry: SymbolEntry,
     classInstanceId: SymbolId,
     dae: ArenaDAEBuilder,
+    effectiveMod: ModelicaModArgs | null = null,
   ): number {
-    // Resolve variability, causality, etc. — same as scalar variables
-    const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
-    const outerMod = specArgs?.data ?? null;
-    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
-    const mod = mergeModArgs(outerMod, inlineMod);
+    // Use the pre-computed effective modification from the caller.
+    const mod = effectiveMod;
 
     let variability = Variability.Discrete; // Enumerations are discrete by default
     const qVariability = this.db.query<string | null>("variability", componentEntry.id);
@@ -952,7 +1104,12 @@ export class ArenaQueryFlattener {
   // Clock Variable Emission
   // -------------------------------------------------------------------------
 
-  private emitClockVariable(name: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
+  private emitClockVariable(
+    name: string,
+    componentEntry: SymbolEntry,
+    dae: ArenaDAEBuilder,
+    effectiveMod: ModelicaModArgs | null = null,
+  ): number {
     // Resolve variability and causality (Clock variables default to continuous/local)
     let variability = Variability.Continuous;
     const qVariability = this.db.query<string | null>("variability", componentEntry.id);
@@ -966,11 +1123,8 @@ export class ArenaQueryFlattener {
 
     const varIdx = dae.addVariable(name, VarType.Clock, variability, causality, 0.0, 0);
 
-    // Handle binding expression (same pattern as emitVariable)
-    const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
-    const outerMod = specArgs?.data ?? null;
-    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
-    const mod = mergeModArgs(outerMod, inlineMod);
+    // Use the pre-computed effective modification from the caller.
+    const mod = effectiveMod;
 
     if (mod?.bindingExpression) {
       if (mod.bindingExpression.kind === "expression") {
@@ -1005,6 +1159,7 @@ export class ArenaQueryFlattener {
     typeName: string,
     componentEntry: SymbolEntry,
     dae: ArenaDAEBuilder,
+    effectiveMod: ModelicaModArgs | null = null,
   ): void {
     const resolvedEntries = this.db.byName(typeName);
     const resolvedId = resolvedEntries.length > 0 ? resolvedEntries[0].id : null;
@@ -1036,7 +1191,7 @@ export class ArenaQueryFlattener {
     const varShortName = name.split(".").pop() ?? name;
     const customSig = `${varShortName}<function>(${inputParts.join(", ")}) => ${outputType}`;
 
-    const varIdx = this.emitVariable(name, typeName, componentEntry, dae);
+    const varIdx = this.emitVariable(name, typeName, componentEntry, dae, effectiveMod);
     if (varIdx >= 0) {
       dae.setVarCustomType(varIdx, customSig);
     }
@@ -1258,7 +1413,7 @@ export class ArenaQueryFlattener {
       // Compound type — expand its elements under the virtual name
       const subElements = this.db.query<SymbolId[]>("instantiate", currentScopeId);
       if (subElements) {
-        this.flattenElements(subElements, virtualName, dae);
+        this.flattenElements(subElements, virtualName, dae, []);
       }
     }
   }
@@ -1296,7 +1451,7 @@ export class ArenaQueryFlattener {
     if (!funcName) return undefined;
 
     // Collect arguments
-    const visitor = this.createExprVisitor(dae, loopVars);
+    const visitor = this.createExprVisitor(dae, loopVars, prefix);
     const argIds: number[] = [];
     if (eq.functionCallArguments?.arguments) {
       for (const arg of eq.functionCallArguments.arguments) {
@@ -1305,17 +1460,7 @@ export class ArenaQueryFlattener {
       }
     }
 
-    // Prefix component reference arguments
-    const prefixedArgIds = argIds.map((argId) => {
-      const kind = dae.getExprKind(argId);
-      if (kind === ExprKind.Name && prefix) {
-        const nameStr = dae.interner.resolve(dae.getExprData1(argId));
-        return dae.addNameExpr(`${prefix}.${nameStr}`);
-      }
-      return argId;
-    });
-
-    return dae.addCallExpr(funcName, prefixedArgIds);
+    return dae.addCallExpr(funcName, argIds);
   }
 
   private resolveModAttribute(
@@ -1419,7 +1564,7 @@ export class ArenaQueryFlattener {
       const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
       // Depending on the equation type, the AST node will have different structure
       // For a simple equation, it usually has expression1 and expression2 or left/right
-      const visitor = this.createExprVisitor(dae);
+      const visitor = this.createExprVisitor(dae, undefined, prefix);
       let lhsId: number | undefined = undefined;
       let rhsId: number | undefined = undefined;
 
@@ -1560,7 +1705,7 @@ export class ArenaQueryFlattener {
 
     // Check node type for dispatch
     if (eqNode instanceof ModelicaSimpleEquationSyntaxNode) {
-      const visitor = this.createExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix);
       const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1) : undefined;
       const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
@@ -1581,7 +1726,7 @@ export class ArenaQueryFlattener {
       }
     } else {
       // Generic equation — try expression1/expression2 via duck typing
-      const visitor = this.createExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix);
       const n = eqNode as any;
       if (n.expression1 && n.expression2) {
         const lhsId = visitor.visit(n.expression1);
@@ -1615,7 +1760,7 @@ export class ArenaQueryFlattener {
   ): void {
     // Try to evaluate the condition at compile time
     if (ifEq.condition) {
-      const visitor = this.createExprVisitor(dae, loopVars);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix);
       const condId = visitor.visit(ifEq.condition);
       if (condId !== undefined) {
         const condVal = evaluateArenaExpression(dae, condId);
@@ -1629,7 +1774,7 @@ export class ArenaQueryFlattener {
           // Statically false — check elseif branches, then else
           for (const elseIf of ifEq.elseIfEquationClauses) {
             if (elseIf.condition) {
-              const eifVisitor = this.createExprVisitor(dae, loopVars);
+              const eifVisitor = this.createExprVisitor(dae, loopVars, prefix);
               const eifCondId = eifVisitor.visit(elseIf.condition);
               if (eifCondId !== undefined) {
                 const eifVal = evaluateArenaExpression(dae, eifCondId);
@@ -1694,7 +1839,7 @@ export class ArenaQueryFlattener {
   ): void {
     if (!whenEq.condition) return;
 
-    const visitor = this.createExprVisitor(dae, loopVars);
+    const visitor = this.createExprVisitor(dae, loopVars, prefix);
     const condId = visitor.visit(whenEq.condition);
     if (condId === undefined) return;
 
@@ -1708,7 +1853,7 @@ export class ArenaQueryFlattener {
           bodyEquations.push({ kind: EqKind.FunctionCall, lhsExprId: callExpr, rhsExprId: 0 });
         }
       } else {
-        const eqVisitor = this.createExprVisitor(dae, loopVars);
+        const eqVisitor = this.createExprVisitor(dae, loopVars, prefix);
         const n = eq as any;
         if (n.expression1 && n.expression2) {
           const lhsId = eqVisitor.visit(n.expression1);
@@ -1727,7 +1872,7 @@ export class ArenaQueryFlattener {
     }[] = [];
     for (const elseWhen of whenEq.elseWhenEquationClauses) {
       if (!elseWhen.condition) continue;
-      const ewVisitor = this.createExprVisitor(dae, loopVars);
+      const ewVisitor = this.createExprVisitor(dae, loopVars, prefix);
       const ewCondId = ewVisitor.visit(elseWhen.condition);
       if (ewCondId === undefined) continue;
 
@@ -1740,7 +1885,7 @@ export class ArenaQueryFlattener {
             ewBody.push({ kind: EqKind.FunctionCall, lhsExprId: callExpr, rhsExprId: 0 });
           }
         } else {
-          const eqVisitor = this.createExprVisitor(dae, loopVars);
+          const eqVisitor = this.createExprVisitor(dae, loopVars, prefix);
           const n = eq as any;
           if (n.expression1 && n.expression2) {
             const lhsId = eqVisitor.visit(n.expression1);
@@ -2159,13 +2304,18 @@ export class ArenaQueryFlattener {
     return text;
   }
 
-  private createExprVisitor(dae: ArenaDAEBuilder, loopVars?: Map<string, number>): ArenaExprVisitor {
+  private createExprVisitor(
+    dae: ArenaDAEBuilder,
+    loopVars?: Map<string, number>,
+    namePrefix?: string,
+  ): ArenaExprVisitor {
     return new ArenaExprVisitor(
       dae,
       loopVars,
       (funcName) => this.collectFunctionDefinition(funcName, dae),
       this.connectorCardinality,
       (funcName) => this.resolveFunctionInputs(funcName),
+      namePrefix,
     );
   }
 
@@ -2371,7 +2521,7 @@ export class ArenaQueryFlattener {
       // Flatten function elements (inputs, outputs, protected vars)
       const elements = this.db.query<number[]>("instantiate", resolvedId);
       if (elements) {
-        this.flattenElements(elements, "", fnDae);
+        this.flattenElements(elements, "", fnDae, []);
       }
 
       // Flatten algorithm sections from the function body
