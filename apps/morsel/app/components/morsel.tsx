@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type ParameterInfo } from "@modelscript/simulator";
 import { decodeDataUrl } from "@modelscript/utils";
 import {
   ColumnsIcon,
@@ -56,7 +55,12 @@ import ComponentList from "./component-list";
 import type { DiagramEditorHandle } from "./diagram";
 import OpenFileDropzone from "./open-file-dropzone";
 import PropertiesWidget from "./properties";
-import { SimulationExperimentSettings, SimulationParameters, type ExperimentOverrides } from "./simulation-parameters";
+import {
+  SimulationExperimentSettings,
+  SimulationParameters,
+  type ExperimentOverrides,
+  type ParameterInfo,
+} from "./simulation-parameters";
 import { Splash, type ModelData } from "./splash";
 import TreeWidget from "./tree";
 import { VariablesTree } from "./variables-tree";

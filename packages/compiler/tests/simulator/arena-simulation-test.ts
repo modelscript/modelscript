@@ -2,7 +2,7 @@ import { simulateArena } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../core/tests/node-filesystem.js";
+import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

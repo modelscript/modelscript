@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./core/simulate-arena.js";
+export * from "./core/simulation.js";
 export * from "./core/simulator.js";
 export * from "./core/solver-options.js";
 export * from "./core/wasm-simulation-runner.js";

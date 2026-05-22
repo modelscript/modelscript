@@ -11,19 +11,19 @@ describe("combinators", () => {
 
   it("optional() creates an OptionalNode", () => {
     const node = optional("x");
-    expect(node.type).toBe("opt");
+    expect(node.type).toBe("optional");
     expect(node.arg).toBe("x");
   });
 
   it("repeat() creates a RepeatNode", () => {
     const node = repeat("x");
-    expect(node.type).toBe("rep");
+    expect(node.type).toBe("repeat");
     expect(node.arg).toBe("x");
   });
 
   it("repeat1() creates a Repeat1Node", () => {
     const node = repeat1("x");
-    expect(node.type).toBe("rep1");
+    expect(node.type).toBe("repeat1");
     expect(node.arg).toBe("x");
   });
 
@@ -124,6 +124,6 @@ describe("combinators", () => {
     );
     expect(node.type).toBe("seq");
     expect(node.args.length).toBe(5);
-    expect((node.args[2] as any).type).toBe("opt");
+    expect((node.args[2] as any).type).toBe("optional");
   });
 });

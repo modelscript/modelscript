@@ -5,7 +5,6 @@ import type { TopologyGraph } from "@modelscript/compiler";
 import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
 import {
   type ArenaSimulateOptions,
-  ModelicaSimulator,
   runArenaDoE,
   runSensitivityAnalysisArena,
   simulateArena,
@@ -264,16 +263,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (instance as any).accept(new ModelicaFlattener(), ["", dae]);
 
-        const simulator = new ModelicaSimulator(dae);
-        simulator.prepare();
-
         const exp = dae.experiment;
         const t0 = startTime ?? exp.startTime ?? 0;
         const t1 = stopTime ?? exp.stopTime ?? 10;
         const dt = interval ?? exp.interval ?? (t1 - t0) / 1000;
 
-        const result = simulator.simulate(t0, t1, dt, {
-          solver: (solver ?? "dopri5") as "rk4" | "dopri5" | "bdf" | "auto",
+        const result = simulateArena(dae.arena, {
+          startTime: t0,
+          stopTime: t1,
+          step: dt,
+          solver: (solver ?? "dopri5") as "euler" | "rk4" | "dopri5" | "auto",
         });
         const states = result.states;
 

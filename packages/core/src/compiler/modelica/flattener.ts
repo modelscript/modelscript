@@ -7117,6 +7117,122 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             } else if (argVal instanceof ModelicaNameExpression) {
               newBindings.set(inVar.name, argVal.name);
             }
+
+            // Perform signature validation
+            const targetFuncName =
+              argVal instanceof ModelicaPartialFunctionExpression
+                ? argVal.functionName
+                : argVal instanceof ModelicaNameExpression
+                  ? argVal.name
+                  : null;
+
+            let targetFuncDef = null;
+            if (targetFuncName) {
+              const resolved = ctx.classInstance?.resolveName?.(targetFuncName.split("."));
+              if (resolved instanceof ModelicaClassInstance) {
+                const fqn = resolved.name;
+                targetFuncDef =
+                  ctx.dae.functions.find((f) => f.name === fqn) || ctx.rootDae?.functions.find((f) => f.name === fqn);
+              }
+              if (!targetFuncDef) {
+                targetFuncDef =
+                  ctx.dae.functions.find((f) => f.name === targetFuncName || f.name.endsWith("." + targetFuncName)) ||
+                  ctx.rootDae?.functions.find(
+                    (f) => f.name === targetFuncName || f.name.endsWith("." + targetFuncName),
+                  );
+              }
+            }
+
+            if (targetFuncDef) {
+              const boundArgNames = new Set(
+                argVal instanceof ModelicaPartialFunctionExpression ? argVal.namedArgs.map((a) => a.name) : [],
+              );
+              const remainingInputs = targetFuncDef.legacyVariables.filter(
+                (v) => v.causality === "input" && !boundArgNames.has(v.name.replace(/\0.*\0/, "")),
+              );
+              const targetOutputs = targetFuncDef.legacyVariables.filter((v) => v.causality === "output");
+
+              let signatureMismatch = false;
+              if (remainingInputs.length !== inVar.functionType.inputs.length) {
+                signatureMismatch = true;
+              } else {
+                for (let k = 0; k < remainingInputs.length; k++) {
+                  const actVar = remainingInputs[k];
+                  const expVar = inVar.functionType.inputs[k];
+                  let actType = "Real";
+                  if (actVar instanceof ModelicaIntegerVariable) actType = "Integer";
+                  else if (actVar instanceof ModelicaBooleanVariable) actType = "Boolean";
+                  else if (actVar instanceof ModelicaStringVariable) actType = "String";
+
+                  if (!expVar || actType !== expVar.typeName) {
+                    signatureMismatch = true;
+                    break;
+                  }
+                }
+              }
+
+              if (!signatureMismatch && targetOutputs.length !== inVar.functionType.outputs.length) {
+                signatureMismatch = true;
+              } else if (!signatureMismatch) {
+                for (let k = 0; k < targetOutputs.length; k++) {
+                  const actVar = targetOutputs[k];
+                  const expVar = inVar.functionType.outputs[k];
+                  let actType = "Real";
+                  if (actVar instanceof ModelicaIntegerVariable) actType = "Integer";
+                  else if (actVar instanceof ModelicaBooleanVariable) actType = "Boolean";
+                  else if (actVar instanceof ModelicaStringVariable) actType = "String";
+
+                  if (!expVar || actType !== expVar.typeName) {
+                    signatureMismatch = true;
+                    break;
+                  }
+                }
+              }
+
+              if (signatureMismatch) {
+                const remainingInputsStr = remainingInputs
+                  .map((v) => {
+                    let typeStr = "Real";
+                    if (v instanceof ModelicaIntegerVariable) typeStr = "Integer";
+                    else if (v instanceof ModelicaBooleanVariable) typeStr = "Boolean";
+                    else if (v instanceof ModelicaStringVariable) typeStr = "String";
+                    return `${typeStr} ${v.name.replace(/\0.*\0/, "")}`;
+                  })
+                  .join(", ");
+
+                const targetOutputsStr = targetOutputs
+                  .map((v) => {
+                    let typeStr = "Real";
+                    if (v instanceof ModelicaIntegerVariable) typeStr = "Integer";
+                    else if (v instanceof ModelicaBooleanVariable) typeStr = "Boolean";
+                    else if (v instanceof ModelicaStringVariable) typeStr = "String";
+                    return `${typeStr} ${v.name.replace(/\0.*\0/, "")}`;
+                  })
+                  .join(", ");
+
+                const expectedInputsStr = inVar.functionType.inputs
+                  .map((inp) => `${inp.typeName} ${inp.name}`)
+                  .join(", ");
+                const expectedOutputsStr = inVar.functionType.outputs
+                  .map((out) => `${out.typeName} ${out.name}`)
+                  .join(", ");
+
+                const callExpr = `${functionName}(${inVar.name.replace(/\0.*\0/, "")}=${targetFuncDef.name})`;
+                const argSignature = `${targetFuncDef.name}<function>(${remainingInputsStr}) => (${targetOutputsStr})`;
+                const expectedSignature = `${inVar.name.replace(/\0.*\0/, "")}<function>(${expectedInputsStr}) => (${expectedOutputsStr})`;
+
+                ctx.dae.diagnostics.push(
+                  makeDiagnostic(
+                    ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH,
+                    node,
+                    callExpr,
+                    String(i + 1),
+                    argSignature,
+                    expectedSignature,
+                  ),
+                );
+              }
+            }
           } else if (argVal) {
             filteredArgs.push(argVal);
           }
@@ -9519,32 +9635,28 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
 
   visitProcedureCallStatement(node: ModelicaProcedureCallStatementSyntaxNode, ctx: FlattenerContext): null {
     const rawName = node.functionReference?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
-    // Don't resolve FQ names for global references (.print) or unqualified builtins
-    const isGlobal = node.functionReference?.global === true;
-    const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
-    const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
-    const flatArgs: ModelicaExpression[] = [];
-    for (const arg of node.functionCallArguments?.arguments ?? []) {
-      const flatArg = arg.expression?.accept(this, ctx);
-      if (flatArg) flatArgs.push(flatArg);
-    }
-    // Coerce integer arguments to Real for built-in functions that expect Real args
-    const realArgBuiltins = new Set(["reinit"]);
-    if (realArgBuiltins.has(functionName)) {
-      for (let i = 0; i < flatArgs.length; i++) {
-        const coerced = castToReal(flatArgs[i] ?? null);
-        if (coerced) flatArgs[i] = coerced;
+    const dummyFuncCallNode = new ModelicaFunctionCallSyntaxNode(node.parent, null, null);
+    dummyFuncCallNode.functionReference = node.functionReference;
+    dummyFuncCallNode.functionCallArguments = node.functionCallArguments;
+    dummyFuncCallNode.functionReferenceName = rawName || null;
+    dummyFuncCallNode.sourceRange = node.sourceRange;
+
+    const callExpr = this.visitFunctionCall(dummyFuncCallNode, ctx);
+    let call: ModelicaFunctionCallExpression;
+    if (callExpr instanceof ModelicaFunctionCallExpression) {
+      call = callExpr;
+    } else {
+      const isGlobal = node.functionReference?.global === true;
+      const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
+      const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
+      const flatArgs: ModelicaExpression[] = [];
+      for (const arg of node.functionCallArguments?.arguments ?? []) {
+        const flatArg = arg.expression?.accept(this, ctx);
+        if (flatArg) flatArgs.push(flatArg);
       }
-    } else if (flatArgs.some((a) => isRealTyped(a, ctx.dae))) {
-      for (let i = 0; i < flatArgs.length; i++) {
-        const coerced = castToReal(flatArgs[i] ?? null);
-        if (coerced) flatArgs[i] = coerced;
-      }
+      call = AstBuilder.call(functionName, flatArgs);
     }
-    const call = AstBuilder.call(functionName, flatArgs);
     ctx.stmtCollector.push(withLoc(new ModelicaProcedureCallStatement(call), node as unknown as ModelicaSyntaxNode));
-    // Collect function definition if it's a user-defined function
-    this.#collectFunctionDefinition(functionName, ctx);
     return null;
   }
 
@@ -9560,12 +9672,25 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
     const isGlobal = node.functionReference?.global === true;
     const isBuiltin = !rawName.includes(".") && ModelicaSyntaxFlattener.#isBuiltinFunction(rawName);
     const functionName = isGlobal || isBuiltin ? rawName : this.#resolveFullyQualifiedName(rawName, ctx);
-    const flatArgs: ModelicaExpression[] = [];
-    for (const arg of node.functionCallArguments?.arguments ?? []) {
-      const flatArg = arg.expression?.accept(this, ctx);
-      if (flatArg) flatArgs.push(flatArg);
+
+    const dummyFuncCallNode = new ModelicaFunctionCallSyntaxNode(node.parent, null, null);
+    dummyFuncCallNode.functionReference = node.functionReference;
+    dummyFuncCallNode.functionCallArguments = node.functionCallArguments;
+    dummyFuncCallNode.functionReferenceName = rawName || null;
+    dummyFuncCallNode.sourceRange = node.sourceRange;
+
+    const callExpr = this.visitFunctionCall(dummyFuncCallNode, ctx);
+    let source: ModelicaExpression;
+    if (callExpr) {
+      source = callExpr;
+    } else {
+      const flatArgs: ModelicaExpression[] = [];
+      for (const arg of node.functionCallArguments?.arguments ?? []) {
+        const flatArg = arg.expression?.accept(this, ctx);
+        if (flatArg) flatArgs.push(flatArg);
+      }
+      source = AstBuilder.call(functionName, flatArgs);
     }
-    const source = AstBuilder.call(functionName, flatArgs);
 
     // Validate tuple assignment: LHS target count must match function output count
     {

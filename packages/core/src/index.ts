@@ -43,4 +43,5 @@ export * from "./compiler/modelica/units.js";
 export * from "./compiler/modelica/visitor.js";
 export * from "./compiler/sysml2/sysml2-bridge.js";
 
+export { parseCsvMeasurements, type CsvData, type CsvParseOptions } from "./compiler/modelica/scripting/csv-parser.js";
 export * from "./compiler/scope.js";

@@ -62,12 +62,27 @@ SimpleModelWithSubstructure simpleModelWithSubstructure1;
 end SimpleModelWithSubstructure_TC01;
 
 // Result:
-// Error processing file: PrefixPartialFunctionApplication.mo
-// Error: Internal error Instantiation of SimpleModelWithSubstructure_TC01 failed with no error message.
-// Error: Error occurred while flattening model SimpleModelWithSubstructure_TC01
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SimpleModelWithSubstructure_TC01
+//   parameter Real simpleModelWithSubstructure1.qNom[1,1] = 0.0;
+//   parameter Real simpleModelWithSubstructure1.qNom[1,2] = 0.0001;
+//   parameter Real simpleModelWithSubstructure1.qNom[2,1] = 5.0;
+//   parameter Real simpleModelWithSubstructure1.qNom[2,2] = 0.001;
+//   parameter Real simpleModelWithSubstructure1.qNom[3,1] = 10.0;
+//   parameter Real simpleModelWithSubstructure1.qNom[3,2] = 0.01;
+//   parameter Integer simpleModelWithSubstructure1.n = 3;
+//   parameter Real simpleModelWithSubstructure1.dhydMax[1,1];
+// end SimpleModelWithSubstructure_TC01;
+// Warning: Class 'partialScalarFunction' should start with an uppercase letter
+// Warning: Class 'solveOneNonlinearEquation' should start with an uppercase letter
+// Warning: Input variable 'f' is never used in the function body
+// Warning: Input variable 'u_min' is never used in the function body
+// Warning: Input variable 'u_max' is never used in the function body
+// Warning: Input variable 'tolerance' is never used in the function body
+// Info: Class 'Temperature_degC' has no members
+// Info: Class 'Angle' has no members
+// Info: Class 'Velocity' has no members
+// Info: Class 'Acceleration' has no members
+// Info: Class 'FaradayConstant' has no members
+// Warning: Class 'dhydCalc' should start with an uppercase letter
+// Warning: Input variable 'qNom' is never used in the function body
 // endResult

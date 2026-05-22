@@ -9,8 +9,10 @@
  * expressions until a fixed point is reached.
  */
 
+import type { ArenaValue } from "./arena-eval.js";
 import { evaluateArenaExpression } from "./arena-eval.js";
 import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
+import type { QueryDB, SymbolId } from "./runtime.js";
 
 /**
  * Fold constant and parameter expressions in the arena to literal values
@@ -18,10 +20,17 @@ import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
  * can be made (fixed-point iteration).
  *
  * @param arena The ArenaDAEBuilder to fold constants in (mutated in place).
+ * @param db Optional Salsa QueryDB.
+ * @param scopeId Optional SymbolId of the class scope.
  * @param maxIterations Maximum number of passes (default: 100).
  * @returns The number of iterations performed.
  */
-export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100): number {
+export function foldArenaConstants(
+  arena: ArenaDAEBuilder,
+  db?: QueryDB,
+  scopeId?: SymbolId,
+  maxIterations = 100,
+): number {
   // Build a name→varIdx map for O(1) lookups
   const nameToIdx = new Map<string, number>();
   for (let i = 0; i < arena.varCount; i++) {
@@ -51,10 +60,29 @@ export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100):
         // Use binding expression value if available, otherwise startVal
         const exprId = arena.getVarExpression(i);
         if (typeof exprId === "number" && exprId >= 0) {
-          const evaluated = evaluateArenaExpression(arena, exprId, paramMap);
-          if (evaluated !== null && typeof evaluated === "number") {
-            paramMap.set(name, evaluated);
-            continue;
+          const evaluated = evaluateArenaExpression(arena, exprId, paramMap, db, scopeId);
+          if (evaluated !== null) {
+            let foldedValue: ArenaValue | null = evaluated;
+            const match = name.match(/\[([\d,]+)\]$/);
+            if (match) {
+              const indices = match[1].split(",").map(Number);
+              let current = foldedValue;
+              for (const idx of indices) {
+                if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                  current = current[idx - 1] as ArenaValue;
+                } else {
+                  foldedValue = null;
+                  break;
+                }
+              }
+              if (foldedValue !== null) {
+                foldedValue = current;
+              }
+            }
+            if (foldedValue !== null && (typeof foldedValue === "number" || typeof foldedValue === "boolean")) {
+              paramMap.set(name, typeof foldedValue === "boolean" ? (foldedValue ? 1.0 : 0.0) : foldedValue);
+              continue;
+            }
           }
         }
         paramMap.set(name, startVal);
@@ -71,13 +99,42 @@ export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100):
       if (typeof exprId !== "number" || exprId < 0) continue;
 
       // Try to evaluate the binding expression
-      const result = evaluateArenaExpression(arena, exprId, paramMap);
-      if (result !== null && typeof result === "number") {
-        // Check if the value actually changed
-        const currentStart = arena.getVarStartValue(i);
-        if (currentStart !== result) {
-          arena.setVarStartValue(i, result);
-          changed = true;
+      const result = evaluateArenaExpression(arena, exprId, paramMap, db, scopeId);
+      if (result !== null) {
+        const name = arena.getVarName(i);
+        let foldedValue: ArenaValue | null = result;
+        const match = name.match(/\[([\d,]+)\]$/);
+        if (match) {
+          const indices = match[1].split(",").map(Number);
+          let current = foldedValue;
+          for (const idx of indices) {
+            if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+              current = current[idx - 1] as ArenaValue;
+            } else {
+              foldedValue = null;
+              break;
+            }
+          }
+          if (foldedValue !== null) {
+            foldedValue = current;
+          }
+        }
+
+        if (foldedValue !== null) {
+          let numValue: number | null = null;
+          if (typeof foldedValue === "number") {
+            numValue = foldedValue;
+          } else if (typeof foldedValue === "boolean") {
+            numValue = foldedValue ? 1.0 : 0.0;
+          }
+
+          if (numValue !== null) {
+            const currentStart = arena.getVarStartValue(i);
+            if (currentStart !== numValue) {
+              arena.setVarStartValue(i, numValue);
+              changed = true;
+            }
+          }
         }
       }
     }
@@ -100,12 +157,39 @@ export function foldArenaConstants(arena: ArenaDAEBuilder, maxIterations = 100):
           if (varIdx !== undefined) {
             const vv = arena.getVarVariability(varIdx);
             if (vv === Variability.Constant || vv === Variability.Parameter) {
-              const rhsVal = evaluateArenaExpression(arena, rhs, paramMap);
-              if (rhsVal !== null && typeof rhsVal === "number") {
-                const current = arena.getVarStartValue(varIdx);
-                if (current !== rhsVal) {
-                  arena.setVarStartValue(varIdx, rhsVal);
-                  changed = true;
+              const rhsVal = evaluateArenaExpression(arena, rhs, paramMap, db, scopeId);
+              if (rhsVal !== null) {
+                let foldedValue: ArenaValue | null = rhsVal;
+                const match = name.match(/\[([\d,]+)\]$/);
+                if (match) {
+                  const indices = match[1].split(",").map(Number);
+                  let current = foldedValue;
+                  for (const idx of indices) {
+                    if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                      current = current[idx - 1] as ArenaValue;
+                    } else {
+                      foldedValue = null;
+                      break;
+                    }
+                  }
+                  if (foldedValue !== null) {
+                    foldedValue = current;
+                  }
+                }
+
+                let numValue: number | null = null;
+                if (typeof foldedValue === "number") {
+                  numValue = foldedValue;
+                } else if (typeof foldedValue === "boolean") {
+                  numValue = foldedValue ? 1.0 : 0.0;
+                }
+
+                if (numValue !== null) {
+                  const current = arena.getVarStartValue(varIdx);
+                  if (current !== numValue) {
+                    arena.setVarStartValue(varIdx, numValue);
+                    changed = true;
+                  }
                 }
               }
             }

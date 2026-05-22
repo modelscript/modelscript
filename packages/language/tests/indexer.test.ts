@@ -65,7 +65,7 @@ describe("generate/indexer", () => {
     ];
 
     const result = serializeIndexerConfig(hooks as unknown[]);
-    expect(result).toContain('import type { IndexerHook } from "../index.js";');
+    expect(result).toContain('import type { IndexerHook } from "@modelscript/language";');
     expect(result).toContain('ruleName: "MyRule"');
     expect(result).toContain('kind: "Function"');
     expect(result).toContain('namePath: "id"');

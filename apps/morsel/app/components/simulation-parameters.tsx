@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type ParameterInfo } from "@modelscript/simulator";
 import { SyncIcon, VersionsIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, IconButton, TextInput, ToggleSwitch } from "@primer/react";
 import { useCallback, useRef, useState } from "react";
+
+export interface ParameterInfo {
+  name: string;
+  type: "real" | "integer" | "boolean" | "enumeration";
+  defaultValue: number;
+  step?: number;
+  unit?: string;
+  enumLiterals?: { ordinal: number; label: string }[];
+}
 
 export interface SweepState {
   parameterName: string;

@@ -1,6 +1,7 @@
 import { evaluateArenaFunctionCall } from "./arena-ceval.js";
 import { evaluateArrayBuiltin } from "./arena-eval-builtins.js";
 import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
+import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 
 /**
  * Evaluates an expression tree stored in a `ArenaDAEBuilder` and attempts
@@ -42,6 +43,8 @@ export function evaluateArenaExpression(
   dae: ArenaDAEBuilder,
   exprId: number,
   parameters = new Map<string, ArenaValue>(),
+  db?: QueryDB,
+  scopeId?: SymbolId,
 ): ArenaValue | null {
   if (exprId < 0) return null;
 
@@ -83,7 +86,7 @@ export function evaluateArenaExpression(
           if (rootIdx >= 0) {
             const bindExpr = dae.getVarExpression(rootIdx);
             if (typeof bindExpr === "number" && bindExpr >= 0) {
-              obj = evaluateArenaExpression(dae, bindExpr, parameters);
+              obj = evaluateArenaExpression(dae, bindExpr, parameters, db, scopeId);
             }
           }
         }
@@ -110,18 +113,35 @@ export function evaluateArenaExpression(
         if (variability === Variability.Parameter || variability === Variability.Constant) {
           const bindingExprId = dae.getVarExpression(vIdx);
           if (typeof bindingExprId === "number" && bindingExprId >= 0) {
-            return evaluateArenaExpression(dae, bindingExprId, parameters);
+            return evaluateArenaExpression(dae, bindingExprId, parameters, db, scopeId);
           }
           // Fallback: use start value for parameters without binding expressions
           return dae.getVarStartValue(vIdx);
         }
       }
+
+      // External resolution fallback via Salsa database for CSV virtual components and other constants
+      if (db && scopeId !== undefined) {
+        const resolveName = db.query<(q: string) => SymbolEntry | null>("resolveName", scopeId);
+        if (resolveName) {
+          const resolved = resolveName(name);
+          if (resolved) {
+            if (resolved.kind === "Component" && resolved.metadata) {
+              const csvValue = resolved.metadata.csvValue;
+              if (csvValue !== undefined) {
+                return csvValue as ArenaValue;
+              }
+            }
+          }
+        }
+      }
+
       return null;
     }
 
     case ExprKind.Unary: {
       const op = dae.getExprData1(exprId) as UnaryOp;
-      const operand = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters);
+      const operand = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters, db, scopeId);
       if (operand === null) return null;
 
       if (op === UnaryOp.Negate && typeof operand === "number") return -operand;
@@ -131,8 +151,8 @@ export function evaluateArenaExpression(
 
     case ExprKind.Binary: {
       const op = dae.getExprData1(exprId) as BinOp;
-      const left = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters);
-      const right = evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters);
+      const left = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters, db, scopeId);
+      const right = evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters, db, scopeId);
       if (left === null || right === null) return null;
 
       if (typeof left === "number" && typeof right === "number") {
@@ -178,11 +198,11 @@ export function evaluateArenaExpression(
     }
 
     case ExprKind.IfElse: {
-      const cond = evaluateArenaExpression(dae, dae.getExprData1(exprId), parameters);
+      const cond = evaluateArenaExpression(dae, dae.getExprData1(exprId), parameters, db, scopeId);
       if (typeof cond === "boolean") {
         return cond
-          ? evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters)
-          : evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters);
+          ? evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters, db, scopeId)
+          : evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters, db, scopeId);
       }
       return null;
     }
@@ -194,7 +214,7 @@ export function evaluateArenaExpression(
       const firstArg = dae.getExprLeft(exprId);
       const argIds = getSequenceElements(dae, exprId, argCount, firstArg);
 
-      const args = argIds.map((id) => evaluateArenaExpression(dae, id, parameters));
+      const args = argIds.map((id) => evaluateArenaExpression(dae, id, parameters, db, scopeId));
       if (args.some((a) => a === null)) return null;
 
       if (funcName === "sin" && typeof args[0] === "number") return Math.sin(args[0]);
@@ -259,16 +279,16 @@ export function evaluateArenaExpression(
       const count = dae.getExprData1(exprId);
       const firstElem = dae.getExprLeft(exprId);
       const elemIds = getSequenceElements(dae, exprId, count, firstElem);
-      const elements = elemIds.map((id) => evaluateArenaExpression(dae, id, parameters));
+      const elements = elemIds.map((id) => evaluateArenaExpression(dae, id, parameters, db, scopeId));
       if (elements.some((e) => e === null)) return null;
       return elements as ArenaValue[];
     }
 
     case ExprKind.Range: {
-      const start = evaluateArenaExpression(dae, dae.getExprData1(exprId), parameters);
+      const start = evaluateArenaExpression(dae, dae.getExprData1(exprId), parameters, db, scopeId);
       const stepId = dae.getExprLeft(exprId);
-      const step = stepId >= 0 ? evaluateArenaExpression(dae, stepId, parameters) : 1;
-      const stop = evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters);
+      const step = stepId >= 0 ? evaluateArenaExpression(dae, stepId, parameters, db, scopeId) : 1;
+      const stop = evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters, db, scopeId);
 
       if (typeof start === "number" && typeof step === "number" && typeof stop === "number") {
         const arr: number[] = [];
@@ -284,7 +304,7 @@ export function evaluateArenaExpression(
 
     case ExprKind.Subscript: {
       const baseId = dae.getExprData1(exprId);
-      const base = evaluateArenaExpression(dae, baseId, parameters);
+      const base = evaluateArenaExpression(dae, baseId, parameters, db, scopeId);
       if (!Array.isArray(base)) return null;
 
       const idxCount = dae.getExprRight(exprId);
@@ -294,7 +314,7 @@ export function evaluateArenaExpression(
       let current: ArenaValue = base;
       for (const id of idxIds) {
         if (!Array.isArray(current)) return null;
-        const idx = evaluateArenaExpression(dae, id, parameters);
+        const idx = evaluateArenaExpression(dae, id, parameters, db, scopeId);
         // Modelica arrays are 1-indexed
         if (typeof idx !== "number" || idx < 1 || idx > current.length) return null;
         current = current[idx - 1] as ArenaValue;
@@ -308,12 +328,12 @@ export function evaluateArenaExpression(
       if (fieldCount > 0) {
         // First field: name StringId in right, value ExprId in left
         const firstName = dae.interner.resolve(dae.getExprRight(exprId));
-        const firstVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters);
+        const firstVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters, db, scopeId);
         if (firstName && firstVal !== null) fields.set(firstName, firstVal);
         // Subsequent fields via Tuple entries: name StringId in data1, value ExprId in left
         for (let i = 1; i < fieldCount; i++) {
           const fieldName = dae.interner.resolve(dae.getExprData1(exprId + i));
-          const fieldVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId + i), parameters);
+          const fieldVal = evaluateArenaExpression(dae, dae.getExprLeft(exprId + i), parameters, db, scopeId);
           if (fieldName && fieldVal !== null) fields.set(fieldName, fieldVal);
         }
       }

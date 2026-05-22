@@ -5,7 +5,7 @@ import { Context } from "@modelscript/core";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
-import { NodeFileSystem } from "../../core/tests/node-filesystem.js";
+import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

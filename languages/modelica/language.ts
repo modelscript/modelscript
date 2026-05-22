@@ -2602,6 +2602,10 @@ export default language({
            */
           partialInstantiation: (db: QueryDB, self: SymbolEntry) => {
             const results: any[] = [];
+            const selfMeta = self.metadata as Record<string, unknown>;
+            const selfPrefix = selfMeta?.classPrefixes as string | undefined;
+            if (selfPrefix?.includes("function") || selfPrefix?.includes("partial")) return null;
+
             for (const child of db.childrenOf(self.id)) {
               if (child.kind !== "Component") continue;
               const cMeta = child.metadata as Record<string, unknown>;
@@ -2616,6 +2620,7 @@ export default language({
               const typeMeta = typeEntry.metadata as Record<string, unknown>;
               const typePrefix = typeMeta?.classPrefixes as string | undefined;
               if (typePrefix?.includes("partial")) {
+                if (db.query<boolean>("isReplaceable", child.id)) continue;
                 results.push(
                   error(`Illegal to instantiate partial class '${typeName}'.`, {
                     startByte: child.startByte,
@@ -3204,9 +3209,9 @@ export default language({
           attributes: {
             modification: self.declaration.modification,
             description: self.description,
-            typeSpecifier: self.parent.typeSpecifier,
-            causality: self.parent.causality,
-            variability: self.parent.variability,
+            typeSpecifier: (self as any).parent.typeSpecifier,
+            causality: (self as any).parent.causality,
+            variability: (self as any).parent.variability,
           },
         }),
         queries: {
@@ -5347,8 +5352,9 @@ export default language({
        * OWL2 data/object property assertions depending on the component type.
        */
       ComponentClause: (db, node) => {
-        const typeSpec = (node.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
-        const variability = (node.metadata as Record<string, unknown>)?.variability as string | undefined;
+        const meta = node.metadata as Record<string, unknown> | undefined;
+        const typeSpec = meta?.typeSpecifier as string | undefined;
+        const variability = meta?.variability as string | undefined;
         const parentId = node.parentId;
         const parentName = parentId !== null ? db.symbol(parentId)?.name : undefined;
 

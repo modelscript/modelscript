@@ -236,7 +236,7 @@ export class ArenaQueryFlattener {
     this.extractExperimentAnnotation(rootClassId, dae);
 
     // Fold constant and parameter binding expressions
-    foldArenaConstants(dae);
+    foldArenaConstants(dae, this.db, rootClassId);
 
     // O(N) Arena-native alias elimination
     eliminateArenaAliases(dae);
@@ -589,6 +589,21 @@ export class ArenaQueryFlattener {
     const classMeta = classEntry.metadata as Record<string, unknown>;
     const resolvedTypeName = classEntry.name;
 
+    // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
+    const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
+
+    if (arrayDims && arrayDims.length > 0) {
+      if (this.options.arrayMode === "preserve") {
+        // In preserve mode, emit a single variable with shape metadata
+        this.emitVariable(fullName, resolvedTypeName, entry, dae);
+        const varIdx = dae.getVarIdxByName(fullName);
+        if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
+        return;
+      }
+      this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae);
+      return;
+    }
+
     // --- Predefined scalar types ---
     if (classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName)) {
       this.emitVariable(fullName, resolvedTypeName, entry, dae);
@@ -610,21 +625,6 @@ export class ArenaQueryFlattener {
     // --- Function / Partial Function types ---
     if (classMeta?.classKind === "function" || classMeta?.classKind === "operator function") {
       this.emitFunctionVariable(fullName, resolvedTypeName, entry, dae);
-      return;
-    }
-
-    // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
-    const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
-
-    if (arrayDims && arrayDims.length > 0) {
-      if (this.options.arrayMode === "preserve") {
-        // In preserve mode, emit a single variable with shape metadata
-        this.emitVariable(fullName, resolvedTypeName, entry, dae);
-        const varIdx = dae.getVarIdxByName(fullName);
-        if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
-        return;
-      }
-      this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae);
       return;
     }
 

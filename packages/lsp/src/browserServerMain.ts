@@ -97,12 +97,12 @@ import {
   printArenaDAE,
   type TokenData,
 } from "@modelscript/compiler";
-import { ModelicaCalibrator, ModelicaOptimizer, parseCsvMeasurements } from "@modelscript/compiler/optimizer";
+import { ModelicaCalibrator, ModelicaOptimizer } from "@modelscript/compiler/optimizer";
 import { ScopeResolver } from "@modelscript/compiler/resolver";
-import type { DoEInputRange } from "@modelscript/compiler/simulator";
+import type { ArenaDoEInputRange } from "@modelscript/compiler/simulator";
 import {
   ArenaSimulator,
-  buildSurrogate,
+  buildArenaSurrogate,
   runMonteCarloArena,
   simulateArena,
   simulateArenaAsync,
@@ -136,6 +136,7 @@ import {
   emitVerificationDiagnostics,
   generateMultiBodyModelica,
   injectPredefinedTypes,
+  parseCsvMeasurements,
 } from "@modelscript/core";
 import {
   ModelicaFmuEntity,
@@ -4315,10 +4316,10 @@ connection.onRequest(
       const stopTime = params.stopTime ?? exp.stopTime ?? 1;
       const stepSize = params.stepSize ?? exp.interval ?? (stopTime - startTime) / 100;
 
-      // 2. Create a SimulatorFmuSubsystem that wraps simulateArena as FmuSubsystem
-      const inputRanges = new Map<string, DoEInputRange>();
+      // 2. Prepare DoE input parameter ranges
+      const inputRanges = new Map<string, ArenaDoEInputRange>();
       for (const [name, range] of Object.entries(params.inputs)) {
-        inputRanges.set(name, range);
+        inputRanges.set(name, range as ArenaDoEInputRange);
       }
 
       // If no outputs specified, use all state + algebraic variables from arena
@@ -4332,68 +4333,33 @@ connection.onRequest(
         }
       }
 
-      // Build a lightweight FmuSubsystem adapter around the simulator
-      const fmuAdapter = {
-        modelName: classInstance.name || "Model",
-        inputNames: Array.from(inputRanges.keys()),
-        outputNames,
-        parameterNames: [] as string[],
-        _inputs: new Map<string, number>(),
-        _outputs: new Map<string, number>(),
-        initialize() {
-          this._inputs.clear();
-          this._outputs.clear();
-        },
-        setInputs(inputs: Map<string, number>) {
-          for (const [k, v] of inputs) this._inputs.set(k, v);
-        },
-        doStep() {
-          // Run a full simulation with the current inputs as parameter overrides
-          const overrides = new Map(this._inputs);
-          const result = simulateArena(arena, {
-            startTime,
-            stopTime,
-            step: stepSize,
-            solver: "dopri5" as const,
-            parameterOverrides: overrides,
-          });
-          // Extract final-time values
-          const lastY = result.y[result.y.length - 1];
-          if (lastY) {
-            for (let i = 0; i < result.states.length; i++) {
-              this._outputs.set(result.states[i] ?? "", lastY[i] ?? 0);
-            }
-          }
-        },
-        getOutputs() {
-          return new Map(this._outputs);
-        },
-        terminate() {
-          this._inputs.clear();
-          this._outputs.clear();
-        },
-      };
-
       // 3. Run the surrogate pipeline
       connection.console.info(
         `[trainSurrogate] Running DoE (${params.strategy ?? "latin-hypercube"}, ${params.numSamples ?? 50} samples)...`,
       );
 
-      const surrogateResult = buildSurrogate(
-        fmuAdapter,
+      const surrogateResult = buildArenaSurrogate(
+        arena,
         {
           doe: {
             inputs: inputRanges,
             outputs: outputNames,
-            strategy: params.strategy ?? "latin-hypercube",
+            strategy: (params.strategy ?? "latin-hypercube") as
+              | "full-factorial"
+              | "latin-hypercube"
+              | "sobol"
+              | "central-composite",
             numSamples: params.numSamples ?? 50,
-            startTime,
-            stopTime,
-            stepSize,
+            simulateOptions: {
+              startTime,
+              stopTime,
+              step: stepSize,
+              solver: "dopri5",
+            },
             seed: params.seed,
           },
           rom: {
-            architecture: params.architecture ?? "mlp",
+            architecture: (params.architecture ?? "mlp") as "mlp" | "polynomial" | "rbf",
             hiddenLayers: params.hiddenLayers,
             activation: params.activation,
             polynomialDegree: params.polynomialDegree,
