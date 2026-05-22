@@ -1,7 +1,14 @@
 import { Context, WorkspaceIndex } from "@modelscript/core";
 import { unzipSync } from "fflate";
 import type { BrowserFileSystem } from "./browser-file-system";
-import { idbGet, idbPut, MSL_VERSION_KEY, openMSLCache } from "./browser-file-system";
+import {
+  getSalsaIndexCache,
+  idbGet,
+  idbPut,
+  MSL_VERSION_KEY,
+  openMSLCache,
+  putSalsaIndexCache,
+} from "./browser-file-system";
 
 import type { FederatedQueryCacheStore } from "@modelscript/compiler";
 import type { Parser, Tree } from "@modelscript/utils";
@@ -308,19 +315,42 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       }
     }
 
-    if (baseUrl && ctx.cacheStore) {
-      const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
+    if (ctx.cacheStore) {
+      const cacheKey = `${pkg.name}@${pkg.version}`;
+      let dbBuffer: ArrayBuffer | undefined;
+
       try {
-        const resp = await fetch(indexUrl);
-        if (resp.ok) {
-          const buffer = await resp.arrayBuffer();
-          const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore);
-          ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
-        } else {
-          ctx.logger.warn(`[registry] Pre-computed index not available for ${label} (HTTP ${resp.status})`);
-        }
+        dbBuffer = await getSalsaIndexCache(cacheKey);
       } catch (err) {
-        ctx.logger.warn(`[registry] Failed to fetch pre-computed index for ${label}: ${err}`);
+        ctx.logger.warn(`[registry] IndexedDB read failed for salsa-index of ${label}: ${err}`);
+      }
+
+      if (dbBuffer) {
+        ctx.logger.log(`[registry] Cache hit — loading salsa-index for ${label} from IndexedDB`);
+        const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore);
+        ctx.logger.log(`[registry] Hydrated ${memos} memos from cached index for ${label}`);
+      } else if (baseUrl) {
+        const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
+        try {
+          const resp = await fetch(indexUrl);
+          if (resp.ok) {
+            const buffer = await resp.arrayBuffer();
+            const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore);
+            ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
+
+            // Cache for subsequent loads
+            try {
+              await putSalsaIndexCache(cacheKey, buffer);
+              ctx.logger.log(`[registry] Cached salsa-index for ${label} in IndexedDB`);
+            } catch (cacheErr) {
+              ctx.logger.warn(`[registry] IndexedDB write failed for salsa-index of ${label}: ${cacheErr}`);
+            }
+          } else {
+            ctx.logger.warn(`[registry] Pre-computed index not available for ${label} (HTTP ${resp.status})`);
+          }
+        } catch (err) {
+          ctx.logger.warn(`[registry] Failed to fetch pre-computed index for ${label}: ${err}`);
+        }
       }
     }
 

@@ -131,9 +131,10 @@ export class BrowserFileSystem implements FileSystem {
 // ---------------------------------------------------------------------------
 
 export const MSL_DB_NAME = "modelscript-msl-cache";
-export const MSL_DB_VERSION = 1;
+export const MSL_DB_VERSION = 2;
 export const MSL_STORE = "files";
 export const MSL_VERSION_KEY = "ModelicaStandardLibrary_v4.1.0";
+export const SALSA_STORE = "salsa_indices";
 
 export function openMSLCache(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -142,6 +143,9 @@ export function openMSLCache(): Promise<IDBDatabase> {
       const db = req.result;
       if (!db.objectStoreNames.contains(MSL_STORE)) {
         db.createObjectStore(MSL_STORE);
+      }
+      if (!db.objectStoreNames.contains(SALSA_STORE)) {
+        db.createObjectStore(SALSA_STORE);
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -164,5 +168,39 @@ export function idbPut(db: IDBDatabase, key: string, value: unknown): Promise<vo
     tx.objectStore(MSL_STORE).put(value, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+  });
+}
+
+export function getSalsaIndexCache(key: string): Promise<ArrayBuffer | undefined> {
+  return openMSLCache().then((db) => {
+    return new Promise<ArrayBuffer | undefined>((resolve, reject) => {
+      const tx = db.transaction(SALSA_STORE, "readonly");
+      const req = tx.objectStore(SALSA_STORE).get(key);
+      req.onsuccess = () => {
+        resolve(req.result as ArrayBuffer | undefined);
+        db.close();
+      };
+      req.onerror = () => {
+        reject(req.error);
+        db.close();
+      };
+    });
+  });
+}
+
+export function putSalsaIndexCache(key: string, buffer: ArrayBuffer): Promise<void> {
+  return openMSLCache().then((db) => {
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(SALSA_STORE, "readwrite");
+      tx.objectStore(SALSA_STORE).put(buffer, key);
+      tx.oncomplete = () => {
+        resolve();
+        db.close();
+      };
+      tx.onerror = () => {
+        reject(tx.error);
+        db.close();
+      };
+    });
   });
 }
