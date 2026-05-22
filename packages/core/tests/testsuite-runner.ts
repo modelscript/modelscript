@@ -136,7 +136,7 @@ function parseTestFile(filePath: string): TestCase | null {
 
   // Fall back to filename stem if no name header
   if (!name) name = path.basename(filePath, ".mo");
-  if (!status) return null;
+  if (!status) status = "correct";
 
   let arrayMode: "scalarize" | "preserve" | undefined = undefined;
   let fmiVersion: "2.0" | "3.0" | undefined = undefined;
@@ -185,7 +185,12 @@ function parseTestFile(filePath: string): TestCase | null {
 const WORKER_SCRIPT = path.resolve(import.meta.dirname ?? __dirname, "testsuite-worker.ts");
 const WORKER_TIMEOUT_MS = 120_000; // 2 minutes per test
 
-function runTestInWorker(testCase: TestCase, testsuiteRoot: string, updateMode: boolean): Promise<TestResult> {
+function runTestInWorker(
+  testCase: TestCase,
+  testsuiteRoot: string,
+  updateMode: boolean,
+  omcMode = false,
+): Promise<TestResult> {
   return new Promise((resolve) => {
     const start = Date.now();
     const child = spawn("npx", ["tsx", WORKER_SCRIPT], {
@@ -198,7 +203,7 @@ function runTestInWorker(testCase: TestCase, testsuiteRoot: string, updateMode: 
     });
 
     // Send test case to worker via stdin
-    const payload = JSON.stringify({ testCase, testsuiteRoot, updateMode });
+    const payload = JSON.stringify({ testCase, testsuiteRoot, updateMode, omcMode });
     child.stdin.write(payload);
     child.stdin.end();
 
@@ -279,7 +284,7 @@ function printResult(result: TestResult): void {
   if (result.message) {
     const indented = result.message
       .split("\n")
-      .map((l) => `      ${DIM}${l}${RESET}`)
+      .map((l) => `      ${l}`)
       .join("\n");
     console.log(indented);
   }
@@ -387,11 +392,14 @@ async function main(): Promise<void> {
   // Parse arguments
   const rawArgs = process.argv.slice(2);
   const updateMode = rawArgs.includes("--update");
+  const omcMode = rawArgs.includes("--omc");
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1] ?? "4", 10)
     : Math.max(1, Math.floor(os.availableParallelism() / 2));
-  const args = rawArgs.filter((a) => a !== "--update" && !a.startsWith("--concurrency=") && a !== "--legacy");
+  const args = rawArgs.filter(
+    (a) => a !== "--update" && a !== "--omc" && !a.startsWith("--concurrency=") && a !== "--legacy",
+  );
 
   console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
   console.log();
@@ -401,7 +409,10 @@ async function main(): Promise<void> {
 
   if (args.length > 0) {
     for (const arg of args) {
-      const root = path.resolve(testsuiteRoot, arg);
+      let root = path.resolve(testsuiteRoot, arg);
+      if (!fs.existsSync(root)) {
+        root = path.resolve(process.cwd(), arg);
+      }
       if (!fs.existsSync(root)) {
         console.error(`${RED}Path not found: ${root}${RESET}`);
         continue;
@@ -442,7 +453,7 @@ async function main(): Promise<void> {
   const skippedResults: TestResult[] = [];
 
   for (const [suiteDir, specificFiles] of suiteRuns.entries()) {
-    const suiteName = path.relative(testsuiteRoot, suiteDir);
+    const suiteName = suiteDir.startsWith(testsuiteRoot) ? path.relative(testsuiteRoot, suiteDir) : "External";
 
     let moFiles = fs.readdirSync(suiteDir).filter((f) => f.endsWith(".mo") || f.endsWith(".mos"));
 
@@ -504,7 +515,7 @@ async function main(): Promise<void> {
 
   // Build task closures
   const tasks = allQueued.map(({ testCase }) => {
-    return () => runTestInWorker(testCase, testsuiteRoot, updateMode);
+    return () => runTestInWorker(testCase, testsuiteRoot, updateMode, omcMode);
   });
 
   // Run all tests in parallel with concurrency limit
@@ -545,18 +556,20 @@ async function main(): Promise<void> {
     console.log(`  ${DIM}Wall time: ${elapsed}s${RESET}`);
   }
 
-  // Write CTRF report
-  const ctrfDir = path.resolve(import.meta.dirname ?? __dirname, "../ctrf");
-  fs.mkdirSync(ctrfDir, { recursive: true });
+  // Write CTRF report (only if not running a single test)
+  if (allResults.length > 1) {
+    const ctrfDir = path.resolve(import.meta.dirname ?? __dirname, "../ctrf");
+    fs.mkdirSync(ctrfDir, { recursive: true });
 
-  const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
-  const report = generateCtrfReport(allResults, globalStart, globalStop);
-  fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
-  console.log(`\n${DIM}CTRF report written to ${ctrfPath}${RESET}`);
+    const ctrfPath = path.join(ctrfDir, "ctrf-testsuite-report.json");
+    const report = generateCtrfReport(allResults, globalStart, globalStop);
+    fs.writeFileSync(ctrfPath, JSON.stringify(report, null, 2) + "\n");
+    console.log(`\n${DIM}CTRF report written to ${ctrfPath}${RESET}`);
 
-  // Generate HTML report
-  const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
-  generateHtmlReport(ctrfPath, htmlPath);
+    // Generate HTML report
+    const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
+    generateHtmlReport(ctrfPath, htmlPath);
+  }
 
   // Exit with error code if any tests failed
   const failedCount = allResults.filter((r) => r.status === "failed").length;

@@ -30,11 +30,25 @@ import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/symbolics";
 import { StringWriter } from "@modelscript/utils";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import Parser from "tree-sitter";
 import { Context } from "../src/compiler/context.js";
 import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
 import { NodeFileSystem } from "./node-filesystem.js";
+
+function cleanOmcOutput(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.includes("Warning:") || trimmed.includes("Warning ")) return false;
+      if (trimmed.startsWith("[") && trimmed.includes("]")) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+}
 
 // ── Tree-sitter setup ────────────────────────────────────────────────────────
 
@@ -97,7 +111,13 @@ function updateExpectedResult(filePath: string, newResult: string): void {
   const lines = content.split("\n");
   const resultIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
   const endResultIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
-  if (resultIdx < 0 || endResultIdx < 0) return;
+
+  if (resultIdx < 0 || endResultIdx < 0) {
+    const resultLines = newResult.split("\n").map((l) => (l ? `// ${l}` : "//"));
+    const newContent = content.trimEnd() + "\n\n// Result:\n" + resultLines.join("\n") + "\n// endResult\n";
+    fs.writeFileSync(filePath, newContent, "utf-8");
+    return;
+  }
 
   const before = lines.slice(0, resultIdx + 1);
   const after = lines.slice(endResultIdx);
@@ -141,7 +161,7 @@ function resolveClassName(context: Context, testCase: TestCase): string {
   return lastClassName;
 }
 
-function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean): TestResult {
+function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean, omcMode = false): TestResult {
   const start = performance.now();
   const cpuStart = process.cpuUsage();
 
@@ -168,6 +188,24 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     lastClassName = resolveClassName(context, testCase);
     console.error(`[Worker] Resolved class: ${lastClassName}`);
+
+    let omcExpected = "";
+    if (omcMode) {
+      try {
+        const cmd = `echo "instantiate(${lastClassName});" | omc ${testCase.file}`;
+        const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] });
+        omcExpected = cleanOmcOutput(output);
+        updateExpectedResult(testCase.file, omcExpected);
+        testCase.expectedResult = omcExpected;
+      } catch (err) {
+        omcExpected = `Error running OMC: ${err instanceof Error ? err.message : err}`;
+        testCase.expectedResult = omcExpected;
+      }
+    }
+
+    const formatMismatch = (expectedStr: string, actualStr: string, prefix = "Output mismatch"): string => {
+      return `${prefix}:\n--- Expected ---\n${expectedStr}\n--- Actual ---\n${actualStr}`;
+    };
 
     // ── Arena-native flattening ──
     const t_flatten_start = Date.now();
@@ -314,10 +352,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           updateExpectedResult(testCase.file, reformatActual);
           return makeResult("passed", "(updated expected output)");
         }
-        return makeResult(
-          "failed",
-          `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-        );
+        return makeResult("failed", formatMismatch(expected, reformatActual));
       }
       if (flattenedResult === null) return makeResult("passed");
       {
@@ -362,10 +397,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           updateExpectedResult(testCase.file, reformatActual);
           return makeResult("passed", "(updated expected output)");
         }
-        return makeResult(
-          "failed",
-          `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-        );
+        return makeResult("failed", formatMismatch(expected, reformatActual));
       }
 
       return makeResult(
@@ -388,7 +420,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       updateExpectedResult(testCase.file, actual);
       return makeResult("passed", "(updated expected output)");
     }
-    return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
+    return makeResult("failed", formatMismatch(expected, actual));
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const expected = stripWarnings(testCase.expectedResult.trim());
@@ -411,10 +443,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     }
 
     console.error(error);
-    return makeResult(
-      "failed",
-      `Output mismatch (Exception):\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-    );
+    return makeResult("failed", formatMismatch(expected, reformatActual, "Output mismatch (Exception)"));
   }
 }
 
@@ -426,13 +455,14 @@ async function main() {
     chunks.push(chunk as Buffer);
   }
   const input = Buffer.concat(chunks).toString("utf-8");
-  const { testCase, testsuiteRoot, updateMode } = JSON.parse(input) as {
+  const { testCase, testsuiteRoot, updateMode, omcMode } = JSON.parse(input) as {
     testCase: TestCase;
     testsuiteRoot: string;
     updateMode: boolean;
+    omcMode?: boolean;
   };
 
-  const result = runTestCase(testCase, testsuiteRoot, updateMode);
+  const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false);
 
   // Write result as JSON to stdout (parent reads this)
   process.stdout.write(JSON.stringify(result) + "\n");

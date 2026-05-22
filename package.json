@@ -40,7 +40,8 @@
     "preview:ide": "npx tsx apps/ide/src/preview-static.ts",
     "release": "nx release",
     "release:dry-run": "nx release --dry-run",
-    "test": "nx run-many --target=test"
+    "test": "nx run-many --target=test",
+    "test:single": "npx tsx packages/core/tests/testsuite-runner.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": "eslint",
