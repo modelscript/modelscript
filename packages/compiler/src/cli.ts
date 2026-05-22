@@ -339,9 +339,32 @@ async function generate(fileArg: string) {
     diffContent = diffLines.join("\n");
   }
 
+  let i18nContent = "";
+  const i18nSpecs = classSpecs.filter((s: any) => s.i18nConfig);
+  if (i18nSpecs.length > 0) {
+    const i18nLines: string[] = [];
+    i18nLines.push(`export const i18nConfig: Record<string, I18nConfig> = {`);
+    for (const spec of i18nSpecs) {
+      let serializedJSON = JSON.stringify(spec.i18nConfig, null, 4);
+      // Safely unquote the __FUNCTION__ blocks so they execute as lambdas
+      serializedJSON = serializedJSON.replace(/"__FUNCTION__(.*?)__FUNCTION__"/g, (match, p1) => {
+        return p1.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      });
+      const indentedJSON = serializedJSON
+        .split("\n")
+        .map((l: string, i: number) => (i === 0 ? l : `  ${l}`))
+        .join("\n");
+      i18nLines.push(`  ${JSON.stringify(spec.ruleName)}: ${indentedJSON},`);
+    }
+    i18nLines.push(`};`);
+    i18nLines.push(``);
+    i18nContent = i18nLines.join("\n");
+  }
+
   const imports = ["IndexerHook", "RefHook"];
   if (graphicsSpecs.length > 0) imports.push("GraphicsConfig");
   if (diffSpecs.length > 0) imports.push("DiffConfig");
+  if (i18nSpecs.length > 0) imports.push("I18nConfig");
 
   const combinedConfigContent =
     `import type { ${imports.join(", ")} } from "@modelscript/compiler";\n\n` +
@@ -351,7 +374,9 @@ async function generate(fileArg: string) {
     "\n" +
     graphicsContent +
     "\n" +
-    diffContent;
+    diffContent +
+    "\n" +
+    i18nContent;
 
   const configFile = path.join(srcGenDir, "config.ts");
   fs.writeFileSync(configFile, combinedConfigContent, "utf-8");

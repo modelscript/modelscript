@@ -741,6 +741,25 @@ export class ConnectEquation extends SemanticNode {
   }
 }
 
+export class FunctionCall extends SemanticNode {
+  readonly kind = "Unknown";
+
+  // --- CST Fields ---
+  /** Field: functionReference */
+  get functionReference(): string | null {
+    return this.field("functionReference");
+  }
+  /** Field: functionCallArguments */
+  get functionCallArguments(): string | null {
+    return this.field("functionCallArguments");
+  }
+
+  // --- Visitor ---
+  accept<R, A>(visitor: ModelicaVisitor<R, A>, arg?: A): R {
+    return visitor.visitFunctionCall(this, arg);
+  }
+}
+
 /**
  * Visitor interface for all generated semantic node types.
  * Extends the base SemanticVisitor with typed visit methods.
@@ -755,6 +774,7 @@ export interface ModelicaVisitor<R, A = void> extends SemanticVisitor<R, A> {
   visitComponentDeclaration(node: ComponentDeclaration, arg?: A): R;
   visitShortClassDefinition(node: ShortClassDefinition, arg?: A): R;
   visitConnectEquation(node: ConnectEquation, arg?: A): R;
+  visitFunctionCall(node: FunctionCall, arg?: A): R;
 }
 
 /**

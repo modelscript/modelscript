@@ -33,6 +33,7 @@ export * from "./arena-fold.js";
 export * from "./arena-isolation.js";
 export * from "./arena-pantelides.js";
 export * from "./arena-printer.js";
+export * from "./i18n-extractor.js";
 export * from "./interner.js";
 export * from "./line-index.js";
 export * from "./lsp-bridge.js";

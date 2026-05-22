@@ -18,7 +18,6 @@ interface FieldInfo {
   inferredType: string;
 }
 
-/** All info extracted from a single def() rule for class generation. */
 interface ClassSpec {
   ruleName: string;
   kind: string;
@@ -31,6 +30,7 @@ interface ClassSpec {
   model: ModelConfig;
   graphicsConfig?: any;
   diffConfig?: any;
+  i18nConfig?: any;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +328,17 @@ export function extractClassSpecs(langConfig: any, $: Record<string, any>): Clas
       }
     }
 
+    let i18nConfig: any = undefined;
+    if (options.i18n) {
+      i18nConfig = { ...options.i18n };
+      if (typeof i18nConfig.scope === "function") {
+        i18nConfig.scope = `__FUNCTION__${i18nConfig.scope.toString()}__FUNCTION__`;
+      }
+      if (typeof i18nConfig.extract === "function") {
+        i18nConfig.extract = `__FUNCTION__${i18nConfig.extract.toString()}__FUNCTION__`;
+      }
+    }
+
     let baseClass = "SemanticNode";
     if (typeof model.extends === "function") {
       baseClass = model.extends(new Proxy({}, { get: (_, prop) => toPascalCase(prop as string) }));
@@ -346,6 +357,7 @@ export function extractClassSpecs(langConfig: any, $: Record<string, any>): Clas
       queryNames,
       graphicsConfig,
       diffConfig,
+      i18nConfig,
       model: {
         ...model,
         specializable: model.specializable ?? false,

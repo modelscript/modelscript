@@ -737,6 +737,101 @@ export default language({
           optional(field("constrainingClause", $.ConstrainingClause)),
           ";",
         ),
+        i18n: {
+          scope: (self) => {
+            const spec = self.childForFieldName("classSpecifier");
+            return spec?.childForFieldName("identifier")?.text ?? null;
+          },
+          extract: (db, self) => {
+            const results = [];
+            const spec = self.childForFieldName("classSpecifier");
+
+            // 1. Extract class name
+            const nameNode = spec?.childForFieldName("identifier");
+            if (nameNode?.text) {
+              results.push({ msgid: nameNode.text });
+            }
+
+            // 2. Extract description
+            const descNode = spec?.childForFieldName("description");
+            if (descNode) {
+              const parts = [];
+              for (const child of descNode.children) {
+                if (child.text && child.text !== "+") {
+                  parts.push(child.text);
+                }
+              }
+              const desc = parts.map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s)).join(" ");
+              if (desc) {
+                results.push({ msgid: desc });
+              }
+            }
+
+            // 3. Extract annotation Documentation(info="...", revisions="...")
+            const ann = self.childForFieldName("annotationClause");
+            if (ann) {
+              const classMod = ann.childForFieldName("classModification");
+              if (classMod) {
+                for (const arg of classMod.children) {
+                  if (arg.type === "ElementModification") {
+                    const argName = arg.childForFieldName("name")?.text;
+                    if (argName === "Documentation") {
+                      const mod = arg.childForFieldName("modification")?.childForFieldName("classModification");
+                      if (mod) {
+                        for (const docArg of mod.children) {
+                          if (docArg.type === "ElementModification") {
+                            const docArgName = docArg.childForFieldName("name")?.text;
+                            if (docArgName === "info" || docArgName === "revisions") {
+                              const val = docArg
+                                .childForFieldName("modification")
+                                ?.childForFieldName("modificationExpression")
+                                ?.childForFieldName("expression");
+                              if (val && val.text) {
+                                results.push({ msgid: val.text });
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            // 4. Extract enumeration literals (if ShortClassSpecifier)
+            if (spec && spec.type === "ShortClassSpecifier") {
+              const enumNode = spec.childForFieldName("enumeration");
+              if (enumNode) {
+                for (const child of spec.children) {
+                  if (child.type === "EnumerationLiteral") {
+                    const litName = child.childForFieldName("identifier")?.text;
+                    if (litName) {
+                      results.push({ msgid: litName });
+                    }
+                    const litDesc = child.childForFieldName("description");
+                    if (litDesc) {
+                      const parts = [];
+                      for (const sChild of litDesc.children) {
+                        if (sChild.text && sChild.text !== "+") {
+                          parts.push(sChild.text);
+                        }
+                      }
+                      const desc = parts
+                        .map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s))
+                        .join(" ");
+                      if (desc) {
+                        results.push({ msgid: desc });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            return results;
+          },
+        },
         symbol: (self) => {
           return {
             kind: "Class",
@@ -3203,6 +3298,67 @@ export default language({
           optional(field("description", $.Description)),
           optional(field("annotationClause", $.AnnotationClause)),
         ),
+        i18n: {
+          extract: (db, self) => {
+            const results = [];
+
+            // 1. Extract component name
+            const decl = self.childForFieldName("declaration");
+            const nameNode = decl?.childForFieldName("identifier");
+            if (nameNode?.text) {
+              results.push({ msgid: nameNode.text });
+            }
+
+            // 2. Extract component description
+            const descNode = self.childForFieldName("description");
+            if (descNode) {
+              const parts = [];
+              for (const child of descNode.children) {
+                if (child.text && child.text !== "+") {
+                  parts.push(child.text);
+                }
+              }
+              const desc = parts.map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s)).join(" ");
+              if (desc) {
+                results.push({ msgid: desc });
+              }
+            }
+
+            // 3. Extract Dialog annotation (tab, group)
+            const ann = self.childForFieldName("annotationClause");
+            if (ann) {
+              const classMod = ann.childForFieldName("classModification");
+              if (classMod) {
+                for (const arg of classMod.children) {
+                  if (arg.type === "ElementModification") {
+                    const argName = arg.childForFieldName("name")?.text;
+                    if (argName === "Dialog") {
+                      const mod = arg.childForFieldName("modification")?.childForFieldName("classModification");
+                      if (mod) {
+                        for (const dialogArg of mod.children) {
+                          if (dialogArg.type === "ElementModification") {
+                            const dArgName = dialogArg.childForFieldName("name")?.text;
+                            if (dArgName === "tab" || dArgName === "group") {
+                              const val = dialogArg
+                                .childForFieldName("modification")
+                                ?.childForFieldName("modificationExpression")
+                                ?.childForFieldName("expression");
+                              if (val && val.text) {
+                                results.push({ msgid: val.text });
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            return results;
+          },
+        },
         symbol: (self) => ({
           kind: "Component",
           name: self.declaration.identifier,
@@ -5151,10 +5307,49 @@ export default language({
       seq(field("identifier", $.IDENT), optional(field("arraySubscripts", $.ArraySubscripts))),
 
     FunctionCall: ($) =>
-      seq(
-        field("functionReference", choice($.ComponentReference, "der", "initial", "pure")),
-        field("functionCallArguments", $.FunctionCallArguments),
-      ),
+      def({
+        syntax: seq(
+          field("functionReference", choice($.ComponentReference, "der", "initial", "pure")),
+          field("functionCallArguments", $.FunctionCallArguments),
+        ),
+        model: {
+          name: "FunctionCall",
+        },
+        i18n: {
+          extract: (db, self) => {
+            const funcRef = self.childForFieldName("functionReference");
+            if (funcRef && funcRef.text === "Text") {
+              const args = self.childForFieldName("functionCallArguments");
+              if (args) {
+                for (const child of args.children) {
+                  if (child.type === "NamedArgument") {
+                    const name = child.childForFieldName("identifier")?.text;
+                    if (name === "textString") {
+                      const val = child.childForFieldName("argument")?.childForFieldName("expression");
+                      if (val && val.text) {
+                        return { msgid: val.text };
+                      }
+                    }
+                  } else if (child.type === "NamedArguments") {
+                    for (const sub of child.children) {
+                      if (sub.type === "NamedArgument") {
+                        const name = sub.childForFieldName("identifier")?.text;
+                        if (name === "textString") {
+                          const val = sub.childForFieldName("argument")?.childForFieldName("expression");
+                          if (val && val.text) {
+                            return { msgid: val.text };
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            return null;
+          },
+        },
+      }),
 
     FunctionCallArguments: ($) =>
       seq(

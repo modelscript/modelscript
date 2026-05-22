@@ -322,6 +322,22 @@ export interface DiffConfig {
   breaking?: string[];
 }
 
+export interface I18nTextConfig {
+  field: string;
+  context?: "self" | "scope";
+}
+
+export interface I18nConfig {
+  /** Fields to extract directly as msgid. */
+  texts?: (string | I18nTextConfig)[];
+  /** Child fields to traverse recursively. */
+  traverse?: string[];
+  /** Function that resolves the scope name for this node (if it introduces a new namespace context). */
+  scope?: (self: any) => string | null;
+  /** Dynamic custom extraction callback. */
+  extract?: (db: any, self: any) => any;
+}
+
 export interface DefOptions<Fields extends string = string, QKeys extends string = never> {
   /**
    * Defines the fast symbol graph representation of this syntax node.
@@ -365,6 +381,10 @@ export interface DefOptions<Fields extends string = string, QKeys extends string
    * Enables blast radius and compatibility reports.
    */
   diff?: DiffConfig;
+  /**
+   * Configuration for internationalization (I18n) extraction.
+   */
+  i18n?: I18nConfig;
   /**
    * Configuration for generating a typed pull-up AST class.
    * When present, `generate-ast-classes.ts` produces a TypeScript class

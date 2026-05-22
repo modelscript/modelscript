@@ -1,4 +1,4 @@
-import type { DiffConfig, GraphicsConfig, IndexerHook, RefHook } from "@modelscript/compiler";
+import type { DiffConfig, GraphicsConfig, I18nConfig, IndexerHook, RefHook } from "@modelscript/compiler";
 
 export const INDEXER_HOOKS: IndexerHook[] = [
   {
@@ -100,6 +100,14 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     ruleName: "ComponentReference",
     kind: "Reference",
     namePath: "part",
+    exportPaths: [],
+    inheritPaths: [],
+    metadataFieldPaths: {},
+  },
+  {
+    ruleName: "FunctionCall",
+    kind: "Unknown",
+    namePath: "name",
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {},
@@ -339,5 +347,180 @@ export const diffConfig: Record<string, DiffConfig> = {
     ignore: ["annotationClause", "description"],
     minor: ["visibility"],
     breaking: ["typeSpecifier", "causality", "isParameter"],
+  },
+};
+
+export const i18nConfig: Record<string, I18nConfig> = {
+  ClassDefinition: {
+    scope: (self) => {
+      const spec = self.childForFieldName("classSpecifier");
+      return spec?.childForFieldName("identifier")?.text ?? null;
+    },
+    extract: (db, self) => {
+      const results = [];
+      const spec = self.childForFieldName("classSpecifier");
+      const nameNode = spec?.childForFieldName("identifier");
+      if (nameNode?.text) {
+        results.push({ msgid: nameNode.text });
+      }
+      const descNode = spec?.childForFieldName("description");
+      if (descNode) {
+        const parts = [];
+        for (const child of descNode.children) {
+          if (child.text && child.text !== "+") {
+            parts.push(child.text);
+          }
+        }
+        const desc = parts.map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s)).join(" ");
+        if (desc) {
+          results.push({ msgid: desc });
+        }
+      }
+      const ann = self.childForFieldName("annotationClause");
+      if (ann) {
+        const classMod = ann.childForFieldName("classModification");
+        if (classMod) {
+          for (const arg of classMod.children) {
+            if (arg.type === "ElementModification") {
+              const argName = arg.childForFieldName("name")?.text;
+              if (argName === "Documentation") {
+                const mod = arg.childForFieldName("modification")?.childForFieldName("classModification");
+                if (mod) {
+                  for (const docArg of mod.children) {
+                    if (docArg.type === "ElementModification") {
+                      const docArgName = docArg.childForFieldName("name")?.text;
+                      if (docArgName === "info" || docArgName === "revisions") {
+                        const val = docArg
+                          .childForFieldName("modification")
+                          ?.childForFieldName("modificationExpression")
+                          ?.childForFieldName("expression");
+                        if (val && val.text) {
+                          results.push({ msgid: val.text });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (spec && spec.type === "ShortClassSpecifier") {
+        const enumNode = spec.childForFieldName("enumeration");
+        if (enumNode) {
+          for (const child of spec.children) {
+            if (child.type === "EnumerationLiteral") {
+              const litName = child.childForFieldName("identifier")?.text;
+              if (litName) {
+                results.push({ msgid: litName });
+              }
+              const litDesc = child.childForFieldName("description");
+              if (litDesc) {
+                const parts = [];
+                for (const sChild of litDesc.children) {
+                  if (sChild.text && sChild.text !== "+") {
+                    parts.push(sChild.text);
+                  }
+                }
+                const desc = parts.map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s)).join(" ");
+                if (desc) {
+                  results.push({ msgid: desc });
+                }
+              }
+            }
+          }
+        }
+      }
+      return results;
+    },
+  },
+  ComponentDeclaration: {
+    extract: (db, self) => {
+      const results = [];
+      const decl = self.childForFieldName("declaration");
+      const nameNode = decl?.childForFieldName("identifier");
+      if (nameNode?.text) {
+        results.push({ msgid: nameNode.text });
+      }
+      const descNode = self.childForFieldName("description");
+      if (descNode) {
+        const parts = [];
+        for (const child of descNode.children) {
+          if (child.text && child.text !== "+") {
+            parts.push(child.text);
+          }
+        }
+        const desc = parts.map((s) => (s.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s)).join(" ");
+        if (desc) {
+          results.push({ msgid: desc });
+        }
+      }
+      const ann = self.childForFieldName("annotationClause");
+      if (ann) {
+        const classMod = ann.childForFieldName("classModification");
+        if (classMod) {
+          for (const arg of classMod.children) {
+            if (arg.type === "ElementModification") {
+              const argName = arg.childForFieldName("name")?.text;
+              if (argName === "Dialog") {
+                const mod = arg.childForFieldName("modification")?.childForFieldName("classModification");
+                if (mod) {
+                  for (const dialogArg of mod.children) {
+                    if (dialogArg.type === "ElementModification") {
+                      const dArgName = dialogArg.childForFieldName("name")?.text;
+                      if (dArgName === "tab" || dArgName === "group") {
+                        const val = dialogArg
+                          .childForFieldName("modification")
+                          ?.childForFieldName("modificationExpression")
+                          ?.childForFieldName("expression");
+                        if (val && val.text) {
+                          results.push({ msgid: val.text });
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return results;
+    },
+  },
+  FunctionCall: {
+    extract: (db, self) => {
+      const funcRef = self.childForFieldName("functionReference");
+      if (funcRef && funcRef.text === "Text") {
+        const args = self.childForFieldName("functionCallArguments");
+        if (args) {
+          for (const child of args.children) {
+            if (child.type === "NamedArgument") {
+              const name = child.childForFieldName("identifier")?.text;
+              if (name === "textString") {
+                const val = child.childForFieldName("argument")?.childForFieldName("expression");
+                if (val && val.text) {
+                  return { msgid: val.text };
+                }
+              }
+            } else if (child.type === "NamedArguments") {
+              for (const sub of child.children) {
+                if (sub.type === "NamedArgument") {
+                  const name = sub.childForFieldName("identifier")?.text;
+                  if (name === "textString") {
+                    const val = sub.childForFieldName("argument")?.childForFieldName("expression");
+                    if (val && val.text) {
+                      return { msgid: val.text };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    },
   },
 };

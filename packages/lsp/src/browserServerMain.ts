@@ -3699,7 +3699,7 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
       ) as any;
       globalModelicaQueryEngine = engine;
       if (sharedContext) {
-        sharedContext.setQueryEngine(globalModelicaQueryEngine);
+        sharedContext.setQueryEngine(globalModelicaQueryEngine!);
         sharedContext.setWorkspaceIndex(globalWorkspaceIndex);
       }
     }

@@ -49,13 +49,14 @@ export default language({
         adapters: {
           modelica: {
             target: "ClassDefinition",
-            transform: (db: AdapterDB, self: SymbolEntry) => {
+            transform: (db: AdapterDB, self: SymbolEntry | Record<string, unknown>) => {
+              const entry = self as SymbolEntry;
               return {
-                name: self.name,
+                name: entry.name,
                 classKind: "package",
                 isAbstract: false,
                 components: db
-                  .childrenOf(self.id)
+                  .childrenOf(entry.id)
                   .map((c) => db.project(c, "modelica"))
                   .filter(Boolean),
                 nestedClasses: [],
@@ -135,10 +136,11 @@ export default language({
         adapters: {
           modelica: {
             target: "ComponentClause",
-            transform: (db: AdapterDB, self: SymbolEntry) => {
-              const metadata = self.metadata as CsvMetadata | undefined;
+            transform: (db: AdapterDB, self: SymbolEntry | Record<string, unknown>) => {
+              const entry = self as SymbolEntry;
+              const metadata = entry.metadata as CsvMetadata | undefined;
               return {
-                name: self.name,
+                name: entry.name,
                 typeSpecifier: metadata?.typeSpecifier ?? "Real",
                 causality: "local",
                 variability: "constant",
