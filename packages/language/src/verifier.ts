@@ -1,4 +1,4 @@
-import type { SimulationResult } from "@modelscript/simulator/simulation";
+import type { SimulationResult } from "@modelscript/compiler/simulator";
 import type { QueryDB, SymbolEntry } from "./runtime.js";
 
 /**

@@ -607,6 +607,12 @@ export class ArenaQueryFlattener {
       return;
     }
 
+    // --- Function / Partial Function types ---
+    if (classMeta?.classKind === "function" || classMeta?.classKind === "operator function") {
+      this.emitFunctionVariable(fullName, resolvedTypeName, entry, dae);
+      return;
+    }
+
     // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
     const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
 
@@ -988,6 +994,73 @@ export class ArenaQueryFlattener {
     }
 
     return varIdx;
+  }
+
+  // -------------------------------------------------------------------------
+  // Function Variable Emission
+  // -------------------------------------------------------------------------
+
+  private emitFunctionVariable(
+    name: string,
+    typeName: string,
+    componentEntry: SymbolEntry,
+    dae: ArenaDAEBuilder,
+  ): void {
+    const resolvedEntries = this.db.byName(typeName);
+    const resolvedId = resolvedEntries.length > 0 ? resolvedEntries[0].id : null;
+    const inputParts: string[] = [];
+    const outputParts: string[] = [];
+    if (resolvedId !== null) {
+      const elements = this.db.query<number[]>("instantiate", resolvedId);
+      if (elements) {
+        for (const elemId of elements) {
+          const entry = this.db.symbol(elemId);
+          if (entry && entry.kind === "Component") {
+            const qCausality = this.db.query<string | null>("causality", elemId);
+            const classInstId = this.db.query<number | null>("classInstance", elemId);
+            const classEntry = classInstId ? this.db.symbol(classInstId) : null;
+            let argType = classEntry?.name ?? "Real";
+            if (argType !== "Integer" && argType !== "Boolean" && argType !== "String" && argType !== "Clock") {
+              argType = "Real";
+            }
+            if (qCausality === "input") {
+              inputParts.push(`#${argType} ${entry.name}`);
+            } else if (qCausality === "output") {
+              outputParts.push(`#${argType}`);
+            }
+          }
+        }
+      }
+    }
+    const outputType = outputParts.length > 0 ? outputParts[0] : "#Real";
+    const varShortName = name.split(".").pop() ?? name;
+    const customSig = `${varShortName}<function>(${inputParts.join(", ")}) => ${outputType}`;
+
+    const varIdx = this.emitVariable(name, typeName, componentEntry, dae);
+    if (varIdx >= 0) {
+      dae.setVarCustomType(varIdx, customSig);
+    }
+  }
+
+  private resolveFunctionInputs(funcName: string): string[] {
+    const resolvedEntries = this.db.byName(funcName);
+    if (resolvedEntries.length === 0) return [];
+    const resolvedId = resolvedEntries[0].id;
+    const funcEntry = this.db.symbol(resolvedId);
+    if (funcEntry?.kind !== "Class") return [];
+    const elements = this.db.query<number[]>("instantiate", resolvedId);
+    if (!elements) return [];
+    const inputs: string[] = [];
+    for (const elemId of elements) {
+      const entry = this.db.symbol(elemId);
+      if (entry && entry.kind === "Component") {
+        const qCausality = this.db.query<string | null>("causality", elemId);
+        if (qCausality === "input") {
+          inputs.push(entry.name);
+        }
+      }
+    }
+    return inputs;
   }
 
   // -------------------------------------------------------------------------
@@ -2092,6 +2165,7 @@ export class ArenaQueryFlattener {
       loopVars,
       (funcName) => this.collectFunctionDefinition(funcName, dae),
       this.connectorCardinality,
+      (funcName) => this.resolveFunctionInputs(funcName),
     );
   }
 

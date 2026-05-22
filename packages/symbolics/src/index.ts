@@ -6,7 +6,7 @@ export * from "./calculus/integrate.js";
 export * from "./graphs/blt.js";
 export * from "./graphs/coloring.js";
 export * from "./graphs/pantelides.js";
-export * from "./graphs/sparse.js";
+
 export * from "./ir/expressions.js";
 export * from "./simplify/cas-bindings.js";
 export * from "./simplify/egraph-tensor.js";

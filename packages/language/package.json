@@ -49,7 +49,6 @@
     "@modelscript/compiler": "*",
     "@modelscript/diagram": "*",
     "@modelscript/polyglot": "*",
-    "@modelscript/simulator": "*",
     "commander": "^11.0.0",
     "tree-sitter-cli": "^0.24.7",
     "web-tree-sitter": "^0.24.7"

@@ -4,6 +4,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { TopologyGraph } from "@modelscript/compiler";
 import { UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
 import {
+  type ArenaSimulateOptions,
+  ModelicaSimulator,
+  runArenaDoE,
+  runSensitivityAnalysisArena,
+  simulateArena,
+} from "@modelscript/compiler/simulator";
+import {
   Context,
   createModelicaQueryEngine,
   createSysML2QueryEngine,
@@ -18,13 +25,6 @@ import {
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { executeQueryString, formatQueryResult, OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
-import {
-  type ArenaSimulateOptions,
-  ModelicaSimulator,
-  runArenaDoE,
-  runSensitivityAnalysisArena,
-  simulateArena,
-} from "@modelscript/simulator";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";

@@ -527,6 +527,7 @@ function generateClass(spec: ClassSpec, visitorName: string): string[] {
       if (fieldNames.has(key)) continue; // already emitted as a CST field getter
       const type = model.properties?.[key] ?? "string | null";
       if (model.properties?.[key]) continue; // handled below
+      if (model.queryTypes?.[key]) continue; // handled below as a query-backed property
       lines.push(`  get ${key}(): ${type} {`);
       lines.push(`    return this.attribute("${key}");`);
       lines.push(`  }`);

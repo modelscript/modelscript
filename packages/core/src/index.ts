@@ -13,6 +13,9 @@ export * from "./compiler/modelica/interpreter.js";
 export * from "./compiler/modelica/multibody-generator.js";
 export * from "./compiler/modelica/script-executor.js";
 
+// Side-effect import: registers all scripting handlers (simulate, montecarlo, optimize, calibrate)
+import "./compiler/modelica/scripting-handlers.js";
+
 export {
   ModelicaArrayClassInstance as ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance as ModelicaBooleanClassInstance,

@@ -1,4 +1,4 @@
-// Inline SimulationResult to break circular dependency with @modelscript/simulator
+// Inline SimulationResult to break circular dependency with @modelscript/compiler/simulator
 export interface SimulationResult {
   t: number[];
   states: string[];

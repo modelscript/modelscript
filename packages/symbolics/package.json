@@ -52,8 +52,6 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
-    "@modelscript/compiler": "*",
-    "@modelscript/modelica": "*",
     "@modelscript/utils": "*"
   },
   "devDependencies": {
@@ -72,5 +70,11 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "nx": {
+    "implicitDependencies": [
+      "!@modelscript/modelica",
+      "!@modelscript/compiler"
+    ]
   }
 }

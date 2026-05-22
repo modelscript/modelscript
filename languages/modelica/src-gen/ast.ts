@@ -528,6 +528,10 @@ export class ComponentDeclaration extends SemanticNode {
   }
 
   // --- Computed Properties (query-backed) ---
+  get typeSpecifier(): string | null {
+    return this.query<string | null>("typeSpecifier");
+  }
+
   get resolvedType(): SemanticNode | null {
     const entry = this.query<SymbolEntry | null>("resolvedType");
     return entry ? (wrapEntry(entry, this.db) as SemanticNode | null) : (null as unknown as SemanticNode | null);
@@ -576,6 +580,10 @@ export class ComponentDeclaration extends SemanticNode {
 
   get isFinal(): boolean {
     return this.query<boolean>("isFinal");
+  }
+
+  get isEvaluate(): boolean {
+    return this.query<boolean>("isEvaluate");
   }
 
   get isInner(): boolean {

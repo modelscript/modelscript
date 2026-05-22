@@ -2,13 +2,23 @@
 ============================================================
 Test: Composite component (B x where B extends A)
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 4ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.8132409605843237
 [BLT] Starting DFS matching for 2 equations and 2 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
 [BLT] Tarjan SCC took 0ms
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
-[DAE] BLT transformation took 1ms
+[DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 3ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.6608764472452449
 ✅ MATCH
 class Top
   Real comp.v(start = 0.0);
@@ -21,13 +31,27 @@ end Top;
 ============================================================
 Test: For-equation with integer range
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.6264424143610561
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
+[BLT] Under-determined system: 0 equations matched to 1 unknowns.
+[BLT] Unmatched unknowns: x
+[BLT] Over-determined system: 1 unused equations.
+[BLT] Unused eq [0]: (skipped stringify to prevent OOM)
 [BLT] Tarjan SCC took 0ms
 [BLT] Starting equation sorting and explicit solves
-[BLT] Equation sorting took 1ms
-[DAE] BLT transformation took 1ms
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 4ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.4153889879369146
 ❌ MISMATCH
 --- Legacy ---
 class ForEq
@@ -49,6 +73,11 @@ end ForEq;
 ============================================================
 Test: When-equation (event-driven)
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.5062953585668238
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -56,6 +85,11 @@ Test: When-equation (event-driven)
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.4658736719456348
 ✅ MATCH
 class WhenModel
   Real x(start = 1.0);
@@ -70,6 +104,11 @@ end WhenModel;
 ============================================================
 Test: Multiple equation sections
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.7788528435584164
 [BLT] Starting DFS matching for 2 equations and 2 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -77,6 +116,11 @@ Test: Multiple equation sections
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 1ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 4ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.03358873385971628
 ✅ MATCH
 class MultiSections
   Real x(start = 1.0);
@@ -89,6 +133,11 @@ end MultiSections;
 ============================================================
 Test: Initial equation section
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.051988811561211934
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -96,6 +145,11 @@ Test: Initial equation section
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.05419755356251732
 ✅ MATCH
 class InitEq
   Real x;
@@ -108,13 +162,23 @@ end InitEq;
 ============================================================
 Test: If-equation with elseif branches
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.8168284676711187
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
 [BLT] Tarjan SCC took 0ms
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
-[DAE] BLT transformation took 1ms
+[DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 3ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.02608500160863736
 ✅ MATCH
 class IfElseIf
   parameter Integer mode = 2;
@@ -126,13 +190,25 @@ end IfElseIf;
 ============================================================
 Test: Algorithm section with if/assignment
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 3ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.5855073045632884
 [BLT] Starting DFS matching for 1 equations and 2 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
-[BLT] Tarjan SCC took 0ms
+[BLT] Under-determined system: 1 equations matched to 2 unknowns.
+[BLT] Unmatched unknowns: y
+[BLT] Tarjan SCC took 1ms
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 1ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.930805026101057
 ✅ MATCH
 class AlgoModel
   Real x(start = 1.0);
@@ -150,6 +226,11 @@ end AlgoModel;
 ============================================================
 Test: Constant variable
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.9640460672698519
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -157,6 +238,11 @@ Test: Constant variable
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.6295636564784454
 ✅ MATCH
 class WithConst
   constant Real pi = 3.14159;
@@ -168,6 +254,11 @@ end WithConst;
 ============================================================
 Test: Discrete variable with start
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 3ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.8515188163685584
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -175,6 +266,11 @@ Test: Discrete variable with start
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.2001587506011947
 ✅ MATCH
 class DiscreteModel
   Real x(start = 1.0);
@@ -189,6 +285,11 @@ end DiscreteModel;
 ============================================================
 Test: Negation distribution -(a*b) → (-a)*b
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 1ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.8613883509592493
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
@@ -196,25 +297,40 @@ Test: Negation distribution -(a*b) → (-a)*b
 [BLT] Starting equation sorting and explicit solves
 [BLT] Equation sorting took 0ms
 [DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 1ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.21898339301939085
 ✅ MATCH
 class NegDist
   parameter Real a = 2.0;
   parameter Real b = 3.0;
   Real x(start = 1.0);
 equation
-  der(x) = (-(a * b)) * x;
+  der(x) = -(a * b) * x;
 end NegDist;
 
 ============================================================
 Test: If-then-else expression
 ============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 3ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.9376856184114901
 [BLT] Starting DFS matching for 1 equations and 1 unknowns
 [BLT] DFS matching took 0ms
 [BLT] Starting Tarjan SCC
 [BLT] Tarjan SCC took 0ms
 [BLT] Starting equation sorting and explicit solves
-[BLT] Equation sorting took 0ms
-[DAE] BLT transformation took 0ms
+[BLT] Equation sorting took 1ms
+[DAE] BLT transformation took 1ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 1ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.2674881873992847
 ✅ MATCH
 class IfExpr
   parameter Boolean flag = true;
@@ -224,5 +340,39 @@ equation
 end IfExpr;
 
 ============================================================
-SUMMARY: 10 passed, 1 failed out of 11 tests
+Test: Partial function application
+============================================================
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 1ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 1ms for uri synthetic-0.4521838164441375
+[BLT] Starting DFS matching for 0 equations and 1 unknowns
+[BLT] DFS matching took 0ms
+[BLT] Starting Tarjan SCC
+[BLT] Under-determined system: 0 equations matched to 1 unknowns.
+[BLT] Unmatched unknowns: x
+[BLT] Tarjan SCC took 0ms
+[BLT] Starting equation sorting and explicit solves
+[BLT] Equation sorting took 0ms
+[DAE] BLT transformation took 0ms
+[WorkspaceIndex] toUnified() started. Processing 0 files...
+[WorkspaceIndex] toUnified() started. Processing 1 files...
+[Context] toUnified took 2ms for uri modelscript-cas.mo
+[WorkspaceIndex] toUnified() started. Processing 2 files...
+[Context] toUnified took 0ms for uri synthetic-0.4665705267279622
+❌ MISMATCH
+--- Legacy ---
+class PartialApplication1
+  Real x = f2$func_f1(time);
+end PartialApplication1;
+--- Arena ---
+class PartialApplication1
+  Real x;
+equation
+  x = f2(time, function f1(#(2.0)));
+end PartialApplication1;
+
+============================================================
+SUMMARY: 10 passed, 2 failed out of 12 tests
 ============================================================

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { ArenaSimulator } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
 import {
   type FmuArchiveOptions,
@@ -15,7 +16,6 @@ import {
   serializeArenaToJson,
 } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
-import { ArenaSimulator } from "@modelscript/simulator";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

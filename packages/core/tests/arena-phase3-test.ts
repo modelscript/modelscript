@@ -186,6 +186,32 @@ equation
   der(x) = if flag then -x else -2.0 * x;
 end IfExpr;`,
   },
+
+  // ── Partial function application ──
+  {
+    name: "Partial function application",
+    className: "PartialApplication1",
+    src: `partial function pf
+  input Real x;
+  output Real z;
+end pf;
+
+function f1
+  input Real x;
+  input Real y;
+  output Real z = x + y;
+end f1;
+
+function f2
+  input Real x;
+  input pf func;
+  output Real z = x * func(x);
+end f2;
+
+class PartialApplication1
+  Real x = f2(time, function f1(y = 2.0));
+end PartialApplication1;`,
+  },
 ];
 
 let passed = 0;

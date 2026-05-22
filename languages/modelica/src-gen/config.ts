@@ -64,7 +64,13 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     namePath: "declaration.identifier",
     exportPaths: [],
     inheritPaths: [],
-    metadataFieldPaths: { modification: "declaration.modification", description: "description" },
+    metadataFieldPaths: {
+      modification: "declaration.modification",
+      description: "description",
+      typeSpecifier: "parent.typeSpecifier",
+      causality: "parent.causality",
+      variability: "parent.variability",
+    },
   },
   {
     ruleName: "ShortClassDefinition",

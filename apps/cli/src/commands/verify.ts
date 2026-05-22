@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { VerificationRunner } from "@modelscript/compiler";
+import { simulateArenaAsync } from "@modelscript/compiler/simulator";
 import { Context, createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
-import { simulateArenaAsync } from "@modelscript/simulator";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

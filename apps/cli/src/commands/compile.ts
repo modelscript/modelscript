@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { printArenaDAE } from "@modelscript/compiler";
+import { snapshotMemory } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
-import { snapshotMemory } from "@modelscript/simulator";
 import path from "node:path";
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";

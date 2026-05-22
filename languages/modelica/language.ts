@@ -1559,8 +1559,9 @@ export default language({
             const results = [];
             for (const el of db.childrenOf(self.id)) {
               if (el.kind === "Component") {
-                const elMeta = el.metadata as Record<string, unknown>;
-                if (!elMeta?.causality && !elMeta?.isProtected) {
+                const causality = db.query<string | null>("causality", el.id);
+                const isProtected = db.query<boolean>("isProtected", el.id);
+                if (!causality && !isProtected) {
                   // Narrow to the offending component's byte range
                   results.push(
                     error(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
@@ -1616,28 +1617,26 @@ export default language({
             const results = [];
             for (const el of db.childrenOf(self.id)) {
               if (el.kind === "Component") {
-                const elMeta = el.metadata as Record<string, unknown>;
-                if (elMeta?.causality) {
-                  const typeName = elMeta.typeSpecifier as string;
-                  if (typeName) {
-                    const resolved = db.byName(typeName)?.find((e) => e.kind === "Class" || e.kind === "Package");
-                    if (resolved) {
-                      const resMeta = resolved.metadata as Record<string, unknown>;
-                      const prefix = resMeta?.classPrefixes as string;
-                      if (
-                        prefix === "model" ||
-                        prefix === "block" ||
-                        prefix === "connector" ||
-                        prefix === "expandable connector"
-                      ) {
-                        // Narrow to the offending component's byte range
-                        results.push(
-                          error(
-                            `Function '${self.name}' cannot have an input/output variable '${el.name}' of type '${typeName}'`,
-                            { startByte: el.startByte, endByte: el.endByte },
-                          ),
-                        );
-                      }
+                const causality = db.query<string | null>("causality", el.id);
+                if (causality) {
+                  const typeEntry = db.query<SymbolEntry | null>("resolvedType", el.id);
+                  if (typeEntry) {
+                    const resMeta = typeEntry.metadata as Record<string, unknown>;
+                    const prefix = resMeta?.classPrefixes as string;
+                    if (
+                      prefix === "model" ||
+                      prefix === "block" ||
+                      prefix === "connector" ||
+                      prefix === "expandable connector"
+                    ) {
+                      const typeName = db.query<string | null>("typeSpecifier", el.id) ?? "?";
+                      // Narrow to the offending component's byte range
+                      results.push(
+                        error(
+                          `Function '${self.name}' cannot have an input/output variable '${el.name}' of type '${typeName}'`,
+                          { startByte: el.startByte, endByte: el.endByte },
+                        ),
+                      );
                     }
                   }
                 }
@@ -1653,8 +1652,9 @@ export default language({
             const results = [];
             for (const el of db.childrenOf(self.id)) {
               if (el.kind === "Component") {
-                const elMeta = el.metadata as Record<string, unknown>;
-                if (elMeta?.causality && elMeta?.isProtected) {
+                const causality = db.query<string | null>("causality", el.id);
+                const isProtected = db.query<boolean>("isProtected", el.id);
+                if (causality && isProtected) {
                   // Narrow to the offending component's byte range
                   results.push(
                     error(`Function input/output variable '${el.name}' cannot be protected`, {
@@ -2082,8 +2082,8 @@ export default language({
             const inputs: string[] = [];
             for (const child of db.childrenOf(self.id)) {
               if (child.kind !== "Component") continue;
-              const cMeta = child.metadata as Record<string, unknown>;
-              if (cMeta?.causality === "input") {
+              const causality = db.query<string | null>("causality", child.id);
+              if (causality === "input") {
                 inputs.push(child.name);
               }
             }
@@ -2147,9 +2147,8 @@ export default language({
             let unknowns = 0;
             for (const child of children) {
               if (child.kind !== "Component") continue;
-              const cMeta = child.metadata as Record<string, unknown>;
-              const variability = cMeta?.variability as string | undefined;
-              const causality = cMeta?.causality as string | undefined;
+              const variability = db.query<string | null>("variability", child.id);
+              const causality = db.query<string | null>("causality", child.id);
               if (variability === "parameter" || variability === "constant") continue;
               if (causality === "input") continue;
               // Count array dimensions if available
@@ -2640,8 +2639,8 @@ export default language({
                 .filter((c) => c.kind === "Component")
                 .map((c) => ({
                   name: c.name,
-                  typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier,
-                  direction: (c.metadata as Record<string, unknown>)?.causality ?? null,
+                  typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined,
+                  direction: ((c.metadata as Record<string, unknown>)?.causality as string) ?? null,
                   isParameter: (c.metadata as Record<string, unknown>)?.variability === "parameter",
                 })),
               nestedBlocks: db
@@ -3205,9 +3204,28 @@ export default language({
           attributes: {
             modification: self.declaration.modification,
             description: self.description,
+            typeSpecifier: self.parent.typeSpecifier,
+            causality: self.parent.causality,
+            variability: self.parent.variability,
           },
         }),
         queries: {
+          /**
+           * Get the raw type specifier name for this component.
+           */
+          typeSpecifier: (db: QueryDB, self: SymbolEntry) => {
+            const specArgs = db.argsOf<import("./modification-args.js").ModelicaModArgs>(self.id);
+            if (specArgs?.data?.isRedeclaration && specArgs.data.redeclaredTypeSpecifier) {
+              return specArgs.data.redeclaredTypeSpecifier;
+            }
+            const cstNode = db.cstNode(self.id);
+            let current = cstNode as any;
+            while (current && current.type !== "ComponentClause") {
+              current = current.parent;
+            }
+            return current?.childForFieldName("typeSpecifier")?.text ?? null;
+          },
+
           /**
            * Resolve the type specifier to the class it references.
            */
@@ -3654,6 +3672,7 @@ export default language({
           visitable: true,
           properties: {},
           queryTypes: {
+            typeSpecifier: "string | null",
             resolvedType: "SemanticNode | null",
             effectiveModification: "unknown",
             isConnectorType: "boolean",
@@ -3835,8 +3854,7 @@ export default language({
            * e.g. `F x;` where F doesn't exist in scope.
            */
           unresolvedTypeSpecifier: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const typeName = meta?.typeSpecifier as string | undefined;
+            const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
             // Skip built-in types
@@ -3874,8 +3892,7 @@ export default language({
            * e.g. `class A  A a; end A;` — A contains itself.
            */
           recursiveDefinition: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const typeName = meta?.typeSpecifier as string | undefined;
+            const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
             // Skip built-in types
@@ -3903,8 +3920,7 @@ export default language({
            * e.g. `X x = 1;` where X is a record with members.
            */
           typeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            const meta = self.metadata as Record<string, unknown>;
-            const typeName = meta?.typeSpecifier as string | undefined;
+            const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
             // Skip built-in scalar types
@@ -3943,8 +3959,7 @@ export default language({
           bindingTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
-            const meta = self.metadata as Record<string, unknown>;
-            const declaredType = meta?.typeSpecifier as string | undefined;
+            const declaredType = db.query<string | null>("typeSpecifier", self.id);
             if (!declaredType) return null;
 
             // Only check scalar built-in types for now
@@ -4117,8 +4132,7 @@ export default language({
           arrayElementTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
-            const meta = self.metadata as Record<string, unknown>;
-            const typeName = meta?.typeSpecifier as string | undefined;
+            const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
             // Must have array dimensions
@@ -4388,8 +4402,7 @@ export default language({
                         if (globals.length > 0) refEntry = globals[0];
                       }
                       if (refEntry) {
-                        const refMeta = refEntry.metadata as Record<string, unknown>;
-                        const refType = refMeta?.typeSpecifier as string | undefined;
+                        const refType = db.query<string | null>("typeSpecifier", refEntry.id);
                         actualArgTypes.push(refType ?? "?");
                         actualArgEntries.push(refEntry);
                       } else {
@@ -4423,15 +4436,14 @@ export default language({
               const buildCandidateSig = () => {
                 const candidateSig = inputs
                   .map((inp) => {
-                    const inpMeta = inp.metadata as Record<string, unknown>;
-                    const inpType = (inpMeta?.typeSpecifier as string) ?? "?";
+                    const inpType = db.query<string | null>("typeSpecifier", inp.id) ?? "?";
                     return `${inpType} ${inp.name}`;
                   })
                   .join(", ");
                 const outputs = db.query<SymbolEntry[]>("outputParameters", funcEntry!.id);
                 const outputType =
                   outputs && outputs.length > 0
-                    ? (((outputs[0].metadata as Record<string, unknown>)?.typeSpecifier as string) ?? "?")
+                    ? (db.query<string | null>("typeSpecifier", outputs[0].id) ?? "?")
                     : "void";
                 return { candidateSig, outputType };
               };
@@ -4457,8 +4469,7 @@ export default language({
                 const actualType = actualArgTypes[i];
                 if (actualType === "?") continue; // Can't infer, skip
 
-                const expectedMeta = inputs[i].metadata as Record<string, unknown>;
-                const expectedType = expectedMeta?.typeSpecifier as string | undefined;
+                const expectedType = db.query<string | null>("typeSpecifier", inputs[i].id);
                 if (!expectedType) continue;
 
                 if (!isSubtypeOf(actualType, expectedType)) {
@@ -4536,10 +4547,12 @@ export default language({
         adapters: {
           sysml2: {
             target: "PartUsage",
-            transform: (_db, self) => ({
+            transform: (db, self) => ({
               name: (self as SymbolEntry).name,
-              typeName: ((self as SymbolEntry).metadata as Record<string, unknown>)?.typeSpecifier,
-              direction: ((self as SymbolEntry).metadata as Record<string, unknown>)?.causality ?? null,
+              typeName: ((self as SymbolEntry).metadata as Record<string, unknown>)?.typeSpecifier as
+                | string
+                | undefined,
+              direction: (((self as SymbolEntry).metadata as Record<string, unknown>)?.causality as string) ?? null,
               isParameter: ((self as SymbolEntry).metadata as Record<string, unknown>)?.variability === "parameter",
             }),
           },
@@ -4972,8 +4985,7 @@ export default language({
                 if (entries?.length) refEntry = entries[0];
               }
               if (refEntry && refEntry.kind === "Component") {
-                const refMeta = refEntry.metadata as Record<string, unknown>;
-                const typeName = refMeta?.typeSpecifier as string | undefined;
+                const typeName = db.query<string | null>("typeSpecifier", refEntry.id);
                 if (typeName && builtinScalars.has(typeName)) {
                   return error(`'${refName}' is not a valid connector`, { field: fieldName });
                 }
@@ -5309,8 +5321,8 @@ export default language({
             .filter((c) => c.kind === "Component")
             .map((c) => ({
               name: c.name,
-              typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier,
-              direction: (c.metadata as Record<string, unknown>)?.causality ?? null,
+              typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined,
+              direction: ((c.metadata as Record<string, unknown>)?.causality as string) ?? null,
             })),
         },
       }),
@@ -5334,11 +5346,11 @@ export default language({
        * Project a Modelica ComponentClause (variable declaration) into
        * OWL2 data/object property assertions depending on the component type.
        */
-      ComponentClause: (_db, node) => {
-        const meta = node.metadata as Record<string, unknown>;
-        const typeSpec = meta?.typeSpecifier as string;
-        const variability = meta?.variability as string | undefined;
-        const parentName = meta?.parentName as string | undefined;
+      ComponentClause: (db, node) => {
+        const typeSpec = (node.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
+        const variability = (node.metadata as Record<string, unknown>)?.variability as string | undefined;
+        const parentId = node.parentId;
+        const parentName = parentId !== null ? db.symbol(parentId)?.name : undefined;
 
         if (variability === "parameter" && parentName) {
           return {

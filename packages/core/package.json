@@ -48,6 +48,7 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "dependencies": {
+    "@modelscript/compiler": "*",
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/modelica": "*",

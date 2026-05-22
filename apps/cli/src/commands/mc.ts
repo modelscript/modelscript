@@ -1,6 +1,6 @@
+import { type Distribution, type RandomVariable, runMonteCarloArena } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
-import { type Distribution, type RandomVariable, runMonteCarloArena } from "@modelscript/simulator";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";
 import type { CommandModule } from "yargs";

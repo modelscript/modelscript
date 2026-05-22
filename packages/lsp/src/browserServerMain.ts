@@ -97,7 +97,16 @@ import {
   printArenaDAE,
   type TokenData,
 } from "@modelscript/compiler";
+import { ModelicaCalibrator, ModelicaOptimizer, parseCsvMeasurements } from "@modelscript/compiler/optimizer";
 import { ScopeResolver } from "@modelscript/compiler/resolver";
+import type { DoEInputRange } from "@modelscript/compiler/simulator";
+import {
+  ArenaSimulator,
+  buildSurrogate,
+  runMonteCarloArena,
+  simulateArena,
+  simulateArenaAsync,
+} from "@modelscript/compiler/simulator";
 import { SymbolIndexer } from "@modelscript/compiler/symbol-indexer";
 import {
   Context,
@@ -135,15 +144,6 @@ import {
   generateMultiModelWrapper,
   generateRomWasmSource,
 } from "@modelscript/fmi";
-import { ModelicaCalibrator, ModelicaOptimizer, parseCsvMeasurements } from "@modelscript/optimizer";
-import type { DoEInputRange } from "@modelscript/simulator";
-import {
-  ArenaSimulator,
-  buildSurrogate,
-  runMonteCarloArena,
-  simulateArena,
-  simulateArenaAsync,
-} from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
 import { mapStepToMultiBody } from "@modelscript/step/mapper";
 import { QUERY_HOOKS as stepQueryHooks } from "@modelscript/step/query-hooks";
@@ -4881,9 +4881,9 @@ connection.onRequest(
     error?: string;
   }> => {
     connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
-    const { runMonteCarloSimulation } = await import("@modelscript/simulator");
-    type RandomVariable = import("@modelscript/simulator").RandomVariable;
-    type Distribution = import("@modelscript/simulator").Distribution;
+    const { runMonteCarloSimulation } = await import("@modelscript/compiler/simulator");
+    type RandomVariable = import("@modelscript/compiler/simulator").RandomVariable;
+    type Distribution = import("@modelscript/compiler/simulator").Distribution;
 
     let instances = documentInstances.get(params.uri);
     if (!instances || instances.length === 0) {

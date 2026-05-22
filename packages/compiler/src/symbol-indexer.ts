@@ -611,7 +611,11 @@ export class SymbolIndexer {
 
     for (const part of parts) {
       if (!current) return null;
-      current = current.childForFieldName(part);
+      if (part === "parent") {
+        current = current.parent ?? null;
+      } else {
+        current = current.childForFieldName(part);
+      }
     }
 
     return current;
@@ -730,6 +734,7 @@ export interface CSTNode {
   /** Byte offset where this node ends (tree-sitter convention). */
   endIndex?: number;
   children: CSTNode[];
+  parent?: CSTNode | null;
   childForFieldName(name: string): CSTNode | null;
   /** True if this node or any descendant has been modified since last parse. */
   hasChanges?: boolean;

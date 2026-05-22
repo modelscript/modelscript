@@ -87,6 +87,7 @@ export class ArenaExprVisitor {
     loopVars?: Map<string, number>,
     private onFunctionCall?: (funcName: string) => void,
     private cardinalityMap?: Map<string, number>,
+    private resolveFunctionInputs?: (funcName: string) => string[],
   ) {
     this.loopVars = loopVars ?? new Map();
   }
@@ -832,12 +833,31 @@ export class ArenaExprVisitor {
     const funcName = node.typeSpecifier?.text;
     if (!funcName) return undefined;
 
-    // Collect named arguments from the partial application
-    const argIds: number[] = [];
+    // Collect bound named arguments from the partial application
+    const boundArgs = new Map<string, number>();
     const namedArgs = node.namedArguments ?? [];
     for (const arg of namedArgs) {
+      const argName = arg.identifier?.text;
+      if (!argName) continue;
       const id = this.visit(arg.argument?.expression);
-      if (id !== undefined) argIds.push(id);
+      if (id !== undefined) {
+        boundArgs.set(argName, id);
+      }
+    }
+
+    // Resolve input parameters of the target function to correctly order the bound arguments
+    let argIds: number[] = [];
+    if (this.resolveFunctionInputs) {
+      const inputNames = this.resolveFunctionInputs(funcName);
+      for (const inputName of inputNames) {
+        const exprId = boundArgs.get(inputName);
+        if (exprId !== undefined) {
+          argIds.push(exprId);
+        }
+      }
+    } else {
+      // Fallback to original order if resolver is not available
+      argIds = Array.from(boundArgs.values());
     }
 
     // Notify function collector
@@ -845,8 +865,8 @@ export class ArenaExprVisitor {
       this.onFunctionCall(funcName);
     }
 
-    // Emit as a regular call expression (monomorphized at this point)
-    return this.dae.addCallExpr(funcName, argIds);
+    // Emit as a partial function application expression
+    return this.dae.addPartialFuncExpr(funcName, argIds);
   }
 
   public isRealTypedExpr(exprId: number): boolean {
