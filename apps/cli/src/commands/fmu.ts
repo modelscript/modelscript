@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
+import { Context } from "@modelscript/core";
 import {
   type FmuArchiveOptions,
   FMI2_FUNCTIONS_H,
@@ -12,9 +12,10 @@ import {
   generateFmu,
   generateFmuCSources,
   generateFmuWasmSource,
+  serializeArenaToJson,
 } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
-import { ModelicaSimulator } from "@modelscript/simulator";
+import { ArenaSimulator } from "@modelscript/simulator";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -139,25 +140,27 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     for (const p of args.paths) await context.addLibrary(p);
     profiler.end("parsing");
 
-    const instance = context.query(args.name);
-    if (!instance) {
-      console.error(`'${args.name}' not found`);
+    // Flatten the model
+    profiler.start("flattening");
+    const arena = context.flattenArena(args.name);
+    profiler.end("flattening");
+
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
       return;
     }
 
-    // Flatten the model
-    profiler.start("flattening");
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (instance as any).accept(new ModelicaFlattener(), ["", dae]);
-    profiler.end("flattening");
-
     // Prepare simulator to get state variable info
-    const simulator = new ModelicaSimulator(dae);
+    const simulator = new ArenaSimulator(arena);
     simulator.prepare();
 
+    const stateVars = new Set<string>();
+    for (const varIdx of simulator.stateVars) {
+      stateVars.add(arena.getVarName(varIdx));
+    }
+
     // Extract experiment annotation from the DAE as fallback for CLI flags
-    const exp = dae.experiment;
+    const exp = arena.experiment;
     const startTime = args.startTime ?? args["start-time"] ?? exp.startTime;
     const stopTime = args.stopTime ?? args["stop-time"] ?? exp.stopTime;
     const stepSize = args.stepSize ?? args["step-size"] ?? exp.interval;
@@ -174,7 +177,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       // ── XML-only mode ──
       profiler.start("codegen");
       const result = generateFmu(
-        dae,
+        arena,
         {
           modelIdentifier,
           description: args.description,
@@ -184,7 +187,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           stepSize,
           fmuType,
         },
-        simulator.stateVars,
+        stateVars,
       );
       profiler.end("codegen");
 
@@ -215,7 +218,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     };
 
     profiler.start("codegen");
-    let result = buildFmuArchive(dae, archiveOptions, simulator.stateVars);
+    let result = buildFmuArchive(arena, archiveOptions, stateVars);
     profiler.end("codegen");
 
     const outputPath = args.output ?? `${modelIdentifier}.fmu`;
@@ -223,7 +226,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     // ── Compile WASM ──
     if (args.wasm) {
       profiler.start("compilation_wasm");
-      const wasmSource = generateFmuWasmSource(dae, result.fmuResult, archiveOptions);
+      const wasmSource = generateFmuWasmSource(arena, result.fmuResult, archiveOptions);
       const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
       profiler.end("compilation_wasm");
 
@@ -233,7 +236,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         archiveOptions.wasmJsGlue = compileResult.jsGlue;
         // Re-build archive to include WASM files
         profiler.start("codegen");
-        result = buildFmuArchive(dae, archiveOptions, simulator.stateVars);
+        result = buildFmuArchive(arena, archiveOptions, stateVars);
         profiler.end("codegen");
         console.log(`  Compiled WebAssembly module.`);
       } else {
@@ -247,7 +250,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "msc-fmu-"));
       try {
         // Generate C sources to temp dir
-        const sources = generateFmuCSources(dae, result.fmuResult, archiveOptions);
+        const sources = generateFmuCSources(arena, result.fmuResult, archiveOptions);
         const srcDir = path.join(tmpDir, "sources");
         fs.mkdirSync(srcDir, { recursive: true });
         fs.writeFileSync(path.join(srcDir, `${modelIdentifier}_model.h`), sources.modelH);
@@ -337,7 +340,10 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           }
         }
         if (archiveOptions.includeModelJson !== false) {
-          finalEntries.set("resources/model.json", encoder.encode(JSON.stringify(dae.toJSON, null, 2)));
+          finalEntries.set(
+            "resources/model.json",
+            encoder.encode(JSON.stringify(serializeArenaToJson(arena), null, 2)),
+          );
         }
 
         if (archiveOptions.wasmBinary && archiveOptions.wasmJsGlue) {

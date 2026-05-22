@@ -39,8 +39,13 @@ export * from "./system-initializer.js";
 export * from "./tape.js";
 export * from "./wasm-simulation-runner.js";
 
-import { ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
-import { evaluateMonteCarlo } from "./evaluate-montecarlo.js";
-import { evaluateSimulate } from "./evaluate-simulate.js";
+import { ModelicaFlattener, ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
+import { evaluateMonteCarlo, registerMonteCarloDeps } from "./evaluate-montecarlo.js";
+import { evaluateSimulate, registerSimulateDeps } from "./evaluate-simulate.js";
+import { ModelicaSimulator } from "./simulator.js";
+
+registerSimulateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
+registerMonteCarloDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator });
+
 ModelicaInterpreter.scriptingHandlers.set("simulate", evaluateSimulate as unknown as BuiltinScriptingFunction);
 ModelicaInterpreter.scriptingHandlers.set("montecarlo", evaluateMonteCarlo as unknown as BuiltinScriptingFunction);

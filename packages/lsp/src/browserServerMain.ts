@@ -106,7 +106,6 @@ import {
   ModelicaClassInstance,
   ModelicaClassKind,
   ModelicaComponentInstance,
-  ModelicaDAE,
   ModelicaElement,
   ModelicaInterpreter,
   ModelicaNamedElement,
@@ -140,10 +139,10 @@ import { ModelicaCalibrator, ModelicaOptimizer, parseCsvMeasurements } from "@mo
 import type { DoEInputRange } from "@modelscript/simulator";
 import {
   ArenaSimulator,
-  ModelicaSimulator,
   buildSurrogate,
   runMonteCarloArena,
   simulateArena,
+  simulateArenaAsync,
 } from "@modelscript/simulator";
 import { INDEXER_HOOKS as stepIndexerHooks, REF_HOOKS as stepRefHooks } from "@modelscript/step/config";
 import { mapStepToMultiBody } from "@modelscript/step/mapper";
@@ -227,19 +226,6 @@ function evaluateArenaExprToNum(arena: ArenaDAEBuilder, exprId: number | undefin
     return arena.getExprData1(exprId);
   }
   return null;
-}
-
-/**
- * Bridge helper to convert ArenaDAEBuilder into a thin ModelicaDAE wrapper
- * for FMI / FMU functions that still require ModelicaDAE.
- */
-function convertArenaToLegacyDAE(arena: ArenaDAEBuilder, name: string): ModelicaDAE {
-  const dae = new ModelicaDAE(name);
-  dae.arena = arena;
-  dae.experiment = arena.experiment;
-  dae.description = arena.description || null;
-  dae.eventIndicators = Array(arena.eventIndicatorExprIds.length).fill(null);
-  return dae;
 }
 
 console.log("ModelScript language server starting...");
@@ -570,6 +556,9 @@ let stepParserReady = false;
 let owl2Parser: Parser | null = null;
 let owl2ParserReady = false;
 
+let csvParser: Parser | null = null;
+let csvParserReady = false;
+
 /* Whether MSL background indexing has completed */
 let mslStdlibReady = false;
 
@@ -745,6 +734,18 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
       connection.console.info("Tree-sitter OWL2 parser initialized");
     } catch (e) {
       connection.console.warn(`[tree-sitter] Failed to load OWL2 language: ${e}`);
+    }
+
+    // Initialize CSV parser
+    try {
+      const CsvLang = await Language.load(`${serverDistBase}/tree-sitter-csv.wasm`);
+      csvParser = new Parser();
+      csvParser.setLanguage(CsvLang);
+      Context.registerParser(".csv", csvParser as any);
+      csvParserReady = true;
+      connection.console.info("Tree-sitter CSV parser initialized");
+    } catch (e) {
+      connection.console.warn(`[tree-sitter] Failed to load CSV language: ${e}`);
     }
 
     // Load the Modelica Standard Library from the bundled zip
@@ -6221,12 +6222,21 @@ connection.onRequest(
     if (!targetClass) throw new Error("Could not determine model name.");
 
     const arena = flattenArenaFromInstance(targetInstance, ctx);
-    const dae = convertArenaToLegacyDAE(arena, targetClass);
+    const simulator = new ArenaSimulator(arena);
+    simulator.prepare();
+    const stateVars = new Set<string>();
+    for (const varIdx of simulator.stateVars) {
+      stateVars.add(arena.getVarName(varIdx));
+    }
 
-    const { archive } = buildFmuArchive(dae, {
-      modelIdentifier: targetClass,
-      includeWasm: params.includeWasm,
-    });
+    const { archive } = buildFmuArchive(
+      arena,
+      {
+        modelIdentifier: targetClass,
+        includeWasm: params.includeWasm,
+      },
+      stateVars,
+    );
 
     // Base64 encode the Uint8Array
     const chunkSize = 0x8000;
@@ -6355,14 +6365,19 @@ connection.onRequest("modelscript/compileWasm", async (params: { uri: string }) 
   if (!targetClass) throw new Error("Could not determine model name.");
 
   const arena = flattenArenaFromInstance(targetInstance, ctx);
-  const dae = convertArenaToLegacyDAE(arena, targetClass);
+  const simulator = new ArenaSimulator(arena);
+  simulator.prepare();
+  const stateVars = new Set<string>();
+  for (const varIdx of simulator.stateVars) {
+    stateVars.add(arena.getVarName(varIdx));
+  }
 
   // Generate the FMU result for scalar variable metadata
   const { generateFmu } = await import("@modelscript/fmi");
-  const fmuResult = generateFmu(dae, { modelIdentifier: targetClass });
+  const fmuResult = generateFmu(arena, { modelIdentifier: targetClass }, stateVars);
 
   // Generate WASM-targeted C source
-  const wasmResult = generateFmuWasmSource(dae, fmuResult, { modelIdentifier: targetClass });
+  const wasmResult = generateFmuWasmSource(arena, fmuResult, { modelIdentifier: targetClass });
 
   return {
     wasmC: wasmResult.wasmC,
@@ -7614,24 +7629,45 @@ connection.onRequest(
       if (!context) return { error: "No context found" };
 
       const arena = flattenArenaFromInstance(classInstance, context);
-      const dae = convertArenaToLegacyDAE(arena, classInstance.name || "Model");
 
       stepMode = true; // Reset step mode on new simulation run
 
-      const simulator = new ModelicaSimulator(dae, {
-        onStatement: async (stmt: any, evaluator: any) => {
+      const exp = arena.experiment;
+      const startTime = exp.startTime ?? 0;
+      const stopTime = exp.stopTime ?? 10;
+      const step = exp.interval ?? (stopTime - startTime) / 100;
+
+      const debuggerHook = {
+        onArenaStatement: async (arenaBuilder: ArenaDAEBuilder, stmtIdx: number, valuesByStringId: Float64Array) => {
+          const loc = arenaBuilder.stmtLocations.get(stmtIdx);
+          const line = loc ? loc.startLine : undefined;
+          const col = loc ? loc.startCol : undefined;
+
           const bps = breakpointsMap.get(params.uri) || [];
-          const isBreakpoint = bps.some((bp) => bp.line === stmt.location?.startLine);
+          const isBreakpoint = line !== undefined && bps.some((bp) => bp.line === line);
 
           if (stepMode || isBreakpoint) {
             stepMode = false;
-            currentDebugEnv = evaluator.env;
+
+            const env = new Map<string, number>();
+            for (let i = 0; i < arenaBuilder.varCount; i++) {
+              if (arenaBuilder.isVarRemoved(i)) continue;
+              const name = arenaBuilder.getVarName(i);
+              const nameId = arenaBuilder.getVarNameId(i);
+              const val = valuesByStringId[nameId];
+              if (val !== undefined) {
+                env.set(name, val);
+              }
+            }
+            currentDebugEnv = env;
+
             // Send notification to the VS Code client
             connection.sendNotification("modelscript/debuggerStopped", {
               uri: params.uri,
-              line: stmt.location?.startLine,
-              column: stmt.location?.startCol,
+              line,
+              column: col,
             });
+
             // Wait for client to send modelscript/debuggerContinue
             await new Promise<void>((resolve) => {
               debuggerResumeCallback = resolve;
@@ -7639,15 +7675,14 @@ connection.onRequest(
             currentDebugEnv = undefined;
           }
         },
+      };
+
+      const result = await simulateArenaAsync(arena, {
+        startTime,
+        stopTime,
+        step,
+        debuggerHook,
       });
-      simulator.prepare();
-
-      const exp = simulator.dae.experiment;
-      const startTime = exp.startTime ?? 0;
-      const stopTime = exp.stopTime ?? 10;
-      const step = exp.interval ?? (stopTime - startTime) / 100;
-
-      const result = await simulator.simulateAsync(startTime, stopTime, step);
       return result;
     } catch (error: unknown) {
       return { error: error instanceof Error ? error.message : String(error) };

@@ -80,6 +80,16 @@ if (existsSync(owl2WasmSrc)) {
   console.warn("  Warning: tree-sitter-owl2.wasm not found, OWL2 support will be disabled");
 }
 
+// Ensure tree-sitter-csv.wasm is also copied
+const csvWasmSrc = resolve(__dirname, "..", "..", "..", "languages", "csv", "tree-sitter-csv.wasm");
+const csvWasmDest = join(extDestDir, "server", "dist", "tree-sitter-csv.wasm");
+if (existsSync(csvWasmSrc)) {
+  cpSync(csvWasmSrc, csvWasmDest);
+  console.log(`  Copied tree-sitter-csv.wasm to ${csvWasmDest}`);
+} else {
+  console.warn("  Warning: tree-sitter-csv.wasm not found, CSV support will be disabled");
+}
+
 // 3. Copy GitHub FS extension
 console.log("  Copying GitHub FS extension...");
 cpSync(GITHUB_FS_EXT_DIR, join(OUT_DIR, "static", "extensions", "github-fs"), {

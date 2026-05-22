@@ -607,8 +607,8 @@ export class ArenaQueryFlattener {
       return;
     }
 
-    // Check array dimensions
-    const arrayDims = this.db.query<number[] | null>("arrayDimensions", entry.id);
+    // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
+    const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
 
     if (arrayDims && arrayDims.length > 0) {
       if (this.options.arrayMode === "preserve") {
@@ -820,18 +820,24 @@ export class ArenaQueryFlattener {
         }
       } else if (mod.bindingExpression.kind === "literal") {
         const val = mod.bindingExpression.value;
-        let exprId: number;
-        if (typeof val === "number") {
-          if (varType === VarType.Integer) {
-            exprId = dae.addIntLiteral(Math.round(val));
-          } else {
-            exprId = dae.addRealLiteral(val);
+        const compileLiteral = (value: unknown): number => {
+          if (Array.isArray(value)) {
+            const elements = value.map(compileLiteral);
+            return dae.addArrayCtorExpr(elements);
           }
-        } else if (typeof val === "boolean") {
-          exprId = dae.addBoolLiteral(val);
-        } else {
-          exprId = dae.addStringLiteral(val as string);
-        }
+          if (typeof value === "number") {
+            if (varType === VarType.Integer) {
+              return dae.addIntLiteral(Math.round(value));
+            } else {
+              return dae.addRealLiteral(value);
+            }
+          } else if (typeof value === "boolean") {
+            return dae.addBoolLiteral(value);
+          } else {
+            return dae.addStringLiteral(value as string);
+          }
+        };
+        const exprId = compileLiteral(val);
         if (variability === Variability.Parameter || variability === Variability.Constant) {
           dae.setVarExpression(varIdx, exprId);
         } else {
@@ -1672,6 +1678,21 @@ export class ArenaQueryFlattener {
    * Recursively flatten a single Modelica statement AST node into arena StmtKind entries.
    */
   private flattenStatement(stmt: ModelicaStatementSyntaxNode, dae: ArenaDAEBuilder): void {
+    const startIdx = dae.stmtCount;
+    this.flattenStatementInternal(stmt, dae);
+    const endIdx = dae.stmtCount;
+    if (stmt.sourceRange && startIdx < endIdx) {
+      const loc = {
+        startLine: stmt.sourceRange.startRow + 1,
+        startCol: stmt.sourceRange.startCol + 1,
+      };
+      for (let idx = startIdx; idx < endIdx; idx++) {
+        dae.stmtLocations.set(idx, loc);
+      }
+    }
+  }
+
+  private flattenStatementInternal(stmt: ModelicaStatementSyntaxNode, dae: ArenaDAEBuilder): void {
     if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
       const visitor = this.createExprVisitor(dae);
       const lhsId = stmt.target ? visitor.visit(stmt.target) : undefined;

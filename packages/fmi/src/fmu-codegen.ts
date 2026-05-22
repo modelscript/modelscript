@@ -101,12 +101,12 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
     case ExprKind.Negate:
       return `(-${exprToC(dae, dae.getExprLeft(id))})`;
     case ExprKind.Der: {
-      const op = dae.getExprLeft(id);
+      const op = dae.getExprData1(id);
       const name = dae.interner.resolve(dae.getExprData1(op));
       return varToC(`der(${name})`);
     }
     case ExprKind.Pre: {
-      const op = dae.getExprLeft(id);
+      const op = dae.getExprData1(id);
       const name = dae.interner.resolve(dae.getExprData1(op));
       return varToC(`pre(${name})`);
     }
@@ -1744,9 +1744,11 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
       break;
     case ExprKind.Unary:
     case ExprKind.Negate:
+      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      break;
     case ExprKind.Der:
     case ExprKind.Pre:
-      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      collectReferencedNames(dae, dae.getExprData1(id), names);
       break;
     case ExprKind.Subscript: {
       collectReferencedNames(dae, dae.getExprData1(id), names);

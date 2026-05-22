@@ -327,6 +327,9 @@ export class ArenaDAEBuilder {
   /** Diagnostics emitted during flattening. */
   diagnostics: { code: number; rule: string; severity: string; message: string; range: unknown }[] = [];
 
+  /** Map of statement index to source location. */
+  stmtLocations = new Map<number, { startLine: number; startCol?: number }>();
+
   /** Event indicator expression IDs (zero-crossing functions). */
   eventIndicatorExprIds: number[] = [];
 

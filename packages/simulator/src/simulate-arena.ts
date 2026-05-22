@@ -49,6 +49,8 @@ export interface ArenaSimulateOptions {
   signal?: AbortSignal;
   /** Optional FMU co-simulation subsystem registry for hybrid simulation. */
   fmuRegistry?: FmuSubsystemRegistry;
+  /** Optional debugger hook for step-by-step statement execution. */
+  debuggerHook?: import("./simulator.js").SimulationDebugger;
 }
 
 /**
@@ -66,6 +68,9 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.debuggerHook) {
+    sim.debuggerHook = options.debuggerHook;
   }
   sim.prepare();
 
@@ -177,6 +182,9 @@ export async function simulateArenaAsync(
   const sim = new ArenaSimulator(arena);
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;
+  }
+  if (options?.debuggerHook) {
+    sim.debuggerHook = options.debuggerHook;
   }
   sim.prepare();
 

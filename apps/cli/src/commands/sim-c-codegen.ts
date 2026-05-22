@@ -10,27 +10,10 @@
  *
  * Designed for `msc simulate --engine=c` — the generated binary is compiled
  * with `gcc -O3 -lm` and executed as a subprocess.
- *
- * Reuses the expression transpiler patterns from fmu-wasm-codegen.ts
- * but targets a standalone executable rather than a WASM module.
  */
 
-import type { FmuResult } from "@modelscript/fmi";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
-import type { ModelicaDAE, ModelicaExpression } from "@modelscript/symbolics";
-import {
-  ModelicaArray,
-  ModelicaBinaryExpression,
-  ModelicaBooleanLiteral,
-  ModelicaFunctionCallExpression,
-  ModelicaIfElseExpression,
-  ModelicaIntegerLiteral,
-  ModelicaNameExpression,
-  ModelicaRealLiteral,
-  ModelicaSimpleEquation,
-  ModelicaStringLiteral,
-  ModelicaUnaryExpression,
-} from "@modelscript/symbolics";
+import { ArenaDAEBuilder, BinOp, EqKind, ExprKind, UnaryOp, Variability } from "@modelscript/compiler";
+import type { FmiScalarVariable, FmuResult } from "@modelscript/fmi";
 
 // ── Public interface ──
 
@@ -43,16 +26,8 @@ export interface SimulationCOptions {
 
 /**
  * Generate a standalone C simulation source from a DAE.
- *
- * The resulting C file can be compiled and executed directly:
- * ```
- * gcc -O3 -Wall model_sim.c -o model_sim -lm
- * ./model_sim
- * ```
- *
- * Output is CSV to stdout with a header row.
  */
-export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, options: SimulationCOptions): string {
+export function generateSimulationC(dae: ArenaDAEBuilder, fmuResult: FmuResult, options: SimulationCOptions): string {
   const { modelIdentifier: id, startTime, stopTime, stepSize } = options;
   const vars = fmuResult.scalarVariables;
   const nVars = vars.length;
@@ -128,24 +103,36 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   L.push("  g_isInitPhase = 1;");
 
   // Set parameter/constant values
-  for (const v of dae.arenaVariables()) {
-    if (v.variability === ModelicaVariability.PARAMETER || v.variability === ModelicaVariability.CONSTANT) {
-      const ref = vrMap.get(v.name);
-      if (ref !== undefined && v.expression) {
-        L.push(`  g_vars[${ref}] = ${exprToC(v.expression)};  /* ${v.name} */`);
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const variability = dae.getVarVariability(i);
+    if (variability === Variability.Parameter || variability === Variability.Constant) {
+      const name = dae.getVarName(i);
+      const ref = vrMap.get(name);
+      const exprId = dae.getVarExpression(i);
+      if (ref !== undefined && typeof exprId === "number" && exprId >= 0) {
+        L.push(`  g_vars[${ref}] = ${exprToC(dae, exprId, vars)};  /* ${name} */`);
       }
     }
   }
 
   // Set start values for continuous variables
-  for (const v of dae.arenaVariables()) {
-    if (v.variability === null || v.variability === undefined) {
-      const ref = vrMap.get(v.name);
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    const variability = dae.getVarVariability(i);
+    if (variability === Variability.Continuous || variability === Variability.Discrete) {
+      const name = dae.getVarName(i);
+      const ref = vrMap.get(name);
       if (ref !== undefined) {
-        const startAttr = v.attributes.get("start");
-        const initExpr = startAttr ?? v.expression;
-        if (initExpr) {
-          L.push(`  g_vars[${ref}] = ${exprToC(initExpr)};  /* ${v.name} */`);
+        const startAttr = dae.getVarAttrExprId(i, "start");
+        const initExpr = typeof startAttr === "number" && startAttr >= 0 ? startAttr : dae.getVarExpression(i);
+        if (typeof initExpr === "number" && initExpr >= 0) {
+          L.push(`  g_vars[${ref}] = ${exprToC(dae, initExpr, vars)};  /* ${name} */`);
+        } else {
+          const startVal = dae.getVarStartValue(i);
+          if (startVal !== 0) {
+            L.push(`  g_vars[${ref}] = ${formatCDouble(startVal)};  /* ${name} */`);
+          }
         }
       }
     }
@@ -165,53 +152,57 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
 
   // Collect referenced variable names for local alias emission
   const refNames = new Set<string>();
-  for (const eq of dae.arenaEquations()) {
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    collectReferencedNames(se.expression1, refNames);
-    collectReferencedNames(se.expression2, refNames);
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind === EqKind.Simple) {
+      collectReferencedNames(dae, dae.getEqLhs(i), refNames);
+      collectReferencedNames(dae, dae.getEqRhs(i), refNames);
+    }
   }
 
   // Local aliases for referenced variables (read from g_vars[])
   for (const sv of vars) {
     if (sv.causality === "independent") continue;
     if (!refNames.has(sv.name)) continue;
-    const cName = varToC(sv.name);
+    const cName = varToC(dae, sv.name, vars);
     L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
   }
   L.push("");
 
   // Emit derivative equations
-  for (const eq of dae.arenaEquations()) {
-    if (!("expression1" in eq && "expression2" in eq)) continue;
-    const se = eq as { expression1: ModelicaExpression; expression2: ModelicaExpression };
-    const lhsDer = extractDerName(se.expression1);
-    const rhsDer = extractDerName(se.expression2);
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind !== EqKind.Simple) continue;
+    const lhs = dae.getEqLhs(i);
+    const rhs = dae.getEqRhs(i);
+    const lhsDer = extractDerName(dae, lhs);
+    const rhsDer = extractDerName(dae, rhs);
     if (lhsDer) {
       const idx = derMap.get(lhsDer);
       if (idx !== undefined) {
-        L.push(`  g_derivatives[${idx}] = ${exprToC(se.expression2)};  /* der(${lhsDer}) */`);
+        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, rhs, vars)};  /* der(${lhsDer}) */`);
       }
     } else if (rhsDer) {
       const idx = derMap.get(rhsDer);
       if (idx !== undefined) {
-        L.push(`  g_derivatives[${idx}] = ${exprToC(se.expression1)};  /* der(${rhsDer}) */`);
+        L.push(`  g_derivatives[${idx}] = ${exprToC(dae, lhs, vars)};  /* der(${rhsDer}) */`);
       }
     }
   }
 
   // Also compute algebraic equations (update g_vars[])
-  for (const eq of dae.arenaEquations()) {
-    if (!(eq instanceof ModelicaSimpleEquation)) continue;
-    if (
-      eq.expression1 instanceof ModelicaNameExpression &&
-      !eq.expression1.name.startsWith("der(") &&
-      !extractDerName(eq.expression1)
-    ) {
-      const targetName = eq.expression1.name;
-      const ref = vrMap.get(targetName);
-      if (ref !== undefined) {
-        L.push(`  g_vars[${ref}] = ${exprToC(eq.expression2)};  /* ${targetName} */`);
+  for (let i = 0; i < dae.eqCount; i++) {
+    const kind = dae.getEqKind(i);
+    if (kind !== EqKind.Simple) continue;
+    const lhs = dae.getEqLhs(i);
+    const rhs = dae.getEqRhs(i);
+    if (dae.getExprKind(lhs) === ExprKind.Name && !extractDerName(dae, lhs)) {
+      const targetName = dae.interner.resolve(dae.getExprData1(lhs));
+      if (!targetName.startsWith("der(")) {
+        const ref = vrMap.get(targetName);
+        if (ref !== undefined) {
+          L.push(`  g_vars[${ref}] = ${exprToC(dae, rhs, vars)};  /* ${targetName} */`);
+        }
       }
     }
   }
@@ -242,7 +233,6 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   }
   L.push("  model_get_derivatives();");
   L.push("  for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
-  // Restore states
   L.push("  for (i = 0; i < N_STATES; i++) g_states[i] -= 0.5 * dt * k1[i];");
   L.push("");
 
@@ -281,7 +271,6 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
   L.push("");
 
   // ── main() ──
-  // Build the list of output variable names and their VRs
   const outputVars = vars.filter((sv) => sv.causality !== "independent" && !sv.name.startsWith("der("));
 
   L.push("int main(void) {");
@@ -319,7 +308,7 @@ export function generateSimulationC(dae: ModelicaDAE, fmuResult: FmuResult, opti
 
 // ── Printf helper ──
 
-function generatePrintfLine(outputVars: { name: string; valueReference: number }[]): string {
+function generatePrintfLine(outputVars: FmiScalarVariable[]): string {
   const formatParts = ["%.17g", ...outputVars.map(() => "%.17g")];
   const valueParts = ["g_time", ...outputVars.map((sv) => `g_vars[${sv.valueReference}]`)];
   return `printf("${formatParts.join(",")}\\n", ${valueParts.join(", ")});`;
@@ -335,11 +324,16 @@ function sanitizeIdentifier(name: string): string {
     .replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
-function varToC(name: string): string {
+function varToC(dae: ArenaDAEBuilder, name: string, vars: FmiScalarVariable[]): string {
   if (name === "time") return "g_time";
-  const derMatch = name.match(/^der\((.+)\)$/);
-  if (derMatch) return `der_${sanitizeIdentifier(derMatch[1] ?? "")}`;
-  return `v_${sanitizeIdentifier(name)}`;
+  const m = name.match(/^der\((.+)\)$/);
+  const baseName = m ? (m[1] ?? "") : name;
+  const sv = vars.find((v) => v.name === baseName);
+  if (!sv) return `0.0 /* unknown ${name} */`;
+
+  const cName = sanitizeIdentifier(name);
+  if (m) return `der_${sanitizeIdentifier(m[1] ?? "")}`;
+  return `v_${cName}`;
 }
 
 function formatCDouble(value: number): string {
@@ -357,38 +351,38 @@ function escapeCString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
 }
 
-function binaryOpToC(op: ModelicaBinaryOperator): string {
+function binaryOpToC(op: BinOp): string {
   switch (op) {
-    case ModelicaBinaryOperator.ADDITION:
-    case ModelicaBinaryOperator.ELEMENTWISE_ADDITION:
+    case BinOp.Add:
+    case BinOp.ElemAdd:
       return "+";
-    case ModelicaBinaryOperator.SUBTRACTION:
-    case ModelicaBinaryOperator.ELEMENTWISE_SUBTRACTION:
+    case BinOp.Sub:
+    case BinOp.ElemSub:
       return "-";
-    case ModelicaBinaryOperator.MULTIPLICATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_MULTIPLICATION:
+    case BinOp.Mul:
+    case BinOp.ElemMul:
       return "*";
-    case ModelicaBinaryOperator.DIVISION:
-    case ModelicaBinaryOperator.ELEMENTWISE_DIVISION:
+    case BinOp.Div:
+    case BinOp.ElemDiv:
       return "/";
-    case ModelicaBinaryOperator.EXPONENTIATION:
-    case ModelicaBinaryOperator.ELEMENTWISE_EXPONENTIATION:
+    case BinOp.Pow:
+    case BinOp.ElemPow:
       return "pow";
-    case ModelicaBinaryOperator.LESS_THAN:
+    case BinOp.Lt:
       return "<";
-    case ModelicaBinaryOperator.LESS_THAN_OR_EQUAL:
+    case BinOp.Lte:
       return "<=";
-    case ModelicaBinaryOperator.GREATER_THAN:
+    case BinOp.Gt:
       return ">";
-    case ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL:
+    case BinOp.Gte:
       return ">=";
-    case ModelicaBinaryOperator.EQUALITY:
+    case BinOp.Eq:
       return "==";
-    case ModelicaBinaryOperator.INEQUALITY:
+    case BinOp.Neq:
       return "!=";
-    case ModelicaBinaryOperator.LOGICAL_AND:
+    case BinOp.And:
       return "&&";
-    case ModelicaBinaryOperator.LOGICAL_OR:
+    case BinOp.Or:
       return "||";
     default:
       return "+";
@@ -428,109 +422,138 @@ function mapFunctionName(name: string): string {
   return builtins[name] ?? sanitizeIdentifier(name);
 }
 
-function exprToC(expr: ModelicaExpression): string {
-  if (expr instanceof ModelicaRealLiteral) return formatCDouble(expr.value);
-  if (expr instanceof ModelicaIntegerLiteral) return `${expr.value}`;
-  if (expr instanceof ModelicaBooleanLiteral) return expr.value ? "1" : "0";
-  if (expr instanceof ModelicaStringLiteral) return `"${escapeCString(expr.value)}"`;
-  if (expr instanceof ModelicaNameExpression) return varToC(expr.name);
-  if (expr instanceof ModelicaUnaryExpression) {
-    const op = expr.operator === ModelicaUnaryOperator.UNARY_MINUS ? "-" : "!";
-    return `(${op}${exprToC(expr.operand)})`;
-  }
-  if (expr instanceof ModelicaBinaryExpression) {
-    const lhs = exprToC(expr.operand1);
-    const rhs = exprToC(expr.operand2);
-    const op = binaryOpToC(expr.operator);
-    if (op === "pow") return `pow(${lhs}, ${rhs})`;
-    return `(${lhs} ${op} ${rhs})`;
-  }
-  if (expr instanceof ModelicaFunctionCallExpression) {
-    if (expr.functionName === "initial") return "g_isInitPhase";
-    if (expr.functionName === "terminal") return "0";
-    if (expr.functionName === "assert" && expr.args.length >= 2) {
-      const cond = exprToC(expr.args[0] as ModelicaExpression);
-      return `((${cond}) ? 0.0 : 0.0)`;
+function exprToC(dae: ArenaDAEBuilder, id: number, vars: FmiScalarVariable[]): string {
+  if (id < 0) return "0.0 /* null */";
+  switch (dae.getExprKind(id)) {
+    case ExprKind.RealLiteral:
+      return formatCDouble(dae.getExprRealValue(id));
+    case ExprKind.IntLiteral:
+      return `${dae.getExprData1(id)}`;
+    case ExprKind.BoolLiteral:
+      return dae.getExprData1(id) !== 0 ? "1" : "0";
+    case ExprKind.StringLiteral:
+      return `"${escapeCString(dae.interner.resolve(dae.getExprData1(id)))}"`;
+    case ExprKind.Name:
+      return varToC(dae, dae.interner.resolve(dae.getExprData1(id)), vars);
+    case ExprKind.Unary: {
+      const uop = dae.getExprData1(id) as UnaryOp;
+      const op = uop === UnaryOp.Not ? "!" : "-";
+      return `(${op}${exprToC(dae, dae.getExprLeft(id), vars)})`;
     }
-    const args = expr.args.map((a: ModelicaExpression) => exprToC(a)).join(", ");
-    return `${mapFunctionName(expr.functionName)}(${args})`;
-  }
-  if (expr instanceof ModelicaIfElseExpression) {
-    const cond = exprToC(expr.condition);
-    const then = exprToC(expr.thenExpression);
-    const els = exprToC(expr.elseExpression);
-    if (expr.elseIfClauses.length > 0) {
-      let result = `(${cond} ? ${then} : `;
-      for (const clause of expr.elseIfClauses) {
-        result += `${exprToC(clause.condition)} ? ${exprToC(clause.expression)} : `;
+    case ExprKind.Negate:
+      return `(-${exprToC(dae, dae.getExprLeft(id), vars)})`;
+    case ExprKind.Der: {
+      const arg = dae.getExprData1(id);
+      const name = dae.interner.resolve(dae.getExprData1(arg));
+      return varToC(dae, `der(${name})`, vars);
+    }
+    case ExprKind.Pre: {
+      const arg = dae.getExprData1(id);
+      const name = dae.interner.resolve(dae.getExprData1(arg));
+      return varToC(dae, `pre(${name})`, vars);
+    }
+    case ExprKind.Binary: {
+      const op = dae.getExprData1(id) as BinOp;
+      const lhs = exprToC(dae, dae.getExprLeft(id), vars);
+      const rhs = exprToC(dae, dae.getExprRight(id), vars);
+      const opStr = binaryOpToC(op);
+      if (opStr === "pow") return `pow(${lhs}, ${rhs})`;
+      return `(${lhs} ${opStr} ${rhs})`;
+    }
+    case ExprKind.Call: {
+      const fname = dae.interner.resolve(dae.getExprData1(id));
+      const argCount = dae.getExprRight(id);
+      const args: string[] = [];
+      for (let i = 0; i < argCount; i++) {
+        args.push(exprToC(dae, dae.getExprLeft(id + i), vars));
       }
-      return result + `${els})`;
+      if (fname === "initial") return "g_isInitPhase";
+      if (fname === "terminal") return "0";
+      if (fname === "assert" && args.length >= 2) {
+        return `((${args[0]}) ? 0.0 : 0.0)`;
+      }
+      return `${mapFunctionName(fname)}(${args.join(", ")})`;
     }
-    return `(${cond} ? ${then} : ${els})`;
+    case ExprKind.IfElse: {
+      const cond = exprToC(dae, dae.getExprData1(id), vars);
+      const then = exprToC(dae, dae.getExprLeft(id), vars);
+      const els = exprToC(dae, dae.getExprRight(id), vars);
+      return `(${cond} ? ${then} : ${els})`;
+    }
+    default:
+      return "0.0 /* unknown */";
   }
-  if (expr && typeof expr === "object" && "name" in expr) {
-    return varToC((expr as { name: string }).name);
-  }
-  return "0.0";
 }
 
 // ── DAE analysis helpers ──
 
-function extractDerName(expr: unknown): string | null {
-  if (expr && typeof expr === "object" && "functionName" in expr && "args" in expr) {
-    const funcExpr = expr as { functionName: string; args: unknown[] };
-    if (funcExpr.functionName === "der" && funcExpr.args.length === 1) {
-      const arg0 = funcExpr.args[0];
-      if (arg0 && typeof arg0 === "object" && "name" in arg0) {
-        const nameVal = (arg0 as { name: unknown }).name;
-        if (typeof nameVal === "string") return nameVal;
-      }
-    }
-  }
-  if (expr && typeof expr === "object" && "name" in expr) {
-    const nameVal = (expr as { name: unknown }).name;
-    if (typeof nameVal === "string" && nameVal.startsWith("der(") && nameVal.endsWith(")")) {
-      return nameVal.substring(4, nameVal.length - 1);
+function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
+  if (exprId < 0) return null;
+  const kind = dae.getExprKind(exprId);
+  if (kind === ExprKind.Der) {
+    const operandId = dae.getExprData1(exprId);
+    if (dae.getExprKind(operandId) === ExprKind.Name) {
+      return dae.interner.resolve(dae.getExprData1(operandId));
     }
   }
   return null;
 }
 
-function collectReferencedNames(expr: unknown, names: Set<string>): void {
-  if (!expr || typeof expr !== "object") return;
-  if (expr instanceof ModelicaArray) {
-    for (const elem of expr.flatElements) collectReferencedNames(elem, names);
-    return;
-  }
-  if ("name" in expr) {
-    const nameVal = (expr as { name: unknown }).name;
-    if (typeof nameVal === "string") {
-      if (nameVal.startsWith("der(") && nameVal.endsWith(")")) {
-        names.add(nameVal.substring(4, nameVal.length - 1));
-      } else {
-        names.add(nameVal);
+function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<string>): void {
+  if (id < 0) return;
+  const kind = dae.getExprKind(id);
+  switch (kind) {
+    case ExprKind.RealLiteral:
+    case ExprKind.IntLiteral:
+    case ExprKind.BoolLiteral:
+    case ExprKind.StringLiteral:
+    case ExprKind.Colon:
+    case ExprKind.EnumLiteral:
+      break;
+    case ExprKind.Name: {
+      const name = dae.interner.resolve(dae.getExprData1(id));
+      names.add(name);
+      break;
+    }
+    case ExprKind.Binary:
+      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      collectReferencedNames(dae, dae.getExprRight(id), names);
+      break;
+    case ExprKind.Unary:
+    case ExprKind.Negate:
+    case ExprKind.Der:
+    case ExprKind.Pre:
+      collectReferencedNames(dae, dae.getExprData1(id), names);
+      break;
+    case ExprKind.Subscript: {
+      collectReferencedNames(dae, dae.getExprData1(id), names);
+      const scount = dae.getExprRight(id);
+      for (let i = 0; i < scount; i++) {
+        collectReferencedNames(dae, dae.getExprLeft(id + i), names);
       }
+      break;
     }
-  }
-  if ("operand" in expr) collectReferencedNames((expr as { operand: unknown }).operand, names);
-  if ("operand1" in expr) collectReferencedNames((expr as { operand1: unknown }).operand1, names);
-  if ("operand2" in expr) collectReferencedNames((expr as { operand2: unknown }).operand2, names);
-  if ("condition" in expr) collectReferencedNames((expr as { condition: unknown }).condition, names);
-  if ("thenExpression" in expr) collectReferencedNames((expr as { thenExpression: unknown }).thenExpression, names);
-  if ("elseExpression" in expr) collectReferencedNames((expr as { elseExpression: unknown }).elseExpression, names);
-  if ("args" in expr) {
-    const args = (expr as { args: unknown[] }).args;
-    if (Array.isArray(args)) {
-      for (const arg of args) collectReferencedNames(arg, names);
-    }
-  }
-  if ("elseIfClauses" in expr) {
-    const clauses = (expr as { elseIfClauses: { condition: unknown; expression: unknown }[] }).elseIfClauses;
-    if (Array.isArray(clauses)) {
-      for (const clause of clauses) {
-        collectReferencedNames(clause.condition, names);
-        collectReferencedNames(clause.expression, names);
+    case ExprKind.ArrayCtor: {
+      const count = dae.getExprData1(id);
+      if (count > 0) {
+        collectReferencedNames(dae, dae.getExprLeft(id), names);
+        for (let i = 1; i < count; i++) {
+          collectReferencedNames(dae, dae.getExprRight(id + i), names);
+        }
       }
+      break;
     }
+    case ExprKind.Call: {
+      const argCount = dae.getExprRight(id);
+      for (let i = 0; i < argCount; i++) {
+        collectReferencedNames(dae, dae.getExprLeft(id + i), names);
+      }
+      break;
+    }
+    case ExprKind.IfElse:
+      collectReferencedNames(dae, dae.getExprData1(id), names);
+      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      collectReferencedNames(dae, dae.getExprRight(id), names);
+      break;
   }
 }

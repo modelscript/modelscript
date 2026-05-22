@@ -204,6 +204,9 @@ export class WorkspaceIndex {
         }
 
         file.index = { symbols, byName, childrenOf };
+        if (uri.endsWith(".csv")) {
+          postProcessCsvIndex(file.index, uri, rootNode.text);
+        }
         file.idMap = idMap;
 
         // Map changed local IDs to global IDs
@@ -271,6 +274,9 @@ export class WorkspaceIndex {
       }
 
       file.index = { symbols, byName, childrenOf };
+      if (uri.endsWith(".csv")) {
+        postProcessCsvIndex(file.index, uri, rootNode.text);
+      }
       file.idMap = idMap;
       file.dirty = false;
       file.oldIndex = null;
@@ -875,5 +881,85 @@ export class WorkspaceIndex {
     }
 
     return { symbols, byName, childrenOf };
+  }
+}
+
+function postProcessCsvIndex(index: SymbolIndex, uri: string, rootNodeText: string): void {
+  const rootEntry = Array.from(index.symbols.values()).find((e) => e.parentId === null);
+  if (!rootEntry) return;
+
+  const filename = uri.split(/[/\\]/).pop() || "";
+  const basename = filename.replace(/\.csv$/i, "");
+  const normalizedName = basename.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  rootEntry.name = normalizedName;
+  rootEntry.ruleName = "SourceFile";
+
+  const lines = rootNodeText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return;
+
+  const headerLine = lines[0] as string;
+  const delimiter = headerLine.includes("\t") ? "\t" : headerLine.includes(";") ? ";" : ",";
+  const headers = headerLine.split(delimiter).map((h) => h.trim().replace(/[^a-zA-Z0-9_]/g, "_"));
+  const numCols = headers.length;
+
+  const data: number[][] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const parts = (lines[i] as string).split(delimiter);
+    const row = parts.map((p) => parseFloat(p.trim()));
+    if (row.length === numCols && !row.some(isNaN)) {
+      data.push(row);
+    }
+  }
+  const numRows = data.length;
+
+  const childrenIds = index.childrenOf.get(rootEntry.id) || [];
+  index.childrenOf.set(rootEntry.id, childrenIds);
+
+  const addVirtualSymbol = (name: string, typeSpecifier: string, csvValue: any, arrayDimensions?: number[]) => {
+    const newId = globalIdCounter++;
+    const virtualEntry: SymbolEntry = {
+      id: newId,
+      kind: "Component",
+      name,
+      ruleName: "CSVVirtualComponent",
+      namePath: "",
+      fieldName: null,
+      startByte: 0,
+      endByte: 0,
+      parentId: rootEntry.id,
+      exports: [],
+      inherits: [],
+      metadata: {
+        typeSpecifier,
+        csvValue,
+        _className: "CSVVirtualComponent",
+        ...(arrayDimensions ? { arrayDimensions } : {}),
+      },
+      resourceId: uri,
+    };
+    index.symbols.set(newId, virtualEntry);
+    childrenIds.push(newId);
+  };
+
+  addVirtualSymbol("numRows", "Integer", numRows);
+  addVirtualSymbol("numCols", "Integer", numCols);
+  addVirtualSymbol("values", "Real", data, [numRows, numCols]);
+
+  for (let c = 0; c < numCols; c++) {
+    const colName = headers[c] || `col${c}`;
+    const colData = data.map((row) => row[c]);
+    addVirtualSymbol(colName, "Real", colData, [numRows]);
+  }
+
+  // Rebuild byName
+  index.byName.clear();
+  for (const entry of index.symbols.values()) {
+    const existing = index.byName.get(entry.name);
+    if (existing) {
+      existing.push(entry.id);
+    } else {
+      index.byName.set(entry.name, [entry.id]);
+    }
   }
 }

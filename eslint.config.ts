@@ -17,6 +17,8 @@ export default defineConfig([
             "languages/modelica/bindings/node/index.d.ts",
             "languages/step/grammar.js",
             "languages/step/bindings/node/index.d.ts",
+            "languages/csv/grammar.js",
+            "languages/csv/bindings/node/index.d.ts",
             "scripts/generate-ast.ts",
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",

@@ -1,4 +1,13 @@
-export * from "@modelscript/compiler";
+export type {
+  CycleInfo,
+  QueryDB,
+  QueryFn,
+  SpecializationArgs,
+  SymbolEntry,
+  SymbolId,
+  SymbolIndex,
+  SymbolKind,
+} from "@modelscript/compiler";
 
 /**
  * Configuration for one indexable rule, extracted from a `def()` call.

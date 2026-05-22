@@ -12,7 +12,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // ClassDefinition: members, arrayDimensions, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, resolveModification, resolveSimpleName, resolveName, instantiate, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch
+  // ClassDefinition: members, arrayDimensions, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, resolveModification, resolveSimpleName, resolveName, instantiate, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch, lint__packageVariableNotConstant, lint__restrictionViolation, lint__partialInstantiation
   {
     const $ = new Proxy(
       {},
@@ -68,7 +68,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
+  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, resolvedArrayDimensions, lint__cyclicDimensionDependency, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
   {
     const $ = new Proxy(
       {},

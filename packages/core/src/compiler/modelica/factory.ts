@@ -24,6 +24,9 @@ import { QUERY_HOOKS } from "@modelscript/modelica/query_hooks";
 // @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
 import { REF_HOOKS } from "@modelscript/modelica/ref_config";
 
+import { INDEXER_HOOKS as csvIndexerHooks } from "@modelscript/csv/config";
+import { QUERY_HOOKS as csvQueryHooks } from "@modelscript/csv/query-hooks";
+
 import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
@@ -59,14 +62,38 @@ registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideMo
 // @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
 import { modelicaEvaluator } from "@modelscript/modelica/expression-evaluator";
 
-const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback;
+const baseIndexerHooks = [
+  ...(INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback ?? []),
+  ...(csvIndexerHooks ?? []),
+];
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
 const refHooks = REF_HOOKS ?? (globalThis as any).__refHooksFallback;
 const evaluator = modelicaEvaluator ?? (globalThis as any).__evaluatorFallback;
 
+// Merge Modelica and CSV query hooks
+const mergedQueryHooks = new Map<string, any>();
+if (queryHooks instanceof Map) {
+  for (const [k, v] of queryHooks.entries()) {
+    mergedQueryHooks.set(k, v);
+  }
+} else if (queryHooks) {
+  for (const [k, v] of Object.entries(queryHooks)) {
+    mergedQueryHooks.set(k, v);
+  }
+}
+if (csvQueryHooks instanceof Map) {
+  for (const [k, v] of csvQueryHooks.entries()) {
+    mergedQueryHooks.set(k, v);
+  }
+} else if (csvQueryHooks) {
+  for (const [k, v] of Object.entries(csvQueryHooks)) {
+    mergedQueryHooks.set(k, v);
+  }
+}
+
 // Convert refHooks into indexerHooks so reference nodes get indexed too.
 // The resolver needs reference entries in the index to detect unresolved refs.
-const defRuleNames = new Set(indexerHooks.map((h: any) => h.ruleName));
+const defRuleNames = new Set(baseIndexerHooks.map((h: any) => h.ruleName));
 const refAsIndexerHooks = (refHooks ?? [])
   .filter((rh: any) => !defRuleNames.has(rh.ruleName))
   .map((rh: any) => ({
@@ -77,7 +104,7 @@ const refAsIndexerHooks = (refHooks ?? [])
     inheritPaths: [],
     metadataFieldPaths: {},
   }));
-const allIndexerHooks = [...indexerHooks, ...refAsIndexerHooks];
+const allIndexerHooks = [...baseIndexerHooks, ...refAsIndexerHooks];
 
 import { injectPredefinedTypes } from "@modelscript/modelica/predefined-types";
 
@@ -94,7 +121,7 @@ export function createModelicaWorkspaceIndex(): WorkspaceIndex {
 export function createModelicaQueryEngine(index: any, tree?: any, cacheStore?: any, maxMemos?: number): QueryEngine {
   const symbolIndex = index?.toUnified ? index.toUnified() : index;
   injectPredefinedTypes(symbolIndex);
-  return new QueryEngine(symbolIndex, queryHooks, { evaluator, tree, cacheStore, maxMemos });
+  return new QueryEngine(symbolIndex, mergedQueryHooks, { evaluator, tree, cacheStore, maxMemos });
 }
 
 /**
@@ -170,7 +197,7 @@ const BUILTIN_MODELICA_NAMES = new Set([
 ]);
 
 export function createModelicaScopeResolver(index: any): ScopeResolver {
-  const resolver = new ScopeResolver(index, refHooks, indexerHooks);
+  const resolver = new ScopeResolver(index, refHooks, allIndexerHooks);
   resolver.setImplicitNames(BUILTIN_MODELICA_NAMES);
   return resolver;
 }

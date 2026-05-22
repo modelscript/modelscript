@@ -10,8 +10,15 @@ export * from "./gpu-codegen.js";
 export * from "./ipopt-solver.js";
 export * from "./optimizer.js";
 export * from "./stochastic-optimizer.js";
-import { ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
-import { evaluateCalibrate } from "./evaluate-calibrate.js";
-import { evaluateOptimize } from "./evaluate-optimize.js";
+import { ModelicaFlattener, ModelicaInterpreter, type BuiltinScriptingFunction } from "@modelscript/core";
+import { ModelicaSimulator } from "@modelscript/simulator";
+import { ModelicaCalibrator } from "./calibrator.js";
+import { evaluateCalibrate, registerCalibrateDeps } from "./evaluate-calibrate.js";
+import { evaluateOptimize, registerOptimizeDeps } from "./evaluate-optimize.js";
+import { ModelicaOptimizer } from "./optimizer.js";
+
+registerOptimizeDeps({ Flattener: ModelicaFlattener, Optimizer: ModelicaOptimizer });
+registerCalibrateDeps({ Flattener: ModelicaFlattener, Simulator: ModelicaSimulator, Calibrator: ModelicaCalibrator });
+
 ModelicaInterpreter.scriptingHandlers.set("optimize", evaluateOptimize as unknown as BuiltinScriptingFunction);
 ModelicaInterpreter.scriptingHandlers.set("calibrate", evaluateCalibrate as unknown as BuiltinScriptingFunction);

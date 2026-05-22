@@ -850,7 +850,7 @@ export class ModelicaOptimizer {
       parameterOverrides: new Map<string, number>(this.problem.parameterOverrides ?? []),
       ...(this.problem.solverOptions
         ? {
-            solver: this.problem.solverOptions.solver,
+            solver: this.problem.solverOptions.integrator as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | undefined,
             atol: this.problem.solverOptions.atol,
             rtol: this.problem.solverOptions.rtol,
           }

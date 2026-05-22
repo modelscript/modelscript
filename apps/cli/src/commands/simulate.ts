@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { type ArenaDAEBuilder } from "@modelscript/compiler";
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
+import { Context } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import {
-  ModelicaSimulator,
+  ArenaSimulator,
   runWasmSimulation,
   simulateArena,
   snapshotMemory,
@@ -142,66 +142,41 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       lastSnap = snap;
     }
 
-    if (args.engine === "arena") {
-      // Flatten using Arena directly
-      profiler.start("flattening");
-      const arena = context.flattenArena(args.name);
-      profiler.end("flattening");
+    // Flatten the model
+    profiler.start("flattening");
+    const arena = context.flattenArena(args.name);
+    profiler.end("flattening");
 
-      if (args.memoryProfile && lastSnap) {
-        const snap = snapshotMemory(true);
-        memProfiles["flattening"] = { before: lastSnap, after: snap };
-        lastSnap = snap;
-      }
+    if (args.memoryProfile && lastSnap) {
+      const snap = snapshotMemory(true);
+      memProfiles["flattening"] = { before: lastSnap, after: snap };
+      lastSnap = snap;
+    }
 
-      if (!arena) {
-        console.error(`'${args.name}' not found or had flattening errors.`);
-        return;
-      }
+    if (!arena) {
+      console.error(`'${args.name}' not found or had flattening errors.`);
+      return;
+    }
 
-      const exp = arena.experiment;
-      const startTime = args.startTime ?? exp.startTime ?? 0;
-      const stopTime = args.stopTime ?? exp.stopTime ?? 10;
-      const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
+    const exp = arena.experiment;
+    const startTime = args.startTime ?? exp.startTime ?? 0;
+    const stopTime = args.stopTime ?? exp.stopTime ?? 10;
+    const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
 
-      simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-    } else {
-      const instance = context.query(args.name);
-      if (!instance) {
-        console.error(`'${args.name}' not found`);
-        return;
-      }
-
-      // Flatten using Legacy flattener
-      profiler.start("flattening");
-      const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (instance as any).accept(new ModelicaFlattener(), ["", dae]);
-      profiler.end("flattening");
-
-      if (args.memoryProfile && lastSnap) {
-        const snap = snapshotMemory(true);
-        memProfiles["flattening"] = { before: lastSnap, after: snap };
-        lastSnap = snap;
-      }
-
-      const exp = dae.experiment;
-      const startTime = args.startTime ?? exp.startTime ?? 0;
-      const stopTime = args.stopTime ?? exp.stopTime ?? 10;
-      const step = args.interval ?? exp.interval ?? (stopTime - startTime) / 1000;
-
-      switch (args.engine) {
-        case "wasm":
-          await simulateWasm(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-          break;
-        case "c":
-          await simulateC(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-          break;
-        case "js":
-        default:
-          simulateJs(dae, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
-          break;
-      }
+    switch (args.engine) {
+      case "wasm":
+        await simulateWasm(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        break;
+      case "c":
+        await simulateC(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        break;
+      case "arena":
+        simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        break;
+      case "js":
+      default:
+        simulateJs(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        break;
     }
 
     if (args.memoryProfile) {
@@ -215,7 +190,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
 // ── JS Engine ──
 
 function simulateJs(
-  dae: ModelicaDAE,
+  arena: ArenaDAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -224,51 +199,25 @@ function simulateJs(
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
 ): void {
-  const simulator = new ModelicaSimulator(dae);
-  simulator.prepare();
-  const states = Array.from(simulator.stateVars) as string[];
+  profiler.start("simulation");
+
+  // Map CLI solver to simulateArena solver
+  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+  const result = simulateArena(arena, {
+    startTime,
+    stopTime,
+    step,
+    solver,
+  });
+
+  profiler.end("simulation");
 
   if (args.memoryProfile && lastSnap) {
     const snap = snapshotMemory(true);
-    memProfiles["codegen"] = { before: lastSnap, after: snap }; // JS "codegen" is prepare()
-    lastSnap = snap;
+    memProfiles["simulation"] = { before: lastSnap, after: snap };
   }
 
-  // Map CLI jacobian arg to SolverOptions
-  let jacobianMethod: "finite-difference" | "ad-forward" | "ad-colored" = "finite-difference";
-  if (args.jacobian === "dense") jacobianMethod = "ad-forward";
-  if (args.jacobian === "sparse") jacobianMethod = "ad-colored";
-
-  profiler.start("simulation");
-
-  if (args.realtime !== undefined && args.realtime > 0) {
-    // For simplicity, run synchronously here (realtime is niche for CLI)
-    const result = simulator.simulate(startTime, stopTime, step, {
-      solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
-      solverOptions: { jacobian: jacobianMethod },
-    });
-    profiler.end("simulation");
-
-    if (args.memoryProfile && lastSnap) {
-      const snap = snapshotMemory(true);
-      memProfiles["simulation"] = { before: lastSnap, after: snap };
-    }
-
-    outputResults(result.t, result.y, states, args.format);
-  } else {
-    const result = simulator.simulate(startTime, stopTime, step, {
-      solver: args.solver as "rk4" | "dopri5" | "bdf" | "auto",
-      solverOptions: { jacobian: jacobianMethod },
-    });
-    profiler.end("simulation");
-
-    if (args.memoryProfile && lastSnap) {
-      const snap = snapshotMemory(true);
-      memProfiles["simulation"] = { before: lastSnap, after: snap };
-    }
-
-    outputResults(result.t, result.y, states, args.format);
-  }
+  outputResults(result.t, result.y, result.states, args.format);
 }
 
 // ── Arena Engine ──
@@ -306,7 +255,7 @@ function simulateArenaEngine(
 // ── WASM Engine ──
 
 async function simulateWasm(
-  dae: ModelicaDAE,
+  arena: ArenaDAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -316,15 +265,19 @@ async function simulateWasm(
   lastSnap: MemorySnapshot | null,
 ): Promise<void> {
   // Generate FMI result for scalar variable metadata
-  const simulator = new ModelicaSimulator(dae);
+  const simulator = new ArenaSimulator(arena);
   simulator.prepare();
 
   const modelIdentifier = args.name.replace(/\./g, "_");
-  const fmuResult = generateFmu(dae, { modelIdentifier, generationTool: "ModelScript CLI" }, simulator.stateVars);
+  const stateVars = new Set<string>();
+  for (const varIdx of simulator.stateVars) {
+    stateVars.add(arena.getVarName(varIdx));
+  }
+  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
 
   // Generate WASM C source
   profiler.start("codegen");
-  const wasmSource = generateFmuWasmSource(dae, fmuResult, { modelIdentifier });
+  const wasmSource = generateFmuWasmSource(arena, fmuResult, { modelIdentifier });
   profiler.end("codegen");
 
   // Compile to WASM
@@ -383,7 +336,7 @@ async function simulateWasm(
 // ── C Engine ──
 
 async function simulateC(
-  dae: ModelicaDAE,
+  arena: ArenaDAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
   startTime: number,
@@ -392,15 +345,19 @@ async function simulateC(
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
 ): Promise<void> {
-  const simulator = new ModelicaSimulator(dae);
+  const simulator = new ArenaSimulator(arena);
   simulator.prepare();
 
   const modelIdentifier = args.name.replace(/\./g, "_");
-  const fmuResult = generateFmu(dae, { modelIdentifier, generationTool: "ModelScript CLI" }, simulator.stateVars);
+  const stateVars = new Set<string>();
+  for (const varIdx of simulator.stateVars) {
+    stateVars.add(arena.getVarName(varIdx));
+  }
+  const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
 
   // Generate standalone C simulation source
   profiler.start("codegen");
-  const cSource = generateSimulationC(dae, fmuResult, {
+  const cSource = generateSimulationC(arena, fmuResult, {
     modelIdentifier,
     startTime,
     stopTime,

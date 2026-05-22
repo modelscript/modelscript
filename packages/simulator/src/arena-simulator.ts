@@ -15,6 +15,7 @@ import {
 import { buildAdJacobian } from "./ad-jacobian.js";
 import { evaluateArenaDualExpression } from "./arena-dual-evaluator.js";
 import { evaluateArenaRuntime } from "./arena-eval-runtime.js";
+import { executeArenaStatements, executeArenaStatementsAsync } from "./arena-statement-executor.js";
 import { bdf } from "./bdf.js";
 import { dopri5 } from "./dopri5.js";
 import { Dual } from "./dual.js";
@@ -214,6 +215,7 @@ interface ArenaStateMachineRuntime {
 
 export class ArenaSimulator {
   public parameters = new Map<string, number>();
+  public debuggerHook?: import("./simulator.js").SimulationDebugger;
 
   // Sets of VarIdx for fast arena-native processing
   public parameterVars = new Set<number>();
@@ -1201,6 +1203,11 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
 
+    // Execute initial algorithm sections
+    for (const sec of this.arena.initialAlgorithmSections) {
+      executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+    }
+
     // Initialize when-clause wasActive flags
     valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
@@ -1241,6 +1248,11 @@ export class ArenaSimulator {
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
       this.checkAssertions(valuesByStringId, currentTime);
+
+      // Run regular algorithm sections
+      for (const sec of this.arena.algorithmSections) {
+        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+      }
 
       // Record output
       const currentState = new Float64Array(n);
@@ -1429,6 +1441,22 @@ export class ArenaSimulator {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
 
+    // Execute initial algorithm sections
+    for (const sec of this.arena.initialAlgorithmSections) {
+      if (this.debuggerHook) {
+        await executeArenaStatementsAsync(
+          this.arena,
+          sec.start,
+          sec.count,
+          valuesByStringId,
+          undefined,
+          this.debuggerHook,
+        );
+      } else {
+        executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+      }
+    }
+
     // Initialize when-clause wasActive flags
     valuesByStringId[timeId] = startTime;
     this.evaluateBlocks(valuesByStringId);
@@ -1478,6 +1506,22 @@ export class ArenaSimulator {
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
       this.checkAssertions(valuesByStringId, currentTime);
+
+      // Run regular algorithm sections
+      for (const sec of this.arena.algorithmSections) {
+        if (this.debuggerHook) {
+          await executeArenaStatementsAsync(
+            this.arena,
+            sec.start,
+            sec.count,
+            valuesByStringId,
+            undefined,
+            this.debuggerHook,
+          );
+        } else {
+          executeArenaStatements(this.arena, sec.start, sec.count, valuesByStringId);
+        }
+      }
 
       // Record output
       const currentState = new Float64Array(n);

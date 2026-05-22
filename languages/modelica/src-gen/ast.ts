@@ -562,6 +562,10 @@ export class ComponentDeclaration extends SemanticNode {
     >("arrayDimensions");
   }
 
+  get resolvedArrayDimensions(): number[] | null {
+    return this.query<number[] | null>("resolvedArrayDimensions");
+  }
+
   get variability(): string | null {
     return this.query<string | null>("variability");
   }

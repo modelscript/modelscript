@@ -3498,7 +3498,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               }
             }
             const interp = new ModelicaInterpreter(true);
-            if (node.name) this.#evaluatingDimensionNames.add(node.name);
+            if (node.name) this.#evaluatingDimensionNames.add(`${node.name}:${i}`);
             interp.evaluatingDimensionFor = new Set(this.#evaluatingDimensionNames);
             // Pass resolved dimensions so the interpreter can distinguish
             // valid cross-dim references from cyclic ones
@@ -3546,7 +3546,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
               return false;
             }
           } finally {
-            if (node.name) this.#evaluatingDimensionNames.delete(node.name);
+            if (node.name) this.#evaluatingDimensionNames.delete(`${node.name}:${i}`);
           }
         }
         if (sub.kind === "literal") {

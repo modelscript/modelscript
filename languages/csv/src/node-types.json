@@ -1,0 +1,64 @@
+[
+  {
+    "type": "Cell",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "Row",
+    "named": true,
+    "fields": {
+      "cells": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "Cell",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "SourceFile",
+    "named": true,
+    "root": true,
+    "fields": {
+      "rows": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "Row",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "\t",
+    "named": false
+  },
+  {
+    "type": "\n",
+    "named": false
+  },
+  {
+    "type": "\r",
+    "named": false
+  },
+  {
+    "type": "\r\n",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  }
+]

@@ -1,0 +1,53 @@
+{
+  "name": "@modelscript/csv",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "default": "./dist/language.js"
+    },
+    "./parser": {
+      "types": "./bindings/node/index.d.ts",
+      "default": "./bindings/node/index.cjs"
+    },
+    "./config": {
+      "types": "./dist/src-gen/config.d.ts",
+      "default": "./dist/src-gen/config.js"
+    },
+    "./query-hooks": {
+      "types": "./dist/src-gen/query-hooks.d.ts",
+      "default": "./dist/src-gen/query-hooks.js"
+    },
+    "./ast": {
+      "types": "./dist/src-gen/ast.d.ts",
+      "default": "./dist/src-gen/ast.js"
+    }
+  },
+  "scripts": {
+    "build": "node build.js && tsc",
+    "clean": "rimraf dist build *.wasm src-gen bindings/node/*.node prebuilds",
+    "generate": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
+    "install": "node-gyp rebuild",
+    "prestart": "tree-sitter build --wasm",
+    "start": "tree-sitter playground"
+  },
+  "dependencies": {
+    "@modelscript/compiler": "*",
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "prebuildify": "^6.0.1",
+    "tree-sitter": "^0.22.4",
+    "tree-sitter-cli": "0.25.10"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.22.4"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  }
+}

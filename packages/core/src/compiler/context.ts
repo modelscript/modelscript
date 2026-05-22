@@ -255,6 +255,18 @@ export class Context {
             },
             parentFQN,
           );
+        } else if (dir.endsWith(".csv")) {
+          const parentFQN = currentFQN || undefined;
+          this.#workspaceIndex.register(
+            dir,
+            () => {
+              const text = this.#fs.read(dir);
+              const tree = this.parse(".csv", text);
+              this.#trees.set(dir, tree);
+              return tree.rootNode as any;
+            },
+            parentFQN,
+          );
         }
       } else if (s.isDirectory()) {
         for (const entry of this.#fs.readdir(dir)) {

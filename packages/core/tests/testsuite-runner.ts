@@ -27,6 +27,7 @@ globalThis.WeakRef = class WeakRefMock {
   }
 } as unknown as typeof WeakRef;
 
+import CSV from "@modelscript/csv/parser";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import { ArenaDAEPrinter } from "@modelscript/symbolics";
@@ -45,6 +46,10 @@ import { generateHtmlReport } from "./ctrf-to-html.js";
 const parser = new Parser();
 parser.setLanguage(Modelica);
 Context.registerParser(".mo", parser);
+
+const csvParser = new Parser();
+csvParser.setLanguage(CSV);
+Context.registerParser(".csv", csvParser);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
