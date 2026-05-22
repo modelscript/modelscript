@@ -90,8 +90,16 @@ export class Context {
     return this.#workspaceIndex;
   }
 
+  setWorkspaceIndex(index: WorkspaceIndex): void {
+    this.#workspaceIndex = index;
+  }
+
   get queryEngine(): QueryEngine {
     return this.#queryEngine;
+  }
+
+  setQueryEngine(engine: QueryEngine): void {
+    this.#queryEngine = engine;
   }
 
   getTree(uri: string): Tree | undefined {
@@ -381,19 +389,69 @@ export class Context {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns An `ArenaDAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
-  flattenArena(name: string, classId?: any): ArenaDAEBuilder | null {
-    // Resolve the class name to a SymbolId via the workspace index
-    const symbolIds = classId !== undefined ? [classId] : this.#queryEngine.index.byName.get(name);
-    if (!symbolIds || symbolIds.length === 0) {
-      // Try multi-part resolution: "A.B.C" — look for root "A" first
-      const parts = name.split(".");
-      const rootName = parts[0];
-      if (parts.length > 1 && rootName) {
-        const rootIds = this.#queryEngine.index.byName.get(rootName);
-        if (!rootIds || rootIds.length === 0) return null;
-        // TODO: Walk children for nested classes when the workspace index
-        // doesn't have the full FQN registered directly.
+  flattenArena(name: string, classId?: any, uri?: string): ArenaDAEBuilder | null {
+    let symbolIds: any[] | undefined = undefined;
+
+    if (classId !== undefined) {
+      symbolIds = [classId];
+    } else {
+      // 1. Try simple name lookup (which works if name is not fully qualified)
+      const candidates = this.#queryEngine.index.byName.get(name);
+      if (candidates && candidates.length > 0) {
+        if (uri) {
+          const matching = candidates.filter((id: any) => {
+            const entry = this.#queryEngine.index.symbols.get(id);
+            return entry && entry.resourceId === uri;
+          });
+          if (matching.length > 0) {
+            symbolIds = matching;
+          }
+        }
+        if (!symbolIds) {
+          symbolIds = candidates;
+        }
       }
+
+      // 2. Try multi-part resolution for fully qualified names ("A.B.C")
+      if (!symbolIds || symbolIds.length === 0) {
+        const parts = name.split(".");
+        if (parts.length > 1) {
+          let currentIds = this.#queryEngine.index.byName.get(parts[0]);
+          if (uri && currentIds) {
+            const matching = currentIds.filter((id: any) => {
+              const entry = this.#queryEngine.index.symbols.get(id);
+              return entry && entry.resourceId === uri;
+            });
+            if (matching.length > 0) {
+              currentIds = matching;
+            }
+          }
+
+          for (let i = 1; i < parts.length && currentIds && currentIds.length > 0; i++) {
+            const part = parts[i];
+            const nextIds: any[] = [];
+            for (const parentId of currentIds) {
+              const children = this.#queryEngine.index.childrenOf.get(parentId);
+              if (children) {
+                for (const childId of children) {
+                  const childEntry = this.#queryEngine.index.symbols.get(childId);
+                  if (childEntry && childEntry.name === part) {
+                    nextIds.push(childId);
+                  }
+                }
+              }
+            }
+            currentIds = nextIds;
+          }
+          if (currentIds && currentIds.length > 0) {
+            symbolIds = currentIds;
+          }
+        }
+      }
+    }
+
+    if (!symbolIds || symbolIds.length === 0) {
+      console.error(`[Context] flattenArena: class '${name}' not found in index.`);
       return null;
     }
 

@@ -175,7 +175,8 @@ function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context:
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
-  const arena = context.flattenArena(className, classInstance.id);
+  const uri = classInstance.entry?.resourceId;
+  const arena = context.flattenArena(className, classInstance.id, uri);
   if (!arena) throw new Error(`Failed to flatten class '${className}'`);
   return arena;
 }
@@ -759,6 +760,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     const MAX_MEMOS = 100_000; // Limit in-memory memos
 
     sharedContext = new Context(sharedFs, cacheStore, MAX_MEMOS);
+    sharedContext.setWorkspaceIndex(globalWorkspaceIndex);
     const loaderCtx: LoaderContext = {
       connectionState: connection,
       logger: {
@@ -1296,6 +1298,8 @@ async function runSemanticPipeline(
     } else {
       globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
     }
+    context.setQueryEngine(globalModelicaQueryEngine);
+    context.setWorkspaceIndex(globalWorkspaceIndex);
     const engine = globalModelicaQueryEngine;
 
     let resolver = (engine as any).__resolverCache;
@@ -3694,6 +3698,10 @@ function resolveModelicaClassInstance(uri: string, className?: string): any {
         100_000,
       ) as any;
       globalModelicaQueryEngine = engine;
+      if (sharedContext) {
+        sharedContext.setQueryEngine(globalModelicaQueryEngine);
+        sharedContext.setWorkspaceIndex(globalWorkspaceIndex);
+      }
     }
   }
   const db = engine!.toQueryDB();
