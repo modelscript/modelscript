@@ -175,7 +175,7 @@ function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context:
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
-  const arena = context.flattenArena(className);
+  const arena = context.flattenArena(className, classInstance.id);
   if (!arena) throw new Error(`Failed to flatten class '${className}'`);
   return arena;
 }

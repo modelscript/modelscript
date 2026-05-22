@@ -381,9 +381,9 @@ export class Context {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns An `ArenaDAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
-  flattenArena(name: string): ArenaDAEBuilder | null {
+  flattenArena(name: string, classId?: any): ArenaDAEBuilder | null {
     // Resolve the class name to a SymbolId via the workspace index
-    const symbolIds = this.#queryEngine.index.byName.get(name);
+    const symbolIds = classId !== undefined ? [classId] : this.#queryEngine.index.byName.get(name);
     if (!symbolIds || symbolIds.length === 0) {
       // Try multi-part resolution: "A.B.C" — look for root "A" first
       const parts = name.split(".");
