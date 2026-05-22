@@ -48,7 +48,6 @@
   "dependencies": {
     "@modelscript/compiler": "*",
     "@modelscript/diagram": "*",
-    "@modelscript/polyglot": "*",
     "commander": "^11.0.0",
     "tree-sitter-cli": "^0.24.7",
     "web-tree-sitter": "^0.24.7"
