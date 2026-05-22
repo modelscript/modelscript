@@ -3344,6 +3344,30 @@ export default language({
             return !!current?.childForFieldName("final");
           },
 
+          /**
+           * Check if this component has annotation(Evaluate=true).
+           * Per Modelica §18.3, this promotes a parameter to be evaluated at compile time.
+           */
+          isEvaluate: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            let current = cst;
+            while (current && current.type !== "ComponentDeclaration") current = current.parent;
+            const ann = current?.childForFieldName("annotationClause");
+            if (!ann) return false;
+            const classMod = ann.childForFieldName?.("classModification");
+            if (!classMod) return false;
+            for (const arg of classMod.namedChildren ?? []) {
+              if (arg.type !== "ElementModification") continue;
+              const argName = arg.childForFieldName?.("name")?.text;
+              if (argName === "Evaluate") {
+                const modNode = arg.childForFieldName?.("modification");
+                const modExpr = modNode?.childForFieldName?.("modificationExpression");
+                if (modExpr?.text === "true") return true;
+              }
+            }
+            return false;
+          },
+
           isRedeclare: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
             while (current && current.type !== "ComponentClause") current = current.parent;
@@ -3640,6 +3664,7 @@ export default language({
             variability: "string | null",
             causality: "string | null",
             isFinal: "boolean",
+            isEvaluate: "boolean",
             isInner: "boolean",
             isOuter: "boolean",
             isReplaceable: "boolean",

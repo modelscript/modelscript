@@ -745,7 +745,12 @@ export class ArenaQueryFlattener {
 
     // Final flag (bit 4)
     const isFinal = this.db.query<boolean>("isFinal", componentEntry.id);
-    if (isFinal) {
+
+    // Evaluate annotation: if annotation(Evaluate=true), promote parameter to final
+    // Per Modelica §18.3, Evaluate=true tells the tool to substitute the parameter's value
+    // at compile time. OpenModelica promotes such parameters to `final parameter`.
+    const isEvaluate = this.db.query<boolean>("isEvaluate", componentEntry.id);
+    if (isFinal || (isEvaluate && variability !== Variability.Constant)) {
       flags |= 16;
     }
 
@@ -786,8 +791,8 @@ export class ArenaQueryFlattener {
       if (desc) dae.setVarDescription(varIdx, desc);
     }
 
-    // Evaluate annotation: if annotation(Evaluate=true), promote parameter to constant
-    if (isFinal && variability === Variability.Parameter) {
+    // Mark final/evaluate parameters as fixed for compile-time substitution
+    if ((isFinal || isEvaluate) && variability === Variability.Parameter) {
       dae.setVarFixed(varIdx);
     }
 
@@ -942,7 +947,46 @@ export class ArenaQueryFlattener {
   // -------------------------------------------------------------------------
 
   private emitClockVariable(name: string, componentEntry: SymbolEntry, dae: ArenaDAEBuilder): number {
-    const varIdx = dae.addVariable(name, VarType.Clock, Variability.Continuous, Causality.Local, 0.0, 0);
+    // Resolve variability and causality (Clock variables default to continuous/local)
+    let variability = Variability.Continuous;
+    const qVariability = this.db.query<string | null>("variability", componentEntry.id);
+    if (qVariability === "parameter") variability = Variability.Parameter;
+    else if (qVariability === "constant") variability = Variability.Constant;
+
+    let causality = Causality.Local;
+    const qCausality = this.db.query<string | null>("causality", componentEntry.id);
+    if (qCausality === "input") causality = Causality.Input;
+    else if (qCausality === "output") causality = Causality.Output;
+
+    const varIdx = dae.addVariable(name, VarType.Clock, variability, causality, 0.0, 0);
+
+    // Handle binding expression (same pattern as emitVariable)
+    const specArgs = this.db.argsOf<ModelicaModArgs>(componentEntry.id);
+    const outerMod = specArgs?.data ?? null;
+    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", componentEntry.id);
+    const mod = mergeModArgs(outerMod, inlineMod);
+
+    if (mod?.bindingExpression) {
+      if (mod.bindingExpression.kind === "expression") {
+        const bytes = mod.bindingExpression.cstBytes;
+        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], componentEntry);
+        if (cstNode) {
+          const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+          const visitor = this.createExprVisitor(dae);
+          const exprId = visitor.visit(astNode ?? cstNode);
+          if (exprId !== undefined) {
+            if (variability === Variability.Parameter || variability === Variability.Constant) {
+              dae.setVarExpression(varIdx, exprId);
+            } else {
+              // Emit as equation: c = Clock(0.1);
+              const nameExpr = dae.addNameExpr(name);
+              dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            }
+          }
+        }
+      }
+    }
+
     return varIdx;
   }
 

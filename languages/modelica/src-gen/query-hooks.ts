@@ -68,7 +68,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, resolvedArrayDimensions, lint__cyclicDimensionDependency, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
+  // ComponentDeclaration: resolvedType, effectiveModification, isConnectorType, variability, causality, flowPrefix, isFinal, isEvaluate, isRedeclare, isInner, isReplaceable, isProtected, isOuter, classInstance, arrayDimensions, resolvedArrayDimensions, lint__cyclicDimensionDependency, lint__componentNamingConvention, lint__modifierNotFound, lint__duplicateModification, lint__implementsTargetUnresolved, lint__unresolvedTypeSpecifier, lint__recursiveDefinition, lint__typeMismatch, lint__bindingTypeMismatch, lint__arrayShapeMismatch, lint__arrayElementTypeMismatch, lint__unresolvedReference, lint__functionCallMismatch, lint__evolutionCheck
   {
     const $ = new Proxy(
       {},
