@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Standalone test runner for OpenModelica-style .mo test files.
+ * Parallel test runner for OpenModelica-style .mo test files.
  *
- * Reads every .mo file from a testsuite directory, parses the embedded metadata
- * and expected result, runs the ModelScript flattener, compares the output, and
- * writes results to the console AND a CTRF JSON report.
+ * Spawns child processes (testsuite-worker.ts) to run each test case in
+ * isolation. This provides:
+ *   - Full memory reclamation per test (no cross-test leaks / OOM)
+ *   - Parallel execution across CPU cores
+ *   - Arena-native flattening pipeline (no legacy ModelicaDAE)
  *
  * Usage:
  *   npx tsx tests/testsuite-runner.ts [testsuite-subdirectory ...]
@@ -14,42 +16,19 @@
  *   npx tsx tests/testsuite-runner.ts extends
  *   npx tsx tests/testsuite-runner.ts extends modification
  *
+ * Options:
+ *   --update      Rewrite expected output in .mo files to match actual
+ *   --concurrency=N  Number of parallel workers (default: CPU count / 2)
+ *   --legacy      Use legacy in-process flattener (flattenDAE) instead of arena
+ *
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
 
-globalThis.WeakRef = class WeakRefMock {
-  target: unknown;
-  constructor(target: unknown) {
-    this.target = target;
-  }
-  deref(): unknown {
-    return this.target;
-  }
-} as unknown as typeof WeakRef;
-
-import CSV from "@modelscript/csv/parser";
-import { ModelicaClassKind } from "@modelscript/modelica/ast";
-import Modelica from "@modelscript/modelica/parser";
-import { ArenaDAEPrinter } from "@modelscript/symbolics";
-import { StringWriter } from "@modelscript/utils";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import Parser from "tree-sitter";
-import { Context } from "../src/compiler/context.js";
-import { NodeFileSystem } from "./node-filesystem.js";
-
-import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
 import { generateHtmlReport } from "./ctrf-to-html.js";
-
-// ── Tree-sitter setup ────────────────────────────────────────────────────────
-
-const parser = new Parser();
-parser.setLanguage(Modelica);
-Context.registerParser(".mo", parser);
-
-const csvParser = new Parser();
-csvParser.setLanguage(CSV);
-Context.registerParser(".csv", csvParser);
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,385 +180,80 @@ function parseTestFile(filePath: string): TestCase | null {
   };
 }
 
-// ── Test execution ───────────────────────────────────────────────────────────
+// ── Worker spawning ──────────────────────────────────────────────────────────
 
-function stripWarnings(text: string): string {
-  return text
-    .split("\n")
-    .filter(
-      (line) =>
-        !line.includes("Components are deprecated in class.") &&
-        !line.includes("Algorithm sections are deprecated in class.") &&
-        !line.includes("Equation sections are deprecated in class."),
-    )
-    .join("\n")
-    .trim();
-}
+const WORKER_SCRIPT = path.resolve(import.meta.dirname ?? __dirname, "testsuite-worker.ts");
+const WORKER_TIMEOUT_MS = 120_000; // 2 minutes per test
 
-function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode = false): TestResult {
-  const start = performance.now();
-  const cpuStart = process.cpuUsage();
-
-  /** Capture CPU time in ms since cpuStart (user + system). */
-  const cpuMs = () => {
-    const delta = process.cpuUsage(cpuStart);
-    return (delta.user + delta.system) / 1000;
-  };
-
-  /** Build a TestResult with common fields pre-filled. */
-  const makeResult = (status: "passed" | "failed" | "skipped", message?: string): TestResult => ({
-    name: path.basename(testCase.file),
-    keywords: testCase.metadata.keywords,
-    testStatus: testCase.metadata.status,
-    file: testCase.file,
-    status,
-    duration: performance.now() - start,
-    cpuTime: cpuMs(),
-    ...(message ? { message } : {}),
-  });
-
-  let lastClassName = testCase.metadata.name;
-  try {
-    const context = new Context(new NodeFileSystem());
-    context.load(testCase.source);
-
-    // When the last class is a package (e.g., `package Ticket4365 ... end Ticket4365;`),
-    // prefer the last non-package class (model/block/class) since OpenModelica tests
-    // typically flatten a specific model within the file, not the package itself.
-    const classes = context.classes;
-    if (classes.some((c) => c.name === testCase.metadata.name)) {
-      lastClassName = testCase.metadata.name;
-    } else if (classes.length > 0) {
-      const lastClass = classes[classes.length - 1];
-      if (lastClass?.classKind === ModelicaClassKind.PACKAGE) {
-        // Try to find a non-package class among all top-level classes
-        const nonPkgClass = [...classes].reverse().find((c) => c.classKind !== ModelicaClassKind.PACKAGE);
-        if (nonPkgClass?.name) {
-          lastClassName = nonPkgClass.name;
-        } else if (lastClass?.name) {
-          // All top-level classes are packages; look inside the last package
-          // for the last model/block/class and flatten that with a qualified name.
-          let nestedName: string | null = null;
-          for (const element of lastClass.elements) {
-            if (
-              element instanceof ModelicaClassInstance &&
-              element.classKind !== ModelicaClassKind.PACKAGE &&
-              element.classKind !== ModelicaClassKind.FUNCTION &&
-              element.name
-            ) {
-              nestedName = `${lastClass.name}.${element.name}`;
-            }
-          }
-          lastClassName = nestedName ?? lastClass.name;
-        }
-      } else {
-        lastClassName = lastClass?.name ?? testCase.metadata.name;
-      }
-    }
-    const resolvedNode = context.resolveName([lastClassName]);
-    console.log(`[Runner] Resolved class for flattening: ${lastClassName}`);
-    if (resolvedNode) {
-      console.log(`[Runner] Type: ${resolvedNode.constructor.name}`);
-      console.log(`[Runner] Is short class: ${"shortClassTarget" in resolvedNode}`);
-    }
-
-    const t_flatten_start = Date.now();
-    const dae = context.flattenDAE(lastClassName, {
-      arrayMode: testCase.metadata.arrayMode ?? "scalarize",
-      functionInlining: "inline", // Flattener tests always expect inline
-      ...(testCase.metadata.fmiVersion ? { fmiVersion: testCase.metadata.fmiVersion } : {}),
-      canonicalizeEquations: false,
+function runTestInWorker(testCase: TestCase, testsuiteRoot: string, updateMode: boolean): Promise<TestResult> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const child = spawn("npx", ["tsx", WORKER_SCRIPT], {
+      cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        NODE_OPTIONS: "--max-old-space-size=8192",
+      },
     });
 
-    let flattenedResult: string | null = null;
-    interface DAEOutput {
-      diagnostics: {
-        severity: string;
-        code: number;
-        message: string;
-        range?: import("../src/util/tree-sitter.js").Range | null;
-      }[];
-      functions: DAEOutput[];
-    }
-    const hasDAEErrors = (d: DAEOutput): boolean =>
-      d.diagnostics.some((diag) => diag.severity === "error" && diag.code !== 5011) || d.functions.some(hasDAEErrors);
+    // Send test case to worker via stdin
+    const payload = JSON.stringify({ testCase, testsuiteRoot, updateMode });
+    child.stdin.write(payload);
+    child.stdin.end();
 
-    if (dae) {
-      if (!hasDAEErrors(dae as unknown as DAEOutput)) {
-        const out = new StringWriter();
-        const printer = new ArenaDAEPrinter(out, dae.arena);
-        printer.printDAE(dae.arena);
-        flattenedResult = out.toString();
-      }
-    }
-    console.error(`[Runner] context.flatten took ${Date.now() - t_flatten_start}ms`);
+    let stdout = "";
+    let stderr = "";
 
-    // Run the linter to collect diagnostics
-    interface DiagEntry {
-      type: string;
-      code: number;
-      message: string;
-      resource: string | null;
-      range: import("../src/util/tree-sitter.js").Range | null;
-    }
-    const diagnostics: DiagEntry[] = [];
-    const extractDAEDiagnostics = (d: DAEOutput) => {
-      for (const diag of d.diagnostics) {
-        diagnostics.push({
-          type: diag.severity,
-          code: diag.code,
-          message: diag.message,
-          resource: null,
-          range: diag.range ?? null,
-        });
-      }
-      for (const fn of d.functions) extractDAEDiagnostics(fn);
-    };
-    if (dae) extractDAEDiagnostics(dae as unknown as DAEOutput);
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
 
-    const t_lint_start = Date.now();
-    for (const d of context.queryEngine.runAllLints()) {
-      // At runtime, LintDiagnostic has `lintName` and `symbolId` (not `rule`/`node`
-      // as the stale polyglot-externals.d.ts declares).
-      const dd = d as Record<string, unknown>;
-      const lintName: string = dd.lintName ?? dd.rule ?? "";
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
 
-      // Skip noisy rules
-      if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, WORKER_TIMEOUT_MS);
 
-      // Filter out diagnostics from built-in/synthetic resources (e.g. modelscript-cas.mo)
-      // to prevent CAS library warnings from polluting every test result.
-      if (dd.symbolId != null) {
-        const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
-        if (entry && typeof entry.resourceId === "string") {
-          if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
-            continue;
-          }
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      const duration = Date.now() - start;
+
+      // Try to parse the JSON result from stdout
+      try {
+        const lines = stdout.trim().split("\n");
+        const lastLine = lines[lines.length - 1];
+        if (lastLine) {
+          const result: TestResult = JSON.parse(lastLine);
+          // Adjust duration to include spawn overhead
+          result.duration = duration;
+          resolve(result);
+          return;
         }
+      } catch {
+        // Fall through to error handling
       }
 
-      // Find code from string if possible, or just default to 0
-      let code = 0;
-      const codeMatch = d.message.match(/^\[M(\d+)\]/);
-      if (codeMatch) code = parseInt(codeMatch[1], 10);
+      // Worker failed to produce valid output
+      const isTimeout = code === null;
+      const message = isTimeout
+        ? `Worker timed out after ${WORKER_TIMEOUT_MS / 1000}s`
+        : `Worker exited with code ${code}\n${stderr.slice(-2000)}`;
 
-      // Resolve position from the symbol entry's byte range + tree
-      let range: DiagEntry["range"] = null;
-      if (dd.node) {
-        range = {
-          startPosition: { row: dd.node.startPosition.row, column: dd.node.startPosition.column },
-          endPosition: { row: dd.node.endPosition.row, column: dd.node.endPosition.column },
-        };
-      } else if (dd.startByte != null && dd.endByte != null && dd.symbolId != null) {
-        const entry = context.queryEngine.index?.symbols?.get(dd.symbolId);
-        if (entry) {
-          // We don't have tree-sitter row/col here easily, but the byte range is available
-          // for future resolution. For now leave range null.
-          range = null;
-        }
-      }
-
-      diagnostics.push({
-        type: d.severity,
-        code,
-        message: d.message,
-        resource: null,
-        range,
+      resolve({
+        name: path.basename(testCase.file),
+        file: testCase.file,
+        status: "failed",
+        duration,
+        cpuTime: 0,
+        message,
+        keywords: testCase.metadata.keywords,
+        testStatus: testCase.metadata.status,
       });
-    }
-    console.error(`[Runner] Linter took ${Date.now() - t_lint_start}ms`);
-
-    // Format collected diagnostics into lines and deduplicate
-    const formatDiagLines = () => {
-      const lines = diagnostics
-        .filter(
-          (d) =>
-            !d.message.includes("Components are deprecated in class.") &&
-            !d.message.includes("Algorithm sections are deprecated in class.") &&
-            !d.message.includes("Equation sections are deprecated in class."),
-        )
-        .map((d) => {
-          const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-          const codeStr = d.code > 0 ? `[M${d.code}] ` : "";
-          if (d.range) {
-            const r = d.range;
-            if (r.startPosition && r.endPosition) {
-              const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
-              const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
-              const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
-              const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
-              return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
-            }
-          }
-          return `${severity}: ${codeStr}${d.message}`;
-        });
-      return Array.from(new Set(lines));
-    };
-
-    if (testCase.metadata.status === "incorrect") {
-      // For incorrect tests: compare lint errors against expected output
-      const diagLines = formatDiagLines();
-      if (diagLines.length > 0) {
-        const actual = diagLines.join("\n");
-        const expected = stripWarnings(testCase.expectedResult.trim());
-        if (actual === expected) return makeResult("passed");
-
-        let reformatActual = actual;
-        if (expected.includes("Error processing file:")) {
-          const omcDiagLines = diagnostics
-            .filter(
-              (d) =>
-                !d.message.includes("Components are deprecated in class.") &&
-                !d.message.includes("Algorithm sections are deprecated in class.") &&
-                !d.message.includes("Equation sections are deprecated in class."),
-            )
-            .map((d) => {
-              const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-              // Search expected output for a matching prefix for this severity
-              const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-              const match = expected.match(prefixRegex);
-              const prefix = match ? match[1] : `[${testCase.file}]`;
-              return `${prefix} ${severity}: ${d.message}`;
-            });
-          const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
-          const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
-          const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
-          if (reformatActual === expected) return makeResult("passed");
-        }
-
-        if (updateMode) {
-          updateExpectedResult(testCase.file, reformatActual);
-          return makeResult("passed", "(updated expected output)");
-        }
-        return makeResult(
-          "failed",
-          `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-        );
-      }
-      // No lint errors found: flattening should fail (return null or throw)
-      if (flattenedResult === null) return makeResult("passed");
-      // Some incorrect tests produce both flattened output AND diagnostics (e.g., OMC warnings).
-      // Try combining flattened result + diagnostics and comparing against expected.
-      {
-        let combinedActual = flattenedResult.trim();
-        const combinedDiagLines = formatDiagLines();
-        if (combinedDiagLines.length > 0) {
-          combinedActual += "\n" + combinedDiagLines.join("\n");
-        }
-        combinedActual = stripWarnings(combinedActual);
-        const expected = stripWarnings(testCase.expectedResult.trim());
-        if (combinedActual === expected) return makeResult("passed");
-      }
-      return makeResult("failed", `Expected flattening to fail but got result:\n${flattenedResult}`);
-    }
-
-    // For correct tests: compare flattened output with expected
-    if (flattenedResult === null) {
-      const diagLines = formatDiagLines();
-      const expected = stripWarnings(testCase.expectedResult.trim());
-
-      // Some "correct" tests expect error output (e.g., cardinality context errors).
-      // If the expected result starts with "Error processing file:", try formatting
-      // diagnostics in OMC style and comparing.
-      if (expected.includes("Error processing file:") && diagLines.length > 0) {
-        const omcDiagLines = diagnostics
-          .filter(
-            (d) =>
-              !d.message.includes("Components are deprecated in class.") &&
-              !d.message.includes("Algorithm sections are deprecated in class.") &&
-              !d.message.includes("Equation sections are deprecated in class."),
-          )
-          .map((d) => {
-            const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-            const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-            const match = expected.match(prefixRegex);
-            const prefix = match ? match[1] : `[${testCase.file}]`;
-            return `${prefix} ${severity}: ${d.message}`;
-          });
-        const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
-        const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
-        const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-        const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
-        if (reformatActual === expected) return makeResult("passed");
-        if (updateMode) {
-          updateExpectedResult(testCase.file, reformatActual);
-          return makeResult("passed", "(updated expected output)");
-        }
-        return makeResult(
-          "failed",
-          `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-        );
-      }
-
-      return makeResult(
-        "failed",
-        `Flattening returned null (expected a result)\nDiagnostics:\n${diagLines.join("\n")}`,
-      );
-    }
-
-    let actual = flattenedResult.trim();
-    const diagLines = formatDiagLines();
-    if (diagLines.length > 0) {
-      actual += "\n" + diagLines.join("\n");
-    }
-    actual = stripWarnings(actual);
-    const expected = stripWarnings(testCase.expectedResult.trim());
-
-    // Normalize OpenModelica-specific `:writable` suffix in diagnostic path prefixes
-    const normalizedExpected = expected.replace(/:writable\]/g, "]");
-    if (actual === normalizedExpected) return makeResult("passed");
-    if (updateMode) {
-      updateExpectedResult(testCase.file, actual);
-      return makeResult("passed", "(updated expected output)");
-    }
-    return makeResult("failed", `Output mismatch:\n--- Expected ---\n${expected}\n--- Actual ---\n${actual}`);
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    const expected = stripWarnings(testCase.expectedResult.trim());
-
-    // Simulate OpenModelica error output format
-    const severity = "Error";
-    const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-    const match = expected.match(prefixRegex);
-    const prefix = match ? match[1] : `[${testCase.file}]`;
-
-    const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${prefix} ${severity}: ${errorMsg}\nError: Error occurred while flattening model ${lastClassName}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
-
-    if (reformatActual === expected) return makeResult("passed");
-    if (updateMode) {
-      updateExpectedResult(testCase.file, reformatActual);
-      return makeResult("passed", "(updated expected output)");
-    }
-
-    if (testCase.metadata.status === "incorrect" && !expected.includes("Error processing file:")) {
-      return makeResult("passed");
-    }
-
-    console.error(error);
-    return makeResult(
-      "failed",
-      `Output mismatch (Exception):\n--- Expected ---\n${expected}\n--- Actual ---\n${reformatActual}`,
-    );
-  }
-}
-
-/**
- * Rewrites the // Result: ... // endResult block in a .mo test file with new content.
- */
-function updateExpectedResult(filePath: string, newResult: string): void {
-  const content = fs.readFileSync(filePath, "utf-8");
-  const lines = content.split("\n");
-  const resultIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
-  const endResultIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
-  if (resultIdx < 0 || endResultIdx < 0) return;
-
-  const before = lines.slice(0, resultIdx + 1); // includes "// Result:"
-  const after = lines.slice(endResultIdx); // includes "// endResult"
-  const resultLines = newResult.split("\n").map((l) => (l ? `// ${l}` : "//"));
-
-  const newContent = [...before, ...resultLines, ...after].join("\n");
-  fs.writeFileSync(filePath, newContent, "utf-8");
+    });
+  });
 }
 
 // ── Console output ───────────────────────────────────────────────────────────
@@ -684,15 +358,45 @@ function findMoDirectories(dir: string): string[] {
   return results;
 }
 
+// ── Concurrency limiter ──────────────────────────────────────────────────────
+
+async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIdx = 0;
+
+  async function worker() {
+    while (nextIdx < tasks.length) {
+      const idx = nextIdx++;
+      const task = tasks[idx];
+      if (task) {
+        results[idx] = await task();
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-function main(): void {
+async function main(): Promise<void> {
   const testsuiteRoot = path.resolve(import.meta.dirname ?? __dirname, "../testsuite");
 
-  // Determine which subdirectories (and optionally specific files) to run
+  // Parse arguments
   const rawArgs = process.argv.slice(2);
   const updateMode = rawArgs.includes("--update");
-  const args = rawArgs.filter((a) => a !== "--update");
+  const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
+  const concurrency = concurrencyArg
+    ? parseInt(concurrencyArg.split("=")[1] ?? "4", 10)
+    : Math.max(1, Math.floor(os.availableParallelism() / 2));
+  const args = rawArgs.filter((a) => a !== "--update" && !a.startsWith("--concurrency=") && a !== "--legacy");
+
+  console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
+  console.log();
+
+  // Determine which subdirectories (and optionally specific files) to run
   const suiteRuns = new Map<string, Set<string> | null>();
 
   if (args.length > 0) {
@@ -728,8 +432,14 @@ function main(): void {
     }
   }
 
-  const allResults: TestResult[] = [];
-  const globalStart = Date.now();
+  // Collect all test cases across all suites
+  interface QueuedTest {
+    testCase: TestCase;
+    suiteName: string;
+    suiteDir: string;
+  }
+  const allQueued: QueuedTest[] = [];
+  const skippedResults: TestResult[] = [];
 
   for (const [suiteDir, specificFiles] of suiteRuns.entries()) {
     const suiteName = path.relative(testsuiteRoot, suiteDir);
@@ -742,20 +452,12 @@ function main(): void {
 
     moFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-    if (moFiles.length === 0) continue;
-
-    console.log();
-    console.log(`${BOLD}Suite: ${suiteName}${RESET} (${moFiles.length} files)`);
-
-    const suiteResults: TestResult[] = [];
-
     for (const moFile of moFiles) {
       const filePath = path.join(suiteDir, moFile);
-      console.log(`[Runner] STARTING TEST: ${filePath}`);
       const testCase = parseTestFile(filePath);
 
       if (!testCase) {
-        suiteResults.push({
+        skippedResults.push({
           name: moFile,
           file: filePath,
           status: "skipped",
@@ -767,7 +469,7 @@ function main(): void {
       }
 
       if (testCase.metadata.status === "skipped") {
-        suiteResults.push({
+        skippedResults.push({
           name: moFile,
           file: filePath,
           status: "skipped",
@@ -780,7 +482,7 @@ function main(): void {
 
       // Skip .mos (OpenModelica Script) files — ModelScript has no parser for them
       if (moFile.endsWith(".mos")) {
-        suiteResults.push({
+        skippedResults.push({
           name: moFile,
           file: filePath,
           status: "skipped",
@@ -791,24 +493,56 @@ function main(): void {
         continue;
       }
 
-      const result = runTestCase(testCase, testsuiteRoot, updateMode);
-      suiteResults.push(result);
-      printResult(result);
-
-      if (global.gc) {
-        global.gc();
-      }
+      allQueued.push({ testCase, suiteName, suiteDir });
     }
+  }
 
-    printSummary(suiteResults, `Summary: ${suiteName}`);
-    allResults.push(...suiteResults);
+  console.log(`${BOLD}Queued ${allQueued.length} test(s) + ${skippedResults.length} skipped${RESET}`);
+  console.log();
+
+  const globalStart = Date.now();
+
+  // Build task closures
+  const tasks = allQueued.map(({ testCase }) => {
+    return () => runTestInWorker(testCase, testsuiteRoot, updateMode);
+  });
+
+  // Run all tests in parallel with concurrency limit
+  const workerResults = await runWithConcurrency(tasks, concurrency);
+
+  // Merge with skipped results and group by suite for display
+  const suiteResults = new Map<string, TestResult[]>();
+  for (let i = 0; i < allQueued.length; i++) {
+    const q = allQueued[i];
+    const result = workerResults[i];
+    if (!q || !result) continue;
+    let list = suiteResults.get(q.suiteName);
+    if (!list) {
+      list = [];
+      suiteResults.set(q.suiteName, list);
+    }
+    list.push(result);
+  }
+
+  // Print results grouped by suite
+  const allResults: TestResult[] = [...skippedResults];
+  for (const [suiteName, results] of suiteResults.entries()) {
+    console.log();
+    console.log(`${BOLD}Suite: ${suiteName}${RESET} (${results.length} files)`);
+    for (const result of results) {
+      printResult(result);
+    }
+    printSummary(results, `Summary: ${suiteName}`);
+    allResults.push(...results);
   }
 
   const globalStop = Date.now();
 
   // Print grand total
-  if (suiteRuns.size > 1) {
+  if (suiteRuns.size > 1 || skippedResults.length > 0) {
     printSummary(allResults, "Grand Total");
+    const elapsed = ((globalStop - globalStart) / 1000).toFixed(1);
+    console.log(`  ${DIM}Wall time: ${elapsed}s${RESET}`);
   }
 
   // Write CTRF report
@@ -823,6 +557,15 @@ function main(): void {
   // Generate HTML report
   const htmlPath = path.join(ctrfDir, "ctrf-testsuite-report.html");
   generateHtmlReport(ctrfPath, htmlPath);
+
+  // Exit with error code if any tests failed
+  const failedCount = allResults.filter((r) => r.status === "failed").length;
+  if (failedCount > 0) {
+    process.exit(1);
+  }
 }
 
-main();
+main().catch((err) => {
+  console.error("Fatal error:", err);
+  process.exit(1);
+});
