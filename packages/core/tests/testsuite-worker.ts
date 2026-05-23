@@ -28,13 +28,13 @@ globalThis.WeakRef = class WeakRefMock {
 import CSV from "@modelscript/csv/parser";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
+import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { ArenaDAEPrinter } from "@modelscript/symbolics";
 import { StringWriter } from "@modelscript/utils";
 import { execSync } from "node:child_process";
 import path from "node:path";
 import Parser from "tree-sitter";
 import { Context } from "../src/compiler/context.js";
-import { ModelicaClassInstance } from "../src/compiler/modelica/factory.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
 function cleanOmcOutput(text: string): string {

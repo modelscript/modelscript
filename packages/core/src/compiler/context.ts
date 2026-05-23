@@ -13,19 +13,18 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/compiler";
-import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
-import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
-import type { FileSystem, Parser, Tree } from "@modelscript/utils";
-import { StringWriter } from "@modelscript/utils";
-import type { ModelicaElement } from "./modelica/factory.js";
 import {
-  ModelicaClassInstance,
   createModelicaQueryEngine,
   createModelicaWorkspaceIndex,
   injectPredefinedTypes,
-} from "./modelica/factory.js";
+} from "@modelscript/modelica/factory";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
+import { ModelicaPoParser, ModelicaTranslation } from "@modelscript/modelica/po";
+import { ModelicaClassInstance, type ModelicaElement } from "@modelscript/modelica/semantic-model";
+import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
+import type { FileSystem, Parser, Tree } from "@modelscript/utils";
+import { StringWriter } from "@modelscript/utils";
 import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
-import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
 
 export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
 

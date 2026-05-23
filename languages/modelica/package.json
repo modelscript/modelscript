@@ -7,6 +7,34 @@
       "types": "./dist/factory.d.ts",
       "default": "./dist/factory.js"
     },
+    "./builtins": {
+      "types": "./dist/builtins.d.ts",
+      "default": "./dist/builtins.js"
+    },
+    "./predefined": {
+      "types": "./dist/predefined.d.ts",
+      "default": "./dist/predefined.js"
+    },
+    "./units": {
+      "types": "./dist/units.d.ts",
+      "default": "./dist/units.js"
+    },
+    "./annotation": {
+      "types": "./dist/annotation.d.ts",
+      "default": "./dist/annotation.js"
+    },
+    "./scripting": {
+      "types": "./dist/scripting.d.ts",
+      "default": "./dist/scripting.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
+    },
+    "./po": {
+      "types": "./dist/po.d.ts",
+      "default": "./dist/po.js"
+    },
     "./diagram": {
       "types": "./dist/diagram/index.d.ts",
       "default": "./dist/diagram/index.js"
@@ -66,6 +94,10 @@
     "./parser": {
       "types": "./bindings/node/index.d.ts",
       "default": "./bindings/node/index.cjs"
+    },
+    "./arena-script-interpreter": {
+      "types": "./dist/arena-script-interpreter.d.ts",
+      "default": "./dist/arena-script-interpreter.js"
     }
   },
   "scripts": {

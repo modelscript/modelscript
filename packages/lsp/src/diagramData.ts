@@ -27,6 +27,7 @@ import {
   type IGraphicItem,
   type IIcon,
   type ILine,
+  type IPoint,
   type IPolygon,
   type IRectangle,
   type IText,

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, I18nExtractor } from "@modelscript/core";
+import { I18nExtractor } from "@modelscript/compiler";
+import { Context } from "@modelscript/core";
+import { i18nConfig } from "@modelscript/modelica/indexer_config";
 import Modelica from "@modelscript/modelica/parser";
 import { writeFileSync } from "node:fs";
 import Parser from "tree-sitter";
@@ -38,12 +40,20 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const extractor = new I18nExtractor();
+    const extractor = new I18nExtractor(i18nConfig);
 
     for (const path of args.paths) {
       const library = await context.addLibrary(path);
       if (library) {
-        extractor.extractFromLibrary(library);
+        for (const uri of context.workspaceIndex.uris) {
+          if (uri.startsWith(library.path)) {
+            const tree = context.getTree(uri);
+            if (tree?.rootNode) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              extractor.extract(tree.rootNode as any, uri);
+            }
+          }
+        }
       }
     }
 

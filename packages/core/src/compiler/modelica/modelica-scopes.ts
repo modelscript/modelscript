@@ -9,7 +9,7 @@ import type {
   ModelicaComponentInstance,
   ModelicaElement,
   ModelicaElement as ModelicaNamedElement,
-} from "./factory.js";
+} from "@modelscript/modelica/semantic-model";
 
 // Import the private registry setter from core scope to keep callback registers linked
 import { _getScriptingScope } from "../scope.js";

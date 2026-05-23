@@ -44,7 +44,7 @@ import {
   registerAnnotationEvaluator,
 } from "./semantic-model.js";
 
-import { AnnotationEvaluator } from "@modelscript/core";
+import { AnnotationEvaluator } from "./diagram/annotation-evaluator.js";
 
 // Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
 // This preserves the @modelscript/modelica package's decoupling from modelica-ast.

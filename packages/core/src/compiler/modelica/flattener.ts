@@ -51,6 +51,8 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica/ast";
+import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "@modelscript/modelica/builtins";
+import { makeDiagnostic, ModelicaErrorCode } from "@modelscript/modelica/errors";
 import {
   ModelicaArrayClassInstance,
   ModelicaBooleanClassInstance,
@@ -124,8 +126,6 @@ import {
   type ModelicaFunctionTypeSignature,
   type ModelicaObject,
 } from "@modelscript/symbolics";
-import { BUILTIN_FUNCTIONS, BUILTIN_VARIABLES } from "./builtins.js";
-import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
 import { buildFilledArray, ModelicaInterpreter, ModelicaParameterModification } from "./interpreter.js";
 import { ModelicaModelVisitor } from "./visitor.js";
 
@@ -6433,7 +6433,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
             if (fnDef?.outputType === "Integer") return true;
             // Check if there's an Integer overload matching all-integer args
             if (fnDef?.overloads) {
-              const intOverload = fnDef.overloads.find((o) => o.outputType === "Integer");
+              const intOverload = fnDef.overloads.find((o: any) => o.outputType === "Integer");
               if (intOverload && arg.args.every((a) => argIsInteger(a))) return true;
             }
             return false;
@@ -7429,7 +7429,7 @@ class ModelicaSyntaxFlattener extends ModelicaSyntaxVisitor<ModelicaExpression, 
           if (funcIdx >= 0) {
             targetDae.functions.splice(funcIdx, 1);
           }
-          return evalResult;
+          return evalResult as ModelicaExpression;
         }
         // Fallback: the interpreter failed on the original AST (e.g., because the original
         // args contained parameter-dependent sub-expressions like size(test2(b), 1) that
@@ -11438,7 +11438,7 @@ function isRealTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
       // check if the Integer overload matches (all args are integer-typed).
       // If so, the output is Integer, not Real.
       if (builtinDef.overloads) {
-        const intOverload = builtinDef.overloads.find((o) => o.outputType === "Integer");
+        const intOverload = builtinDef.overloads.find((o: any) => o.outputType === "Integer");
         if (intOverload && expr.args.every((a) => isIntegerTyped(a, dae))) {
           return false;
         }
@@ -11475,7 +11475,7 @@ function isIntegerTyped(expr: ModelicaExpression, dae?: ModelicaDAE): boolean {
       if (builtinDef.outputType === "Integer") return true;
       // For polymorphic functions, check if Integer overload matches
       if (builtinDef.overloads) {
-        const intOverload = builtinDef.overloads.find((o) => o.outputType === "Integer");
+        const intOverload = builtinDef.overloads.find((o: any) => o.outputType === "Integer");
         if (intOverload && expr.args.every((a) => isIntegerTyped(a, dae))) return true;
       }
     }

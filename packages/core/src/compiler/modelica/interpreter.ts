@@ -37,6 +37,7 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "@modelscript/modelica/ast";
+import { makeDiagnostic, ModelicaErrorCode } from "@modelscript/modelica/errors";
 import {
   evaluateCASFunction,
   isCASFunction,
@@ -56,11 +57,10 @@ import {
 } from "@modelscript/symbolics";
 import { createHash, makeWeakRef } from "@modelscript/utils";
 import { ModelicaLoopScope, ModelicaScriptScope, Scope } from "../scope.js";
-import { makeDiagnostic, ModelicaErrorCode } from "./errors.js";
 
 export class ModelicaAlgorithmScope extends Scope {
   variables = new Map<string, SyntheticInterpreterVariable>();
-  public diagnostics?: import("./errors.js").ModelicaDiagnostic[];
+  public diagnostics?: import("@modelscript/modelica/errors").ModelicaDiagnostic[];
 
   override get elements(): IterableIterator<any> {
     return this.variables.values();
@@ -134,7 +134,7 @@ import {
   ModelicaComponentInstance,
   ModelicaEnumerationClassInstance,
   ModelicaExpressionClassInstance,
-} from "./factory.js";
+} from "@modelscript/modelica/semantic-model";
 
 /**
  * Lightweight shim avoiding legacy Polyglot wrapper instantiation inside execution loops.
@@ -446,7 +446,7 @@ export class ModelicaInterpreter extends ModelicaSyntaxVisitor<ModelicaExpressio
   constructor(
     evaluateAlgorithms = false,
     printCallback: ((msg: string) => void) | undefined = undefined,
-    public diagnostics?: import("./errors.js").ModelicaDiagnostic[],
+    public diagnostics?: import("@modelscript/modelica/errors").ModelicaDiagnostic[],
   ) {
     super();
     this.#evaluateAlgorithms = evaluateAlgorithms;

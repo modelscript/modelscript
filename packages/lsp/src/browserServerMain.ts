@@ -141,6 +141,7 @@ import {
   emitVerificationDiagnostics,
 } from "@modelscript/sysml2/factory";
 
+import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { generateMultiBodyModelica } from "@modelscript/modelica/multibody-generator";
 
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
@@ -5850,21 +5851,45 @@ connection.onRequest(
 
 // Custom request: run a .mos script file
 connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {
-  return {
-    output:
-      "Error: The legacy Modelica script interpreter has been removed. A new Arena/Salsa based interpreter is currently under development (Phase 5).",
-  };
+  if (!sharedContext || !globalModelicaQueryEngine) {
+    return { output: "", error: "Language server not fully initialized." };
+  }
+  const text = sharedContext.fs.read(params.uri);
+  if (!text) {
+    return { output: "", error: "File not found." };
+  }
+
+  const tree = sharedContext.parse(".mos", text);
+  if (!tree || !tree.rootNode) {
+    return { output: "", error: "Failed to parse script." };
+  }
+
+  const interpreter = new ArenaScriptInterpreter(globalModelicaQueryEngine);
+  const result = interpreter.execute(tree.rootNode);
+  return result;
 });
 
 // ── Notebook API: session-scoped cell execution ──
-const notebookSessions = new Map<string, any>();
+const notebookSessions = new Map<string, ArenaScriptInterpreter>();
 
 connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
-  return {
-    output: "",
-    error:
-      "The legacy Modelica notebook interpreter has been removed. A new Arena/Salsa based interpreter is currently under development (Phase 5).",
-  };
+  if (!sharedContext || !globalModelicaQueryEngine) {
+    return { output: "", error: "Language server not fully initialized." };
+  }
+
+  const tree = sharedContext.parse(".mos", params.code);
+  if (!tree || !tree.rootNode) {
+    return { output: "", error: "Failed to parse cell." };
+  }
+
+  let interpreter = notebookSessions.get(params.sessionId);
+  if (!interpreter) {
+    interpreter = new ArenaScriptInterpreter(globalModelicaQueryEngine);
+    notebookSessions.set(params.sessionId, interpreter);
+  }
+
+  const result = interpreter.execute(tree.rootNode);
+  return result;
 });
 
 connection.onRequest("modelscript/resetNotebookSession", async (params: { sessionId: string }) => {
