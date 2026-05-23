@@ -12,6 +12,7 @@ import {
   type SymbolId,
 } from "@modelscript/compiler";
 import {
+  ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
   ModelicaBinaryOperator,
@@ -139,7 +140,8 @@ export class ArenaExprVisitor {
         if (this.loopVars.has(text)) {
           return this.dae.addIntLiteral(this.loopVars.get(text) as number);
         }
-        return this.dae.addNameExpr(this.prefixName(text));
+        const pref = this.prefixName(text);
+        return this.dae.addNameExpr(pref);
       }
       return undefined;
     } else if (n instanceof ModelicaBinaryExpressionSyntaxNode) {
@@ -158,6 +160,11 @@ export class ArenaExprVisitor {
       return this.visitRangeExpression(n);
     } else if (n instanceof ModelicaArrayConstructorSyntaxNode) {
       return this.visitArrayConstructor(n);
+    } else if (
+      n.type === "ModelicaArrayConcatenationSyntaxNode" ||
+      n.constructor?.name === "ModelicaArrayConcatenationSyntaxNode"
+    ) {
+      return this.visitArrayConcatenation(n);
     }
 
     // Fallback: if it's an unrecognized node, drill down into common children.
@@ -625,6 +632,32 @@ export class ArenaExprVisitor {
       }
     }
     return this.dae.addArrayCtorExpr(elementIds);
+  }
+
+  private visitArrayConcatenation(node: ModelicaArrayConcatenationSyntaxNode): number | undefined {
+    const rows: number[] = [];
+    for (const expressionList of node.expressionLists ?? []) {
+      const rowElements: number[] = [];
+      for (const expression of expressionList.expressions ?? []) {
+        const id = this.visit(expression);
+        if (id !== undefined) {
+          rowElements.push(id);
+        }
+      }
+      const firstRowElement = rowElements[0];
+      if (
+        rowElements.length === 1 &&
+        firstRowElement !== undefined &&
+        this.dae.getExprKind(firstRowElement) === ExprKind.ArrayCtor
+      ) {
+        rows.push(firstRowElement);
+      } else if (rowElements.length > 0) {
+        rows.push(this.dae.addArrayCtorExpr(rowElements));
+      }
+    }
+    if (rows.length === 0) return undefined;
+    if (rows.length === 1) return rows[0];
+    return this.dae.addArrayCtorExpr(rows);
   }
 
   private visitFunctionCall(node: ModelicaFunctionCallSyntaxNode): number | undefined {
@@ -1120,7 +1153,27 @@ export class ArenaExprVisitor {
         return this.dae.addBinaryExpr(op, casted1, casted2);
       }
     }
-    return exprId;
+    if (kind === ExprKind.RealLiteral) {
+      return exprId;
+    }
+    if (kind === ExprKind.Call) {
+      const funcNameId = this.dae.getExprData1(exprId);
+      const funcName = this.dae.interner.resolve(funcNameId);
+      if (funcName === "/*Real*/") {
+        return exprId;
+      }
+    }
+    if (kind === ExprKind.Name) {
+      const nameId = this.dae.getExprData1(exprId);
+      const name = this.dae.interner.resolve(nameId);
+      if (name) {
+        const varIdx = this.dae.getVarIdxByName(name);
+        if (varIdx >= 0 && this.dae.getVarType(varIdx) === VarType.Real) {
+          return exprId;
+        }
+      }
+    }
+    return this.dae.addCallExpr("/*Real*/", [exprId]);
   }
   // -------------------------------------------------------------------------
   // Function Inlining

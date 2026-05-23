@@ -434,7 +434,43 @@ export class ArenaQueryFlattener {
         const lhsId = eq.expression1 ? visitor.visit(eq.expression1) : undefined;
         const rhsId = eq.expression2 ? visitor.visit(eq.expression2) : undefined;
         if (lhsId !== undefined && rhsId !== undefined) {
-          dae.addEquation(eqKind, lhsId, rhsId);
+          // If we are scalarizing arrays, expand array equations element-wise
+          let arrayDims: number[] | null = null;
+          let varName: string | null = null;
+          if (this.options.arrayMode !== "preserve" && dae.getExprKind(lhsId) === ExprKind.Name) {
+            varName = dae.interner.resolve(dae.getExprData1(lhsId));
+            if (scopeId !== null) {
+              let currentClassId = scopeId;
+              const parts = varName.split(".");
+              let compEntry: SymbolEntry | null = null;
+              for (let i = 0; i < parts.length; i++) {
+                const part = parts[i]!;
+                const resolver = this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
+                compEntry = resolver ? resolver(part) : null;
+                if (!compEntry) break;
+                if (i < parts.length - 1) {
+                  const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
+                  if (classInstId === null) {
+                    compEntry = null;
+                    break;
+                  }
+                  currentClassId = classInstId;
+                }
+              }
+              if (compEntry) {
+                const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
+                if (dims && dims.length > 0) {
+                  arrayDims = dims;
+                }
+              }
+            }
+          }
+
+          if (arrayDims) {
+            this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
+          } else {
+            dae.addEquation(eqKind, lhsId, rhsId);
+          }
         }
       } else if (eq instanceof ModelicaForEquationSyntaxNode) {
         this.unrollForIndexes(eq.forIndexes, 0, eq.equations, prefix, dae, new Map(), scopeId);
@@ -784,7 +820,7 @@ export class ArenaQueryFlattener {
       return;
     }
 
-    const classEntry = this.db.symbol(classInstanceId);
+    let classEntry = this.db.symbol(classInstanceId);
     if (!classEntry) {
       dae.diagnostics.push({
         code: 4004,
@@ -794,6 +830,31 @@ export class ArenaQueryFlattener {
         range: null,
       });
       return;
+    }
+
+    // Resolve type aliases (ShortClassSpecifiers) recursively
+    let resolvedClassEntry = classEntry;
+    let resolvedClassInstanceId = classInstanceId;
+    while (resolvedClassEntry) {
+      const cst = this.db.cstNode(resolvedClassEntry.id) as any;
+      const spec = cst?.childForFieldName?.("classSpecifier");
+      if (spec?.type === "ShortClassSpecifier") {
+        const typeSpec = spec.childForFieldName?.("typeSpecifier");
+        const typeName = typeSpec?.text;
+        if (typeName) {
+          const resolvedId = this.resolveTypeNameInScope(typeName, resolvedClassEntry.parentId);
+          if (resolvedId !== null && resolvedId !== resolvedClassEntry.id) {
+            resolvedClassInstanceId = resolvedId;
+            resolvedClassEntry = this.db.symbol(resolvedClassInstanceId)!;
+            continue;
+          }
+        }
+      }
+      break;
+    }
+    if (resolvedClassEntry) {
+      classEntry = resolvedClassEntry;
+      classInstanceId = resolvedClassInstanceId;
     }
 
     const classMeta = classEntry.metadata as Record<string, unknown>;
@@ -942,6 +1003,74 @@ export class ArenaQueryFlattener {
     return result;
   }
 
+  private addScalarizedEquation(
+    dae: ArenaDAEBuilder,
+    eqKind: EqKind,
+    lhsName: string,
+    rhsId: number,
+    shape: number[],
+    visitor: ArenaExprVisitor,
+  ): void {
+    if (this.options.arrayMode === "preserve") {
+      dae.addEquation(eqKind, dae.addNameExpr(lhsName), rhsId);
+      return;
+    }
+    const indices = this.generateArrayIndices(shape);
+    for (const idx of indices) {
+      const elemVarName = `${lhsName}[${idx.join(",")}]`;
+      const elemVarIdx = dae.getVarIdxByName(elemVarName);
+      const elemType = elemVarIdx >= 0 ? dae.getVarType(elemVarIdx) : VarType.Real;
+
+      let elemRhsId = this.getArrayElementExpr(dae, rhsId, idx);
+      if (elemType === VarType.Real) {
+        elemRhsId = visitor.castToRealExpr(elemRhsId);
+      }
+
+      const elemLhsId = dae.addNameExpr(elemVarName);
+      dae.addEquation(eqKind, elemLhsId, elemRhsId);
+    }
+  }
+
+  /** Recursively resolve/subscript RHS element expression for array equation scalarization. */
+  private getArrayElementExpr(dae: ArenaDAEBuilder, exprId: number, indices: number[]): number {
+    const kind = dae.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const varName = dae.interner.resolve(dae.getExprData1(exprId));
+      const elemVarName = `${varName}[${indices.join(",")}]`;
+      if (dae.hasVar(elemVarName)) {
+        return dae.addNameExpr(elemVarName);
+      }
+    }
+
+    let currentExprId = exprId;
+    let success = true;
+    for (const idx of indices) {
+      const currKind = dae.getExprKind(currentExprId);
+      if (currKind === ExprKind.ArrayCtor) {
+        const count = dae.getExprData1(currentExprId);
+        const i = idx - 1;
+        if (i >= 0 && i < count) {
+          currentExprId = i === 0 ? dae.getExprLeft(currentExprId) : dae.getExprLeft(currentExprId + i);
+        } else {
+          success = false;
+          break;
+        }
+      } else {
+        success = false;
+        break;
+      }
+    }
+    if (success) {
+      return currentExprId;
+    }
+
+    // Fallback: subscript expression
+    return dae.addSubscriptExpr(
+      exprId,
+      indices.map((idxVal) => dae.addIntLiteral(idxVal)),
+    );
+  }
+
   // -------------------------------------------------------------------------
   // Variable Emission
   // -------------------------------------------------------------------------
@@ -1067,10 +1196,8 @@ export class ArenaQueryFlattener {
             if (varType === VarType.Real) {
               exprId = visitor.castToRealExpr(exprId);
             }
-            if (variability === Variability.Parameter || variability === Variability.Constant) {
-              // Set as variable expression (printed as `parameter Real a = 2.0`)
-              dae.setVarExpression(varIdx, exprId);
-            } else {
+            dae.setVarExpression(varIdx, exprId);
+            if (variability !== Variability.Parameter && variability !== Variability.Constant) {
               // Emit as equation (printed in the equation section)
               const nameExpr = dae.addNameExpr(name);
               dae.addEquation(EqKind.Simple, nameExpr, exprId);
@@ -1097,9 +1224,8 @@ export class ArenaQueryFlattener {
           }
         };
         const exprId = compileLiteral(val);
-        if (variability === Variability.Parameter || variability === Variability.Constant) {
-          dae.setVarExpression(varIdx, exprId);
-        } else {
+        dae.setVarExpression(varIdx, exprId);
+        if (variability !== Variability.Parameter && variability !== Variability.Constant) {
           const nameExpr = dae.addNameExpr(name);
           dae.addEquation(EqKind.Simple, nameExpr, exprId);
         }
@@ -1166,9 +1292,8 @@ export class ArenaQueryFlattener {
       if (mod.bindingExpression.kind === "literal") {
         const val = mod.bindingExpression.value;
         const exprId = typeof val === "number" ? dae.addIntLiteral(Math.round(val)) : dae.addIntLiteral(0);
-        if (variability === Variability.Parameter || variability === Variability.Constant) {
-          dae.setVarExpression(varIdx, exprId);
-        } else {
+        dae.setVarExpression(varIdx, exprId);
+        if (variability !== Variability.Parameter && variability !== Variability.Constant) {
           const nameExpr = dae.addNameExpr(name);
           dae.addEquation(EqKind.Simple, nameExpr, exprId);
         }
@@ -1187,9 +1312,8 @@ export class ArenaQueryFlattener {
           );
           const exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
-            if (variability === Variability.Parameter || variability === Variability.Constant) {
-              dae.setVarExpression(varIdx, exprId);
-            } else {
+            dae.setVarExpression(varIdx, exprId);
+            if (variability !== Variability.Parameter && variability !== Variability.Constant) {
               const nameExpr = dae.addNameExpr(name);
               dae.addEquation(EqKind.Simple, nameExpr, exprId);
             }
@@ -1243,9 +1367,8 @@ export class ArenaQueryFlattener {
           );
           const exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
-            if (variability === Variability.Parameter || variability === Variability.Constant) {
-              dae.setVarExpression(varIdx, exprId);
-            } else {
+            dae.setVarExpression(varIdx, exprId);
+            if (variability !== Variability.Parameter && variability !== Variability.Constant) {
               // Emit as equation: c = Clock(0.1);
               const nameExpr = dae.addNameExpr(name);
               dae.addEquation(EqKind.Simple, nameExpr, exprId);
@@ -1700,6 +1823,50 @@ export class ArenaQueryFlattener {
       }
 
       if (lhsId !== undefined && rhsId !== undefined) {
+        // If we are scalarizing arrays, expand array equations element-wise
+        let arrayDims: number[] | null = null;
+        let varName: string | null = null;
+        if (this.options.arrayMode !== "preserve" && dae.getExprKind(lhsId) === ExprKind.Name) {
+          varName = dae.interner.resolve(dae.getExprData1(lhsId));
+          console.log(`[DEBUG SCAL] varName: ${varName}`);
+          const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
+          const startClassId = entry.parentId ?? (activeClass ? activeClass.classId : null);
+          console.log(`[DEBUG SCAL] activeClass: ${JSON.stringify(activeClass)}, startClassId: ${startClassId}`);
+          if (startClassId !== null) {
+            let currentClassId = startClassId;
+            const parts = varName.split(".");
+            let compEntry: SymbolEntry | null = null;
+            for (let i = 0; i < parts.length; i++) {
+              const part = parts[i]!;
+              const resolver = this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
+              compEntry = resolver ? resolver(part) : null;
+              console.log(`[DEBUG SCAL] part: ${part}, resolved: ${compEntry ? compEntry.id : "null"}`);
+              if (!compEntry) break;
+              if (i < parts.length - 1) {
+                const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
+                console.log(`[DEBUG SCAL] classInstance for ${compEntry.id}: ${classInstId}`);
+                if (classInstId === null) {
+                  compEntry = null;
+                  break;
+                }
+                currentClassId = classInstId;
+              }
+            }
+            if (compEntry) {
+              const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
+              console.log(`[DEBUG SCAL] compEntry: ${compEntry.id}, dims: ${JSON.stringify(dims)}`);
+              if (dims && dims.length > 0) {
+                arrayDims = dims;
+              }
+            }
+          }
+        }
+
+        if (arrayDims) {
+          this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
+          return;
+        }
+
         dae.addEquation(eqKind, lhsId, rhsId);
         return;
       }
