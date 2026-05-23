@@ -7,52 +7,6 @@
 // to allow the flattener to access properties that will be progressively typed.
 // TODO: Replace with precise types once the compat-shim API is stable.
 
-declare module "@modelscript/compiler" {
-  export interface LintDiagnostic {
-    severity: string;
-    rule: string;
-    message: string;
-    node?: {
-      startPosition: { row: number; column: number };
-      endPosition: { row: number; column: number };
-      startIndex: number;
-      endIndex: number;
-    } | null;
-  }
-
-  export class QueryEngine {
-    constructor(index: any, queryHooks: any, expressionEvaluator?: any);
-    query(symbolId: any, queryName: string): unknown;
-    runAllLints(): LintDiagnostic[];
-    resolveName(parts: string[]): any;
-    invalidate(): void;
-    get db(): any;
-    get index(): any;
-    dumpMemos(): Map<string, any>;
-    [key: string]: any;
-  }
-
-  export function eliminateArenaAliases(dae: any): void;
-}
-
-declare module "@modelscript/compiler/resolver" {
-  export class ScopeResolver {
-    constructor(index: any, refHooks: any, indexerHooks: any);
-    resolve(name: string[], fromScope?: any): any;
-    [key: string]: any;
-  }
-}
-
-declare module "@modelscript/compiler/workspace-index" {
-  export class WorkspaceIndex {
-    constructor(indexerHooks: any);
-    updateIndex(rootNode: any): any;
-    symbol(id: any): any;
-    allSymbols(): Iterable<any>;
-    [key: string]: any;
-  }
-}
-
 declare module "@modelscript/modelica/semantic-model" {
   export type AbstractSyntaxNodeFactory = (cst: any) => any;
   export function registerAbstractSyntaxNodeFactory(factory: AbstractSyntaxNodeFactory): void;

@@ -1,10 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { eliminateArenaAliases, type QueryEngine } from "@modelscript/compiler";
-import { printArenaDAE } from "@modelscript/compiler/arena-printer";
-import { type ArenaDAEBuilder } from "@modelscript/compiler/dae-arena";
-import type { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
+import {
+  Context as BaseContext,
+  eliminateArenaAliases,
+  printArenaDAE,
+  type ArenaDAEBuilder,
+  type HomotopyMode,
+  type InitSolverConfig,
+  type ModelicaCompilerOptions,
+  type PreconditionerMode,
+  type QueryEngine,
+  type WorkspaceIndex,
+} from "@modelscript/compiler";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
@@ -18,33 +26,8 @@ import {
 } from "./modelica/factory.js";
 import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./modelica/po.js";
-export type HomotopyMode = "none" | "residual" | "symbolic" | "fixed-point" | "parameter" | "auto";
-export type PreconditionerMode = "none" | "branch-and-bound";
-export interface InitSolverConfig {
-  preconditioner?: PreconditionerMode;
-  homotopyMode?: HomotopyMode;
-  mccormickRelaxation?: boolean;
-  maxHomotopySteps?: number;
-}
 
-export interface ModelicaCompilerOptions {
-  arrayMode?: "scalarize" | "preserve";
-  functionInlining?: "inline" | "preserve";
-  fmiVersion?: "2.0" | "3.0";
-  solver?: InitSolverConfig;
-  canonicalizeEquations?: boolean;
-  /**
-   * Batch mode: disables Salsa memoization and triggers manual GC between
-   * compilation phases (parse → index → flatten).
-   *
-   * This should be enabled implicitly by one-shot execution environments
-   * (like the CLI or CI pipelines) to stay within V8 heap limits. It should
-   * NOT be used by long-lived processes (LSP, Web IDE) which rely on the cache.
-   *
-   * Requires Node.js to be started with `--expose-gc` for GC to take effect.
-   */
-  batch?: boolean;
-}
+export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
 
 export class ModelicaLibrary {
   name: string;
@@ -76,7 +59,7 @@ export class ModelicaLibrary {
  * owns a QueryEngine (Salsa-style incremental computation) and a WorkspaceIndex
  * (arena-backed symbol storage). Name resolution is handled by the QueryDB.
  */
-export class Context {
+export class Context extends BaseContext {
   #classes: ModelicaClassInstance[] = [];
   #fs: FileSystem;
   #libraries: ModelicaLibrary[] = [];
@@ -116,8 +99,7 @@ export class Context {
    * @param maxMemos - Optional max number of memos to keep in memory
    */
   constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number) {
-    this.#fs = fs;
-    this.#workspaceIndex = createModelicaWorkspaceIndex();
+    const workspaceIndex = createModelicaWorkspaceIndex();
 
     // Provide a CSTTree that looks up trees by resourceId cached in Context
     const contextTree = {
@@ -135,7 +117,13 @@ export class Context {
       },
     };
 
-    this.#queryEngine = createModelicaQueryEngine(this.#workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
+    const queryEngine = createModelicaQueryEngine(workspaceIndex.toUnified(), contextTree, cacheStore, maxMemos);
+    super(fs, workspaceIndex, queryEngine);
+    this._trees = this.#trees;
+
+    this.#fs = fs;
+    this.#workspaceIndex = workspaceIndex;
+    this.#queryEngine = queryEngine;
     this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
   }
 
@@ -416,7 +404,7 @@ export class Context {
       if (!symbolIds || symbolIds.length === 0) {
         const parts = name.split(".");
         if (parts.length > 1) {
-          let currentIds = this.#queryEngine.index.byName.get(parts[0]);
+          let currentIds = this.#queryEngine.index.byName.get(parts[0] as string);
           if (uri && currentIds) {
             const matching = currentIds.filter((id: any) => {
               const entry = this.#queryEngine.index.symbols.get(id);
@@ -511,6 +499,7 @@ export class Context {
       dae.classKind = instance.classKind;
     }
     const flattener = new ModelicaFlattener(options, this);
+    flattener.rootClass = instance;
     instance.accept(flattener, ["", dae]);
     flattener.generateFlowBalanceEquations(dae);
     flattener.foldDAEConstants(dae);

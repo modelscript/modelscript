@@ -587,7 +587,7 @@ const BUILTIN_ARRAY_HANDLERS: ReadonlyMap<string, BuiltinArrayHandler> = new Map
   ],
 ]);
 
-import type { ModelicaCompilerOptions } from "../context.js";
+import { type ModelicaCompilerOptions } from "@modelscript/compiler";
 
 /**
  * Visitor that traverses the semantic Modelica object model and flattens it into a DAE structure.
@@ -641,12 +641,17 @@ function getUnderlyingPredefinedClass(
   return null;
 }
 
+interface ParserContext {
+  parse(extname: string, input: string): any;
+}
+
 export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE]> {
   options: Required<Pick<ModelicaCompilerOptions, "arrayMode" | "functionInlining">> & ModelicaCompilerOptions;
+  rootClass: ModelicaClassInstance | null = null;
 
   constructor(
     options?: ModelicaCompilerOptions,
-    public context?: any,
+    public context?: ParserContext,
   ) {
     super();
     this.options = {
@@ -1610,7 +1615,7 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
       node.classKind === ModelicaClassKind.OPERATOR_FUNCTION ||
       node.classKind === ModelicaClassKind.RECORD
     ) {
-      if (node !== this.context.rootClass && !this.activeClassStack.some((c) => c === node)) {
+      if (node !== this.rootClass && !this.activeClassStack.some((c) => c === node)) {
         // Output nested class definition as a DAE function/record
         const fnDae = new ModelicaDAE(args[0] === "" ? node.name : args[0] + "." + node.name, null);
         fnDae.classKind = node.classKind;
@@ -3474,7 +3479,10 @@ export class ModelicaFlattener extends ModelicaModelVisitor<[string, ModelicaDAE
             if (exprNode.kind === "expression" && exprNode.text) {
               let tree = _intExprCache.get(exprNode.text);
               if (!tree) {
-                tree = this.context.parse(".mo", `model Dummy parameter Integer x = ${exprNode.text}; end Dummy;`);
+                tree = (this.context as any).parse(
+                  ".mo",
+                  `model Dummy parameter Integer x = ${exprNode.text}; end Dummy;`,
+                );
                 _intExprCache.set(exprNode.text, tree);
               }
               let extracted = null;

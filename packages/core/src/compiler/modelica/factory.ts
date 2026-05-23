@@ -121,7 +121,12 @@ export function createModelicaWorkspaceIndex(): WorkspaceIndex {
 export function createModelicaQueryEngine(index: any, tree?: any, cacheStore?: any, maxMemos?: number): QueryEngine {
   const symbolIndex = index?.toUnified ? index.toUnified() : index;
   injectPredefinedTypes(symbolIndex);
-  return new QueryEngine(symbolIndex, mergedQueryHooks, { evaluator, tree, cacheStore, maxMemos });
+  return new QueryEngine(symbolIndex, mergedQueryHooks, {
+    evaluator,
+    tree,
+    cacheStore,
+    ...(maxMemos !== undefined && { maxMemos }),
+  });
 }
 
 /**
