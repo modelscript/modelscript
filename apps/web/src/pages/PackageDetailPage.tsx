@@ -35,9 +35,11 @@ import {
 } from "../api";
 import Box from "../components/Box";
 import Breadcrumbs from "../components/Breadcrumbs";
-import DatasetTableViewer from "../components/DatasetTableViewer";
-import FmuSimulatorViewer from "../components/FmuSimulatorViewer";
+import CadStepViewer from "../components/CadStepViewer.tsx";
+import DatasetTableViewer from "../components/DatasetTableViewer.tsx";
+import FmuSimulatorViewer from "../components/FmuSimulatorViewer.tsx";
 import InvertedSvg from "../components/InvertedSvg";
+import SysmlViewer from "../components/SysmlViewer.tsx";
 
 /* ─── animations ─── */
 
@@ -962,6 +964,14 @@ const PackageDetailPage: React.FC = () => {
                         artifactPath={av.path}
                       />
                     );
+                  }
+
+                  if (av.viewer?.viewer === "cad-3d-viewer") {
+                    return <CadStepViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
+                  }
+
+                  if (av.viewer?.viewer === "sysml-architecture-viewer") {
+                    return <SysmlViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
                   }
 
                   // Fallback: render a generic artifact card for unrecognized types

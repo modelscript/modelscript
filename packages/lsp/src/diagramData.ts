@@ -15,9 +15,6 @@ import {
   evaluateCondition,
   formatUnit,
   LinePattern,
-  ModelicaClassKind,
-  ModelicaComponentInstance,
-  ModelicaVariability,
   Smooth,
   TextAlignment,
   TextStyle,
@@ -33,8 +30,11 @@ import {
   type IPolygon,
   type IRectangle,
   type IText,
-  type ModelicaClassInstance,
-} from "@modelscript/core";
+} from "@modelscript/modelica/diagram";
+
+import { ModelicaClassKind, ModelicaVariability } from "@modelscript/modelica/types";
+
+import { ModelicaComponentInstance, type ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 
 // Import canonical types from the protocol module and re-export for
 // backward compatibility with consumers that import from diagramData.
@@ -308,8 +308,8 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       target: { cell: c2[0], port: c2?.[1] ?? "", anchor: "center", connectionPoint: { name: "anchor" } },
       vertices: line?.points
         ?.slice(1, -1)
-        ?.map((p) => convertPoint(p))
-        .map((p) => ({ x: p[0], y: p[1] })),
+        ?.map((p: IPoint) => convertPoint(p))
+        .map((p: [number, number]) => ({ x: p[0], y: p[1] })),
       connector: line?.smooth === Smooth.BEZIER ? "smooth" : undefined,
       attrs: {
         line: {
@@ -325,7 +325,9 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     });
 
     if (line?.points && line.points.length >= 2) {
-      const convertedPts = line.points.map((p) => convertPoint(p)).map((p) => ({ x: p[0], y: p[1] }));
+      const convertedPts = line.points
+        .map((p: IPoint) => convertPoint(p))
+        .map((p: [number, number]) => ({ x: p[0], y: p[1] }));
       allConnectionPaths.push({ points: convertedPts });
     } else {
       allConnectionPaths.push(null);
@@ -635,14 +637,14 @@ function renderLineX6(graphicItem: ILine): X6Markup {
         tagName: "path",
         attrs: {
           d: convertSmoothPath(graphicItem.points)
-            .map((cmd) => cmd.join(" "))
+            .map((cmd: (string | number)[]) => cmd.join(" "))
             .join(" "),
         },
       };
     } else {
       shape = {
         tagName: "polyline",
-        attrs: { points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []).join(" ") },
+        attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") },
       };
     }
   } else {
@@ -665,13 +667,13 @@ function renderPolygonX6(graphicItem: IPolygon, defs: X6Markup[]): X6Markup {
     shape = {
       tagName: "path",
       attrs: {
-        d: [...convertSmoothPath(graphicItem.points), ["Z"]].map((cmd) => cmd.join(" ")).join(" "),
+        d: [...convertSmoothPath(graphicItem.points), ["Z"]].map((cmd: (string | number)[]) => cmd.join(" ")).join(" "),
       },
     };
   } else {
     shape = {
       tagName: "polygon",
-      attrs: { points: graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []).join(" ") },
+      attrs: { points: graphicItem.points?.map((p: IPoint) => convertPoint(p, [0, 0]) ?? []).join(" ") },
     };
   }
   renderFilledShapeX6(shape, graphicItem, defs);
@@ -798,9 +800,11 @@ function renderTextX6(
         : (x1 + x2) / 2;
   const textY = (y1 + y2) / 2;
 
-  const fontStyle = graphicItem.textStyle?.find((e) => e === TextStyle.ITALIC) ? "italic" : "normal";
-  const fontWeight = graphicItem.textStyle?.find((e) => e === TextStyle.BOLD) ? "bold" : "normal";
-  const textDecoration = graphicItem.textStyle?.find((e) => e === TextStyle.UNDERLINE) ? "underline" : "none";
+  const fontStyle = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.ITALIC) ? "italic" : "normal";
+  const fontWeight = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.BOLD) ? "bold" : "normal";
+  const textDecoration = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.UNDERLINE)
+    ? "underline"
+    : "none";
 
   const transform = componentInstance ? computeIconPlacement(componentInstance) : null;
   const invScaleRatio =

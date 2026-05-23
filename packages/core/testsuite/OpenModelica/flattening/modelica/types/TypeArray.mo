@@ -25,4 +25,5 @@ end TypeArray;
 //   ia[2] = 2;
 //   ia[3] = 3;
 // end TypeArray;
+// Info: Class 'IntArray' has no members
 // endResult

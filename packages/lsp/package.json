@@ -12,13 +12,11 @@
   },
   "dependencies": {
     "@modelscript/compiler": "*",
-    "@modelscript/core": "*",
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",
     "@modelscript/reasoner": "*",
     "@modelscript/step": "*",
-    "@modelscript/symbolics": "*",
     "@modelscript/sysml2": "*",
     "@modelscript/utils": "*",
     "fflate": "^0.8.2",

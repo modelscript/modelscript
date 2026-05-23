@@ -729,6 +729,7 @@ export class ArenaDAEPrinter {
     for (let i = 0; i < dae.eqCount; i++) {
       const ek = dae.getEqKind(i);
       if (ek !== EqKind.InitialSimple && ek !== EqKind.InitialFor) {
+        if (this.isDeclarationBinding(dae, i)) continue;
         if (!hasEq) {
           this.out.write("equation\n");
           hasEq = true;
@@ -749,6 +750,27 @@ export class ArenaDAEPrinter {
     this.out.write("end " + dae.name + ";\n");
   }
 
+  private isDeclarationBinding(a: ArenaDAEBuilder, idx: number): boolean {
+    const kind = a.getEqKind(idx);
+    if (kind === EqKind.Simple || kind === EqKind.Array) {
+      const lhsId = a.getEqLhs(idx);
+      if (a.getExprKind(lhsId) === ExprKind.Name) {
+        const varNameId = a.getExprData1(lhsId);
+        const varName = a.interner.resolve(varNameId);
+        if (varName) {
+          const varIdx = a.getVarIdxByName(varName);
+          if (varIdx >= 0) {
+            const varExpr = a.getVarExpression(varIdx);
+            if (varExpr === a.getEqRhs(idx)) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   printFunction(fn: ArenaDAEBuilder): void {
     if (fn.isImpure) this.out.write("impure ");
     this.out.write(fn.classKind + " " + fn.name);
@@ -762,6 +784,7 @@ export class ArenaDAEPrinter {
 
     let hasEq = false;
     for (let i = 0; i < fn.eqCount; i++) {
+      if (this.isDeclarationBinding(fn, i)) continue;
       if (!hasEq) {
         this.out.write("equation\n");
         hasEq = true;

@@ -1,14 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ModelicaClassKind } from "@modelscript/modelica/ast";
-import {
-  ModelicaBooleanLiteral,
-  ModelicaEnumerationLiteral,
-  ModelicaExpression,
-  ModelicaIntegerLiteral,
-  ModelicaRealLiteral,
-  ModelicaStringLiteral,
-} from "@modelscript/symbolics";
 import {
   Ellipse,
   Image,
@@ -25,8 +16,10 @@ import {
   type Shape,
   type Text,
 } from "@svgdotjs/svg.js";
-import { evaluateCondition } from "./annotation-evaluator.js";
-import { ModelicaClassInstance, ModelicaComponentInstance, ModelicaRealClassInstance } from "./factory.js";
+import type { ModelicaExpressionSyntaxNode } from "../ast.js";
+import { ModelicaClassInstance, ModelicaComponentInstance, ModelicaRealClassInstance } from "../semantic-model.js";
+import { ModelicaClassKind } from "../types.js";
+import { evaluateCondition, evaluateCSTExpression } from "./annotation-evaluator.js";
 import {
   Arrow,
   FillPattern,
@@ -220,7 +213,7 @@ export function renderLine(group: G, graphicItem: ILine): Line | Path | Polyline
     if (graphicItem.smooth === Smooth.BEZIER) {
       shape = group.path([...convertSmoothPath(graphicItem.points)]);
     } else {
-      shape = group.polyline(graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []));
+      shape = group.polyline(graphicItem.points?.flatMap((p) => convertPoint(p, [0, 0]) ?? []) ?? []);
     }
   } else {
     const p1 = convertPoint(graphicItem?.points?.[0]);
@@ -240,7 +233,7 @@ export function renderPolygon(group: G, graphicItem: IPolygon): Path | Polygon {
   if (graphicItem.smooth === Smooth.BEZIER && (graphicItem.points?.length ?? 0) > 2) {
     shape = group.path([...convertSmoothPath(graphicItem.points), ["Z"]]);
   } else {
-    shape = group.polygon(graphicItem.points?.map((p) => convertPoint(p, [0, 0]) ?? []));
+    shape = group.polygon(graphicItem.points?.flatMap((p) => convertPoint(p, [0, 0]) ?? []) ?? []);
   }
   renderFilledShape(shape, graphicItem);
   return shape;
@@ -288,22 +281,27 @@ export function renderText(
     let unitString = "";
     if (namedElement.classInstance instanceof ModelicaRealClassInstance) {
       const unitExp = namedElement.classInstance?.unit;
-      if (unitExp instanceof ModelicaStringLiteral && unitExp.value) {
-        unitString = " " + formatUnit(unitExp.value);
+      const evaluatedUnit = evaluateCSTExpression(unitExp, classInstance);
+      if (typeof evaluatedUnit === "string" && evaluatedUnit) {
+        unitString = " " + formatUnit(evaluatedUnit);
       }
     }
-    const expression = ModelicaExpression.fromClassInstance(namedElement.classInstance);
-    if (expression instanceof ModelicaIntegerLiteral || expression instanceof ModelicaRealLiteral) {
-      return formatNumber(expression.value) + unitString;
-    } else if (expression instanceof ModelicaEnumerationLiteral) {
-      return expression.stringValue;
-    } else if (expression instanceof ModelicaStringLiteral) {
-      return expression.value;
-    } else if (expression instanceof ModelicaBooleanLiteral) {
-      return String(expression.value);
-    } else {
-      return name;
+
+    // Evaluate the value using CST evaluator
+    let valExpr: ModelicaExpressionSyntaxNode | null = null;
+    if (namedElement.modification) {
+      valExpr = namedElement.modification.evaluatedExpression ?? namedElement.modification.expression;
     }
+
+    if (valExpr) {
+      const evaluatedValue = evaluateCSTExpression(valExpr, classInstance);
+      if (typeof evaluatedValue === "number") {
+        return formatNumber(evaluatedValue) + unitString;
+      } else if (evaluatedValue != null) {
+        return String(evaluatedValue);
+      }
+    }
+    return name;
   };
   const formattedText = rawText
     .replaceAll(/%%/g, "%")

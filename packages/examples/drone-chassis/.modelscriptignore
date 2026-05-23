@@ -1,0 +1,4 @@
+# Ignore scratch or raw internal files
+cad/scratch/
+node_modules/
+dist/

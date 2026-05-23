@@ -12,8 +12,8 @@ import type { VerificationResult } from "@modelscript/compiler/verifier";
 import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 import { buildPolyglotDiagram, type PolyglotDiagramData } from "@modelscript/diagram/builder";
 
-import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "@modelscript/sysml2/config";
-import { QUERY_HOOKS } from "@modelscript/sysml2/query-hooks";
+import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from "./src-gen/config.js";
+import { QUERY_HOOKS } from "./src-gen/query-hooks.js";
 
 const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__sysml2IndexerHooksFallback;
 const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;

@@ -19,4 +19,5 @@ end TypeSimple;
 // equation
 //   mt = 2;
 // end TypeSimple;
+// Info: Class 'MyType' has no members
 // endResult

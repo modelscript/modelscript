@@ -70,8 +70,12 @@ export function eliminateArenaAliases(dae: ArenaDAEBuilder): void {
         const rhsVarIdx = dae.getVarIdxByName(rhsName);
 
         if (lhsVarIdx >= 0 && rhsVarIdx >= 0) {
-          // Both are valid variables, merge them
-          uf.union(lhsVarIdx, rhsVarIdx);
+          const lhsType = dae.getVarType(lhsVarIdx);
+          const rhsType = dae.getVarType(rhsVarIdx);
+          if (lhsType === rhsType) {
+            // Both are valid variables of the same type, merge them
+            uf.union(lhsVarIdx, rhsVarIdx);
+          }
         }
       }
     }

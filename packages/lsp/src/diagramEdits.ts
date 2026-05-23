@@ -4,7 +4,7 @@
 // Ported from morsel's morsel.tsx (getPlacementEdit, getConnectEdits,
 // handleEdgeDelete, handleComponentsDelete) to produce LSP TextEdit arrays.
 
-import type { ModelicaClassInstance } from "@modelscript/core";
+import type { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "./diagramProtocol";

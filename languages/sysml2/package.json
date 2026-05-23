@@ -4,6 +4,10 @@
   "type": "module",
   "exports": {
     "./language": "./dist/language.js",
+    "./factory": {
+      "types": "./dist/factory.d.ts",
+      "default": "./dist/factory.js"
+    },
     "./config": {
       "types": "./dist/src-gen/config.d.ts",
       "default": "./dist/src-gen/config.js"

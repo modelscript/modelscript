@@ -1,0 +1,7 @@
+{
+  "name": "@examples/drone-chassis",
+  "version": "1.0.0",
+  "description": "Example Drone Chassis hardware package showing STEP, SysML, and Modelica integration",
+  "license": "AGPL-3.0-or-later",
+  "main": "Chassis.mo"
+}

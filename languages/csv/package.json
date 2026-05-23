@@ -22,6 +22,10 @@
     "./ast": {
       "types": "./dist/src-gen/ast.d.ts",
       "default": "./dist/src-gen/ast.js"
+    },
+    "./csv-parser": {
+      "types": "./dist/src/csv-parser.d.ts",
+      "default": "./dist/src/csv-parser.js"
     }
   },
   "scripts": {

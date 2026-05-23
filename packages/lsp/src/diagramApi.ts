@@ -5,7 +5,7 @@
 // based on the document URI. This replaces the per-method if-branching that
 // was previously scattered across 12 handlers in browserServerMain.ts.
 
-import type { ModelicaClassInstance } from "@modelscript/core";
+import type { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import type { TextEdit } from "vscode-languageserver";
 import { buildComponentProperties, buildDiagramData } from "./diagramData";
 import {

@@ -1,7 +1,20 @@
 {
   "name": "@modelscript/modelica",
   "version": "0.0.0",
+  "type": "module",
   "exports": {
+    "./factory": {
+      "types": "./dist/factory.d.ts",
+      "default": "./dist/factory.js"
+    },
+    "./diagram": {
+      "types": "./dist/diagram/index.d.ts",
+      "default": "./dist/diagram/index.js"
+    },
+    "./multibody-generator": {
+      "types": "./dist/multibody-generator.d.ts",
+      "default": "./dist/multibody-generator.js"
+    },
     "./semantic-model": {
       "types": "./dist/semantic-model.d.ts",
       "default": "./dist/semantic-model.js"
@@ -9,6 +22,14 @@
     "./modification-args": {
       "types": "./dist/modification-args.d.ts",
       "default": "./dist/modification-args.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./flattener-query": {
+      "types": "./dist/flattener-query.d.ts",
+      "default": "./dist/flattener-query.js"
     },
     "./query_hooks": {
       "types": "./dist/src-gen/query-hooks.d.ts",
@@ -21,10 +42,6 @@
     "./ref_config": {
       "types": "./dist/src-gen/config.d.ts",
       "default": "./dist/src-gen/config.js"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "default": "./dist/types.js"
     },
     "./ast": {
       "types": "./dist/ast.d.ts",
@@ -45,10 +62,6 @@
     "./language": {
       "types": "./dist/language.d.ts",
       "default": "./dist/language.js"
-    },
-    "./flattener-query": {
-      "types": "./dist/flattener-query.d.ts",
-      "default": "./dist/flattener-query.js"
     },
     "./parser": {
       "types": "./bindings/node/index.d.ts",
@@ -82,6 +95,5 @@
     "tree-sitter": {
       "optional": true
     }
-  },
-  "type": "module"
+  }
 }

@@ -1,8 +1,9 @@
 import { simulateArena } from "@modelscript/compiler/simulator";
-import { Context } from "@modelscript/core";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
+import { Context } from "../../src/index.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);
@@ -26,13 +27,17 @@ end BouncingBall;
 for (const solver of ["rk4", "dopri5"] as const) {
   const ctx = new Context(new NodeFileSystem());
   ctx.load(src);
-  const dae = ctx.flattenDAE("BouncingBall");
-  if (!dae) {
+  const queryDB = ctx.queryEngine.toQueryDB();
+  const flattener = new ArenaQueryFlattener(queryDB);
+  const entries = ctx.queryEngine.index.byName.get("BouncingBall") || [];
+  const firstId = entries[0];
+  if (firstId === undefined) {
     process.exit(1);
   }
+  const arena = flattener.flatten(firstId);
 
   console.log(`\n=== ${solver.toUpperCase()} ===`);
-  const result = simulateArena(dae.arena, {
+  const result = simulateArena(arena, {
     startTime: 0,
     stopTime: 3,
     step: 0.01,

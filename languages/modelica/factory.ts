@@ -15,14 +15,10 @@ import { LSPBridge, PositionIndex } from "@modelscript/compiler/lsp-bridge";
 import { ScopeResolver } from "@modelscript/compiler/resolver";
 import { WorkspaceIndex } from "@modelscript/compiler/workspace-index";
 
-import * as ModelicaAST from "@modelscript/modelica/ast";
+import * as ModelicaAST from "./ast.js";
 
-// @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { INDEXER_HOOKS } from "@modelscript/modelica/indexer_config";
-// @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { QUERY_HOOKS } from "@modelscript/modelica/query_hooks";
-// @ts-expect-error — TSC resolves camelCase aliases, but the actual exports are UPPER_CASE
-import { REF_HOOKS } from "@modelscript/modelica/ref_config";
+import { INDEXER_HOOKS, REF_HOOKS } from "./src-gen/config.js";
+import { QUERY_HOOKS } from "./src-gen/query-hooks.js";
 
 import { INDEXER_HOOKS as csvIndexerHooks } from "@modelscript/csv/config";
 import { QUERY_HOOKS as csvQueryHooks } from "@modelscript/csv/query-hooks";
@@ -46,9 +42,9 @@ import {
   ModelicaStringClassInstance,
   registerAbstractSyntaxNodeFactory,
   registerAnnotationEvaluator,
-} from "@modelscript/modelica/semantic-model";
+} from "./semantic-model.js";
 
-import { AnnotationEvaluator } from "./annotation-evaluator.js";
+import { AnnotationEvaluator } from "@modelscript/core";
 
 // Bridge the Polyglot CST to the Legacy AST for flattener and simulator compatibility.
 // This preserves the @modelscript/modelica package's decoupling from modelica-ast.
@@ -59,8 +55,7 @@ registerAnnotationEvaluator((ast: any, name: string, evalScope?: any, overrideMo
   return evaluator.evaluate(ast, name);
 });
 
-// @ts-expect-error — TSC resolves as `modelicaExpressionEvaluator` but actual export name is `modelicaEvaluator`
-import { modelicaEvaluator } from "@modelscript/modelica/expression-evaluator";
+import { modelicaEvaluator } from "./expression-evaluator.js";
 
 const baseIndexerHooks = [
   ...(INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback ?? []),
@@ -106,7 +101,7 @@ const refAsIndexerHooks = (refHooks ?? [])
   }));
 const allIndexerHooks = [...baseIndexerHooks, ...refAsIndexerHooks];
 
-import { injectPredefinedTypes } from "@modelscript/modelica/predefined-types";
+import { injectPredefinedTypes } from "./predefined-types.js";
 
 /**
  * Creates a configured WorkspaceIndex for Modelica.

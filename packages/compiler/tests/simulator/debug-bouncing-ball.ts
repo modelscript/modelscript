@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { simulateArena } from "@modelscript/compiler/simulator";
-import { Context } from "@modelscript/core";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
+import { Context } from "../../src/index.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);

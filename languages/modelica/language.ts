@@ -3732,6 +3732,15 @@ export default language({
             // For `Real[3] x[2]`, this produces [2, 3] matching Modelica semantics.
             const subscripts = [...declSubscripts, ...typeSubscripts];
 
+            // Also check if the resolved type has its own array dimensions (e.g. type T = Real[3])
+            const classInstanceId = db.query<SymbolId | null>("classInstance", self.id);
+            if (classInstanceId !== null) {
+              const typeClassDims = db.query<any[] | null>("arrayDimensions", classInstanceId);
+              if (typeClassDims && typeClassDims.length > 0) {
+                subscripts.push(...typeClassDims);
+              }
+            }
+
             return subscripts.length > 0 ? subscripts : null;
           },
 

@@ -21,7 +21,7 @@ import {
   ModelicaUnaryOperator,
   ModelicaUnsignedIntegerLiteralSyntaxNode,
   ModelicaUnsignedRealLiteralSyntaxNode,
-} from "@modelscript/modelica/ast";
+} from "../ast.js";
 
 // ── Annotation Enum Definitions ─────────────────────────────────────────────
 // These are the standard Modelica annotation enumeration types that appear

@@ -33,13 +33,7 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "./diagramApi";
-import {
-  buildComponentProperties,
-  buildDiagramData,
-  clearIconCache,
-  getClassIconSvg,
-  type DiagramData,
-} from "./diagramData";
+import { buildComponentProperties, buildDiagramData, clearIconCache, getClassIconSvg } from "./diagramData";
 import { computeComponentInsert } from "./diagramEdits";
 import type { DiagramApplyEditsParams } from "./diagramProtocol";
 import { DiagramMethods } from "./diagramProtocol";
@@ -84,14 +78,20 @@ import {
   ArenaDAEBuilder,
   ArenaDAEPrinter,
   Causality,
+  Context,
   EqKind,
   ExprKind,
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
+  LSPBridge,
   LineIndex,
+  PositionIndex,
+  QueryEngine,
+  Scope,
   VarType,
   Variability,
   VerificationRunner,
+  WorkspaceIndex,
   foldArenaConstants,
   performBltTransformationArena,
   printArenaDAE,
@@ -108,36 +108,42 @@ import {
   simulateArenaAsync,
 } from "@modelscript/compiler/simulator";
 import { SymbolIndexer } from "@modelscript/compiler/symbol-indexer";
+import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
+
 import {
-  Context,
-  LSPBridge,
   ModelicaClassDefinitionSyntaxNode,
-  ModelicaClassInstance,
   ModelicaClassKind,
+  ModelicaStoredDefinitionSyntaxNode,
+} from "@modelscript/modelica/ast";
+
+import {
+  ModelicaClassInstance,
   ModelicaComponentInstance,
   ModelicaElement,
-  ModelicaInterpreter,
-  ModelicaNamedElement,
-  ModelicaScriptScope,
-  ModelicaStoredDefinitionSyntaxNode,
-  PositionIndex,
-  QueryEngine,
-  Scope,
-  WorkspaceIndex,
-  buildSysML2DiagramData,
+  ModelicaElement as ModelicaNamedElement,
+} from "@modelscript/modelica/semantic-model";
+
+import { injectPredefinedTypes } from "@modelscript/modelica/predefined-types";
+
+import {
   createModelicaLSPBridge,
   createModelicaQueryEngine,
   createModelicaScopeResolver,
   createModelicaWorkspaceIndex,
+} from "@modelscript/modelica/factory";
+
+import {
+  buildSysML2DiagramData,
   createSysML2LSPBridge,
   createSysML2QueryEngine,
   createSysML2ScopeResolver,
   createSysML2WorkspaceIndex,
   emitVerificationDiagnostics,
-  generateMultiBodyModelica,
-  injectPredefinedTypes,
-  parseCsvMeasurements,
-} from "@modelscript/core";
+} from "@modelscript/sysml2/factory";
+
+import { generateMultiBodyModelica } from "@modelscript/modelica/multibody-generator";
+
+import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import {
   ModelicaFmuEntity,
   buildFmuArchive,
@@ -175,8 +181,9 @@ function flattenArenaFromInstance(classInstance: ModelicaClassInstance, context:
   const className = classInstance.compositeName || classInstance.name;
   if (!className) throw new Error("Class instance has no name");
 
-  const uri = classInstance.entry?.resourceId;
-  const arena = context.flattenArena(className, classInstance.id, uri);
+  if (!globalModelicaQueryEngine) throw new Error("Query engine not initialized");
+  const flattener = new ArenaQueryFlattener(globalModelicaQueryEngine.toQueryDB());
+  const arena = flattener.flatten(classInstance.id);
   if (!arena) throw new Error(`Failed to flatten class '${className}'`);
   return arena;
 }
@@ -759,8 +766,17 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     });
     const MAX_MEMOS = 100_000; // Limit in-memory memos
 
-    sharedContext = new Context(sharedFs, cacheStore, MAX_MEMOS);
-    sharedContext.setWorkspaceIndex(globalWorkspaceIndex);
+    globalModelicaQueryEngine = createModelicaQueryEngine(
+      globalWorkspaceIndex.toUnified(),
+      { getText: () => null, getNode: () => null },
+      cacheStore,
+      MAX_MEMOS,
+    );
+    sharedContext = new Context(sharedFs, globalWorkspaceIndex, globalModelicaQueryEngine);
+    globalModelicaQueryEngine.updateTree({
+      getText: (start: number, end: number, entry?: any) => sharedContext!.getTreeText(entry?.resourceId, start, end),
+      getNode: (start: number, end: number, entry?: any) => sharedContext!.getTreeNode(entry?.resourceId, start, end),
+    });
     const loaderCtx: LoaderContext = {
       connectionState: connection,
       logger: {
@@ -1469,7 +1485,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
   // Handle Javascript/TypeScript sidecar files natively via mock entity
   if (textDocument.uri.endsWith(".js") || textDocument.uri.endsWith(".ts")) {
-    const context = sharedContext ?? new Context(sharedFs);
+    const context = sharedContext;
+    if (!context) return;
     const entity = {
       isClassInstance: true,
       jsSource: text,
@@ -2048,7 +2065,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 
   if (parserReady && parser) {
     // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
-    const context = sharedContext ?? new Context(sharedFs);
+    const context = sharedContext;
+    if (!context) return;
 
     // Parse with tree-sitter (incremental when possible)
     const oldCached = documentTrees.get(textDocument.uri);
@@ -3580,21 +3598,38 @@ connection.onWorkspaceSymbol((params) => {
   }[] = [];
   const MAX_RESULTS = 100;
 
-  // Search open document instances
-  for (const [uri, instances] of documentInstances) {
-    for (const inst of instances) {
+  // Search using the global unified workspace index
+  if (globalModelicaQueryEngine) {
+    const unifiedIndex = globalWorkspaceIndex.toUnified();
+    for (const entry of unifiedIndex.symbols.values()) {
       if (symbols.length >= MAX_RESULTS) break;
-      collectWorkspaceSymbols(inst, uri, query, symbols, MAX_RESULTS);
-    }
-    if (symbols.length >= MAX_RESULTS) break;
-  }
+      if (!entry.name || entry.name.startsWith("<")) continue;
 
-  // Search MSL classes from shared context
-  if (sharedContext && symbols.length < MAX_RESULTS) {
-    for (const element of sharedContext.elements) {
-      if (symbols.length >= MAX_RESULTS) break;
-      if (isClassInstance(element)) {
-        collectWorkspaceSymbols(element, "", query, symbols, MAX_RESULTS);
+      let fqn = entry.name;
+      let curr = entry.parentId;
+      while (curr !== null) {
+        const p = unifiedIndex.symbols.get(curr);
+        if (p) {
+          fqn = p.name + "." + fqn;
+          curr = p.parentId;
+        } else {
+          break;
+        }
+      }
+
+      if (fqn && fqn.toLowerCase().includes(query)) {
+        // Fallback to startByte/endByte if line numbers aren't computed
+        symbols.push({
+          name: fqn,
+          kind: SymbolKind.Class,
+          location: {
+            uri: entry.resourceId || "modelica:/lib",
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: 0 },
+            },
+          },
+        });
       }
     }
   }
@@ -5815,94 +5850,21 @@ connection.onRequest(
 
 // Custom request: run a .mos script file
 connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {
-  const context = documentContexts.get(params.uri);
-  const doc = documents.get(params.uri);
-  if (!context || !doc) return { output: "Error: Could not find document context." };
-
-  const tree = context.parse(".mos", doc.getText());
-  const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-  if (!storedDef) return { output: "Error: Could not parse script structure." };
-
-  let output = "";
-  const interpreter = new ModelicaInterpreter(true, (msg) => {
-    output += msg + "\n";
-  });
-
-  const scriptScope = new ModelicaScriptScope(context as any);
-
-  try {
-    interpreter.visitStoredDefinition(storedDef, scriptScope);
-  } catch (e) {
-    output += `Runtime Error: ${e instanceof Error ? e.message : String(e)}\n`;
-  }
-
-  return { output };
+  return {
+    output:
+      "Error: The legacy Modelica script interpreter has been removed. A new Arena/Salsa based interpreter is currently under development (Phase 5).",
+  };
 });
 
 // ── Notebook API: session-scoped cell execution ──
-const notebookSessions = new Map<string, ModelicaScriptScope>();
+const notebookSessions = new Map<string, any>();
 
 connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
-  // Find a context to use — prefer the first available document context
-  let ctx: Context | undefined;
-  for (const c of documentContexts.values()) {
-    ctx = c;
-    break;
-  }
-  if (!ctx) return { output: "", error: "No Modelica context available. Open a .mo file first." };
-
-  // Get or create session scope
-  let scope = notebookSessions.get(params.sessionId);
-  if (!scope) {
-    scope = new ModelicaScriptScope(ctx as any);
-    notebookSessions.set(params.sessionId, scope);
-  }
-
-  // Parse the cell code as a .mos script fragment
-  const tree = ctx.parse(".mos", params.code);
-  const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, tree.rootNode);
-  if (!storedDef) return { output: "", error: "Could not parse cell content." };
-
-  let output = "";
-  let error: string | undefined;
-  const interpreter = new ModelicaInterpreter(true, (msg) => {
-    output += msg + "\n";
-  });
-
-  const diagrams: { name: string; data: DiagramData }[] = [];
-
-  try {
-    interpreter.visitStoredDefinition(storedDef, scope);
-
-    // Extract diagrams for any classes defined in this cell
-    for (const classDef of storedDef.classDefinitions) {
-      const name = classDef.identifier?.text;
-      if (!name) {
-        console.log(`[notebook-diagram] skipping classDef without identifier`);
-        continue;
-      }
-      const classInstance = scope.classDefinitions.get(name);
-      if (classInstance) {
-        try {
-          console.log(`[notebook-diagram] building diagram for '${name}'`);
-          const data = await buildDiagramData(classInstance);
-          console.log(
-            `[notebook-diagram] diagram for '${name}': ${data.nodes.length} nodes, ${data.edges.length} edges`,
-          );
-          // Include diagram even if empty — the renderer will show the coordinate system frame
-          diagrams.push({ name, data });
-        } catch (e) {
-          console.error(`[notebook-diagram] Error building diagram for ${name}:`, e);
-        }
-      } else {
-        console.log(`[notebook-diagram] class '${name}' not found in scope.classDefinitions`);
-      }
-    }
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
-  }
-
-  return { output: output.trimEnd(), error, diagrams };
+  return {
+    output: "",
+    error:
+      "The legacy Modelica notebook interpreter has been removed. A new Arena/Salsa based interpreter is currently under development (Phase 5).",
+  };
 });
 
 connection.onRequest("modelscript/resetNotebookSession", async (params: { sessionId: string }) => {
@@ -5937,15 +5899,29 @@ connection.onRequest(
       const shortName = params.className.split(".").pop() || "component";
       let baseName = shortName.toLowerCase();
       try {
-        if (context) {
-          const droppedClass = context.query(params.className);
-          if (isClassInstance(droppedClass)) {
-            const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
-            if (defaultName) {
-              baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
-            } else {
-              baseName = (droppedClass.localizedName || shortName).toLowerCase();
+        let droppedClass: any = null;
+        if (globalModelicaQueryEngine) {
+          const db = globalModelicaQueryEngine.toQueryDB();
+          const parts = params.className.split(".");
+          let currentId: any = null;
+          for (const part of parts) {
+            const resolver = db.query<any>("resolveSimpleName", currentId);
+            const res = resolver ? resolver(part) : null;
+            if (!res) {
+              currentId = null;
+              break;
             }
+            currentId = res.id ?? null;
+          }
+          if (currentId != null) droppedClass = new ModelicaClassInstance(currentId, db);
+        }
+
+        if (isClassInstance(droppedClass)) {
+          const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
+          if (defaultName) {
+            baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
+          } else {
+            baseName = (droppedClass.localizedName || shortName).toLowerCase();
           }
         }
       } catch {
@@ -6076,7 +6052,19 @@ connection.onRequest(
     if (!ctx) return null;
 
     try {
-      const element = ctx.query(params.name);
+      if (!globalModelicaQueryEngine) return null;
+      const db = globalModelicaQueryEngine.toQueryDB();
+      const parts = params.name.split(".");
+      let currentId: any = null;
+      for (const part of parts) {
+        const resolver = db.query<any>("resolveSimpleName", currentId);
+        const res = resolver ? resolver(part) : null;
+        if (!res) return null;
+        currentId = res.id ?? null;
+      }
+      if (currentId == null) return null;
+      const element = new ModelicaClassInstance(currentId, db);
+
       if (!isClassInstance(element)) return null;
 
       const components: { name: string; type: string; description: string }[] = [];
@@ -6370,7 +6358,8 @@ connection.onRequest(
   "modelscript/registerFmu",
   (params: { name: string; data: string }): { ok: boolean; error?: string } => {
     try {
-      const context = sharedContext ?? new Context(sharedFs);
+      const context = sharedContext;
+      if (!context) return { ok: false, error: "Context not initialized" };
       // Decode base64 to Uint8Array
       const binaryStr = atob(params.data);
       const fmuBytes = new Uint8Array(binaryStr.length);
@@ -6437,7 +6426,8 @@ connection.onRequest(
 
       // Extract modelDescription.xml from ZIP
       // Re-use the inline extraction or parse directly from ModelicaFmuEntity
-      const context = sharedContext ?? new Context(sharedFs);
+      const context = sharedContext;
+      if (!context) return { ok: false, error: "Context not initialized" };
       const fmuEntity = ModelicaFmuEntity.fromFmu(context as any, params.name, fmuBytes);
       fmuEntity.load();
 
@@ -8162,7 +8152,7 @@ connection.onRequest("modelscript/runVerification", async (params: { uri: string
  * and evaluates constraints against the trajectory.
  * Can be called from both the LSP request handler and the auto-trigger.
  */
-async function runVerificationForUri(uri: string): Promise<{ ok: boolean }> {
+async function runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const textDocument = documents.get(uri);
     if (!textDocument) throw new Error("Document not found");
@@ -8293,7 +8283,8 @@ async function runVerificationForUri(uri: string): Promise<{ ok: boolean }> {
       const targetModel = new ModelicaClassInstance(simTargetId, targetDB) as any;
       targetModel.instantiate();
 
-      const context = sharedContext ?? new Context(sharedFs);
+      const context = sharedContext;
+      if (!context) return { ok: false, error: "Context not initialized" };
       const arena = flattenArenaFromInstance(targetModel, context);
 
       const arenaSimResult = simulateArena(arena, {

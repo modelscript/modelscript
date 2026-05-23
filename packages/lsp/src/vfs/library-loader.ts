@@ -1,4 +1,4 @@
-import { Context, WorkspaceIndex } from "@modelscript/core";
+import { Context, WorkspaceIndex } from "@modelscript/compiler";
 import { unzipSync } from "fflate";
 import type { BrowserFileSystem } from "./browser-file-system";
 import {
@@ -101,21 +101,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       message: "Processing MSL classes...",
     });
 
-    const libEntries = ctx.sharedFs.readdir("/lib");
-    const hasPackage = libEntries.some((e) => e.name === "package.mo");
-    if (hasPackage) {
-      await ctx.sharedContext.addLibrary("/lib", { skipIndex: true });
-    } else {
-      for (const entry of libEntries) {
-        if (entry.isDirectory()) {
-          try {
-            await ctx.sharedContext.addLibrary(`/lib/${entry.name}`, { skipIndex: true });
-          } catch (e) {
-            ctx.logger.warn(`Failed to load library from /lib/${entry.name}: ${e}`);
-          }
-        }
-      }
-    }
+    ctx.sharedFs.readdir("/lib");
 
     const mslTreeCache = new Map<string, Tree | null>();
     let registeredCount = 0;
@@ -377,23 +363,9 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
 
     // Add as a library to the shared context
     try {
-      const libEntries = ctx.sharedFs.readdir(basePath);
-      const hasPackage = libEntries.some((e) => e.name === "package.mo");
-      if (hasPackage) {
-        await ctx.sharedContext.addLibrary(basePath, { skipIndex: true });
-      } else {
-        for (const entry of libEntries) {
-          if (entry.isDirectory()) {
-            try {
-              await ctx.sharedContext.addLibrary(`${basePath}/${entry.name}`, { skipIndex: true });
-            } catch (e) {
-              ctx.logger.warn(`[registry] Failed to load sub-library ${basePath}/${entry.name}: ${e}`);
-            }
-          }
-        }
-      }
+      ctx.sharedFs.readdir(basePath);
     } catch (e) {
-      ctx.logger.warn(`[registry] Failed to add library from ${basePath}: ${e}`);
+      ctx.logger.warn(`[registry] Failed to read directory ${basePath}: ${e}`);
     }
 
     // Register files lazily in the global workspace index

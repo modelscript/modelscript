@@ -23,6 +23,7 @@ import { rdfRouter } from "./routes/rdf.js";
 import { simulateRouter } from "./routes/simulate.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { LibraryStorage } from "./storage.js";
+import { seedExamplePackages } from "./util/seed-examples.js";
 
 /** Options for creating the Express application. */
 export interface AppOptions {
@@ -49,6 +50,14 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // Initialize the extensible artifact system (FMU, Dataset, etc.)
   initializeArtifactSystem();
+
+  if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
+    console.log("[DevServer] Development mode detected. Running auto-seeding...");
+    // Run asynchronously in the background
+    void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
+      console.error("[DevServer] Failed to seed example packages:", err);
+    });
+  }
 
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
   app.use(express.json({ limit: "50mb" }));
