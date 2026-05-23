@@ -8,6 +8,8 @@ import {
   UnaryOp,
   VarType,
   type ArenaValue,
+  type QueryDB,
+  type SymbolId,
 } from "@modelscript/compiler";
 import {
   ModelicaArrayConstructorSyntaxNode,
@@ -15,8 +17,11 @@ import {
   ModelicaBinaryOperator,
   ModelicaBooleanLiteralSyntaxNode,
   ModelicaComponentReferenceSyntaxNode,
+  ModelicaExpressionSyntaxNode,
+  ModelicaForIndexSyntaxNode,
   ModelicaFunctionCallSyntaxNode,
   ModelicaFunctionPartialApplicationSyntaxNode,
+  ModelicaIdentifierSyntaxNode,
   ModelicaIfElseExpressionSyntaxNode,
   ModelicaLiteralSyntaxNode,
   ModelicaOutputExpressionListSyntaxNode,
@@ -79,8 +84,12 @@ const ARENA_BUILTIN_FOLDS = new Map<string, BuiltinFoldDef>([
  * Translates a Modelica CST/AST expression tree into integer-based `ExprId`s
  * inside the given `ArenaDAEBuilder`.
  */
+/** Names that should never be prefixed (Modelica built-in variables). */
+const BUILTIN_NAMES = new Set(["time"]);
+
 export class ArenaExprVisitor {
   private loopVars: Map<string, number>;
+  private localIterators: Set<string>;
   private inNoEvent = false;
   constructor(
     private dae: ArenaDAEBuilder,
@@ -88,8 +97,19 @@ export class ArenaExprVisitor {
     private onFunctionCall?: (funcName: string) => void,
     private cardinalityMap?: Map<string, number>,
     private resolveFunctionInputs?: (funcName: string) => string[],
+    private namePrefix?: string,
+    private db?: QueryDB,
+    private scopeId?: SymbolId,
+    localIterators?: Set<string>,
   ) {
     this.loopVars = loopVars ?? new Map();
+    this.localIterators = localIterators ?? new Set();
+  }
+
+  /** Apply the name prefix to a path, unless it's a built-in or already qualified. */
+  private prefixName(path: string): string {
+    if (!this.namePrefix || BUILTIN_NAMES.has(path) || this.localIterators.has(path)) return path;
+    return `${this.namePrefix}.${path}`;
   }
 
   public visit(node: unknown): number | undefined {
@@ -113,6 +133,15 @@ export class ArenaExprVisitor {
       return this.visitLiteralFallback(n);
     } else if (n instanceof ModelicaComponentReferenceSyntaxNode) {
       return this.visitComponentReference(n);
+    } else if (n instanceof ModelicaIdentifierSyntaxNode) {
+      const text = n.text;
+      if (text) {
+        if (this.loopVars.has(text)) {
+          return this.dae.addIntLiteral(this.loopVars.get(text) as number);
+        }
+        return this.dae.addNameExpr(this.prefixName(text));
+      }
+      return undefined;
     } else if (n instanceof ModelicaBinaryExpressionSyntaxNode) {
       return this.visitBinaryExpression(n);
     } else if (n instanceof ModelicaUnaryExpressionSyntaxNode) {
@@ -201,6 +230,96 @@ export class ArenaExprVisitor {
     return this.dae.addStringLiteral(text);
   }
 
+  private unrollComprehension(
+    forIndexes: ModelicaForIndexSyntaxNode[],
+    indexPos: number,
+    expression: ModelicaExpressionSyntaxNode,
+    loopVars: Map<string, number>,
+  ): number[] | undefined {
+    if (indexPos >= forIndexes.length) {
+      const visitor = new ArenaExprVisitor(
+        this.dae,
+        loopVars,
+        this.onFunctionCall,
+        this.cardinalityMap,
+        this.resolveFunctionInputs,
+        this.namePrefix,
+        this.db,
+        this.scopeId,
+        this.localIterators,
+      );
+      const exprId = visitor.visit(expression);
+      return exprId !== undefined ? [exprId] : undefined;
+    }
+
+    const forIndex = forIndexes[indexPos];
+    if (!forIndex) return undefined;
+
+    const indexName = forIndex.identifier?.text ?? "";
+    if (!indexName) return undefined;
+
+    const rangeValues = this.evaluateForRange(forIndex, loopVars);
+    if (!rangeValues) return undefined;
+
+    const results: number[] = [];
+    for (const val of rangeValues) {
+      const newVars = new Map(loopVars);
+      newVars.set(indexName, val);
+      const subResults = this.unrollComprehension(forIndexes, indexPos + 1, expression, newVars);
+      if (!subResults) return undefined;
+      results.push(...subResults);
+    }
+    return results;
+  }
+
+  private evaluateForRange(forIndex: ModelicaForIndexSyntaxNode, loopVars: Map<string, number>): number[] | null {
+    if (!forIndex.expression) return null;
+
+    const visitor = new ArenaExprVisitor(
+      this.dae,
+      loopVars,
+      this.onFunctionCall,
+      this.cardinalityMap,
+      this.resolveFunctionInputs,
+      this.namePrefix,
+      this.db,
+      this.scopeId,
+      this.localIterators,
+    );
+    const rangeExprId = visitor.visit(forIndex.expression);
+    if (rangeExprId === undefined) return null;
+
+    // Check if it's a Range expression
+    if (this.dae.getExprKind(rangeExprId) === ExprKind.Range) {
+      const startId = this.dae.getExprData1(rangeExprId);
+      const stepId = this.dae.getExprLeft(rangeExprId);
+      const stopId = this.dae.getExprRight(rangeExprId);
+
+      const startVal = evaluateArenaExpression(this.dae, startId, undefined, this.db, this.scopeId);
+      const stopVal = evaluateArenaExpression(this.dae, stopId, undefined, this.db, this.scopeId);
+      if (typeof startVal !== "number" || typeof stopVal !== "number") return null;
+
+      let stepVal = 1;
+      if (stepId >= 0) {
+        const sv = evaluateArenaExpression(this.dae, stepId, undefined, this.db, this.scopeId);
+        if (typeof sv === "number") stepVal = sv;
+      }
+
+      const result: number[] = [];
+      if (stepVal > 0) {
+        for (let i = startVal; i <= stopVal; i += stepVal) result.push(i);
+      } else if (stepVal < 0) {
+        for (let i = startVal; i >= stopVal; i += stepVal) result.push(i);
+      }
+      return result;
+    }
+
+    const val = evaluateArenaExpression(this.dae, rangeExprId, undefined, this.db, this.scopeId);
+    if (typeof val === "number") return [val];
+
+    return null;
+  }
+
   private visitComponentReference(node: ModelicaComponentReferenceSyntaxNode): number | undefined {
     let path = "";
     let baseId: number | undefined = undefined;
@@ -255,7 +374,7 @@ export class ArenaExprVisitor {
           path += staticSuffix;
         } else {
           // Dynamic subscript or slice. We emit a Name expr for the path so far, then a Subscript expr.
-          const currentBase = this.dae.addNameExpr(path);
+          const currentBase = this.dae.addNameExpr(this.prefixName(path));
           baseId = this.dae.addSubscriptExpr(currentBase, subIds);
         }
       }
@@ -271,7 +390,7 @@ export class ArenaExprVisitor {
     }
 
     // Emit a Name expression
-    return this.dae.addNameExpr(path);
+    return this.dae.addNameExpr(this.prefixName(path));
   }
 
   private visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode): number | undefined {
@@ -467,6 +586,37 @@ export class ArenaExprVisitor {
   }
 
   private visitArrayConstructor(node: ModelicaArrayConstructorSyntaxNode): number | undefined {
+    if (node.comprehensionClause) {
+      const compClause = node.comprehensionClause;
+      if (compClause.expression) {
+        const unrolled = this.unrollComprehension(compClause.forIndexes, 0, compClause.expression, this.loopVars);
+        if (unrolled) {
+          return this.dae.addArrayCtorExpr(unrolled);
+        }
+
+        const nextLocalIters = new Set(this.localIterators);
+        for (const idx of compClause.forIndexes) {
+          const name = idx.identifier?.text;
+          if (name) nextLocalIters.add(name);
+        }
+        const bodyVisitor = new ArenaExprVisitor(
+          this.dae,
+          this.loopVars,
+          this.onFunctionCall,
+          this.cardinalityMap,
+          this.resolveFunctionInputs,
+          this.namePrefix,
+          this.db,
+          this.scopeId,
+          nextLocalIters,
+        );
+        const bodyId = bodyVisitor.visit(compClause.expression);
+        if (bodyId === undefined) return undefined;
+        const iteratorCount = compClause.forIndexes?.length ?? 0;
+        return this.dae.addComprehensionExpr("array", bodyId, iteratorCount);
+      }
+    }
+
     const elementIds: number[] = [];
     if (node.expressionList?.expressions) {
       for (const expr of node.expressionList.expressions) {
@@ -591,12 +741,46 @@ export class ArenaExprVisitor {
     // Check for comprehension/reduction syntax: func(expr for i in range)
     if (node.functionCallArguments?.comprehensionClause) {
       const compClause = node.functionCallArguments.comprehensionClause;
-      const bodyId = this.visit(compClause.expression);
-      if (bodyId === undefined) return undefined;
+      if (compClause.expression) {
+        const unrolled = this.unrollComprehension(compClause.forIndexes, 0, compClause.expression, this.loopVars);
+        if (unrolled) {
+          if (funcName === "sum") {
+            if (unrolled.length === 0) return this.dae.addRealLiteral(0.0);
+            return unrolled.reduce((acc, curr) => this.dae.addBinaryExpr(BinOp.Add, acc, curr));
+          } else if (funcName === "product") {
+            if (unrolled.length === 0) return this.dae.addRealLiteral(1.0);
+            return unrolled.reduce((acc, curr) => this.dae.addBinaryExpr(BinOp.Mul, acc, curr));
+          } else if (funcName === "min") {
+            if (unrolled.length === 0) return this.dae.addArrayCtorExpr([]);
+            return unrolled.reduce((acc, curr) => this.dae.addCallExpr("min", [acc, curr]));
+          } else if (funcName === "max") {
+            if (unrolled.length === 0) return this.dae.addArrayCtorExpr([]);
+            return unrolled.reduce((acc, curr) => this.dae.addCallExpr("max", [acc, curr]));
+          }
+          return this.dae.addArrayCtorExpr(unrolled);
+        }
 
-      // For reduction operators (sum, product, min, max), emit comprehension expr
-      const iteratorCount = compClause.forIndexes?.length ?? 0;
-      return this.dae.addComprehensionExpr(funcName, bodyId, iteratorCount);
+        const nextLocalIters = new Set(this.localIterators);
+        for (const idx of compClause.forIndexes) {
+          const name = idx.identifier?.text;
+          if (name) nextLocalIters.add(name);
+        }
+        const bodyVisitor = new ArenaExprVisitor(
+          this.dae,
+          this.loopVars,
+          this.onFunctionCall,
+          this.cardinalityMap,
+          this.resolveFunctionInputs,
+          this.namePrefix,
+          this.db,
+          this.scopeId,
+          nextLocalIters,
+        );
+        const bodyId = bodyVisitor.visit(compClause.expression);
+        if (bodyId === undefined) return undefined;
+        const iteratorCount = compClause.forIndexes?.length ?? 0;
+        return this.dae.addComprehensionExpr(funcName, bodyId, iteratorCount);
+      }
     }
 
     // Specialized: fill(s, n1, n2, ...) — expand to array constructor

@@ -194,6 +194,14 @@ export class ClassDefinition extends SemanticNode {
     return this.query<unknown>("resolveModification");
   }
 
+  get scopeData(): unknown {
+    return this.query<unknown>("scopeData");
+  }
+
+  get inheritedSymbolsMap(): unknown {
+    return this.query<unknown>("inheritedSymbolsMap");
+  }
+
   get resolveSimpleName(): (name: string, encapsulated?: boolean) => SemanticNode | null {
     return this.query<(name: string, encapsulated?: boolean) => SemanticNode | null>("resolveSimpleName");
   }
