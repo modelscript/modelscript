@@ -193,6 +193,46 @@ export function foldArenaConstants(
                 }
               }
             }
+          } else if (arena.hasArrayElements(name)) {
+            const rhsVal = evaluateArenaExpression(arena, rhs, paramMap, db, scopeId);
+            if (rhsVal !== null && Array.isArray(rhsVal)) {
+              const elementIndices = arena.getArrayElementIndices(name);
+              for (const elemIdx of elementIndices) {
+                const vv = arena.getVarVariability(elemIdx);
+                if (vv === Variability.Constant || vv === Variability.Parameter) {
+                  const elemName = arena.getVarName(elemIdx);
+                  const match = elemName.match(/\[([\d,]+)\]$/);
+                  if (match) {
+                    const indices = match[1].split(",").map(Number);
+                    let current: ArenaValue = rhsVal;
+                    let valid = true;
+                    for (const idx of indices) {
+                      if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                        current = current[idx - 1];
+                      } else {
+                        valid = false;
+                        break;
+                      }
+                    }
+                    if (valid) {
+                      let numValue: number | null = null;
+                      if (typeof current === "number") {
+                        numValue = current;
+                      } else if (typeof current === "boolean") {
+                        numValue = current ? 1.0 : 0.0;
+                      }
+                      if (numValue !== null) {
+                        const currentStart = arena.getVarStartValue(elemIdx);
+                        if (currentStart !== numValue) {
+                          arena.setVarStartValue(elemIdx, numValue);
+                          changed = true;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

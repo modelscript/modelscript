@@ -887,6 +887,9 @@ export class ModelicaDAE {
   /** Algebraic loops (SCCs) detected during flattening. */
   algebraicLoops: { variables: string[]; equations: ModelicaEquation[] }[] = [];
   legacyVariables: SymbolTable;
+  get variables(): SymbolTable {
+    return this.legacyVariables;
+  }
 
   /** Arena-backed builder populated during dual-write phase. */
   arena: ArenaDAEBuilder;
