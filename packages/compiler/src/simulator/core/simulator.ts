@@ -1121,27 +1121,78 @@ export class ArenaSimulator {
       this.evaluateDerivativeEquations(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
 
-      // Fire the when-clause actions DIRECTLY for the detected event.
-      // We do NOT re-evaluate the boolean condition (processWhenClauses)
-      // because the bisection may leave the state slightly on the wrong side
-      // of the zero-crossing surface, causing the boolean to be false even
-      // though the event was correctly detected by continuous sign-change.
-      if (eventIdx >= 0 && eventIdx < this.whenClauses.length) {
-        const clause = this.whenClauses[eventIdx];
-        if (clause) {
+      // Project state onto the zero-crossing surface BEFORE evaluating when-clauses.
+      // The bisection locates events to ~1e-12 precision, but the residual non-zero
+      // value can cause strict inequalities (e.g. h <= 0) to evaluate to false.
+      // By projecting the involved state variable exactly to the threshold (e.g. h = 0),
+      // we ensure boolean event conditions evaluate robustly.
+      if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
+        const ei = this.eventIndicators[eventIdx];
+        if (ei) {
+          const eiKind = this.arena.getExprKind(ei.exprId);
+          if (eiKind === ExprKind.Binary) {
+            const op = this.arena.getExprData1(ei.exprId) as BinOp;
+            if (op === BinOp.Sub) {
+              const lhsId = this.arena.getExprLeft(ei.exprId);
+              if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
+                const nameId = this.arena.getExprData1(lhsId);
+                for (let i = 0; i < n; i++) {
+                  if (stateStringIds[i] === nameId) {
+                    const rhsVal = evaluateArenaRuntime(
+                      this.arena,
+                      this.arena.getExprRight(ei.exprId),
+                      valuesByStringId,
+                    );
+                    valuesByStringId[nameId] = rhsVal;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Reset wasActive flags before processing when-clauses.
+      //
+      // In the adaptive solver (dopri5/BDF) path, when-clause conditions are NOT
+      // evaluated during intermediate RHS calls (to avoid corrupting memory state
+      // during trial RK stages). This means wasActive can become stale — it may
+      // still be `true` from a previous event even though the condition was `false`
+      // throughout the intervening integration.
+      //
+      // Since this callback is only invoked when a zero-crossing event was detected
+      // (meaning a condition boundary was just crossed), we reset wasActive to false
+      // for all clauses. This ensures correct rising-edge detection: if the condition
+      // is now true at the event time, it will be recognized as a rising edge.
+      //
+      // For clauses whose condition is NOT related to the triggered zero-crossing,
+      // resetting wasActive is safe — if their condition is currently active, it
+      // represents a genuine rising edge that was missed during integration (and
+      // should be processed). If inactive, no action will be taken anyway.
+      for (const clause of this.whenClauses) {
+        clause.wasActive = false;
+      }
+
+      // Process all when-clauses. We evaluate their boolean conditions at the precise
+      // event state to detect rising edges.
+      for (const clause of this.whenClauses) {
+        const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+        const isActive = condVal !== 0;
+
+        if (isActive && !clause.wasActive) {
           for (const action of clause.actions) {
             const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId);
             valuesByStringId[action.targetNameId] = val;
           }
         }
+
+        // Re-evaluate the condition after actions (e.g. reinit) to properly set the edge-detection
+        // state for the next step, preventing immediate spurious re-triggering.
+        const postCondVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+        clause.wasActive = postCondVal !== 0;
       }
 
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, t, 0);
-
-      // Reset wasActive for all when-clauses so future events can fire
-      for (const clause of this.whenClauses) {
-        clause.wasActive = false;
-      }
 
       // Read back possibly-modified state
       const yAfter = new Array<number>(n);

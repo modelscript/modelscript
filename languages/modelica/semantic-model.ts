@@ -1256,7 +1256,7 @@ export class ModelicaComponentInstance extends ModelicaClassInstance {
             currentClassId = baseEntry?.id ?? null;
           } else {
             // Check if this is a short class target
-            const classInst = new ModelicaClassInstance(currentClassId, this.db);
+            const classInst: ModelicaClassInstance = new ModelicaClassInstance(currentClassId, this.db);
             currentClassId = classInst.shortClassTarget?.id ?? null;
           }
         }

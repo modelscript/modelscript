@@ -154,10 +154,35 @@ export function dopri5(
   const k: number[][] = Array.from({ length: 7 }, () => new Array(n).fill(0) as number[]);
   k[0] = k1;
 
+  // Helper to initialize and update event values robustly at crossing boundaries
+  const computeEventValuesWithProbe = (currentTime: number, currentState: number[]) => {
+    if (!eventFunctions) return [];
+    return eventFunctions.map((g, gIdx) => {
+      const gVal = g(currentTime, currentState);
+      if (Math.abs(gVal) < 1e-10) {
+        // g is on the zero-crossing surface. Probe the derivative
+        // direction by evaluating g slightly after the event.
+        const dydt = f(currentTime, currentState);
+        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
+        const gProbe = g(currentTime + 1e-8, probe);
+        if (Math.abs(gProbe) > 1e-14) {
+          // Nudge in the direction g is departing toward
+          return gProbe > 0 ? 1e-10 : -1e-10;
+        }
+        // If the probe is also zero (Zeno-like), use the directional filter
+        const reqDir = eventDirections?.[gIdx] ?? 0;
+        if (reqDir < 0) return 1e-10; // next trigger: + → -, so start at +
+        if (reqDir > 0) return -1e-10; // next trigger: - → +, so start at -
+        return 1e-10; // default: assume departure toward positive
+      }
+      return gVal;
+    });
+  };
+
   // Previous event function values (for sign-change detection)
   let prevEventValues: number[] | null = null;
   if (eventFunctions && eventFunctions.length > 0) {
-    prevEventValues = eventFunctions.map((g) => g(t, y));
+    prevEventValues = computeEventValuesWithProbe(t, y);
   }
 
   let totalSteps = 0;
@@ -296,17 +321,13 @@ export function dopri5(
               lastEventTime = tEvent;
             }
 
-            if (maxChange < atol || consecutiveEvents >= 3) {
-              // Zeno: output the final resting state and disable events
+            if (consecutiveEvents >= 10) {
+              // Zeno: output the final resting state and terminate simulation.
+              // We must terminate instead of disabling events, otherwise continuous
+              // equations (e.g., der(v) = -g) will pull the state through the floor.
               result.times.push(tEvent);
               result.states.push([...yAfter]);
-              t = tEvent;
-              y = yAfter;
-              k1 = f(t, y);
-              result.fEvals++;
-              k[0] = k1;
-              prevEventValues = null; // Disable all future event detection
-              break;
+              return result;
             }
 
             // Output explicit post-event state so the plot shows instantaneous jump
@@ -320,18 +341,17 @@ export function dopri5(
             result.fEvals++;
             k[0] = k1;
 
-            // Nudge prevEventValues away from zero after the event.
-            // The projection sets g ≈ 0; a directional nudge ensures the next
-            // real crossing (in the required direction) is properly detected.
-            prevEventValues = eventFunctions.map((g) => {
-              const gVal = g(t, y);
-              if (Math.abs(gVal) < 1e-10) {
-                // Nudge in the departure direction: after a negative crossing
-                // the system departs positive, and vice versa.
-                return dir < 0 ? 1e-10 : -1e-10;
-              }
-              return gVal;
-            });
+            // Recompute prevEventValues from the POST-event state (yAfter).
+            // After a reinit or other state modification by the event callback,
+            // the system may have jumped to an entirely different region of
+            // state space. Using the pre-event crossing direction (dir) to
+            // nudge is incorrect — e.g., after a bouncing ball reinit, h is
+            // still ≈ 0 but v has flipped sign, so h will now increase.
+            //
+            // Strategy: evaluate g on the post-event state. If g ≈ 0, use the
+            // derivative dg/dt (via a small forward probe with the RHS) to
+            // determine which direction g is departing toward.
+            prevEventValues = computeEventValuesWithProbe(t, y);
 
             // Reset step size after the discontinuity.
             // The Hermite interpolation polynomial is inaccurate across

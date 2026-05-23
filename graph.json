@@ -1,75 +1,6 @@
 {
   "graph": {
     "nodes": {
-      "@modelscript/diagram-core": {
-        "name": "@modelscript/diagram-core",
-        "type": "lib",
-        "data": {
-          "root": "packages/diagram-core",
-          "name": "@modelscript/diagram-core",
-          "tags": ["npm:public"],
-          "metadata": {
-            "targetGroups": {
-              "NPM Scripts": ["build", "lint"]
-            },
-            "js": {
-              "packageName": "@modelscript/diagram-core",
-              "packageVersion": "0.0.0",
-              "packageMain": "src/index.ts",
-              "isInPackageManagerWorkspaces": true
-            }
-          },
-          "targets": {
-            "build": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "build"
-              },
-              "metadata": {
-                "scriptContent": "tsc",
-                "runCommand": "npm run build"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"],
-              "outputs": [
-                "{projectRoot}/dist",
-                "{projectRoot}/build",
-                "{projectRoot}/public",
-                "{projectRoot}/src/**/*.js",
-                "{projectRoot}/*.wasm",
-                "{projectRoot}/bindings/**/*.o",
-                "{projectRoot}/build/**/*.node",
-                "{projectRoot}/build/**/*.wasm",
-                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
-              ]
-            },
-            "lint": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "lint"
-              },
-              "metadata": {
-                "scriptContent": "eslint src",
-                "runCommand": "npm run lint"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"]
-            },
-            "nx-release-publish": {
-              "executor": "@nx/js:release-publish",
-              "dependsOn": ["^nx-release-publish"],
-              "options": {},
-              "configurations": {},
-              "parallelism": true
-            }
-          },
-          "implicitDependencies": []
-        }
-      },
       "@modelscript/modelica": {
         "name": "@modelscript/modelica",
         "type": "lib",
@@ -85,6 +16,46 @@
               "packageName": "@modelscript/modelica",
               "packageVersion": "0.0.0",
               "packageExports": {
+                "./factory": {
+                  "types": "./dist/factory.d.ts",
+                  "default": "./dist/factory.js"
+                },
+                "./builtins": {
+                  "types": "./dist/builtins.d.ts",
+                  "default": "./dist/builtins.js"
+                },
+                "./predefined": {
+                  "types": "./dist/predefined.d.ts",
+                  "default": "./dist/predefined.js"
+                },
+                "./units": {
+                  "types": "./dist/units.d.ts",
+                  "default": "./dist/units.js"
+                },
+                "./annotation": {
+                  "types": "./dist/annotation.d.ts",
+                  "default": "./dist/annotation.js"
+                },
+                "./scripting": {
+                  "types": "./dist/scripting.d.ts",
+                  "default": "./dist/scripting.js"
+                },
+                "./errors": {
+                  "types": "./dist/errors.d.ts",
+                  "default": "./dist/errors.js"
+                },
+                "./po": {
+                  "types": "./dist/po.d.ts",
+                  "default": "./dist/po.js"
+                },
+                "./diagram": {
+                  "types": "./dist/diagram/index.d.ts",
+                  "default": "./dist/diagram/index.js"
+                },
+                "./multibody-generator": {
+                  "types": "./dist/multibody-generator.d.ts",
+                  "default": "./dist/multibody-generator.js"
+                },
                 "./semantic-model": {
                   "types": "./dist/semantic-model.d.ts",
                   "default": "./dist/semantic-model.js"
@@ -93,29 +64,33 @@
                   "types": "./dist/modification-args.d.ts",
                   "default": "./dist/modification-args.js"
                 },
-                "./query_hooks": {
-                  "types": "./dist/query_hooks.d.ts",
-                  "default": "./dist/query_hooks.js"
-                },
-                "./indexer_config": {
-                  "types": "./dist/indexer_config.d.ts",
-                  "default": "./dist/indexer_config.js"
-                },
-                "./ref_config": {
-                  "types": "./dist/ref_config.d.ts",
-                  "default": "./dist/ref_config.js"
-                },
                 "./types": {
                   "types": "./dist/types.d.ts",
                   "default": "./dist/types.js"
+                },
+                "./flattener-query": {
+                  "types": "./dist/flattener-query.d.ts",
+                  "default": "./dist/flattener-query.js"
+                },
+                "./query_hooks": {
+                  "types": "./dist/src-gen/query-hooks.d.ts",
+                  "default": "./dist/src-gen/query-hooks.js"
+                },
+                "./indexer_config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
+                },
+                "./ref_config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
                 },
                 "./ast": {
                   "types": "./dist/ast.d.ts",
                   "default": "./dist/ast.js"
                 },
                 "./ast_classes": {
-                  "types": "./dist/ast_classes.d.ts",
-                  "default": "./dist/ast_classes.js"
+                  "types": "./dist/src-gen/ast.d.ts",
+                  "default": "./dist/src-gen/ast.js"
                 },
                 "./expression-evaluator": {
                   "types": "./dist/expression-evaluator.d.ts",
@@ -129,13 +104,13 @@
                   "types": "./dist/language.d.ts",
                   "default": "./dist/language.js"
                 },
-                "./flattener-query": {
-                  "types": "./dist/flattener-query.d.ts",
-                  "default": "./dist/flattener-query.js"
-                },
                 "./parser": {
                   "types": "./bindings/node/index.d.ts",
                   "default": "./bindings/node/index.cjs"
+                },
+                "./arena-script-interpreter": {
+                  "types": "./dist/arena-script-interpreter.d.ts",
+                  "default": "./dist/arena-script-interpreter.js"
                 }
               },
               "isInPackageManagerWorkspaces": true
@@ -265,218 +240,6 @@
           "implicitDependencies": []
         }
       },
-      "@modelscript/optimizer": {
-        "name": "@modelscript/optimizer",
-        "type": "lib",
-        "data": {
-          "root": "packages/optimizer",
-          "name": "@modelscript/optimizer",
-          "tags": ["npm:public", "npm:modelscript", "npm:optimization", "npm:sqp", "npm:nlp", "npm:optimal-control"],
-          "metadata": {
-            "targetGroups": {
-              "NPM Scripts": ["build", "clean", "lint", "watch"]
-            },
-            "description": "Optimal control and NLP solver for ModelScript — SQP, stochastic optimization, COIN-OR codegen",
-            "js": {
-              "packageName": "@modelscript/optimizer",
-              "packageVersion": "0.0.0",
-              "packageExports": {
-                ".": {
-                  "types": "./dist/index.d.ts",
-                  "import": "./dist/index.js",
-                  "require": "./dist/index.js",
-                  "default": "./dist/index.js"
-                }
-              },
-              "packageMain": "dist/index.js",
-              "isInPackageManagerWorkspaces": true
-            }
-          },
-          "targets": {
-            "build": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "build"
-              },
-              "metadata": {
-                "scriptContent": "npm run clean && tsc",
-                "runCommand": "npm run build"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"],
-              "outputs": [
-                "{projectRoot}/dist",
-                "{projectRoot}/build",
-                "{projectRoot}/public",
-                "{projectRoot}/src/**/*.js",
-                "{projectRoot}/*.wasm",
-                "{projectRoot}/bindings/**/*.o",
-                "{projectRoot}/build/**/*.node",
-                "{projectRoot}/build/**/*.wasm",
-                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
-              ]
-            },
-            "clean": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "clean"
-              },
-              "metadata": {
-                "scriptContent": "rimraf dist",
-                "runCommand": "npm run clean"
-              },
-              "configurations": {},
-              "parallelism": true
-            },
-            "lint": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "lint"
-              },
-              "metadata": {
-                "scriptContent": "eslint src --ext .ts,.tsx",
-                "runCommand": "npm run lint"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"]
-            },
-            "watch": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "watch"
-              },
-              "metadata": {
-                "scriptContent": "tsc --watch",
-                "runCommand": "npm run watch"
-              },
-              "configurations": {},
-              "parallelism": true
-            },
-            "nx-release-publish": {
-              "executor": "@nx/js:release-publish",
-              "dependsOn": ["^nx-release-publish"],
-              "options": {},
-              "configurations": {},
-              "parallelism": true
-            }
-          },
-          "implicitDependencies": []
-        }
-      },
-      "@modelscript/simulator": {
-        "name": "@modelscript/simulator",
-        "type": "lib",
-        "data": {
-          "root": "packages/simulator",
-          "name": "@modelscript/simulator",
-          "tags": [
-            "npm:public",
-            "npm:modelscript",
-            "npm:simulation",
-            "npm:ode",
-            "npm:dae",
-            "npm:runge-kutta",
-            "npm:bdf"
-          ],
-          "metadata": {
-            "targetGroups": {
-              "NPM Scripts": ["build", "clean", "lint", "watch"]
-            },
-            "description": "ODE/DAE simulation engine for ModelScript — solvers, initialization, AD, uncertainty propagation",
-            "js": {
-              "packageName": "@modelscript/simulator",
-              "packageVersion": "0.0.0",
-              "packageExports": {
-                ".": {
-                  "types": "./dist/index.d.ts",
-                  "import": "./dist/index.js",
-                  "require": "./dist/index.js",
-                  "default": "./dist/index.js"
-                }
-              },
-              "packageMain": "dist/index.js",
-              "isInPackageManagerWorkspaces": true
-            }
-          },
-          "targets": {
-            "build": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "build"
-              },
-              "metadata": {
-                "scriptContent": "npm run clean && tsc",
-                "runCommand": "npm run build"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"],
-              "outputs": [
-                "{projectRoot}/dist",
-                "{projectRoot}/build",
-                "{projectRoot}/public",
-                "{projectRoot}/src/**/*.js",
-                "{projectRoot}/*.wasm",
-                "{projectRoot}/bindings/**/*.o",
-                "{projectRoot}/build/**/*.node",
-                "{projectRoot}/build/**/*.wasm",
-                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
-              ]
-            },
-            "clean": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "clean"
-              },
-              "metadata": {
-                "scriptContent": "rimraf dist",
-                "runCommand": "npm run clean"
-              },
-              "configurations": {},
-              "parallelism": true
-            },
-            "lint": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "lint"
-              },
-              "metadata": {
-                "scriptContent": "eslint src --ext .ts,.tsx",
-                "runCommand": "npm run lint"
-              },
-              "configurations": {},
-              "parallelism": true,
-              "cache": true,
-              "dependsOn": ["^build"]
-            },
-            "watch": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "watch"
-              },
-              "metadata": {
-                "scriptContent": "tsc --watch",
-                "runCommand": "npm run watch"
-              },
-              "configurations": {},
-              "parallelism": true
-            },
-            "nx-release-publish": {
-              "executor": "@nx/js:release-publish",
-              "dependsOn": ["^nx-release-publish"],
-              "options": {},
-              "configurations": {},
-              "parallelism": true
-            }
-          },
-          "implicitDependencies": []
-        }
-      },
       "@modelscript/symbolics": {
         "name": "@modelscript/symbolics",
         "type": "lib",
@@ -492,6 +255,7 @@
             "npm:calculus",
             "npm:graph"
           ],
+          "implicitDependencies": ["!@modelscript/modelica", "!@modelscript/compiler"],
           "metadata": {
             "targetGroups": {
               "NPM Scripts": ["build", "clean", "lint", "watch"]
@@ -583,39 +347,110 @@
               "configurations": {},
               "parallelism": true
             }
-          },
-          "implicitDependencies": []
+          }
         }
       },
-      "@modelscript/polyglot": {
-        "name": "@modelscript/polyglot",
+      "@modelscript/compiler": {
+        "name": "@modelscript/compiler",
         "type": "lib",
         "data": {
-          "root": "packages/polyglot",
-          "name": "@modelscript/polyglot",
-          "tags": ["npm:public"],
+          "root": "packages/compiler",
+          "name": "@modelscript/compiler",
+          "tags": ["npm:public", "npm:modelscript"],
+          "implicitDependencies": ["!@modelscript/core", "!@modelscript/modelica"],
           "metadata": {
             "targetGroups": {
-              "NPM Scripts": ["build", "clean", "generate", "playground", "test", "test:watch"]
+              "NPM Scripts": ["build", "clean", "lint", "test", "watch"]
             },
-            "description": "A language workbench for generating tree-sitter grammars, typed AST wrappers, symbol indexers, and query hooks from a single declarative file.",
+            "description": "ModelScript",
             "js": {
-              "packageName": "@modelscript/polyglot",
-              "packageVersion": "0.0.0",
+              "packageName": "@modelscript/compiler",
+              "packageVersion": "0.0.18",
               "packageExports": {
-                ".": "./dist/src/index.js",
-                "./runtime": "./dist/src/runtime.js",
-                "./symbol-indexer": "./dist/src/symbol-indexer.js",
-                "./query-engine": "./dist/src/query-engine.js",
-                "./resolver": "./dist/src/resolver.js",
-                "./lsp-bridge": "./dist/src/lsp-bridge.js",
-                "./workspace-index": "./dist/src/workspace-index.js",
-                "./semantic-node": "./dist/src/semantic-node.js",
-                "./semantic-diff": "./dist/src/semantic-diff.js",
-                "./generate-ast-classes": "./dist/src/generate-ast-classes.js",
-                "./diagram-builder": "./dist/src/polyglot-diagram-builder.js"
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                },
+                "./runtime": {
+                  "types": "./dist/runtime.d.ts",
+                  "default": "./dist/runtime.js"
+                },
+                "./resolver": {
+                  "types": "./dist/resolver.d.ts",
+                  "default": "./dist/resolver.js"
+                },
+                "./semantic-node": {
+                  "types": "./dist/semantic-node.d.ts",
+                  "default": "./dist/semantic-node.js"
+                },
+                "./semantic-diff": {
+                  "types": "./dist/semantic-diff.d.ts",
+                  "default": "./dist/semantic-diff.js"
+                },
+                "./symbol-indexer": {
+                  "types": "./dist/symbol-indexer.d.ts",
+                  "default": "./dist/symbol-indexer.js"
+                },
+                "./workspace-index": {
+                  "types": "./dist/workspace-index.d.ts",
+                  "default": "./dist/workspace-index.js"
+                },
+                "./line-index": {
+                  "types": "./dist/line-index.d.ts",
+                  "default": "./dist/line-index.js"
+                },
+                "./interner": {
+                  "types": "./dist/interner.d.ts",
+                  "default": "./dist/interner.js"
+                },
+                "./topology": {
+                  "types": "./dist/topology.d.ts",
+                  "default": "./dist/topology.js"
+                },
+                "./lsp-bridge": {
+                  "types": "./dist/lsp-bridge.d.ts",
+                  "default": "./dist/lsp-bridge.js"
+                },
+                "./adapter-registry": {
+                  "types": "./dist/adapter-registry.d.ts",
+                  "default": "./dist/adapter-registry.js"
+                },
+                "./unified-workspace": {
+                  "types": "./dist/unified-workspace.d.ts",
+                  "default": "./dist/unified-workspace.js"
+                },
+                "./verifier": {
+                  "types": "./dist/verifier.d.ts",
+                  "default": "./dist/verifier.js"
+                },
+                "./arena": {
+                  "types": "./dist/arena.d.ts",
+                  "default": "./dist/arena.js"
+                },
+                "./symbol-arena": {
+                  "types": "./dist/symbol-arena.d.ts",
+                  "default": "./dist/symbol-arena.js"
+                },
+                "./dae-arena": {
+                  "types": "./dist/dae-arena.d.ts",
+                  "default": "./dist/dae-arena.js"
+                },
+                "./arena-printer": {
+                  "types": "./dist/arena-printer.d.ts",
+                  "default": "./dist/arena-printer.js"
+                },
+                "./simulator": {
+                  "types": "./dist/simulator/index.d.ts",
+                  "default": "./dist/simulator/index.js"
+                },
+                "./optimizer": {
+                  "types": "./dist/optimizer/index.d.ts",
+                  "default": "./dist/optimizer/index.js"
+                }
               },
-              "packageMain": "dist/src/index.js",
+              "packageMain": "dist/index.js",
               "isInPackageManagerWorkspaces": true
             }
           },
@@ -626,7 +461,7 @@
                 "script": "build"
               },
               "metadata": {
-                "scriptContent": "tsc",
+                "scriptContent": "npm run clean && npm run lint && tsc",
                 "runCommand": "npm run build"
               },
               "configurations": {},
@@ -657,29 +492,19 @@
               "configurations": {},
               "parallelism": true
             },
-            "generate": {
+            "lint": {
               "executor": "nx:run-script",
               "options": {
-                "script": "generate"
+                "script": "lint"
               },
               "metadata": {
-                "scriptContent": "tsx src/cli.ts",
-                "runCommand": "npm run generate"
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
               },
               "configurations": {},
-              "parallelism": true
-            },
-            "playground": {
-              "executor": "nx:run-script",
-              "options": {
-                "script": "playground"
-              },
-              "metadata": {
-                "scriptContent": "tsx src/cli.ts playground",
-                "runCommand": "npm run playground"
-              },
-              "configurations": {},
-              "parallelism": true
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
             },
             "test": {
               "executor": "nx:run-script",
@@ -696,14 +521,137 @@
               "dependsOn": ["^build", "build"],
               "outputs": ["{projectRoot}/coverage"]
             },
-            "test:watch": {
+            "watch": {
               "executor": "nx:run-script",
               "options": {
-                "script": "test:watch"
+                "script": "watch"
               },
               "metadata": {
-                "scriptContent": "vitest",
-                "runCommand": "npm run test:watch"
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          }
+        }
+      },
+      "@modelscript/reasoner": {
+        "name": "@modelscript/reasoner",
+        "type": "lib",
+        "data": {
+          "root": "packages/reasoner",
+          "name": "@modelscript/reasoner",
+          "tags": [
+            "npm:public",
+            "npm:modelscript",
+            "npm:owl2",
+            "npm:reasoner",
+            "npm:ontology",
+            "npm:description-logic"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint", "test", "watch"]
+            },
+            "description": "ModelScript OWL2 Reasoner — subsumption, consistency, and SPARQL-DL query evaluation",
+            "js": {
+              "packageName": "@modelscript/reasoner",
+              "packageVersion": "0.0.18",
+              "packageExports": {
+                ".": {
+                  "types": "./dist/index.d.ts",
+                  "import": "./dist/index.js",
+                  "require": "./dist/index.js",
+                  "default": "./dist/index.js"
+                }
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && npm run lint && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/*.wasm",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "test": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test"
+              },
+              "metadata": {
+                "scriptContent": "vitest run --passWithNoTests",
+                "runCommand": "npm run test"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build", "build"],
+              "outputs": ["{projectRoot}/coverage"]
+            },
+            "watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "watch"
+              },
+              "metadata": {
+                "scriptContent": "tsc --watch",
+                "runCommand": "npm run watch"
               },
               "configurations": {},
               "parallelism": true
@@ -855,6 +803,91 @@
           "implicitDependencies": []
         }
       },
+      "@modelscript/diagram": {
+        "name": "@modelscript/diagram",
+        "type": "lib",
+        "data": {
+          "root": "packages/diagram",
+          "name": "@modelscript/diagram",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "lint"]
+            },
+            "js": {
+              "packageName": "@modelscript/diagram",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                ".": "./dist/index.js",
+                "./builder": "./dist/polyglot-diagram-builder.js"
+              },
+              "packageMain": "dist/index.js",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "npm run clean && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/*.wasm",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "lint"
+              },
+              "metadata": {
+                "scriptContent": "eslint src",
+                "runCommand": "npm run lint"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"]
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
       "@modelscript/sysml2": {
         "name": "@modelscript/sysml2",
         "type": "lib",
@@ -870,12 +903,27 @@
               "packageName": "@modelscript/sysml2",
               "packageVersion": "0.0.0",
               "packageExports": {
-                "./query_hooks": "./dist/query_hooks.js",
-                "./indexer_config": "./dist/indexer_config.js",
-                "./ref_config": "./dist/ref_config.js",
-                "./ast_classes": "./dist/ast_classes.js",
-                "./graphics_config": "./dist/graphics_config.js",
-                "./language": "./dist/language.js"
+                "./language": "./dist/language.js",
+                "./factory": {
+                  "types": "./dist/factory.d.ts",
+                  "default": "./dist/factory.js"
+                },
+                "./config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
+                },
+                "./query-hooks": {
+                  "types": "./dist/src-gen/query-hooks.d.ts",
+                  "default": "./dist/src-gen/query-hooks.js"
+                },
+                "./ast": {
+                  "types": "./dist/src-gen/ast.d.ts",
+                  "default": "./dist/src-gen/ast.js"
+                },
+                "./constraint-extractor": {
+                  "types": "./dist/constraint-extractor.d.ts",
+                  "default": "./dist/constraint-extractor.js"
+                }
               },
               "isInPackageManagerWorkspaces": true
             }
@@ -1037,6 +1085,87 @@
           "implicitDependencies": []
         }
       },
+      "@modelscript/owl2": {
+        "name": "@modelscript/owl2",
+        "type": "lib",
+        "data": {
+          "root": "languages/owl2",
+          "name": "@modelscript/owl2",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean"]
+            },
+            "js": {
+              "packageName": "@modelscript/owl2",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                "./language": "./dist/language.js",
+                "./config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
+                },
+                "./query-hooks": {
+                  "types": "./dist/src-gen/query-hooks.d.ts",
+                  "default": "./dist/src-gen/query-hooks.js"
+                },
+                "./ast": {
+                  "types": "./dist/src-gen/ast.d.ts",
+                  "default": "./dist/src-gen/ast.js"
+                }
+              },
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "node build.js && prettier --write . --ignore-unknown && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/*.wasm",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist *.wasm",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
+        }
+      },
       "@modelscript/step": {
         "name": "@modelscript/step",
         "type": "lib",
@@ -1056,21 +1185,25 @@
                   "types": "./dist/language.d.ts",
                   "default": "./dist/language.js"
                 },
-                "./indexer_config": {
-                  "types": "./dist/indexer_config.d.ts",
-                  "default": "./dist/indexer_config.js"
-                },
-                "./query_hooks": {
-                  "types": "./dist/query_hooks.d.ts",
-                  "default": "./dist/query_hooks.js"
-                },
-                "./ref_config": {
-                  "types": "./dist/ref_config.d.ts",
-                  "default": "./dist/ref_config.js"
-                },
                 "./parser": {
                   "types": "./bindings/node/index.d.ts",
                   "default": "./bindings/node/index.cjs"
+                },
+                "./config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
+                },
+                "./query-hooks": {
+                  "types": "./dist/src-gen/query-hooks.d.ts",
+                  "default": "./dist/src-gen/query-hooks.js"
+                },
+                "./ast": {
+                  "types": "./dist/src-gen/ast.d.ts",
+                  "default": "./dist/src-gen/ast.js"
+                },
+                "./mapper": {
+                  "types": "./dist/step-multibody-mapper.d.ts",
+                  "default": "./dist/step-multibody-mapper.js"
                 }
               },
               "isInPackageManagerWorkspaces": true
@@ -1217,7 +1350,8 @@
               "packageExports": {
                 ".": {
                   "types": "./dist/index.d.ts",
-                  "import": "./dist/index.js"
+                  "import": "./dist/index.js",
+                  "default": "./dist/index.js"
                 }
               },
               "packageMain": "dist/index.js",
@@ -1279,7 +1413,7 @@
         "data": {
           "root": "packages/core",
           "name": "@modelscript/core",
-          "implicitDependencies": [],
+          "tags": ["npm:public", "npm:modelscript"],
           "metadata": {
             "targetGroups": {
               "NPM Scripts": ["build", "clean", "lint", "test", "watch"]
@@ -1358,7 +1492,7 @@
                 "script": "test"
               },
               "metadata": {
-                "scriptContent": "NODE_OPTIONS='--max-old-space-size=8192' npx tsx tests/testsuite-runner.ts",
+                "scriptContent": "npx tsx tests/testsuite-runner.ts",
                 "runCommand": "npm run test"
               },
               "configurations": {},
@@ -1386,7 +1520,148 @@
               "configurations": {},
               "parallelism": true
             }
-          }
+          },
+          "implicitDependencies": []
+        }
+      },
+      "@modelscript/csv": {
+        "name": "@modelscript/csv",
+        "type": "lib",
+        "data": {
+          "root": "languages/csv",
+          "name": "@modelscript/csv",
+          "tags": ["npm:public"],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": ["build", "clean", "generate", "install", "prestart", "start"]
+            },
+            "js": {
+              "packageName": "@modelscript/csv",
+              "packageVersion": "0.0.0",
+              "packageExports": {
+                "./language": {
+                  "types": "./dist/language.d.ts",
+                  "default": "./dist/language.js"
+                },
+                "./parser": {
+                  "types": "./bindings/node/index.d.ts",
+                  "default": "./bindings/node/index.cjs"
+                },
+                "./config": {
+                  "types": "./dist/src-gen/config.d.ts",
+                  "default": "./dist/src-gen/config.js"
+                },
+                "./query-hooks": {
+                  "types": "./dist/src-gen/query-hooks.d.ts",
+                  "default": "./dist/src-gen/query-hooks.js"
+                },
+                "./ast": {
+                  "types": "./dist/src-gen/ast.d.ts",
+                  "default": "./dist/src-gen/ast.js"
+                },
+                "./csv-parser": {
+                  "types": "./dist/src/csv-parser.d.ts",
+                  "default": "./dist/src/csv-parser.js"
+                }
+              },
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "build"
+              },
+              "metadata": {
+                "scriptContent": "node build.js && tsc",
+                "runCommand": "npm run build"
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": ["^build"],
+              "outputs": [
+                "{projectRoot}/dist",
+                "{projectRoot}/build",
+                "{projectRoot}/public",
+                "{projectRoot}/src/**/*.js",
+                "{projectRoot}/*.wasm",
+                "{projectRoot}/bindings/**/*.o",
+                "{projectRoot}/build/**/*.node",
+                "{projectRoot}/build/**/*.wasm",
+                "{projectRoot}/build/Release/tree_sitter_modelica_binding.node"
+              ]
+            },
+            "clean": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "clean"
+              },
+              "metadata": {
+                "scriptContent": "rimraf dist build *.wasm src-gen bindings/node/*.node prebuilds",
+                "runCommand": "npm run clean"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "generate": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "generate"
+              },
+              "metadata": {
+                "scriptContent": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
+                "runCommand": "npm run generate"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "install": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "install"
+              },
+              "metadata": {
+                "scriptContent": "node-gyp rebuild",
+                "runCommand": "npm run install"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "prestart": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "prestart"
+              },
+              "metadata": {
+                "scriptContent": "tree-sitter build --wasm",
+                "runCommand": "npm run prestart"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "start": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "start"
+              },
+              "metadata": {
+                "scriptContent": "tree-sitter playground",
+                "runCommand": "npm run start"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": ["^nx-release-publish"],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "implicitDependencies": []
         }
       },
       "@modelscript/ecad": {
@@ -2544,8 +2819,17 @@
       }
     },
     "dependencies": {
-      "@modelscript/diagram-core": [],
       "@modelscript/modelica": [
+        {
+          "source": "@modelscript/modelica",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/modelica",
+          "target": "@modelscript/compiler",
+          "type": "dynamic"
+        },
         {
           "source": "@modelscript/modelica",
           "target": "@modelscript/utils",
@@ -2553,77 +2837,45 @@
         },
         {
           "source": "@modelscript/modelica",
-          "target": "@modelscript/polyglot",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/modelica",
-          "target": "@modelscript/polyglot",
-          "type": "dynamic"
-        }
-      ],
-      "@modelscript/optimizer": [
-        {
-          "source": "@modelscript/optimizer",
-          "target": "@modelscript/core",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/optimizer",
-          "target": "@modelscript/modelica",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/optimizer",
-          "target": "@modelscript/simulator",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/optimizer",
-          "target": "@modelscript/symbolics",
-          "type": "static"
-        }
-      ],
-      "@modelscript/simulator": [
-        {
-          "source": "@modelscript/simulator",
-          "target": "@modelscript/core",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/simulator",
-          "target": "@modelscript/modelica",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/simulator",
-          "target": "@modelscript/symbolics",
+          "target": "@modelscript/csv",
           "type": "static"
         }
       ],
       "@modelscript/symbolics": [
         {
           "source": "@modelscript/symbolics",
-          "target": "@modelscript/modelica",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/symbolics",
           "target": "@modelscript/utils",
           "type": "static"
         }
       ],
-      "@modelscript/polyglot": [
+      "@modelscript/compiler": [
         {
-          "source": "@modelscript/polyglot",
-          "target": "@modelscript/lsp",
+          "source": "@modelscript/compiler",
+          "target": "@modelscript/symbolics",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/compiler",
+          "target": "@modelscript/utils",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/compiler",
+          "target": "@modelscript/diagram",
+          "type": "static"
+        }
+      ],
+      "@modelscript/reasoner": [
+        {
+          "source": "@modelscript/reasoner",
+          "target": "@modelscript/compiler",
           "type": "static"
         }
       ],
       "modelscript": [
         {
           "source": "modelscript",
-          "target": "@modelscript/diagram-core",
+          "target": "@modelscript/diagram",
           "type": "static"
         },
         {
@@ -2632,16 +2884,22 @@
           "type": "static"
         }
       ],
+      "@modelscript/diagram": [],
       "@modelscript/sysml2": [
         {
           "source": "@modelscript/sysml2",
-          "target": "@modelscript/polyglot",
+          "target": "@modelscript/compiler",
           "type": "static"
         },
         {
           "source": "@modelscript/sysml2",
-          "target": "@modelscript/polyglot",
+          "target": "@modelscript/compiler",
           "type": "dynamic"
+        },
+        {
+          "source": "@modelscript/sysml2",
+          "target": "@modelscript/diagram",
+          "type": "static"
         }
       ],
       "@modelscript/cosim": [
@@ -2651,15 +2909,37 @@
           "type": "static"
         }
       ],
+      "@modelscript/owl2": [
+        {
+          "source": "@modelscript/owl2",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        }
+      ],
       "@modelscript/step": [
         {
           "source": "@modelscript/step",
-          "target": "@modelscript/polyglot",
+          "target": "@modelscript/compiler",
           "type": "static"
         }
       ],
       "@modelscript/utils": [],
       "@modelscript/core": [
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/csv",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/core",
+          "target": "@modelscript/diagram",
+          "type": "static"
+        },
         {
           "source": "@modelscript/core",
           "target": "@modelscript/modelica",
@@ -2682,7 +2962,14 @@
         },
         {
           "source": "@modelscript/core",
-          "target": "@modelscript/polyglot",
+          "target": "@modelscript/lsp",
+          "type": "static"
+        }
+      ],
+      "@modelscript/csv": [
+        {
+          "source": "@modelscript/csv",
+          "target": "@modelscript/compiler",
           "type": "static"
         }
       ],
@@ -2701,30 +2988,30 @@
       "@modelscript/fmi": [
         {
           "source": "@modelscript/fmi",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/fmi",
           "target": "@modelscript/core",
           "type": "static"
         },
         {
           "source": "@modelscript/fmi",
           "target": "@modelscript/modelica",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/fmi",
-          "target": "@modelscript/symbolics",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/fmi",
-          "target": "@modelscript/simulator",
           "type": "static"
         }
       ],
       "@modelscript/lsp": [
         {
           "source": "@modelscript/lsp",
-          "target": "@modelscript/core",
+          "target": "@modelscript/compiler",
           "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/compiler",
+          "type": "dynamic"
         },
         {
           "source": "@modelscript/lsp",
@@ -2735,35 +3022,25 @@
           "source": "@modelscript/lsp",
           "target": "@modelscript/fmi",
           "type": "dynamic"
-        },
-        {
-          "source": "@modelscript/lsp",
-          "target": "@modelscript/optimizer",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/lsp",
-          "target": "@modelscript/polyglot",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/lsp",
-          "target": "@modelscript/simulator",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/lsp",
-          "target": "@modelscript/simulator",
-          "type": "dynamic"
-        },
-        {
-          "source": "@modelscript/lsp",
-          "target": "@modelscript/step",
-          "type": "static"
         },
         {
           "source": "@modelscript/lsp",
           "target": "@modelscript/modelica",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/owl2",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/reasoner",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/lsp",
+          "target": "@modelscript/step",
           "type": "static"
         },
         {
@@ -2773,12 +3050,12 @@
         },
         {
           "source": "@modelscript/lsp",
-          "target": "@modelscript/symbolics",
+          "target": "@modelscript/utils",
           "type": "static"
         },
         {
           "source": "@modelscript/lsp",
-          "target": "@modelscript/utils",
+          "target": "@modelscript/csv",
           "type": "static"
         },
         {
@@ -2790,6 +3067,11 @@
       "@modelscript/mcp": [
         {
           "source": "@modelscript/mcp",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/mcp",
           "target": "@modelscript/core",
           "type": "static"
         },
@@ -2805,17 +3087,7 @@
         },
         {
           "source": "@modelscript/mcp",
-          "target": "@modelscript/optimizer",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/mcp",
-          "target": "@modelscript/polyglot",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/mcp",
-          "target": "@modelscript/simulator",
+          "target": "@modelscript/reasoner",
           "type": "static"
         },
         {
@@ -2827,12 +3099,7 @@
       "@modelscript/morsel": [
         {
           "source": "@modelscript/morsel",
-          "target": "@modelscript/diagram-core",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/morsel",
-          "target": "@modelscript/simulator",
+          "target": "@modelscript/diagram",
           "type": "static"
         },
         {
@@ -2878,9 +3145,19 @@
           "source": "@modelscript/api",
           "target": "@modelscript/modelica",
           "type": "static"
+        },
+        {
+          "source": "@modelscript/api",
+          "target": "@modelscript/compiler",
+          "type": "static"
         }
       ],
       "@modelscript/cli": [
+        {
+          "source": "@modelscript/cli",
+          "target": "@modelscript/compiler",
+          "type": "static"
+        },
         {
           "source": "@modelscript/cli",
           "target": "@modelscript/core",
@@ -2895,21 +3172,6 @@
           "source": "@modelscript/cli",
           "target": "@modelscript/modelica",
           "type": "static"
-        },
-        {
-          "source": "@modelscript/cli",
-          "target": "@modelscript/optimizer",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/cli",
-          "target": "@modelscript/simulator",
-          "type": "static"
-        },
-        {
-          "source": "@modelscript/cli",
-          "target": "@modelscript/symbolics",
-          "type": "static"
         }
       ],
       "@modelscript/ide": [],
@@ -2917,6 +3179,11 @@
         {
           "source": "@modelscript/web",
           "target": "@modelscript/core",
+          "type": "static"
+        },
+        {
+          "source": "@modelscript/web",
+          "target": "@modelscript/utils",
           "type": "static"
         }
       ]

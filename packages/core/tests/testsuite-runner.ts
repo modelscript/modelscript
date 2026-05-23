@@ -39,6 +39,7 @@ interface TestCaseMetadata {
   description: string;
   arrayMode?: "scalarize" | "preserve";
   fmiVersion?: "2.0" | "3.0";
+  simulate?: boolean;
 }
 
 interface TestCase {
@@ -46,6 +47,7 @@ interface TestCase {
   metadata: TestCaseMetadata;
   source: string;
   expectedResult: string;
+  expectedSimulationResult?: string;
 }
 
 interface TestResult {
@@ -140,11 +142,14 @@ function parseTestFile(filePath: string): TestCase | null {
 
   let arrayMode: "scalarize" | "preserve" | undefined = undefined;
   let fmiVersion: "2.0" | "3.0" | undefined = undefined;
+  let simulate = false;
   for (const line of lines) {
     const amMatch = line.match(/^\/\/\s*arrayMode:\s*(preserve|scalarize)/);
     if (amMatch && amMatch[1]) arrayMode = amMatch[1] as "preserve" | "scalarize";
     const fmiMatch = line.match(/^\/\/\s*fmiVersion:\s*(2\.0|3\.0)/);
     if (fmiMatch && fmiMatch[1]) fmiVersion = fmiMatch[1] as "2.0" | "3.0";
+    const simMatch = line.match(/^\/\/\s*simulate:\s*(true|false)/);
+    if (simMatch && simMatch[1] === "true") simulate = true;
   }
 
   // Find the Result: / endResult block
@@ -165,6 +170,19 @@ function parseTestFile(filePath: string): TestCase | null {
       .trim();
   }
 
+  // Find the Simulation Result: / endSimulationResult block
+  const simResultStartIdx = lines.findIndex((l) => /^\/\/\s*Simulation Result:/.test(l));
+  const simResultEndIdx = lines.findIndex((l) => /^\/\/\s*endSimulationResult/.test(l));
+
+  let expectedSimulationResult: string | undefined = undefined;
+  if (simResultStartIdx >= 0 && simResultEndIdx > simResultStartIdx) {
+    expectedSimulationResult = lines
+      .slice(simResultStartIdx + 1, simResultEndIdx)
+      .map((l) => l.replace(/^\/\/\s?/, ""))
+      .join("\n")
+      .trim();
+  }
+
   return {
     file: filePath,
     metadata: {
@@ -174,9 +192,11 @@ function parseTestFile(filePath: string): TestCase | null {
       description: descriptionLines.join(" "),
       ...(arrayMode ? { arrayMode } : {}),
       ...(fmiVersion ? { fmiVersion } : {}),
+      simulate,
     },
     source,
     expectedResult,
+    ...(expectedSimulationResult !== undefined ? { expectedSimulationResult } : {}),
   };
 }
 

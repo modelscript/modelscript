@@ -1050,23 +1050,37 @@ function sendProjectTreeChanged() {
  */
 function collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const walk = (node: any) => {
-    if (!node) return;
-    if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
-    if (node.isMissing || node.type === "ERROR") {
-      const start = textDocument.positionAt(node.startIndex);
-      const end = textDocument.positionAt(node.endIndex);
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        range: { start, end },
-        message: node.isMissing ? `Missing syntax element` : `Syntax error`,
-        source: "modelscript",
-      });
+  const cursor = rootNode.walk();
+  let didDescend = true;
+
+  while (didDescend) {
+    const node = cursor.currentNode;
+    const hasErr = typeof node.hasError === "function" ? node.hasError() : node.hasError;
+
+    if (hasErr) {
+      const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
+      if (isMissing || node.type === "ERROR") {
+        const start = textDocument.positionAt(node.startIndex);
+        const end = textDocument.positionAt(node.endIndex);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start, end },
+          message: isMissing ? `Missing syntax element` : `Syntax error`,
+          source: "modelscript",
+        });
+      }
+      if (cursor.gotoFirstChild()) {
+        continue;
+      }
     }
-    const children = node.children || [];
-    for (let i = 0; i < children.length; i++) walk(children[i]);
-  };
-  walk(rootNode);
+
+    while (!cursor.gotoNextSibling()) {
+      if (!cursor.gotoParent()) {
+        didDescend = false;
+        break;
+      }
+    }
+  }
   return diagnostics;
 }
 

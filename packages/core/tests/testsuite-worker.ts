@@ -25,6 +25,7 @@ globalThis.WeakRef = class WeakRefMock {
   }
 } as unknown as typeof WeakRef;
 
+import { simulateArena } from "@modelscript/compiler/simulator";
 import CSV from "@modelscript/csv/parser";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
@@ -106,25 +107,87 @@ function stripWarnings(text: string): string {
 
 import fs from "node:fs";
 
-function updateExpectedResult(filePath: string, newResult: string): void {
+function updateExpectedResult(filePath: string, newResult: string, newSimResult?: string): void {
   const content = fs.readFileSync(filePath, "utf-8");
   const lines = content.split("\n");
   const resultIdx = lines.findIndex((l) => /^\/\/\s*Result:/.test(l));
   const endResultIdx = lines.findIndex((l) => /^\/\/\s*endResult/.test(l));
+  const endSimResultIdx = lines.findIndex((l) => /^\/\/\s*endSimulationResult/.test(l));
 
-  if (resultIdx < 0 || endResultIdx < 0) {
-    const resultLines = newResult.split("\n").map((l) => (l ? `// ${l}` : "//"));
-    const newContent = content.trimEnd() + "\n\n// Result:\n" + resultLines.join("\n") + "\n// endResult\n";
-    fs.writeFileSync(filePath, newContent, "utf-8");
-    return;
+  const formatBlock = (header: string, footer: string, text: string) => {
+    return `// ${header}\n${text
+      .split("\n")
+      .map((l) => (l ? `// ${l}` : "//"))
+      .join("\n")}\n// ${footer}`;
+  };
+
+  const before = resultIdx >= 0 ? lines.slice(0, resultIdx) : lines;
+  const resultStr = formatBlock("Result:", "endResult", newResult);
+  let newContent = before.join("\n") + (before.length > 0 ? "\n" : "") + resultStr;
+
+  if (newSimResult !== undefined) {
+    const simResultStr = formatBlock("Simulation Result:", "endSimulationResult", newSimResult);
+    newContent += "\n" + simResultStr;
   }
 
-  const before = lines.slice(0, resultIdx + 1);
-  const after = lines.slice(endResultIdx);
-  const resultLines = newResult.split("\n").map((l) => (l ? `// ${l}` : "//"));
+  let afterStart = lines.length;
+  if (endSimResultIdx >= 0) afterStart = endSimResultIdx + 1;
+  else if (endResultIdx >= 0) afterStart = endResultIdx + 1;
 
-  const newContent = [...before, ...resultLines, ...after].join("\n");
+  const after = lines.slice(afterStart);
+  // remove leading empty lines from after
+  while (after.length > 0 && after[0].trim() === "") after.shift();
+
+  if (after.length > 0) newContent += "\n\n" + after.join("\n");
+  else newContent += "\n";
+
   fs.writeFileSync(filePath, newContent, "utf-8");
+}
+
+function formatSimulationCsv(csvContent: string): string {
+  const lines = csvContent.trim().split("\n");
+  if (lines.length < 2) return "";
+  const rawHeaders = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+
+  const keepIndices: number[] = [];
+  const headers: string[] = [];
+  for (let i = 0; i < rawHeaders.length; i++) {
+    const h = rawHeaders[i];
+    if (h.startsWith("der(") || h.startsWith("$")) continue;
+    keepIndices.push(i);
+    headers.push(h);
+  }
+
+  const columns: number[][] = headers.map(() => []);
+
+  let lastTime: number | null = null;
+  const timeIndex = keepIndices.findIndex((idx) => rawHeaders[idx] === "time");
+
+  for (let i = 1; i < lines.length; i++) {
+    const vals = lines[i].split(",").map((v) => parseFloat(v.trim()));
+
+    // Skip duplicate time points (common in OMC output at end of simulation or events)
+    if (timeIndex >= 0) {
+      const t = vals[keepIndices[timeIndex]];
+      if (t === lastTime) continue;
+      lastTime = t;
+    }
+
+    for (let c = 0; c < keepIndices.length; c++) {
+      columns[c].push(vals[keepIndices[c]]);
+    }
+  }
+
+  const result: string[] = [];
+  for (let c = 0; c < headers.length; c++) {
+    const vals = columns[c].map((v) => {
+      const rounded = Number(v.toFixed(4));
+      // Add -0 to 0 normalization
+      return Object.is(rounded, -0) ? 0 : rounded;
+    });
+    result.push(`${headers[c]}: ${vals.join(", ")}`);
+  }
+  return result.join("\n");
 }
 
 // ── Test execution (arena-native pipeline) ───────────────────────────────────
@@ -195,11 +258,33 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         const cmd = `echo "instantiate(${lastClassName});" | omc ${testCase.file}`;
         const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] });
         omcExpected = cleanOmcOutput(output);
-        updateExpectedResult(testCase.file, omcExpected);
         testCase.expectedResult = omcExpected;
+
+        if (testCase.metadata.simulate || testCase.expectedSimulationResult !== undefined) {
+          const mosFile = path.join(path.dirname(testCase.file), `${lastClassName}_sim.mos`);
+          const simCmd = `loadFile("${path.basename(testCase.file)}");\nsimulate(${lastClassName}, outputFormat="csv", stopTime=1.0, stepSize=0.1);\n`;
+          fs.writeFileSync(mosFile, simCmd, "utf-8");
+          execSync(`omc ${mosFile}`, {
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "ignore"],
+            cwd: path.dirname(testCase.file),
+          });
+          const csvFile = path.join(path.dirname(testCase.file), `${lastClassName}_res.csv`);
+          if (fs.existsSync(csvFile)) {
+            const omcExpectedSim = formatSimulationCsv(fs.readFileSync(csvFile, "utf-8"));
+            testCase.expectedSimulationResult = omcExpectedSim;
+            fs.unlinkSync(csvFile);
+          } else {
+            testCase.expectedSimulationResult = `Simulation failed to produce CSV.`;
+          }
+          fs.unlinkSync(mosFile);
+        }
+
+        updateExpectedResult(testCase.file, omcExpected, testCase.expectedSimulationResult);
       } catch (err) {
         omcExpected = `Error running OMC: ${err instanceof Error ? err.message : err}`;
         testCase.expectedResult = omcExpected;
+        updateExpectedResult(testCase.file, omcExpected, testCase.expectedSimulationResult);
       }
     }
 
@@ -415,12 +500,62 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     const expected = stripWarnings(testCase.expectedResult.trim());
 
     const normalizedExpected = expected.replace(/:writable\]/g, "]");
-    if (actual === normalizedExpected) return makeResult("passed");
-    if (updateMode) {
-      updateExpectedResult(testCase.file, actual);
-      return makeResult("passed", "(updated expected output)");
+
+    let flatteningPassed = actual === normalizedExpected;
+    if (!flatteningPassed) {
+      if (updateMode) {
+        updateExpectedResult(testCase.file, actual, testCase.expectedSimulationResult);
+        flatteningPassed = true;
+      } else {
+        return makeResult("failed", formatMismatch(normalizedExpected, actual));
+      }
     }
-    return makeResult("failed", formatMismatch(expected, actual));
+
+    if (flatteningPassed && testCase.expectedSimulationResult !== undefined) {
+      let simulationActual = "";
+      if (arena) {
+        try {
+          const simRes = simulateArena(arena, { startTime: 0, stopTime: 10.0, step: 0.1, solver: "dopri5" });
+          const resultLines: string[] = [];
+          const timeVals = simRes.t.map((v) => {
+            const rounded = Number(v.toFixed(4));
+            return Object.is(rounded, -0) ? 0 : rounded;
+          });
+          resultLines.push(`time: ${timeVals.join(", ")}`);
+
+          for (let i = 0; i < simRes.states.length; i++) {
+            const varName = simRes.states[i];
+            const varVals = simRes.y.map((row) => {
+              const rounded = Number(row[i].toFixed(4));
+              return Object.is(rounded, -0) ? 0 : rounded;
+            });
+            resultLines.push(`${varName}: ${varVals.join(", ")}`);
+          }
+
+          simulationActual = resultLines.join("\n");
+        } catch (e) {
+          simulationActual = `Error during Arena simulation: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      } else {
+        simulationActual = "Flattening returned null";
+      }
+
+      if (simulationActual === testCase.expectedSimulationResult) {
+        return makeResult("passed", updateMode ? "(updated expected output)" : undefined);
+      }
+
+      if (updateMode && !omcMode) {
+        updateExpectedResult(testCase.file, actual, simulationActual);
+        return makeResult("passed", "(updated expected output)");
+      }
+
+      return makeResult(
+        "failed",
+        formatMismatch(testCase.expectedSimulationResult, simulationActual, "Simulation Output mismatch"),
+      );
+    }
+
+    return makeResult("passed", updateMode ? "(updated expected output)" : undefined);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     const expected = stripWarnings(testCase.expectedResult.trim());

@@ -1,5 +1,6 @@
 import type { QueryEngine } from "@modelscript/compiler";
 import { simulateArena, type ArenaSimulateOptions } from "@modelscript/compiler/simulator";
+import type { SyntaxNode } from "@modelscript/utils";
 import {
   ModelicaComponentReferenceSyntaxNode,
   ModelicaExpressionSyntaxNode,
@@ -35,9 +36,9 @@ export class ArenaScriptInterpreter {
 
   constructor(private queryEngine: QueryEngine) {}
 
-  execute(treeRoot: unknown): { output: string; error?: string } {
+  execute(treeRoot: SyntaxNode): { output: string; error?: string } {
     this.output = [];
-    const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, treeRoot as unknown);
+    const storedDef = ModelicaStoredDefinitionSyntaxNode.new(null, treeRoot);
     if (!storedDef) return { output: "" };
 
     try {
@@ -109,8 +110,8 @@ export class ArenaScriptInterpreter {
 
       if (funcName === "print") {
         const callNode = stmt as {
-          functionCallArguments?: { arguments?: { expression?: unknown }[] };
-          arguments?: { expression?: unknown }[];
+          functionCallArguments?: { arguments?: { expression?: ModelicaExpressionSyntaxNode }[] };
+          arguments?: { expression?: ModelicaExpressionSyntaxNode }[];
         };
         const args = callNode.functionCallArguments?.arguments ?? callNode.arguments ?? [];
         if (args.length > 0 && args[0]?.expression) {

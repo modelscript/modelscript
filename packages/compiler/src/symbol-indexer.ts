@@ -238,7 +238,8 @@ export class SymbolIndexer {
     totalDelta: number = 0,
   ): void {
     // FAST PATH: skip entirely unchanged subtrees that have no hooks
-    const unchanged = node.hasChanges === false && !this.nodeOverlapsEdits(node, editRanges);
+    const hasChanges = typeof node.hasChanges === "function" ? node.hasChanges() : node.hasChanges;
+    const unchanged = hasChanges === false && !this.nodeOverlapsEdits(node, editRanges);
     const hook = this.hooksByRule.get(node.type);
 
     if (unchanged && !hook) {
@@ -737,7 +738,7 @@ export interface CSTNode {
   parent?: CSTNode | null;
   childForFieldName(name: string): CSTNode | null;
   /** True if this node or any descendant has been modified since last parse. */
-  hasChanges?: boolean;
+  hasChanges?: boolean | (() => boolean);
   /** Number of children (available without materializing children array). */
   childCount?: number;
   /** Access individual child by index without materializing all children. */
