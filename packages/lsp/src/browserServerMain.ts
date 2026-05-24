@@ -765,7 +765,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     const cacheStore = new FederatedQueryCacheStore(localStore, {
       getEndpoints: () => federatedEndpoints,
     });
-    const MAX_MEMOS = 100_000; // Limit in-memory memos
+    const MAX_MEMOS = 2_000_000; // Limit in-memory memos
 
     globalModelicaQueryEngine = createModelicaQueryEngine(
       globalWorkspaceIndex.toUnified(),
@@ -810,7 +810,7 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
     if (pending > 0) {
       connection.console.info(`[lsp] Background-indexing ${pending} remaining files...`);
       globalWorkspaceIndex
-        .indexRemainingInBackground(20, (indexed, total) => {
+        .indexRemainingInBackground(200, (indexed, total) => {
           if (indexed % 100 === 0) {
             connection.console.info(`[lsp] Background indexing: ${indexed}/${total}`);
             connection.sendNotification("modelscript/status", {
@@ -825,10 +825,8 @@ async function initTreeSitter(extensionUri: string): Promise<void> {
           diagramCache.clear(); // Force diagram rebuild with full MSL types
           connection.console.info(`[lsp] Background indexing complete. Re-validating documents.`);
           // Re-validate with full index for cross-file resolution
-          for (let pass = 1; pass <= 2; pass++) {
-            for (const doc of documents.all()) {
-              await validateTextDocument(doc);
-            }
+          for (const doc of documents.all()) {
+            await validateTextDocument(doc);
           }
           connection.sendNotification("modelscript/status", { state: "ready", message: "ModelScript" });
         });
@@ -1099,7 +1097,9 @@ async function flushValidation(uri: string): Promise<void> {
 }
 
 documents.onDidChangeContent((change) => {
+  const tKeypressStart = performance.now();
   const uri = change.document.uri;
+  console.info(`[perf][keypress] onDidChangeContent started for ${uri}`);
   verificationDiagnosticsByUri.delete(uri);
   verificationResultsByUri.delete(uri);
 
@@ -1130,9 +1130,20 @@ documents.onDidChangeContent((change) => {
 
   if (isModelica && parserReady && parser) {
     try {
+      const tTextStart = performance.now();
       const text = change.document.getText();
+      const tTextEnd = performance.now();
+      console.info(`[perf][keypress] getText: ${(tTextEnd - tTextStart).toFixed(2)}ms`);
+
+      const tTreeStart = performance.now();
       const tree = updateDocumentTree(uri, text);
+      const tTreeEnd = performance.now();
+      console.info(`[perf][keypress] updateDocumentTree: ${(tTreeEnd - tTreeStart).toFixed(2)}ms`);
+
+      const tErrorsStart = performance.now();
       const syntaxDiags = collectSyntaxErrors(tree.rootNode, change.document);
+      const tErrorsEnd = performance.now();
+      console.info(`[perf][keypress] collectSyntaxErrors: ${(tErrorsEnd - tErrorsStart).toFixed(2)}ms`);
 
       connection.console.info(
         `[instant] Tier 1 fired for ${uri}. text=${text.length}B, syntaxDiags=${syntaxDiags.length}`,
@@ -1141,7 +1152,10 @@ documents.onDidChangeContent((change) => {
       // Merge with last known semantic diagnostics to prevent flashing —
       // semantic squigglies stay visible until the next semantic pass replaces them.
       const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+      const tDiagsStart = performance.now();
       connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
+      const tDiagsEnd = performance.now();
+      console.info(`[perf][keypress] sendDiagnostics: ${(tDiagsEnd - tDiagsStart).toFixed(2)}ms`);
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
     }
@@ -1187,22 +1201,30 @@ documents.onDidChangeContent((change) => {
   const existingTimer = activeValidationTimers.get(uri);
   if (existingTimer) clearTimeout(existingTimer);
 
+  const tKeypressEnd = performance.now();
+  console.info(`[perf][keypress] Total synchronous work: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
+
   activeValidationTimers.set(
     uri,
     setTimeout(async () => {
+      console.info(`[timer] 300ms elapsed for ${uri}`);
       activeValidationTimers.delete(uri);
       // Wait for any in-flight validation to finish before starting a new one.
       // This prevents concurrent pipelines for the same URI from stacking up.
       const inflight = activeValidationPromises.get(uri);
+      console.info(`[timer] inflight is ${!!inflight}`);
       if (inflight) {
         try {
+          console.info(`[timer] awaiting inflight`);
           await inflight;
+          console.info(`[timer] inflight resolved`);
         } catch {
-          /* ignore */
+          console.info(`[timer] inflight rejected`);
         }
       }
       // Re-check staleness: if another edit arrived while we waited, bail out.
       const doc = documents.get(uri);
+      console.info(`[timer] doc exists: ${!!doc}`);
       if (doc) validateTextDocument(doc);
     }, 300),
   );
@@ -1256,6 +1278,8 @@ async function runSemanticPipeline(
   };
 
   try {
+    const t0 = performance.now();
+    console.info(`[perf] Starting runSemanticPipeline for ${uri}`);
     const effectiveUri = uri.startsWith("modelscript-lib://global")
       ? "file://" + uri.substring("modelscript-lib://global".length)
       : uri;
@@ -1329,6 +1353,7 @@ async function runSemanticPipeline(
     } else {
       globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
     }
+    console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
     context.setQueryEngine(globalModelicaQueryEngine);
     context.setWorkspaceIndex(globalWorkspaceIndex);
     const engine = globalModelicaQueryEngine;
@@ -1345,6 +1370,7 @@ async function runSemanticPipeline(
     const currentText = currentDoc ? currentDoc.getText() : text;
     const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
     documentLSPBridges.set(uri, bridge);
+    console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
     // Yield before expensive linting
     await yieldToEventLoop();
@@ -1357,13 +1383,27 @@ async function runSemanticPipeline(
     // fetch() calls inside linting and reference resolution.
     const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
     const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
-    if (engine && resourceSymbolIds && resourceSymbolIds.length > 0 && engine.preflight) {
+    const isWorkspaceFile = !!documents.get(uri);
+
+    // We skip preflight for active workspace files because their memos are
+    // already hot in memory (or actively re-evaluated efficiently).
+    // Preflighting massive files triggers tens of thousands of IndexedDB reads
+    // on every keystroke, which can take 15+ seconds and destroy responsiveness.
+    if (
+      engine &&
+      resourceSymbolIds &&
+      resourceSymbolIds.length > 0 &&
+      engine.preflight &&
+      !isWorkspaceFile &&
+      docSymbolCount < 2000
+    ) {
       try {
         await engine.preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
       } catch {
         // Best-effort — don't block validation if preflight fails
       }
     }
+    console.info(`[perf] Step 2.5 (Preflight): ${(performance.now() - t0).toFixed(2)}ms`);
 
     // ── Step 3: Run lints ────────────────────────────────────────────────
     // Skip for library files with >1000 symbols to avoid O(n²) on MSL.
@@ -1371,7 +1411,6 @@ async function runSemanticPipeline(
     // A file is a "workspace file" if it's tracked by the TextDocuments manager
     // (i.e., currently open in the editor). Library files loaded via loadMSL
     // or background indexing are not tracked by documents.
-    const isWorkspaceFile = !!documents.get(uri);
     const hasSyntaxErrors = baseDiagnostics.length > 0;
     const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
 
@@ -1394,6 +1433,7 @@ async function runSemanticPipeline(
         newSemanticDiagnostics.push({ severity, range: { start, end }, message: d.message, source: "modelscript" });
       }
     }
+    console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
 
     // Yield before expensive reference resolution
     await yieldToEventLoop();
@@ -1430,14 +1470,20 @@ async function runSemanticPipeline(
         resolver.updateIndex(unifiedIndex);
       }
     }
+    console.info(`[perf] Step 4 (References): ${(performance.now() - t0).toFixed(2)}ms`);
 
     // ── Step 5: Create ModelicaClassInstance wrappers ──────────────────
     const db = engine!.toQueryDB();
     const thisDocInstances: ModelicaClassInstance[] = [];
     const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
     const matchUri = normUri(effectiveUri);
-    for (const [id, entry] of unifiedIndex.symbols) {
-      if (!entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
+
+    const symbolsToCheck = resourceSymbolIds
+      ? (resourceSymbolIds.map((id) => [id, unifiedIndex.symbols.get(id)]) as Iterable<[any, any]>)
+      : unifiedIndex.symbols;
+
+    for (const [id, entry] of symbolsToCheck) {
+      if (!entry || !entry.resourceId || normUri(entry.resourceId) !== matchUri) continue;
       if (entry.kind !== "Class") continue;
       if (entry.parentId !== null) {
         const parentEntry = unifiedIndex.symbols.get(entry.parentId);
@@ -1449,6 +1495,7 @@ async function runSemanticPipeline(
     workspaceInstances.set(uri, thisDocInstances);
     documentInstances.set(uri, thisDocInstances);
     documentContexts.set(uri, context);
+    console.info(`[perf] Step 5 (Wrappers): ${(performance.now() - t0).toFixed(2)}ms`);
 
     // Final stale check
     if (isStale()) return;
@@ -1458,6 +1505,7 @@ async function runSemanticPipeline(
 
     connection.sendDiagnostics({ uri, diagnostics });
     sendProjectTreeChanged();
+    console.info(`[perf] Finished runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`);
   } catch (e: any) {
     connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
     if (!isStale()) {
@@ -2048,15 +2096,25 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       if (unifiedWorkspace) {
         try {
           const udb = unifiedWorkspace.toUnifiedPartial();
-          const hasVerifyCases = Array.from(udb.symbols.values()).some(
-            (s) =>
-              s.resourceId === textDocument.uri &&
-              (s.ruleName === "VerifyRequirementUsage" ||
-                s.ruleName === "AnalysisCaseDefinition" ||
-                s.ruleName === "AnalysisCaseUsage" ||
-                s.ruleName === "VerificationCaseDefinition" ||
-                s.ruleName === "VerificationCaseUsage"),
-          );
+          // Use symbolsByResource for O(1) lookup instead of scanning all symbols
+          const docSymbolIds = udb.symbolsByResource?.get(textDocument.uri);
+          let hasVerifyCases = false;
+          if (docSymbolIds) {
+            for (const id of docSymbolIds) {
+              const s = udb.symbols.get(id);
+              if (
+                s &&
+                (s.ruleName === "VerifyRequirementUsage" ||
+                  s.ruleName === "AnalysisCaseDefinition" ||
+                  s.ruleName === "AnalysisCaseUsage" ||
+                  s.ruleName === "VerificationCaseDefinition" ||
+                  s.ruleName === "VerificationCaseUsage")
+              ) {
+                hasVerifyCases = true;
+                break;
+              }
+            }
+          }
           if (hasVerifyCases) {
             if (verificationTimer) clearTimeout(verificationTimer);
             const verifyUri = textDocument.uri;
@@ -2079,9 +2137,13 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
   }
 
   if (parserReady && parser) {
+    console.info(`[validate] Entering Modelica parsing`);
     // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
     const context = sharedContext;
-    if (!context) return;
+    if (!context) {
+      console.info(`[validate] sharedContext is null!`);
+      return;
+    }
 
     // Parse with tree-sitter (incremental when possible)
     const oldCached = documentTrees.get(textDocument.uri);
@@ -2101,6 +2163,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     }
     documentTrees.set(textDocument.uri, { text, tree, classCache: oldCached?.classCache ?? new Map() });
 
+    console.info(`[validate] tree parsed`);
+
     // Collect syntax errors from the tree using the shared pure function.
     // These were likely already sent instantly by the onDidChangeContent handler,
     // but we recompute them here to ensure consistency with the current tree.
@@ -2117,6 +2181,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     // Passing the revision allows the pipeline to bail out early if a new edit
     // arrives while it's running (staleness check at each expensive step).
     const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
+
+    console.info(`[validate] starting runSemanticPipeline`);
     const promise = runSemanticPipeline(
       textDocument.uri,
       text,
@@ -2125,7 +2191,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
       diagnostics,
       revisionAtStart,
       context,
-    );
+    ).catch((e) => {
+      connection.console.error(
+        `[runSemanticPipeline] Failed for ${textDocument.uri}: ${e instanceof Error ? e.message + "\\n" + e.stack : String(e)}`,
+      );
+    });
     activeValidationPromises.set(textDocument.uri, promise);
     promise.finally(() => {
       if (activeValidationPromises.get(textDocument.uri) === promise) {
@@ -3810,7 +3880,7 @@ function simpleHash(str: string): number {
  * Wraps dispatch.getData with Modelica-specific caching, isLoading state, and perf logging.
  * SysML2 requests are delegated directly to the dispatch (which handles layout merging).
  */
-async function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }) {
+async function handleGetDiagramData(params: { uri: string; className?: string; diagramType?: string }): Promise<any> {
   // Do NOT flush validation here — it blocks the event loop and starves the
   // text editor of diagnostic updates. Instead, build the diagram from the
   // most recently indexed AST (at worst ~300ms stale).

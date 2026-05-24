@@ -229,6 +229,21 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.debug.registerDebugAdapterDescriptorFactory("modelscript", new InlineDebugAdapterFactory()),
   );
 
+  // Register URI handler for vscode://modelscript.modelscript/install?package=xyz
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri: vscode.Uri) {
+        if (uri.path === "/install" || uri.path === "install") {
+          const query = new URLSearchParams(uri.query);
+          const pkg = query.get("package");
+          if (pkg) {
+            vscode.commands.executeCommand("modelscript.registry.install", pkg);
+          }
+        }
+      },
+    }),
+  );
+
   setLspDebugCallbacks(
     async (program: string) => {
       let uri = program;

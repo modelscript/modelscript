@@ -313,6 +313,11 @@ export class ScopeResolver {
 
     let chunkCount = 0;
     for (const entry of entriesToCheck) {
+      if (yieldFn && ++chunkCount % 500 === 0) {
+        const isStale = await yieldFn();
+        if (isStale) return diagnostics;
+      }
+
       const hook = this.refHooksByRule.get(entry.ruleName);
       if (!hook) continue;
 
@@ -352,11 +357,6 @@ export class ScopeResolver {
         message: `Unresolved reference '${name}'`,
         severity: "error",
       });
-
-      if (yieldFn && ++chunkCount % 50 === 0) {
-        const isStale = await yieldFn();
-        if (isStale) return diagnostics;
-      }
     }
 
     return diagnostics;
@@ -491,12 +491,17 @@ export class ScopeResolver {
   /**
    * Lexical resolution: walk up parent scopes looking for a matching name.
    */
-  private resolveLexical(name: string, fromScopeId: SymbolId | null, targetKinds: string[]): SymbolEntry[] {
+  private resolveLexical(
+    name: string,
+    fromScopeId: SymbolId | null,
+    targetKinds: string[],
+    visited: Set<SymbolId> = new Set(),
+  ): SymbolEntry[] {
     let currentScopeId = fromScopeId;
 
     while (true) {
       // Search in current scope
-      const matches = this.lookupInScope(name, currentScopeId, targetKinds);
+      const matches = this.lookupInScope(name, currentScopeId, targetKinds, visited);
       if (matches.length > 0) return matches;
 
       // Move to parent scope
@@ -514,13 +519,18 @@ export class ScopeResolver {
    * - Lexically resolve the first segment (`A`)
    * - Then look up each subsequent segment in the resolved symbol's exports
    */
-  private resolveQualified(dottedName: string, fromScopeId: SymbolId | null, targetKinds: string[]): SymbolEntry[] {
+  private resolveQualified(
+    dottedName: string,
+    fromScopeId: SymbolId | null,
+    targetKinds: string[],
+    visited: Set<SymbolId> = new Set(),
+  ): SymbolEntry[] {
     // Split on both '.' (Modelica) and '::' (SysML2) separators
     const parts = dottedName.split(/\.|::/).filter((p) => p.length > 0);
     if (parts.length === 0) return [];
 
     // Resolve the root segment lexically (no kind filter for intermediate segments)
-    const rootMatches = this.resolveLexical(parts[0], fromScopeId, []);
+    const rootMatches = this.resolveLexical(parts[0], fromScopeId, [], visited);
     if (rootMatches.length === 0) return [];
 
     let current = rootMatches;
@@ -556,26 +566,39 @@ export class ScopeResolver {
    * Look up a name in a specific scope: searches exported children
    * and inherited members.
    */
-  private lookupInScope(name: string, scopeId: SymbolId | null, targetKinds: string[]): SymbolEntry[] {
+  private lookupInScope(
+    name: string,
+    scopeId: SymbolId | null,
+    targetKinds: string[],
+    visited: Set<SymbolId> = new Set(),
+  ): SymbolEntry[] {
     const candidates: SymbolEntry[] = [];
+
+    if (scopeId !== null && visited.has(scopeId)) return candidates;
+
+    // FAST PATH: If the name doesn't exist anywhere in the index, it can't be in this scope.
+    const nameIds = this.index.byName.get(name);
+    if (!nameIds || nameIds.length === 0) return candidates;
 
     if (scopeId === null) {
       // File-level scope: search all top-level symbols
-      for (const entry of this.index.symbols.values()) {
-        if (entry.parentId === null && entry.name === name && this.isDeclaration(entry)) {
+      for (const id of nameIds) {
+        const entry = this.index.symbols.get(id);
+        if (entry && entry.parentId === null && this.isDeclaration(entry)) {
           candidates.push(entry);
         }
       }
     } else {
       // Named scope: search exported children (declarations only)
-      for (const child of this.exportedChildren(scopeId)) {
-        if (child.name === name && this.isDeclaration(child)) {
-          candidates.push(child);
+      for (const id of nameIds) {
+        const entry = this.index.symbols.get(id);
+        if (entry && entry.parentId === scopeId && this.isDeclaration(entry)) {
+          candidates.push(entry);
         }
       }
 
       // Also search inherited members
-      for (const member of this.inheritedMembers(scopeId, new Set())) {
+      for (const member of this.inheritedMembers(scopeId, visited)) {
         if (member.name === name) {
           candidates.push(member);
         }
@@ -630,10 +653,23 @@ export class ScopeResolver {
     // Find child entries that are reference sites (extends clauses)
     const refChildren = this.findRefChildren(scopeId);
     for (const refChild of refChildren) {
-      // Resolve the base class reference directly via the index
-      // (NOT through resolve() which would re-enter lookupInScope → inheritedMembers)
-      const baseIds = this.index.byName.get(refChild.name);
-      if (!baseIds) continue;
+      // Resolve the base class reference lexically from the current scope
+      // We pass the `visited` set to prevent infinite cycles when lookupInScope calls inheritedMembers.
+      let baseIds: SymbolId[] = [];
+      const hook = this.refHooksByRule.get(refChild.ruleName);
+
+      const resolved =
+        hook && hook.resolve === "qualified"
+          ? this.resolveQualified(refChild.name, scopeId, [], visited)
+          : this.resolveLexical(refChild.name, scopeId, [], visited);
+
+      if (resolved.length > 0) {
+        baseIds = resolved.map((r) => r.id);
+      } else {
+        // Fallback: use global lookup if lexical fails (some SysML2 grammars rely on implicit imports)
+        const globalIds = this.index.byName.get(refChild.name);
+        if (globalIds) baseIds = globalIds;
+      }
 
       for (const baseId of baseIds) {
         if (baseId === refChild.id) continue; // skip self
@@ -654,20 +690,28 @@ export class ScopeResolver {
     return results;
   }
 
+  private refChildrenCache = new Map<SymbolId, SymbolEntry[]>();
+
   /**
    * Find children of a scope that are reference nodes (have RefHooks).
    * These are the extends/inherits clauses that can be resolved.
    */
   private findRefChildren(scopeId: SymbolId): SymbolEntry[] {
-    const results: SymbolEntry[] = [];
+    let results = this.refChildrenCache.get(scopeId);
+    if (results) return results;
+
+    results = [];
     const childIds = this.index.childrenOf.get(scopeId);
-    if (!childIds) return results;
-    for (const childId of childIds) {
-      const entry = this.index.symbols.get(childId);
-      if (entry && this.refHooksByRule.has(entry.ruleName)) {
-        results.push(entry);
+    if (childIds) {
+      for (const childId of childIds) {
+        const entry = this.index.symbols.get(childId);
+        if (entry && this.refHooksByRule.has(entry.ruleName)) {
+          results.push(entry);
+        }
       }
     }
+
+    this.refChildrenCache.set(scopeId, results);
     return results;
   }
 }

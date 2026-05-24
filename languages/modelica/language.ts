@@ -1608,6 +1608,7 @@ export default language({
           duplicateElement: (db: QueryDB, self: SymbolEntry) => {
             const names = new Set<string>();
             const elements = db.childrenOf(self.id).filter((c: any) => c.id > 0);
+            if (elements.length > 5000) return null; // Skip O(N) check for massive classes
             const duplicates = new Set<string>();
             for (const el of elements) {
               if ((el.kind !== "Class" && el.kind !== "Component") || !el.name || BUILTIN_MODELICA_NAMES.has(el.name))
@@ -2229,6 +2230,7 @@ export default language({
             if (meta?.isPartial) return null;
 
             const children = db.childrenOf(self.id);
+            if (children.length > 5000) return null; // Skip O(N) check for massive classes
 
             // Count unknowns: components that are not parameter, constant, or input
             let unknowns = 0;
@@ -2693,7 +2695,9 @@ export default language({
             const selfPrefix = selfMeta?.classPrefixes as string | undefined;
             if (selfPrefix?.includes("function") || selfPrefix?.includes("partial")) return null;
 
-            for (const child of db.childrenOf(self.id)) {
+            const children = db.childrenOf(self.id);
+            if (children.length > 5000) return null; // Skip O(N) check for massive classes
+            for (const child of children) {
               if (child.kind !== "Component") continue;
               const cMeta = child.metadata as Record<string, unknown>;
               const typeName = cMeta?.typeSpecifier as string | undefined;

@@ -253,10 +253,30 @@ export function registerRegistryView(context: vscode.ExtensionContext): Registry
 
   // Install command
   context.subscriptions.push(
-    vscode.commands.registerCommand("modelscript.registry.install", (item: RegistryPackageItem) => {
-      const terminal = vscode.window.createTerminal("ModelScript Install");
+    vscode.commands.registerCommand("modelscript.registry.install", async (item: RegistryPackageItem | string) => {
+      const packageName = typeof item === "string" ? item : item.packageName;
+      const packageVersion = typeof item === "string" ? "latest" : item.packageVersion;
+
+      const folders = vscode.workspace.workspaceFolders;
+      let targetFolder = folders ? folders[0] : undefined;
+
+      if (folders && folders.length > 1) {
+        const picks = folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f }));
+        const picked = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Select workspace to install ${packageName}`,
+        });
+        if (!picked) return;
+        targetFolder = picked.folder;
+      }
+
+      if (!targetFolder) {
+        vscode.window.showErrorMessage("No workspace folder open. Cannot install package.");
+        return;
+      }
+
+      const terminal = vscode.window.createTerminal({ name: "ModelScript Install", cwd: targetFolder.uri });
       terminal.show();
-      terminal.sendText(`npm install ${item.packageName}@${item.packageVersion} --registry=${registryUrl}`);
+      terminal.sendText(`npm install ${packageName}@${packageVersion} --registry=${registryUrl}`);
     }),
   );
 

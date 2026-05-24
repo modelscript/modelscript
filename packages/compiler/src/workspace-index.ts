@@ -52,6 +52,9 @@ export class WorkspaceIndex {
   /** URIs that have changed since the last partial cache build. */
   private dirtyUris = new Set<string>();
 
+  /** URIs whose parentFQN stitching has already been applied to the partial cache. */
+  private stitchedUris = new Set<string>();
+
   constructor(hooks: IndexerHook[]) {
     this.hooks = hooks;
   }
@@ -97,6 +100,7 @@ export class WorkspaceIndex {
     // Full rebuild needed — we must remove entries from the cached index
     this.partialCache = null;
     this.dirtyUris.clear();
+    this.stitchedUris.delete(uri);
     this.skeletonCache = null;
   }
 
@@ -464,35 +468,51 @@ export class WorkspaceIndex {
       const { symbols, byName, childrenOf } = this.partialCache;
       const symbolsByResource = this.partialCache.symbolsByResource ?? new Map<string, SymbolId[]>();
 
+      const toRemoveSet = new Set<SymbolId>();
+      const namesToFilter = new Set<string>();
+      const parentsToFilter = new Set<SymbolId | null>();
+
       for (const dirtyUri of this.dirtyUris) {
         // 1. Remove old entries for this file from the cache
         const oldResourceIds = symbolsByResource.get(dirtyUri);
-        const toRemove = oldResourceIds ? [...oldResourceIds] : [];
-        symbolsByResource.delete(dirtyUri);
-        for (const id of toRemove) {
-          const entry = symbols.get(id)!;
-          symbols.delete(id);
-
-          // Remove from byName
-          const nameIds = byName.get(entry.name);
-          if (nameIds) {
-            const idx = nameIds.indexOf(id);
-            if (idx !== -1) nameIds.splice(idx, 1);
-            if (nameIds.length === 0) byName.delete(entry.name);
-          }
-
-          // Remove from childrenOf (as a child of its parent)
-          const parentChildren = childrenOf.get(entry.parentId);
-          if (parentChildren) {
-            const idx = parentChildren.indexOf(id);
-            if (idx !== -1) parentChildren.splice(idx, 1);
-            if (parentChildren.length === 0) childrenOf.delete(entry.parentId);
-          }
-
-          // Remove its own children array to prevent orphaned arrays
-          childrenOf.delete(id);
+        if (oldResourceIds) {
+          for (const id of oldResourceIds) toRemoveSet.add(id);
         }
+        symbolsByResource.delete(dirtyUri);
+      }
 
+      // Collect affected names and parents, and delete from symbols map
+      for (const id of toRemoveSet) {
+        const entry = symbols.get(id);
+        if (entry) {
+          namesToFilter.add(entry.name);
+          parentsToFilter.add(entry.parentId);
+          symbols.delete(id);
+        }
+        childrenOf.delete(id);
+      }
+
+      // Bulk filter byName arrays
+      for (const name of namesToFilter) {
+        const nameIds = byName.get(name);
+        if (nameIds) {
+          const filtered = nameIds.filter((id) => !toRemoveSet.has(id));
+          if (filtered.length === 0) byName.delete(name);
+          else byName.set(name, filtered);
+        }
+      }
+
+      // Bulk filter childrenOf arrays
+      for (const parentId of parentsToFilter) {
+        const parentChildren = childrenOf.get(parentId);
+        if (parentChildren) {
+          const filtered = parentChildren.filter((id) => !toRemoveSet.has(id));
+          if (filtered.length === 0) childrenOf.delete(parentId);
+          else childrenOf.set(parentId, filtered);
+        }
+      }
+
+      for (const dirtyUri of this.dirtyUris) {
         // 2. Merge new entries for this file
         const file = this.files.get(dirtyUri);
         if (!file || !file.index) continue;
@@ -526,7 +546,9 @@ export class WorkspaceIndex {
 
       this.partialCache.symbolsByResource = symbolsByResource;
 
-      this.stitchParentFQNs(symbols, byName, childrenOf);
+      // Only stitch parentFQNs for the dirty URIs — not the entire file set.
+      // Already-stitched URIs are skipped to avoid duplicate childrenOf entries.
+      this.stitchParentFQNsForUris(symbols, byName, childrenOf, this.dirtyUris);
       this.dirtyUris.clear();
       return this.partialCache;
     }
@@ -561,6 +583,7 @@ export class WorkspaceIndex {
       }
     }
 
+    this.stitchedUris.clear();
     this.stitchParentFQNs(symbols, byName, childrenOf);
     this.dirtyUris.clear();
 
@@ -596,7 +619,7 @@ export class WorkspaceIndex {
    * When complete, sets the unified cache.
    */
   async indexRemainingInBackground(
-    batchSize = 20,
+    batchSize = 200,
     onProgress?: (indexed: number, total: number) => void,
   ): Promise<void> {
     const urisToIndex: string[] = [];
@@ -637,32 +660,103 @@ export class WorkspaceIndex {
 
     for (const [uri, file] of sortedUris) {
       if (!file.parentFQN || !file.index) continue;
-      const parentId = this.resolveFQN(file.parentFQN, symbols, byName);
-      if (parentId !== null) {
-        const rootChildIds = file.index.childrenOf.get(null);
-        if (rootChildIds) {
-          for (const id of rootChildIds) {
-            const entry = symbols.get(id);
-            if (entry) {
-              entry.parentId = parentId;
+      this.stitchSingleFile(uri, file, symbols, byName, childrenOf);
+    }
+  }
 
-              let children = childrenOf.get(parentId);
-              if (!children) {
-                children = [];
-                childrenOf.set(parentId, children);
-              }
-              children.push(id);
+  /**
+   * Like stitchParentFQNs but only processes the specified URIs.
+   * Skips URIs that have already been stitched (tracked via stitchedUris).
+   * This is the fast path used during incremental updates.
+   */
+  private stitchParentFQNsForUris(
+    symbols: Map<SymbolId, SymbolEntry>,
+    byName: Map<string, SymbolId[]>,
+    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    uris: Set<string>,
+  ) {
+    // Sort dirty URIs by parentFQN length (shorter = higher in hierarchy = must be stitched first)
+    const toStitch: Array<[string, { parentFQN?: string; index: SymbolIndex | null }]> = [];
+    for (const uri of uris) {
+      const file = this.files.get(uri);
+      if (file?.parentFQN && file.index) {
+        toStitch.push([uri, file]);
+      }
+    }
+    if (toStitch.length === 0) return;
+    toStitch.sort((a, b) => (a[1].parentFQN?.length ?? 0) - (b[1].parentFQN?.length ?? 0));
 
-              let rootChildren = childrenOf.get(null);
-              if (rootChildren) {
-                const idx = rootChildren.indexOf(id);
-                if (idx !== -1) rootChildren.splice(idx, 1);
-              }
+    for (const [uri, file] of toStitch) {
+      this.stitchSingleFile(uri, file as any, symbols, byName, childrenOf);
+    }
+  }
+
+  /**
+   * Stitch a single file's root children under their parentFQN-resolved parent.
+   * Tracks the stitched state to prevent duplicate insertions.
+   */
+  private stitchSingleFile(
+    uri: string,
+    file: { parentFQN?: string; index: SymbolIndex | null },
+    symbols: Map<SymbolId, SymbolEntry>,
+    byName: Map<string, SymbolId[]>,
+    childrenOf: Map<SymbolId | null, SymbolId[]>,
+  ) {
+    if (!file.parentFQN || !file.index) return;
+
+    // Un-stitch previous stitching for this URI if it was already stitched
+    // (handles re-indexing of a dirty file)
+    if (this.stitchedUris.has(uri)) {
+      const rootChildIds = file.index.childrenOf.get(null);
+      if (rootChildIds) {
+        for (const id of rootChildIds) {
+          const entry = symbols.get(id);
+          if (entry && entry.parentId !== null) {
+            // Remove from old parent's children
+            const oldChildren = childrenOf.get(entry.parentId);
+            if (oldChildren) {
+              const idx = oldChildren.indexOf(id);
+              if (idx !== -1) oldChildren.splice(idx, 1);
+            }
+            entry.parentId = null;
+            // Re-add to root children
+            let rootChildren = childrenOf.get(null);
+            if (!rootChildren) {
+              rootChildren = [];
+              childrenOf.set(null, rootChildren);
+            }
+            if (!rootChildren.includes(id)) rootChildren.push(id);
+          }
+        }
+      }
+    }
+
+    const parentId = this.resolveFQN(file.parentFQN, symbols, byName);
+    if (parentId !== null) {
+      const rootChildIds = file.index.childrenOf.get(null);
+      if (rootChildIds) {
+        for (const id of rootChildIds) {
+          const entry = symbols.get(id);
+          if (entry) {
+            entry.parentId = parentId;
+
+            let children = childrenOf.get(parentId);
+            if (!children) {
+              children = [];
+              childrenOf.set(parentId, children);
+            }
+            children.push(id);
+
+            let rootChildren = childrenOf.get(null);
+            if (rootChildren) {
+              const idx = rootChildren.indexOf(id);
+              if (idx !== -1) rootChildren.splice(idx, 1);
             }
           }
         }
       }
     }
+    this.stitchedUris.add(uri);
   }
 
   private resolveFQN(

@@ -188,7 +188,9 @@ export class QueryEngine {
     this.evaluator = options?.evaluator ?? null;
     this.tree = options?.tree ?? null;
     this.cacheStore = options?.cacheStore;
-    this.maxMemos = options?.maxMemos ?? 100000;
+    // Set a very high default memo limit (2 million) to prevent cache trashing
+    // for massive models (e.g. MSL + 30k symbol stress tests).
+    this.maxMemos = options?.maxMemos ?? 2_000_000;
 
     // Initialize input revisions for all existing symbols
     for (const id of index.symbols.keys()) {
@@ -317,13 +319,15 @@ export class QueryEngine {
 
     if (hasNewSymbols) {
       // Selectively invalidate memos that looked up names which now exist.
-      // This replaces the previous nuclear memos.clear() with targeted
-      // invalidation: only memos that did a byName() lookup for a name
-      // that is now newly present need re-execution.
+      // We only care about new GLOBAL symbols (parentId === null) because
+      // byName lookups are used for global/root resolution. A new local
+      // variable should not invalidate the entire MSL cache.
       const newNames = new Set<string>();
       for (const [id, entry] of newIndex.symbols) {
         if (!this.index.symbols.has(id)) {
-          newNames.add(entry.name);
+          if (entry.parentId === null || (entry.metadata as any)?.isPredefined) {
+            newNames.add(entry.name);
+          }
         }
       }
       if (newNames.size > 0) {
@@ -484,6 +488,7 @@ export class QueryEngine {
     }
 
     let chunkCount = 0;
+    console.info(`[runAllLintsAsync] starting for ${resourceId}, chunkCount=${chunkCount}`);
     for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
 
@@ -509,11 +514,16 @@ export class QueryEngine {
         });
       }
 
-      if (yieldFn && ++chunkCount % 50 === 0) {
+      if (yieldFn && ++chunkCount % 500 === 0) {
+        // console.info(`[runAllLintsAsync] yielding at chunk ${chunkCount}`);
         const isStale = await yieldFn();
-        if (isStale) return diagnostics; // Abort early
+        if (isStale) {
+          console.info(`[runAllLintsAsync] STALE at chunk ${chunkCount}, aborting!`);
+          return diagnostics; // Abort early
+        }
       }
     }
+    console.info(`[runAllLintsAsync] COMPLETED for ${resourceId}, total chunks=${chunkCount}`);
     return diagnostics;
   }
 
@@ -753,7 +763,21 @@ export class QueryEngine {
       // references that would produce garbage if serialized.
       if (this.cacheStore) {
         try {
-          JSON.stringify(memo.value);
+          // JSON.stringify doesn't throw on functions (it returns undefined),
+          // which allows closures to slip through and crash IndexedDB's structured clone.
+          // We use structuredClone to accurately test if the value is cloneable by IDB.
+          if (typeof memo.value === "function") {
+            throw new Error("Functions are not cloneable");
+          }
+          if (typeof structuredClone === "function") {
+            structuredClone(memo.value);
+          } else {
+            // Fallback for older environments without structuredClone:
+            // stringify to check for circular refs, and reject top-level undefined/functions
+            const json = JSON.stringify(memo.value);
+            if (json === undefined) throw new Error("Not serializable");
+          }
+
           // Value is safe — include for persistence
           serializableMemos.set(key, memo);
         } catch {
@@ -823,9 +847,12 @@ export class QueryEngine {
         // we must re-execute.
         if (currentIds) {
           for (const id of currentIds) {
-            const rev = this.inputRevisions.get(id);
-            if (rev !== undefined && rev > memo.verified_at) {
-              return false; // A new symbol with this name appeared
+            const entry = this.index.symbols.get(id);
+            if (entry && (entry.parentId === null || (entry.metadata as any)?.isPredefined)) {
+              const rev = this.inputRevisions.get(id);
+              if (rev !== undefined && rev > memo.verified_at) {
+                return false; // A new global symbol with this name appeared
+              }
             }
           }
         }

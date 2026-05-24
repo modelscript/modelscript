@@ -147,12 +147,21 @@ export class LSPBridge {
   documentSymbols(): LSPDocumentSymbol[] {
     // Collect only symbols belonging to this document
     const docSymbols = new Set<SymbolId>();
-    for (const entry of this.index.symbols.values()) {
-      if (entry.resourceId !== this.documentUri) continue;
-      // Skip reference entries — they are internal resolution artifacts,
-      // not user-visible declarations (e.g. OwnedFeatureTyping)
-      if (entry.kind === "Reference") continue;
-      docSymbols.add(entry.id);
+
+    if (this.index.symbolsByResource) {
+      const docSymbolIds = this.index.symbolsByResource.get(this.documentUri) || [];
+      for (const id of docSymbolIds) {
+        const entry = this.index.symbols.get(id);
+        if (!entry || entry.kind === "Reference") continue;
+        docSymbols.add(entry.id);
+      }
+    } else {
+      // Fallback for older index format
+      for (const entry of this.index.symbols.values()) {
+        if (entry.resourceId !== this.documentUri) continue;
+        if (entry.kind === "Reference") continue;
+        docSymbols.add(entry.id);
+      }
     }
 
     // Build hierarchy: group by parentId, reparenting orphans to null
