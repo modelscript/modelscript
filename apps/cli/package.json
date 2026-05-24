@@ -54,7 +54,7 @@
     "@types/node": "^25.3.2",
     "@types/npmcli__package-json": "^4.0.4",
     "@types/svgdom": "^0.1.2",
-    "@types/xml-formatter": "^1.2.0",
+    "@types/xml-formatter": "^2.1.1",
     "@types/yargs": "^17.0.34",
     "eslint": "^9.39.1",
     "jiti": "^2.6.1",
