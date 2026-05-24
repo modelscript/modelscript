@@ -98,6 +98,10 @@ console.log("WebSocket co-simulation stream available at /api/v1/cosim/stream");
 async function shutdown(signal: string): Promise<void> {
   console.log(`\n${signal} received. Shutting down gracefully...`);
 
+  if (app.locals.decayWorkerInterval) {
+    clearInterval(app.locals.decayWorkerInterval);
+  }
+
   server.close();
 
   if (recorder) {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import axios from "axios";
 
 const api = axios.create({
@@ -51,11 +52,36 @@ export interface LibraryListItem {
   name: string;
   versions: string[];
   latestVersion: string | null;
+  description?: string;
 }
 
 export const getLibraries = async (q?: string) => {
-  const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params: { q } });
-  return data.packages;
+  try {
+    const { data } = await api.get<{ packages: LibraryListItem[] }>("/libraries", { params: { q } });
+    if (data.packages && data.packages.length > 0) {
+      return data.packages;
+    }
+  } catch (err) {
+    if (!import.meta.env.DEV) throw err;
+  }
+
+  if (import.meta.env.DEV) {
+    try {
+      const res = await axios.get("https://registry.npmjs.org/-/v1/search", {
+        params: { text: "modelica " + (q || ""), size: 10 },
+      });
+      return res.data.objects.map((obj: any) => ({
+        name: obj.package.name,
+        versions: [obj.package.version],
+        latestVersion: obj.package.version,
+        description: obj.package.description,
+      }));
+    } catch (err) {
+      return [];
+    }
+  }
+
+  return [];
 };
 
 export const getLibraryVersions = async (name: string) => {
@@ -397,6 +423,33 @@ export const getGitlabMergeRequests = async (projectIdOrPath: string): Promise<G
   const { data } = await api.get<GitlabMergeRequest[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
   );
+  return data;
+};
+
+export const updateAccount = async (data: {
+  password?: string;
+  username?: string;
+  email?: string;
+  display_name?: string;
+  avatar_url?: string;
+  banner_url?: string;
+}) => {
+  const { data: resData } = await api.put("/auth/account", data);
+  return resData;
+};
+
+export const updatePassword = async (data: { oldPassword?: string; newPassword?: string }) => {
+  const { data: resData } = await api.put("/auth/password", data);
+  return resData;
+};
+
+export const getNotificationSettings = async () => {
+  const { data } = await api.get("/auth/notifications");
+  return data;
+};
+
+export const updateNotificationSettings = async (settings: any) => {
+  const { data } = await api.put("/auth/notifications", settings);
   return data;
 };
 

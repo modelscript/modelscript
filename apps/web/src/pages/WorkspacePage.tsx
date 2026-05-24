@@ -216,9 +216,108 @@ function CodeTab({ projectId, repo }: { projectId: string; repo: GitlabProject }
   }
 
   if (error) {
+    if (error.includes("404")) {
+      return (
+        <Box display="grid" style={{ gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr)", gap: "32px" }}>
+          <Box display="flex" flexDirection="column" gap={4}>
+            <Box
+              p={6}
+              bg="var(--color-canvas-subtle)"
+              borderRadius={2}
+              style={{ border: "1px solid var(--color-border-default)" }}
+            >
+              <Heading as="h3" style={{ fontSize: "16px", marginBottom: "16px" }}>
+                Quick setup — if you've done this kind of thing before
+              </Heading>
+              <Box mb={4} display="flex" gap={2}>
+                <TextInput
+                  value={`https://modelscript.com/${repo.path_with_namespace}.git`}
+                  readOnly
+                  block
+                  style={{ fontFamily: "monospace" }}
+                />
+                <Button>Copy</Button>
+              </Box>
+
+              <Text
+                as="p"
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "8px",
+                  borderBottom: "1px solid var(--color-border-default)",
+                  paddingBottom: "8px",
+                }}
+              >
+                …or create a new repository on the command line
+              </Text>
+              <Box
+                bg="var(--color-canvas-default)"
+                p={3}
+                borderRadius={2}
+                mb={4}
+                style={{ border: "1px solid var(--color-border-default)", overflowX: "auto" }}
+              >
+                <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", lineHeight: "1.5" }}>
+                  {`echo "# ${repo.name}" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://modelscript.com/${repo.path_with_namespace}.git
+git push -u origin main`}
+                </pre>
+              </Box>
+
+              <Text
+                as="p"
+                style={{
+                  fontWeight: "bold",
+                  marginBottom: "8px",
+                  borderBottom: "1px solid var(--color-border-default)",
+                  paddingBottom: "8px",
+                }}
+              >
+                …or push an existing repository from the command line
+              </Text>
+              <Box
+                bg="var(--color-canvas-default)"
+                p={3}
+                borderRadius={2}
+                style={{ border: "1px solid var(--color-border-default)", overflowX: "auto" }}
+              >
+                <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", lineHeight: "1.5" }}>
+                  {`git remote add origin https://modelscript.com/${repo.path_with_namespace}.git
+git branch -M main
+git push -u origin main`}
+                </pre>
+              </Box>
+            </Box>
+          </Box>
+          <Box display="flex" flexDirection="column" gap={4} style={{ paddingTop: "8px" }}>
+            <Box>
+              <Heading as="h2" style={{ fontSize: "16px", marginBottom: "16px" }}>
+                About
+              </Heading>
+              <Text as="p" style={{ marginBottom: "16px", color: "var(--color-fg-default)" }}>
+                {repo.description || "No description, website, or topics provided."}
+              </Text>
+            </Box>
+          </Box>
+        </Box>
+      );
+    }
     return (
-      <Box p={4} color="var(--color-danger-fg)">
-        Error: {error}
+      <Box
+        p={4}
+        color="var(--color-danger-fg)"
+        bg="var(--color-danger-subtle)"
+        borderRadius={2}
+        style={{ border: "1px solid var(--color-danger-muted)" }}
+      >
+        <Heading as="h4" style={{ fontSize: "16px", margin: "0 0 8px 0" }}>
+          Failed to load repository data
+        </Heading>
+        <Text>{error}</Text>
       </Box>
     );
   }
@@ -231,7 +330,7 @@ function CodeTab({ projectId, repo }: { projectId: string; repo: GitlabProject }
       {/* Left Column */}
       <Box display="flex" flexDirection="column" gap={4}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box display="flex" gap={2} alignItems="center">
+          <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
             <ActionMenu>
               <ActionMenu.Button leadingVisual={GitCommitIcon}>main</ActionMenu.Button>
               <ActionMenu.Overlay>
@@ -279,7 +378,17 @@ function CodeTab({ projectId, repo }: { projectId: string; repo: GitlabProject }
             )}
           </Box>
           <Box display="flex" gap={2}>
-            <Button variant="primary" leadingVisual={CodeIcon}>
+            {currentFile && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  alert("This would open the compose modal with the file attached!");
+                }}
+              >
+                Share to Feed
+              </Button>
+            )}
+            <Button variant="default" leadingVisual={CodeIcon}>
               Code
             </Button>
           </Box>
@@ -869,7 +978,7 @@ function ActionsTab({ projectId }: { projectId: string }) {
 }
 
 export default function WorkspacePage() {
-  const { namespace, project } = useParams<{ namespace: string; project: string }>();
+  const { provider, namespace, project } = useParams<{ provider: string; namespace: string; project: string }>();
   const location = useLocation();
   const projectId = `${namespace}/${project}`;
 
@@ -877,7 +986,7 @@ export default function WorkspacePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const basePath = `/workspace/${namespace}/${project}`;
+  const basePath = `/repos/${provider}/${namespace}/${project}`;
 
   const currentTab =
     location.pathname === basePath || location.pathname === `${basePath}/`
@@ -916,12 +1025,9 @@ export default function WorkspacePage() {
   }
 
   return (
-    <Box bg="var(--color-canvas-default)" minHeight="100vh">
+    <Box>
       {/* Repository Header (Full width background, default canvas) */}
-      <Box
-        bg="var(--color-canvas-default)"
-        style={{ borderBottom: "1px solid var(--color-border-default)", paddingTop: "16px" }}
-      >
+      <Box style={{ borderBottom: "1px solid var(--color-border-default)", paddingTop: "16px" }}>
         <Box maxWidth="1280px" mx="auto" px={4}>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={4}>
             <Box display="flex" alignItems="center" gap={2}>
@@ -1000,7 +1106,7 @@ export default function WorkspacePage() {
       </Box>
 
       {/* Main Content Area */}
-      <Box bg="var(--color-canvas-default)" style={{ paddingTop: "16px", paddingBottom: "24px" }}>
+      <Box style={{ paddingTop: "16px", paddingBottom: "24px" }}>
         <Box maxWidth="1280px" mx="auto" px={4}>
           <Routes>
             <Route path="/" element={<CodeTab projectId={projectId} repo={repo} />} />

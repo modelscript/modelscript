@@ -66,8 +66,8 @@
 
 /* ─── Light theme ─── */
 [data-theme="light"] {
-  --color-bg-primary: #f8f9fc;
-  --color-bg-secondary: #ffffff;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f8f9fc;
   --color-text-primary: #1f2328;
   --color-text-heading: #0d1117;
   --color-text-muted: #656d76;

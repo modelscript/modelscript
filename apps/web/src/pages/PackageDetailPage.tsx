@@ -665,7 +665,7 @@ const PackageDetailPage: React.FC = () => {
           <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
             The package may not exist, is still being processed, or the server is unavailable.
           </Text>
-          <Link to="/libraries" style={{ color: "var(--color-link)", fontSize: 14, textDecoration: "none" }}>
+          <Link to="/packages" style={{ color: "var(--color-link)", fontSize: 14, textDecoration: "none" }}>
             ← Back to libraries
           </Link>
         </Box>
@@ -683,8 +683,8 @@ const PackageDetailPage: React.FC = () => {
         <Box mb={3}>
           <Breadcrumbs
             items={[
-              { label: "Libraries", href: "/libraries" },
-              { label: name || "", href: `/${name}` },
+              { label: "Libraries", href: "/packages" },
+              { label: name || "", href: `/packages/${name}` },
               { label: version || "" },
             ]}
           />

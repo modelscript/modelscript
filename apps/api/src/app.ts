@@ -20,8 +20,13 @@ import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { packagesRouter } from "./routes/packages.js";
 import { publishRouter } from "./routes/publish.js";
 import { rdfRouter } from "./routes/rdf.js";
+import { reposRouter } from "./routes/repos.js";
+import { searchRouter } from "./routes/search.js";
 import { simulateRouter } from "./routes/simulate.js";
+import { socialRouter } from "./routes/social.js";
 import { sparqlRouter } from "./routes/sparql.js";
+import { storageRouter } from "./routes/storage.js";
+import { usersRouter } from "./routes/users.js";
 import { LibraryStorage } from "./storage.js";
 import { seedExamplePackages } from "./util/seed-examples.js";
 
@@ -59,6 +64,20 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     });
   }
 
+  // ── Trending Topics Periodic Worker ──
+  // Run every 15 minutes (900,000 ms)
+  const decayWorkerInterval = setInterval(
+    () => {
+      try {
+        database.decayTrendingTopics();
+      } catch (err) {
+        console.error("Failed to decay trending topics:", err);
+      }
+    },
+    15 * 60 * 1000,
+  );
+  app.locals.decayWorkerInterval = decayWorkerInterval;
+
   // Increased limit for npm publish payloads (base64-encoded tarballs in JSON body)
   app.use(express.json({ limit: "50mb" }));
 
@@ -85,6 +104,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   // Auth routes
   app.use("/api/v1/auth", authRouter(database));
+  app.use("/api/v1/users", usersRouter(database));
+  app.use("/api/v1/social", socialRouter(database));
+  app.use("/api/v1/repos", reposRouter(database));
+  app.use("/api/v1/search", searchRouter(database));
+  app.use("/api/v1/storage", storageRouter());
 
   // Mount the library routers
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));

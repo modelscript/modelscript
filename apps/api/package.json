@@ -52,6 +52,7 @@
     "path-to-regexp": "^8.4.2",
     "pg": "^8.16.0",
     "semver": "^7.7.1",
+    "stemmer": "^2.0.1",
     "svgdom": "^0.1.22",
     "tree-sitter": "^0.21.1",
     "xml-formatter": "^3.6.7",

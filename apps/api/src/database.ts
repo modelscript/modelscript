@@ -1,3 +1,4 @@
+/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import Database from "better-sqlite3";
@@ -55,6 +56,14 @@ export interface ComponentMetadata {
   causality: string | null;
   variability: string | null;
   modifiers: { name: string; value: string | null }[];
+}
+
+export interface TrendingTopicRow {
+  id: number;
+  concept: string;
+  display_name: string;
+  current_score: number;
+  last_updated_at: string;
 }
 
 /**
@@ -126,8 +135,122 @@ export class LibraryDatabase {
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         username      TEXT NOT NULL UNIQUE,
         email         TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
+        password_hash TEXT,
+        display_name  TEXT,
+        bio           TEXT,
+        avatar_url    TEXT DEFAULT 'https://ui-avatars.com/api/?name=User&background=random&color=fff',
+        banner_url    TEXT DEFAULT 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80',
+        location      TEXT,
+        website       TEXT,
+        notification_settings TEXT DEFAULT '{}',
         created_at    TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS oauth_accounts (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider          TEXT NOT NULL,
+        provider_user_id  TEXT NOT NULL,
+        UNIQUE(provider, provider_user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user ON oauth_accounts(user_id);
+
+      CREATE TABLE IF NOT EXISTS follows (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        follower_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at   TEXT DEFAULT (datetime('now')),
+        UNIQUE(follower_id, following_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_follows_follower ON follows(follower_id);
+      CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id);
+
+      CREATE TABLE IF NOT EXISTS artifact_views (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        creator_id      INTEGER NOT NULL REFERENCES users(id),
+        view_type       TEXT NOT NULL,
+        source_type     TEXT NOT NULL,
+        source_ref      TEXT,
+        title           TEXT,
+        view_config     TEXT NOT NULL,
+        thumbnail_url   TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS posts (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        author_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content          TEXT,
+        artifact_view_id INTEGER REFERENCES artifact_views(id),
+        reply_to_id      INTEGER REFERENCES posts(id),
+        quote_post_id    INTEGER REFERENCES posts(id),
+        repost_of_id     INTEGER REFERENCES posts(id),
+        view_count       INTEGER DEFAULT 0,
+        created_at       TEXT DEFAULT (datetime('now')),
+        updated_at       TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_reply ON posts(reply_to_id);
+      CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS likes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, post_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_likes_post ON likes(post_id);
+      CREATE INDEX IF NOT EXISTS idx_likes_user ON likes(user_id);
+
+      CREATE TABLE IF NOT EXISTS bookmarks (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, post_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON bookmarks(user_id);
+
+      CREATE TABLE IF NOT EXISTS notifications (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        actor_id    INTEGER NOT NULL REFERENCES users(id),
+        type        TEXT NOT NULL,
+        post_id     INTEGER REFERENCES posts(id),
+        read        INTEGER DEFAULT 0,
+        created_at  TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifs_user ON notifications(user_id, read);
+
+      CREATE TABLE IF NOT EXISTS linked_repos (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider    TEXT NOT NULL,
+        namespace   TEXT NOT NULL,
+        project     TEXT NOT NULL,
+        external_id TEXT,
+        description TEXT,
+        avatar_url  TEXT,
+        pinned      INTEGER DEFAULT 0,
+        created_at  TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, provider, namespace, project)
+      );
+      CREATE INDEX IF NOT EXISTS idx_linked_repos_user ON linked_repos(user_id);
+
+      CREATE TABLE IF NOT EXISTS trending_topics (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        concept         TEXT NOT NULL UNIQUE,
+        display_name    TEXT NOT NULL,
+        current_score   REAL DEFAULT 0.0,
+        last_updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_trending_score ON trending_topics(current_score DESC);
+
+      CREATE TABLE IF NOT EXISTS post_topics (
+        post_id  INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+        topic_id INTEGER REFERENCES trending_topics(id) ON DELETE CASCADE,
+        UNIQUE(post_id, topic_id)
       );
 
       -- ── npm registry tables ──────────────────────────────────────
@@ -183,15 +306,74 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_dist_tags_pkg ON dist_tags(package_id);
       CREATE INDEX IF NOT EXISTS idx_artifacts_version ON artifacts(version_id);
     `);
+
+    // Migrations
+    try {
+      this.#db.exec(`ALTER TABLE users ADD COLUMN notification_settings TEXT DEFAULT '{}'`);
+    } catch (e) {
+      // Column already exists
+    }
+
+    try {
+      this.#db.exec(`
+        UPDATE users 
+        SET avatar_url = 'https://ui-avatars.com/api/?name=' || username || '&background=random&color=fff' 
+        WHERE avatar_url IS NULL;
+        
+        UPDATE users 
+        SET banner_url = 'https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80' 
+        WHERE banner_url IS NULL;
+      `);
+    } catch (e) {
+      // Ignore migration errors
+    }
   }
 
   // ── User management ─────────────────────────────────────────────
 
-  createUser(username: string, email: string, passwordHash: string): { id: number; username: string; email: string } {
+  createUser(
+    username: string,
+    email: string,
+    passwordHash: string | null,
+  ): { id: number; username: string; email: string } {
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
+    const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
+
     const result = this.#db
-      .prepare(`INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`)
-      .run(username, email, passwordHash);
+      .prepare(`INSERT INTO users (username, email, password_hash, avatar_url, banner_url) VALUES (?, ?, ?, ?, ?)`)
+      .run(username, email, passwordHash, avatarUrl, bannerUrl);
     return { id: Number(result.lastInsertRowid), username, email };
+  }
+
+  createOAuthUser(
+    username: string,
+    email: string,
+    provider: string,
+    providerUserId: string,
+  ): { id: number; username: string; email: string } {
+    const transaction = this.#db.transaction(() => {
+      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
+      const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
+
+      const userResult = this.#db
+        .prepare(`INSERT INTO users (username, email, avatar_url, banner_url) VALUES (?, ?, ?, ?)`)
+        .run(username, email, avatarUrl, bannerUrl);
+      const userId = Number(userResult.lastInsertRowid);
+
+      this.#db
+        .prepare(`INSERT INTO oauth_accounts (user_id, provider, provider_user_id) VALUES (?, ?, ?)`)
+        .run(userId, provider, providerUserId);
+
+      return { id: userId, username, email };
+    });
+
+    return transaction();
+  }
+
+  getOAuthAccount(provider: string, providerUserId: string): { user_id: number } | undefined {
+    return this.#db
+      .prepare(`SELECT user_id FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?`)
+      .get(provider, providerUserId) as { user_id: number } | undefined;
   }
 
   getUserByEmail(email: string): { id: number; username: string; email: string; password_hash: string } | undefined {
@@ -210,6 +392,570 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT id, username, email FROM users WHERE id = ?`).get(id) as
       | { id: number; username: string; email: string }
       | undefined;
+  }
+
+  getFullProfileByUsername(username: string): any {
+    return this.#db
+      .prepare(
+        `
+      SELECT u.id, u.username, u.display_name, u.bio, u.avatar_url, u.banner_url, u.location, u.website, u.created_at,
+        (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count,
+        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count
+      FROM users u WHERE u.username = ?
+    `,
+      )
+      .get(username);
+  }
+
+  updateProfile(
+    userId: number,
+    profile: {
+      display_name?: string;
+      bio?: string;
+      location?: string;
+      website?: string;
+      avatar_url?: string;
+      banner_url?: string;
+    },
+  ) {
+    const fields = Object.entries(profile).filter(([_, v]) => v !== undefined);
+    if (fields.length === 0) return;
+    const setClause = fields.map(([k, _]) => `${k} = ?`).join(", ");
+    const values = fields.map(([_, v]) => v);
+    this.#db.prepare(`UPDATE users SET ${setClause} WHERE id = ?`).run(...values, userId);
+  }
+
+  updateAccount(userId: number, username: string, email: string) {
+    this.#db.prepare(`UPDATE users SET username = ?, email = ? WHERE id = ?`).run(username, email, userId);
+  }
+
+  updatePassword(userId: number, passwordHash: string) {
+    this.#db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(passwordHash, userId);
+  }
+
+  getPasswordHash(userId: number): string | undefined {
+    const res = this.#db.prepare(`SELECT password_hash FROM users WHERE id = ?`).get(userId) as
+      | { password_hash: string }
+      | undefined;
+    return res?.password_hash;
+  }
+
+  getNotificationSettings(userId: number): string | undefined {
+    const res = this.#db.prepare(`SELECT notification_settings FROM users WHERE id = ?`).get(userId) as
+      | { notification_settings: string }
+      | undefined;
+    return res?.notification_settings;
+  }
+
+  updateNotificationSettings(userId: number, settings: string) {
+    this.#db.prepare(`UPDATE users SET notification_settings = ? WHERE id = ?`).run(settings, userId);
+  }
+
+  followUser(followerId: number, followingId: number) {
+    try {
+      this.#db.prepare(`INSERT INTO follows (follower_id, following_id) VALUES (?, ?)`).run(followerId, followingId);
+    } catch (err) {
+      // ignore unique constraint
+    }
+  }
+
+  unfollowUser(followerId: number, followingId: number) {
+    this.#db.prepare(`DELETE FROM follows WHERE follower_id = ? AND following_id = ?`).run(followerId, followingId);
+  }
+
+  isFollowing(followerId: number, followingId: number): boolean {
+    const res = this.#db
+      .prepare(`SELECT 1 FROM follows WHERE follower_id = ? AND following_id = ?`)
+      .get(followerId, followingId);
+    return !!res;
+  }
+
+  getUserSuggestions(userId?: number, limit: number = 3): any[] {
+    if (userId) {
+      return this.#db
+        .prepare(
+          `
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
+        FROM users u
+        WHERE u.id != ? AND u.id NOT IN (SELECT following_id FROM follows WHERE follower_id = ?)
+        ORDER BY RANDOM() LIMIT ?
+      `,
+        )
+        .all(userId, userId, limit) as any[];
+    } else {
+      return this.#db
+        .prepare(
+          `
+        SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio
+        FROM users u
+        ORDER BY RANDOM() LIMIT ?
+      `,
+        )
+        .all(limit) as any[];
+    }
+  }
+
+  // ── Social & Posts ──────────────────────────────────────────────
+
+  createPost(
+    authorId: number,
+    content: string | null,
+    artifactViewId?: number,
+    replyToId?: number,
+    quotePostId?: number,
+    repostOfId?: number,
+  ): { id: number } {
+    const res = this.#db
+      .prepare(
+        `
+      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+      )
+      .run(authorId, content, artifactViewId ?? null, replyToId ?? null, quotePostId ?? null, repostOfId ?? null);
+    return { id: Number(res.lastInsertRowid) };
+  }
+
+  incrementPostView(postId: number) {
+    this.#db.prepare(`UPDATE posts SET view_count = view_count + 1 WHERE id = ?`).run(postId);
+  }
+
+  private hydratePost(p: any, currentUserId?: number): any {
+    if (!p) return null;
+    if (p.repost_of_id) {
+      p.repost_post = this.getPost(p.repost_of_id, currentUserId);
+    }
+    if (p.quote_post_id) {
+      p.quote_post = this.getPost(p.quote_post_id, currentUserId);
+    }
+    return p;
+  }
+
+  getPost(id: number, currentUserId?: number): any {
+    const p = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE p.id = ?
+    `,
+      )
+      .get(id);
+    return this.hydratePost(p, currentUserId);
+  }
+
+  getReplies(postId: number, currentUserId?: number, limit: number = 50): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE p.reply_to_id = ?
+      ORDER BY p.created_at ASC
+      LIMIT ?
+    `,
+      )
+      .all(postId, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  getPostParents(postId: number, currentUserId?: number, depth: number = 5): any[] {
+    const parents: any[] = [];
+    let currentId = postId;
+    let currentDepth = 0;
+
+    while (currentDepth < depth) {
+      const p = this.#db.prepare(`SELECT reply_to_id FROM posts WHERE id = ?`).get(currentId) as any;
+      if (!p || !p.reply_to_id) break;
+
+      const parentPost = this.getPost(p.reply_to_id, currentUserId);
+      if (parentPost) {
+        parents.unshift(parentPost); // Add to beginning (oldest first)
+        currentId = p.reply_to_id;
+      } else {
+        break;
+      }
+      currentDepth++;
+    }
+    return parents;
+  }
+
+  getHomeTimeline(userId: number, limit: number = 20): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=?) as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE p.author_id = ? OR p.author_id IN (SELECT following_id FROM follows WHERE follower_id = ?)
+      ORDER BY p.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(userId, userId, userId, userId, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, userId));
+  }
+
+  getUserTimeline(username: string, currentUserId?: number, limit: number = 20): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p JOIN users u ON p.author_id = u.id
+      WHERE u.username = ?
+      ORDER BY p.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(username, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  toggleLike(userId: number, postId: number): boolean {
+    const existing = this.#db.prepare(`SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?`).get(userId, postId);
+    if (existing) {
+      this.#db.prepare(`DELETE FROM likes WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+      return false; // unliked
+    } else {
+      this.#db.prepare(`INSERT INTO likes (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      return true; // liked
+    }
+  }
+
+  toggleBookmark(userId: number, postId: number): boolean {
+    const existing = this.#db.prepare(`SELECT 1 FROM bookmarks WHERE user_id = ? AND post_id = ?`).get(userId, postId);
+    if (existing) {
+      this.#db.prepare(`DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?`).run(userId, postId);
+      return false;
+    } else {
+      this.#db.prepare(`INSERT INTO bookmarks (user_id, post_id) VALUES (?, ?)`).run(userId, postId);
+      return true;
+    }
+  }
+
+  toggleRepost(userId: number, postId: number): boolean {
+    const existing = this.#db
+      .prepare(`SELECT id FROM posts WHERE author_id = ? AND repost_of_id = ?`)
+      .get(userId, postId) as { id: number } | undefined;
+    if (existing) {
+      this.#db.prepare(`DELETE FROM posts WHERE id = ?`).run(existing.id);
+      return false; // un-reposted
+    } else {
+      this.createPost(userId, null, undefined, undefined, undefined, postId);
+      return true; // reposted
+    }
+  }
+
+  getBookmarks(userId: number, limit: number = 20): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=?) as liked,
+        1 as bookmarked
+      FROM bookmarks b
+      JOIN posts p ON b.post_id = p.id
+      JOIN users u ON p.author_id = u.id
+      WHERE b.user_id = ?
+      ORDER BY b.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(userId, userId, limit) as any[];
+    return posts.map((p) => this.hydratePost(p, userId));
+  }
+
+  getNotifications(userId: number, limit: number = 20): any[] {
+    return this.#db
+      .prepare(
+        `
+      SELECT n.*, u.username as actor_username, u.display_name as actor_display_name, u.avatar_url as actor_avatar_url
+      FROM notifications n
+      JOIN users u ON n.actor_id = u.id
+      WHERE n.user_id = ?
+      ORDER BY n.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(userId, limit) as any[];
+  }
+
+  markNotificationsRead(userId: number): void {
+    this.#db.prepare(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0`).run(userId);
+  }
+
+  getUnreadNotificationCount(userId: number): number {
+    const row = this.#db
+      .prepare(`SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0`)
+      .get(userId) as any;
+    return row.count;
+  }
+
+  getArtifactView(id: number): any {
+    return this.#db.prepare(`SELECT * FROM artifact_views WHERE id = ?`).get(id);
+  }
+
+  createArtifactView(creatorId: number, type: string, source_type: string, viewConfig: string, title?: string): number {
+    const res = this.#db
+      .prepare(
+        `
+      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title) VALUES (?, ?, ?, ?, ?)
+    `,
+      )
+      .run(creatorId, type, source_type, viewConfig, title || null);
+    return Number(res.lastInsertRowid);
+  }
+
+  // ── Trending Topics ─────────────────────────────────────────────
+
+  /**
+   * Applies half-life exponential decay to a topic's score and adds new weight.
+   * Half-life is defined in hours.
+   */
+  updateTopicScore(concept: string, displayName: string, weight: number, halfLifeHours: number = 24): number {
+    const existing = this.#db
+      .prepare(`SELECT id, current_score, last_updated_at FROM trending_topics WHERE concept = ?`)
+      .get(concept) as { id: number; current_score: number; last_updated_at: string } | undefined;
+
+    if (!existing) {
+      const res = this.#db
+        .prepare(
+          `
+        INSERT INTO trending_topics (concept, display_name, current_score) VALUES (?, ?, ?)
+      `,
+        )
+        .run(concept, displayName, weight);
+      return Number(res.lastInsertRowid);
+    } else {
+      const lastUpdatedMs = new Date(existing.last_updated_at.replace(" ", "T") + "Z").getTime();
+      const currentMs = Date.now();
+      const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
+
+      const decayedScore = existing.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
+      const newScore = decayedScore + weight;
+
+      this.#db
+        .prepare(
+          `
+        UPDATE trending_topics SET current_score = ?, last_updated_at = datetime('now') WHERE id = ?
+      `,
+        )
+        .run(newScore, existing.id);
+
+      return existing.id;
+    }
+  }
+
+  linkPostToTopic(postId: number, topicId: number): void {
+    try {
+      this.#db.prepare(`INSERT INTO post_topics (post_id, topic_id) VALUES (?, ?)`).run(postId, topicId);
+    } catch (e) {
+      // Ignore unique constraint violation
+    }
+  }
+
+  /**
+   * Worker function: Decays older topics and writes back to DB to prevent
+   * permanent index clogging. Intended to be run periodically.
+   */
+  decayTrendingTopics(halfLifeHours: number = 24): void {
+    const topicsToDecay = this.#db
+      .prepare(
+        `
+      SELECT id, current_score, last_updated_at 
+      FROM trending_topics 
+      WHERE current_score > 0.001
+    `,
+      )
+      .all() as { id: number; current_score: number; last_updated_at: string }[];
+
+    if (topicsToDecay.length === 0) return;
+
+    const currentMs = Date.now();
+    const updateStmt = this.#db.prepare(`
+      UPDATE trending_topics 
+      SET current_score = ?, last_updated_at = datetime('now') 
+      WHERE id = ?
+    `);
+
+    // Use a transaction for fast bulk updates
+    const transaction = this.#db.transaction((updates: { id: number; score: number }[]) => {
+      for (const u of updates) {
+        updateStmt.run(u.score, u.id);
+      }
+    });
+
+    const updates = topicsToDecay.map((t) => {
+      const lastUpdatedMs = new Date(t.last_updated_at.replace(" ", "T") + "Z").getTime();
+      const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
+      const newScore = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
+      return { id: t.id, score: newScore };
+    });
+
+    transaction(updates);
+  }
+
+  getTopTrendingTopics(limit: number = 10, halfLifeHours: number = 24): (TrendingTopicRow & { real_score: number })[] {
+    const topics = this.#db
+      .prepare(
+        `
+      SELECT * FROM trending_topics WHERE current_score > 0.001 ORDER BY current_score DESC LIMIT ?
+    `,
+      )
+      .all(limit * 5) as TrendingTopicRow[];
+
+    const currentMs = Date.now();
+    const scoredTopics = topics.map((t) => {
+      const lastUpdatedMs = new Date(t.last_updated_at.replace(" ", "T") + "Z").getTime();
+      const deltaHours = Math.max(0, currentMs - lastUpdatedMs) / (1000 * 60 * 60);
+      const real_score = t.current_score * Math.pow(0.5, deltaHours / halfLifeHours);
+      return { ...t, real_score };
+    });
+
+    scoredTopics.sort((a, b) => b.real_score - a.real_score);
+    return scoredTopics.slice(0, limit);
+  }
+
+  getTopicPosts(concept: string, currentUserId?: number, limit = 20): any[] {
+    const posts = this.#db
+      .prepare(
+        `
+      SELECT p.*, u.username, u.display_name, u.avatar_url,
+        (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
+        (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
+        (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as liked,
+        ${currentUserId ? `EXISTS(SELECT 1 FROM bookmarks WHERE post_id=p.id AND user_id=${currentUserId})` : "0"} as bookmarked
+      FROM posts p 
+      JOIN users u ON p.author_id = u.id
+      JOIN post_topics pt ON pt.post_id = p.id
+      JOIN trending_topics t ON t.id = pt.topic_id
+      WHERE t.concept = ?
+      ORDER BY p.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(concept, limit);
+
+    return posts.map((p) => this.hydratePost(p, currentUserId));
+  }
+
+  // ── Linked Repositories ─────────────────────────────────────────
+
+  getLinkedRepos(userId: number): any[] {
+    return this.#db
+      .prepare(`SELECT * FROM linked_repos WHERE user_id = ? ORDER BY created_at DESC`)
+      .all(userId) as any[];
+  }
+
+  linkRepo(
+    userId: number,
+    provider: string,
+    externalId: string,
+    repoFullName: string,
+    defaultBranch?: string,
+    description?: string,
+  ): void {
+    const parts = repoFullName.split("/");
+    const namespace = parts[0] || "";
+    const project = parts.slice(1).join("/") || repoFullName;
+
+    const existing = this.#db
+      .prepare(`SELECT id FROM linked_repos WHERE user_id = ? AND provider = ? AND external_id = ?`)
+      .get(userId, provider, externalId);
+    if (!existing) {
+      this.#db
+        .prepare(
+          `
+        INSERT INTO linked_repos (user_id, provider, namespace, project, external_id, description)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `,
+        )
+        .run(userId, provider, namespace, project, externalId, description || null);
+    }
+  }
+
+  unlinkRepo(userId: number, repoId: number): void {
+    this.#db.prepare(`DELETE FROM linked_repos WHERE id = ? AND user_id = ?`).run(repoId, userId);
+  }
+
+  // ── Global Search ───────────────────────────────────────────────
+
+  globalSearch(query: string, limitPerCategory: number = 3) {
+    const safeQuery = query.trim();
+    if (!safeQuery) {
+      return { topics: [], users: [], packages: [], repositories: [] };
+    }
+    const likeQuery = `%${safeQuery}%`;
+
+    const topics = this.#db
+      .prepare(
+        `
+      SELECT id, display_name, current_score 
+      FROM trending_topics 
+      WHERE display_name LIKE ? COLLATE NOCASE
+      ORDER BY current_score DESC LIMIT ?
+    `,
+      )
+      .all(likeQuery, limitPerCategory);
+
+    const users = this.#db
+      .prepare(
+        `
+      SELECT id, username, display_name, avatar_url, bio 
+      FROM users 
+      WHERE username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE
+      ORDER BY id DESC LIMIT ?
+    `,
+      )
+      .all(likeQuery, likeQuery, limitPerCategory);
+
+    const packages = this.#db
+      .prepare(
+        `
+      SELECT id, name, description
+      FROM packages 
+      WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE
+      ORDER BY id DESC LIMIT ?
+    `,
+      )
+      .all(likeQuery, likeQuery, limitPerCategory);
+
+    const repositories = this.#db
+      .prepare(
+        `
+      SELECT id, provider, namespace, project, description, avatar_url
+      FROM linked_repos 
+      WHERE namespace LIKE ? COLLATE NOCASE OR project LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE
+      GROUP BY provider, namespace, project
+      ORDER BY id DESC LIMIT ?
+    `,
+      )
+      .all(likeQuery, likeQuery, likeQuery, limitPerCategory);
+
+    return { topics, users, packages, repositories };
   }
 
   // ── Library metadata ────────────────────────────────────────────

@@ -160,7 +160,7 @@ const LibraryVersionPage: React.FC = () => {
       {/* ── Header ── */}
       <HeaderBar>
         <Box mb={3}>
-          <Breadcrumbs items={[{ label: "Libraries", href: "/libraries" }, { label: name || "" }]} />
+          <Breadcrumbs items={[{ label: "Libraries", href: "/packages" }, { label: name || "" }]} />
         </Box>
         <Box display="flex" alignItems="center" gap="16px">
           <IconBox>
@@ -195,7 +195,7 @@ const LibraryVersionPage: React.FC = () => {
       <ContentArea>
         <SectionTitle as="h3">All Versions</SectionTitle>
         {library.versions.map((version, index) => (
-          <VersionCard key={version} to={`/${name}/${version}`}>
+          <VersionCard key={version} to={`/packages/${name}/${version}`}>
             <VersionName>
               <TagIcon size={16} />
               {version}

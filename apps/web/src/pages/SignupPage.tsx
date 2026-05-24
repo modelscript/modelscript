@@ -1,7 +1,27 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+import { MarkGithubIcon } from "@primer/octicons-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+
+const GitLabIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15H4.17L2.51 2.05C2.42 1.77 2.02 1.77 1.93 2.05L0.18 7.42C0.09 7.69 0.19 8.01 0.43 8.18L8 13.68L15.57 8.18C15.81 8.01 15.91 7.69 15.82 7.42Z"
+      fill="#FC6D26"
+    />
+    <path d="M8 13.68L4.17 7.15H11.83L8 13.68Z" fill="#E24329" />
+    <path
+      d="M8 13.68L11.83 7.15H15.57C15.81 8.01 15.91 7.69 15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15Z"
+      fill="#FCA326"
+    />
+    <path
+      d="M8 13.68L4.17 7.15H0.43C0.19 8.01 0.09 7.69 0.18 7.42L1.93 2.05C2.02 1.77 2.42 1.77 2.51 2.05L4.17 7.15Z"
+      fill="#FCA326"
+    />
+  </svg>
+);
 
 const PageWrapper = styled.div`
   display: flex;
@@ -13,26 +33,23 @@ const PageWrapper = styled.div`
 
 const Card = styled.div`
   width: 100%;
-  max-width: 420px;
+  max-width: 600px;
   background: var(--color-glass-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 40px 32px;
+  border: none;
+  border-radius: 16px;
+  padding: 48px;
   backdrop-filter: blur(12px);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
 const Title = styled.h1`
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 31px;
+  font-weight: 700;
   color: var(--color-text-heading);
-  margin: 0 0 8px 0;
-  text-align: center;
-`;
-
-const Subtitle = styled.p`
-  font-size: 14px;
-  color: var(--color-text-muted);
-  margin: 0 0 28px 0;
+  margin: 32px 0;
   text-align: center;
 `;
 
@@ -40,6 +57,8 @@ const Form = styled.form`
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
+  max-width: 300px;
 `;
 
 const Label = styled.label`
@@ -52,32 +71,35 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
-  height: 40px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 16px;
   background: var(--color-search-bg);
   border: 1px solid var(--color-search-border);
-  border-radius: 6px;
+  border-radius: 4px;
   color: var(--color-text-primary);
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
   transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
 
   &:focus {
-    border-color: var(--color-search-focus);
+    border-color: #1f1f1f;
   }
 `;
 
 const Button = styled.button`
   height: 40px;
-  background: var(--color-accent, #6366f1);
+  background: #1f1f1f;
   color: #fff;
   border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: bold;
   cursor: pointer;
   transition: opacity 0.2s;
-  margin-top: 4px;
+  margin-top: 12px;
+  width: 100%;
 
   &:hover {
     opacity: 0.9;
@@ -86,6 +108,53 @@ const Button = styled.button`
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+`;
+
+const ProviderButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  background: var(--color-canvas-subtle);
+  color: var(--color-fg-default);
+  border: 1px solid #cfd9de;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+
+  &:hover {
+    background: var(--color-canvas-default);
+  }
+`;
+
+const Divider = styled.div`
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 24px 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  width: 100%;
+  max-width: 300px;
+
+  &::before,
+  &::after {
+    content: "";
+    flex: 1;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &:not(:empty)::before {
+    margin-right: 0.5em;
+  }
+
+  &:not(:empty)::after {
+    margin-left: 0.5em;
   }
 `;
 
@@ -99,15 +168,17 @@ const ErrorBanner = styled.div`
 `;
 
 const FooterText = styled.p`
-  text-align: center;
-  font-size: 13px;
+  text-align: left;
+  font-size: 15px;
   color: var(--color-text-muted);
-  margin: 20px 0 0 0;
+  margin: 48px 0 0 0;
+  width: 100%;
+  max-width: 300px;
 
   a {
-    color: var(--color-accent, #6366f1);
+    color: #1d9bf0;
     text-decoration: none;
-    font-weight: 500;
+    font-weight: bold;
 
     &:hover {
       text-decoration: underline;
@@ -145,7 +216,6 @@ export default function SignupPage() {
       navigate("/");
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const axiosErr = err as any;
         setError(axiosErr.response?.data?.error || "Registration failed");
       } else {
@@ -159,53 +229,58 @@ export default function SignupPage() {
   return (
     <PageWrapper>
       <Card>
-        <Title>Create account</Title>
-        <Subtitle>Join the ModelScript Registry</Subtitle>
+        <img src="/ms-logo.png" alt="ModelScript" width="40" height="40" />
+        <Title>Join ModelScript</Title>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", maxWidth: "300px" }}>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
+            <MarkGithubIcon size={16} />
+            Sign up with GitHub
+          </ProviderButton>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
+            <GitLabIcon />
+            Sign up with GitLab
+          </ProviderButton>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/google")}>
+            Continue with Google
+          </ProviderButton>
+        </div>
+
+        <Divider>or</Divider>
+
         <Form onSubmit={handleSubmit}>
           {error && <ErrorBanner>{error}</ErrorBanner>}
-          <Label>
-            Username
-            <Input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="johndoe"
-              required
-              autoFocus
-              minLength={3}
-            />
-          </Label>
-          <Label>
-            Email
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-            />
-          </Label>
-          <Label>
-            Password
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              minLength={8}
-            />
-          </Label>
-          <Label>
-            Confirm password
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </Label>
+          <Input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username (e.g. johndoe)"
+            required
+            autoFocus
+            minLength={3}
+          />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            required
+          />
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            required
+            minLength={8}
+          />
+          <Input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm password"
+            required
+          />
           <Button type="submit" disabled={loading}>
             {loading ? "Creating account…" : "Create account"}
           </Button>

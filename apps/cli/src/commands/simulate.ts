@@ -234,7 +234,7 @@ function simulateArenaEngine(
 ): void {
   profiler.start("simulation");
 
-  const solver = args.solver === "rk4" ? ("rk4" as const) : ("rk4" as const); // Arena only supports rk4/euler
+  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto";
   const result = simulateArena(arena, {
     startTime,
     stopTime,

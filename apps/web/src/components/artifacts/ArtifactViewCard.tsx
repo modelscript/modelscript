@@ -1,0 +1,213 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+import { ScreenFullIcon } from "@primer/octicons-react";
+import { Spinner, Text } from "@primer/react";
+import React, { useEffect, useState } from "react";
+import { API_BASE_URL } from "../../config";
+import Box from "../Box";
+import AudioViewer from "./AudioViewer";
+import CadStepViewer from "./CadStepViewer";
+import ModelicaCodeViewer from "./ModelicaCodeViewer";
+import ModelicaDiagramViewer from "./ModelicaDiagramViewer";
+import PdfViewer from "./PdfViewer";
+import PictureViewer from "./PictureViewer";
+import SimulationPlotViewer from "./SimulationPlotViewer";
+import VideoViewer from "./VideoViewer";
+
+interface ArtifactViewCardProps {
+  artifactId: number;
+}
+
+const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
+  const [artifact, setArtifact] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(true);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  useEffect(() => {
+    async function fetchArtifact() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/social/artifact-views/${artifactId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setArtifact(data.artifactView);
+        }
+      } catch (err) {
+        console.error("Failed to fetch artifact", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchArtifact();
+  }, [artifactId]);
+
+  if (loading) {
+    return (
+      <Box
+        p={3}
+        display="flex"
+        justifyContent="center"
+        borderRadius="12px"
+        border="1px solid var(--color-border-default)"
+      >
+        <Spinner size="small" />
+      </Box>
+    );
+  }
+
+  if (!artifact) {
+    return (
+      <Box p={3} borderRadius="12px" border="1px dashed var(--color-border-default)" color="var(--color-fg-muted)">
+        Artifact not available
+      </Box>
+    );
+  }
+
+  const viewConfig = JSON.parse(artifact.view_config || "{}");
+
+  const renderViewer = () => {
+    switch (artifact.view_type) {
+      case "cad-step":
+        return <CadStepViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "modelica-code":
+        return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "modelica-diagram":
+        return <ModelicaDiagramViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "simulation-plot":
+        return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "video":
+        return <VideoViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "picture":
+        return <PictureViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "audio":
+        return <AudioViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "pdf":
+        return <PdfViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      default:
+        return (
+          <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
+            <Text>Unsupported artifact type: {artifact.view_type}</Text>
+          </Box>
+        );
+    }
+  };
+
+  const viewerContent = renderViewer();
+
+  if (isFullScreen) {
+    return (
+      <>
+        <Box
+          mt={2}
+          borderRadius="12px"
+          border="1px solid var(--color-border-default)"
+          overflow="hidden"
+          onClick={(e) => e.preventDefault()}
+        >
+          {viewConfig.thumbnail_url ? (
+            <img
+              src={viewConfig.thumbnail_url}
+              style={{ width: "100%", display: "block", objectFit: "cover" }}
+              alt="thumbnail"
+            />
+          ) : (
+            <Box p={3}>
+              <Text>Viewing in full screen...</Text>
+            </Box>
+          )}
+        </Box>
+
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            zIndex: 9999,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <Box p={3} display="flex" justifyContent="space-between" alignItems="center" borderBottom="1px solid #333">
+            <Text color="white" fontWeight="bold">
+              {artifact.title || artifact.view_type}
+            </Text>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsFullScreen(false);
+              }}
+              style={{ background: "none", border: "none", color: "white", cursor: "pointer", padding: "8px" }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+              </svg>
+            </button>
+          </Box>
+          <Box
+            flex={1}
+            overflow="hidden"
+            position="relative"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Box width="100%" height="100%" bg="black" overflow="auto">
+              {viewerContent}
+            </Box>
+          </Box>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <Box
+      mt={2}
+      borderRadius="12px"
+      border="1px solid var(--color-border-default)"
+      overflow="hidden"
+      position="relative"
+      onClick={(e) => e.preventDefault()}
+    >
+      {isLoaded && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsFullScreen(true);
+          }}
+          style={{
+            position: "absolute",
+            top: "8px",
+            right: "8px",
+            zIndex: 10,
+            background: "rgba(0,0,0,0.5)",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            padding: "6px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ScreenFullIcon size={16} />
+        </button>
+      )}
+      {viewerContent}
+      {artifact.title && (
+        <Box p={2} borderTop="1px solid var(--color-border-default)" backgroundColor="var(--color-canvas-subtle)">
+          <Text fontSize="12px" fontWeight="bold">
+            {artifact.title}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
+export default ArtifactViewCard;

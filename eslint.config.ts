@@ -25,6 +25,8 @@ export default defineConfig([
             "apps/docs/docs/.vitepress/config.ts",
             "apps/docs/docs/.vitepress/theme/index.ts",
             "languages/example/src/language.ts",
+            "apps/api/scripts/check_db.ts",
+            "apps/api/scripts/seed-social-db.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

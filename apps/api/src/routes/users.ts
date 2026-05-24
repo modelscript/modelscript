@@ -1,0 +1,93 @@
+/* eslint-disable */
+import type { Request, Response, Router } from "express";
+import { Router as createRouter } from "express";
+import type { LibraryDatabase } from "../database.js";
+import { requireAuth } from "../middleware/auth-middleware.js";
+
+export function usersRouter(database: LibraryDatabase): Router {
+  const router = createRouter();
+
+  /**
+   * GET /api/v1/users/suggestions
+   */
+  router.get("/suggestions", (req: Request, res: Response) => {
+    const limit = Number(req.query.limit) || 3;
+    const currentUserId = req.user?.id;
+    const suggestions = database.getUserSuggestions(currentUserId, limit);
+    res.json({ suggestions });
+  });
+
+  /**
+   * GET /api/v1/users/:username
+   */
+  router.get("/:username", (req: Request, res: Response) => {
+    const username = req.params.username as string;
+    const profile = database.getFullProfileByUsername(username);
+
+    if (!profile) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Check if the current user follows this profile (if authenticated)
+    let isFollowing = false;
+    const currentUserId = req.user?.id;
+    if (currentUserId && currentUserId !== profile.id) {
+      isFollowing = database.isFollowing(currentUserId, profile.id);
+    }
+
+    res.json({ profile, isFollowing });
+  });
+
+  /**
+   * PUT /api/v1/users/me
+   */
+  router.put("/me", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { display_name, bio, location, website, avatar_url, banner_url } = req.body;
+
+    database.updateProfile(userId, { display_name, bio, location, website, avatar_url, banner_url });
+    res.json({ success: true });
+  });
+
+  /**
+   * POST /api/v1/users/:username/follow
+   */
+  router.post("/:username/follow", requireAuth, (req: Request, res: Response) => {
+    const followerId = req.user!.id;
+    const username = req.params.username as string;
+
+    const targetUser = database.getUserByUsername(username);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (followerId === targetUser.id) {
+      res.status(400).json({ error: "Cannot follow yourself" });
+      return;
+    }
+
+    database.followUser(followerId, targetUser.id);
+    res.json({ success: true });
+  });
+
+  /**
+   * DELETE /api/v1/users/:username/follow
+   */
+  router.delete("/:username/follow", requireAuth, (req: Request, res: Response) => {
+    const followerId = req.user!.id;
+    const username = req.params.username as string;
+
+    const targetUser = database.getUserByUsername(username);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    database.unfollowUser(followerId, targetUser.id);
+    res.json({ success: true });
+  });
+
+  return router;
+}

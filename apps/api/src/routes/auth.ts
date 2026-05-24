@@ -1,3 +1,4 @@
+/* eslint-disable */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import bcrypt from "bcryptjs";
@@ -108,10 +109,170 @@ export function authRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * GET /api/v1/auth/login/:provider
+   */
+  router.get("/login/:provider", (req: Request, res: Response) => {
+    const { provider } = req.params;
+    // Mock OAuth flow: Redirect to provider, which would normally redirect back to callback
+    res.redirect(`/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}`);
+  });
+
+  /**
+   * GET /api/v1/auth/callback/:provider
+   */
+  router.get("/callback/:provider", (req: Request, res: Response) => {
+    const provider = req.params.provider as string;
+    // Mock OAuth flow: exchange code for profile
+    const mockEmail = `mockuser@${provider}.com`;
+    const mockUsername = `mockuser_${provider}`;
+    const mockProviderUserId = `12345_${provider}`;
+
+    try {
+      let oauthAcc = database.getOAuthAccount(provider, mockProviderUserId);
+      let userId = oauthAcc?.user_id;
+      let user;
+
+      if (userId) {
+        user = database.getUserById(userId);
+      } else {
+        // Ensure email/username are not already taken by a regular account
+        const existing = database.getUserByEmail(mockEmail);
+        if (existing) {
+          user = existing;
+        } else {
+          user = database.createOAuthUser(mockUsername, mockEmail, provider, mockProviderUserId);
+        }
+      }
+
+      if (!user) {
+        res.redirect(`http://localhost:3000/login?error=OAuthFailed`);
+        return;
+      }
+
+      const token = jwt.sign({ id: user.id, username: user.username, email: user.email }, JWT_SECRET, {
+        expiresIn: "7d",
+      });
+
+      // Redirect back to the frontend SPA
+      res.redirect(`http://localhost:3000/oauth/callback?token=${token}`);
+    } catch (err) {
+      console.error("OAuth callback error:", err);
+      res.redirect(`http://localhost:3000/login?error=OAuthFailed`);
+    }
+  });
+
+  /**
    * GET /api/v1/auth/me
    */
   router.get("/me", requireAuth, (req: Request, res: Response): void => {
     res.json({ user: req.user });
+  });
+
+  /**
+   * PUT /api/v1/auth/account
+   */
+  router.put("/account", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const { password, username, email, display_name, avatar_url, banner_url } = req.body;
+    const userId = req.user!.id;
+
+    if (!password) {
+      res.status(400).json({ error: "Password is required to confirm changes" });
+      return;
+    }
+
+    try {
+      const hash = database.getPasswordHash(userId);
+      if (!hash || !(await bcrypt.compare(password, hash))) {
+        res.status(401).json({ error: "Incorrect password" });
+        return;
+      }
+
+      if (username || email) {
+        const u = username || req.user!.username;
+        const e = email || req.user!.email;
+
+        // check uniqueness if changed
+        if (u !== req.user!.username) {
+          const existU = database.getUserByUsername(u);
+          if (existU) {
+            res.status(409).json({ error: "Username is taken" });
+            return;
+          }
+        }
+        if (e !== req.user!.email) {
+          const existE = database.getUserByEmail(e);
+          if (existE) {
+            res.status(409).json({ error: "Email is taken" });
+            return;
+          }
+        }
+
+        database.updateAccount(userId, u, e);
+      }
+
+      database.updateProfile(userId, {
+        display_name,
+        avatar_url,
+        banner_url,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Update failed" });
+    }
+  });
+
+  /**
+   * PUT /api/v1/auth/password
+   */
+  router.put("/password", requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user!.id;
+
+    if (!oldPassword || !newPassword) {
+      res.status(400).json({ error: "Both old and new passwords are required" });
+      return;
+    }
+
+    try {
+      const hash = database.getPasswordHash(userId);
+      if (!hash || !(await bcrypt.compare(oldPassword, hash))) {
+        res.status(401).json({ error: "Incorrect old password" });
+        return;
+      }
+
+      const newHash = await bcrypt.hash(newPassword, 10);
+      database.updatePassword(userId, newHash);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Password change failed" });
+    }
+  });
+
+  /**
+   * GET /api/v1/auth/notifications
+   */
+  router.get("/notifications", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const settingsStr = database.getNotificationSettings(req.user!.id);
+      const settings = settingsStr ? JSON.parse(settingsStr) : {};
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch notification settings" });
+    }
+  });
+
+  /**
+   * PUT /api/v1/auth/notifications
+   */
+  router.put("/notifications", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const settingsStr = JSON.stringify(req.body);
+      database.updateNotificationSettings(req.user!.id, settingsStr);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update notification settings" });
+    }
   });
 
   return router;

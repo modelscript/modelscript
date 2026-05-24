@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import styled from "styled-components";
 
 export interface BoxProps {
@@ -29,6 +30,10 @@ export interface BoxProps {
   borderStyle?: string;
   borderColor?: string;
   borderRadius?: string | number;
+  borderTop?: string;
+  borderBottom?: string;
+  borderLeft?: string;
+  borderRight?: string;
   flex?: string | number;
   flexWrap?: "nowrap" | "wrap" | "wrap-reverse";
   opacity?: number;
@@ -36,12 +41,76 @@ export interface BoxProps {
   fontSize?: string | number;
   textAlign?: "left" | "right" | "center" | "justify" | "initial" | "inherit";
   color?: string;
+  position?: "static" | "relative" | "absolute" | "fixed" | "sticky";
+  top?: string | number;
+  bottom?: string | number;
+  left?: string | number;
+  right?: string | number;
+  zIndex?: number;
+  boxShadow?: string;
+  textOverflow?: string;
+  whiteSpace?: string;
+  sx?: any;
   children?: React.ReactNode;
   style?: React.CSSProperties;
   className?: string;
 }
 
-const Box = styled.div<BoxProps>`
+const styleProps = new Set([
+  "display",
+  "flexDirection",
+  "alignItems",
+  "justifyContent",
+  "gap",
+  "p",
+  "px",
+  "py",
+  "m",
+  "mx",
+  "my",
+  "mt",
+  "mb",
+  "ml",
+  "mr",
+  "width",
+  "height",
+  "minHeight",
+  "maxHeight",
+  "minWidth",
+  "maxWidth",
+  "backgroundColor",
+  "bg",
+  "border",
+  "borderWidth",
+  "borderStyle",
+  "borderColor",
+  "borderRadius",
+  "borderTop",
+  "borderBottom",
+  "borderLeft",
+  "borderRight",
+  "flex",
+  "flexWrap",
+  "opacity",
+  "fontWeight",
+  "fontSize",
+  "textAlign",
+  "color",
+  "position",
+  "top",
+  "bottom",
+  "left",
+  "right",
+  "zIndex",
+  "boxShadow",
+  "textOverflow",
+  "whiteSpace",
+  "sx",
+]);
+
+const Box = styled.div.withConfig({
+  shouldForwardProp: (prop) => !styleProps.has(prop),
+})<BoxProps>`
   display: ${(props) => props.display};
   text-align: ${(props) => props.textAlign};
   flex-direction: ${(props) => props.flexDirection};
@@ -67,6 +136,10 @@ const Box = styled.div<BoxProps>`
   border-width: ${(props) => (typeof props.borderWidth === "number" ? `${props.borderWidth}px` : props.borderWidth)};
   border-style: ${(props) => props.borderStyle};
   border-color: ${(props) => props.borderColor};
+  border-top: ${(props) => props.borderTop};
+  border-bottom: ${(props) => props.borderBottom};
+  border-left: ${(props) => props.borderLeft};
+  border-right: ${(props) => props.borderRight};
   border-radius: ${(props) =>
     typeof props.borderRadius === "number" ? `${props.borderRadius * 4}px` : props.borderRadius};
   flex: ${(props) => props.flex};
@@ -74,6 +147,18 @@ const Box = styled.div<BoxProps>`
   opacity: ${(props) => props.opacity};
   font-weight: ${(props) => props.fontWeight};
   font-size: ${(props) => (typeof props.fontSize === "number" ? `${props.fontSize}px` : props.fontSize)};
+  position: ${(props) => props.position};
+  top: ${(props) => (typeof props.top === "number" ? `${props.top}px` : props.top)};
+  bottom: ${(props) => (typeof props.bottom === "number" ? `${props.bottom}px` : props.bottom)};
+  left: ${(props) => (typeof props.left === "number" ? `${props.left}px` : props.left)};
+  right: ${(props) => (typeof props.right === "number" ? `${props.right}px` : props.right)};
+  z-index: ${(props) => props.zIndex};
+  box-shadow: ${(props) => props.boxShadow};
+  text-overflow: ${(props) => props.textOverflow};
+  white-space: ${(props) => props.whiteSpace};
+  min-width: ${(props) => (typeof props.minWidth === "number" ? `${props.minWidth}px` : props.minWidth)};
+  max-width: ${(props) => (typeof props.maxWidth === "number" ? `${props.maxWidth}px` : props.maxWidth)};
+  max-height: ${(props) => (typeof props.maxHeight === "number" ? `${props.maxHeight}px` : props.maxHeight)};
 `;
 
 export default Box;
