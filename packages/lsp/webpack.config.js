@@ -16,6 +16,7 @@ const browserServerConfig = {
   entry: {
     browserServerMain: "./src/browserServerMain.ts",
     stepWorker: "./src/step-worker.ts",
+    indexerWorker: "./src/workers/indexer.worker.ts",
   },
   output: {
     filename: "[name].js",

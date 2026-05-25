@@ -166,6 +166,8 @@ export class ScopeResolver {
    */
   updateIndex(newIndex: SymbolIndex): void {
     this.index = newIndex;
+    this.inheritedMembersCache.clear();
+    this.refChildrenCache.clear();
   }
 
   /**
@@ -312,9 +314,11 @@ export class ScopeResolver {
     }
 
     let chunkCount = 0;
+    let lastYieldStart = performance.now();
     for (const entry of entriesToCheck) {
-      if (yieldFn && ++chunkCount % 500 === 0) {
+      if (yieldFn && ++chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         const isStale = await yieldFn();
+        lastYieldStart = performance.now();
         if (isStale) return diagnostics;
       }
 
@@ -632,6 +636,8 @@ export class ScopeResolver {
     return results;
   }
 
+  private inheritedMembersCache = new Map<SymbolId, SymbolEntry[]>();
+
   /**
    * Recursively collect members from inherited scopes.
    * Uses a visited set to prevent infinite loops from circular inheritance.
@@ -643,6 +649,13 @@ export class ScopeResolver {
    */
   private inheritedMembers(scopeId: SymbolId, visited: Set<SymbolId>): SymbolEntry[] {
     if (visited.has(scopeId)) return [];
+
+    // Only use cache if we are starting a fresh cycle check, or if the cache is already populated
+    // (If we're in the middle of a cycle, we rely on `visited` and don't cache partial results)
+    if (this.inheritedMembersCache.has(scopeId)) {
+      return this.inheritedMembersCache.get(scopeId)!;
+    }
+
     visited.add(scopeId);
 
     const entry = this.index.symbols.get(scopeId);
@@ -687,6 +700,7 @@ export class ScopeResolver {
       }
     }
 
+    this.inheritedMembersCache.set(scopeId, results);
     return results;
   }
 

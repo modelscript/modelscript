@@ -18,6 +18,29 @@ export function usersRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * GET /api/v1/users/me/topics
+   */
+  router.get("/me/topics", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const topics = database.getUserTopics(userId);
+    res.json({ topics });
+  });
+
+  /**
+   * PUT /api/v1/users/me/topics
+   */
+  router.put("/me/topics", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { concept, is_active } = req.body;
+    if (!concept || is_active === undefined) {
+      res.status(400).json({ error: "Missing concept or is_active" });
+      return;
+    }
+    database.updateUserTopic(userId, concept, is_active);
+    res.json({ success: true });
+  });
+
+  /**
    * GET /api/v1/users/:username
    */
   router.get("/:username", (req: Request, res: Response) => {
@@ -37,6 +60,34 @@ export function usersRouter(database: LibraryDatabase): Router {
     }
 
     res.json({ profile, isFollowing });
+  });
+
+  /**
+   * GET /api/v1/users/:username/following
+   */
+  router.get("/:username/following", (req: Request, res: Response) => {
+    const targetUser = database.getUserByUsername(req.params.username as string);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    const currentUserId = req.user?.id;
+    const following = database.getUserFollowing(targetUser.id, currentUserId);
+    res.json({ following });
+  });
+
+  /**
+   * GET /api/v1/users/:username/followers
+   */
+  router.get("/:username/followers", (req: Request, res: Response) => {
+    const targetUser = database.getUserByUsername(req.params.username as string);
+    if (!targetUser) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    const currentUserId = req.user?.id;
+    const followers = database.getUserFollowers(targetUser.id, currentUserId);
+    res.json({ followers });
   });
 
   /**

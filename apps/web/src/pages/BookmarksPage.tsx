@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Heading, Spinner, Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
+import { Heading, Spinner } from "@primer/react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
@@ -8,6 +10,8 @@ import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
 
 const Header = styled.div`
+  display: flex;
+  flex-direction: column;
   padding: 16px;
   border-bottom: 1px solid var(--color-border-default);
   position: sticky;
@@ -17,10 +21,48 @@ const Header = styled.div`
   background-color: transparent;
 `;
 
+const HeaderTop = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 24px;
+`;
+
+const SearchInputWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 16px;
+
+  svg {
+    position: absolute;
+    left: 14px;
+    color: var(--color-fg-muted);
+  }
+
+  input {
+    width: 100%;
+    padding: 10px 16px 10px 40px;
+    border-radius: 9999px;
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+    font-size: 15px;
+    outline: none;
+    box-sizing: border-box;
+    color: var(--color-fg-default);
+
+    &:focus {
+      background-color: var(--color-canvas-default);
+      border-color: #1d9bf0;
+    }
+  }
+`;
+
 const BookmarksPage: React.FC = () => {
+  const navigate = useNavigate();
   const { token } = useAuth();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (!token) {
@@ -45,15 +87,32 @@ const BookmarksPage: React.FC = () => {
     fetchBookmarks();
   }, [token]);
 
+  const filteredPosts = useMemo(() => {
+    if (!searchQuery.trim()) return posts;
+    const lowerQuery = searchQuery.toLowerCase();
+    return posts.filter(
+      (post) =>
+        post.content?.toLowerCase().includes(lowerQuery) ||
+        post.username?.toLowerCase().includes(lowerQuery) ||
+        post.display_name?.toLowerCase().includes(lowerQuery),
+    );
+  }, [posts, searchQuery]);
+
   return (
     <Box>
       <Header>
-        <Heading as="h2" style={{ fontSize: "20px" }}>
-          Bookmarks
-        </Heading>
-        <Text color="var(--color-fg-muted)" fontSize="13px">
-          @{useAuth().user?.username}
-        </Text>
+        <HeaderTop>
+          <div style={{ cursor: "pointer", display: "flex" }} onClick={() => navigate(-1)}>
+            <ArrowLeftIcon size={20} />
+          </div>
+          <Heading as="h2" style={{ fontSize: "20px" }}>
+            Bookmarks
+          </Heading>
+        </HeaderTop>
+        <SearchInputWrapper>
+          <SearchIcon size={16} />
+          <input placeholder="Search Bookmarks" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+        </SearchInputWrapper>
       </Header>
 
       {loading ? (
@@ -62,9 +121,14 @@ const BookmarksPage: React.FC = () => {
         </Box>
       ) : (
         <Box>
-          {posts.map((post) => (
+          {filteredPosts.map((post) => (
             <Post key={post.id} post={post} />
           ))}
+          {filteredPosts.length === 0 && posts.length > 0 && token && (
+            <Box p={6} textAlign="center" color="var(--color-fg-muted)">
+              No bookmarks match your search.
+            </Box>
+          )}
           {posts.length === 0 && token && (
             <Box p={6} textAlign="center" color="var(--color-fg-muted)">
               You haven't bookmarked any posts yet.

@@ -725,6 +725,29 @@ export class ModelicaClassInstance extends ModelicaElement {
    * All annotations for this class instance.
    */
   get annotations(): any[] {
+    const cst = this.db.cstNode(this.id) as any;
+    if (cst) {
+      const result: any[] = [];
+      const spec = cst.childForFieldName?.("classSpecifier");
+      if (spec?.type === "LongClassSpecifier") {
+        for (let i = 0; i < spec.childCount; i++) {
+          const child = spec.child(i);
+          if (child.type === "classAnnotationClause") {
+            const ast = abstractSyntaxNodeFactory(child);
+            if (ast) result.push(ast);
+          }
+        }
+      }
+      const annotClause = cst.childForFieldName?.("annotationClause");
+      if (annotClause) {
+        const ast = abstractSyntaxNodeFactory(annotClause);
+        if (ast && !result.includes(ast)) {
+          result.push(ast);
+        }
+      }
+      return result;
+    }
+
     const ast = this.abstractSyntaxNode;
     if (!ast) return [];
     const result: any[] = [];
@@ -749,6 +772,41 @@ export class ModelicaClassInstance extends ModelicaElement {
    * Get a specific annotation by name.
    */
   override annotation<T>(name: string, context?: any): T | null {
+    if (typeof annotationEvaluator !== "function") return null;
+
+    const cst = this.db.cstNode(this.id) as any;
+    if (cst) {
+      const clauses: any[] = [];
+      const spec = cst.childForFieldName?.("classSpecifier");
+      if (spec?.type === "LongClassSpecifier") {
+        for (let i = 0; i < spec.childCount; i++) {
+          const child = spec.child(i);
+          if (child.type === "classAnnotationClause") {
+            const ast = abstractSyntaxNodeFactory(child);
+            if (ast) clauses.push(ast);
+          }
+        }
+      }
+      const annotClause = cst.childForFieldName?.("annotationClause");
+      if (annotClause) {
+        const ast = abstractSyntaxNodeFactory(annotClause);
+        if (ast) clauses.push(ast);
+      }
+
+      let evalScope: any = (this as any).parent ?? this;
+      let overrideModification: any = null;
+      if (context && "modification" in context) {
+        overrideModification = context.modification;
+      }
+
+      for (const clause of clauses) {
+        const result = annotationEvaluator(clause, name, evalScope, overrideModification);
+        if (result != null) return result as T;
+      }
+
+      return null;
+    }
+
     return super.annotation<T>(name, context);
   }
 

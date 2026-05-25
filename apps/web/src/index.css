@@ -139,3 +139,8 @@ body {
     background-color 0.3s ease,
     color 0.3s ease;
 }
+
+.handle-text {
+  color: var(--color-text-muted) !important;
+  font-size: 15px !important;
+}

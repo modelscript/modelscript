@@ -19,8 +19,6 @@ export class WorkspaceIndex {
       oldIndex: SymbolIndex | null;
       /** Edit byte ranges for incremental re-indexing. */
       editRanges: Array<{ startByte: number; endByte: number }> | null;
-      /** ID remapping from local→global IDs for the current index. */
-      idMap: Map<SymbolId, SymbolId> | null;
       loader: (() => CSTNode) | null;
       parentFQN?: string;
       dirty: boolean;
@@ -44,6 +42,11 @@ export class WorkspaceIndex {
     return this._version;
   }
 
+  /** The number of registered files in this workspace. */
+  get fileCount(): number {
+    return this.files.size;
+  }
+
   private hooks: IndexerHook[];
 
   /** Cached unified index — invalidated when any file changes. */
@@ -64,7 +67,7 @@ export class WorkspaceIndex {
    * The loader will be called only when the file's index is first requested.
    */
   register(uri: string, loader: () => CSTNode, parentFQN?: string): void {
-    this.files.set(uri, { index: null, oldIndex: null, editRanges: null, idMap: null, loader, parentFQN, dirty: true });
+    this.files.set(uri, { index: null, oldIndex: null, editRanges: null, loader, parentFQN, dirty: true });
     this.unifiedCache = null;
     this.dirtyUris.add(uri);
     this.skeletonCache = null;
@@ -120,111 +123,37 @@ export class WorkspaceIndex {
       const indexer = new SymbolIndexer(this.hooks);
 
       // --- Incremental path: use SymbolIndexer.update() when we have an old index ---
-      if (file.oldIndex && file.editRanges && file.idMap) {
-        // Build a reverse map (global → local) so we can feed the old index
-        // to the indexer in local ID space. The indexer's update() returns
-        // local IDs, so we then re-map them back to global IDs.
-        const reverseMap = new Map<SymbolId, SymbolId>();
-        for (const [localId, globalId] of file.idMap) {
-          reverseMap.set(globalId, localId);
-        }
-
-        // Convert old global index back to local ID space for the indexer
-        const oldLocalSymbols = new Map<SymbolId, SymbolEntry>();
-        const oldLocalByName = new Map<string, SymbolId[]>();
-        const oldLocalChildrenOf = new Map<SymbolId | null, SymbolId[]>();
-
-        for (const [globalId, entry] of file.oldIndex.symbols) {
-          const localId = reverseMap.get(globalId) ?? globalId;
-          const localParentId = entry.parentId !== null ? (reverseMap.get(entry.parentId) ?? entry.parentId) : null;
-          oldLocalSymbols.set(localId, { ...entry, id: localId, parentId: localParentId });
-        }
-        for (const [name, ids] of file.oldIndex.byName) {
-          oldLocalByName.set(
-            name,
-            ids.map((id) => reverseMap.get(id) ?? id),
-          );
-        }
-        for (const [parentId, ids] of file.oldIndex.childrenOf) {
-          const localParent = parentId !== null ? (reverseMap.get(parentId) ?? parentId) : null;
-          oldLocalChildrenOf.set(
-            localParent,
-            ids.map((id) => reverseMap.get(id) ?? id),
-          );
-        }
-
-        const oldLocalIndex: SymbolIndex = {
-          symbols: oldLocalSymbols,
-          byName: oldLocalByName,
-          childrenOf: oldLocalChildrenOf,
-        };
-
+      if (file.oldIndex && file.editRanges) {
         // Compute total byte delta for position adjustment of post-edit entries
         let totalDelta = 0;
-        // We don't have exact old vs new lengths, but the edit ranges give us
-        // approximate bounds. The indexer handles imprecise deltas gracefully.
 
-        const { index: rawIndex, changedIds: localChangedIds } = indexer.update(
-          oldLocalIndex,
+        const { index: rawIndex, changedIds } = indexer.update(
+          file.oldIndex,
           rootNode,
           file.editRanges,
           totalDelta,
+          () => globalIdCounter++,
         );
 
-        // Re-map to global IDs, reusing old global IDs for unchanged entries
-        const idMap = new Map<SymbolId, SymbolId>();
-        for (const localId of rawIndex.symbols.keys()) {
-          // If this local ID existed in the old index, reuse its global ID
-          const existingGlobal = file.idMap.get(localId);
-          if (existingGlobal !== undefined) {
-            idMap.set(localId, existingGlobal);
-          } else {
-            idMap.set(localId, globalIdCounter++);
-          }
+        // Add resourceId back to entries if necessary (in case newly created ones don't have it)
+        for (const entry of rawIndex.symbols.values()) {
+          entry.resourceId = uri;
         }
 
-        const symbols = new Map<SymbolId, SymbolEntry>();
-        const byName = new Map<string, SymbolId[]>();
-
-        for (const [localId, entry] of rawIndex.symbols) {
-          const globalId = idMap.get(localId)!;
-          const remapped: SymbolEntry = {
-            ...entry,
-            id: globalId,
-            parentId: entry.parentId !== null ? (idMap.get(entry.parentId) ?? entry.parentId) : null,
-            resourceId: uri,
-          };
-          symbols.set(globalId, remapped);
-          const existing = byName.get(remapped.name);
-          if (existing) existing.push(globalId);
-          else byName.set(remapped.name, [globalId]);
-        }
-
-        const childrenOf = new Map<SymbolId | null, SymbolId[]>();
-        for (const [parentId, childIds] of rawIndex.childrenOf) {
-          const newParentId = parentId !== null ? (idMap.get(parentId) ?? parentId) : null;
-          const newChildIds = childIds.map((cid) => idMap.get(cid) ?? cid);
-          childrenOf.set(newParentId, newChildIds);
-        }
-
-        file.index = { symbols, byName, childrenOf };
+        file.index = rawIndex;
         if (uri.endsWith(".csv")) {
           postProcessCsvIndex(file.index, uri, rootNode.text);
         }
-        file.idMap = idMap;
 
         // Map changed local IDs to global IDs
         const globalChangedIds = new Set<SymbolId>();
-        for (const localId of localChangedIds) {
-          const gid = idMap.get(localId) ?? file.idMap.get(localId);
-          if (gid !== undefined) {
-            globalChangedIds.add(gid);
-            this.globalChangedIdsBuffer.add(gid);
+        for (const id of changedIds) {
+          globalChangedIds.add(id);
+          this.globalChangedIdsBuffer.add(id);
 
-            const entry = rawIndex.symbols.get(localId) ?? oldLocalIndex.symbols.get(localId);
-            if (entry && entry.name) {
-              this.globalChangedNamesBuffer.add(entry.name);
-            }
+          const entry = rawIndex.symbols.get(id) ?? file.oldIndex.symbols.get(id);
+          if (entry && entry.name) {
+            this.globalChangedNamesBuffer.add(entry.name);
           }
         }
         this.lastChangedIds.set(uri, globalChangedIds);
@@ -242,56 +171,28 @@ export class WorkspaceIndex {
       }
 
       // --- Full index path: new file or no old index available ---
-      const rawIndex = indexer.index(rootNode);
+      const rawIndex = indexer.index(rootNode, () => globalIdCounter++);
 
-      // Re-map IDs to be globally unique
-      const idMap = new Map<SymbolId, SymbolId>();
-      for (const id of rawIndex.symbols.keys()) {
-        const globalId = globalIdCounter++;
-        idMap.set(id, globalId);
+      for (const entry of rawIndex.symbols.values()) {
+        entry.resourceId = uri;
       }
 
-      const symbols = new Map<SymbolId, SymbolEntry>();
-      const byName = new Map<string, SymbolId[]>();
+      file.index = rawIndex;
 
-      for (const [oldId, entry] of rawIndex.symbols) {
-        const newId = idMap.get(oldId)!;
-        const remapped: SymbolEntry = {
-          ...entry,
-          id: newId,
-          parentId: entry.parentId !== null ? (idMap.get(entry.parentId) ?? entry.parentId) : null,
-          resourceId: uri,
-        };
-        symbols.set(newId, remapped);
-
-        const existing = byName.get(remapped.name);
-        if (existing) existing.push(newId);
-        else byName.set(remapped.name, [newId]);
-      }
-
-      // Re-map childrenOf to use global IDs
-      const childrenOf = new Map<SymbolId | null, SymbolId[]>();
-      for (const [parentId, childIds] of rawIndex.childrenOf) {
-        const newParentId = parentId !== null ? (idMap.get(parentId) ?? parentId) : null;
-        const newChildIds = childIds.map((cid) => idMap.get(cid) ?? cid);
-        childrenOf.set(newParentId, newChildIds);
-      }
-
-      file.index = { symbols, byName, childrenOf };
       if (uri.endsWith(".csv")) {
         postProcessCsvIndex(file.index, uri, rootNode.text);
       }
-      file.idMap = idMap;
+
       file.dirty = false;
       file.oldIndex = null;
       file.editRanges = null;
 
       // Mark all symbols as changed for full-index case
-      const allFileSymbolIds = new Set(symbols.keys());
+      const allFileSymbolIds = new Set(rawIndex.symbols.keys());
       this.lastChangedIds.set(uri, allFileSymbolIds);
       for (const id of allFileSymbolIds) {
         this.globalChangedIdsBuffer.add(id);
-        const entry = symbols.get(id);
+        const entry = rawIndex.symbols.get(id);
         if (entry && entry.name) {
           this.globalChangedNamesBuffer.add(entry.name);
         }
@@ -359,7 +260,7 @@ export class WorkspaceIndex {
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();
 
-    console.error(`[WorkspaceIndex] toUnified() started. Processing ${this.files.size} files...`);
+    console.info(`[WorkspaceIndex] toUnified() started. Processing ${this.files.size} files...`);
     let processed = 0;
     for (const uri of this.files.keys()) {
       const fileIndex = this.getFileIndex(uri);
@@ -465,6 +366,7 @@ export class WorkspaceIndex {
     // Fast path: if we have a cached partial index and only specific files changed,
     // incrementally patch the cache instead of rebuilding from scratch.
     if (this.partialCache && this.dirtyUris.size > 0) {
+      const t0 = performance.now();
       const { symbols, byName, childrenOf } = this.partialCache;
       const symbolsByResource = this.partialCache.symbolsByResource ?? new Map<string, SymbolId[]>();
 
@@ -481,6 +383,8 @@ export class WorkspaceIndex {
         symbolsByResource.delete(dirtyUri);
       }
 
+      const t1 = performance.now();
+
       // Collect affected names and parents, and delete from symbols map
       for (const id of toRemoveSet) {
         const entry = symbols.get(id);
@@ -492,6 +396,8 @@ export class WorkspaceIndex {
         childrenOf.delete(id);
       }
 
+      const t2 = performance.now();
+
       // Bulk filter byName arrays
       for (const name of namesToFilter) {
         const nameIds = byName.get(name);
@@ -502,6 +408,8 @@ export class WorkspaceIndex {
         }
       }
 
+      const t3 = performance.now();
+
       // Bulk filter childrenOf arrays
       for (const parentId of parentsToFilter) {
         const parentChildren = childrenOf.get(parentId);
@@ -511,6 +419,8 @@ export class WorkspaceIndex {
           else childrenOf.set(parentId, filtered);
         }
       }
+
+      const t4 = performance.now();
 
       for (const dirtyUri of this.dirtyUris) {
         // 2. Merge new entries for this file
@@ -544,15 +454,25 @@ export class WorkspaceIndex {
         }
       }
 
+      const t5 = performance.now();
       this.partialCache.symbolsByResource = symbolsByResource;
 
       // Only stitch parentFQNs for the dirty URIs — not the entire file set.
       // Already-stitched URIs are skipped to avoid duplicate childrenOf entries.
       this.stitchParentFQNsForUris(symbols, byName, childrenOf, this.dirtyUris);
+
+      const t6 = performance.now();
+      if (t6 - t0 > 50) {
+        console.warn(
+          `[perf] toUnifiedPartial (incremental) slow: total=${(t6 - t0).toFixed(2)}ms, t1=${(t1 - t0).toFixed(2)}, t2=${(t2 - t1).toFixed(2)}, t3=${(t3 - t2).toFixed(2)}, t4=${(t4 - t3).toFixed(2)}, t5=${(t5 - t4).toFixed(2)}, stitch=${(t6 - t5).toFixed(2)}`,
+        );
+      }
+
       this.dirtyUris.clear();
       return this.partialCache;
     }
 
+    const tRebuild = performance.now();
     // No cache at all — full rebuild
     if (this.partialCache) return this.partialCache;
 
@@ -621,6 +541,7 @@ export class WorkspaceIndex {
   async indexRemainingInBackground(
     batchSize = 200,
     onProgress?: (indexed: number, total: number) => void,
+    shouldPause?: () => boolean,
   ): Promise<void> {
     const urisToIndex: string[] = [];
     for (const [uri, file] of this.files) {
@@ -639,6 +560,11 @@ export class WorkspaceIndex {
       if (indexed % batchSize === 0) {
         onProgress?.(indexed, total);
         await new Promise((r) => setTimeout(r, 0)); // Yield
+        if (shouldPause) {
+          while (shouldPause()) {
+            await new Promise((r) => setTimeout(r, 100)); // Yield while paused
+          }
+        }
       }
     }
 
@@ -647,6 +573,135 @@ export class WorkspaceIndex {
     // Now build the full unified cache
     this.unifiedCache = null; // Force rebuild
     this.toUnified();
+  }
+
+  /**
+   * Offload indexing to a background Web Worker to avoid blocking the UI thread.
+   */
+  async indexRemainingInWorker(
+    workerUrl: string,
+    serverDistBase: string,
+    getFsText: (uri: string) => string | null,
+    onProgress?: (indexed: number, total: number) => void,
+    shouldPause?: () => boolean,
+  ): Promise<void> {
+    const urisToIndex: string[] = [];
+    for (const [uri, file] of this.files) {
+      if (!file.index && file.loader) urisToIndex.push(uri);
+    }
+
+    if (urisToIndex.length === 0) return;
+
+    const total = urisToIndex.length;
+    let indexed = 0;
+
+    const worker = new Worker(workerUrl);
+
+    return new Promise((resolve, reject) => {
+      let batchId = 0;
+      const batchSize = 100;
+
+      const processNextBatch = async () => {
+        if (shouldPause) {
+          while (shouldPause()) {
+            await new Promise((r) => setTimeout(r, 100)); // Yield while paused
+          }
+        }
+
+        const batch = urisToIndex.slice(indexed, indexed + batchSize);
+        if (batch.length === 0) {
+          worker.terminate();
+          onProgress?.(total, total);
+          this.unifiedCache = null;
+          this.toUnified();
+          resolve();
+          return;
+        }
+
+        const filesData = batch.map((uri) => {
+          return {
+            uri,
+            text: getFsText(uri) || "",
+            parentFQN: this.files.get(uri)?.parentFQN,
+          };
+        });
+
+        worker.postMessage({
+          type: "INDEX_BATCH",
+          batchId: ++batchId,
+          serverDistBase,
+          files: filesData,
+        });
+      };
+
+      worker.onmessage = (e: MessageEvent) => {
+        const msg = e.data;
+        if (msg.type === "INDEX_RESULT") {
+          for (const res of msg.results) {
+            const uri = res.uri;
+            const file = this.files.get(uri);
+            if (!file) continue;
+
+            // If it was indexed on-demand while the worker was processing, keep the on-demand index
+            if (file.index) continue;
+
+            const offset = globalIdCounter;
+            let localMaxId = 0;
+
+            const symbols = new Map<SymbolId, SymbolEntry>();
+            for (const [localId, entry] of res.symbols) {
+              if (localId > localMaxId) localMaxId = localId;
+              const globalId = localId + offset;
+              entry.id = globalId;
+              entry.resourceId = uri;
+              if (entry.parentId !== null) {
+                entry.parentId = entry.parentId + offset;
+              }
+              symbols.set(globalId, entry);
+            }
+
+            const byName = new Map<string, SymbolId[]>();
+            for (const [name, ids] of res.byName) {
+              byName.set(
+                name,
+                ids.map((id: number) => id + offset),
+              );
+            }
+
+            const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+            for (const [parentId, ids] of res.childrenOf) {
+              const newParentId = parentId !== null ? parentId + offset : null;
+              childrenOf.set(
+                newParentId,
+                ids.map((id: number) => id + offset),
+              );
+            }
+
+            globalIdCounter += localMaxId;
+
+            file.index = { symbols, byName, childrenOf };
+            if (uri.endsWith(".csv")) {
+              postProcessCsvIndex(file.index, uri, getFsText(uri) || "");
+            }
+          }
+
+          indexed += msg.results.length;
+          onProgress?.(indexed, total);
+          processNextBatch();
+        } else if (msg.type === "INDEX_ERROR") {
+          worker.terminate();
+          reject(new Error(msg.error));
+        }
+      };
+
+      worker.onerror = (err) => {
+        worker.terminate();
+        reject(err);
+      };
+
+      // Start the loop
+      processNextBatch();
+    });
   }
 
   private stitchParentFQNs(

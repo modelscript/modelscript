@@ -171,7 +171,12 @@ function renderStaticWorkbench(): string {
   // Inject a script that dynamically patches the config based on URL parameters
   const patchScript = `<script>
 (function() {
-  // Parse URL hash for repo: #owner/repo, #owner/repo@ref, or #memfs
+  var originalWarn = console.warn;
+  console.warn = function() {
+    if (typeof arguments[0] === 'string' && arguments[0].includes('ENOPRO: No file system provider found for resource')) return;
+    originalWarn.apply(console, arguments);
+  };
+
   var hash = location.hash.slice(1);
   if (!hash) hash = 'modelscript/modelscript';
   var el = document.getElementById('vscode-workbench-web-configuration');

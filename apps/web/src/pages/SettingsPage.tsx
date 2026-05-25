@@ -11,7 +11,14 @@ import {
 } from "@primer/octicons-react";
 import React, { useState } from "react";
 import styled from "styled-components";
-import { getNotificationSettings, updateAccount, updateNotificationSettings, updatePassword } from "../api";
+import {
+  getNotificationSettings,
+  getUserTopics,
+  updateAccount,
+  updateNotificationSettings,
+  updatePassword,
+  updateUserTopic,
+} from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { useTheme } from "../theme";
@@ -178,11 +185,19 @@ const FormLabel = styled.label`
   font-weight: bold;
 `;
 
-type TabType = "account" | "notifications" | "display" | "other" | "accountInfo" | "changePassword";
+type TabType =
+  | "account"
+  | "notifications"
+  | "display"
+  | "contentPreferences"
+  | "other"
+  | "accountInfo"
+  | "changePassword";
 
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
+  const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
 
   // Form states
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -213,6 +228,11 @@ const SettingsPage: React.FC = () => {
             setQualityFilter(data.qualityFilter);
           }
         })
+        .catch(() => {});
+    }
+    if (activeTab === "contentPreferences") {
+      getUserTopics()
+        .then((data) => setTopics(data))
         .catch(() => {});
     }
   }, [activeTab]);
@@ -298,7 +318,11 @@ const SettingsPage: React.FC = () => {
     <SettingsContainer>
       <MenuColumn
         $hideOnMobile={
-          activeTab !== "account" && activeTab !== "notifications" && activeTab !== "display" && activeTab !== "other"
+          activeTab !== "account" &&
+          activeTab !== "notifications" &&
+          activeTab !== "display" &&
+          activeTab !== "contentPreferences" &&
+          activeTab !== "other"
         }
       >
         <Header>Settings</Header>
@@ -324,6 +348,10 @@ const SettingsPage: React.FC = () => {
           <span>Notifications</span>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
         </MenuItem>
+        <MenuItem $active={activeTab === "contentPreferences"} onClick={() => handleTabChange("contentPreferences")}>
+          <span>Content preferences</span>
+          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+        </MenuItem>
         <MenuItem $active={activeTab === "display"} onClick={() => handleTabChange("display")}>
           <span>Accessibility, display, and languages</span>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
@@ -339,6 +367,7 @@ const SettingsPage: React.FC = () => {
           activeTab === "account" ||
           activeTab === "notifications" ||
           activeTab === "display" ||
+          activeTab === "contentPreferences" ||
           activeTab === "other" ||
           activeTab === "notificationFilters"
         }
@@ -434,6 +463,48 @@ const SettingsPage: React.FC = () => {
               </DetailText>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </DetailItem>
+          </>
+        )}
+
+        {activeTab === "contentPreferences" && (
+          <>
+            <Header>Content preferences</Header>
+            <Box px={3} pb={3}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
+                We dynamically discover topics you might be interested in. Uncheck the ones you no longer want to see.
+                This helps us personalize your feed.
+              </DetailSubtitle>
+            </Box>
+            <Box p={4}>
+              {topics.length === 0 ? (
+                <DetailSubtitle>
+                  No topics discovered yet. Keep interacting with posts to get recommendations!
+                </DetailSubtitle>
+              ) : (
+                topics.map((t) => (
+                  <Box key={t.concept} display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                    <Box>
+                      <FormLabel style={{ display: "block", textTransform: "capitalize" }}>{t.concept}</FormLabel>
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                        Derived from your interactions and network.
+                      </DetailSubtitle>
+                    </Box>
+                    <input
+                      type="checkbox"
+                      checked={t.is_active}
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setTopics(topics.map((top) => (top.concept === t.concept ? { ...top, is_active: val } : top)));
+                        try {
+                          await updateUserTopic(t.concept, val);
+                        } catch (err) {}
+                      }}
+                      style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                    />
+                  </Box>
+                ))
+              )}
+            </Box>
           </>
         )}
 

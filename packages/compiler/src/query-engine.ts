@@ -488,7 +488,14 @@ export class QueryEngine {
     }
 
     let chunkCount = 0;
-    console.info(`[runAllLintsAsync] starting for ${resourceId}, chunkCount=${chunkCount}`);
+    let cpuTime = 0;
+    let yieldTime = 0;
+    let lastTime = performance.now();
+    let lastYieldStart = performance.now();
+
+    console.info(
+      `[runAllLintsAsync] starting for ${resourceId}, total=${symbolsToCheck ? Array.from(symbolsToCheck).length : "unknown"}`,
+    );
     for (const [id, entry] of symbolsToCheck) {
       if (resourceId && entry.resourceId !== resourceId) continue;
 
@@ -514,16 +521,29 @@ export class QueryEngine {
         });
       }
 
-      if (yieldFn && ++chunkCount % 500 === 0) {
-        // console.info(`[runAllLintsAsync] yielding at chunk ${chunkCount}`);
+      chunkCount++;
+      // Yield only if we've spent more than 200ms of CPU time since last yield,
+      // and check at least every 500 chunks.
+      if (yieldFn && chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
+        cpuTime += performance.now() - lastTime;
+        const yieldStart = performance.now();
         const isStale = await yieldFn();
+        yieldTime += performance.now() - yieldStart;
+        lastTime = performance.now();
+        lastYieldStart = performance.now();
+
         if (isStale) {
-          console.info(`[runAllLintsAsync] STALE at chunk ${chunkCount}, aborting!`);
+          console.info(
+            `[runAllLintsAsync] STALE at chunk ${chunkCount}, aborting! CPU: ${cpuTime.toFixed(2)}ms, Yield: ${yieldTime.toFixed(2)}ms`,
+          );
           return diagnostics; // Abort early
         }
       }
     }
-    console.info(`[runAllLintsAsync] COMPLETED for ${resourceId}, total chunks=${chunkCount}`);
+    cpuTime += performance.now() - lastTime;
+    console.info(
+      `[runAllLintsAsync] COMPLETED for ${resourceId}, chunks=${chunkCount}, CPU=${cpuTime.toFixed(2)}ms, Yield=${yieldTime.toFixed(2)}ms`,
+    );
     return diagnostics;
   }
 
@@ -694,12 +714,6 @@ export class QueryEngine {
     }
 
     const memo = this.memos.get(key);
-
-    if (memo) {
-      // LRU logic: move to the end of the map (most recently used)
-      this.memos.delete(key);
-      this.memos.set(key, memo);
-    }
 
     // Fast path: already verified this revision
     if (memo && memo.verified_at === this.currentRevision) {

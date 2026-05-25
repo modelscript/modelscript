@@ -6,6 +6,7 @@ import { API_BASE_URL } from "../../config";
 import Box from "../Box";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
+import LinkPreviewViewer from "./LinkPreviewViewer";
 import ModelicaCodeViewer from "./ModelicaCodeViewer";
 import ModelicaDiagramViewer from "./ModelicaDiagramViewer";
 import PdfViewer from "./PdfViewer";
@@ -42,13 +43,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
 
   if (loading) {
     return (
-      <Box
-        p={3}
-        display="flex"
-        justifyContent="center"
-        borderRadius="12px"
-        border="1px solid var(--color-border-default)"
-      >
+      <Box p={3} display="flex" justifyContent="center" borderRadius="12px" border="1px solid var(--color-border)">
         <Spinner size="small" />
       </Box>
     );
@@ -56,7 +51,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
 
   if (!artifact) {
     return (
-      <Box p={3} borderRadius="12px" border="1px dashed var(--color-border-default)" color="var(--color-fg-muted)">
+      <Box p={3} borderRadius="12px" border="1px dashed var(--color-border)" color="var(--color-fg-muted)">
         Artifact not available
       </Box>
     );
@@ -82,6 +77,8 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
         return <AudioViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "pdf":
         return <PdfViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "link-preview":
+        return <LinkPreviewViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       default:
         return (
           <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
@@ -99,7 +96,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
         <Box
           mt={2}
           borderRadius="12px"
-          border="1px solid var(--color-border-default)"
+          border="1px solid var(--color-border)"
           overflow="hidden"
           onClick={(e) => e.preventDefault()}
         >
@@ -167,7 +164,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
     <Box
       mt={2}
       borderRadius="12px"
-      border="1px solid var(--color-border-default)"
+      border="1px solid var(--color-border)"
       overflow="hidden"
       position="relative"
       onClick={(e) => e.preventDefault()}
@@ -200,7 +197,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
       )}
       {viewerContent}
       {artifact.title && (
-        <Box p={2} borderTop="1px solid var(--color-border-default)" backgroundColor="var(--color-canvas-subtle)">
+        <Box p={2} borderTop="1px solid var(--color-border)" backgroundColor="var(--color-canvas-subtle)">
           <Text fontSize="12px" fontWeight="bold">
             {artifact.title}
           </Text>

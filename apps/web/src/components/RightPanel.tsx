@@ -1,21 +1,30 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/set-state-in-effect */
-import { MarkGithubIcon, SearchIcon } from "@primer/octicons-react";
+import { KebabHorizontalIcon, MarkGithubIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Text } from "@primer/react";
-import React, { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
 import Box from "./Box";
 import FollowButton from "./FollowButton";
+import ProfileHoverCard from "./ProfileHoverCard";
 
 const PanelContainer = styled.aside`
   width: 350px;
   height: 100vh;
   position: sticky;
   top: 0;
+  overflow-y: auto;
   padding: 12px 24px;
   box-sizing: border-box;
+
+  /* Hide scrollbar for a cleaner look while keeping it scrollable */
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 
   @media (max-width: 1000px) {
     display: none;
@@ -40,8 +49,35 @@ const GitLabIcon = () => (
   </svg>
 );
 
+const SearchContainer = styled.div`
+  position: sticky;
+  top: -12px;
+  z-index: 100;
+  margin-top: -12px;
+  margin-left: -24px;
+  margin-right: -24px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  padding-left: 24px;
+  padding-right: 24px;
+  margin-bottom: 4px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-canvas-default);
+    opacity: 0.85;
+    z-index: -1;
+  }
+`;
+
 const SearchWrapper = styled.div`
-  margin-bottom: 16px;
   width: 100%;
   position: relative;
   display: flex;
@@ -66,6 +102,7 @@ const SearchWrapper = styled.div`
     &:focus {
       background-color: var(--color-canvas-default);
       border-color: #1d9bf0;
+      box-shadow: 0 0 0 1px #1d9bf0;
     }
   }
 `;
@@ -116,7 +153,7 @@ const DropdownItem = styled.div`
 
 const Card = styled.div`
   background-color: transparent;
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border-default, #d0d7de);
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
@@ -138,6 +175,22 @@ const Avatar = styled.div<{ $url?: string; $letter?: string }>`
 
   &::after {
     content: "${(props) => (!props.$url && props.$letter ? props.$letter : "")}";
+  }
+
+  &:hover {
+    filter: brightness(0.85);
+  }
+`;
+
+const ProfileNameLink = styled(Link)`
+  color: inherit;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  &:hover {
+    text-decoration: underline;
   }
 `;
 
@@ -166,7 +219,9 @@ const RightPanel: React.FC = () => {
   const { token, user } = useAuth();
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [trending, setTrending] = useState<any[]>([]);
+  const [popularRepos, setPopularRepos] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
   const [searchCompletions, setSearchCompletions] = useState<{
     topics: any[];
     users: any[];
@@ -174,8 +229,38 @@ const RightPanel: React.FC = () => {
     repositories: any[];
   } | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
+
+  const panelRef = useRef<HTMLElement>(null);
+  const [panelTop, setPanelTop] = useState(0);
+
+  useEffect(() => {
+    if (!panelRef.current) return;
+
+    const updateTop = () => {
+      if (!panelRef.current) return;
+      const height = panelRef.current.getBoundingClientRect().height;
+      const vh = window.innerHeight;
+      // If sidebar is taller than viewport, stick its bottom to viewport bottom
+      if (height > vh) {
+        setPanelTop(vh - height);
+      } else {
+        // Otherwise stick its top to viewport top (accounting for dev header if any)
+        setPanelTop(0);
+      }
+    };
+
+    const observer = new ResizeObserver(() => updateTop());
+    observer.observe(panelRef.current);
+    window.addEventListener("resize", updateTop);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateTop);
+    };
+  }, []);
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && searchQuery.trim()) {
@@ -243,9 +328,29 @@ const RightPanel: React.FC = () => {
     fetchTrending();
   }, []);
 
+  useEffect(() => {
+    async function fetchPopularRepos() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/repos/popular`);
+        if (res.ok) {
+          const data = await res.json();
+          setPopularRepos(data.repos);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    fetchPopularRepos();
+  }, []);
+
   return (
-    <PanelContainer>
-      {query ? (
+    <PanelContainer
+      ref={panelRef}
+      style={{
+        top: panelTop < 0 ? `calc(${panelTop}px + var(--dev-header-height, 0px))` : "var(--dev-header-height, 0px)",
+      }}
+    >
+      {location.pathname === "/explore" || query ? (
         <Card style={{ padding: "16px" }}>
           <Heading
             as="h3"
@@ -372,86 +477,88 @@ const RightPanel: React.FC = () => {
           </div>
         </Card>
       ) : (
-        <SearchWrapper>
-          <SearchIcon size={16} />
-          <input
-            type="text"
-            placeholder="Search ModelScript"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleSearch}
-          />
-          {searchCompletions &&
-            (searchCompletions.topics.length > 0 ||
-              searchCompletions.users.length > 0 ||
-              searchCompletions.packages.length > 0 ||
-              searchCompletions.repositories.length > 0) && (
-              <DropdownWrapper>
-                {searchCompletions.topics.length > 0 && (
-                  <DropdownSection>
-                    <DropdownTitle>Topics</DropdownTitle>
-                    {searchCompletions.topics.map((t, i) => (
-                      <DropdownItem
-                        key={`topic-${i}`}
-                        onClick={() => navigate(`/explore?topic=${encodeURIComponent(t.concept)}`)}
-                      >
-                        <SearchIcon size={16} />
-                        <Text style={{ fontWeight: "bold" }}>{t.display_name}</Text>
-                      </DropdownItem>
-                    ))}
-                  </DropdownSection>
-                )}
-                {searchCompletions.users.length > 0 && (
-                  <DropdownSection>
-                    <DropdownTitle>People</DropdownTitle>
-                    {searchCompletions.users.map((u, i) => (
-                      <DropdownItem key={`user-${i}`} onClick={() => navigate(`/${u.username}`)}>
-                        <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
-                        <Box display="flex" flexDirection="column">
-                          <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{u.display_name || u.username}</Text>
-                          <Text color="var(--color-fg-muted)">@{u.username}</Text>
-                        </Box>
-                      </DropdownItem>
-                    ))}
-                  </DropdownSection>
-                )}
-                {searchCompletions.packages.length > 0 && (
-                  <DropdownSection>
-                    <DropdownTitle>Packages</DropdownTitle>
-                    {searchCompletions.packages.map((p, i) => (
-                      <DropdownItem key={`pkg-${i}`} onClick={() => navigate(`/packages/${p.name}`)}>
-                        <Box display="flex" flexDirection="column">
-                          <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{p.name}</Text>
-                          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
-                            {p.description || "No description"}
-                          </Text>
-                        </Box>
-                      </DropdownItem>
-                    ))}
-                  </DropdownSection>
-                )}
-                {searchCompletions.repositories.length > 0 && (
-                  <DropdownSection>
-                    <DropdownTitle>Repositories</DropdownTitle>
-                    {searchCompletions.repositories.map((r, i) => (
-                      <DropdownItem
-                        key={`repo-${i}`}
-                        onClick={() => window.open(`https://gitlab.com/${r.repo_full_name}`, "_blank")}
-                      >
-                        <Avatar $url={r.avatar_url} $letter={r.project.charAt(0).toUpperCase()} />
-                        <Box display="flex" flexDirection="column">
-                          <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{r.project}</Text>
-                          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
-                            {r.namespace}
-                          </Text>
-                        </Box>
-                      </DropdownItem>
-                    ))}
-                  </DropdownSection>
-                )}
-              </DropdownWrapper>
-            )}
-        </SearchWrapper>
+        <SearchContainer>
+          <SearchWrapper>
+            <SearchIcon size={16} />
+            <input
+              type="text"
+              placeholder="Search ModelScript"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearch}
+            />
+            {searchCompletions &&
+              (searchCompletions.topics.length > 0 ||
+                searchCompletions.users.length > 0 ||
+                searchCompletions.packages.length > 0 ||
+                searchCompletions.repositories.length > 0) && (
+                <DropdownWrapper>
+                  {searchCompletions.topics.length > 0 && (
+                    <DropdownSection>
+                      <DropdownTitle>Topics</DropdownTitle>
+                      {searchCompletions.topics.map((t, i) => (
+                        <DropdownItem
+                          key={`topic-${i}`}
+                          onClick={() => navigate(`/explore?topic=${encodeURIComponent(t.concept)}`)}
+                        >
+                          <SearchIcon size={16} />
+                          <Text style={{ fontWeight: "bold" }}>{t.display_name}</Text>
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>
+                  )}
+                  {searchCompletions.users.length > 0 && (
+                    <DropdownSection>
+                      <DropdownTitle>People</DropdownTitle>
+                      {searchCompletions.users.map((u, i) => (
+                        <DropdownItem key={`user-${i}`} onClick={() => navigate(`/${u.username}`)}>
+                          <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                          <Box display="flex" flexDirection="column">
+                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{u.display_name || u.username}</Text>
+                            <Text color="var(--color-fg-muted)">@{u.username}</Text>
+                          </Box>
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>
+                  )}
+                  {searchCompletions.packages.length > 0 && (
+                    <DropdownSection>
+                      <DropdownTitle>Packages</DropdownTitle>
+                      {searchCompletions.packages.map((p, i) => (
+                        <DropdownItem key={`pkg-${i}`} onClick={() => navigate(`/packages/${p.name}`)}>
+                          <Box display="flex" flexDirection="column">
+                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{p.name}</Text>
+                            <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
+                              {p.description || "No description"}
+                            </Text>
+                          </Box>
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>
+                  )}
+                  {searchCompletions.repositories.length > 0 && (
+                    <DropdownSection>
+                      <DropdownTitle>Repositories</DropdownTitle>
+                      {searchCompletions.repositories.map((r, i) => (
+                        <DropdownItem
+                          key={`repo-${i}`}
+                          onClick={() => window.open(`https://gitlab.com/${r.repo_full_name}`, "_blank")}
+                        >
+                          <Avatar $url={r.avatar_url} $letter={r.project.charAt(0).toUpperCase()} />
+                          <Box display="flex" flexDirection="column">
+                            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{r.project}</Text>
+                            <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
+                              {r.namespace}
+                            </Text>
+                          </Box>
+                        </DropdownItem>
+                      ))}
+                    </DropdownSection>
+                  )}
+                </DropdownWrapper>
+              )}
+          </SearchWrapper>
+        </SearchContainer>
       )}
 
       {!user && (
@@ -531,18 +638,109 @@ const RightPanel: React.FC = () => {
         </Heading>
         <Box display="flex" flexDirection="column" gap="16px">
           {trending.length > 0 ? (
-            trending.map((topic, index) => (
+            trending.map((topic) => (
               <Box
                 key={topic.id}
-                onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}
-                style={{ cursor: "pointer" }}
+                style={{
+                  cursor: "pointer",
+                  position: "relative",
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
               >
-                <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px", display: "block", marginBottom: "2px" }}>
-                  {index + 1} · Trending
-                </Text>
-                <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
-                  {topic.display_name}
-                </Text>
+                <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
+                  <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px", display: "block", marginBottom: "2px" }}>
+                    {topic.location ? `Trending in ${topic.location}` : "Trending"}
+                  </Text>
+                  <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
+                    {topic.display_name}
+                  </Text>
+                </Box>
+                <Box position="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      setActiveTrendMenu(activeTrendMenu === topic.id ? null : topic.id);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--color-fg-muted)",
+                      cursor: "pointer",
+                      padding: "4px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <KebabHorizontalIcon size={16} />
+                  </button>
+                  {activeTrendMenu === topic.id && (
+                    <>
+                      <div
+                        style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 99 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setActiveTrendMenu(null);
+                        }}
+                      />
+                      <Box
+                        position="absolute"
+                        top="100%"
+                        right="0"
+                        bg="var(--color-bg-primary)"
+                        border="1px solid var(--color-border-subtle)"
+                        borderRadius="12px"
+                        boxShadow="0 4px 12px rgba(0,0,0,0.15)"
+                        p={2}
+                        zIndex={100}
+                        minWidth="280px"
+                        display="flex"
+                        flexDirection="column"
+                        gap={1}
+                      >
+                        {[
+                          "The associated content is not relevant",
+                          "This trend is spam",
+                          "This trend is abusive or harmful",
+                          "Not interested in this",
+                          "This trend is a duplicate",
+                          "This trend is harmful or spammy",
+                        ].map((label, i) => (
+                          <button
+                            key={i}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTrendMenu(null);
+                            }}
+                            style={{
+                              padding: "10px 12px",
+                              background: "none",
+                              border: "none",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              fontSize: "14px",
+                              fontWeight: "bold",
+                              color: "var(--color-fg-default)",
+                              borderRadius: "8px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                          >
+                            <span style={{ fontSize: "16px", color: "var(--color-fg-muted)", lineHeight: 1 }}>☹️</span>
+                            {label}
+                          </button>
+                        ))}
+                      </Box>
+                    </>
+                  )}
+                </Box>
               </Box>
             ))
           ) : (
@@ -565,8 +763,67 @@ const RightPanel: React.FC = () => {
           <Box display="flex" flexDirection="column" gap={3}>
             {suggestions.map((u) => (
               <Box key={u.id} display="flex" alignItems="center" justifyContent="space-between">
+                <ProfileHoverCard username={u.username}>
+                  <ProfileNameLink to={`/${u.username}`} style={{ flex: 1, minWidth: 0 }}>
+                    <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                  </ProfileNameLink>
+                </ProfileHoverCard>
+                <Box flex={1} minWidth={0} style={{ margin: "0 12px" }} display="flex" flexDirection="column">
+                  <ProfileHoverCard username={u.username}>
+                    <ProfileNameLink to={`/${u.username}`}>
+                      <Text
+                        style={{
+                          fontWeight: "bold",
+                          fontSize: "15px",
+                          color: "var(--color-fg-default)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={u.display_name || u.username}
+                      >
+                        {u.display_name || u.username}
+                      </Text>
+                    </ProfileNameLink>
+                  </ProfileHoverCard>
+                  <Text
+                    className="handle-text"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginTop: "-2px",
+                      display: "block",
+                    }}
+                    title={`@${u.username}`}
+                  >
+                    @{u.username}
+                  </Text>
+                </Box>
+                <div style={{ flexShrink: 0 }}>
+                  <FollowButton username={u.username} initialIsFollowing={false} size="small" />
+                </div>
+              </Box>
+            ))}
+            {suggestions.length === 0 && (
+              <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
+                No suggestions at this time.
+              </Text>
+            )}
+          </Box>
+        </Card>
+      )}
+
+      {location.pathname.startsWith("/repos") && popularRepos.length > 0 && (
+        <Card>
+          <Heading as="h2" style={{ fontSize: "20px", marginBottom: "16px" }}>
+            Popular Repositories
+          </Heading>
+          <Box display="flex" flexDirection="column" gap={3}>
+            {popularRepos.map((repo) => (
+              <Box key={repo.id} display="flex" alignItems="center" justifyContent="space-between">
                 <Link
-                  to={`/${u.username}`}
+                  to={`/repos/${repo.provider}/${repo.namespace}/${repo.project}`}
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -578,7 +835,7 @@ const RightPanel: React.FC = () => {
                     overflow: "hidden",
                   }}
                 >
-                  <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                  <Avatar $url={repo.avatar_url} $letter={repo.project.charAt(0).toUpperCase()} />
                   <Box flex={1} minWidth={0} mr={2} display="flex" flexDirection="column">
                     <Text
                       style={{
@@ -589,9 +846,9 @@ const RightPanel: React.FC = () => {
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
                       }}
-                      title={u.display_name || u.username}
+                      title={repo.project}
                     >
-                      {u.display_name || u.username}
+                      {repo.project}
                     </Text>
                     <Text
                       style={{
@@ -601,22 +858,14 @@ const RightPanel: React.FC = () => {
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
                       }}
-                      title={`@${u.username}`}
+                      title={repo.namespace}
                     >
-                      @{u.username}
+                      {repo.namespace}
                     </Text>
                   </Box>
                 </Link>
-                <div style={{ flexShrink: 0 }}>
-                  <FollowButton username={u.username} initialIsFollowing={false} size="small" />
-                </div>
               </Box>
             ))}
-            {suggestions.length === 0 && (
-              <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
-                No suggestions at this time.
-              </Text>
-            )}
           </Box>
         </Card>
       )}

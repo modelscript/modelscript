@@ -39,6 +39,10 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
+              src: "../../packages/lsp/dist/indexerWorker.js",
+              dest: "lsp/server/dist",
+            },
+            {
               src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
               dest: "lsp/server/dist",
             },

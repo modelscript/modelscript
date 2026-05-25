@@ -60,9 +60,11 @@ export function authRouter(database: LibraryDatabase): Router {
         expiresIn: "7d",
       });
 
+      const { password_hash: _, github_token, gitlab_token, ...safeUser } = user as any;
+
       res.status(201).json({
         token,
-        user: { id: user.id, username: user.username, email: user.email },
+        user: safeUser,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Registration failed";
@@ -98,9 +100,11 @@ export function authRouter(database: LibraryDatabase): Router {
         expiresIn: "7d",
       });
 
+      const { password_hash: _, github_token, gitlab_token, ...safeUser } = user as any;
+
       res.json({
         token,
-        user: { id: user.id, username: user.username, email: user.email },
+        user: safeUser,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
@@ -165,7 +169,17 @@ export function authRouter(database: LibraryDatabase): Router {
    * GET /api/v1/auth/me
    */
   router.get("/me", requireAuth, (req: Request, res: Response): void => {
-    res.json({ user: req.user });
+    try {
+      const user = database.getUserById(req.user!.id);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      const { password_hash, github_token, gitlab_token, ...safeUser } = user as any;
+      res.json({ user: safeUser });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch user profile" });
+    }
   });
 
   /**

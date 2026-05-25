@@ -125,6 +125,12 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 
   const patchScript = `<script>
 (function() {
+  var originalWarn = console.warn;
+  console.warn = function() {
+    if (typeof arguments[0] === 'string' && arguments[0].includes('ENOPRO: No file system provider found for resource')) return;
+    originalWarn.apply(console, arguments);
+  };
+  
   var hash = location.hash.slice(1);
   if (!hash) return; // if no hash, trust the server's config (from ?folder=)
   

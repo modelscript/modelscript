@@ -8,6 +8,18 @@ export function reposRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
   /**
+   * GET /api/v1/repos/popular
+   */
+  router.get("/popular", (req: Request, res: Response) => {
+    try {
+      const repos = database.getPopularRepos(5);
+      res.json({ repos });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch popular repositories" });
+    }
+  });
+
+  /**
    * GET /api/v1/repos
    */
   router.get("/", requireAuth, (req: Request, res: Response) => {

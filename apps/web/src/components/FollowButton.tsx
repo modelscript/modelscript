@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState } from "react";
 import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
@@ -8,9 +7,10 @@ interface FollowButtonProps {
   initialIsFollowing: boolean;
   onToggle?: (isFollowing: boolean) => void;
   size?: "small" | "medium" | "large";
+  isRssFeed?: boolean;
 }
 
-const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowing, onToggle, size }) => {
+const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowing, onToggle, size, isRssFeed }) => {
   const { token, user } = useAuth();
   const [isFollowing, setIsFollowing] = useState(initialIsFollowing);
   const [loading, setLoading] = useState(false);
@@ -55,7 +55,7 @@ const FollowButton: React.FC<FollowButtonProps> = ({ username, initialIsFollowin
         fontSize: "14px",
       }}
     >
-      {isFollowing ? "Following" : "Follow"}
+      {isFollowing ? (isRssFeed ? "Subscribed" : "Following") : isRssFeed ? "Subscribe" : "Follow"}
     </button>
   );
 };

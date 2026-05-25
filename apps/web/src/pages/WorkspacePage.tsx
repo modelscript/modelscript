@@ -1048,13 +1048,13 @@ export default function WorkspacePage() {
               </Label>
             </Box>
             <Box display="flex" gap={2}>
-              <Button leadingVisual={EyeIcon} trailingVisual={TriangleDownIcon} size="small" variant="primary">
+              <Button leadingVisual={EyeIcon} trailingVisual={TriangleDownIcon} size="small" variant="default">
                 Watch
               </Button>
-              <Button leadingVisual={RepoForkedIcon} size="small" variant="primary">
+              <Button leadingVisual={RepoForkedIcon} size="small" variant="default">
                 Fork
               </Button>
-              <Button leadingVisual={StarIcon} size="small" variant="primary">
+              <Button leadingVisual={StarIcon} size="small" variant="default">
                 Star
               </Button>
             </Box>

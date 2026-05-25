@@ -1,3 +1,4 @@
+/* eslint-disable */
 import Box from "./Box";
 
 import { BellIcon, HomeIcon, PersonIcon, PlusIcon, SearchIcon } from "@primer/octicons-react";
@@ -9,7 +10,6 @@ import ComposeModal from "./ComposeModal";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const ComposeContext = React.createContext({ openCompose: () => {} });
 
 const ShellContainer = styled.div`
@@ -40,13 +40,13 @@ const RightPanelWrapper = styled.div`
   justify-content: flex-start;
 `;
 
-const MainColumn = styled.main<{ $isSettings?: boolean }>`
-  flex: ${(props) => (props.$isSettings ? "1" : "0 1 600px")};
+const MainColumn = styled.main<{ $isWideLayout?: boolean }>`
+  flex: ${(props) => (props.$isWideLayout ? "1" : "0 1 600px")};
   width: 100%;
-  max-width: ${(props) => (props.$isSettings ? "950px" : "600px")};
+  max-width: ${(props) => (props.$isWideLayout ? "1050px" : "600px")};
   min-width: 0;
-  border-left: 1px solid var(--color-border-default);
-  border-right: 1px solid var(--color-border-default);
+  border-left: 1px solid var(--color-border);
+  border-right: 1px solid var(--color-border);
   min-height: calc(100vh - var(--dev-header-height, 0px));
   padding-bottom: 80px;
 
@@ -64,7 +64,7 @@ const BottomBarContainer = styled.div`
   right: 0;
   height: 60px;
   background-color: var(--color-canvas-default);
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--color-border);
   display: none;
   justify-content: space-around;
   align-items: center;
@@ -140,12 +140,16 @@ const BannerContent = styled.div`
 
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
-  const { user, loading, login, logout } = useAuth();
+  const { user, loading, login, logout, unreadCount } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const isDev = import.meta.env.DEV;
-  const isSettings = location.pathname.startsWith("/settings");
+
+  // Make wide layout for /settings/* and /repos/* (but NOT the main /repos index)
+  const isWideLayout =
+    location.pathname.startsWith("/settings") ||
+    (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
 
   return (
     <ComposeContext.Provider value={{ openCompose: () => setIsComposeOpen(true) }}>
@@ -178,24 +182,75 @@ const AppShell: React.FC = () => {
               }}
             >
               <span style={{ fontWeight: "bold", fontSize: "13px", letterSpacing: "1px" }}>DEV MODE</span>
-              <div>
-                {!user ? (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", marginRight: "16px", alignItems: "center" }}>
                   <button
-                    onClick={() => login("dev@modelscript.org", "password")}
+                    onClick={async () => {
+                      if (confirm("Are you sure you want to reload the database with dev data?")) {
+                        try {
+                          const res = await fetch("/api/v1/dev/reset", { method: "POST" });
+                          if (res.ok) {
+                            window.location.reload();
+                          } else {
+                            alert("Failed to reset database");
+                          }
+                        } catch (e) {
+                          alert("Failed to connect to dev server");
+                        }
+                      }
+                    }}
                     style={{
-                      background: "white",
-                      color: "#6f42c1",
+                      background: "rgba(255,255,255,0.2)",
+                      color: "white",
                       border: "none",
                       borderRadius: "4px",
                       padding: "4px 12px",
                       fontWeight: "bold",
                       cursor: "pointer",
                       fontSize: "12px",
+                      marginRight: "8px",
                     }}
                   >
-                    Login as Dev
+                    Reload DB
                   </button>
-                ) : (
+                  <span style={{ fontSize: "12px", opacity: 0.8, marginRight: "4px" }}>
+                    {!user ? "Login as:" : "Switch user:"}
+                  </span>
+                  {[
+                    { email: "dev@modelscript.org", initial: "D" },
+                    { email: "alice@modelscript.org", initial: "A" },
+                    { email: "bob@modelscript.org", initial: "B" },
+                  ].map((u) => (
+                    <button
+                      key={u.email}
+                      onClick={() => {
+                        if (!user || user.email !== u.email) {
+                          if (user) logout();
+                          setTimeout(() => login(u.email, "password"), user ? 100 : 0);
+                        }
+                      }}
+                      style={{
+                        width: "26px",
+                        height: "26px",
+                        borderRadius: "50%",
+                        border: user?.email === u.email ? "2px solid white" : "none",
+                        backgroundColor: user?.email === u.email ? "#5a32a3" : "rgba(255,255,255,0.3)",
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: "bold",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                      title={!user ? `Login as ${u.email}` : `Switch to ${u.email}`}
+                    >
+                      {u.initial}
+                    </button>
+                  ))}
+                </div>
+                {user && (
                   <button
                     onClick={() => logout()}
                     style={{
@@ -221,10 +276,10 @@ const AppShell: React.FC = () => {
             <SidebarWrapper>
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
             </SidebarWrapper>
-            <MainColumn $isSettings={isSettings}>
+            <MainColumn $isWideLayout={isWideLayout}>
               <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
             </MainColumn>
-            {!isSettings && (
+            {!isWideLayout && (
               <RightPanelWrapper>
                 <RightPanel />
               </RightPanelWrapper>
@@ -278,9 +333,11 @@ const AppShell: React.FC = () => {
         )}
 
         <BottomBarContainer>
-          <BottomBarButton $active={location.pathname === "/home"} onClick={() => navigate("/home")}>
-            <HomeIcon size={24} />
-          </BottomBarButton>
+          {user && (
+            <BottomBarButton $active={location.pathname === "/home"} onClick={() => navigate("/home")}>
+              <HomeIcon size={24} />
+            </BottomBarButton>
+          )}
           <BottomBarButton $active={location.pathname === "/explore"} onClick={() => navigate("/explore")}>
             <SearchIcon size={24} />
           </BottomBarButton>
@@ -298,8 +355,32 @@ const AppShell: React.FC = () => {
           <BottomBarButton
             $active={location.pathname === "/notifications"}
             onClick={() => navigate(user ? "/notifications" : "/login")}
+            style={{ position: "relative" }}
           >
             <BellIcon size={24} />
+            {unreadCount > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  backgroundColor: "#1d9bf0",
+                  color: "white",
+                  borderRadius: "50%",
+                  minWidth: "16px",
+                  height: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                  padding: "0 4px",
+                  boxShadow: "0 0 0 2px var(--color-canvas-default)",
+                }}
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </div>
+            )}
           </BottomBarButton>
           <BottomBarButton
             $active={user && location.pathname === `/${user.username}`}

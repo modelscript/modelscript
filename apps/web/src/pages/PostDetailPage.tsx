@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon, ImageIcon, LocationIcon, PaperclipIcon, SmileyIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
@@ -8,22 +8,6 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
-
-const Avatar = styled.div<{ $url?: string }>`
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: var(--color-accent-emphasis);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
-  background-size: cover;
-  background-position: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  color: white;
-  flex-shrink: 0;
-`;
 
 const ReplyInputContainer = styled.div`
   display: flex;
@@ -97,15 +81,19 @@ const PostDetailPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const viewTrackedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     async function fetchPost() {
       try {
-        // Fire and forget view increment
-        fetch(`${API_BASE_URL}/social/posts/${id}/view`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }).catch(console.error);
+        // Fire and forget view increment (prevent duplicate in Strict Mode)
+        if (id && !viewTrackedRef.current.has(id)) {
+          viewTrackedRef.current.add(id);
+          fetch(`${API_BASE_URL}/social/posts/${id}/view`, {
+            method: "POST",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }).catch(console.error);
+        }
 
         const res = await fetch(`${API_BASE_URL}/social/posts/${id}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -213,7 +201,38 @@ const PostDetailPage: React.FC = () => {
             </Box>
           )}
           <ReplyRow>
-            <Avatar $url={user.avatar_url}>{!user.avatar_url && user.username.charAt(0).toUpperCase()}</Avatar>
+            {user.avatar_url ? (
+              <img
+                src={user.avatar_url}
+                alt="avatar"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                  objectFit: "cover",
+                  backgroundColor: "var(--color-canvas-subtle)",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  backgroundColor: "var(--color-accent-emphasis)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontWeight: "bold",
+                  flexShrink: 0,
+                  fontSize: 20,
+                }}
+              >
+                {user.username?.charAt(0).toUpperCase()}
+              </div>
+            )}
             <ReplyContentCol>
               <Box display="flex" alignItems="center" gap={2}>
                 <ReplyInput

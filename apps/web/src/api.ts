@@ -453,4 +453,14 @@ export const updateNotificationSettings = async (settings: any) => {
   return data;
 };
 
+export const getUserTopics = async () => {
+  const { data } = await api.get("/users/me/topics");
+  return data.topics as { concept: string; is_active: boolean }[];
+};
+
+export const updateUserTopic = async (concept: string, is_active: boolean) => {
+  const { data } = await api.put("/users/me/topics", { concept, is_active });
+  return data;
+};
+
 export default api;

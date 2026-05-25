@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import {
+  ArrowLeftIcon,
   CalendarIcon,
   InfoIcon,
   KebabHorizontalIcon,
@@ -9,6 +10,7 @@ import {
   MuteIcon,
   NoEntryIcon,
   ReportIcon,
+  RssIcon,
 } from "@primer/octicons-react";
 import { Button, Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
@@ -17,6 +19,7 @@ import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
+import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
 import { API_BASE_URL } from "../config";
 
@@ -138,6 +141,49 @@ const ProfilePage: React.FC = () => {
 
   return (
     <Box>
+      <Box
+        position="sticky"
+        top="var(--dev-header-height, 0px)"
+        bg="rgba(255, 255, 255, 0.85)"
+        style={{ backdropFilter: "blur(12px)", zIndex: 10 }}
+        display="flex"
+        alignItems="center"
+        px={3}
+        py={2}
+        gap={3}
+      >
+        <button
+          onClick={() => window.history.back()}
+          style={{
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            width: "36px",
+            height: "36px",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "var(--color-fg-default)",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        >
+          <ArrowLeftIcon size={20} />
+        </button>
+        <Box display="flex" flexDirection="column">
+          <Heading as="h2" style={{ fontSize: "20px", margin: 0, lineHeight: 1.2 }}>
+            {profile.display_name || profile.username}
+          </Heading>
+          <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
+            {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
+              profile.post_count || 0,
+            )}{" "}
+            posts
+          </Text>
+        </Box>
+      </Box>
+
       <Box
         style={{
           height: "200px",
@@ -366,6 +412,7 @@ const ProfilePage: React.FC = () => {
                   <FollowButton
                     username={profile.username}
                     initialIsFollowing={isFollowing}
+                    isRssFeed={profile.account_type === "rss"}
                     onToggle={(following) => {
                       setIsFollowing(following);
                       setProfile((prev) => ({
@@ -380,8 +427,34 @@ const ProfilePage: React.FC = () => {
           </Box>
         </Box>
 
-        <Heading as="h1" style={{ marginTop: "16px", fontSize: "24px", fontWeight: 800 }}>
+        <Heading
+          as="h1"
+          style={{
+            marginTop: "16px",
+            fontSize: "24px",
+            fontWeight: 800,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
           {profile.display_name || profile.username}
+          {profile.account_type === "rss" && (
+            <span
+              style={{
+                fontSize: "12px",
+                padding: "2px 8px",
+                backgroundColor: "var(--color-accent-subtle)",
+                color: "var(--color-accent-fg)",
+                borderRadius: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <RssIcon size={12} /> RSS Feed
+            </span>
+          )}
         </Heading>
         <Text color="var(--color-fg-muted)">@{profile.username}</Text>
 
@@ -416,22 +489,24 @@ const ProfilePage: React.FC = () => {
           </Box>
         </Box>
 
-        <Box mt={3} display="flex" gap={4}>
-          <Link
-            to={`/${profile.username}/following`}
-            style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
-          >
-            <Text style={{ fontWeight: "bold" }}>{profile.following_count}</Text>{" "}
-            <Text color="var(--color-fg-muted)">Following</Text>
-          </Link>
-          <Link
-            to={`/${profile.username}/followers`}
-            style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
-          >
-            <Text style={{ fontWeight: "bold" }}>{profile.follower_count}</Text>{" "}
-            <Text color="var(--color-fg-muted)">Followers</Text>
-          </Link>
-        </Box>
+        {profile.account_type !== "rss" && (
+          <Box mt={3} display="flex" gap={4}>
+            <Link
+              to={`/${profile.username}/following`}
+              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
+            >
+              <Text style={{ fontWeight: "bold" }}>{profile.following_count}</Text>{" "}
+              <Text color="var(--color-fg-muted)">Following</Text>
+            </Link>
+            <Link
+              to={`/${profile.username}/followers`}
+              style={{ textDecoration: "none", color: "var(--color-fg-default)" }}
+            >
+              <Text style={{ fontWeight: "bold" }}>{profile.follower_count}</Text>{" "}
+              <Text color="var(--color-fg-muted)">Followers</Text>
+            </Link>
+          </Box>
+        )}
       </Box>
 
       <TabBar>
@@ -444,6 +519,8 @@ const ProfilePage: React.FC = () => {
 
       {activeTab === "Repos" ? (
         <ProfileRepos username={profile.username} isOwnProfile={isOwnProfile} />
+      ) : activeTab === "Posts" ? (
+        <ProfilePosts username={profile.username} />
       ) : (
         <Box p={4} textAlign="center">
           <Heading as="h2" style={{ fontSize: "20px" }}>

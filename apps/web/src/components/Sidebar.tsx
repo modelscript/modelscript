@@ -1,13 +1,15 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, no-empty */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   BellIcon,
   BookmarkIcon,
   GearIcon,
   HomeIcon,
+  KebabHorizontalIcon,
   PackageIcon,
   PersonIcon,
   PlusIcon,
   RepoIcon,
+  RssIcon,
   SearchIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
@@ -15,7 +17,6 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
-import { API_BASE_URL } from "../config";
 import { useTheme } from "../theme";
 import Box from "./Box";
 
@@ -23,9 +24,10 @@ const SidebarContainer = styled.header`
   width: 275px;
   display: flex;
   flex-direction: column;
-  height: 100vh;
   position: sticky;
-  top: 0;
+  top: var(--dev-header-height, 0px);
+  height: calc(100vh - var(--dev-header-height, 0px));
+  overflow-y: auto;
   padding: 12px;
   box-sizing: border-box;
 
@@ -142,43 +144,104 @@ const NavPill = styled.div`
   }
 `;
 
+const SidebarAvatar = styled.div<{ $url?: string }>`
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  background-color: var(--color-done-emphasis);
+  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-size: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  flex-shrink: 0;
+`;
+
+const LogoutMenu = styled.div`
+  position: absolute;
+  bottom: 80px;
+  left: 12px;
+  width: 250px;
+  background-color: var(--color-canvas-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 16px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+  padding: 12px 0;
+  z-index: 100;
+
+  @media (max-width: 1280px) {
+    width: max-content;
+  }
+
+  button {
+    width: 100%;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    text-align: left;
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--color-fg-default);
+    cursor: pointer;
+
+    &:hover {
+      background-color: rgba(128, 128, 128, 0.15);
+    }
+  }
+`;
+
+const ProfileFooterContainer = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+  }
+`;
+
 interface SidebarProps {
   onPostClick?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
-  const { user, token } = useAuth();
+  const { user, token, logout, unreadCount, setUnreadCount } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
-  const [unreadCount, setUnreadCount] = React.useState(0);
+  const [showLogoutMenu, setShowLogoutMenu] = React.useState(false);
 
   React.useEffect(() => {
-    if (!token) return;
-    async function fetchUnread() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/social/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUnreadCount(data.unreadCount);
-        }
-      } catch (err) {}
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".profile-footer-container")) {
+        setShowLogoutMenu(false);
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  React.useEffect(() => {
+    if (location.pathname === "/notifications") {
+      setUnreadCount(0);
     }
-    fetchUnread();
+  }, [location.pathname, setUnreadCount]);
 
-    // Poll every minute
-    const interval = setInterval(fetchUnread, 60000);
-    return () => clearInterval(interval);
-  }, [token, location.pathname]); // Re-fetch when location changes to clear it after viewing page
-
-  const navLinks = [
-    { to: "/home", icon: HomeIcon, label: "Home" },
-    { to: "/explore", icon: SearchIcon, label: "Explore" },
-  ];
+  const navLinks = [];
+  if (user) navLinks.push({ to: "/home", icon: HomeIcon, label: "Home" });
+  navLinks.push({ to: "/explore", icon: SearchIcon, label: "Explore" });
   if (user) {
     navLinks.push({ to: "/notifications", icon: BellIcon, label: "Notifications" });
     navLinks.push({ to: "/bookmarks", icon: BookmarkIcon, label: "Bookmarks" });
+    navLinks.push({ to: "/feeds", icon: RssIcon, label: "Feeds" });
   }
   navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
@@ -190,8 +253,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <Box mb={4} px={3}>
-        <Link to="/home">
+      <Box mb={4} px={4}>
+        <Link to={user ? "/home" : "/explore"}>
           <img
             src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
             alt="ModelScript"
@@ -200,28 +263,45 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         </Link>
       </Box>
 
-      <Box display="flex" flexDirection="column" gap={1} flex={1}>
+      <Box display="flex" flexDirection="column" gap={1} flex={1} style={{ position: "relative", zIndex: 1 }}>
         {navLinks.map((link) => (
           <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
             <NavPill>
-              <Box position="relative">
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 32,
+                  height: 32,
+                }}
+              >
                 <link.icon size={32} />
                 {link.to === "/notifications" && unreadCount > 0 && (
-                  <Box
-                    position="absolute"
-                    top={-4}
-                    right={-6}
-                    backgroundColor="var(--color-accent-emphasis)"
-                    color="white"
-                    borderRadius="9999px"
-                    fontSize="10px"
-                    px={1}
-                    fontWeight="bold"
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -6,
+                      backgroundColor: "#1d9bf0",
+                      color: "white",
+                      borderRadius: "50%",
+                      minWidth: "20px",
+                      height: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      padding: "0 4px",
+                      boxShadow: "0 0 0 2px var(--color-canvas-default)",
+                    }}
                   >
                     {unreadCount > 9 ? "9+" : unreadCount}
-                  </Box>
+                  </div>
                 )}
-              </Box>
+              </div>
               <Text className="nav-label">{link.label}</Text>
             </NavPill>
           </NavItem>
@@ -229,10 +309,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
         {user && (
           <>
-            <Box mt={4} mb={2} px={4} className="sidebar-separator">
+            <Box mt={4} mb={4} px={4} className="sidebar-separator">
               <div style={{ height: "1px", backgroundColor: "var(--color-border-subtle)", width: "100%" }} />
             </Box>
-            <Box mt={2} width="100%" px={2} className="post-btn-container">
+            <Box mt={4} width="100%" px={2} className="post-btn-container">
               <button
                 style={{
                   width: "100%",
@@ -259,40 +339,44 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
       </Box>
 
       {user && (
-        <Box
-          p={3}
-          display="flex"
-          alignItems="center"
-          gap={3}
-          className="profile-footer"
-          sx={{
-            borderRadius: "9999px",
-            cursor: "pointer",
-            "&:hover": { backgroundColor: "var(--color-canvas-subtle)" },
-          }}
-        >
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              backgroundColor: "var(--color-accent-emphasis)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontWeight: "bold",
-              flexShrink: 0,
+        <Box className="profile-footer-container" style={{ position: "relative", zIndex: 9999 }}>
+          {showLogoutMenu && (
+            <LogoutMenu>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  logout();
+                  setShowLogoutMenu(false);
+                }}
+              >
+                Log out @{user.username}
+              </button>
+            </LogoutMenu>
+          )}
+          <ProfileFooterContainer
+            className="profile-footer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowLogoutMenu(!showLogoutMenu);
             }}
           >
-            {user.username.charAt(0).toUpperCase()}
-          </Box>
-          <Box display="flex" flexDirection="column" className="profile-details">
-            <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{user.username}</Text>
-            <Text color="var(--color-fg-muted)" style={{ fontSize: "15px" }}>
-              @{user.username}
-            </Text>
-          </Box>
+            <Box display="flex" alignItems="center" gap={3}>
+              <SidebarAvatar $url={user.avatar_url}>
+                {user.avatar_url ? null : user.username.charAt(0).toUpperCase()}
+              </SidebarAvatar>
+              <Box display="flex" flexDirection="column" className="profile-details">
+                <Text style={{ fontWeight: "bold", fontSize: "15px", display: "block" }}>
+                  {user.display_name || (user.username === "dev" ? "Dev User" : user.username)}
+                </Text>
+                <Text className="handle-text" style={{ display: "block", marginTop: "-2px" }}>
+                  @{user.username}
+                </Text>
+              </Box>
+            </Box>
+            <Box className="profile-details" color="var(--color-fg-default)">
+              <KebabHorizontalIcon size={16} />
+            </Box>
+          </ProfileFooterContainer>
         </Box>
       )}
     </SidebarContainer>

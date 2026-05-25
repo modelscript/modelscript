@@ -1,11 +1,12 @@
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AuthProvider } from "./AuthContext";
+import { AuthProvider, useAuth } from "./AuthContext";
 import AppShell from "./components/AppShell";
 import BookmarksPage from "./pages/BookmarksPage";
 import ClassDetailPage from "./pages/ClassDetailPage";
 import EditProfilePage from "./pages/EditProfilePage";
 import ExplorePage from "./pages/ExplorePage";
+import FeedsPage from "./pages/FeedsPage";
 import FollowersPage from "./pages/FollowersPage";
 import FollowingPage from "./pages/FollowingPage";
 import HomeFeedPage from "./pages/HomeFeedPage";
@@ -26,6 +27,11 @@ import { ThemeContextProvider, useTheme } from "./theme";
 
 function App() {
   const { theme } = useTheme();
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div style={{ minHeight: "100vh", backgroundColor: "var(--color-canvas-default)" }} />;
+  }
 
   return (
     <ThemeProvider colorMode={theme === "dark" ? "night" : "day"}>
@@ -38,17 +44,18 @@ function App() {
       >
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
             {/* Social shell routes */}
             <Route element={<AppShell />}>
-              <Route path="/home" element={<HomeFeedPage />} />
+              <Route path="/home" element={user ? <HomeFeedPage /> : <Navigate to="/explore" replace />} />
               <Route path="/explore" element={<ExplorePage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/bookmarks" element={<BookmarksPage />} />
+              <Route path="/feeds" element={<FeedsPage />} />
 
               {/* Package browser */}
               <Route path="/packages" element={<LibraryListPage />} />

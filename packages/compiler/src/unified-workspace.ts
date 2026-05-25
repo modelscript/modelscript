@@ -152,167 +152,124 @@ export class UnifiedWorkspace {
    * Caches the result and reuses it when the underlying workspace partials haven't changed.
    */
   toUnifiedPartial(): SymbolIndex {
-    // Determine which workspaces actually changed
-    const changedWorkspaces: string[] = [];
+    const modelicaWs = this.indices.get("modelica");
+    if (!modelicaWs) return this.toUnified(); // Fallback if no modelica workspace
+
+    const baseIndex = modelicaWs.toUnifiedPartial();
+    const baseChanged = this.partialCache !== baseIndex;
+    this.partialCacheVersions.set("modelica", modelicaWs.version);
+
+    const changedOtherLangs: string[] = [];
     for (const [language, workspace] of this.indices.entries()) {
+      if (language === "modelica") continue;
       if (workspace.version !== this.partialCacheVersions.get(language)) {
-        changedWorkspaces.push(language);
+        changedOtherLangs.push(language);
+        this.partialCacheVersions.set(language, workspace.version);
       }
     }
 
-    // Fast path: nothing changed anywhere
-    if (changedWorkspaces.length === 0 && this.partialCache) {
-      return this.partialCache;
+    if (!baseChanged && changedOtherLangs.length === 0) {
+      return baseIndex;
     }
 
-    // Incremental path: patch existing cache for only the changed workspaces.
-    // This avoids iterating over symbols from unchanged workspaces (e.g., SysML2
-    // symbols don't need to be re-merged when only a Modelica file changed).
-    if (this.partialCache && changedWorkspaces.length < this.indices.size) {
-      const { symbols, byName, childrenOf, symbolsByResource } = this.partialCache;
-      // If symbolsByResource is missing from an older cache, initialize it
-      const actualSymbolsByResource = symbolsByResource || new Map<string, number[]>();
+    if (!baseIndex.symbolsByResource) {
+      baseIndex.symbolsByResource = new Map<string, number[]>();
+    }
 
-      for (const language of changedWorkspaces) {
+    if (baseChanged) {
+      // Base index was fully rebuilt, need to re-inject everything
+      this.partialCacheSymbolsByLang.clear();
+      for (const [language, workspace] of this.indices.entries()) {
+        if (language === "modelica") continue;
+        this._injectLanguageIntoBase(language, workspace, baseIndex);
+      }
+    } else {
+      // Base index was incrementally updated, only re-inject changed languages
+      for (const language of changedOtherLangs) {
         const workspace = this.indices.get(language);
         if (!workspace) continue;
-
-        // 1. Remove old entries for this workspace from the merged cache
-        const oldIds = this.partialCacheSymbolsByLang.get(language);
-        if (oldIds) {
-          for (const id of oldIds) {
-            const entry = symbols.get(id);
-            if (entry) {
-              symbols.delete(id);
-              // Clean up byName
-              const nameIds = byName.get(entry.name);
-              if (nameIds) {
-                const idx = nameIds.indexOf(id);
-                if (idx !== -1) nameIds.splice(idx, 1);
-                if (nameIds.length === 0) byName.delete(entry.name);
-              }
-              // Clean up childrenOf (as a child of its parent)
-              const parentChildren = childrenOf.get(entry.parentId);
-              if (parentChildren) {
-                const idx = parentChildren.indexOf(id);
-                if (idx !== -1) parentChildren.splice(idx, 1);
-                if (parentChildren.length === 0) childrenOf.delete(entry.parentId);
-              }
-              // Remove its own children array
-              childrenOf.delete(id);
-              // Clean up symbolsByResource
-              if (entry.resourceId) {
-                const resourceIds = actualSymbolsByResource.get(entry.resourceId);
-                if (resourceIds) {
-                  const idx = resourceIds.indexOf(id);
-                  if (idx !== -1) resourceIds.splice(idx, 1);
-                  if (resourceIds.length === 0) actualSymbolsByResource.delete(entry.resourceId);
-                }
-              }
-            }
-          }
-        }
-
-        // 2. Merge new entries for this workspace
-        const index = workspace.toUnifiedPartial();
-        this.partialCacheVersions.set(language, workspace.version);
-
-        const newIds: number[] = [];
-        for (const [id, entry] of index.symbols) {
-          const sys: SymbolEntry = { ...entry, language };
-          symbols.set(id, sys);
-          newIds.push(id);
-        }
-        this.partialCacheSymbolsByLang.set(language, newIds);
-
-        for (const [name, ids] of index.byName) {
-          const existing = byName.get(name);
-          if (existing) existing.push(...ids);
-          else byName.set(name, [...ids]);
-        }
-
-        for (const [parentId, ids] of index.childrenOf) {
-          const existing = childrenOf.get(parentId);
-          if (existing) {
-            for (const cid of ids) {
-              if (!existing.includes(cid)) existing.push(cid);
-            }
-          } else {
-            childrenOf.set(parentId, [...ids]);
-          }
-        }
-
-        if (index.symbolsByResource) {
-          for (const [resId, ids] of index.symbolsByResource) {
-            const existing = actualSymbolsByResource.get(resId);
-            if (existing) {
-              for (const cid of ids) {
-                if (!existing.includes(cid)) existing.push(cid);
-              }
-            } else {
-              actualSymbolsByResource.set(resId, [...ids]);
-            }
-          }
-        }
+        this._removeLanguageFromBase(language, baseIndex);
+        this._injectLanguageIntoBase(language, workspace, baseIndex);
       }
-
-      this.partialCache.symbolsByResource = actualSymbolsByResource;
-
-      // Re-inject synthetic OWL2 entries (they may have changed if a source language changed)
-      this.mergeOWL2Synthetics(symbols, byName, childrenOf);
-
-      return this.partialCache;
     }
 
-    // Full rebuild: no cache or all workspaces changed
-    const symbols = new Map<number, SymbolEntry>();
-    const byName = new Map<string, number[]>();
-    const childrenOf = new Map<number | null, number[]>();
-    const symbolsByResource = new Map<string, number[]>();
+    this.mergeOWL2Synthetics(baseIndex.symbols, baseIndex.byName, baseIndex.childrenOf);
+    this.partialCache = baseIndex;
+    return baseIndex;
+  }
 
-    for (const [language, workspace] of this.indices.entries()) {
-      const index = workspace.toUnifiedPartial();
-      this.partialCacheVersions.set(language, workspace.version);
+  private _removeLanguageFromBase(language: string, baseIndex: SymbolIndex) {
+    const oldIds = this.partialCacheSymbolsByLang.get(language);
+    if (!oldIds) return;
 
-      const langIds: number[] = [];
-      for (const [id, entry] of index.symbols) {
-        const sys: SymbolEntry = { ...entry, language };
-        symbols.set(id, sys);
-        langIds.push(id);
-      }
-      this.partialCacheSymbolsByLang.set(language, langIds);
+    for (const id of oldIds) {
+      const entry = baseIndex.symbols.get(id);
+      if (!entry) continue;
+      baseIndex.symbols.delete(id);
 
-      for (const [name, ids] of index.byName) {
-        const existing = byName.get(name);
-        if (existing) existing.push(...ids);
-        else byName.set(name, [...ids]);
+      const nameIds = baseIndex.byName.get(entry.name);
+      if (nameIds) {
+        const idx = nameIds.indexOf(id);
+        if (idx !== -1) nameIds.splice(idx, 1);
+        if (nameIds.length === 0) baseIndex.byName.delete(entry.name);
       }
 
-      for (const [parentId, ids] of index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+      const parentChildren = baseIndex.childrenOf.get(entry.parentId);
+      if (parentChildren) {
+        const idx = parentChildren.indexOf(id);
+        if (idx !== -1) parentChildren.splice(idx, 1);
+        if (parentChildren.length === 0) baseIndex.childrenOf.delete(entry.parentId);
+      }
+      baseIndex.childrenOf.delete(id);
+
+      if (entry.resourceId && baseIndex.symbolsByResource) {
+        const resourceIds = baseIndex.symbolsByResource.get(entry.resourceId);
+        if (resourceIds) {
+          const idx = resourceIds.indexOf(id);
+          if (idx !== -1) resourceIds.splice(idx, 1);
+          if (resourceIds.length === 0) baseIndex.symbolsByResource.delete(entry.resourceId);
+        }
+      }
+    }
+    this.partialCacheSymbolsByLang.delete(language);
+  }
+
+  private _injectLanguageIntoBase(language: string, workspace: IWorkspaceIndex, baseIndex: SymbolIndex) {
+    const index = workspace.toUnifiedPartial();
+    const injectedIds: number[] = [];
+
+    for (const [id, entry] of index.symbols) {
+      baseIndex.symbols.set(id, { ...entry, language });
+      injectedIds.push(id);
+    }
+    this.partialCacheSymbolsByLang.set(language, injectedIds);
+
+    for (const [name, ids] of index.byName) {
+      const existing = baseIndex.byName.get(name);
+      if (existing) {
+        for (const i of ids) if (!existing.includes(i)) existing.push(i);
+      } else {
+        baseIndex.byName.set(name, [...ids]);
+      }
+    }
+    for (const [parentId, ids] of index.childrenOf) {
+      const existing = baseIndex.childrenOf.get(parentId);
+      if (existing) {
+        for (const i of ids) if (!existing.includes(i)) existing.push(i);
+      } else {
+        baseIndex.childrenOf.set(parentId, [...ids]);
+      }
+    }
+    if (index.symbolsByResource && baseIndex.symbolsByResource) {
+      for (const [resId, ids] of index.symbolsByResource) {
+        const existing = baseIndex.symbolsByResource.get(resId);
         if (existing) {
-          for (const cid of ids) {
-            if (!existing.includes(cid)) existing.push(cid);
-          }
+          for (const i of ids) if (!existing.includes(i)) existing.push(i);
         } else {
-          childrenOf.set(parentId, [...ids]);
-        }
-      }
-
-      if (index.symbolsByResource) {
-        for (const [resId, ids] of index.symbolsByResource) {
-          const existing = symbolsByResource.get(resId);
-          if (existing) existing.push(...ids);
-          else symbolsByResource.set(resId, [...ids]);
+          baseIndex.symbolsByResource.set(resId, [...ids]);
         }
       }
     }
-
-    // Inject synthetic entries for projected OWL2 axioms
-    this.mergeOWL2Synthetics(symbols, byName, childrenOf);
-
-    this.partialCache = { symbols, byName, childrenOf, symbolsByResource };
-    return this.partialCache;
   }
 
   /**

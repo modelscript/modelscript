@@ -49,4 +49,5 @@ export * from "./symbol-indexer.js";
 export * from "./topology.js";
 export * from "./unified-workspace.js";
 export * from "./verifier.js";
+export * from "./workers/indexer-protocol.js";
 export * from "./workspace-index.js";

@@ -5,6 +5,8 @@ interface User {
   id: number;
   username: string;
   email: string;
+  display_name?: string;
+  avatar_url?: string;
 }
 
 interface AuthContextType {
@@ -15,6 +17,9 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  unreadCount: number;
+  setUnreadCount: (c: number) => void;
+  refreshUnreadCount: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -26,6 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(!!token);
 
+  const [unreadCount, setUnreadCount] = useState(0);
+
   // Set/clear the axios default header whenever token changes
   useEffect(() => {
     if (token) {
@@ -36,6 +43,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       delete api.defaults.headers.common["Authorization"];
     }
   }, [token]);
+
+  const refreshUnreadCount = useCallback(() => {
+    if (!token) return;
+    api
+      .get("/social/notifications")
+      .then((res) => {
+        setUnreadCount(res.data.unreadCount || 0);
+      })
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    refreshUnreadCount();
+    const interval = setInterval(refreshUnreadCount, 5000);
+    return () => clearInterval(interval);
+  }, [refreshUnreadCount]);
 
   // On mount, validate stored token
   useEffect(() => {
@@ -68,7 +91,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!user, isLoading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isAuthenticated: !!user,
+        isLoading,
+        login,
+        register,
+        logout,
+        unreadCount,
+        setUnreadCount,
+        refreshUnreadCount,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

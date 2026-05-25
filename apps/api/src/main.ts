@@ -16,10 +16,14 @@ import "./setup.js";
 
 import { CosimMqttClient, HistorianRecorder, attachCosimWebSocket } from "@modelscript/cosim";
 import { createApp } from "./app.js";
+import { locationService } from "./services/location.js";
 
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 const mqttUrl = process.env["MQTT_BROKER_URL"];
 const timescaleUrl = process.env["TIMESCALE_URL"];
+
+// ── Initialize IP Geolocation ──
+locationService.init().catch((err) => console.error("Location service failed to initialize:", err));
 
 // ── TimescaleDB pool (optional — only if TIMESCALE_URL is set) ──
 
@@ -100,6 +104,10 @@ async function shutdown(signal: string): Promise<void> {
 
   if (app.locals.decayWorkerInterval) {
     clearInterval(app.locals.decayWorkerInterval);
+  }
+
+  if (app.locals.rssWorkerInterval) {
+    clearInterval(app.locals.rssWorkerInterval);
   }
 
   server.close();

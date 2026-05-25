@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ArrowLeftIcon, KebabHorizontalIcon, SearchIcon } from "@primer/octicons-react";
+import { ArrowLeftIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -9,17 +9,6 @@ import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
-
-const Header = styled.div`
-  display: flex;
-  border-bottom: 1px solid var(--color-border-default);
-  position: sticky;
-  top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
-  z-index: 10;
-  padding: 16px;
-`;
 
 const SearchHeader = styled.div`
   display: flex;
@@ -50,7 +39,7 @@ const SearchInputWrapper = styled.div`
     padding: 10px 16px 10px 40px;
     border-radius: 9999px;
     background-color: var(--color-canvas-subtle);
-    border: 1px solid transparent;
+    border: 1px solid var(--color-border-default, var(--color-border, #cfd9de));
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
@@ -59,6 +48,7 @@ const SearchInputWrapper = styled.div`
     &:focus {
       background-color: var(--color-canvas-default);
       border-color: #1d9bf0;
+      box-shadow: 0 0 0 1px #1d9bf0;
     }
   }
 `;
@@ -174,7 +164,7 @@ const ExplorePage: React.FC = () => {
     async function fetchExplore() {
       try {
         const [postsRes, trendingRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/social/users/modelica/posts`),
+          fetch(`${API_BASE_URL}/social/explore`),
           fetch(`${API_BASE_URL}/social/trending?limit=5`),
         ]);
 
@@ -352,19 +342,21 @@ const ExplorePage: React.FC = () => {
   if (topic) {
     return (
       <Box>
-        <Header>
-          <HeaderIconButton onClick={handleBack} aria-label="Back" style={{ marginRight: "16px" }}>
+        <SearchHeader>
+          <HeaderIconButton onClick={handleBack} aria-label="Back">
             <ArrowLeftIcon size={20} />
           </HeaderIconButton>
-          <Box>
-            <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
-              Topic: {topic}
-            </Heading>
-            <Text color="var(--color-fg-muted)" fontSize="13px">
-              {topicPosts.length} posts
-            </Text>
-          </Box>
-        </Header>
+          <SearchInputWrapper>
+            <SearchIcon size={16} />
+            <input
+              type="text"
+              value={localQuery}
+              onChange={(e) => setLocalQuery(e.target.value)}
+              onKeyDown={handleSearchSubmit}
+              placeholder="Search ModelScript"
+            />
+          </SearchInputWrapper>
+        </SearchHeader>
         {loading ? (
           <Box p={4} display="flex" justifyContent="center">
             <Spinner size="large" />
@@ -399,12 +391,9 @@ const ExplorePage: React.FC = () => {
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
               onKeyDown={handleSearchSubmit}
-              placeholder="Search"
+              placeholder="Search ModelScript"
             />
           </SearchInputWrapper>
-          <HeaderIconButton aria-label="More options">
-            <KebabHorizontalIcon size={20} />
-          </HeaderIconButton>
         </SearchHeader>
 
         <TabContainer>
@@ -744,11 +733,18 @@ const ExplorePage: React.FC = () => {
   // Normal non-search mode
   return (
     <Box>
-      <Header>
-        <Heading as="h2" style={{ fontSize: "20px", fontWeight: 800, margin: 0, color: "var(--color-fg-default)" }}>
-          Explore
-        </Heading>
-      </Header>
+      <SearchHeader>
+        <SearchInputWrapper>
+          <SearchIcon size={16} />
+          <input
+            type="text"
+            value={localQuery}
+            onChange={(e) => setLocalQuery(e.target.value)}
+            onKeyDown={handleSearchSubmit}
+            placeholder="Search ModelScript"
+          />
+        </SearchInputWrapper>
+      </SearchHeader>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">

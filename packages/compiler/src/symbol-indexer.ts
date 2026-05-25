@@ -19,6 +19,7 @@ import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.
 export class SymbolIndexer {
   private hooksByRule: Map<string, IndexerHook>;
   private nextId: SymbolId = 1;
+  private idGenerator: () => SymbolId = () => this.nextId++;
 
   constructor(hooks: IndexerHook[]) {
     this.hooksByRule = new Map(hooks.map((h) => [h.ruleName, h]));
@@ -30,12 +31,13 @@ export class SymbolIndexer {
    * @param rootNode - The root node of a Tree-Sitter parse tree.
    *                   We use a minimal interface to avoid a hard dependency on tree-sitter.
    */
-  index(rootNode: CSTNode): SymbolIndex {
+  index(rootNode: CSTNode, idGenerator?: () => SymbolId): SymbolIndex {
     const symbols = new Map<SymbolId, SymbolEntry>();
     const byName = new Map<string, SymbolId[]>();
     const childrenOf = new Map<SymbolId | null, SymbolId[]>();
 
     this.nextId = 1;
+    this.idGenerator = idGenerator || (() => this.nextId++);
     this.walkNode(rootNode, null, symbols, byName, childrenOf, new Map());
 
     return { symbols, byName, childrenOf };
@@ -58,6 +60,7 @@ export class SymbolIndexer {
     rootNode: CSTNode,
     editRanges: Array<{ startByte: number; endByte: number }>,
     totalDelta: number = 0,
+    idGenerator?: () => SymbolId,
   ): { index: SymbolIndex; changedIds: Set<SymbolId> } {
     // Build a lookup from stable key → old entry for reuse.
     // We must compute sibling ordinals per parent to disambiguate entries
@@ -88,6 +91,8 @@ export class SymbolIndexer {
       if (id > maxOldId) maxOldId = id;
     }
     this.nextId = maxOldId + 1;
+    this.idGenerator = idGenerator || (() => this.nextId++);
+
     this.walkNodeIncremental(
       rootNode,
       null,
@@ -168,7 +173,7 @@ export class SymbolIndexer {
     let currentParentId = parentId;
 
     if (hook) {
-      const id = this.nextId++;
+      const id = this.idGenerator();
       const nameNode = this.resolveFieldPath(node, hook.namePath);
       const name = nameNode ? this.getNodeText(nameNode) : "<anonymous>";
 
@@ -208,14 +213,12 @@ export class SymbolIndexer {
       currentParentId = id;
     }
 
-    // Track sibling counts per child scope for stable keys
-    const childSiblingCounts = new Map<string, number>();
     const children = node.children || [];
 
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
       const childFieldName = node.fieldNameForChild && children.length < 100 ? node.fieldNameForChild(i) : null;
-      this.walkNode(child, currentParentId, symbols, byName, childrenOf, childSiblingCounts, childFieldName);
+      this.walkNode(child, currentParentId, symbols, byName, childrenOf, siblingCounts, childFieldName);
     }
   }
 
@@ -270,7 +273,15 @@ export class SymbolIndexer {
       let oldEntry = oldByStableKey.get(sKey);
       let matchedKey = sKey;
 
-      // Fallback: if parent ID changed, try with the old parent ID
+      if (name === "v_11" || name === "v_12") {
+        console.log(`v_11/v_12 encountered! siblingOrdinal=${siblingOrdinal}, oldEntry=${!!oldEntry}`);
+        if (!oldEntry) {
+          console.log(
+            `Expected to find it in oldByStableKey. Keys in oldByStableKey matching v_11/v_12:`,
+            Array.from(oldByStableKey.keys()).filter((k) => k.includes("v_11") || k.includes("v_12")),
+          );
+        }
+      }
       if (!oldEntry && oldParentId !== parentId) {
         const altKey = this.stableKey(hook.ruleName, name, oldParentId, siblingOrdinal);
         oldEntry = oldByStableKey.get(altKey);
@@ -285,7 +296,7 @@ export class SymbolIndexer {
       }
 
       const overlaps = this.nodeOverlapsEdits(node, editRanges);
-      const id = oldEntry && !overlaps ? oldEntry.id : this.nextId++;
+      const id = oldEntry ? oldEntry.id : this.idGenerator();
 
       // For unchanged hook nodes, reuse old metadata to avoid expensive extraction
       const metadata = oldEntry && !overlaps ? oldEntry.metadata : this.extractMetadata(node, hook);
@@ -341,8 +352,6 @@ export class SymbolIndexer {
     const childCount = node.childCount ?? children.length;
 
     {
-      const childSiblingCounts = new Map<string, number>();
-
       for (let i = 0; i < childCount; i++) {
         const child = children[i];
         if (!child) continue;
@@ -357,7 +366,7 @@ export class SymbolIndexer {
           oldByStableKey,
           oldIndex,
           editRanges,
-          childSiblingCounts,
+          siblingCounts,
           childFieldName,
           currentOldParentId,
           totalDelta,

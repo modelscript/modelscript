@@ -476,16 +476,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Listen for status notifications from the LSP server
   let isScmRegistered = false;
+  let hideTimeout: NodeJS.Timeout | null = null;
   client.onNotification("modelscript/status", (params: { state: string; message: string }) => {
+    if (hideTimeout) {
+      clearTimeout(hideTimeout);
+      hideTimeout = null;
+    }
     switch (params.state) {
       case "loading":
+        statusItem.show();
         statusItem.text = `$(sync~spin) ${params.message}`;
         statusItem.tooltip = "ModelScript is loading...";
         break;
       case "ready":
-        statusItem.text = "$(check) ModelScript";
+        statusItem.show();
+        statusItem.text = `$(check) ${params.message}`;
         statusItem.tooltip = "ModelScript language server is ready";
-        setTimeout(() => statusItem.hide(), 5000);
+        hideTimeout = setTimeout(() => statusItem.hide(), 5000);
         // Auto-refresh UI components now that LSP is fully initialized
         treeProvider.refresh();
         experimentsTreeProvider.refresh();
@@ -1358,76 +1365,7 @@ END-ISO-10303-21;`;
    * Fetch all markdown-related data from the LSP and refresh the preview.
    */
   async function refreshMarkdownData(): Promise<void> {
-    if (!client) return;
-    try {
-      // Fetch variables and content in parallel
-      const [varsResult, contentResult] = await Promise.all([
-        client
-          .sendRequest<{ values: Record<string, string> }>("modelscript/resolveMarkdownVars")
-          .catch((e: unknown) => {
-            console.warn("[ModelScript] resolveMarkdownVars failed:", e);
-            return null;
-          }),
-        client
-          .sendRequest<{
-            requirements: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }>;
-            diagrams: Record<
-              string,
-              { components: { name: string; type: string }[]; connections: { from: string; to: string }[] }
-            >;
-          }>("modelscript/resolveMarkdownContent")
-          .catch((e: unknown) => {
-            console.warn("[ModelScript] resolveMarkdownContent failed:", e);
-            return null;
-          }),
-      ]);
-
-      console.log(
-        "[ModelScript] refreshMarkdownData response:",
-        "vars=",
-        varsResult ? Object.keys(varsResult.values || {}).length : "null",
-        "reqs=",
-        contentResult ? Object.keys(contentResult.requirements || {}).length : "null",
-        "diags=",
-        contentResult ? Object.keys(contentResult.diagrams || {}).length : "null",
-      );
-
-      let changed = false;
-
-      if (varsResult?.values) {
-        for (const [k, v] of Object.entries(varsResult.values)) {
-          if (markdownVarCache[k] !== v) {
-            markdownVarCache[k] = v;
-            changed = true;
-          }
-        }
-      }
-
-      if (contentResult?.requirements) {
-        for (const [k, v] of Object.entries(contentResult.requirements)) {
-          if (JSON.stringify(markdownRequirementsCache[k]) !== JSON.stringify(v.rows)) {
-            markdownRequirementsCache[k] = v.rows;
-            changed = true;
-          }
-        }
-      }
-
-      if (contentResult?.diagrams) {
-        for (const [k, v] of Object.entries(contentResult.diagrams)) {
-          if (JSON.stringify(markdownDiagramComponentsCache[k]) !== JSON.stringify(v)) {
-            markdownDiagramComponentsCache[k] = v;
-            changed = true;
-          }
-        }
-      }
-
-      if (changed) {
-        console.log("[ModelScript] refreshMarkdownData: data changed, refreshing preview");
-        vscode.commands.executeCommand("markdown.preview.refresh");
-      }
-    } catch (e) {
-      console.warn("[ModelScript] refreshMarkdownData failed:", e);
-    }
+    return; // Temporarily disabled
   }
 
   // Listen for document changes AND opens to re-fetch markdown data (debounced).
