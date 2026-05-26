@@ -14,10 +14,23 @@ const TabBar = styled.div`
   display: flex;
   border-bottom: 1px solid var(--color-border-default);
   position: sticky;
-  top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
+  top: var(--dev-header-height, 0px);
   z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: transparent;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-canvas-default);
+    opacity: 0.85;
+    z-index: -1;
+  }
 `;
 
 const Tab = styled.button<{ $active?: boolean }>`

@@ -463,4 +463,30 @@ export const updateUserTopic = async (concept: string, is_active: boolean) => {
   return data;
 };
 
+// ── Key Management API ──────────────────────────────────────────
+
+export interface PublicKeyInfo {
+  id: number;
+  key_id_string: string;
+  public_key_pem: string;
+  device_name: string | null;
+  created_at: string;
+  is_active: number;
+}
+
+export const getPublicKeys = async (): Promise<PublicKeyInfo[]> => {
+  const { data } = await api.get<{ keys: PublicKeyInfo[] }>("/auth/keys");
+  return data.keys;
+};
+
+export const addPublicKey = async (key_id_string: string, public_key_pem: string, device_name?: string) => {
+  const { data } = await api.post("/auth/keys", { key_id_string, public_key_pem, device_name });
+  return data;
+};
+
+export const revokePublicKey = async (id: number) => {
+  const { data } = await api.delete(`/auth/keys/${id}`);
+  return data;
+};
+
 export default api;

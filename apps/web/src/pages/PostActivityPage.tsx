@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ArrowLeftIcon } from "@primer/octicons-react";
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";

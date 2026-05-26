@@ -6,13 +6,18 @@ import { API_BASE_URL } from "../../config";
 import Box from "../Box";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
+import CsvViewer from "./CsvViewer";
 import LinkPreviewViewer from "./LinkPreviewViewer";
+import MermaidViewer from "./MermaidViewer";
 import ModelicaCodeViewer from "./ModelicaCodeViewer";
 import ModelicaDiagramViewer from "./ModelicaDiagramViewer";
 import PdfViewer from "./PdfViewer";
 import PictureViewer from "./PictureViewer";
 import SimulationPlotViewer from "./SimulationPlotViewer";
+import UsdViewer from "./UsdViewer";
+import VegaViewer from "./VegaViewer";
 import VideoViewer from "./VideoViewer";
+import YoutubeVideoViewer from "./YoutubeVideoViewer";
 
 interface ArtifactViewCardProps {
   artifactId: number;
@@ -62,6 +67,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
   const renderViewer = () => {
     switch (artifact.view_type) {
       case "cad-step":
+      case "cad_step":
         return <CadStepViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelica-code":
         return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -69,14 +75,24 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
         return <ModelicaDiagramViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "simulation-plot":
         return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "vega-plot":
+        return <VegaViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "mermaid-diagram":
+        return <MermaidViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "3d-model":
+        return <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "video":
         return <VideoViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "youtube_video":
+        return <YoutubeVideoViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "picture":
         return <PictureViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "audio":
         return <AudioViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "pdf":
         return <PdfViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "csv":
+        return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "link-preview":
         return <LinkPreviewViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       default:

@@ -23,13 +23,19 @@
     "axios": "^1.13.6",
     "d3-scale": "^4.0.2",
     "dompurify": "^3.4.0",
-    "occt-import-js": "^0.0.23",
+    "emoji-picker-react": "^4.19.1",
+    "marked": "^14.0.0",
+    "mermaid": "^11.15.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
     "react-simple-maps": "^3.0.0",
+    "react-vega": "^8.0.0",
     "styled-components": "^6.3.11",
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "vega": "^6.2.0",
+    "vega-embed": "^7.1.0",
+    "vega-lite": "^6.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,10 +1,17 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 
 import { Connection } from "vscode-languageserver";
 import { cadComponentsCache, flattenArenaFromInstance, lastIndexedText, simpleHash } from "../browserServerMain";
+import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol";
+import { DiagramService } from "../services/DiagramService";
 
-export function registerDiagramHandlers(connection: Connection, documentManager: any, workspaceManager: any) {
+export function registerDiagramHandlers(
+  connection: Connection,
+  documentManager: any,
+  workspaceManager: any,
+  diagramService: DiagramService,
+) {
   connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
     const model = workspaceManager.stepWorkspaceIndex.getAssemblyModel(params.uri);
     if (!model) {
@@ -23,7 +30,8 @@ export function registerDiagramHandlers(connection: Connection, documentManager:
 
   connection.onRequest(
     "modelscript/getDiagramData",
-    async (params: { uri: string; className?: string; diagramType?: string }) => await handleGetDiagramData(params),
+    async (params: { uri: string; className?: string; diagramType?: string }) =>
+      await diagramService.handleGetDiagramData(params),
   );
 
   connection.onRequest(
@@ -88,7 +96,7 @@ export function registerDiagramHandlers(connection: Connection, documentManager:
   });
 
   connection.onRequest(DiagramMethods.applyEdits, async (params: DiagramApplyEditsParams) => {
-    return await getDiagramDispatch().applyEdits(params);
+    return await diagramService.getDiagramDispatch().applyEdits(params);
   });
 
   connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {

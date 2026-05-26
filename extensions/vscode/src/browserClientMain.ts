@@ -345,7 +345,7 @@ export async function activate(context: vscode.ExtensionContext) {
     outputChannel: lspOutputChannel,
   };
 
-  client = createWorkerLanguageClient(context, clientOptions);
+  client = await createWorkerLanguageClient(context, clientOptions);
 
   try {
     await client.start();
@@ -1413,10 +1413,20 @@ export async function deactivate(): Promise<void> {
   }
 }
 
-function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
+async function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
   // The server bundle is built into server/dist/ by webpack
   const serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
-  const worker = new Worker(serverMain.toString(true));
+
+  // Workaround for importScripts NetworkError: fetch the script and create a Blob worker directly.
+  // This bypasses COEP/CORS mismatches that sometimes occur when the VS Code Extension Host
+  // polyfills `new Worker()` via a Blob worker and importScripts.
+  const response = await fetch(serverMain.toString(true));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch LSP worker: ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const worker = new Worker(blobUrl);
 
   return new LanguageClient("modelscript", "ModelScript Language Server", clientOptions, worker);
 }

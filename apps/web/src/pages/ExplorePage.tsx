@@ -15,11 +15,24 @@ const SearchHeader = styled.div`
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
   position: sticky;
-  top: 0;
+  top: var(--dev-header-height, 0px);
   z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: transparent;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-canvas-default);
+    opacity: 0.85;
+    z-index: -1;
+  }
 `;
 
 const SearchInputWrapper = styled.div`
@@ -53,23 +66,7 @@ const SearchInputWrapper = styled.div`
   }
 `;
 
-const HeaderIconButton = styled.button`
-  background: none;
-  border: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--color-fg-default);
-  transition: background-color 0.2s;
-
-  &:hover {
-    background-color: var(--color-canvas-subtle);
-  }
-`;
+import { CircleIconButton as HeaderIconButton } from "../components/SharedStyles";
 
 const TabContainer = styled.div`
   display: flex;

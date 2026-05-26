@@ -7,6 +7,8 @@ import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import Post from "../components/Post";
+import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
+import SimpleEmojiPicker from "../components/SimpleEmojiPicker";
 import { API_BASE_URL } from "../config";
 
 const ReplyInputContainer = styled.div`
@@ -19,6 +21,7 @@ const ReplyInputContainer = styled.div`
 const ReplyRow = styled.div`
   display: flex;
   gap: 12px;
+  align-items: flex-start;
 `;
 
 const ReplyContentCol = styled.div`
@@ -27,7 +30,7 @@ const ReplyContentCol = styled.div`
   flex: 1;
 `;
 
-const ReplyInput = styled.input`
+const ReplyInput = styled.textarea`
   color: var(--color-fg-default);
   font-size: 20px;
   flex: 1;
@@ -36,6 +39,11 @@ const ReplyInput = styled.input`
   outline: none;
   padding-top: 8px;
   padding-bottom: 8px;
+  resize: none;
+  overflow: hidden;
+  min-height: 40px;
+  font-family: inherit;
+  line-height: 1.2;
   &::placeholder {
     color: var(--color-fg-muted);
   }
@@ -78,8 +86,10 @@ const PostDetailPage: React.FC = () => {
   const [replies, setReplies] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [hasExpanded, setHasExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const viewTrackedRef = useRef<Set<string>>(new Set());
 
@@ -147,7 +157,11 @@ const PostDetailPage: React.FC = () => {
         setReplies((prev) => [data.post, ...prev]);
         setReplyContent("");
         setIsFocused(false);
-        if (inputRef.current) inputRef.current.blur();
+        setHasExpanded(false);
+        if (inputRef.current) {
+          (inputRef.current as any).style.height = "auto";
+          inputRef.current.blur();
+        }
       }
     } catch (err) {
       console.error(err);
@@ -172,18 +186,18 @@ const PostDetailPage: React.FC = () => {
     );
   }
 
-  const showToolbar = isFocused || replyContent.length > 0;
+  const showToolbar = isFocused || replyContent.length > 0 || hasExpanded;
 
   return (
-    <Box minHeight="100vh">
-      <Box p={3} borderBottom="1px solid var(--color-border)" display="flex" alignItems="center" gap={4}>
-        <div style={{ cursor: "pointer", display: "flex" }} onClick={() => navigate(-1)}>
+    <Box minHeight="100vh" style={{ paddingBottom: "200px" }}>
+      <StickyHeader style={{ gap: "32px", padding: "12px 16px" }}>
+        <CircleIconButton onClick={() => navigate(-1)}>
           <ArrowLeftIcon size={20} />
-        </div>
-        <Heading as="h2" style={{ fontSize: "20px" }}>
+        </CircleIconButton>
+        <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
           Post
         </Heading>
-      </Box>
+      </StickyHeader>
 
       {parents.map((parent) => (
         <Post key={parent.id} post={parent} />
@@ -236,16 +250,26 @@ const PostDetailPage: React.FC = () => {
             <ReplyContentCol>
               <Box display="flex" alignItems="center" gap={2}>
                 <ReplyInput
-                  ref={inputRef}
+                  ref={inputRef as any}
                   placeholder="Post your reply"
                   value={replyContent}
-                  onChange={(e) => setReplyContent(e.target.value)}
-                  onFocus={() => setIsFocused(true)}
+                  onChange={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                    setReplyContent(e.target.value);
+                  }}
+                  onFocus={() => {
+                    setIsFocused(true);
+                    setHasExpanded(true);
+                  }}
                   onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleReply();
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      handleReply();
+                    }
                   }}
                   disabled={isSubmitting}
+                  rows={1}
                 />
                 {!showToolbar && (
                   <ReplyButton
@@ -267,9 +291,21 @@ const PostDetailPage: React.FC = () => {
                     <IconButton>
                       <PaperclipIcon size={18} />
                     </IconButton>
-                    <IconButton>
-                      <SmileyIcon size={18} />
-                    </IconButton>
+                    <div style={{ position: "relative" }}>
+                      <IconButton onClick={() => setShowEmojiPicker((prev) => !prev)}>
+                        <SmileyIcon size={18} />
+                      </IconButton>
+                      {showEmojiPicker && (
+                        <div style={{ position: "absolute", top: "100%", zIndex: 1000, marginTop: "8px" }}>
+                          <SimpleEmojiPicker
+                            onEmojiClick={(emojiData) => {
+                              setReplyContent((prev) => prev + emojiData.emoji);
+                              setShowEmojiPicker(false);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
                     <IconButton>
                       <LocationIcon size={18} />
                     </IconButton>

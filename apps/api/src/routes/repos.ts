@@ -11,8 +11,9 @@ export function reposRouter(database: LibraryDatabase): Router {
    * GET /api/v1/repos/popular
    */
   router.get("/popular", (req: Request, res: Response) => {
+    const limit = Number(req.query.limit) || 50;
     try {
-      const repos = database.getPopularRepos(5);
+      const repos = database.getPopularRepos(limit);
       res.json({ repos });
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch popular repositories" });

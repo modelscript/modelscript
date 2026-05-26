@@ -49,6 +49,12 @@ const GitLabIcon = () => (
   </svg>
 );
 
+const XIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
 const SearchContainer = styled.div`
   position: sticky;
   top: -12px;
@@ -94,7 +100,7 @@ const SearchWrapper = styled.div`
     padding: 12px 16px 12px 42px;
     border-radius: 9999px;
     background-color: var(--color-canvas-subtle);
-    border: 1px solid #cfd9de;
+    border: 1px solid var(--color-border);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
@@ -113,7 +119,7 @@ const DropdownWrapper = styled.div`
   left: 0;
   right: 0;
   background: var(--color-bg-primary);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   margin-top: 4px;
@@ -125,7 +131,7 @@ const DropdownWrapper = styled.div`
 
 const DropdownSection = styled.div`
   padding: 8px 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border);
 
   &:last-child {
     border-bottom: none;
@@ -153,7 +159,7 @@ const DropdownItem = styled.div`
 
 const Card = styled.div`
   background-color: transparent;
-  border: 1px solid var(--color-border-default, #d0d7de);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
@@ -202,7 +208,7 @@ const ProviderButton = styled.button`
   height: 40px;
   background: var(--color-canvas-default);
   color: var(--color-fg-default);
-  border: 1px solid #cfd9de;
+  border: 1px solid var(--color-border);
   border-radius: 9999px;
   font-size: 15px;
   font-weight: bold;
@@ -414,7 +420,7 @@ const RightPanel: React.FC = () => {
               </label>
             </div>
 
-            <div style={{ height: "1px", backgroundColor: "var(--color-border-subtle)" }} />
+            <div style={{ height: "1px", backgroundColor: "var(--color-border)" }} />
 
             <div>
               <Text
@@ -466,7 +472,7 @@ const RightPanel: React.FC = () => {
               </label>
             </div>
 
-            <div style={{ height: "1px", backgroundColor: "var(--color-border-subtle)" }} />
+            <div style={{ height: "1px", backgroundColor: "var(--color-border)" }} />
 
             <a
               href="#advanced"
@@ -582,9 +588,11 @@ const RightPanel: React.FC = () => {
               <GitLabIcon />
               Sign up with GitLab
             </ProviderButton>
-            <div
-              style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "var(--color-border-default)" }}
-            >
+            <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
+              <XIcon />
+              Sign up with X
+            </ProviderButton>
+            <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "var(--color-border)" }}>
               <div style={{ flex: 1, borderBottom: "1px solid currentColor" }}></div>
               <span style={{ margin: "0 8px", fontSize: "13px", color: "var(--color-fg-muted)" }}>or</span>
               <div style={{ flex: 1, borderBottom: "1px solid currentColor" }}></div>
@@ -692,7 +700,7 @@ const RightPanel: React.FC = () => {
                         top="100%"
                         right="0"
                         bg="var(--color-bg-primary)"
-                        border="1px solid var(--color-border-subtle)"
+                        border="1px solid var(--color-border)"
                         borderRadius="12px"
                         boxShadow="0 4px 12px rgba(0,0,0,0.15)"
                         p={2}

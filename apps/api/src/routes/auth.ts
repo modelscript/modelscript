@@ -122,29 +122,97 @@ export function authRouter(database: LibraryDatabase): Router {
   });
 
   /**
+   * GET /api/v1/auth/link/:provider
+   * Initiated from the browser via an href link. Accepts token via query param to verify user.
+   */
+  router.get("/link/:provider", (req: Request, res: Response) => {
+    const { provider } = req.params;
+    const token = req.query.token as string;
+
+    if (!token) {
+      res.redirect(`http://localhost:3000/settings?error=MissingToken`);
+      return;
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
+      const state = encodeURIComponent(JSON.stringify({ action: "link", userId: decoded.id }));
+      res.redirect(`/api/v1/auth/callback/${provider}?code=mock_code_from_${provider}&state=${state}`);
+    } catch {
+      res.redirect(`http://localhost:3000/settings?error=InvalidToken`);
+    }
+  });
+
+  /**
    * GET /api/v1/auth/callback/:provider
    */
   router.get("/callback/:provider", (req: Request, res: Response) => {
     const provider = req.params.provider as string;
-    // Mock OAuth flow: exchange code for profile
+    const stateParam = req.query.state as string;
+
+    // Mock OAuth flow: exchange code for profile and tokens
     const mockEmail = `mockuser@${provider}.com`;
     const mockUsername = `mockuser_${provider}`;
     const mockProviderUserId = `12345_${provider}`;
+    const mockAccessToken = `mock_access_token_${provider}`;
+    const mockRefreshToken = `mock_refresh_token_${provider}`;
+    const mockExpiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
 
     try {
+      let stateData: { action?: string; userId?: number } | null = null;
+      if (stateParam) {
+        stateData = JSON.parse(decodeURIComponent(stateParam));
+      }
+
+      if (stateData?.action === "link" && stateData.userId) {
+        // Handle Account Linking
+        const userId = stateData.userId;
+        const user = database.getUserById(userId);
+        if (!user) {
+          res.redirect(`http://localhost:3000/settings?error=UserNotFound`);
+          return;
+        }
+
+        const existingLink = database.getOAuthAccountByUserId(userId, provider);
+        if (existingLink) {
+          database.updateOAuthTokens(userId, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
+        } else {
+          // Temporarily create a user just to use createOAuthUser but since user exists,
+          // wait, we need an insert into oauth_accounts!
+          // We can just add it via a raw DB call, but since we are mocking, let's just
+          // add an insertOAuthAccount method or use a quick query.
+          database.db
+            .prepare(
+              `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .run(userId, provider, mockProviderUserId, mockAccessToken, mockRefreshToken, mockExpiresAt);
+        }
+
+        res.redirect(`http://localhost:3000/settings?success=Linked${provider}`);
+        return;
+      }
+
+      // Handle Normal Login/Signup
       let oauthAcc = database.getOAuthAccount(provider, mockProviderUserId);
       let userId = oauthAcc?.user_id;
       let user;
 
       if (userId) {
         user = database.getUserById(userId);
+        database.updateOAuthTokens(userId, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
       } else {
         // Ensure email/username are not already taken by a regular account
         const existing = database.getUserByEmail(mockEmail);
         if (existing) {
           user = existing;
+          database.db
+            .prepare(
+              `INSERT INTO oauth_accounts (user_id, provider, provider_user_id, access_token, refresh_token, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .run(user.id, provider, mockProviderUserId, mockAccessToken, mockRefreshToken, mockExpiresAt);
         } else {
           user = database.createOAuthUser(mockUsername, mockEmail, provider, mockProviderUserId);
+          database.updateOAuthTokens(user.id, provider, mockAccessToken, mockRefreshToken, mockExpiresAt);
         }
       }
 
@@ -286,6 +354,48 @@ export function authRouter(database: LibraryDatabase): Router {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to update notification settings" });
+    }
+  });
+
+  /**
+   * GET /api/v1/auth/keys
+   */
+  router.get("/keys", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const keys = database.getPublicKeysForUser(req.user!.id);
+      res.json({ keys });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch public keys" });
+    }
+  });
+
+  /**
+   * POST /api/v1/auth/keys
+   */
+  router.post("/keys", requireAuth, (req: Request, res: Response): void => {
+    const { key_id_string, public_key_pem, device_name } = req.body;
+    if (!key_id_string || !public_key_pem) {
+      res.status(400).json({ error: "key_id_string and public_key_pem are required" });
+      return;
+    }
+
+    try {
+      const result = database.addPublicKeyForUser(req.user!.id, key_id_string, public_key_pem, device_name);
+      res.status(201).json({ id: result.id, key_id_string, device_name });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to add public key" });
+    }
+  });
+
+  /**
+   * DELETE /api/v1/auth/keys/:id
+   */
+  router.delete("/keys/:id", requireAuth, (req: Request, res: Response): void => {
+    try {
+      database.revokePublicKey(req.user!.id, Number(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to revoke public key" });
     }
   });
 

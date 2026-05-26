@@ -4,9 +4,9 @@ import { Spinner } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
-import { ComposeContext } from "../components/AppShell";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
+import { ComposeContext } from "../components/ComposeContext";
 import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
 
@@ -166,7 +166,7 @@ const HomeFeedPage: React.FC = () => {
   }, [token, activeTab, followingSort]);
 
   return (
-    <Box>
+    <Box style={{ paddingBottom: "200px" }}>
       <TabBar>
         <Tab onClick={() => setActiveTab("forYou")}>
           <TabText $active={activeTab === "forYou"}>For you</TabText>

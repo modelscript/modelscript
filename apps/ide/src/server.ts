@@ -177,11 +177,17 @@ app.use((_req, res, next) => {
 // COI headers (required for SharedArrayBuffer)
 app.use((req, res, next) => {
   const coi = req.query["vscode-coi"];
+  const isWorkerOrStatic =
+    req.url.startsWith("/static/") ||
+    req.url.startsWith("/vscode-static/") ||
+    req.headers["sec-fetch-dest"] === "worker" ||
+    req.headers["sec-fetch-dest"] === "sharedworker";
+
   if (coi === "1") {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   } else if (coi === "2") {
     res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
-  } else if (coi === "3" || coi === "") {
+  } else if (coi === "3" || coi === "" || isWorkerOrStatic) {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
     res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
   }

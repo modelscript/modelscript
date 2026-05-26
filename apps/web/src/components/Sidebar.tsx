@@ -119,7 +119,7 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   }
 
   &:hover > div {
-    background-color: var(--color-canvas-subtle);
+    background-color: rgba(128, 128, 128, 0.15);
   }
 
   @media (max-width: 1280px) {

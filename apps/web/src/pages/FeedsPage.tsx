@@ -1,10 +1,12 @@
-import { PlusIcon, RssIcon, TrashIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+import { PlusIcon, RssIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
+import { Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { API_BASE_URL } from "../config";
 
 const FeedItemWrapper = styled.div`
@@ -56,47 +58,39 @@ const FeedInput = styled.input`
 
   &::placeholder {
     color: var(--color-fg-muted);
-  }
-`;
-
-const IconButton = styled.button`
-  background: none;
-  border: none;
-  color: var(--color-accent-fg);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background-color: var(--color-canvas-subtle);
-  }
-
-  &:disabled {
     opacity: 0.5;
-    cursor: not-allowed;
   }
 `;
 
-const TrashIconButton = styled.button`
-  background: none;
-  border: none;
-  color: var(--color-danger-fg);
-  cursor: pointer;
+const SpinAnimation = styled.div`
+  @keyframes spin {
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  animation: spin 1s linear infinite;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  transition: background-color 0.2s;
+`;
+
+const TrashIconButton = styled(CircleIconButton)`
+  color: var(--color-fg-muted);
+  &:hover:not(:disabled) {
+    color: var(--color-danger-fg);
+    background-color: var(--color-danger-subtle);
+  }
+`;
+
+const MutedUrl = styled.a`
+  display: block;
+  font-size: 13px;
+  color: var(--color-fg-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   &:hover {
-    background-color: var(--color-danger-subtle);
+    text-decoration: underline;
   }
 `;
 
@@ -122,7 +116,7 @@ function formatRssHandle(urlStr: string) {
 
 const FeedsPage: React.FC = () => {
   const { token } = useAuth();
-  const [feeds, setFeeds] = useState<unknown[]>([]);
+  const [feeds, setFeeds] = useState<any[]>([]);
   const [urlInput, setUrlInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,36 +197,42 @@ const FeedsPage: React.FC = () => {
 
   return (
     <Box>
-      <Box p={3} borderBottom="1px solid var(--color-border)">
+      <StickyHeader style={{ justifyContent: "space-between" }}>
         <Heading as="h2" style={{ fontSize: "20px", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
           <RssIcon size={24} />
           RSS Feeds
         </Heading>
-      </Box>
+        <Text color="var(--color-fg-muted)" fontSize="14px">
+          {feeds.length} / 10
+        </Text>
+      </StickyHeader>
 
       <InputSection onSubmit={handleSubscribe}>
         <FeedInput
-          type="url"
-          placeholder="https://example.com/feed.xml"
+          type="text"
+          placeholder="Enter an RSS feed URL, YouTube handle, or channel ID"
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           disabled={isLoading}
           required
         />
-        <IconButton type="submit" disabled={isLoading || !urlInput.trim()}>
-          {isLoading ? <Spinner size="small" /> : <PlusIcon size={20} />}
-        </IconButton>
+        <CircleIconButton type="submit" disabled={isLoading || feeds.length >= 10}>
+          {isLoading ? (
+            <SpinAnimation>
+              <SyncIcon size={16} />
+            </SpinAnimation>
+          ) : (
+            <PlusIcon size={16} />
+          )}
+        </CircleIconButton>
       </InputSection>
 
       <Box px={3}>
         {error && (
-          <Text color="danger.fg" style={{ marginTop: "12px", display: "block" }}>
+          <Text color="var(--color-danger-fg)" style={{ marginTop: "12px", display: "block" }}>
             {error}
           </Text>
         )}
-        <Text color="var(--color-fg-muted)" fontSize="15px" style={{ display: "block", margin: "16px 0" }}>
-          Subscribe to RSS or ATOM feeds. They will appear in your timeline. Max 10 feeds.
-        </Text>
       </Box>
 
       {feeds.length === 0 ? (
@@ -244,7 +244,16 @@ const FeedsPage: React.FC = () => {
           {feeds.map((feed) => (
             <FeedItemWrapper key={feed.id}>
               <Avatar $url={feed.avatar_url}>{!feed.avatar_url && (feed.title || "R").charAt(0).toUpperCase()}</Avatar>
-              <Box flex={1}>
+              <Box
+                flex={1}
+                style={{
+                  minWidth: 0,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                }}
+              >
                 <Box display="flex" alignItems="center" gap={2}>
                   <Link to={`/${feed.username}`} style={{ color: "var(--color-fg-default)", textDecoration: "none" }}>
                     <Text style={{ fontWeight: "bold", fontSize: "15px" }}>{feed.display_name}</Text>
@@ -253,20 +262,9 @@ const FeedsPage: React.FC = () => {
                     {formatRssHandle(feed.url)}
                   </Text>
                 </Box>
-                <a
-                  href={feed.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: "block",
-                    fontSize: "14px",
-                    color: "var(--color-fg-muted)",
-                    textDecoration: "none",
-                    marginTop: "4px",
-                  }}
-                >
+                <MutedUrl href={feed.url} target="_blank" rel="noreferrer" title={feed.url}>
                   {feed.url}
-                </a>
+                </MutedUrl>
               </Box>
               <TrashIconButton onClick={() => handleUnsubscribe(feed.id)} title="Unsubscribe">
                 <TrashIcon size={16} />

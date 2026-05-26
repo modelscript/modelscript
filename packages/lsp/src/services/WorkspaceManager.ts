@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 import { Context, QueryEngine, UnifiedWorkspace, WorkspaceIndex } from "@modelscript/compiler";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";

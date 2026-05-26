@@ -4,14 +4,17 @@ import type { CosimMqttClient } from "@modelscript/cosim";
 import bcrypt from "bcryptjs";
 import express from "express";
 import rateLimit from "express-rate-limit";
+import path from "node:path";
 import type { Pool } from "pg";
 
 import { initializeArtifactSystem } from "./artifacts/index.js";
 import { LibraryDatabase } from "./database.js";
 import { JobQueue } from "./jobs.js";
+import { setAuthDatabase } from "./middleware/auth-middleware.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
+import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
 import { gitlabRouter } from "./routes/gitlab.js";
 import { graphqlRouter } from "./routes/graphql.js";
@@ -54,6 +57,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
 
+  setAuthDatabase(database);
+
   // Initialize the extensible artifact system (FMU, Dataset, etc.)
   initializeArtifactSystem();
 
@@ -62,14 +67,15 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
     // Seed dev users
     const devUsers = [
-      { username: "dev", email: "dev@modelscript.org" },
-      { username: "alice", email: "alice@modelscript.org" },
-      { username: "bob", email: "bob@modelscript.org" },
+      { username: "dev", email: "dev@modelscript.org", location: "Syria" },
+      { username: "alice", email: "alice@modelscript.org", location: "United States" },
+      { username: "bob", email: "bob@modelscript.org", location: "China" },
     ];
     for (const u of devUsers) {
       if (!database.getUserByUsername(u.username)) {
         const hash = bcrypt.hashSync("password", 10);
-        database.createUser(u.username, u.email, hash);
+        const { id } = database.createUser(u.username, u.email, hash);
+        database.updateProfile(id, { location: u.location });
       }
     }
 
@@ -85,7 +91,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         for (const u of devUsers) {
           if (!database.getUserByUsername(u.username)) {
             const hash = bcrypt.hashSync("password", 10);
-            database.createUser(u.username, u.email, hash);
+            const { id } = database.createUser(u.username, u.email, hash);
+            database.updateProfile(id, { location: u.location });
           }
         }
 
@@ -103,6 +110,107 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
             "Has anyone played with the new Modelica parser yet? The AST is looking really clean.",
             undefined,
             devPost.id,
+          );
+
+          const cadViewId = database.createArtifactView(
+            alice.id,
+            "cad_step",
+            "url",
+            JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/cad/drone.step" }),
+            "Drone Chassis CAD Model",
+          );
+
+          database.createPost(
+            alice.id,
+            "Just finished the initial 3D design for the drone chassis! The STEP file is attached below. Let me know what you think of the rotor placement. 🚁 #cad",
+            cadViewId,
+          );
+
+          // Vega-Lite trajectory plot
+          const vegaSpec = {
+            $schema: "https://vega.github.io/schema/vega-lite/v5.json",
+            description: "Simulation Trajectory of a Pendulum",
+            mark: "line",
+            encoding: {
+              x: { field: "time", type: "quantitative", title: "Time (s)" },
+              y: { field: "angle", type: "quantitative", title: "Angle (rad)" },
+            },
+          };
+          const vegaData = [
+            { time: 0, angle: 0.5 },
+            { time: 0.1, angle: 0.48 },
+            { time: 0.2, angle: 0.42 },
+            { time: 0.3, angle: 0.34 },
+            { time: 0.4, angle: 0.24 },
+            { time: 0.5, angle: 0.12 },
+            { time: 0.6, angle: 0 },
+            { time: 0.7, angle: -0.12 },
+            { time: 0.8, angle: -0.24 },
+            { time: 0.9, angle: -0.34 },
+            { time: 1.0, angle: -0.42 },
+          ];
+
+          const vegaViewId = database.createArtifactView(
+            devUser.id,
+            "vega-plot",
+            "inline",
+            JSON.stringify({ spec: vegaSpec, data: vegaData }),
+            "Pendulum Simulation Trajectory",
+          );
+          database.createPost(
+            devUser.id,
+            "Here is the simulation trajectory for the pendulum model over 1 second. Vega-Lite makes it so easy to visualize this! 📉",
+            vegaViewId,
+          );
+
+          // Mermaid diagram
+          const mermaidCode = `
+graph TD
+    A[Start] --> B{Is it working?}
+    B -- Yes --> C[Great!]
+    B -- No --> D[Debug]
+    D --> B
+`;
+          const mermaidViewId = database.createArtifactView(
+            devUser.id,
+            "mermaid-diagram",
+            "inline",
+            JSON.stringify({ code: mermaidCode }),
+            "Flowchart Diagram",
+          );
+          database.createPost(
+            devUser.id,
+            "I've also mapped out the debugging process using a Mermaid diagram. What do you think? 🧜‍♀️",
+            mermaidViewId,
+          );
+
+          // PDF Document
+          const pdfViewId = database.createArtifactView(
+            devUser.id,
+            "pdf",
+            "inline",
+            JSON.stringify({ url: "http://localhost:3000/static-examples/drone-chassis/docs/drone-manual.pdf" }),
+            "Dummy PDF Document",
+          );
+          database.createPost(
+            devUser.id,
+            "Just reading through this interesting document. The PDF viewer embeds it perfectly! 📄",
+            pdfViewId,
+          );
+
+          // CSV Table
+          const csvData = `Name,Age,Role,Score\nAlice,28,Engineer,95\nBob,34,Designer,88\nCharlie,22,Intern,91`;
+          const csvViewId = database.createArtifactView(
+            devUser.id,
+            "csv",
+            "inline",
+            JSON.stringify({ data: csvData }),
+            "Team Statistics",
+          );
+          database.createPost(
+            devUser.id,
+            "Check out these team statistics! The CSV table viewer renders the data cleanly. 📊",
+            csvViewId,
           );
         }
 
@@ -154,7 +262,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     legacyHeaders: false,
     message: { error: "Too many requests, please try again later." },
   });
-  app.use(limiter);
+  if (process.env["NODE_ENV"] === "production") {
+    app.use(limiter);
+  }
 
   // CORS — allow all origins (VS Code webviews, Morsel, etc.)
   app.use((_req, res, next) => {
@@ -175,6 +285,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/repos", reposRouter(database));
   app.use("/api/v1/search", searchRouter(database));
   app.use("/api/v1/storage", storageRouter());
+  app.use("/", federationRouter(database));
 
   // Mount the library routers
   app.use("/api/v1/libraries", packagesRouter(libraryStorage, jobQueue, database));
@@ -193,6 +304,10 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/gitlab", gitlabRouter());
+
+  if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
+    app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));
+  }
 
   // ── npm-compatible registry (mounted at root for `npm --registry=` compat) ──
   app.use("/", npmAuthRouter(database));

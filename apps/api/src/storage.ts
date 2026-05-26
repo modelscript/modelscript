@@ -168,9 +168,16 @@ export class LibraryStorage {
     try {
       await extractZipToDir(zipData.buffer, tmpDir);
 
-      const libraryRoot = findLibraryRoot(tmpDir);
+      let libraryRoot = findLibraryRoot(tmpDir);
       if (!libraryRoot) {
-        throw new Error(`Could not find package.mo in the extracted zip for ${name}@${version}`);
+        // Fallback for data-only packages (like drone-chassis)
+        const entries = fs.readdirSync(tmpDir, { withFileTypes: true });
+        const firstEntry = entries[0];
+        if (entries.length === 1 && firstEntry && firstEntry.isDirectory()) {
+          libraryRoot = path.join(tmpDir, firstEntry.name);
+        } else {
+          libraryRoot = tmpDir;
+        }
       }
 
       fs.mkdirSync(path.dirname(extPath), { recursive: true });
@@ -230,7 +237,7 @@ export class LibraryStorage {
   }
 
   #safe(val: string): string {
-    if (/[/\\]/.test(val) || val === ".." || val === ".") {
+    if (val.includes("..") || val === "." || val.startsWith("/")) {
       throw new Error(`Invalid path component: ${val}`);
     }
     return val;

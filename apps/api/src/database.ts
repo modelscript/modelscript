@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import Database from "better-sqlite3";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -114,6 +115,11 @@ export class LibraryDatabase {
       "package_versions",
       "dist_tags",
       "artifacts",
+      "post_syndications",
+      "post_location_stats",
+      "cad_cache",
+      "settings",
+      "user_public_keys",
     ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     this.#db.transaction(() => {
@@ -179,6 +185,12 @@ export class LibraryDatabase {
         website       TEXT,
         notification_settings TEXT DEFAULT '{}',
         account_type  TEXT DEFAULT 'user',
+        rsa_private_key TEXT,
+        rsa_public_key  TEXT,
+        actor_url       TEXT,
+        inbox_url       TEXT,
+        outbox_url      TEXT,
+        remote_domain   TEXT,
         created_at    TEXT DEFAULT (datetime('now'))
       );
 
@@ -187,6 +199,9 @@ export class LibraryDatabase {
         user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         provider          TEXT NOT NULL,
         provider_user_id  TEXT NOT NULL,
+        access_token      TEXT,
+        refresh_token     TEXT,
+        expires_at        TEXT,
         UNIQUE(provider, provider_user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_oauth_accounts_user ON oauth_accounts(user_id);
@@ -210,7 +225,11 @@ export class LibraryDatabase {
         site_url        TEXT,
         last_fetched_at TEXT,
         last_guid       TEXT,
-        created_at      TEXT DEFAULT (datetime('now'))
+        created_at      TEXT DEFAULT (datetime('now')),
+        etag            TEXT,
+        last_modified   TEXT,
+        poll_interval_mins INTEGER DEFAULT 15,
+        last_polled_at  TEXT
       );
 
       CREATE TABLE IF NOT EXISTS user_rss_subscriptions (
@@ -241,12 +260,38 @@ export class LibraryDatabase {
         quote_post_id    INTEGER REFERENCES posts(id),
         repost_of_id     INTEGER REFERENCES posts(id),
         view_count       INTEGER DEFAULT 0,
+        ap_id            TEXT UNIQUE,
+        url              TEXT,
+        metadata         TEXT,
         created_at       TEXT DEFAULT (datetime('now')),
         updated_at       TEXT DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
       CREATE INDEX IF NOT EXISTS idx_posts_reply ON posts(reply_to_id);
       CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS user_public_keys (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key_id_string  TEXT NOT NULL UNIQUE,
+        public_key_pem TEXT NOT NULL,
+        device_name    TEXT,
+        created_at     TEXT DEFAULT (datetime('now')),
+        expires_at     TEXT,
+        is_active      INTEGER DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_public_keys_user ON user_public_keys(user_id);
+
+      CREATE TABLE IF NOT EXISTS post_syndications (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id          INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+        target           TEXT NOT NULL,
+        external_id      TEXT NOT NULL,
+        url              TEXT,
+        created_at       TEXT DEFAULT (datetime('now')),
+        UNIQUE(post_id, target)
+      );
+      CREATE INDEX IF NOT EXISTS idx_post_syndications_post ON post_syndications(post_id);
 
       CREATE TABLE IF NOT EXISTS likes (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -321,9 +366,9 @@ export class LibraryDatabase {
         post_id      INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
         country_code TEXT NOT NULL,
         region_code  TEXT,
-        view_count   INTEGER DEFAULT 1,
-        UNIQUE(post_id, country_code, COALESCE(region_code, ''))
+        view_count   INTEGER DEFAULT 1
       );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_post_location_stats ON post_location_stats(post_id, country_code, COALESCE(region_code, ''));
 
       -- ── npm registry tables ──────────────────────────────────────
 
@@ -377,6 +422,17 @@ export class LibraryDatabase {
       CREATE INDEX IF NOT EXISTS idx_package_versions_pkg ON package_versions(package_id);
       CREATE INDEX IF NOT EXISTS idx_dist_tags_pkg ON dist_tags(package_id);
       CREATE INDEX IF NOT EXISTS idx_artifacts_version ON artifacts(version_id);
+      
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS cad_cache (
+        url TEXT PRIMARY KEY,
+        geometry_json TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // Migrations
@@ -385,6 +441,43 @@ export class LibraryDatabase {
     } catch (e) {
       // Column already exists
     }
+
+    try {
+      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN etag TEXT`);
+      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN last_modified TEXT`);
+      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN poll_interval_mins INTEGER DEFAULT 15`);
+      this.#db.exec(`ALTER TABLE rss_feeds ADD COLUMN last_polled_at TEXT`);
+    } catch (e) {
+      // Columns already exist
+    }
+
+    try {
+      this.#db.exec(`ALTER TABLE users ADD COLUMN rsa_private_key TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN rsa_public_key TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN actor_url TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN inbox_url TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN outbox_url TEXT`);
+      this.#db.exec(`ALTER TABLE users ADD COLUMN remote_domain TEXT`);
+    } catch (e) {
+      // Columns already exist
+    }
+
+    try {
+      const usersWithoutKeys = this.#db
+        .prepare(`SELECT id, username FROM users WHERE rsa_private_key IS NULL`)
+        .all() as Array<{ id: number; username: string }>;
+      const updateStmt = this.#db.prepare(
+        `UPDATE users SET rsa_private_key = ?, rsa_public_key = ?, actor_url = ?, inbox_url = ?, outbox_url = ? WHERE id = ?`,
+      );
+      const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      this.#db.transaction(() => {
+        for (const u of usersWithoutKeys) {
+          const keys = this.#generateRSAKeys();
+          const actorUrl = `${publicUrl}/users/${u.username}`;
+          updateStmt.run(keys.privateKey, keys.publicKey, actorUrl, `${actorUrl}/inbox`, `${actorUrl}/outbox`, u.id);
+        }
+      })();
+    } catch (e) {}
 
     try {
       this.#db.exec(`ALTER TABLE users ADD COLUMN account_type TEXT DEFAULT 'user'`);
@@ -411,6 +504,21 @@ export class LibraryDatabase {
     } catch (e) {
       // Column already exists
     }
+
+    try {
+      this.#db.exec(`ALTER TABLE posts ADD COLUMN ap_id TEXT UNIQUE`);
+      this.#db.exec(`ALTER TABLE posts ADD COLUMN url TEXT`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE posts ADD COLUMN metadata TEXT`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN access_token TEXT`);
+      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN refresh_token TEXT`);
+      this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN expires_at TEXT`);
+    } catch (e) {}
   }
 
   // ── User management ─────────────────────────────────────────────
@@ -446,6 +554,59 @@ export class LibraryDatabase {
 
   // ── User management ─────────────────────────────────────────────
 
+  getOrCreateRemoteUser(actorUrl: string, profileData: any): { id: number } {
+    const existing = this.#db.prepare(`SELECT id FROM users WHERE actor_url = ?`).get(actorUrl) as
+      | { id: number }
+      | undefined;
+    if (existing) return existing;
+
+    // Use preferredUsername or fallback
+    const username = profileData.preferredUsername || actorUrl.split("/").pop();
+    const domain = new URL(actorUrl).hostname;
+    // Create a unique username for remote to avoid collision with local
+    const remoteUsername = `${username}@${domain}`;
+
+    const keys = this.#generateRSAKeys();
+
+    const result = this.#db
+      .prepare(
+        `INSERT INTO users (username, email, account_type, display_name, bio, avatar_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url, remote_domain) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        remoteUsername,
+        `remote-${crypto.randomUUID()}@${domain}`, // fake email for unique constraint
+        "remote",
+        profileData.name || username,
+        profileData.summary || "",
+        profileData.icon?.url || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUsername)}`,
+        keys.privateKey,
+        keys.publicKey,
+        actorUrl,
+        profileData.inbox || `${actorUrl}/inbox`,
+        profileData.outbox || `${actorUrl}/outbox`,
+        domain,
+      );
+    return { id: Number(result.lastInsertRowid) };
+  }
+
+  #generateRSAKeys() {
+    return crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+  }
+
+  getInstanceKeys(): { publicKey: string; privateKey: string } {
+    const existing = this.#db.prepare(`SELECT value FROM settings WHERE key = 'instance_keys'`).get() as any;
+    if (existing) {
+      return JSON.parse(existing.value);
+    }
+    const keys = this.#generateRSAKeys();
+    this.#db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)`).run("instance_keys", JSON.stringify(keys));
+    return keys;
+  }
+
   createUser(
     username: string,
     email: string,
@@ -454,9 +615,28 @@ export class LibraryDatabase {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
+    const keys = this.#generateRSAKeys();
+    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    const actorUrl = `${publicUrl}/users/${username}`;
+    const inboxUrl = `${actorUrl}/inbox`;
+    const outboxUrl = `${actorUrl}/outbox`;
+
     const result = this.#db
-      .prepare(`INSERT INTO users (username, email, password_hash, avatar_url, banner_url) VALUES (?, ?, ?, ?, ?)`)
-      .run(username, email, passwordHash, avatarUrl, bannerUrl);
+      .prepare(
+        `INSERT INTO users (username, email, password_hash, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        username,
+        email,
+        passwordHash,
+        avatarUrl,
+        bannerUrl,
+        keys.privateKey,
+        keys.publicKey,
+        actorUrl,
+        inboxUrl,
+        outboxUrl,
+      );
     return { id: Number(result.lastInsertRowid), username, email };
   }
 
@@ -470,9 +650,17 @@ export class LibraryDatabase {
       const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&color=fff`;
       const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
+      const keys = this.#generateRSAKeys();
+      const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+      const actorUrl = `${publicUrl}/users/${username}`;
+      const inboxUrl = `${actorUrl}/inbox`;
+      const outboxUrl = `${actorUrl}/outbox`;
+
       const userResult = this.#db
-        .prepare(`INSERT INTO users (username, email, avatar_url, banner_url) VALUES (?, ?, ?, ?)`)
-        .run(username, email, avatarUrl, bannerUrl);
+        .prepare(
+          `INSERT INTO users (username, email, avatar_url, banner_url, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(username, email, avatarUrl, bannerUrl, keys.privateKey, keys.publicKey, actorUrl, inboxUrl, outboxUrl);
       const userId = Number(userResult.lastInsertRowid);
 
       this.#db
@@ -485,15 +673,48 @@ export class LibraryDatabase {
     return transaction();
   }
 
-  getOAuthAccount(provider: string, providerUserId: string): { user_id: number } | undefined {
+  getOAuthAccount(
+    provider: string,
+    providerUserId: string,
+  ): { user_id: number; access_token?: string; refresh_token?: string; expires_at?: string } | undefined {
     return this.#db
-      .prepare(`SELECT user_id FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?`)
-      .get(provider, providerUserId) as { user_id: number } | undefined;
+      .prepare(
+        `SELECT user_id, access_token, refresh_token, expires_at FROM oauth_accounts WHERE provider = ? AND provider_user_id = ?`,
+      )
+      .get(provider, providerUserId) as
+      | { user_id: number; access_token?: string; refresh_token?: string; expires_at?: string }
+      | undefined;
   }
 
-  getUserByEmail(
-    email: string,
-  ):
+  getOAuthAccountByUserId(
+    userId: number,
+    provider: string,
+  ): { provider_user_id: string; access_token?: string; refresh_token?: string; expires_at?: string } | undefined {
+    return this.#db
+      .prepare(
+        `SELECT provider_user_id, access_token, refresh_token, expires_at FROM oauth_accounts WHERE user_id = ? AND provider = ?`,
+      )
+      .get(userId, provider) as
+      | { provider_user_id: string; access_token?: string; refresh_token?: string; expires_at?: string }
+      | undefined;
+  }
+
+  getPublicOAuthAccounts(userId: number): { provider: string; provider_user_id: string }[] {
+    return this.#db.prepare(`SELECT provider, provider_user_id FROM oauth_accounts WHERE user_id = ?`).all(userId) as {
+      provider: string;
+      provider_user_id: string;
+    }[];
+  }
+
+  updateOAuthTokens(userId: number, provider: string, accessToken: string, refreshToken?: string, expiresAt?: string) {
+    this.#db
+      .prepare(
+        `UPDATE oauth_accounts SET access_token = ?, refresh_token = COALESCE(?, refresh_token), expires_at = COALESCE(?, expires_at) WHERE user_id = ? AND provider = ?`,
+      )
+      .run(accessToken, refreshToken ?? null, expiresAt ?? null, userId, provider);
+  }
+
+  getUserByEmail(email: string):
     | {
         id: number;
         username: string;
@@ -673,6 +894,36 @@ export class LibraryDatabase {
     }
   }
 
+  // ── Public Keys ─────────────────────────────────────────────────
+
+  getPublicKeysForUser(
+    userId: number,
+  ): Array<{
+    id: number;
+    key_id_string: string;
+    public_key_pem: string;
+    device_name: string | null;
+    created_at: string;
+    is_active: number;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT id, key_id_string, public_key_pem, device_name, created_at, is_active FROM user_public_keys WHERE user_id = ? AND is_active = 1`,
+      )
+      .all(userId) as any;
+  }
+
+  addPublicKeyForUser(userId: number, keyIdString: string, publicKeyPem: string, deviceName?: string): { id: number } {
+    const res = this.#db
+      .prepare(`INSERT INTO user_public_keys (user_id, key_id_string, public_key_pem, device_name) VALUES (?, ?, ?, ?)`)
+      .run(userId, keyIdString, publicKeyPem, deviceName ?? null);
+    return { id: Number(res.lastInsertRowid) };
+  }
+
+  revokePublicKey(userId: number, keyId: number): void {
+    this.#db.prepare(`UPDATE user_public_keys SET is_active = 0 WHERE id = ? AND user_id = ?`).run(keyId, userId);
+  }
+
   // ── Social & Posts ──────────────────────────────────────────────
 
   createPost(
@@ -682,15 +933,32 @@ export class LibraryDatabase {
     replyToId?: number,
     quotePostId?: number,
     repostOfId?: number,
+    apId?: string,
+    url?: string,
+    createdAt?: string,
+    updatedAt?: string,
+    metadata?: any,
   ): { id: number } {
     const res = this.#db
       .prepare(
         `
-      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `,
       )
-      .run(authorId, content, artifactViewId ?? null, replyToId ?? null, quotePostId ?? null, repostOfId ?? null);
+      .run(
+        authorId,
+        content,
+        artifactViewId ?? null,
+        replyToId ?? null,
+        quotePostId ?? null,
+        repostOfId ?? null,
+        apId ?? null,
+        url ?? null,
+        metadata ? JSON.stringify(metadata) : null,
+        createdAt ?? null,
+        updatedAt ?? null,
+      );
     return { id: Number(res.lastInsertRowid) };
   }
 
@@ -730,6 +998,11 @@ export class LibraryDatabase {
 
   private hydratePost(p: any, currentUserId?: number): any {
     if (!p) return null;
+    if (p.metadata && typeof p.metadata === "string") {
+      try {
+        p.metadata = JSON.parse(p.metadata);
+      } catch (e) {}
+    }
     if (p.repost_of_id) {
       p.repost_post = this.getPost(p.repost_of_id, currentUserId);
     }
@@ -743,7 +1016,7 @@ export class LibraryDatabase {
     const p = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -762,7 +1035,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -811,7 +1084,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -854,7 +1127,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -884,7 +1157,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -912,7 +1185,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -976,7 +1249,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -1043,7 +1316,14 @@ export class LibraryDatabase {
 
   // ── RSS Feeds ───────────────────────────────────────────────────
 
-  createRssProfile(url: string, title: string, description: string, siteUrl: string, avatarUrl: string): number {
+  createRssProfile(
+    url: string,
+    title: string,
+    description: string,
+    siteUrl: string,
+    avatarUrl: string,
+    customUsername?: string,
+  ): number {
     const transaction = this.#db.transaction(() => {
       // Create user profile for the RSS feed
       let domain = "rss";
@@ -1053,13 +1333,19 @@ export class LibraryDatabase {
         // Ignore parsing error
       }
       const uniqueSuffix = Math.floor(Math.random() * 1000000);
-      const username = `rss_${domain}_${uniqueSuffix}`;
+      const username = customUsername || `rss_${domain}_${uniqueSuffix}`;
 
       const userResult = this.#db
         .prepare(
           `INSERT INTO users (username, email, display_name, bio, avatar_url, account_type) VALUES (?, ?, ?, ?, ?, 'rss')`,
         )
-        .run(username, `${username}@rss.modelscript.local`, title, description, avatarUrl);
+        .run(
+          username,
+          `${username.replace(/[^a-zA-Z0-9_-]/g, "_")}@rss.modelscript.local`,
+          title,
+          description,
+          avatarUrl,
+        );
       const userId = Number(userResult.lastInsertRowid);
 
       const feedResult = this.#db
@@ -1074,6 +1360,36 @@ export class LibraryDatabase {
 
   getRssFeedByUrl(url: string): any {
     return this.#db.prepare(`SELECT * FROM rss_feeds WHERE url = ?`).get(url);
+  }
+
+  getRssFeedsToPoll(): any[] {
+    // Only fetch feeds where last_polled_at is null OR last_polled_at + poll_interval_mins < now
+    return this.#db
+      .prepare(
+        `
+      SELECT * FROM rss_feeds 
+      WHERE last_polled_at IS NULL 
+         OR datetime(last_polled_at, '+' || poll_interval_mins || ' minutes') <= datetime('now')
+    `,
+      )
+      .all();
+  }
+
+  updateRssFeedPollMetadata(
+    feedId: number,
+    etag: string | null,
+    lastModified: string | null,
+    pollIntervalMins: number,
+  ): void {
+    this.#db
+      .prepare(
+        `
+      UPDATE rss_feeds 
+      SET etag = ?, last_modified = ?, poll_interval_mins = ?, last_polled_at = datetime('now')
+      WHERE id = ?
+    `,
+      )
+      .run(etag, lastModified, pollIntervalMins, feedId);
   }
 
   subscribeToRssFeed(userId: number, rssFeedId: number): void {
@@ -1100,7 +1416,37 @@ export class LibraryDatabase {
   }
 
   unsubscribeFromRssFeed(userId: number, rssFeedId: number): void {
-    this.#db.prepare(`DELETE FROM user_rss_subscriptions WHERE user_id = ? AND rss_feed_id = ?`).run(userId, rssFeedId);
+    const transaction = this.#db.transaction(() => {
+      const feed = this.#db.prepare(`SELECT * FROM rss_feeds WHERE id = ?`).get(rssFeedId) as any;
+      if (!feed) return;
+
+      this.#db
+        .prepare(`DELETE FROM user_rss_subscriptions WHERE user_id = ? AND rss_feed_id = ?`)
+        .run(userId, rssFeedId);
+
+      const subCount = (
+        this.#db
+          .prepare(`SELECT COUNT(*) as count FROM user_rss_subscriptions WHERE rss_feed_id = ?`)
+          .get(rssFeedId) as any
+      ).count;
+
+      if (subCount === 0) {
+        // Delete any notifications associated with posts by this feed profile
+        this.#db
+          .prepare(`DELETE FROM notifications WHERE post_id IN (SELECT id FROM posts WHERE author_id = ?)`)
+          .run(feed.user_id);
+
+        // Delete any notifications where the feed profile was the actor (if any)
+        this.#db.prepare(`DELETE FROM notifications WHERE actor_id = ?`).run(feed.user_id);
+
+        // Delete artifact views created by this profile
+        this.#db.prepare(`DELETE FROM artifact_views WHERE creator_id = ?`).run(feed.user_id);
+
+        // Finally, delete the feed profile (which cascades to rss_feeds, posts, likes, follows, etc.)
+        this.#db.prepare(`DELETE FROM users WHERE id = ?`).run(feed.user_id);
+      }
+    });
+    transaction();
   }
 
   getUserRssSubscriptions(userId: number): any[] {
@@ -1132,14 +1478,21 @@ export class LibraryDatabase {
     return this.#db.prepare(`SELECT * FROM artifact_views WHERE id = ?`).get(id);
   }
 
-  createArtifactView(creatorId: number, type: string, source_type: string, viewConfig: string, title?: string): number {
+  createArtifactView(
+    creatorId: number,
+    type: string,
+    source_type: string,
+    viewConfig: string,
+    title?: string,
+    thumbnailUrl?: string,
+  ): number {
     const res = this.#db
       .prepare(
         `
-      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title) VALUES (?, ?, ?, ?, ?)
+      INSERT INTO artifact_views (creator_id, view_type, source_type, view_config, title, thumbnail_url) VALUES (?, ?, ?, ?, ?, ?)
     `,
       )
-      .run(creatorId, type, source_type, viewConfig, title || null);
+      .run(creatorId, type, source_type, viewConfig, title || null, thumbnailUrl || null);
     return Number(res.lastInsertRowid);
   }
 
@@ -1266,7 +1619,7 @@ export class LibraryDatabase {
     const posts = this.#db
       .prepare(
         `
-      SELECT p.*, u.username, u.display_name, u.avatar_url,
+      SELECT p.*, u.username, u.display_name, u.avatar_url, u.account_type,
         (SELECT COUNT(*) FROM likes WHERE post_id = p.id) as like_count,
         (SELECT COUNT(*) FROM posts WHERE reply_to_id = p.id) as reply_count,
         (SELECT COUNT(*) FROM posts WHERE repost_of_id = p.id) as repost_count,
@@ -2099,6 +2452,17 @@ export class LibraryDatabase {
     }
 
     return true;
+  }
+
+  // ── CAD Cache ───────────────────────────────────────────────────
+
+  getCachedCadGeometry(url: string): string | undefined {
+    const row = this.#db.prepare(`SELECT geometry_json FROM cad_cache WHERE url = ?`).get(url) as any;
+    return row?.geometry_json;
+  }
+
+  setCachedCadGeometry(url: string, geometryJson: string): void {
+    this.#db.prepare(`INSERT OR REPLACE INTO cad_cache (url, geometry_json) VALUES (?, ?)`).run(url, geometryJson);
   }
 
   close(): void {

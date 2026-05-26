@@ -1,0 +1,30 @@
+/* eslint-disable */
+declare global {
+  var parserReady: boolean;
+  var parser: any;
+  var sysml2ParserReady: boolean;
+  var sysml2Parser: any;
+  var stepParserReady: boolean;
+  var stepParser: any;
+  var owl2ParserReady: boolean;
+  var owl2Parser: any;
+  var sharedContext: any;
+  var documents: any;
+  var fqnCacheIndex: any;
+  var activeValidationTimers: any;
+  var activeValidationPromises: any;
+  var documentRevisions: any;
+  var lastSemanticDiagnostics: any;
+  var verificationDiagnosticsByUri: any;
+  var verificationTimer: any;
+  var revalidationTimer: any;
+  var lastIndexedText: any;
+  var mslStdlibReady: boolean;
+  var sysml2StdlibReady: boolean;
+  var projectTreeChangedTimer: any;
+  var projectTreeChangedPending: boolean;
+  var documentLSPBridges: any;
+  var diagramCache: any;
+  var clearIconCache: any;
+}
+export {};

@@ -42,7 +42,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    *
    * List all versions for a given package, sorted descending by semver.
    */
-  router.get("/:name", (req: Request, res: Response): void => {
+  router.get("/:name", async (req: Request, res: Response): Promise<void> => {
     const name = req.params["name"];
     if (typeof name !== "string") {
       res.status(400).json({ error: "Package name is required" });
@@ -51,6 +51,19 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const versions = storage.versions(name);
     if (versions.length === 0) {
+      // FEDERATION: Proxy list from upstream
+      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+      try {
+        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}`);
+        if (upstreamRes.ok) {
+          const data = await upstreamRes.json();
+          res.json(data);
+          return;
+        }
+      } catch {
+        // Fall through
+      }
+
       res.status(404).json({ error: `Package "${name}" not found` });
       return;
     }
@@ -80,6 +93,19 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const file = storage.read(name, version);
     if (!file) {
+      // FEDERATION: Proxy metadata from upstream
+      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+      try {
+        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}`);
+        if (upstreamRes.ok) {
+          const data = await upstreamRes.json();
+          res.json(data);
+          return;
+        }
+      } catch {
+        // Fall through
+      }
+
       res.status(404).json({ error: `Package "${name}@${version}" not found` });
       return;
     }
@@ -112,7 +138,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
    *
    * Download the zip file for a specific package version.
    */
-  router.get("/:name/:version/download", (req: Request, res: Response): void => {
+  router.get("/:name/:version/download", async (req: Request, res: Response): Promise<void> => {
     const name = req.params["name"];
     const version = req.params["version"];
 
@@ -128,6 +154,37 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const file = storage.read(name, version);
     if (!file) {
+      // FEDERATION: Proxy download from upstream and cache it
+      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+      try {
+        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/download`);
+        if (upstreamRes.ok) {
+          const buffer = await upstreamRes.arrayBuffer();
+          const nodeBuffer = Buffer.from(buffer);
+
+          // Cache locally
+          try {
+            await storage.store(name, version, nodeBuffer);
+            // Also extract and compile locally for index parity
+            const libraryPath = await storage.extractLibrary(name, version);
+            const { fileURLToPath } = await import("node:url");
+            const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+            const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+            jobQueue.enqueueProcess(`${name}@${version}`, workerScript, { name, version, libraryPath });
+          } catch {
+            // Ignore if it already exists or fails
+          }
+
+          res.setHeader("Content-Type", "application/zip");
+          res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
+          res.setHeader("Content-Length", nodeBuffer.length);
+          res.send(nodeBuffer);
+          return;
+        }
+      } catch {
+        // Fall through
+      }
+
       res.status(404).json({ error: `Package "${name}@${version}" not found` });
       return;
     }

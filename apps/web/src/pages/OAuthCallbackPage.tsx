@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Spinner, Text } from "@primer/react";
 import React, { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

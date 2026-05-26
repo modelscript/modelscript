@@ -119,6 +119,38 @@ const validationService = new ValidationService(connection, documentManager, wor
 const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
 const parserService = new ParserService(connection, documentManager, workspaceManager);
 
+// Expose state to globalThis for loosely-coupled extracted services
+globalThis.documents = documents;
+
+Object.defineProperty(globalThis, "sharedContext", { get: () => sharedContext, set: (v) => (sharedContext = v) });
+Object.defineProperty(globalThis, "parserReady", {
+  get: () => parserService.parserReady,
+  set: (v) => (parserService.parserReady = v),
+});
+Object.defineProperty(globalThis, "parser", {
+  get: () => parserService.parser,
+  set: (v) => (parserService.parser = v),
+});
+Object.defineProperty(globalThis, "sysml2ParserReady", {
+  get: () => parserService.sysml2ParserReady,
+  set: (v) => (parserService.sysml2ParserReady = v),
+});
+Object.defineProperty(globalThis, "sysml2Parser", {
+  get: () => parserService.sysml2Parser,
+  set: (v) => (parserService.sysml2Parser = v),
+});
+Object.defineProperty(globalThis, "stepParserReady", {
+  get: () => parserService.stepParserReady,
+  set: (v) => (parserService.stepParserReady = v),
+});
+Object.defineProperty(globalThis, "stepParser", {
+  get: () => parserService.stepParser,
+  set: (v) => (parserService.stepParser = v),
+});
+Object.defineProperty(globalThis, "owl2ParserReady", { get: () => owl2ParserReady, set: (v) => (owl2ParserReady = v) });
+Object.defineProperty(globalThis, "owl2Parser", { get: () => owl2Parser, set: (v) => (owl2Parser = v) });
+Object.defineProperty(globalThis, "fqnCacheIndex", { get: () => fqnCacheIndex, set: (v) => (fqnCacheIndex = v) });
+
 const diagramService = new DiagramService(connection, documentManager, workspaceManager);
 /* Per-document state for hover resolution */
 workspaceManager.stepWorkspaceIndex = new StepWorkspaceIndex();
@@ -466,8 +498,8 @@ registerSemanticTokensProvider(
   connection,
   documents,
   parserService.getDocumentTree.bind(parserService),
-  () => sysml2Parser,
-  () => sysml2ParserReady,
+  () => parserService.sysml2Parser,
+  () => parserService.sysml2ParserReady,
   (ext, text) => sharedContext?.parse(ext, text),
 );
 
@@ -485,7 +517,7 @@ registerFormattingProvider(
   connection,
   documents,
   parserService.getDocumentTree.bind(parserService),
-  () => parserReady && !!parser,
+  () => parserService.parserReady && !!parserService.parser,
 );
 
 /* Document color provider — detects Modelica color fields (color, lineColor, etc.) */
@@ -494,7 +526,7 @@ registerColorProvider(
   connection,
   documents,
   parserService.getDocumentTree.bind(parserService),
-  () => parserReady && !!parser,
+  () => parserService.parserReady && !!parserService.parser,
 );
 
 /* Document symbols — enables Outline panel and breadcrumb navigation */
@@ -504,9 +536,9 @@ registerDocumentFeaturesProvider(
   documents,
   parserService.getDocumentTree.bind(parserService),
   parserService.getLineIndexForDoc.bind(parserService),
-  () => parserReady && !!parser,
-  () => sysml2ParserReady && !!sysml2Parser,
-  () => sysml2Parser,
+  () => parserService.parserReady && !!parserService.parser,
+  () => parserService.sysml2ParserReady && !!parserService.sysml2Parser,
+  () => parserService.sysml2Parser,
 );
 
 /* Signature Help — shows function parameter info on ( and , */
@@ -770,7 +802,7 @@ interface SymbolicTraceResult {
 }
 
 // Listen on the connection
-registerDiagramHandlers(connection, documentManager, workspaceManager);
+registerDiagramHandlers(connection, documentManager, workspaceManager, diagramService);
 registerSimulationHandlers(connection, documentManager, workspaceManager);
 registerTreeHandlers(connection, documentManager, workspaceManager);
 registerAnalysisHandlers(connection, documentManager, workspaceManager);
@@ -782,7 +814,7 @@ registerAnalysisEndpoints(connection, documentManager, workspaceManager);
 registerInteropEndpoints(connection, documentManager, workspaceManager);
 registerClassQueryEndpoints(connection, documentManager, workspaceManager);
 registerMiscEndpoints(connection, documentManager, workspaceManager);
-registerDiagramEndpoints(connection, documentManager, workspaceManager);
+registerDiagramEndpoints(connection, documentManager, workspaceManager, diagramService);
 
 connection.listen();
 

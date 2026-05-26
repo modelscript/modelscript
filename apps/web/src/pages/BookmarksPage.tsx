@@ -9,17 +9,7 @@ import Box from "../components/Box";
 import Post from "../components/Post";
 import { API_BASE_URL } from "../config";
 
-const Header = styled.div`
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  border-bottom: 1px solid var(--color-border-default);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  backdrop-filter: blur(12px);
-  background-color: transparent;
-`;
+import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 
 const HeaderTop = styled.div`
   display: flex;
@@ -100,12 +90,12 @@ const BookmarksPage: React.FC = () => {
 
   return (
     <Box>
-      <Header>
+      <StickyHeader style={{ flexDirection: "column", alignItems: "stretch" }}>
         <HeaderTop>
-          <div style={{ cursor: "pointer", display: "flex" }} onClick={() => navigate(-1)}>
+          <CircleIconButton onClick={() => navigate(-1)}>
             <ArrowLeftIcon size={20} />
-          </div>
-          <Heading as="h2" style={{ fontSize: "20px" }}>
+          </CircleIconButton>
+          <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
             Bookmarks
           </Heading>
         </HeaderTop>
@@ -113,7 +103,7 @@ const BookmarksPage: React.FC = () => {
           <SearchIcon size={16} />
           <input placeholder="Search Bookmarks" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </SearchInputWrapper>
-      </Header>
+      </StickyHeader>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">

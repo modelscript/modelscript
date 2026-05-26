@@ -135,7 +135,6 @@ export function materializeVariable(arena: ArenaDAEBuilder, idx: number): Modeli
   const expr =
     typeof rawExpr === "number" ? materializeExpression(arena, rawExpr) : (rawExpr as ModelicaExpression) || null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const attributes = new Map<string, any>();
   const startAttr = arena.getVarStartAttr(idx);
   if (startAttr !== undefined) {
@@ -2205,7 +2204,7 @@ export abstract class ModelicaExpression {
 
     // If there is an explicit modification expression, use it. This handles arrays
     // that have been assigned an explicit ModelicaArray value in the interpreter.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const modExpr = classInstance.modification?.expression as any;
     if (modExpr) {
       if (modExpr instanceof ModelicaExpression) return modExpr;
@@ -5445,42 +5444,34 @@ export abstract class ModelicaDAEVisitor<A> implements IModelicaDAEVisitor<void,
   // The `node` parameter is typed as `any` because the AST types are in a
   // different package (@modelscript/modelica) and should not be imported here.
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitUnsignedIntegerLiteral(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitUnsignedRealLiteral(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitComponentReference(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitArrayConstructor(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitMemberAccessExpression(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitFunctionCall(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitArrayConcatenation(node: any, argument?: A): void {
     /* no-op */
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visitOutputExpressionList(node: any, argument?: A): void {
     /* no-op */
   }
@@ -5817,7 +5808,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       if (typeof variable.expression.accept === "function") {
         variable.expression.accept(this);
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const e = variable.expression as any;
         this.out.write(String(e.name ?? e.text ?? e));
       }
@@ -5864,7 +5854,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       this.#emitVariable(variable, variable.isProtected);
     }
     for (const sm of node.stateMachines || []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (sm as any).accept(this as any);
     }
     const initEqList = [...node.arenaInitialEquations()];
@@ -5970,7 +5959,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
       if (arg && typeof arg.accept === "function") {
         arg.accept(this);
       } else if (arg) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const a = arg as any;
         this.out.write(String(a.name ?? a.text ?? a));
       }
@@ -6114,7 +6102,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (typeof node.expression1?.accept === "function") {
       node.expression1.accept(this);
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const e1 = node.expression1 as any;
       this.out.write(String(e1?.name ?? e1?.text ?? "?"));
     }
@@ -6122,7 +6109,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     if (typeof node.expression2?.accept === "function") {
       node.expression2.accept(this);
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const e2 = node.expression2 as any;
       this.out.write(String(e2?.name ?? e2?.text ?? "?"));
     }
@@ -6262,12 +6248,10 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
   // These provide reasonable printing when raw AST nodes leak through the
   // flattener into the DAE. Uses duck-typing to avoid importing AST types.
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitUnsignedIntegerLiteral(node: any): void {
     this.out.write(String(node.value ?? node.text ?? "0"));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitUnsignedRealLiteral(node: any): void {
     if (node.value != null) {
       const v = node.value;
@@ -6285,12 +6269,11 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitComponentReference(node: any): void {
     const parts = node.parts;
     if (parts && parts.length > 0) {
       const name = parts
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         .map((p: any) => p.identifier?.text ?? p.text ?? "")
         .filter(Boolean)
         .join(".");
@@ -6302,7 +6285,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitArrayConstructor(node: any): void {
     this.out.write("{");
     const exprs = node.expressions ?? node.arguments ?? [];
@@ -6315,7 +6297,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     this.out.write("}");
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitMemberAccessExpression(node: any): void {
     if (node.expression && typeof node.expression.accept === "function") {
       node.expression.accept(this);
@@ -6325,7 +6306,6 @@ export class ModelicaDAEPrinter extends ModelicaDAEVisitor<never> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override visitFunctionCall(node: any): void {
     const name = node.componentReference?.text ?? node.name ?? "?";
     this.out.write(name + "(");

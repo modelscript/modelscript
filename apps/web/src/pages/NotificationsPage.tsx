@@ -8,15 +8,7 @@ import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { API_BASE_URL } from "../config";
 
-const Header = styled.div`
-  padding: 16px;
-  border-bottom: 1px solid var(--color-border-default);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  backdrop-filter: blur(12px);
-  background-color: transparent;
-`;
+import { StickyHeader } from "../components/SharedStyles";
 
 const NotificationWrapper = styled.div<{ $unread: boolean }>`
   display: flex;
@@ -200,11 +192,11 @@ const NotificationsPage: React.FC = () => {
 
   return (
     <Box>
-      <Header>
-        <Heading as="h2" style={{ fontSize: "20px" }}>
+      <StickyHeader>
+        <Heading as="h2" style={{ fontSize: "20px", margin: 0 }}>
           Notifications
         </Heading>
-      </Header>
+      </StickyHeader>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">

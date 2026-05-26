@@ -12,12 +12,16 @@ import {
 import React, { useState } from "react";
 import styled from "styled-components";
 import {
+  addPublicKey,
   getNotificationSettings,
+  getPublicKeys,
   getUserTopics,
+  revokePublicKey,
   updateAccount,
   updateNotificationSettings,
   updatePassword,
   updateUserTopic,
+  type PublicKeyInfo,
 } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
@@ -192,12 +196,15 @@ type TabType =
   | "contentPreferences"
   | "other"
   | "accountInfo"
-  | "changePassword";
+  | "changePassword"
+  | "connectedAccounts"
+  | "security";
 
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
+  const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
 
   // Form states
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -233,6 +240,11 @@ const SettingsPage: React.FC = () => {
     if (activeTab === "contentPreferences") {
       getUserTopics()
         .then((data) => setTopics(data))
+        .catch(() => {});
+    }
+    if (activeTab === "security") {
+      getPublicKeys()
+        .then((data) => setPublicKeys(data))
         .catch(() => {});
     }
   }, [activeTab]);
@@ -336,7 +348,7 @@ const SettingsPage: React.FC = () => {
           <span>Your account</span>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
         </MenuItem>
-        <MenuItem onClick={() => handleTabChange("other")}>
+        <MenuItem $active={activeTab === "security"} onClick={() => handleTabChange("security")}>
           <span>Security and account access</span>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
         </MenuItem>
@@ -398,6 +410,16 @@ const SettingsPage: React.FC = () => {
               <DetailText>
                 <DetailTitle>Change your password</DetailTitle>
                 <DetailSubtitle>Change your password at any time.</DetailSubtitle>
+              </DetailText>
+              <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+            </DetailItem>
+            <DetailItem $clickable onClick={() => handleTabChange("connectedAccounts")}>
+              <DetailIcon>
+                <GlobeIcon size={20} />
+              </DetailIcon>
+              <DetailText>
+                <DetailTitle>Connected accounts</DetailTitle>
+                <DetailSubtitle>Manage the external accounts connected to ModelScript.</DetailSubtitle>
               </DetailText>
               <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
             </DetailItem>
@@ -620,6 +642,148 @@ const SettingsPage: React.FC = () => {
                 <SaveButton onClick={handleChangePassword} disabled={loading || !oldPassword || !newPassword}>
                   {loading ? "Saving..." : "Save"}
                 </SaveButton>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "connectedAccounts" && (
+          <>
+            <Header>
+              <Box
+                display="flex"
+                alignItems="center"
+                gap={3}
+                sx={{ cursor: "pointer" }}
+                onClick={() => handleTabChange("account")}
+              >
+                <ArrowLeftIcon size={20} />
+                <span>Connected accounts</span>
+              </Box>
+            </Header>
+            <Box p={4}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block", marginBottom: "24px" }}>
+                Connect your external accounts to ModelScript to enable features like "Verified on X".
+              </DetailSubtitle>
+
+              <Box
+                display="flex"
+                justifyContent="space-between"
+                alignItems="center"
+                p={3}
+                style={{ border: "1px solid var(--color-border-default)", borderRadius: "8px" }}
+              >
+                <Box>
+                  <FormLabel style={{ display: "block" }}>X (Twitter)</FormLabel>
+                  <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                    Connect to get the "Verified on X" badge on your profile.
+                  </DetailSubtitle>
+                </Box>
+                <SaveButton
+                  onClick={() =>
+                    (window.location.href = `/api/v1/auth/link/twitter?token=${localStorage.getItem("token") || ""}`)
+                  }
+                >
+                  Connect Account
+                </SaveButton>
+              </Box>
+            </Box>
+          </>
+        )}
+
+        {activeTab === "security" && (
+          <>
+            <Header>Security and account access</Header>
+            <Box px={3} pb={3}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4", display: "block", marginBottom: "24px" }}>
+                Manage your authorized devices and keys for ActivityPub federation. Private keys are securely generated
+                and stored locally in this browser.
+              </DetailSubtitle>
+
+              <SaveButton
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const keyPair = await window.crypto.subtle.generateKey(
+                      {
+                        name: "RSASSA-PKCS1-v1_5",
+                        modulusLength: 2048,
+                        publicExponent: new Uint8Array([1, 0, 1]),
+                        hash: "SHA-256",
+                      },
+                      true,
+                      ["sign", "verify"],
+                    );
+
+                    // Export public key to PEM
+                    const spki = await window.crypto.subtle.exportKey("spki", keyPair.publicKey);
+                    const base64 = btoa(String.fromCharCode(...new Uint8Array(spki)));
+                    const pem = `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----\n`;
+
+                    const deviceName = prompt("Enter a name for this device (e.g. Work Laptop):");
+                    if (!deviceName) return;
+                    const keyIdString = `key-${Date.now()}`;
+
+                    await addPublicKey(keyIdString, pem, deviceName);
+
+                    // Export private key to PEM for local storage
+                    const pkcs8 = await window.crypto.subtle.exportKey("pkcs8", keyPair.privateKey);
+                    const privBase64 = btoa(String.fromCharCode(...new Uint8Array(pkcs8)));
+                    const privPem = `-----BEGIN PRIVATE KEY-----\n${privBase64.match(/.{1,64}/g)?.join("\n")}\n-----END PRIVATE KEY-----\n`;
+                    localStorage.setItem(`ap_priv_key_${keyIdString}`, privPem);
+
+                    setPublicKeys(await getPublicKeys());
+                  } catch (e) {
+                    console.error(e);
+                    setError("Failed to generate key");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                disabled={loading}
+              >
+                {loading ? "Generating..." : "Generate New Device Key"}
+              </SaveButton>
+
+              <Box mt={4}>
+                {publicKeys.map((k) => (
+                  <Box
+                    key={k.id}
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    p={3}
+                    mb={3}
+                    style={{ border: "1px solid var(--color-border-default)", borderRadius: "8px" }}
+                  >
+                    <Box>
+                      <FormLabel style={{ display: "block" }}>{k.device_name || "Unnamed Device"}</FormLabel>
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                        Key ID: {k.key_id_string}
+                      </DetailSubtitle>
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                        Created: {new Date(k.created_at).toLocaleDateString()}
+                      </DetailSubtitle>
+                      {localStorage.getItem(`ap_priv_key_${k.key_id_string}`) && (
+                        <DetailSubtitle style={{ display: "block", marginTop: "4px", color: "var(--color-success)" }}>
+                          ✓ Private key present on this device
+                        </DetailSubtitle>
+                      )}
+                    </Box>
+                    <SaveButton
+                      style={{ backgroundColor: "var(--color-danger-emphasis)" }}
+                      onClick={async () => {
+                        if (confirm("Revoke this key? It will be permanently removed from your authorized devices.")) {
+                          await revokePublicKey(k.id);
+                          setPublicKeys(await getPublicKeys());
+                          localStorage.removeItem(`ap_priv_key_${k.key_id_string}`);
+                        }
+                      }}
+                    >
+                      Revoke
+                    </SaveButton>
+                  </Box>
+                ))}
               </Box>
             </Box>
           </>

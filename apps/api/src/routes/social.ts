@@ -23,7 +23,8 @@ export function socialRouter(database: LibraryDatabase): Router {
    */
   router.post("/posts", requireAuth, (req: Request, res: Response) => {
     const authorId = req.user!.id;
-    const { content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id } = req.body;
+    const { content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, client_signature, key_id_string } =
+      req.body;
 
     if (!content && !repost_of_id && !artifact_view_id) {
       res.status(400).json({ error: "Content, artifact, or repost target is required" });
@@ -44,6 +45,80 @@ export function socialRouter(database: LibraryDatabase): Router {
               database.createNotification(parentPost.author_id, authorId, "reply", id);
             }
           }
+
+          // Broadcast to remote followers via ActivityPub
+          (async () => {
+            try {
+              const fullAuthor = database.db
+                .prepare(`SELECT rsa_private_key, actor_url FROM users WHERE id = ?`)
+                .get(authorId) as Record<string, unknown> | undefined;
+
+              if (fullAuthor && content) {
+                // Find remote followers
+                const remoteFollowers = database.db
+                  .prepare(
+                    `
+                  SELECT u.inbox_url 
+                  FROM follows f
+                  JOIN users u ON f.follower_id = u.id
+                  WHERE f.following_id = ? AND u.remote_domain IS NOT NULL
+                `,
+                  )
+                  .all(authorId) as Array<{ inbox_url: string }>;
+
+                if (remoteFollowers.length > 0) {
+                  const apPostId = `${fullAuthor.actor_url}/posts/${id}`;
+
+                  const noteObject: any = {
+                    id: apPostId,
+                    type: "Note",
+                    published: new Date().toISOString(),
+                    attributedTo: fullAuthor.actor_url,
+                    content: content,
+                    to: ["https://www.w3.org/ns/activitystreams#Public"],
+                    cc: [`${fullAuthor.actor_url}/followers`],
+                  };
+
+                  if (client_signature && key_id_string) {
+                    noteObject.proof = {
+                      type: "RsaSignature2017",
+                      creator: `${fullAuthor.actor_url}#${key_id_string}`,
+                      created: new Date().toISOString(),
+                      signatureValue: client_signature,
+                    };
+                  }
+
+                  const createActivity = {
+                    "@context": "https://www.w3.org/ns/activitystreams",
+                    id: `${apPostId}/activity`,
+                    type: "Create",
+                    actor: fullAuthor.actor_url,
+                    published: new Date().toISOString(),
+                    to: ["https://www.w3.org/ns/activitystreams#Public"],
+                    cc: [`${fullAuthor.actor_url}/followers`],
+                    object: noteObject,
+                  };
+
+                  const { sendSignedRequest } = await import("../util/activitypub-crypto.js");
+
+                  // Use instance key for HTTP transport signature, falling back to legacy rsa_private_key
+                  const instanceKeys = database.getInstanceKeys();
+                  const transportKey = instanceKeys.privateKey;
+                  const transportKeyId = `${process.env.PUBLIC_URL || "https://hub.modelscript.org"}/actor#main-key`;
+
+                  for (const follower of remoteFollowers) {
+                    if (follower.inbox_url) {
+                      sendSignedRequest(follower.inbox_url, createActivity, transportKeyId, transportKey).catch((err) =>
+                        console.error("Failed to broadcast to", follower.inbox_url, err),
+                      );
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.error("Failed to broadcast ActivityPub post", err);
+            }
+          })();
 
           if (content) {
             const author = database.getUserById(authorId);
@@ -141,7 +216,8 @@ export function socialRouter(database: LibraryDatabase): Router {
 
       res.status(201).json({ post });
     } catch (err) {
-      res.status(500).json({ error: "Failed to create post" });
+      console.error("POST /posts error:", err);
+      res.status(500).json({ error: "Failed to create post", details: String(err) });
     }
   });
 
@@ -172,7 +248,22 @@ export function socialRouter(database: LibraryDatabase): Router {
       const ip = locationService.extractIp(req);
       const loc = locationService.lookupIp(ip);
 
-      database.incrementPostView(postId, loc?.countryCode, loc?.regionCode);
+      let countryCode = loc?.countryCode;
+      let regionCode = loc?.regionCode;
+
+      if (!countryCode && req.user) {
+        const user = database.getUserById(req.user.id);
+        if (user) {
+          const profile = database.getFullProfileByUsername(user.username);
+          if (profile?.location) {
+            // Try to extract alpha-2 or alpha-3 from location string if needed,
+            // but we'll just pass the string directly and let the frontend map handle it
+            countryCode = profile.location.toUpperCase();
+          }
+        }
+      }
+
+      database.incrementPostView(postId, countryCode, regionCode);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to increment view" });
@@ -447,8 +538,48 @@ export function socialRouter(database: LibraryDatabase): Router {
     }
 
     try {
+      let targetUrl = url;
+      let customUsername: string | undefined;
+
+      // 1. Detect if user typed @handle@youtube.com
+      const handleMatch = url.match(/^(@[a-zA-Z0-9_-]+)@youtube\.com$/i);
+      if (handleMatch) {
+        const handle = handleMatch[1];
+        try {
+          const ytRes = await fetch(`https://www.youtube.com/${handle}`);
+          const ytHtml = await ytRes.text();
+          const idMatch = ytHtml.match(/channel_id=([^"&']+)/);
+          if (idMatch && idMatch[1]) {
+            targetUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${idMatch[1]}`;
+            customUsername = `yt:channel:${idMatch[1]}`;
+          } else {
+            res.status(400).json({ error: "Could not find YouTube channel for that handle" });
+            return;
+          }
+        } catch (e) {
+          res.status(500).json({ error: "Error contacting YouTube" });
+          return;
+        }
+      } else if (url.includes("youtube.com/feeds/videos.xml?channel_id=")) {
+        // 2. If they gave the URL directly, use the channel ID for the username
+        const channelIdMatch = url.match(/channel_id=([^&]+)/);
+        if (channelIdMatch && channelIdMatch[1]) {
+          customUsername = `yt:channel:${channelIdMatch[1]}`;
+        }
+      } else if (url.startsWith("yt:channel:")) {
+        // 3. If they directly input yt:channel:ID
+        let channelId = url.replace("yt:channel:", "");
+        if (channelId) {
+          if (channelId.length === 22 && !channelId.startsWith("UC")) {
+            channelId = `UC${channelId}`;
+          }
+          targetUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+          customUsername = `yt:channel:${channelId}`;
+        }
+      }
+
       // Check if it exists globally
-      let feed = database.getRssFeedByUrl(url);
+      let feed = database.getRssFeedByUrl(targetUrl);
 
       if (!feed) {
         // Fetch metadata
@@ -460,17 +591,33 @@ export function socialRouter(database: LibraryDatabase): Router {
               "application/rss+xml, application/rdf+xml;q=0.8, application/atom+xml;q=0.6, application/xml;q=0.4, text/xml;q=0.4, text/html;q=0.2, */*;q=0.1",
           },
         });
-        const parsed = await parser.parseURL(url);
+        const parsed = await parser.parseURL(targetUrl);
 
         const title = parsed.title || "Unknown Feed";
         const description = parsed.description || "";
-        const siteUrl = parsed.link || url;
-        const avatarUrl =
-          parsed.image?.url ||
-          `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&color=fff`;
+        const siteUrl = parsed.link || targetUrl;
+        let avatarUrl = parsed.image?.url;
+        if (!avatarUrl && siteUrl && siteUrl.startsWith("http")) {
+          try {
+            const htmlRes = await fetch(siteUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (compatible; ModelScript/1.0)",
+              },
+            });
+            const html = await htmlRes.text();
+            const match = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+            if (match && match[1]) {
+              avatarUrl = match[1];
+            }
+          } catch (e) {
+            console.error("Failed to fetch og:image for RSS avatar", e);
+          }
+        }
+        avatarUrl =
+          avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(title)}&background=random&color=fff`;
 
-        const feedId = database.createRssProfile(url, title, description, siteUrl, avatarUrl);
-        feed = database.getRssFeedByUrl(url);
+        const feedId = database.createRssProfile(targetUrl, title, description, siteUrl, avatarUrl, customUsername);
+        feed = database.getRssFeedByUrl(targetUrl);
       }
 
       database.subscribeToRssFeed(userId, feed.id);

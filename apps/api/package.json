@@ -50,6 +50,7 @@
     "maxmind": "^5.0.6",
     "multer": "^2.0.1",
     "n3": "^2.0.1",
+    "occt-import-js": "^0.0.23",
     "path-to-regexp": "^8.4.2",
     "pg": "^8.16.0",
     "rss-parser": "^3.13.0",

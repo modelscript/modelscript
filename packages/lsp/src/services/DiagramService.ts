@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 import { Connection } from "vscode-languageserver";
 import { DocumentManager } from "./DocumentManager";
@@ -40,7 +40,7 @@ export class DiagramService {
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
     const cached = diagramCache.get(cacheKey);
     if (cached && cached.version === version) {
-      connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
+      this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
       return cached.data;
     }
 
@@ -61,7 +61,7 @@ export class DiagramService {
       // Return last cached data to avoid blanking the diagram during the brief window
       // between MSL loading and re-validation completing.
       if (cached) {
-        connection.console.info(`[diagram-perf] class not resolved, returning stale cache for ${params.uri}`);
+        this.connection.console.info(`[diagram-perf] class not resolved, returning stale cache for ${params.uri}`);
         return cached.data;
       }
       return null;
@@ -76,7 +76,7 @@ export class DiagramService {
       if (result) {
         (result as any).isLoading = !mslStdlibReady;
       }
-      connection.console.error(
+      this.connection.console.error(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
       );
 
@@ -85,7 +85,7 @@ export class DiagramService {
 
       return result;
     } catch (e: any) {
-      connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
+      this.connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
       return null;
     }
   }
@@ -160,7 +160,7 @@ export class DiagramService {
             }
             return data;
           } catch (e: any) {
-            connection.console.error(
+            this.connection.console.error(
               `[sysml2-diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`,
             );
             return null;
@@ -213,7 +213,7 @@ export class DiagramService {
             }
             return null;
           } catch (e) {
-            connection.console.error(`[sysml2] Error getting symbol data: ${e}`);
+            this.connection.console.error(`[sysml2] Error getting symbol data: ${e}`);
             return null;
           }
         },

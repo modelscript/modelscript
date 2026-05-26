@@ -10,7 +10,7 @@ import ComposeModal from "./ComposeModal";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
 
-export const ComposeContext = React.createContext({ openCompose: () => {} });
+import { ComposeContext } from "./ComposeContext";
 
 const ShellContainer = styled.div`
   display: flex;
@@ -190,7 +190,10 @@ const AppShell: React.FC = () => {
                         try {
                           const res = await fetch("/api/v1/dev/reset", { method: "POST" });
                           if (res.ok) {
-                            window.location.reload();
+                            logout();
+                            setTimeout(() => {
+                              window.location.reload();
+                            }, 100);
                           } else {
                             alert("Failed to reset database");
                           }

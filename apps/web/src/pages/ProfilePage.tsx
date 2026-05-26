@@ -21,7 +21,14 @@ import Box from "../components/Box";
 import FollowButton from "../components/FollowButton";
 import ProfilePosts from "../components/ProfilePosts";
 import ProfileRepos from "../components/ProfileRepos";
+import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 import { API_BASE_URL } from "../config";
+
+const XIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
 
 const TabBar = styled.div`
   display: flex;
@@ -64,6 +71,7 @@ const ProfilePage: React.FC = () => {
   const { user, token } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [linkedAccounts, setLinkedAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("Posts");
 
@@ -93,6 +101,7 @@ const ProfilePage: React.FC = () => {
           const data = await res.json();
           setProfile(data.profile);
           setIsFollowing(data.isFollowing);
+          setLinkedAccounts(data.linkedAccounts || []);
         }
       } catch (err) {
         console.error(err);
@@ -141,39 +150,17 @@ const ProfilePage: React.FC = () => {
 
   return (
     <Box>
-      <Box
-        position="sticky"
-        top="var(--dev-header-height, 0px)"
-        bg="rgba(255, 255, 255, 0.85)"
-        style={{ backdropFilter: "blur(12px)", zIndex: 10 }}
-        display="flex"
-        alignItems="center"
-        px={3}
-        py={2}
-        gap={3}
-      >
-        <button
-          onClick={() => window.history.back()}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            width: "36px",
-            height: "36px",
-            borderRadius: "50%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--color-fg-default)",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-        >
+      <StickyHeader style={{ padding: "8px 16px", gap: "12px" }}>
+        <CircleIconButton onClick={() => window.history.back()}>
           <ArrowLeftIcon size={20} />
-        </button>
+        </CircleIconButton>
         <Box display="flex" flexDirection="column">
-          <Heading as="h2" style={{ fontSize: "20px", margin: 0, lineHeight: 1.2 }}>
+          <Heading
+            as="h2"
+            style={{ fontSize: "20px", margin: 0, lineHeight: 1.2, display: "flex", alignItems: "center", gap: "6px" }}
+          >
             {profile.display_name || profile.username}
+            {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
           </Heading>
           <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
             {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -182,7 +169,7 @@ const ProfilePage: React.FC = () => {
             posts
           </Text>
         </Box>
-      </Box>
+      </StickyHeader>
 
       <Box
         style={{
@@ -439,20 +426,22 @@ const ProfilePage: React.FC = () => {
           }}
         >
           {profile.display_name || profile.username}
-          {profile.account_type === "rss" && (
+          {profile.account_type === "rss" && <RssIcon size={24} color="var(--color-fg-muted)" />}
+          {linkedAccounts.some((acc: any) => acc.provider === "twitter") && (
             <span
               style={{
                 fontSize: "12px",
                 padding: "2px 8px",
-                backgroundColor: "var(--color-accent-subtle)",
-                color: "var(--color-accent-fg)",
+                backgroundColor: "#1f1f1f",
+                color: "#fff",
                 borderRadius: "12px",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "4px",
+                fontWeight: "normal",
               }}
             >
-              <RssIcon size={12} /> RSS Feed
+              <XIcon /> Verified
             </span>
           )}
         </Heading>
@@ -483,10 +472,12 @@ const ProfilePage: React.FC = () => {
               </a>
             </Box>
           )}
-          <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
-            <CalendarIcon size={16} />{" "}
-            <Text style={{ fontSize: "14px" }}>Joined {new Date(profile.created_at).toLocaleDateString()}</Text>
-          </Box>
+          {profile.account_type !== "rss" && (
+            <Box display="flex" alignItems="center" gap={1} color="var(--color-fg-muted)">
+              <CalendarIcon size={16} />{" "}
+              <Text style={{ fontSize: "14px" }}>Joined {new Date(profile.created_at).toLocaleDateString()}</Text>
+            </Box>
+          )}
         </Box>
 
         {profile.account_type !== "rss" && (
@@ -510,7 +501,7 @@ const ProfilePage: React.FC = () => {
       </Box>
 
       <TabBar>
-        {["Posts", "Replies", "Packages", "Repos"].map((tab) => (
+        {["Posts", ...(profile.account_type === "rss" ? [] : ["Replies", "Packages", "Repos"])].map((tab) => (
           <Tab key={tab} $active={activeTab === tab} onClick={() => setActiveTab(tab)}>
             {tab}
           </Tab>

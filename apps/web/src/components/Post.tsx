@@ -17,11 +17,14 @@ import {
   PersonAddIcon,
   QuoteIcon,
   ReportIcon,
+  RssIcon,
   ShareIcon,
   SyncIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Heading, IconButton, Text } from "@primer/react";
+import { Heading, IconButton, Text, Tooltip } from "@primer/react";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
@@ -34,6 +37,21 @@ import ComposeModal from "./ComposeModal";
 import ProfileHoverCard from "./ProfileHoverCard";
 import type { LocationStat } from "./WorldMap";
 import WorldMap from "./WorldMap";
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return `${Math.max(1, diffInSeconds)}s`;
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+
+  if (now.getFullYear() !== date.getFullYear()) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 const PostWrapper = styled.div<{ $isDetail?: boolean }>`
   display: flex;
@@ -54,7 +72,7 @@ const Avatar = styled.div<{ $url?: string }>`
   height: 40px;
   border-radius: 50%;
   background-color: var(--color-accent-emphasis);
-  background-image: ${(props) => (props.$url ? `url(${props.$url})` : "none")};
+  background-image: ${(props) => (props.$url ? `url("${props.$url}")` : "none")};
   background-size: cover;
   display: flex;
   align-items: center;
@@ -78,6 +96,13 @@ const ProfileNameLink = styled(Link)`
   }
 `;
 
+const ViewsLink = styled.span`
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
 const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHoverColor?: boolean }>`
   display: flex;
   align-items: center;
@@ -92,7 +117,7 @@ const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHove
 
   &:hover {
     color: ${(props) =>
-      props.$noHoverColor ? "var(--color-accent-emphasis)" : props.$color || "var(--color-accent-emphasis)"};
+      props.$noHoverColor ? "var(--color-fg-default)" : props.$color || "var(--color-accent-emphasis)"};
   }
 
   .icon-wrapper {
@@ -108,15 +133,25 @@ const ActionButton = styled.button<{ $active?: boolean; $color?: string; $noHove
   &:hover .icon-wrapper {
     background-color: ${(props) =>
       props.$noHoverColor
-        ? "var(--color-accent-subtle)"
+        ? "rgba(128, 128, 128, 0.15)"
         : props.$color
           ? `${props.$color}22`
-          : "var(--color-accent-subtle)"};
+          : "rgba(128, 128, 128, 0.15)"};
   }
 
   .icon-wrapper svg {
     fill: ${(props) => (props.$active ? props.$color : "#536471")} !important;
     color: ${(props) => (props.$active ? props.$color : "#536471")} !important;
+    transition:
+      fill 0.2s,
+      color 0.2s;
+  }
+
+  &:hover .icon-wrapper svg {
+    fill: ${(props) =>
+      props.$noHoverColor ? "var(--color-fg-default)" : props.$color || "var(--color-accent-emphasis)"} !important;
+    color: ${(props) =>
+      props.$noHoverColor ? "var(--color-fg-default)" : props.$color || "var(--color-accent-emphasis)"} !important;
   }
 `;
 
@@ -210,36 +245,37 @@ interface PostProps {
   isDetail?: boolean;
 }
 
-const renderContent = (text: string | null) => {
+const RenderContent = ({ text }: { text: string | null }) => {
+  const navigate = useNavigate();
   if (!text) return null;
-  const parts = text.split(/(#\w+|@\w+)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("#")) {
-      return (
-        <Link
-          key={i}
-          to={`/explore?q=${encodeURIComponent(part)}`}
-          onClick={(e) => e.stopPropagation()}
-          style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}
-        >
-          {part}
-        </Link>
-      );
-    }
-    if (part.startsWith("@")) {
-      return (
-        <Link
-          key={i}
-          to={`/${part.slice(1)}`}
-          onClick={(e) => e.stopPropagation()}
-          style={{ color: "var(--color-accent-emphasis)", textDecoration: "none" }}
-        >
-          {part}
-        </Link>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
+
+  let processedText = text.replace(/(^|\s)#(\w+)/g, "$1[#$2](/explore?q=%23$2)");
+  processedText = processedText.replace(/(^|\s)@(\w+)/g, "$1[@$2](/$2)");
+
+  const rawHtml = marked.parse(processedText, { breaks: true, gfm: true }) as string;
+  const sanitizedHtml = DOMPurify.sanitize(rawHtml);
+
+  return (
+    <div
+      className="markdown-body"
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        const anchor = target.closest("a");
+        if (anchor) {
+          e.preventDefault();
+          e.stopPropagation();
+          const href = anchor.getAttribute("href");
+          if (href && href.startsWith("/")) {
+            navigate(href);
+          } else if (href) {
+            window.open(href, "_blank", "noopener,noreferrer");
+          }
+        }
+      }}
+      style={{ margin: 0 }}
+    />
+  );
 };
 
 // Mock locations for WorldMap
@@ -381,25 +417,59 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                 </HoverAvatar>
               </ProfileNameLink>
             </ProfileHoverCard>
-            <Box display="flex" flexDirection="column" flex={1}>
+            <Box display="flex" flexDirection="column" flex={1} style={{ minWidth: 0 }}>
               <ProfileHoverCard username={displayPost.username}>
-                <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
-                  <Text style={{ fontWeight: "bold", fontSize: "15px" }}>
-                    {displayPost.display_name || displayPost.username}
+                <ProfileNameLink
+                  to={`/${displayPost.username}`}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ minWidth: 0, overflow: "hidden" }}
+                >
+                  <Text
+                    style={{
+                      fontWeight: "bold",
+                      fontSize: "15px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {displayPost.display_name || displayPost.username}
+                    </span>
+                    {displayPost.account_type === "rss" && (
+                      <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                    )}
                   </Text>
                 </ProfileNameLink>
               </ProfileHoverCard>
-              <Text className="handle-text">@{displayPost.username}</Text>
+              <Text
+                className="handle-text"
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  display: "block",
+                  width: "100%",
+                }}
+              >
+                @{displayPost.username}
+              </Text>
             </Box>
-            <Box position="relative">
+            <Box position="relative" mr={1}>
               <ActionButton
+                $noHoverColor
                 onClick={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
                   setShowPostMenu(!showPostMenu);
                 }}
               >
-                <KebabHorizontalIcon size={16} />
+                <div className="icon-wrapper">
+                  <KebabHorizontalIcon size={16} />
+                </div>
               </ActionButton>
               {showPostMenu && (
                 <>
@@ -413,7 +483,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                   />
                   <Box
                     position="absolute"
-                    top="100%"
+                    top="0"
                     right="0"
                     bg="var(--color-bg-primary)"
                     border="1px solid var(--color-border-subtle)"
@@ -486,14 +556,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
             </Box>
           </Box>
 
-          <Box mt={2} mb={2}>
-            <Text style={{ fontSize: "17px", lineHeight: "1.5", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-              {renderContent(displayPost.content)}
-            </Text>
+          <Box mt={2} mb={2} style={{ fontSize: "17px", lineHeight: "1.5", wordBreak: "break-word" }}>
+            <RenderContent text={displayPost.content} />
           </Box>
 
           {displayPost.artifact_view_id && (
-            <Box mt={2} mb={2}>
+            <Box mt={3} mb={3}>
               <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
             </Box>
           )}
@@ -502,7 +570,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
             <Box
               mb={2}
               p={3}
-              border="1px solid var(--color-border-default)"
+              border="1px solid var(--color-border)"
               borderRadius="12px"
               sx={{ cursor: "pointer", "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
             >
@@ -513,18 +581,19 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                 >
                   {!displayPost.quote_post.avatar_url && displayPost.quote_post.username.charAt(0).toUpperCase()}
                 </Avatar>
-                <Text style={{ fontWeight: "bold", fontSize: "15px" }}>
+                <Text
+                  style={{ fontWeight: "bold", fontSize: "15px", display: "flex", alignItems: "center", gap: "4px" }}
+                >
                   {displayPost.quote_post.display_name || displayPost.quote_post.username}
+                  {displayPost.quote_post.account_type === "rss" && <RssIcon size={14} color="var(--color-fg-muted)" />}
                 </Text>
-                <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>
-                  @{displayPost.quote_post.username}
-                </Text>
+                <Text className="handle-text">@{displayPost.quote_post.username}</Text>
               </Box>
-              <Text style={{ fontSize: "15px", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                {renderContent(displayPost.quote_post.content)}
-              </Text>
+              <Box style={{ fontSize: "15px", wordBreak: "break-word" }}>
+                <RenderContent text={displayPost.quote_post.content} />
+              </Box>
               {displayPost.quote_post.artifact_view_id && (
-                <Box mt={2}>
+                <Box mt={3}>
                   <ArtifactViewCard artifactId={displayPost.quote_post.artifact_view_id} />
                 </Box>
               )}
@@ -544,10 +613,18 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
               })}
             </Text>
             <Text style={{ margin: "0 4px" }}>·</Text>
-            <Text style={{ fontWeight: "bold", color: "var(--color-text-primary)" }}>
-              {formatNumber(displayPost.view_count || 0)}
-            </Text>{" "}
-            Views
+            <ViewsLink
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setShowAnalyticsModal(true);
+              }}
+            >
+              <Text style={{ fontWeight: "bold", color: "var(--color-text-primary)" }}>
+                {formatNumber(displayPost.view_count || 0)}
+              </Text>{" "}
+              Views
+            </ViewsLink>
           </Box>
 
           <Box
@@ -579,7 +656,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                   paddingRight: "8px",
                   minWidth: "20px",
                   textAlign: "left",
-                  color: "var(--color-fg-muted)",
+                  color: "inherit",
                 }}
               >
                 <AnimatedCount count={displayPost.reply_count || 0} />
@@ -607,7 +684,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                     paddingRight: "8px",
                     minWidth: "20px",
                     textAlign: "left",
-                    color: reposted ? "#00ba7c" : "var(--color-fg-muted)",
+                    color: "inherit",
                   }}
                 >
                   <AnimatedCount count={repostCount || 0} />
@@ -701,7 +778,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                   paddingRight: "8px",
                   minWidth: "20px",
                   textAlign: "left",
-                  color: liked ? "#f91880" : "var(--color-fg-muted)",
+                  color: "inherit",
                 }}
               >
                 <AnimatedCount count={likeCount || 0} />
@@ -802,37 +879,68 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                   </HoverAvatar>
                 </ProfileNameLink>
               </ProfileHoverCard>
-              <Box flex={1}>
-                <Box display="flex" alignItems="center" gap={1}>
+              <Box flex={1} style={{ minWidth: 0 }}>
+                <Box display="flex" alignItems="center" gap={1} style={{ minWidth: 0 }}>
                   <ProfileHoverCard username={displayPost.username}>
-                    <ProfileNameLink to={`/${displayPost.username}`} onClick={(e) => e.stopPropagation()}>
-                      <Text style={{ fontWeight: "bold", fontSize: "15px" }}>
-                        {displayPost.display_name || displayPost.username}
+                    <ProfileNameLink
+                      to={`/${displayPost.username}`}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ minWidth: 0, overflow: "hidden" }}
+                    >
+                      <Text
+                        style={{
+                          fontWeight: "bold",
+                          fontSize: "15px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {displayPost.display_name || displayPost.username}
+                        </span>
+                        {displayPost.account_type === "rss" && (
+                          <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                        )}
                       </Text>
                     </ProfileNameLink>
                   </ProfileHoverCard>
                   <Link
                     to={`/${displayPost.username}`}
                     className="handle-text"
-                    style={{ textDecoration: "none" }}
+                    style={{
+                      textDecoration: "none",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      flexShrink: 1,
+                    }}
                     onClick={(e) => e.stopPropagation()}
                   >
                     @{displayPost.username}
                   </Link>
-                  <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>·</Text>
-                  <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px" }}>
-                    {new Date(displayPost.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                  <Text style={{ color: "var(--color-fg-muted)", fontSize: "15px", flexShrink: 0 }}>·</Text>
+                  <Text
+                    style={{ color: "var(--color-fg-muted)", fontSize: "15px", flexShrink: 0, whiteSpace: "nowrap" }}
+                  >
+                    {formatRelativeTime(displayPost.created_at)}
                   </Text>
                   <Box flex={1} />
-                  <Box position="relative">
+                  <Box position="relative" mr={1}>
                     <ActionButton
+                      $noHoverColor
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setShowPostMenu(!showPostMenu);
                       }}
                     >
-                      <KebabHorizontalIcon size={16} />
+                      <div className="icon-wrapper">
+                        <KebabHorizontalIcon size={16} />
+                      </div>
                     </ActionButton>
                     {showPostMenu && (
                       <>
@@ -846,7 +954,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                         />
                         <Box
                           position="absolute"
-                          top="100%"
+                          top="0"
                           right="0"
                           bg="var(--color-bg-primary)"
                           border="1px solid var(--color-border-subtle)"
@@ -918,19 +1026,21 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                     )}
                   </Box>
                 </Box>
-                <Box mt={1}>
-                  <Text style={{ fontSize: "15px", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                    {renderContent(displayPost.content)}
-                  </Text>
+                <Box mt={1} style={{ fontSize: "15px", wordBreak: "break-word" }}>
+                  <RenderContent text={displayPost.content} />
                 </Box>
 
-                {displayPost.artifact_view_id && <ArtifactViewCard artifactId={displayPost.artifact_view_id} />}
+                {displayPost.artifact_view_id && (
+                  <Box mt={3} mb={3}>
+                    <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
+                  </Box>
+                )}
 
                 {displayPost.quote_post && (
                   <Box
                     mt={2}
                     p={3}
-                    border="1px solid var(--color-border-default)"
+                    border="1px solid var(--color-border)"
                     borderRadius="12px"
                     sx={{ "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
                   >
@@ -941,16 +1051,27 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                       >
                         {!displayPost.quote_post.avatar_url && displayPost.quote_post.username.charAt(0).toUpperCase()}
                       </Avatar>
-                      <Text style={{ fontWeight: "bold", fontSize: "15px" }}>
+                      <Text
+                        style={{
+                          fontWeight: "bold",
+                          fontSize: "15px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
                         {displayPost.quote_post.display_name || displayPost.quote_post.username}
+                        {displayPost.quote_post.account_type === "rss" && (
+                          <RssIcon size={14} color="var(--color-fg-muted)" />
+                        )}
                       </Text>
                       <Text className="handle-text">@{displayPost.quote_post.username}</Text>
                     </Box>
-                    <Text style={{ fontSize: "15px", wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                      {renderContent(displayPost.quote_post.content)}
-                    </Text>
+                    <Box style={{ fontSize: "15px", wordBreak: "break-word" }}>
+                      <RenderContent text={displayPost.quote_post.content} />
+                    </Box>
                     {displayPost.quote_post.artifact_view_id && (
-                      <Box mt={2}>
+                      <Box mt={3}>
                         <ArtifactViewCard artifactId={displayPost.quote_post.artifact_view_id} />
                       </Box>
                     )}
@@ -1250,13 +1371,37 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                   <Avatar $url={displayPost.avatar_url} style={{ width: 40, height: 40 }}>
                     {!displayPost.avatar_url && displayPost.username.charAt(0).toUpperCase()}
                   </Avatar>
-                  <Box>
+                  <Box style={{ minWidth: 0, flex: 1 }}>
                     <Box display="flex" alignItems="center" gap={1}>
-                      <Text fontWeight="bold">{displayPost.display_name || displayPost.username}</Text>
-                      <Text color="var(--color-fg-muted)">@{displayPost.username}</Text>
-                      <Text color="var(--color-fg-muted)">·</Text>
-                      <Text color="var(--color-fg-muted)">
-                        {new Date(displayPost.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                      <Text
+                        fontWeight="bold"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {displayPost.display_name || displayPost.username}
+                        </span>
+                        {displayPost.account_type === "rss" && (
+                          <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                        )}
+                      </Text>
+                      <Text
+                        color="var(--color-fg-muted)"
+                        style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 1 }}
+                      >
+                        @{displayPost.username}
+                      </Text>
+                      <Text color="var(--color-fg-muted)" style={{ flexShrink: 0 }}>
+                        ·
+                      </Text>
+                      <Text color="var(--color-fg-muted)" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                        {formatRelativeTime(displayPost.created_at)}
                       </Text>
                     </Box>
                     <Box
@@ -1270,14 +1415,14 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                         WebkitBoxOrient: "vertical",
                       }}
                     >
-                      {renderContent(displayPost.content)}
+                      <RenderContent text={displayPost.content} />
                     </Box>
                   </Box>
                 </Box>
               </AnalyticsCard>
 
               <Box mb={4}>
-                <WorldMap data={mockLocationStats} />
+                <WorldMap data={displayPost.location_stats || []} />
               </Box>
               <AnalyticsCard style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
                 <Box display="flex" flexDirection="column" alignItems="center" gap={1}>
@@ -1300,11 +1445,27 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                 </Box>
               </AnalyticsCard>
 
-              <Box display="flex" flexWrap="wrap" px={3} pb={6} rowGap={4}>
+              <Box display="flex" flexWrap="wrap" px={3} pt={4}>
                 <Box width="33.333%" display="flex" justifyContent="center">
                   <AnalyticsStatGroup style={{ alignItems: "center" }}>
                     <AnalyticsStatTitle>
-                      Impressions <InfoIcon size={14} />
+                      Impressions{" "}
+                      <Tooltip text="Times this post was seen." type="label">
+                        <button
+                          type="button"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            color: "inherit",
+                            cursor: "help",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <InfoIcon size={14} />
+                        </button>
+                      </Tooltip>
                     </AnalyticsStatTitle>
                     <AnalyticsStatValue>{formatNumber(impressions)}</AnalyticsStatValue>
                   </AnalyticsStatGroup>
@@ -1312,7 +1473,26 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                 <Box width="33.333%" display="flex" justifyContent="center">
                   <AnalyticsStatGroup style={{ alignItems: "center" }}>
                     <AnalyticsStatTitle>
-                      Engagements <InfoIcon size={14} />
+                      Engagements{" "}
+                      <Tooltip
+                        text="Total number of times a user interacted with a post. This includes all clicks anywhere on the post (including hashtags, links, avatar, username, and post expansion), reposts, replies, follows, and likes."
+                        type="label"
+                      >
+                        <button
+                          type="button"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            color: "inherit",
+                            cursor: "help",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <InfoIcon size={14} />
+                        </button>
+                      </Tooltip>
                     </AnalyticsStatTitle>
                     <AnalyticsStatValue>{formatNumber(engagements)}</AnalyticsStatValue>
                   </AnalyticsStatGroup>
@@ -1320,15 +1500,47 @@ const Post: React.FC<PostProps> = ({ post, isDetail }) => {
                 <Box width="33.333%" display="flex" justifyContent="center">
                   <AnalyticsStatGroup style={{ alignItems: "center" }}>
                     <AnalyticsStatTitle>
-                      Detail expands <InfoIcon size={14} />
+                      Detail expands{" "}
+                      <Tooltip text="Times people viewed the details about this post." type="label">
+                        <button
+                          type="button"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            color: "inherit",
+                            cursor: "help",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <InfoIcon size={14} />
+                        </button>
+                      </Tooltip>
                     </AnalyticsStatTitle>
                     <AnalyticsStatValue>{formatNumber(detailExpands)}</AnalyticsStatValue>
                   </AnalyticsStatGroup>
                 </Box>
-                <Box width="100%" display="flex" justifyContent="center" mb={4}>
+                <Box width="100%" display="flex" justifyContent="center" mt="32px">
                   <AnalyticsStatGroup style={{ alignItems: "center" }}>
                     <AnalyticsStatTitle>
-                      Profile visits <InfoIcon size={14} />
+                      Profile visits{" "}
+                      <Tooltip text="Number of profile views from this post." type="label">
+                        <button
+                          type="button"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            padding: 0,
+                            color: "inherit",
+                            cursor: "help",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <InfoIcon size={14} />
+                        </button>
+                      </Tooltip>
                     </AnalyticsStatTitle>
                     <AnalyticsStatValue>{formatNumber(profileVisits)}</AnalyticsStatValue>
                   </AnalyticsStatGroup>

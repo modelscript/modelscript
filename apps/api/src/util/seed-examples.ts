@@ -98,7 +98,14 @@ export async function seedExamplePackages(
 
     // Zip and store
     const zipBuffer = await zipFolderToBuffer(pkgDir, ignorePatterns);
-    await storage.store(name, version, zipBuffer);
+    try {
+      await storage.store(name, version, zipBuffer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
+        throw err;
+      }
+    }
     const libraryPath = await storage.extractLibrary(name, version);
 
     // Register in database

@@ -1,11 +1,12 @@
 /* eslint-disable */
-import { CodeIcon, GlobeIcon, ImageIcon, SlidersIcon } from "@primer/octicons-react";
+import { CodeIcon, GlobeIcon, ImageIcon, SlidersIcon, SmileyIcon } from "@primer/octicons-react";
 import { IconButton } from "@primer/react";
 import React, { useRef, useState } from "react";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import { API_BASE_URL } from "../config";
 import Box from "./Box";
+import SimpleEmojiPicker from "./SimpleEmojiPicker";
 
 const TweetButton = styled.button`
   background-color: #1d9bf0;
@@ -67,6 +68,7 @@ export default function ComposeBox({
   const [submitting, setSubmitting] = useState(false);
   const [artifactId, setArtifactId] = useState<number | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,22 +137,75 @@ export default function ComposeBox({
     }
   };
 
+  const signContent = async (text: string) => {
+    for (let i = 0; i < localStorage.length; i++) {
+      const keyName = localStorage.key(i);
+      if (keyName && keyName.startsWith("ap_priv_key_")) {
+        const keyIdString = keyName.replace("ap_priv_key_", "");
+        const pem = localStorage.getItem(keyName) || "";
+
+        const base64 = pem
+          .replace(/-----BEGIN PRIVATE KEY-----/, "")
+          .replace(/-----END PRIVATE KEY-----/, "")
+          .replace(/\s+/g, "");
+
+        try {
+          const binaryStr = atob(base64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let j = 0; j < binaryStr.length; j++) {
+            bytes[j] = binaryStr.charCodeAt(j);
+          }
+
+          const cryptoKey = await window.crypto.subtle.importKey(
+            "pkcs8",
+            bytes,
+            { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+            false,
+            ["sign"],
+          );
+
+          const encoder = new TextEncoder();
+          const data = encoder.encode(text);
+          const signatureBuffer = await window.crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, data);
+
+          const signatureBytes = new Uint8Array(signatureBuffer);
+          const signatureBase64 = btoa(String.fromCharCode(...signatureBytes));
+
+          return { signatureBase64, keyIdString };
+        } catch (e) {
+          console.error("Signing failed", e);
+        }
+      }
+    }
+    return null;
+  };
+
   const handleSubmit = async () => {
     if ((!content.trim() && !artifactId) || !token) return;
     setSubmitting(true);
     try {
+      const text = content.trim();
+      const signatureObj = await signContent(text);
+
+      const payload: any = {
+        content: text,
+        artifact_view_id: artifactId,
+        quote_post_id: quotePost?.id,
+        reply_to_id: replyToPost?.id,
+      };
+
+      if (signatureObj) {
+        payload.client_signature = signatureObj.signatureBase64;
+        payload.key_id_string = signatureObj.keyIdString;
+      }
+
       const res = await fetch(`${API_BASE_URL}/social/posts`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          content: content.trim(),
-          artifact_view_id: artifactId,
-          quote_post_id: quotePost?.id,
-          reply_to_id: replyToPost?.id,
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         const data = await res.json();
@@ -166,7 +221,7 @@ export default function ComposeBox({
   };
 
   return (
-    <Box display="flex" gap={3} w="100%">
+    <Box display="flex" gap={3} width="100%">
       {user?.avatar_url ? (
         <img
           src={user.avatar_url}
@@ -275,6 +330,7 @@ export default function ComposeBox({
               type="file"
               style={{ display: "none" }}
               ref={fileInputRef}
+              accept=".usdz,.usd,.usda,.glb,.gltf,image/*,video/*,audio/*,.pdf,.step,.stp,.csv,.mo"
               onChange={handleFileUpload}
               disabled={artifactId !== null || uploadingFile}
             />
@@ -284,7 +340,7 @@ export default function ComposeBox({
               onClick={() => fileInputRef.current?.click()}
               disabled={artifactId !== null || uploadingFile}
               aria-label="Upload Media"
-              title="Upload Media (Images, Videos, CAD, PDFs, CSV)"
+              title="Upload Media (Images, Videos, USDZ 3D, CAD, PDFs, CSV)"
               sx={{
                 color: artifactId !== null || uploadingFile ? "var(--color-fg-muted)" : "#1d9bf0",
                 borderRadius: "50%",
@@ -293,6 +349,32 @@ export default function ComposeBox({
                 },
               }}
             />
+            <div style={{ position: "relative" }}>
+              <IconButton
+                icon={SmileyIcon}
+                variant="invisible"
+                onClick={() => setShowEmojiPicker((prev) => !prev)}
+                aria-label="Add Emoji"
+                title="Add Emoji"
+                sx={{
+                  color: "#1d9bf0",
+                  borderRadius: "50%",
+                  "&:hover": {
+                    backgroundColor: "rgba(29, 155, 240, 0.1)",
+                  },
+                }}
+              />
+              {showEmojiPicker && (
+                <div style={{ position: "absolute", top: "100%", zIndex: 1000, marginTop: "8px" }}>
+                  <SimpleEmojiPicker
+                    onEmojiClick={(emojiData) => {
+                      setContent((prev) => prev + emojiData.emoji);
+                      setShowEmojiPicker(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
             <IconButton
               icon={SlidersIcon}
               variant="invisible"

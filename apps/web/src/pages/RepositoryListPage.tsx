@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AlertIcon, SearchIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
@@ -14,10 +14,23 @@ const TabBar = styled.div`
   display: flex;
   border-bottom: 1px solid var(--color-border-default);
   position: sticky;
-  top: 0;
-  background-color: transparent;
-  backdrop-filter: blur(12px);
+  top: var(--dev-header-height, 0px);
   z-index: 10;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: transparent;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-canvas-default);
+    opacity: 0.85;
+    z-index: -1;
+  }
 `;
 
 const Tab = styled.button<{ $active?: boolean }>`
@@ -69,6 +82,7 @@ const RepositoryListPage: React.FC = () => {
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"all" | "my">("all");
   const query = searchParams.get("q") || "";
 
   useEffect(() => {
@@ -79,8 +93,17 @@ const RepositoryListPage: React.FC = () => {
     const fetchRepos = async () => {
       try {
         setLoading(true);
+        setError(null);
+
+        if (activeTab === "my" && !token) {
+          setRepos([]);
+          setLoading(false);
+          return;
+        }
+
+        const endpoint = activeTab === "all" ? `${API_BASE_URL}/repos/popular?limit=50` : `${API_BASE_URL}/repos`;
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-        const res = await fetch(`${API_BASE_URL}/repos`, { headers });
+        const res = await fetch(endpoint, { headers });
         if (!res.ok) throw new Error("Failed to load repositories");
         const data = await res.json();
 
@@ -103,13 +126,17 @@ const RepositoryListPage: React.FC = () => {
 
     const timer = setTimeout(fetchRepos, 300);
     return () => clearTimeout(timer);
-  }, [query, token]);
+  }, [query, token, activeTab]);
 
   return (
     <Box>
       <TabBar>
-        <Tab $active>All Repositories</Tab>
-        <Tab>My Repositories</Tab>
+        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
+          All Repositories
+        </Tab>
+        <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
+          My Repositories
+        </Tab>
       </TabBar>
 
       <Box p={4}>

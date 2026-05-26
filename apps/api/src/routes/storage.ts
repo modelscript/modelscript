@@ -51,6 +51,14 @@ export function storageRouter(): Router {
     else if (mimeType === "application/pdf") viewType = "pdf";
     else if (req.file.filename.toLowerCase().endsWith(".step") || req.file.filename.toLowerCase().endsWith(".stp"))
       viewType = "cad-step";
+    else if (
+      req.file.filename.toLowerCase().endsWith(".usdz") ||
+      req.file.filename.toLowerCase().endsWith(".usd") ||
+      req.file.filename.toLowerCase().endsWith(".usda") ||
+      req.file.filename.toLowerCase().endsWith(".gltf") ||
+      req.file.filename.toLowerCase().endsWith(".glb")
+    )
+      viewType = "3d-model";
     else if (req.file.filename.toLowerCase().endsWith(".csv")) viewType = "simulation-plot";
     else if (req.file.filename.toLowerCase().endsWith(".mo")) viewType = "modelica-code";
 

@@ -2,6 +2,13 @@
 
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { LibraryDatabase } from "../database.js";
+
+let sharedAuthDatabase: LibraryDatabase | null = null;
+
+export function setAuthDatabase(database: LibraryDatabase) {
+  sharedAuthDatabase = database;
+}
 
 const JWT_SECRET = process.env["JWT_SECRET"] || "modelscript-dev-secret";
 
@@ -29,6 +36,16 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   const token = authHeader.substring(7);
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
+
+    // Fast path check to ensure the user hasn't been deleted (e.g. during a DB reset)
+    if (sharedAuthDatabase) {
+      const userExists = sharedAuthDatabase.getUserById(decoded.id);
+      if (!userExists) {
+        res.status(401).json({ error: "User no longer exists" });
+        return;
+      }
+    }
+
     req.user = decoded;
     next();
   } catch {

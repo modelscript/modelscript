@@ -21,6 +21,7 @@ import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import { getArtifactRegistry } from "../artifacts/index.js";
 import type { LibraryDatabase } from "../database.js";
+import { convertStepToJson } from "../util/cad-converter.js";
 
 /** Safely extract a string from an Express v5 param. */
 function param(req: Request, name: string): string {
@@ -44,6 +45,24 @@ export function artifactViewerRouter(database: LibraryDatabase): Router {
       };
     });
     res.json({ types });
+  });
+
+  // ── GET /cad/convert ───────────────────────────────────────────
+  // Fetch a STEP file, convert it to JSON (web-optimized), and cache it.
+  router.get("/cad/convert", async (req: Request, res: Response) => {
+    const url = req.query.url as string;
+    if (!url) {
+      res.status(400).json({ error: "Missing 'url' query parameter" });
+      return;
+    }
+
+    try {
+      const geometry = await convertStepToJson(url, database);
+      res.json(geometry);
+    } catch (err: unknown) {
+      console.error("[CAD Convert]", err);
+      res.status(500).json({ error: (err as Error).message || "Failed to convert CAD geometry" });
+    }
   });
 
   // ── GET /packages/:name/:version/artifacts ────────────────────

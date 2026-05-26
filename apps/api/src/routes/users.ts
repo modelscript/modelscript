@@ -59,7 +59,9 @@ export function usersRouter(database: LibraryDatabase): Router {
       isFollowing = database.isFollowing(currentUserId, profile.id);
     }
 
-    res.json({ profile, isFollowing });
+    const linkedAccounts = database.getPublicOAuthAccounts(profile.id);
+
+    res.json({ profile, isFollowing, linkedAccounts });
   });
 
   /**

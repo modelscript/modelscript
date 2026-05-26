@@ -1,16 +1,33 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Spinner, Text } from "@primer/react";
-import { OrbitControls, Stage } from "@react-three/drei";
+import { Center, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import * as THREE from "three";
 import Box from "../Box";
-// @ts-ignore
-import occtimportjs from "occt-import-js";
-
 interface CadStepViewerProps {
   viewConfig: any;
   isFullScreen?: boolean;
+}
+
+function Loader() {
+  const { progress } = useProgress();
+  return (
+    <Html center>
+      <Box
+        p={4}
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        bg="var(--color-canvas-subtle)"
+        borderRadius="8px"
+        width="200px"
+      >
+        <Spinner size="medium" />
+        <Text ml={3}>{progress.toFixed(0)}% loaded</Text>
+      </Box>
+    </Html>
+  );
 }
 
 const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen }) => {
@@ -26,17 +43,11 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
         return;
       }
       try {
-        // Fetch the STEP file
-        const response = await fetch(viewConfig.url);
-        if (!response.ok) throw new Error("Failed to fetch STEP file");
-        const buffer = await response.arrayBuffer();
+        // Fetch the cached/converted CAD geometry from the backend
+        const response = await fetch(`/api/v1/cad/convert?url=${encodeURIComponent(viewConfig.url)}`);
+        if (!response.ok) throw new Error("Failed to fetch converted CAD geometry from server");
 
-        // Initialize OCCT
-        const occt = await occtimportjs();
-
-        // Read the file from memory
-        const fileData = new Uint8Array(buffer);
-        const result = occt.ReadStepFile(fileData, null);
+        const result = await response.json();
 
         if (result && result.meshes && result.meshes.length > 0 && active) {
           // Merge multiple meshes into one BufferGeometry
@@ -125,12 +136,15 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       overflow="hidden"
     >
       <Canvas camera={{ position: [0, 0, 50], fov: 50 }}>
-        <Suspense fallback={null}>
-          <Stage environment="city" intensity={0.5}>
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 10]} intensity={1} />
+        <directionalLight position={[-10, -10, -10]} intensity={0.5} />
+        <Suspense fallback={<Loader />}>
+          <Center>
             <mesh geometry={geometry}>
               <meshStandardMaterial color="#888888" roughness={0.4} metalness={0.6} side={THREE.DoubleSide} />
             </mesh>
-          </Stage>
+          </Center>
         </Suspense>
         <OrbitControls makeDefault />
       </Canvas>

@@ -20,7 +20,7 @@ export class ValidationService {
 
     while (didDescend) {
       if (performance.now() - t0 > 1000) {
-        connection.console.warn(
+        this.connection.console.warn(
           `[perf] collectSyntaxErrors aborted after ${(performance.now() - t0).toFixed(2)}ms (too many nodes)`,
         );
         break;
@@ -55,7 +55,7 @@ export class ValidationService {
 
     const totalMs = performance.now() - t0;
     if (totalMs > 100) {
-      connection.console.warn(
+      this.connection.console.warn(
         `[perf] collectSyntaxErrors took ${totalMs.toFixed(2)}ms for ${diagnostics.length} diagnostics`,
       );
     }
@@ -101,8 +101,8 @@ export class ValidationService {
       workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
       workspaceManager.documentInstances.set(textDocument.uri, [entity]);
       workspaceManager.documentContexts.set(textDocument.uri, context);
-      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
-      connection.sendNotification("modelscript/projectTreeChanged");
+      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+      this.connection.sendNotification("modelscript/projectTreeChanged");
       return;
     }
 
@@ -112,8 +112,8 @@ export class ValidationService {
       const buffer = new TextEncoder().encode(text);
 
       try {
-        connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
-        connection.console.info(`[step] stepParserReady=${stepParserReady}, stepParser=${!!stepParser}`);
+        this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
+        this.connection.console.info(`[step] stepParserReady=${stepParserReady}, stepParser=${!!stepParser}`);
 
         // 1. Tree-sitter parsing for LSP features
         let astIndex;
@@ -124,20 +124,20 @@ export class ValidationService {
             documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
             const indexer = new SymbolIndexer(stepIndexerHooks as any);
             astIndex = indexer.index(tree.rootNode);
-            connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
+            this.connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
           }
         } else {
-          connection.console.info(`[step] Tree-sitter STEP parser not available, using regex-only extraction`);
+          this.connection.console.info(`[step] Tree-sitter STEP parser not available, using regex-only extraction`);
         }
 
         // 2. Structural indexing (Regex + OCCT) + AST index merge
         const stepIndex = await workspaceManager.stepWorkspaceIndex.parseStepFile(textDocument.uri, buffer, astIndex);
-        connection.console.info(
+        this.connection.console.info(
           `[step] StepWorkspaceIndex: ${stepIndex.symbols.size} symbols, ${workspaceManager.stepWorkspaceIndex.getMeshes(textDocument.uri).length} meshes`,
         );
         for (const [id, entry] of stepIndex.symbols) {
           if (entry.ruleName === "step_product" || entry.ruleName === "step_shape") {
-            connection.console.info(
+            this.connection.console.info(
               `[step]   ${entry.ruleName}: "${entry.name}" (${entry.startByte}-${entry.endByte})`,
             );
           }
@@ -146,7 +146,7 @@ export class ValidationService {
         // Invalidate the unified partial cache so cross-language resolvers pick up
         // the new STEP symbols immediately.
         const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
-        connection.console.info(`[step] Unified index: ${unifiedIndex.symbols.size} symbols total`);
+        this.connection.console.info(`[step] Unified index: ${unifiedIndex.symbols.size} symbols total`);
         if (workspaceManager.globalModelicaQueryEngine)
           workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
         if (workspaceManager.globalSysML2QueryEngine) {
@@ -176,7 +176,7 @@ export class ValidationService {
 
         const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
         documentLSPBridges.set(textDocument.uri, bridge);
-        connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
+        this.connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
 
         const stepDiagnostics: Diagnostic[] = [];
         if (tree) {
@@ -215,14 +215,14 @@ export class ValidationService {
           }
         }
 
-        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
-        connection.sendNotification("modelscript/projectTreeChanged");
+        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
+        this.connection.sendNotification("modelscript/projectTreeChanged");
 
         // Trigger cross-file revalidation so SysML files referencing this STEP file
         // will resolve the newly available CAD entities.
         if (revalidationTimer) clearTimeout(revalidationTimer);
         revalidationTimer = setTimeout(() => {
-          connection.console.info(`[step] Cross-file revalidation triggered`);
+          this.connection.console.info(`[step] Cross-file revalidation triggered`);
           for (const doc of documents.all()) {
             if (doc.uri !== textDocument.uri) {
               validateTextDocument(doc);
@@ -230,7 +230,7 @@ export class ValidationService {
           }
         }, 300);
       } catch (e: any) {
-        connection.console.error(`[step] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
+        this.connection.console.error(`[step] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
       }
       return;
     }
@@ -252,7 +252,7 @@ export class ValidationService {
         }
 
         if (!tree) {
-          connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+          this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
           return;
         }
 
@@ -449,14 +449,14 @@ export class ValidationService {
               }
             }
           } catch (reasonerError: any) {
-            connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
+            this.connection.console.error(`[owl2-reasoner] Reasoner failed: ${reasonerError.message}`);
           }
         }
 
-        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: owl2Diagnostics });
-        connection.sendNotification("modelscript/projectTreeChanged");
+        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: owl2Diagnostics });
+        this.connection.sendNotification("modelscript/projectTreeChanged");
       } catch (e: any) {
-        connection.console.error(`[owl2] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
+        this.connection.console.error(`[owl2] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
       }
       return;
     }
@@ -478,7 +478,7 @@ export class ValidationService {
         }
 
         if (!tree) {
-          connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+          this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
           return;
         }
 
@@ -633,7 +633,7 @@ export class ValidationService {
           sysmlDiagnostics.push(...vDiags);
         }
 
-        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
+        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
 
         // Auto-trigger verification if this document contains verification/analysis cases.
         // This makes the "compiler actively fails the build" behavior described in the paper
@@ -664,7 +664,7 @@ export class ValidationService {
               if (verificationTimer) clearTimeout(verificationTimer);
               const verifyUri = textDocument.uri;
               verificationTimer = setTimeout(() => {
-                connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
+                this.connection.console.log(`[auto-verify] Triggering verification for ${verifyUri}`);
                 runVerificationForUri(verifyUri).catch(() => {
                   // Ignore — errors surface as diagnostics
                 });
@@ -675,18 +675,18 @@ export class ValidationService {
           }
         }
       } catch (e: any) {
-        connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
-        connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
+        this.connection.console.error(`[sysml2] Error processing ${textDocument.uri}: ${e.message}`);
+        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
       }
       return;
     }
 
     if (parserReady && parser) {
-      connection.console.info(`[validate] Entering Modelica parsing`);
+      this.connection.console.info(`[validate] Entering Modelica parsing`);
       // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
       const context = sharedContext;
       if (!context) {
-        connection.console.info(`[validate] sharedContext is null!`);
+        this.connection.console.info(`[validate] sharedContext is null!`);
         return;
       }
 
@@ -712,7 +712,7 @@ export class ValidationService {
         classCache: oldCached?.classCache ?? new Map(),
       });
 
-      connection.console.info(`[validate] tree parsed`);
+      this.connection.console.info(`[validate] tree parsed`);
 
       // Collect syntax errors from the tree using the shared pure function.
       // These were likely already sent instantly by the onDidChangeContent handler,
@@ -720,7 +720,7 @@ export class ValidationService {
       const syntaxDiags = collectSyntaxErrors(tree.rootNode, textDocument);
       diagnostics.push(...syntaxDiags);
 
-      connection.console.info(
+      this.connection.console.info(
         `[validate] ${textDocument.uri}: text=${text.length}B, syntaxErrors=${diagnostics.length}, hasError=${typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError}`,
       );
 
@@ -729,7 +729,7 @@ export class ValidationService {
       const cachedSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
       const allDiags = [...diagnostics, ...cachedSemantic];
       if (allDiags.length > 1000) allDiags.length = 1000;
-      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: allDiags });
+      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: allDiags });
 
       // Always run the semantic pipeline with revision tracking — syntax errors
       // were already sent instantly by the onDidChangeContent handler, so this
@@ -738,7 +738,7 @@ export class ValidationService {
       // arrives while it's running (staleness check at each expensive step).
       const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
 
-      connection.console.info(`[validate] starting runSemanticPipeline`);
+      this.connection.console.info(`[validate] starting runSemanticPipeline`);
       const promise = runSemanticPipeline(
         textDocument.uri,
         text,
@@ -748,7 +748,7 @@ export class ValidationService {
         revisionAtStart,
         context,
       ).catch((e) => {
-        connection.console.error(
+        this.connection.console.error(
           `[runSemanticPipeline] Failed for ${textDocument.uri}: ${e instanceof Error ? e.message + "\\n" + e.stack : String(e)}`,
         );
       });
@@ -773,7 +773,7 @@ export class ValidationService {
           source: "modelscript",
         });
       }
-      connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
     }
   }
 
@@ -792,7 +792,7 @@ export class ValidationService {
     // and prevent massive index invalidation cascades when the parser fails to recover.
     const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
     if (hasError) {
-      connection.console.info(
+      this.connection.console.info(
         `[pipeline] Syntax errors present in ${uri}, skipping semantic pipeline to preserve cache and latency`,
       );
       return;
@@ -814,7 +814,7 @@ export class ValidationService {
 
     try {
       const t0 = performance.now();
-      connection.console.info(`[perf] Starting runSemanticPipeline for ${uri}`);
+      this.connection.console.info(`[perf] Starting runSemanticPipeline for ${uri}`);
       const effectiveUri = uri.startsWith("modelscript-lib://global")
         ? "file://" + uri.substring("modelscript-lib://global".length)
         : uri;
@@ -848,7 +848,7 @@ export class ValidationService {
         lastIndexedText.set(effectiveUri, text);
         changedIds = workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
         changedNames = workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
-        connection.console.info(
+        this.connection.console.info(
           `[perf] Step 1.0 (markDirty): ${(step0_1t - step0t).toFixed(2)}ms, (getFileIndex): ${(step0_2t - step0_1t).toFixed(2)}ms`,
         );
       }
@@ -861,12 +861,14 @@ export class ValidationService {
       unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const step0_4t = performance.now();
       const cstTreeWrapper = getSharedCstTreeWrapper();
-      connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
 
       if (textChanged) {
         // ── Step 2: Unified index merge + QueryEngine update ─────────────────
         let step1T = performance.now();
-        connection.console.info(`[perf] Step 1.1 (toUnifiedPartial): ${(performance.now() - step1T).toFixed(2)}ms`);
+        this.connection.console.info(
+          `[perf] Step 1.1 (toUnifiedPartial): ${(performance.now() - step1T).toFixed(2)}ms`,
+        );
 
         if (changedNames && changedNames.size > 0) {
           if (revalidationTimer) clearTimeout(revalidationTimer);
@@ -886,16 +888,16 @@ export class ValidationService {
 
         if (workspaceManager.globalModelicaQueryEngine) {
           injectPredefinedTypes(unifiedIndex);
-          connection.console.info(
+          this.connection.console.info(
             `[perf] Step 1.2 (injectPredefinedTypes): ${(performance.now() - step1T).toFixed(2)}ms`,
           );
           step1T = performance.now();
           if (changedIds && typeof workspaceManager.globalModelicaQueryEngine.swapIndex === "function") {
             workspaceManager.globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
-            connection.console.info(`[perf] Step 1.3 (swapIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
+            this.connection.console.info(`[perf] Step 1.3 (swapIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
           } else {
             workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
-            connection.console.info(`[perf] Step 1.3 (updateIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
+            this.connection.console.info(`[perf] Step 1.3 (updateIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
           }
           if (typeof workspaceManager.globalModelicaQueryEngine.updateTree === "function") {
             workspaceManager.globalModelicaQueryEngine.updateTree(cstTreeWrapper);
@@ -917,7 +919,7 @@ export class ValidationService {
           workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
         }
       }
-      connection.console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
       context.setQueryEngine(workspaceManager.globalModelicaQueryEngine);
       context.setWorkspaceIndex(workspaceManager.globalWorkspaceIndex);
       const engine = workspaceManager.globalModelicaQueryEngine;
@@ -934,7 +936,7 @@ export class ValidationService {
       const currentText = currentDoc ? currentDoc.getText() : text;
       const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
       documentLSPBridges.set(uri, bridge);
-      connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // Yield before expensive linting
       await yieldToEventLoop();
@@ -967,7 +969,7 @@ export class ValidationService {
           // Best-effort — don't block validation if preflight fails
         }
       }
-      connection.console.info(`[perf] Step 2.5 (Preflight): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 2.5 (Preflight): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // ── Step 3: Run lints ────────────────────────────────────────────────
       // Skip for library files with >1000 symbols to avoid O(n²) on MSL.
@@ -997,7 +999,7 @@ export class ValidationService {
           newSemanticDiagnostics.push({ severity, range: { start, end }, message: d.message, source: "modelscript" });
         }
       }
-      connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // Yield before expensive reference resolution
       await yieldToEventLoop();
@@ -1034,7 +1036,7 @@ export class ValidationService {
           resolver.updateIndex(unifiedIndex);
         }
       }
-      connection.console.info(`[perf] Step 4 (References): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 4 (References): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // ── Step 5: Create ModelicaClassInstance wrappers ──────────────────
       const db = engine!.toQueryDB();
@@ -1059,7 +1061,7 @@ export class ValidationService {
       workspaceManager.workspaceInstances.set(uri, thisDocInstances);
       workspaceManager.documentInstances.set(uri, thisDocInstances);
       workspaceManager.documentContexts.set(uri, context);
-      connection.console.info(`[perf] Step 5 (Wrappers): ${(performance.now() - t0).toFixed(2)}ms`);
+      this.connection.console.info(`[perf] Step 5 (Wrappers): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // Final stale check
       if (isStale()) return;
@@ -1068,17 +1070,17 @@ export class ValidationService {
       const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
       if (diagnostics.length > 1000) diagnostics.length = 1000;
 
-      connection.sendDiagnostics({ uri, diagnostics });
+      this.connection.sendDiagnostics({ uri, diagnostics });
       sendProjectTreeChanged();
-      connection.console.info(
+      this.connection.console.info(
         `[perf] Finished runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`,
       );
     } catch (e: any) {
-      connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
+      this.connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
         const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
         if (diagnostics.length > 1000) diagnostics.length = 1000;
-        connection.sendDiagnostics({ uri, diagnostics });
+        this.connection.sendDiagnostics({ uri, diagnostics });
       }
     }
   }
@@ -1263,7 +1265,7 @@ export class ValidationService {
       validateTextDocument(textDocument);
       return { ok: true };
     } catch (e: any) {
-      connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
+      this.connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
 
       const crashDiag: Diagnostic = {
         severity: DiagnosticSeverity.Error,

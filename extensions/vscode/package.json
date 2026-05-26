@@ -190,6 +190,11 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "modelscript.openRegistry",
+        "title": "Open ModelScript Hub Packages",
+        "icon": "$(extensions)"
+      },
+      {
         "command": "modelscript.registry.uninstall",
         "title": "Uninstall Package",
         "icon": "$(trash)"
@@ -659,6 +664,28 @@
           "group": "navigation"
         }
       ],
+      "view/title": [
+        {
+          "command": "modelscript.openRegistry",
+          "when": "view == modelscript.libraryTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "modelscript.registry.uninstall",
+          "when": "view == modelscript.libraryTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "modelscript.registry.search",
+          "when": "view == modelscript.registryView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "modelscript.registry.refresh",
+          "when": "view == modelscript.registryView",
+          "group": "navigation@2"
+        }
+      ],
       "view/item/context": [
         {
           "command": "modelscript.addToDiagram",
@@ -688,6 +715,11 @@
         {
           "command": "modelscript.registry.uninstall",
           "when": "view == modelscript.registryView && viewItem == installed-package",
+          "group": "inline"
+        },
+        {
+          "command": "modelscript.registry.uninstall",
+          "when": "view == modelscript.libraryTree && viewItem == package",
           "group": "inline"
         }
       ],
@@ -729,6 +761,11 @@
         }
       }
     ],
+    "uriHandlers": [
+      {
+        "command": "modelscript.handleUri"
+      }
+    ],
     "views": {
       "scm": [
         {
@@ -762,6 +799,7 @@
         {
           "id": "modelscript.registryView",
           "name": "Packages",
+          "type": "webview",
           "visibility": "visible"
         }
       ],
@@ -817,15 +855,11 @@
     "viewsWelcome": [
       {
         "view": "modelscript.libraryTree",
-        "contents": "Open a Modelica or SysML2 file to browse libraries.\n\n[Open 3D CAD Polyglot Example](command:modelscript.openCadExample)"
+        "contents": "Open a Modelica or SysML2 file to browse libraries."
       },
       {
         "view": "modelscript.mqttTree",
         "contents": "No MQTT participants online.\n[Connect to MQTT](command:modelscript.cosimConnect)\n[Start Local Infrastructure](command:modelscript.cosimStartInfra)"
-      },
-      {
-        "view": "modelscript.registryView",
-        "contents": "Browse and install ModelScript packages from the registry.\n[Search Packages](command:modelscript.registry.search)\n[Refresh](command:modelscript.registry.refresh)"
       },
       {
         "view": "modelscript.owl2ClassHierarchy",
