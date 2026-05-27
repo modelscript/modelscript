@@ -31,8 +31,10 @@ import { socialRouter } from "./routes/social.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { usersRouter } from "./routes/users.js";
+import { seedDroneCfd } from "./seed-drone-cfd.js";
+import { seedDroneFea } from "./seed-drone-fea.js";
 import { LibraryStorage } from "./storage.js";
-import { seedExamplePackages } from "./util/seed-examples.js";
+import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
 
 /** Options for creating the Express application. */
 export interface AppOptions {
@@ -79,9 +81,16 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       }
     }
 
+    // Seed FEA examples
+    seedDroneFea(database);
+    seedDroneCfd(database);
+
     // Run asynchronously in the background
     void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
       console.error("[DevServer] Failed to seed example packages:", err);
+    });
+    void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
+      console.error("[DevServer] Failed to seed prepackaged libraries:", err);
     });
 
     app.post("/api/v1/dev/reset", async (req, res) => {
@@ -212,9 +221,14 @@ graph TD
             "Check out these team statistics! The CSV table viewer renders the data cleanly. 📊",
             csvViewId,
           );
+
+          // FEA Simulation
+          seedDroneFea(database);
+          seedDroneCfd(database);
         }
 
         await seedExamplePackages(libraryStorage, database, jobQueue);
+        await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
         res.json({ success: true });
       } catch (err) {
         console.error("[DevServer] Failed to reset dev data:", err);

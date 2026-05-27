@@ -209,6 +209,43 @@ class InlineDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("ModelScript extension activated");
 
+  async function getProjectDependencies() {
+    const defaultDeps = [
+      { name: "Modelica", version: "4.1.0" },
+      { name: "SysML", version: "2026.3.0" },
+    ];
+
+    if (!workspace.workspaceFolders || workspace.workspaceFolders.length === 0) {
+      return defaultDeps;
+    }
+
+    const rootUri = workspace.workspaceFolders[0].uri;
+
+    try {
+      const msJsonUri = vscode.Uri.joinPath(rootUri, "modelscript.json");
+      const content = await workspace.fs.readFile(msJsonUri);
+      const json = JSON.parse(new TextDecoder().decode(content));
+      if (json.dependencies) {
+        return Object.entries(json.dependencies).map(([name, version]) => ({ name, version }));
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const pkgJsonUri = vscode.Uri.joinPath(rootUri, "package.json");
+      const content = await workspace.fs.readFile(pkgJsonUri);
+      const json = JSON.parse(new TextDecoder().decode(content));
+      if (json.modelscript?.dependencies) {
+        return Object.entries(json.modelscript.dependencies).map(([name, version]) => ({ name, version }));
+      }
+    } catch {
+      // ignore
+    }
+
+    return defaultDeps;
+  }
+
   // Register in-memory filesystem for blank project mode (memfs:// scheme)
   // Must be registered synchronously before any await to avoid ENOPRO race conditions during workspace validation.
   const folders = workspace.workspaceFolders;
@@ -236,8 +273,9 @@ export async function activate(context: vscode.ExtensionContext) {
         if (uri.path === "/install" || uri.path === "install") {
           const query = new URLSearchParams(uri.query);
           const pkg = query.get("package");
+          const version = query.get("version");
           if (pkg) {
-            vscode.commands.executeCommand("modelscript.registry.install", pkg);
+            vscode.commands.executeCommand("modelscript.registry.install", pkg, version || "latest");
           }
         }
       },
@@ -341,6 +379,7 @@ export async function activate(context: vscode.ExtensionContext) {
     initializationOptions: {
       extensionUri: context.extensionUri.toString(),
       registryUrl: vscode.workspace.getConfiguration("modelscript").get("registryUrl", "https://api.modelscript.org"),
+      projectDependencies: await getProjectDependencies(),
     },
     outputChannel: lspOutputChannel,
   };
@@ -539,6 +578,28 @@ export async function activate(context: vscode.ExtensionContext) {
       // Set context keys for palette visibility
       vscode.commands.executeCommand("setContext", "modelscript.sysml2Active", editor?.document.languageId === "sysml");
       vscode.commands.executeCommand("setContext", "modelscript.owl2Active", editor?.document.languageId === "owl2");
+    }),
+  );
+
+  // ── Viewport tracking for prioritized linting ────────────────────────
+  // Send visible line ranges to the LSP server when the user scrolls.
+  // The server uses this to prioritize linting symbols in the visible area.
+  let visibleRangeTimer: ReturnType<typeof setTimeout> | undefined;
+  context.subscriptions.push(
+    vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
+      if (!client) return;
+      const langId = e.textEditor.document.languageId;
+      if (langId !== "modelica" && langId !== "sysml" && langId !== "sysml2") return;
+
+      clearTimeout(visibleRangeTimer);
+      visibleRangeTimer = setTimeout(() => {
+        const uri = e.textEditor.document.uri.toString();
+        const ranges = e.visibleRanges.map((r) => ({
+          startLine: r.start.line,
+          endLine: r.end.line,
+        }));
+        client?.sendNotification("modelscript/visibleRanges", { uri, ranges });
+      }, 150);
     }),
   );
 

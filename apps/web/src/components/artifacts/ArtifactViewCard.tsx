@@ -7,6 +7,7 @@ import Box from "../Box";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
 import CsvViewer from "./CsvViewer";
+import LazyHeavyViewer from "./LazyHeavyViewer";
 import LinkPreviewViewer from "./LinkPreviewViewer";
 import MermaidViewer from "./MermaidViewer";
 import ModelicaCodeViewer from "./ModelicaCodeViewer";
@@ -14,16 +15,20 @@ import ModelicaDiagramViewer from "./ModelicaDiagramViewer";
 import PdfViewer from "./PdfViewer";
 import PictureViewer from "./PictureViewer";
 import SimulationPlotViewer from "./SimulationPlotViewer";
+import SimulationResultViewer from "./SimulationResultViewer";
 import UsdViewer from "./UsdViewer";
 import VegaViewer from "./VegaViewer";
 import VideoViewer from "./VideoViewer";
 import YoutubeVideoViewer from "./YoutubeVideoViewer";
 
+import type { SpatialPin } from "./spatial-pin";
+
 interface ArtifactViewCardProps {
   artifactId: number;
+  onPinCreated?: (pin: SpatialPin) => void;
 }
 
-const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
+const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCreated }) => {
   const [artifact, setArtifact] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isLoaded, setIsLoaded] = useState(true);
@@ -68,7 +73,11 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
     switch (artifact.view_type) {
       case "cad-step":
       case "cad_step":
-        return <CadStepViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer artifactId={artifactId} thumbnailUrl={viewConfig.thumbnailUrl} title="CAD STEP Viewer">
+            <CadStepViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "modelica-code":
         return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelica-diagram":
@@ -80,7 +89,11 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
       case "mermaid-diagram":
         return <MermaidViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "3d-model":
-        return <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <LazyHeavyViewer artifactId={artifactId} thumbnailUrl={viewConfig.thumbnailUrl} title="USD 3D Viewer">
+            <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "video":
         return <VideoViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "youtube_video":
@@ -95,6 +108,18 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
         return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "link-preview":
         return <LinkPreviewViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "simulation-result":
+      case "fea-result":
+      case "cfd-result":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={viewConfig.thumbnailUrl}
+            title="Simulation Result Viewer"
+          >
+            <SimulationResultViewer viewConfig={viewConfig} isFullScreen={isFullScreen} onPinCreated={onPinCreated} />
+          </LazyHeavyViewer>
+        );
       default:
         return (
           <Box p={3} backgroundColor="var(--color-canvas-subtle)" borderRadius="6px">
@@ -114,7 +139,9 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
           borderRadius="12px"
           border="1px solid var(--color-border)"
           overflow="hidden"
-          onClick={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
         >
           {viewConfig.thumbnail_url ? (
             <img
@@ -183,42 +210,44 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId }) => {
       border="1px solid var(--color-border)"
       overflow="hidden"
       position="relative"
-      onClick={(e) => e.preventDefault()}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
     >
-      {isLoaded && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsFullScreen(true);
-          }}
-          style={{
-            position: "absolute",
-            top: "8px",
-            right: "8px",
-            zIndex: 10,
-            background: "rgba(0,0,0,0.5)",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            padding: "6px",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ScreenFullIcon size={16} />
-        </button>
-      )}
       {viewerContent}
-      {artifact.title && (
-        <Box p={2} borderTop="1px solid var(--color-border)" backgroundColor="var(--color-canvas-subtle)">
-          <Text fontSize="12px" fontWeight="bold">
-            {artifact.title}
-          </Text>
-        </Box>
-      )}
+      <Box
+        p={2}
+        borderTop="1px solid var(--color-border)"
+        backgroundColor="var(--color-canvas-subtle)"
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+      >
+        <Text fontSize="12px" fontWeight="bold">
+          {artifact.title || ""}
+        </Text>
+        {isLoaded && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsFullScreen(true);
+            }}
+            style={{
+              background: "transparent",
+              color: "var(--color-fg-default)",
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+            }}
+            title="Full screen"
+          >
+            <ScreenFullIcon size={16} />
+          </button>
+        )}
+      </Box>
     </Box>
   );
 };

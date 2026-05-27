@@ -1,24 +1,57 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerMiscEndpoints(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onNotification("modelscript/registryPackages", async (params: { packages: RegistryPackageInfo[] }) => {
-    if (savedLoaderCtx) {
-      connection.console.info(`[lsp] Received ${params.packages.length} registry packages from client.`);
-      await loadRegistryPackages(params.packages, savedLoaderCtx);
-      // Re-validate all documents to pick up the newly indexed library items
-      for (const doc of documents.all()) {
-        validateTextDocument(doc);
+export function registerMiscEndpoints(context: LspContext) {
+  // ── Viewport tracking for prioritized linting ────────────────────────
+  // Client sends visible line ranges on scroll/edit. We convert to byte
+  // ranges and store in ValidationService for viewport-aware linting.
+  context.connection.onNotification(
+    "modelscript/visibleRanges",
+    (params: { uri: string; ranges: { startLine: number; endLine: number }[] }) => {
+      if (!params.ranges || params.ranges.length === 0) {
+        context.validationService.documentViewports.delete(params.uri);
+        return;
       }
-    } else {
-      connection.console.warn("[lsp] Received registry packages but loader context is not ready.");
-    }
-  });
+      // Use the bridge's PositionIndex to convert lines → byte offsets
+      const bridge = context.validationService.documentLSPBridges.get(params.uri);
+      if (bridge && (bridge as any).positions) {
+        const positions = (bridge as any).positions;
+        // Merge all visible ranges into one encompassing byte range
+        let minByte = Infinity;
+        let maxByte = 0;
+        for (const range of params.ranges) {
+          const startByte = positions.positionToOffset(range.startLine, 0);
+          const endByte = positions.positionToOffset(range.endLine + 1, 0); // end of last visible line
+          if (startByte < minByte) minByte = startByte;
+          if (endByte > maxByte) maxByte = endByte;
+        }
+        if (minByte < maxByte) {
+          context.validationService.documentViewports.set(params.uri, { startByte: minByte, endByte: maxByte });
+        }
+      }
+    },
+  );
 
-  connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
+  context.connection.onNotification(
+    "modelscript/registryPackages",
+    async (params: { packages: RegistryPackageInfo[] }) => {
+      if (savedLoaderCtx) {
+        context.connection.console.info(`[lsp] Received ${params.packages.length} registry packages from client.`);
+        await loadRegistryPackages(params.packages, savedLoaderCtx);
+        // Re-validate all documents to pick up the newly indexed library items
+        for (const doc of context.documents.all()) {
+          context.validationService.validateTextDocument(doc);
+        }
+      } else {
+        context.connection.console.warn("[lsp] Received registry packages but loader context is not ready.");
+      }
+    },
+  );
+
+  context.connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
     try {
-      const db = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       return getTraceabilityMatrix(db); // Do not filter by uri to show workspace-level traceability
     } catch (e) {
       console.error("[traceability] Error:", e);
@@ -26,11 +59,11 @@ export function registerMiscEndpoints(connection: Connection, documentManager: a
     }
   });
 
-  connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
+  context.connection.onRequest("modelscript/resolveMarkdownVars", (): { values: Record<string, string> } => {
     return { values: {} };
   });
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/resolveMarkdownContent",
     (): {
       requirements: Record<string, { rows: { reqId: string; name: string; text: string; status: string }[] }>;
@@ -43,7 +76,7 @@ export function registerMiscEndpoints(connection: Connection, documentManager: a
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/generateCommitMessage",
     async (params: { changes: { uri: string; oldText: string; newText: string }[] }) => {
       let descriptions: string[] = [];
@@ -137,7 +170,7 @@ export function registerMiscEndpoints(connection: Connection, documentManager: a
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getSemanticDiff",
     async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: FlatSemanticEdit[] }> => {
       const isSysml = params.uri.endsWith(".sysml");
@@ -254,7 +287,7 @@ export function registerMiscEndpoints(connection: Connection, documentManager: a
     },
   );
 
-  connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
+  context.connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
     return runVerificationForUri(params.uri);
   });
 }

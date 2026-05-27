@@ -200,7 +200,7 @@ const PostDetailPage: React.FC = () => {
       </StickyHeader>
 
       {parents.map((parent) => (
-        <Post key={parent.id} post={parent} />
+        <Post key={parent.id} post={parent} isThread={true} />
       ))}
 
       <Post post={post} isDetail={true} />

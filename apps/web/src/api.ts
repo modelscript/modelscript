@@ -210,7 +210,7 @@ export interface NpmSearchResult {
  */
 export const getPackument = async (name: string): Promise<NpmPackument | null> => {
   try {
-    const { data } = await axios.get<NpmPackument>(`/${encodeURIComponent(name)}`);
+    const { data } = await api.get<NpmPackument>(`/npm/${encodeURIComponent(name)}`);
     return data;
   } catch {
     return null;
@@ -221,13 +221,35 @@ export const getPackument = async (name: string): Promise<NpmPackument | null> =
  * Search the npm registry.
  */
 export const searchRegistry = async (text: string, size = 20): Promise<NpmSearchResult> => {
-  const { data } = await axios.get<NpmSearchResult>("/-/v1/search", {
+  const { data } = await api.get<NpmSearchResult>("/npm/-/v1/search", {
     params: { text, size },
   });
   return data;
 };
 
 // ── artifact viewer API ─────────────────────────────────────────
+
+export const createBot = async (payload: {
+  username: string;
+  display_name: string;
+  bio?: string;
+  avatar_url?: string;
+}) => {
+  const { data } = await api.post("/users/me/bots", payload);
+  return data;
+};
+
+export const getBots = async () => {
+  const { data } = await api.get("/users/me/bots");
+  return data.bots;
+};
+
+export const deleteBot = async (botId: number) => {
+  const { data } = await api.delete(`/users/me/bots/${botId}`);
+  return data;
+};
+
+// Simulation
 
 export interface ArtifactViewDescriptor {
   viewer: string; // 'fmu-simulator' | 'dataset-table' | ...
@@ -352,12 +374,47 @@ export interface GitlabMergeRequest {
   };
 }
 
-export const getGitlabProject = async (projectIdOrPath: string): Promise<GitlabProject> => {
+export const getGitlabProject = async (
+  projectIdOrPath: string,
+  provider: string = "gitlab",
+): Promise<GitlabProject> => {
+  if (provider === "github") {
+    const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}`);
+    return {
+      id: data.id,
+      description: data.description,
+      name: data.name,
+      name_with_namespace: data.full_name,
+      path: data.name,
+      path_with_namespace: data.full_name,
+      default_branch: data.default_branch,
+      web_url: data.html_url,
+    };
+  }
   const { data } = await api.get<GitlabProject>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}`);
   return data;
 };
 
-export const getGitlabTree = async (projectIdOrPath: string, ref = "main", path = ""): Promise<GitlabTreeNode[]> => {
+export const getGitlabTree = async (
+  projectIdOrPath: string,
+  ref = "main",
+  path = "",
+  provider: string = "gitlab",
+): Promise<GitlabTreeNode[]> => {
+  if (provider === "github") {
+    const url = path
+      ? `https://api.github.com/repos/${projectIdOrPath}/contents/${path}?ref=${ref}`
+      : `https://api.github.com/repos/${projectIdOrPath}/contents?ref=${ref}`;
+    const { data } = await axios.get(url);
+    const items = Array.isArray(data) ? data : [data];
+    return items.map((item: any) => ({
+      id: item.sha,
+      name: item.name,
+      type: item.type === "dir" ? "tree" : "blob",
+      path: item.path,
+      mode: "100644",
+    }));
+  }
   const { data } = await api.get<GitlabTreeNode[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/tree`,
     {
@@ -367,7 +424,16 @@ export const getGitlabTree = async (projectIdOrPath: string, ref = "main", path 
   return data;
 };
 
-export const getGitlabFileRaw = async (projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> => {
+export const getGitlabFileRaw = async (
+  projectIdOrPath: string,
+  filePath: string,
+  ref = "main",
+  provider: string = "gitlab",
+): Promise<string> => {
+  if (provider === "github") {
+    const { data } = await axios.get(`https://raw.githubusercontent.com/${projectIdOrPath}/${ref}/${filePath}`);
+    return typeof data === "string" ? data : JSON.stringify(data, null, 2);
+  }
   const { data } = await api.get<string>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/files/${encodeURIComponent(filePath)}/raw`,
     { params: { ref } },
@@ -375,7 +441,23 @@ export const getGitlabFileRaw = async (projectIdOrPath: string, filePath: string
   return data;
 };
 
-export const getGitlabCommits = async (projectIdOrPath: string, refName = "main"): Promise<GitlabCommit[]> => {
+export const getGitlabCommits = async (
+  projectIdOrPath: string,
+  refName = "main",
+  provider: string = "gitlab",
+): Promise<GitlabCommit[]> => {
+  if (provider === "github") {
+    const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/commits?sha=${refName}`);
+    return data.map((c: any) => ({
+      id: c.sha,
+      short_id: c.sha.substring(0, 8),
+      title: c.commit.message.split("\n")[0],
+      message: c.commit.message,
+      author_name: c.commit.author.name,
+      author_email: c.commit.author.email,
+      created_at: c.commit.author.date,
+    }));
+  }
   const { data } = await api.get<GitlabCommit[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/repository/commits`,
     {
@@ -385,7 +467,14 @@ export const getGitlabCommits = async (projectIdOrPath: string, refName = "main"
   return data;
 };
 
-export const getGitlabPipelines = async (projectIdOrPath: string, refName = "main"): Promise<GitlabPipeline[]> => {
+export const getGitlabPipelines = async (
+  projectIdOrPath: string,
+  refName = "main",
+  provider: string = "gitlab",
+): Promise<GitlabPipeline[]> => {
+  if (provider === "github") {
+    return []; // Simplified for now
+  }
   const { data } = await api.get<GitlabPipeline[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines`,
     {
@@ -395,14 +484,40 @@ export const getGitlabPipelines = async (projectIdOrPath: string, refName = "mai
   return data;
 };
 
-export const getGitlabPipelineJobs = async (projectIdOrPath: string, pipelineId: number): Promise<GitlabJob[]> => {
+export const getGitlabPipelineJobs = async (
+  projectIdOrPath: string,
+  pipelineId: number,
+  provider: string = "gitlab",
+): Promise<GitlabJob[]> => {
+  if (provider === "github") return [];
   const { data } = await api.get<GitlabJob[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/pipelines/${pipelineId}/jobs`,
   );
   return data;
 };
 
-export const getGitlabIssues = async (projectIdOrPath: string): Promise<GitlabIssue[]> => {
+export const getGitlabIssues = async (projectIdOrPath: string, provider: string = "gitlab"): Promise<GitlabIssue[]> => {
+  if (provider === "github") {
+    const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/issues?state=open`);
+    return data
+      .filter((i: any) => !i.pull_request)
+      .map((i: any) => ({
+        id: i.id,
+        iid: i.number,
+        project_id: 0,
+        title: i.title,
+        description: i.body || "",
+        state: i.state,
+        created_at: i.created_at,
+        updated_at: i.updated_at,
+        author: {
+          name: i.user.login,
+          avatar_url: i.user.avatar_url,
+          username: i.user.login,
+        },
+        labels: i.labels.map((l: any) => l.name),
+      }));
+  }
   const { data } = await api.get<GitlabIssue[]>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`);
   return data;
 };
@@ -411,7 +526,9 @@ export const createGitlabIssue = async (
   projectIdOrPath: string,
   title: string,
   description: string,
+  provider: string = "gitlab",
 ): Promise<GitlabIssue> => {
+  if (provider === "github") throw new Error("Creating issues on GitHub is not supported yet.");
   const { data } = await api.post<GitlabIssue>(`/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/issues`, {
     title,
     description,
@@ -419,7 +536,30 @@ export const createGitlabIssue = async (
   return data;
 };
 
-export const getGitlabMergeRequests = async (projectIdOrPath: string): Promise<GitlabMergeRequest[]> => {
+export const getGitlabMergeRequests = async (
+  projectIdOrPath: string,
+  provider: string = "gitlab",
+): Promise<GitlabMergeRequest[]> => {
+  if (provider === "github") {
+    const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/pulls?state=open`);
+    return data.map((pr: any) => ({
+      id: pr.id,
+      iid: pr.number,
+      project_id: 0,
+      title: pr.title,
+      description: pr.body || "",
+      state: pr.state,
+      created_at: pr.created_at,
+      updated_at: pr.updated_at,
+      target_branch: pr.base.ref,
+      source_branch: pr.head.ref,
+      author: {
+        name: pr.user.login,
+        avatar_url: pr.user.avatar_url,
+        username: pr.user.login,
+      },
+    }));
+  }
   const { data } = await api.get<GitlabMergeRequest[]>(
     `/gitlab/projects/${encodeURIComponent(projectIdOrPath)}/merge_requests`,
   );

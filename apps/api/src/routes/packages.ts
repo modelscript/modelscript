@@ -12,6 +12,20 @@ import type { LibraryStorage } from "../storage.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { extractPackageMoFromZip } from "../util/zip.js";
 
+function walkDir(dir: string, callback: (relPath: string, content: string) => void, baseDir = dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkDir(fullPath, callback, baseDir);
+    } else {
+      const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
+      const content = fs.readFileSync(fullPath, "utf-8");
+      callback(relPath, content);
+    }
+  }
+}
+
 export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = createRouter();
 
@@ -130,6 +144,47 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         modelicaVersion: null,
         size: file.size,
       });
+    }
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/files
+   *
+   * Get all .mo files extracted for a specific package version.
+   * This allows the LSP to download all source files without a zip.
+   */
+  router.get("/:name/:version/files", async (req: Request, res: Response): Promise<void> => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+    const isStream = req.query["stream"] === "true";
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const extractedDir = storage.getExtractedPath(name, version);
+    if (!fs.existsSync(extractedDir)) {
+      res.status(404).json({ error: "Library not extracted" });
+      return;
+    }
+
+    if (isStream) {
+      res.setHeader("Content-Type", "application/x-ndjson");
+      walkDir(extractedDir, (relPath, content) => {
+        if (relPath.endsWith(".mo")) {
+          res.write(JSON.stringify({ [relPath]: content }) + "\n");
+        }
+      });
+      res.end();
+    } else {
+      const files: Record<string, string> = {};
+      walkDir(extractedDir, (relPath, content) => {
+        if (relPath.endsWith(".mo")) {
+          files[relPath] = content;
+        }
+      });
+      res.json({ name, version, files });
     }
   });
 

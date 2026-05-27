@@ -6,6 +6,7 @@ import type { LibraryDatabase } from "../database.js";
 import { requireAuth } from "../middleware/auth-middleware.js";
 import { locationService } from "../services/location.js";
 import { extractTopics } from "../util/extract-topics.js";
+import { generateThumbnail } from "../workers/thumbnailWorker.js";
 
 // OptionalAuth middleware to allow endpoints to work for both logged in and out users
 const optionalAuth = (req: Request, res: Response, next: any) => {
@@ -23,8 +24,16 @@ export function socialRouter(database: LibraryDatabase): Router {
    */
   router.post("/posts", requireAuth, (req: Request, res: Response) => {
     const authorId = req.user!.id;
-    const { content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, client_signature, key_id_string } =
-      req.body;
+    const {
+      content,
+      artifact_view_id,
+      reply_to_id,
+      quote_post_id,
+      repost_of_id,
+      client_signature,
+      key_id_string,
+      metadata,
+    } = req.body;
 
     if (!content && !repost_of_id && !artifact_view_id) {
       res.status(400).json({ error: "Content, artifact, or repost target is required" });
@@ -32,7 +41,19 @@ export function socialRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      const { id } = database.createPost(authorId, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id);
+      const { id } = database.createPost(
+        authorId,
+        content,
+        artifact_view_id,
+        reply_to_id,
+        quote_post_id,
+        repost_of_id,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        metadata ? JSON.stringify(metadata) : undefined,
+      );
       const post = database.getPost(id, authorId);
 
       // Process tasks asynchronously so they don't block the request
@@ -448,6 +469,12 @@ export function socialRouter(database: LibraryDatabase): Router {
     const { artifact_type, view_config, title } = req.body;
     try {
       const id = database.createArtifactView(userId, artifact_type, "upload", view_config, title);
+
+      // Asynchronously trigger thumbnail generation if applicable
+      if (["simulation-result", "fea-result", "cfd-result", "cad-step", "cad_step"].includes(artifact_type)) {
+        generateThumbnail(id).catch((err) => console.error("Error triggering thumbnail generation:", err));
+      }
+
       res.status(201).json({ id });
     } catch (err) {
       res.status(500).json({ error: "Failed to create artifact view" });

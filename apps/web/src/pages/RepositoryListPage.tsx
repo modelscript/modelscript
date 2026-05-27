@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { AlertIcon, SearchIcon } from "@primer/octicons-react";
+import { AlertIcon, PlusIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import { CircleIconButton } from "../components/SharedStyles";
 import { API_BASE_URL } from "../config";
 
 /* ─── styled helpers ─── */
@@ -74,6 +75,39 @@ const CardList = styled.div`
   flex-direction: column;
 `;
 
+const InputSection = styled.form`
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  height: 56px;
+  padding: 0 16px;
+`;
+
+const RepoInput = styled.input`
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: var(--color-fg-default);
+  outline: none;
+
+  &::placeholder {
+    color: var(--color-fg-muted);
+    opacity: 0.5;
+  }
+`;
+
+const SpinAnimation = styled.div`
+  @keyframes spin {
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  animation: spin 1s linear infinite;
+  display: flex;
+`;
+
 /* ─── main page ─── */
 
 const RepositoryListPage: React.FC = () => {
@@ -82,7 +116,10 @@ const RepositoryListPage: React.FC = () => {
   const [repos, setRepos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"all" | "my">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "my">("my");
+  const [repoInput, setRepoInput] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const query = searchParams.get("q") || "";
 
   useEffect(() => {
@@ -126,18 +163,99 @@ const RepositoryListPage: React.FC = () => {
 
     const timer = setTimeout(fetchRepos, 300);
     return () => clearTimeout(timer);
-  }, [query, token, activeTab]);
+  }, [query, token, activeTab, refreshKey]);
+
+  const handleAddRepo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = repoInput.trim();
+    if (!url || !token) return;
+
+    let provider: string;
+    let repo_full_name: string;
+    try {
+      const parsedUrl = new URL(url.startsWith("http") ? url : `https://${url}`);
+      if (parsedUrl.hostname.includes("github.com")) provider = "github";
+      else if (parsedUrl.hostname.includes("gitlab.com")) provider = "gitlab";
+      else throw new Error("Only GitHub and GitLab URLs are supported");
+
+      const parts = parsedUrl.pathname.split("/").filter(Boolean);
+      if (parts.length < 2) throw new Error("Invalid repository URL format");
+      repo_full_name = `${parts[0]}/${parts[1]}`.replace(/\.git$/, "");
+    } catch (err: any) {
+      setError(err.message || "Invalid repository URL");
+      return;
+    }
+
+    setIsAdding(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/repos`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          provider,
+          repo_full_name,
+          external_repo_id: repo_full_name,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: text || `HTTP Error ${res.status}` };
+        }
+        setError(data.error || "Failed to add repository");
+      } else {
+        setRepoInput("");
+        setRefreshKey((k) => k + 1);
+        setActiveTab("my");
+      }
+    } catch (e: unknown) {
+      const err = e as Error;
+      setError(err.message || "An error occurred");
+    } finally {
+      setIsAdding(false);
+    }
+  };
 
   return (
     <Box>
       <TabBar>
-        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
-          All Repositories
-        </Tab>
         <Tab $active={activeTab === "my"} onClick={() => setActiveTab("my")}>
           My Repositories
         </Tab>
+        <Tab $active={activeTab === "all"} onClick={() => setActiveTab("all")}>
+          All Repositories
+        </Tab>
       </TabBar>
+
+      {token && activeTab === "my" && (
+        <InputSection onSubmit={handleAddRepo}>
+          <RepoInput
+            type="text"
+            placeholder="Enter a GitHub or GitLab repository URL"
+            value={repoInput}
+            onChange={(e) => setRepoInput(e.target.value)}
+            disabled={isAdding}
+            required
+          />
+          <CircleIconButton type="submit" disabled={isAdding}>
+            {isAdding ? (
+              <SpinAnimation>
+                <SyncIcon size={16} />
+              </SpinAnimation>
+            ) : (
+              <PlusIcon size={16} />
+            )}
+          </CircleIconButton>
+        </InputSection>
+      )}
 
       <Box p={4}>
         {/* Search header */}
@@ -157,7 +275,9 @@ const RepositoryListPage: React.FC = () => {
         {/* Content */}
         {loading && repos.length === 0 ? (
           <Box display="flex" justifyContent="center" p={12}>
-            <Spinner size="large" />
+            <SpinAnimation>
+              <Spinner size="large" />
+            </SpinAnimation>
           </Box>
         ) : error ? (
           <Box

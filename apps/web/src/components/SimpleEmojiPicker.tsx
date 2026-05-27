@@ -1,5 +1,5 @@
 import { SearchIcon } from "@primer/octicons-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Emoji = { char: string; name: string; hasSkinTone?: boolean };
 
@@ -501,8 +501,37 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
   const [hoveredEmoji, setHoveredEmoji] = useState<Emoji | null>(null);
   const [skinTone, setSkinTone] = useState<string>("");
   const [showSkinTones, setShowSkinTones] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>(EMOJI_CATEGORIES[0].title);
   const scrollRef = useRef<HTMLDivElement>(null);
   const categoryRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!scrollRef.current) return;
+      const containerTop = scrollRef.current.getBoundingClientRect().top;
+
+      let currentActive = activeCategory;
+      for (const cat of EMOJI_CATEGORIES) {
+        const el = categoryRefs.current[cat.title];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= containerTop + 20) {
+            currentActive = cat.title;
+          }
+        }
+      }
+
+      if (currentActive !== activeCategory) {
+        setActiveCategory(currentActive);
+      }
+    };
+
+    const scrollEl = scrollRef.current;
+    if (scrollEl) {
+      scrollEl.addEventListener("scroll", handleScroll);
+      return () => scrollEl.removeEventListener("scroll", handleScroll);
+    }
+  }, [activeCategory]);
 
   const filteredCategories = EMOJI_CATEGORIES.map((category) => {
     const filteredEmojis = category.emojis.filter(
@@ -581,6 +610,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setActiveCategory(cat.title);
                 if (categoryRefs.current[cat.title]) {
                   categoryRefs.current[cat.title]?.scrollIntoView({ behavior: "smooth" });
                 }
@@ -591,11 +621,21 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
                 border: "none",
                 cursor: "pointer",
                 fontSize: "16px",
-                padding: "4px",
-                borderRadius: "4px",
+                padding: "4px 4px 8px 4px",
+                marginBottom: "-9px",
+                borderBottom: activeCategory === cat.title ? "2px solid #1d9bf0" : "2px solid transparent",
+                color: activeCategory === cat.title ? "var(--color-fg-default)" : "var(--color-fg-muted)",
               }}
-              onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-              onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+              onMouseOver={(e) => {
+                if (activeCategory !== cat.title) {
+                  e.currentTarget.style.borderBottom = "2px solid var(--color-border-default)";
+                }
+              }}
+              onMouseOut={(e) => {
+                if (activeCategory !== cat.title) {
+                  e.currentTarget.style.borderBottom = "2px solid transparent";
+                }
+              }}
             >
               {cat.icon}
             </button>

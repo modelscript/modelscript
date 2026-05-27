@@ -114,6 +114,11 @@ const NavItem = styled(Link)<{ $active?: boolean }>`
   width: 100%;
   box-sizing: border-box;
 
+  svg {
+    stroke: ${(props) => (props.$active ? "currentColor" : "none")};
+    stroke-width: ${(props) => (props.$active ? "0.8" : "0")};
+  }
+
   &:hover {
     text-decoration: none;
   }
@@ -141,6 +146,15 @@ const NavPill = styled.div`
     padding: 0;
     justify-content: center;
     border-radius: 50%;
+  }
+`;
+
+const LogoPill = styled(NavPill)`
+  padding: 16px;
+  border-radius: 50%;
+
+  @media (max-width: 1280px) {
+    padding: 0;
   }
 `;
 
@@ -253,15 +267,25 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <Box mb={4} px={4}>
-        <Link to={user ? "/home" : "/explore"}>
-          <img
-            src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
-            alt="ModelScript"
-            style={{ width: 32, height: 32 }}
-          />
-        </Link>
-      </Box>
+      <NavItem to={user ? "/home" : "/explore"} style={{ marginBottom: "8px", marginTop: "4px" }}>
+        <LogoPill>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 28,
+              height: 28,
+            }}
+          >
+            <img
+              src={theme === "dark" ? "/ms-logo-light.png" : "/ms-logo.png"}
+              alt="ModelScript"
+              style={{ width: 32, height: 32, minWidth: 32 }}
+            />
+          </div>
+        </LogoPill>
+      </NavItem>
 
       <Box display="flex" flexDirection="column" gap={1} flex={1} style={{ position: "relative", zIndex: 1 }}>
         {navLinks.map((link) => (
@@ -273,11 +297,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 32,
-                  height: 32,
+                  width: 28,
+                  height: 28,
                 }}
               >
-                <link.icon size={32} />
+                <link.icon size={28} />
                 {link.to === "/notifications" && unreadCount > 0 && (
                   <div
                     style={{

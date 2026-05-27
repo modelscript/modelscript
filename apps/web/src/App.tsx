@@ -19,6 +19,7 @@ import PackageDetailPage from "./pages/PackageDetailPage";
 import PostActivityPage from "./pages/PostActivityPage";
 import PostDetailPage from "./pages/PostDetailPage";
 import ProfilePage from "./pages/ProfilePage";
+import RenderArtifactPage from "./pages/RenderArtifactPage";
 import RepositoryListPage from "./pages/RepositoryListPage";
 import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
@@ -48,6 +49,7 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+            <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
 
             {/* Social shell routes */}
             <Route element={<AppShell />}>

@@ -45,14 +45,17 @@ const Body = styled.div`
   gap: 12px;
 `;
 
+import type { SpatialPin } from "./artifacts/spatial-pin";
+
 interface ComposeModalProps {
   onClose: () => void;
   onPostCreated?: (post: any) => void;
   quotePost?: any;
   replyToPost?: any;
+  pendingPin?: SpatialPin;
 }
 
-const ComposeModal: React.FC<ComposeModalProps> = ({ onClose, onPostCreated, quotePost, replyToPost }) => {
+const ComposeModal: React.FC<ComposeModalProps> = ({ onClose, onPostCreated, quotePost, replyToPost, pendingPin }) => {
   return (
     <Overlay onClick={onClose}>
       <ModalPanel onClick={(e) => e.stopPropagation()}>
@@ -87,6 +90,7 @@ const ComposeModal: React.FC<ComposeModalProps> = ({ onClose, onPostCreated, quo
             }}
             quotePost={quotePost}
             replyToPost={replyToPost}
+            pendingPin={pendingPin}
             minRows={4}
             autoFocus={true}
           />

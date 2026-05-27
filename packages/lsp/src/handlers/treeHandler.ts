@@ -1,28 +1,31 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerTreeHandlers(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest("modelscript/getLibraryTree", (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
-    // Use the unified workspace — merges all language indices
-    const unifiedIndex = workspaceManager.unifiedWorkspace.toTreeIndex();
-    if (!unifiedIndex) return [];
+export function registerTreeHandlers(context: LspContext) {
+  context.connection.onRequest(
+    "modelscript/getLibraryTree",
+    (params: { uri: string; parentId?: string }): TreeNodeInfo[] => {
+      // Use the unified workspace — merges all language indices
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toTreeIndex();
+      if (!unifiedIndex) return [];
 
-    // Invalidate FQN cache when the index changes
-    if (fqnCacheIndex !== unifiedIndex) {
-      fqnCache = new Map();
-      fqnCacheIndex = unifiedIndex;
-    }
+      // Invalidate FQN cache when the index changes
+      if (fqnCacheIndex !== unifiedIndex) {
+        context.state.fqnCache = new Map();
+        fqnCacheIndex = unifiedIndex;
+      }
 
-    return getTreeChildrenFast(unifiedIndex, params.parentId);
-  });
+      return getTreeChildrenFast(unifiedIndex, params.parentId);
+    },
+  );
 
-  connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
+  context.connection.onRequest("modelscript/getProjectTree", (params: { parentId?: string }): ProjectTreeNodeInfo[] => {
     const nodes: ProjectTreeNodeInfo[] = [];
 
-    const globalUnified = workspaceManager.globalWorkspaceIndex.toTreeIndex();
-    const sysmlUnified = workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
+    const globalUnified = context.workspaceManager.globalWorkspaceIndex.toTreeIndex();
+    const sysmlUnified = context.workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
 
     const allSymbols = new Map<string, any>();
     for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
@@ -129,34 +132,40 @@ export function registerTreeHandlers(connection: Connection, documentManager: an
     return nodes;
   });
 
-  connection.onRequest("modelscript/getClassIcon", (params: { className: string; uri?: string }): string | null => {
-    return null; // Disabled temporarily for performance testing
-  });
+  context.connection.onRequest(
+    "modelscript/getClassIcon",
+    (params: { className: string; uri?: string }): string | null => {
+      return null; // Disabled temporarily for performance testing
+    },
+  );
 
-  connection.onRequest("modelscript/listClasses", (): { classes: { name: string; kind: string; uri: string }[] } => {
-    const classes: { name: string; kind: string; uri: string }[] = [];
-    const seen = new Set<string>();
+  context.connection.onRequest(
+    "modelscript/listClasses",
+    (): { classes: { name: string; kind: string; uri: string }[] } => {
+      const classes: { name: string; kind: string; uri: string }[] = [];
+      const seen = new Set<string>();
 
-    const globalUnified = workspaceManager.globalWorkspaceIndex.toTreeIndex();
-    const sysmlUnified = workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
+      const globalUnified = context.workspaceManager.globalWorkspaceIndex.toTreeIndex();
+      const sysmlUnified = context.workspaceManager.sysml2WorkspaceIndex.toTreeIndex();
 
-    const allSymbols = new Map<string, any>();
-    for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
-    for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
+      const allSymbols = new Map<string, any>();
+      for (const [id, entry] of globalUnified.symbols) allSymbols.set(id.toString(), entry);
+      for (const [id, entry] of sysmlUnified.symbols) allSymbols.set(id.toString(), entry);
 
-    for (const entry of allSymbols.values()) {
-      if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
-        if (!seen.has(entry.name)) {
-          seen.add(entry.name);
-          classes.push({
-            name: entry.name,
-            kind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
-            uri: entry.resourceId,
-          });
+      for (const entry of allSymbols.values()) {
+        if ((entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
+          if (!seen.has(entry.name)) {
+            seen.add(entry.name);
+            classes.push({
+              name: entry.name,
+              kind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+              uri: entry.resourceId,
+            });
+          }
         }
       }
-    }
 
-    return { classes };
-  });
+      return { classes };
+    },
+  );
 }

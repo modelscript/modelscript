@@ -1,3 +1,4 @@
+import Editor from "@monaco-editor/react";
 import {
   BookIcon,
   CheckCircleFillIcon,
@@ -7,13 +8,16 @@ import {
   FileDirectoryIcon,
   FileIcon,
   GearIcon,
-  GitCommitIcon,
+  GitBranchIcon,
   GitPullRequestIcon,
+  HistoryIcon,
   IssueOpenedIcon,
   LawIcon,
   PlayIcon,
   RepoForkedIcon,
+  SearchIcon,
   StarIcon,
+  TagIcon,
   TriangleDownIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
@@ -34,6 +38,7 @@ import {
   UnderlineNav,
 } from "@primer/react";
 import DOMPurify from "dompurify";
+import { marked } from "marked";
 import { useEffect, useState } from "react";
 import { Link, Route, Routes, useLocation, useParams } from "react-router-dom";
 import styled from "styled-components";
@@ -69,14 +74,10 @@ const FileRow = styled(Box)`
   align-items: center;
   gap: 16px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border-default);
-  color: var(--color-text-primary);
+  border-top: 1px solid var(--color-border-muted);
+  color: var(--color-fg-default);
   font-size: 14px;
   cursor: pointer;
-
-  &:last-child {
-    border-bottom: none;
-  }
 
   &:hover {
     background-color: var(--color-canvas-subtle);
@@ -88,12 +89,8 @@ const CommitRow = styled(Box)`
   justify-content: space-between;
   align-items: flex-start;
   padding: 16px;
-  border-bottom: 1px solid var(--color-border-default);
+  border-top: 1px solid var(--color-border-muted);
   font-size: 14px;
-
-  &:last-child {
-    border-bottom: none;
-  }
 `;
 
 const MarkdownBody = styled.div`
@@ -150,7 +147,60 @@ const MarkdownBody = styled.div`
   }
 `;
 
-function CodeTab({ projectId, repo }: { projectId: string; repo: GitlabProject }) {
+function getLanguageFromFileName(fileName: string) {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "js":
+    case "jsx":
+      return "javascript";
+    case "json":
+      return "json";
+    case "css":
+      return "css";
+    case "html":
+      return "html";
+    case "md":
+      return "markdown";
+    case "yml":
+    case "yaml":
+      return "yaml";
+    case "py":
+      return "python";
+    case "java":
+      return "java";
+    case "cpp":
+    case "c":
+    case "h":
+    case "hpp":
+      return "cpp";
+    case "cs":
+      return "csharp";
+    case "go":
+      return "go";
+    case "rs":
+      return "rust";
+    case "php":
+      return "php";
+    case "rb":
+      return "ruby";
+    case "sh":
+    case "bash":
+      return "shell";
+    case "sql":
+      return "sql";
+    case "xml":
+      return "xml";
+    case "mo":
+      return "modelica";
+    default:
+      return "plaintext";
+  }
+}
+
+function CodeTab({ projectId, repo, provider }: { projectId: string; repo: GitlabProject; provider: string }) {
   const [currentPath, setCurrentPath] = useState("");
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [tree, setTree] = useState<GitlabTreeNode[]>([]);
@@ -166,18 +216,20 @@ function CodeTab({ projectId, repo }: { projectId: string; repo: GitlabProject }
         setLoading(true);
         setError("");
 
-        const commitsData = await getGitlabCommits(projectId).catch(() => []);
+        const commitsData = await getGitlabCommits(projectId, "main", provider).catch(() => []);
         setCommits(commitsData);
 
         if (currentFile) {
-          const raw = await getGitlabFileRaw(projectId, currentFile);
+          const raw = await getGitlabFileRaw(projectId, currentFile, "main", provider);
           setFileContent(raw);
           setTree([]);
           setReadme(null);
         } else {
           const [treeData, readmeData] = await Promise.all([
-            getGitlabTree(projectId, "main", currentPath),
-            currentPath === "" ? getGitlabFileRaw(projectId, "README.md").catch(() => null) : Promise.resolve(null),
+            getGitlabTree(projectId, "main", currentPath, provider),
+            currentPath === ""
+              ? getGitlabFileRaw(projectId, "README.md", "main", provider).catch(() => null)
+              : Promise.resolve(null),
           ]);
           setTree(
             treeData.sort((a, b) => (a.type === "tree" ? -1 : b.type === "tree" ? 1 : a.name.localeCompare(b.name))),
@@ -332,13 +384,50 @@ git push -u origin main`}
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
             <ActionMenu>
-              <ActionMenu.Button leadingVisual={GitCommitIcon}>main</ActionMenu.Button>
+              <ActionMenu.Button
+                leadingVisual={GitBranchIcon}
+                variant="default"
+                style={{ padding: "3px 12px", height: "32px" }}
+              >
+                main
+              </ActionMenu.Button>
               <ActionMenu.Overlay>
                 <ActionList>
                   <ActionList.Item>main</ActionList.Item>
                 </ActionList>
               </ActionMenu.Overlay>
             </ActionMenu>
+
+            {pathParts.length === 0 && (
+              <Box display="flex" alignItems="center" gap={3} ml={3}>
+                <PrimerLink
+                  href="#"
+                  muted
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "14px",
+                    "&:hover": { color: "var(--color-accent-fg)" },
+                  }}
+                >
+                  <GitBranchIcon /> <strong style={{ color: "var(--color-fg-default)" }}>8</strong> Branches
+                </PrimerLink>
+                <PrimerLink
+                  href="#"
+                  muted
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: "14px",
+                    "&:hover": { color: "var(--color-accent-fg)" },
+                  }}
+                >
+                  <TagIcon /> <strong style={{ color: "var(--color-fg-default)" }}>18</strong> Tags
+                </PrimerLink>
+              </Box>
+            )}
 
             {pathParts.length > 0 && (
               <Box display="flex" alignItems="center" gap={2} ml={2}>
@@ -348,7 +437,13 @@ git push -u origin main`}
                     setCurrentPath("");
                     setCurrentFile(null);
                   }}
-                  style={{ fontWeight: "bold", cursor: "pointer", background: "none", border: "none" }}
+                  style={{
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    background: "none",
+                    border: "none",
+                    color: "var(--color-accent-fg)",
+                  }}
                 >
                   {repo.name}
                 </PrimerLink>
@@ -368,6 +463,7 @@ git push -u origin main`}
                         cursor: "pointer",
                         background: "none",
                         border: "none",
+                        color: "var(--color-accent-fg)",
                       }}
                     >
                       {part}
@@ -378,52 +474,116 @@ git push -u origin main`}
             )}
           </Box>
           <Box display="flex" gap={2}>
-            {currentFile && (
-              <Button
+            {!currentFile && (
+              <>
+                <Button
+                  variant="default"
+                  leadingVisual={SearchIcon}
+                  size="small"
+                  style={{ height: "32px", color: "var(--color-fg-muted)" }}
+                >
+                  Go to file
+                </Button>
+                <ActionMenu>
+                  <ActionMenu.Button variant="default" size="small" style={{ height: "32px" }}>
+                    Add file
+                  </ActionMenu.Button>
+                  <ActionMenu.Overlay>
+                    <ActionList>
+                      <ActionList.Item>Create new file</ActionList.Item>
+                    </ActionList>
+                  </ActionMenu.Overlay>
+                </ActionMenu>
+              </>
+            )}
+            <ActionMenu>
+              <ActionMenu.Button
                 variant="primary"
-                onClick={() => {
-                  alert("This would open the compose modal with the file attached!");
+                leadingVisual={CodeIcon}
+                size="small"
+                style={{
+                  height: "32px",
+                  backgroundColor: "var(--color-success-emphasis)",
+                  color: "#fff",
+                  borderColor: "rgba(240, 246, 252, 0.1)",
                 }}
               >
-                Share to Feed
-              </Button>
-            )}
-            <Button variant="default" leadingVisual={CodeIcon}>
-              Code
-            </Button>
+                Code
+              </ActionMenu.Button>
+              <ActionMenu.Overlay>
+                <ActionList>
+                  <ActionList.Item>Clone</ActionList.Item>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
           </Box>
         </Box>
 
-        <StyledBox>
+        <StyledBox style={{ borderColor: "var(--color-border-muted)" }}>
           <Box
             bg="var(--color-canvas-subtle)"
             p={3}
-            style={{ borderBottom: "1px solid var(--color-border-default)" }}
             display="flex"
             justifyContent="space-between"
             alignItems="center"
+            style={{ borderTopLeftRadius: "6px", borderTopRightRadius: "6px" }}
           >
             {latestCommit ? (
-              <Box display="flex" alignItems="center" gap={2}>
+              <Box display="flex" alignItems="center" gap={2} style={{ overflow: "hidden" }}>
                 <Avatar src={`https://github.com/identicons/${latestCommit.author_email}.png`} size={24} />
-                <Text style={{ fontWeight: "bold" }}>{latestCommit.author_name}</Text>
-                <PrimerLink href="#" muted style={{ textDecoration: "none" }}>
+                <Text style={{ fontWeight: "bold", fontSize: "14px" }}>{latestCommit.author_name}</Text>
+                <PrimerLink
+                  href="#"
+                  muted
+                  style={{
+                    textDecoration: "none",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "400px",
+                  }}
+                >
                   {latestCommit.title}
                 </PrimerLink>
+                <Box color="var(--color-danger-fg)" ml={1}>
+                  {/* Mocking CI failure cross */}
+                </Box>
               </Box>
             ) : (
               <Text>No commits found</Text>
             )}
             {latestCommit && (
-              <Box display="flex" alignItems="center" gap={3} color="var(--color-fg-muted)" fontSize={1}>
+              <Box
+                display="flex"
+                alignItems="center"
+                gap={3}
+                color="var(--color-fg-muted)"
+                fontSize={1}
+                style={{ whiteSpace: "nowrap" }}
+              >
+                <PrimerLink
+                  href="#"
+                  muted
+                  sx={{ "&:hover": { color: "var(--color-accent-fg)", textDecoration: "none" } }}
+                >
+                  <code
+                    style={{
+                      fontFamily: "ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {latestCommit.short_id}
+                  </code>
+                </PrimerLink>
+                <span>·</span>
+                <span>{getRelativeTime(latestCommit.created_at)}</span>
                 {!currentFile && (
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <GitCommitIcon />
-                    <span style={{ fontWeight: "bold" }}>{commits.length}</span> commits
+                  <Box display="flex" alignItems="center" gap={1} ml={2}>
+                    <HistoryIcon />
+                    <span style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>{commits.length}</span>{" "}
+                    <span sx={{ display: ["none", "none", "inline"] }}>Commits</span>
                   </Box>
                 )}
-                <code style={{ fontFamily: "monospace", fontSize: "12px" }}>{latestCommit.short_id}</code>
-                <span>{getRelativeTime(latestCommit.created_at)}</span>
               </Box>
             )}
           </Box>
@@ -439,10 +599,21 @@ git push -u origin main`}
             )}
 
             {currentFile && fileContent !== null ? (
-              <Box p={3} bg="var(--color-canvas-default)" style={{ overflowX: "auto" }}>
-                <pre style={{ margin: 0, fontFamily: "monospace", fontSize: "14px", lineHeight: "1.5" }}>
-                  {fileContent}
-                </pre>
+              <Box style={{ height: "600px", borderTop: "1px solid var(--color-border-default)" }}>
+                <Editor
+                  height="100%"
+                  language={getLanguageFromFileName(currentFile)}
+                  theme="vs-dark"
+                  value={fileContent}
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 14,
+                    wordWrap: "on",
+                    padding: { top: 16, bottom: 16 },
+                  }}
+                />
               </Box>
             ) : (
               tree.map((node) => (
@@ -455,8 +626,9 @@ git push -u origin main`}
                       setCurrentFile(node.path);
                     }
                   }}
+                  sx={{ py: "8px", px: 3 }}
                 >
-                  <Box color="var(--color-fg-muted)" display="flex" alignItems="center" width="24px">
+                  <Box display="flex" alignItems="center" width="24px" justifyContent="center">
                     {node.type === "tree" ? (
                       <FileDirectoryIcon fill="var(--color-icon-directory)" />
                     ) : (
@@ -470,12 +642,18 @@ git push -u origin main`}
                     <Box
                       flex={2}
                       color="var(--color-fg-muted)"
-                      style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontSize: "13px" }}
                     >
-                      {latestCommit.title}
+                      <PrimerLink
+                        href="#"
+                        muted
+                        sx={{ "&:hover": { color: "var(--color-accent-fg)", textDecoration: "underline" } }}
+                      >
+                        {latestCommit.title}
+                      </PrimerLink>
                     </Box>
                   )}
-                  <Box color="var(--color-fg-muted)" textAlign="right" width="100px">
+                  <Box color="var(--color-fg-muted)" textAlign="right" width="120px" style={{ fontSize: "13px" }}>
                     {latestCommit ? getRelativeTime(latestCommit.created_at) : ""}
                   </Box>
                 </FileRow>
@@ -491,32 +669,14 @@ git push -u origin main`}
 
         {readme && !currentFile && (
           <StyledBox>
-            <Box
-              bg="var(--color-canvas-subtle)"
-              p={3}
-              style={{ borderBottom: "1px solid var(--color-border-default)" }}
-              display="flex"
-              alignItems="center"
-              gap={2}
-            >
+            <Box bg="var(--color-canvas-subtle)" p={3} display="flex" alignItems="center" gap={2}>
               <BookIcon />
               <Text style={{ fontWeight: "bold" }}>README.md</Text>
             </Box>
             <Box p={4}>
               <MarkdownBody
                 dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(
-                    readme
-                      .replace(/^### (.*$)/gim, "<h3>$1</h3>")
-                      .replace(/^## (.*$)/gim, "<h2>$1</h2>")
-                      .replace(/^# (.*$)/gim, "<h1>$1</h1>")
-                      .replace(/^> (.*$)/gim, "<blockquote>$1</blockquote>")
-                      .replace(/\*\*(.*)\*\*/gim, "<b>$1</b>")
-                      .replace(/\*(.*)\*/gim, "<i>$1</i>")
-                      .replace(/!\[(.*?)\]\((.*?)\)/gim, "<img alt='$1' src='$2' />")
-                      .replace(/\[(.*?)\]\((.*?)\)/gim, "<a href='$2'>$1</a>")
-                      .replace(/\n\n/gim, "<br /><br />"),
-                  ),
+                  __html: DOMPurify.sanitize(marked.parse(readme) as string),
                 }}
               />
             </Box>
@@ -566,7 +726,7 @@ git push -u origin main`}
   );
 }
 
-function IssuesTab({ projectId }: { projectId: string }) {
+function IssuesTab({ projectId, provider }: { projectId: string; provider: string }) {
   const [issues, setIssues] = useState<GitlabIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -575,7 +735,7 @@ function IssuesTab({ projectId }: { projectId: string }) {
 
   const loadIssues = async () => {
     try {
-      const data = await getGitlabIssues(projectId);
+      const data = await getGitlabIssues(projectId, provider);
       setIssues(data);
     } catch {
       // ignore
@@ -593,7 +753,7 @@ function IssuesTab({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   const handleCreateIssue = async () => {
-    await createGitlabIssue(projectId, newIssueTitle, newIssueBody);
+    await createGitlabIssue(projectId, newIssueTitle, newIssueBody, provider);
     setIsDialogOpen(false);
     setNewIssueTitle("");
     setNewIssueBody("");
@@ -691,7 +851,7 @@ function IssuesTab({ projectId }: { projectId: string }) {
   );
 }
 
-function PullRequestsTab({ projectId }: { projectId: string }) {
+function PullRequestsTab({ projectId, provider }: { projectId: string; provider: string }) {
   const [mrs, setMrs] = useState<GitlabMergeRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -699,7 +859,7 @@ function PullRequestsTab({ projectId }: { projectId: string }) {
     async function load() {
       setLoading(true);
       try {
-        const data = await getGitlabMergeRequests(projectId);
+        const data = await getGitlabMergeRequests(projectId, provider);
         setMrs(data);
       } catch {
         // ignore
@@ -900,7 +1060,7 @@ function SettingsTab({ repo }: { repo: GitlabProject }) {
   );
 }
 
-function ActionsTab({ projectId }: { projectId: string }) {
+function ActionsTab({ projectId, provider }: { projectId: string; provider: string }) {
   const [latestJobs, setLatestJobs] = useState<GitlabJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -909,9 +1069,9 @@ function ActionsTab({ projectId }: { projectId: string }) {
     async function load() {
       try {
         setLoading(true);
-        const pipelinesData = await getGitlabPipelines(projectId).catch(() => []);
+        const pipelinesData = await getGitlabPipelines(projectId, "main", provider).catch(() => []);
         if (pipelinesData.length > 0) {
-          const jobs = await getGitlabPipelineJobs(projectId, pipelinesData[0].id).catch(() => []);
+          const jobs = await getGitlabPipelineJobs(projectId, pipelinesData[0].id, provider).catch(() => []);
           setLatestJobs(jobs);
         }
       } catch (err: unknown) {
@@ -997,7 +1157,7 @@ export default function WorkspacePage() {
     async function load() {
       try {
         setLoading(true);
-        const repoData = await getGitlabProject(projectId);
+        const repoData = await getGitlabProject(projectId, provider);
         setRepo(repoData);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : String(err));
@@ -1109,10 +1269,10 @@ export default function WorkspacePage() {
       <Box style={{ paddingTop: "16px", paddingBottom: "24px" }}>
         <Box maxWidth="1280px" mx="auto" px={4}>
           <Routes>
-            <Route path="/" element={<CodeTab projectId={projectId} repo={repo} />} />
-            <Route path="issues" element={<IssuesTab projectId={projectId} />} />
-            <Route path="pulls" element={<PullRequestsTab projectId={projectId} />} />
-            <Route path="actions" element={<ActionsTab projectId={projectId} />} />
+            <Route path="/" element={<CodeTab projectId={projectId} repo={repo} provider={provider} />} />
+            <Route path="issues" element={<IssuesTab projectId={projectId} provider={provider} />} />
+            <Route path="pulls" element={<PullRequestsTab projectId={projectId} provider={provider} />} />
+            <Route path="actions" element={<ActionsTab projectId={projectId} provider={provider} />} />
             <Route path="settings" element={<SettingsTab repo={repo} />} />
           </Routes>
         </Box>

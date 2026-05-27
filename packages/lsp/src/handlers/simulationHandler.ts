@@ -1,47 +1,49 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
-import { Connection } from "vscode-languageserver";
-import { documents, flattenArenaFromInstance, sharedContext } from "../browserServerMain";
+import { LspContext } from "../LspContext";
 
-export function registerSimulationHandlers(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest("modelscript/simulateTerminate", (params: { participantId: string }): { ok: boolean } => {
-    cosimSimulators.delete(params.participantId);
-    return { ok: true };
-  });
+export function registerSimulationHandlers(context: LspContext) {
+  context.connection.onRequest(
+    "modelscript/simulateTerminate",
+    (params: { participantId: string }): { ok: boolean } => {
+      cosimSimulators.delete(params.participantId);
+      return { ok: true };
+    },
+  );
 
-  connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {
-    if (!sharedContext || !workspaceManager.globalModelicaQueryEngine) {
+  context.connection.onRequest("modelscript/runScript", async (params: { uri: string }) => {
+    if (!context.state.sharedContext || !context.workspaceManager.globalModelicaQueryEngine) {
       return { output: "", error: "Language server not fully initialized." };
     }
-    const text = sharedContext.fs.read(params.uri);
+    const text = context.state.sharedContext.fs.read(params.uri);
     if (!text) {
       return { output: "", error: "File not found." };
     }
 
-    const tree = sharedContext.parse(".mos", text);
+    const tree = context.state.sharedContext.parse(".mos", text);
     if (!tree || !tree.rootNode) {
       return { output: "", error: "Failed to parse script." };
     }
 
-    const interpreter = new ArenaScriptInterpreter(workspaceManager.globalModelicaQueryEngine);
+    const interpreter = new ArenaScriptInterpreter(context.workspaceManager.globalModelicaQueryEngine);
     const result = interpreter.execute(tree.rootNode);
     return result;
   });
 
-  connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
-    if (!sharedContext || !workspaceManager.globalModelicaQueryEngine) {
+  context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
+    if (!context.state.sharedContext || !context.workspaceManager.globalModelicaQueryEngine) {
       return { output: "", error: "Language server not fully initialized." };
     }
 
-    const tree = sharedContext.parse(".mos", params.code);
+    const tree = context.state.sharedContext.parse(".mos", params.code);
     if (!tree || !tree.rootNode) {
       return { output: "", error: "Failed to parse cell." };
     }
 
     let interpreter = notebookSessions.get(params.sessionId);
     if (!interpreter) {
-      interpreter = new ArenaScriptInterpreter(workspaceManager.globalModelicaQueryEngine);
+      interpreter = new ArenaScriptInterpreter(context.workspaceManager.globalModelicaQueryEngine);
       notebookSessions.set(params.sessionId, interpreter);
     }
 
@@ -49,17 +51,17 @@ export function registerSimulationHandlers(connection: Connection, documentManag
     return result;
   });
 
-  connection.onRequest("modelscript/resetNotebookSession", async (params: { sessionId: string }) => {
+  context.connection.onRequest("modelscript/resetNotebookSession", async (params: { sessionId: string }) => {
     notebookSessions.delete(params.sessionId);
     return { success: true };
   });
 
-  connection.onRequest("modelscript/compileWasm", async (params: { uri: string }) => {
-    const ctx = workspaceManager.documentContexts.get(params.uri);
-    const doc = documents.get(params.uri);
+  context.connection.onRequest("modelscript/compileWasm", async (params: { uri: string }) => {
+    const ctx = context.workspaceManager.documentContexts.get(params.uri);
+    const doc = context.documents.get(params.uri);
     if (!ctx || !doc) throw new Error("Document not found or no context available.");
 
-    const instances = workspaceManager.documentInstances.get(params.uri);
+    const instances = context.workspaceManager.documentInstances.get(params.uri);
     if (!instances || instances.length === 0) throw new Error("No Modelica classes found in the active document.");
 
     const targetInstance = instances[0];
@@ -93,7 +95,7 @@ export function registerSimulationHandlers(connection: Connection, documentManag
     };
   });
 
-  connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
+  context.connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
     stepMode = params?.step || false;
     if (debuggerResumeCallback) {
       debuggerResumeCallback();
@@ -102,7 +104,7 @@ export function registerSimulationHandlers(connection: Connection, documentManag
     return { ok: true };
   });
 
-  connection.onRequest("modelscript/debuggerVariables", () => {
+  context.connection.onRequest("modelscript/debuggerVariables", () => {
     if (!currentDebugEnv) return [];
     // Sort variables alphabetically for better UX
     const entries = Array.from(currentDebugEnv.entries()).sort((a, b) => a[0].localeCompare(b[0]));

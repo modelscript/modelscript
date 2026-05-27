@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerSimulationEndpoints(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest(
+export function registerSimulationEndpoints(context: LspContext) {
+  context.connection.onRequest(
     "modelscript/simulate",
     async (params: {
       uri: string;
@@ -34,23 +34,23 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
       error?: string;
       sweepResults?: { value: number; y: number[][] }[];
     }> => {
-      connection.console.info(`[simulate] Requested simulation for URI: ${params.uri}`);
-      connection.console.info(
-        `[simulate] workspaceManager.documentInstances has ${workspaceManager.documentInstances.size} entries.`,
+      context.connection.console.info(`[simulate] Requested simulation for URI: ${params.uri}`);
+      context.connection.console.info(
+        `[simulate] context.workspaceManager.documentInstances has ${context.workspaceManager.documentInstances.size} entries.`,
       );
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
         // Force-validate the document so the polyglot index is populated
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          connection.console.info(`[simulate] No instances yet — force-validating ${params.uri}`);
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          context.connection.console.info(`[simulate] No instances yet — force-validating ${params.uri}`);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) {
-        connection.console.info(
-          `[simulate] Instances array empty/undefined for ${params.uri}. Available URIs: ${Array.from(workspaceManager.documentInstances.keys()).join(", ")}`,
+        context.connection.console.info(
+          `[simulate] Instances array empty/undefined for ${params.uri}. Available URIs: ${Array.from(context.workspaceManager.documentInstances.keys()).join(", ")}`,
         );
         return { t: [], y: [], states: [], error: "No class instances found for this document." };
       }
@@ -65,22 +65,21 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
         // Ensure the full MSL index is available before flattening — the flattener
         // resolves component types like Modelica.Electrical.Analog.Sources.SineVoltage
         // which require MSL to be fully indexed.
-        if (!mslStdlibReady && workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          connection.console.info(`[simulate] MSL not fully indexed — forcing full index...`);
-          connection.sendNotification("modelscript/status", {
+        if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
+          context.connection.console.info(`[simulate] MSL not fully indexed — forcing full index...`);
+          context.connection.sendNotification("modelscript/status", {
             state: "loading",
             message: "Indexing MSL for simulation...",
           });
-          await workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          mslStdlibReady = true;
-          connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
+          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
+          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
 
           // Re-create the query engine with the full unified index
-          const fullIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
           const engine = params.uri.endsWith(".sysml")
-            ? workspaceManager.globalSysML2QueryEngine
-            : workspaceManager.globalModelicaQueryEngine;
+            ? context.workspaceManager.globalSysML2QueryEngine
+            : context.workspaceManager.globalModelicaQueryEngine;
           if (engine) {
             engine.updateIndex(fullIndex);
             const resolver = (engine as any).__resolverCache;
@@ -88,9 +87,9 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
           }
 
           // Re-validate to rebuild instances with full index
-          const doc = documents.get(params.uri);
-          if (doc) await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          const doc = context.documents.get(params.uri);
+          if (doc) await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
           if (!instances || instances.length === 0) {
             return { t: [], y: [], states: [], error: "No class instances found after MSL indexing." };
           }
@@ -99,22 +98,22 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
             : instances[0];
         }
 
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           return { t: [], y: [], states: [], error: `No Modelica context found for URI '${params.uri}'` };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
 
-        connection.console.info(`[simulate] Arena active variables: ${arena.activeVarCount}`);
-        connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);
+        context.connection.console.info(`[simulate] Arena active variables: ${arena.activeVarCount}`);
+        context.connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);
 
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 10;
         const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
 
-        connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
+        context.connection.console.info(`[simulate] startTime=${startTime}, stopTime=${stopTime}, step=${step}`);
 
         if (params.sweepConfig) {
           const { parameterName, start, end, steps } = params.sweepConfig;
@@ -162,7 +161,9 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
             : undefined,
         });
 
-        connection.console.info(`[simulate] Result: ${result.t.length} time points, ${result.states.length} states`);
+        context.connection.console.info(
+          `[simulate] Result: ${result.t.length} time points, ${result.states.length} states`,
+        );
 
         if (params.format === "csv") {
           const lines = [`time,${result.states.join(",")}`];
@@ -198,7 +199,7 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/simulateInit",
     (params: {
       uri: string;
@@ -210,7 +211,7 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
       variables?: { name: string; causality: string }[];
       error?: string;
     } => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
         return { ok: false, error: "No class instances found for this document." };
       }
@@ -222,12 +223,12 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           return { ok: false, error: `No Modelica context found for URI '${params.uri}'` };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
 
         // Initialize current values from start attributes
         const currentValues = new Map<string, number>();
@@ -267,7 +268,7 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/simulateStep",
     (params: {
       participantId: string;
@@ -348,7 +349,7 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/createCosimWrapper",
     (params: {
       modelName: string;
@@ -365,27 +366,29 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onNotification(
+  context.connection.onNotification(
     "modelscript/setBreakpoints",
     (params: { uri: string; breakpoints: { line: number; column?: number }[] }) => {
       breakpointsMap.set(params.uri, params.breakpoints);
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/simulateDebug",
     async (params: { uri: string; className?: string }): Promise<unknown> => {
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          const inflight = context.state.activeValidationPromises.get(params.uri);
+          if (inflight) await inflight;
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) {
         return {
-          error: `No class instances found for ${params.uri}. Available: ${Array.from(workspaceManager.documentInstances.keys()).join(", ")}`,
+          error: `No class instances found for ${params.uri}. Available: ${Array.from(context.workspaceManager.documentInstances.keys()).join(", ")}`,
         };
       }
 
@@ -396,10 +399,10 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return { error: "No context found" };
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
 
         stepMode = true; // Reset step mode on new simulation run
 
@@ -433,7 +436,7 @@ export function registerSimulationEndpoints(connection: Connection, documentMana
               currentDebugEnv = env;
 
               // Send notification to the VS Code client
-              connection.sendNotification("modelscript/debuggerStopped", {
+              context.connection.sendNotification("modelscript/debuggerStopped", {
                 uri: params.uri,
                 line,
                 column: col,

@@ -5,14 +5,19 @@ import {
   ChevronRightIcon,
   FilterIcon,
   GlobeIcon,
+  HubotIcon,
   KeyIcon,
   PaintbrushIcon,
   PersonIcon,
+  TrashIcon,
 } from "@primer/octicons-react";
 import React, { useState } from "react";
 import styled from "styled-components";
 import {
   addPublicKey,
+  createBot,
+  deleteBot,
+  getBots,
   getNotificationSettings,
   getPublicKeys,
   getUserTopics,
@@ -198,13 +203,22 @@ type TabType =
   | "accountInfo"
   | "changePassword"
   | "connectedAccounts"
-  | "security";
+  | "security"
+  | "bots";
 
 const SettingsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>("account");
   const [accountInfoMode, setAccountInfoMode] = useState<"password" | "form">("password");
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
   const [publicKeys, setPublicKeys] = useState<PublicKeyInfo[]>([]);
+  const [bots, setBots] = useState<any[]>([]);
+
+  // Bot forms
+  const [botUsername, setBotUsername] = useState("");
+  const [botDisplayName, setBotDisplayName] = useState("");
+  const [botBio, setBotBio] = useState("");
+  const [botAvatarUrl, setBotAvatarUrl] = useState("");
+  const [newBotToken, setNewBotToken] = useState<string | null>(null);
 
   // Form states
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -245,6 +259,11 @@ const SettingsPage: React.FC = () => {
     if (activeTab === "security") {
       getPublicKeys()
         .then((data) => setPublicKeys(data))
+        .catch(() => {});
+    }
+    if (activeTab === "bots") {
+      getBots()
+        .then((data) => setBots(data))
         .catch(() => {});
     }
   }, [activeTab]);
@@ -350,6 +369,10 @@ const SettingsPage: React.FC = () => {
         </MenuItem>
         <MenuItem $active={activeTab === "security"} onClick={() => handleTabChange("security")}>
           <span>Security and account access</span>
+          <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+        </MenuItem>
+        <MenuItem $active={activeTab === "bots"} onClick={() => handleTabChange("bots")}>
+          <span>Developer / Bots</span>
           <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
         </MenuItem>
         <MenuItem onClick={() => handleTabChange("other")}>
@@ -833,6 +856,175 @@ const SettingsPage: React.FC = () => {
             <Header>Settings</Header>
             <Box p={3} display="flex" justifyContent="center">
               <DetailSubtitle>This setting section is under development.</DetailSubtitle>
+            </Box>
+          </>
+        )}
+        {activeTab === "bots" && (
+          <>
+            <Header>
+              <CircleIconButton onClick={() => handleTabChange("account")} style={{ marginRight: "8px" }}>
+                <ArrowLeftIcon size={20} />
+              </CircleIconButton>
+              Developer / Bots
+            </Header>
+            <Box px={3} pb={3}>
+              <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.4" }}>
+                Manage your third-party bots and API applications. Bots can interact with the API on your behalf.
+              </DetailSubtitle>
+
+              <Box mt={4} mb={4}>
+                <DetailTitle style={{ fontWeight: "bold", display: "block", marginBottom: "8px" }}>
+                  Your Registered Bots
+                </DetailTitle>
+                {bots.length === 0 ? (
+                  <Text color="var(--color-fg-muted)">You haven't registered any bots yet.</Text>
+                ) : (
+                  <Box display="flex" flexDirection="column" gap={2}>
+                    {bots.map((bot) => (
+                      <Box
+                        key={bot.id}
+                        p={3}
+                        border="1px solid var(--color-border-default)"
+                        borderRadius="8px"
+                        display="flex"
+                        justifyContent="space-between"
+                        alignItems="center"
+                      >
+                        <Box display="flex" alignItems="center" gap={3}>
+                          <Box
+                            width="40px"
+                            height="40px"
+                            borderRadius="50%"
+                            bg="var(--color-canvas-subtle)"
+                            style={{ backgroundImage: `url(${bot.avatar_url})`, backgroundSize: "cover" }}
+                          />
+                          <Box display="flex" flexDirection="column">
+                            <Text fontWeight="bold">
+                              {bot.display_name} <HubotIcon size={14} color="var(--color-fg-muted)" />
+                            </Text>
+                            <Text color="var(--color-fg-muted)" fontSize="13px">
+                              @{bot.username}
+                            </Text>
+                          </Box>
+                        </Box>
+                        <CircleIconButton
+                          onClick={async () => {
+                            if (confirm("Are you sure you want to delete this bot?")) {
+                              await deleteBot(bot.id);
+                              setBots(bots.filter((b) => b.id !== bot.id));
+                            }
+                          }}
+                        >
+                          <TrashIcon size={16} color="var(--color-danger-fg)" />
+                        </CircleIconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+
+              <Box mt={4} borderTop="1px solid var(--color-border-default)" pt={4}>
+                <DetailTitle style={{ fontWeight: "bold", display: "block", marginBottom: "16px" }}>
+                  Register a New Bot
+                </DetailTitle>
+
+                {error && (
+                  <Box
+                    mb={3}
+                    p={3}
+                    bg="var(--color-danger-subtle)"
+                    color="var(--color-danger-fg)"
+                    borderRadius="6px"
+                    display="flex"
+                    alignItems="center"
+                    gap={2}
+                  >
+                    <AlertIcon size={16} />
+                    <Text fontSize="14px">{error}</Text>
+                  </Box>
+                )}
+
+                {newBotToken && (
+                  <Box mb={3} p={3} bg="var(--color-success-subtle)" color="var(--color-success-fg)" borderRadius="6px">
+                    <Text fontWeight="bold" display="block" mb={2}>
+                      Bot created successfully!
+                    </Text>
+                    <Text fontSize="14px" display="block" mb={2}>
+                      Save this API token now. You will not be able to see it again:
+                    </Text>
+                    <Box
+                      p={2}
+                      bg="var(--color-bg-primary)"
+                      border="1px solid var(--color-border-subtle)"
+                      borderRadius="4px"
+                      style={{ fontFamily: "monospace", wordBreak: "break-all" }}
+                    >
+                      {newBotToken}
+                    </Box>
+                  </Box>
+                )}
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setError(null);
+                    setNewBotToken(null);
+                    try {
+                      const res = await createBot({
+                        username: botUsername,
+                        display_name: botDisplayName,
+                        bio: botBio,
+                        avatar_url: botAvatarUrl,
+                      });
+                      setBots([res.bot, ...bots]);
+                      setNewBotToken(res.token);
+                      setBotUsername("");
+                      setBotDisplayName("");
+                      setBotBio("");
+                      setBotAvatarUrl("");
+                    } catch (err: any) {
+                      setError(err.response?.data?.error || "Failed to create bot");
+                    }
+                  }}
+                >
+                  <FormLabel>Bot Handle (Username)</FormLabel>
+                  <FormInput
+                    placeholder="e.g. weather_bot"
+                    value={botUsername}
+                    onChange={(e) => setBotUsername(e.target.value)}
+                    required
+                    pattern="^[a-zA-Z0-9_]+$"
+                    title="Only letters, numbers, and underscores"
+                  />
+
+                  <FormLabel>Display Name</FormLabel>
+                  <FormInput
+                    placeholder="e.g. Daily Weather Tracker"
+                    value={botDisplayName}
+                    onChange={(e) => setBotDisplayName(e.target.value)}
+                    required
+                  />
+
+                  <FormLabel>Bio (Optional)</FormLabel>
+                  <FormInput
+                    placeholder="What does this bot do?"
+                    value={botBio}
+                    onChange={(e) => setBotBio(e.target.value)}
+                  />
+
+                  <FormLabel>Avatar URL (Optional)</FormLabel>
+                  <FormInput
+                    placeholder="https://..."
+                    value={botAvatarUrl}
+                    onChange={(e) => setBotAvatarUrl(e.target.value)}
+                    type="url"
+                  />
+
+                  <Box mt={3} display="flex" justifyContent="flex-end">
+                    <SaveButton type="submit">Create Bot</SaveButton>
+                  </Box>
+                </form>
+              </Box>
             </Box>
           </>
         )}

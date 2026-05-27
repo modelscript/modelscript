@@ -1,19 +1,13 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
 
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 import { cadComponentsCache, flattenArenaFromInstance, lastIndexedText, simpleHash } from "../browserServerMain";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol";
-import { DiagramService } from "../services/DiagramService";
 
-export function registerDiagramHandlers(
-  connection: Connection,
-  documentManager: any,
-  workspaceManager: any,
-  diagramService: DiagramService,
-) {
-  connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
-    const model = workspaceManager.stepWorkspaceIndex.getAssemblyModel(params.uri);
+export function registerDiagramHandlers(context: LspContext) {
+  context.connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
+    const model = context.workspaceManager.stepWorkspaceIndex.getAssemblyModel(params.uri);
     if (!model) {
       throw new Error(`No STEP assembly found for ${params.uri}`);
     }
@@ -28,30 +22,30 @@ export function registerDiagramHandlers(
     return { source: modelicaSource, name: baseName };
   });
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getDiagramData",
     async (params: { uri: string; className?: string; diagramType?: string }) =>
-      await diagramService.handleGetDiagramData(params),
+      await context.diagramService.handleGetDiagramData(params),
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getComponentProperties",
     (params: { uri: string; componentName: string; className?: string }) => {
-      const classInstance = workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+      const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
       if (!classInstance) return null;
 
       try {
         return buildComponentProperties(classInstance, params.componentName);
       } catch (e: any) {
-        connection.console.error(`[diagram] Error building component properties: ${e?.message ?? e}
+        context.connection.console.error(`[diagram] Error building component properties: ${e?.message ?? e}
   ${e?.stack ?? ""}`);
         return null;
       }
     },
   );
 
-  connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
-    const instances = workspaceManager.documentInstances.get(params.uri);
+  context.connection.onRequest("modelscript/getCadComponents", (params: { uri: string }) => {
+    const instances = context.workspaceManager.documentInstances.get(params.uri);
     if (!instances || instances.length === 0) {
       return [];
     }
@@ -70,10 +64,10 @@ export function registerDiagramHandlers(
     const classInstance = instances[0];
 
     try {
-      const context = workspaceManager.documentContexts.get(params.uri);
+      const docContext = context.workspaceManager.documentContexts.get(params.uri);
       if (!context) return [];
 
-      const arena = flattenArenaFromInstance(classInstance, context);
+      const arena = flattenArenaFromInstance(classInstance, docContext);
 
       const data: any[] = [];
       for (let i = 0; i < arena.varCount; i++) {
@@ -95,18 +89,18 @@ export function registerDiagramHandlers(
     }
   });
 
-  connection.onRequest(DiagramMethods.applyEdits, async (params: DiagramApplyEditsParams) => {
-    return await diagramService.getDiagramDispatch().applyEdits(params);
+  context.connection.onRequest(DiagramMethods.applyEdits, async (params: DiagramApplyEditsParams) => {
+    return await context.diagramService.getDiagramDispatch().applyEdits(params);
   });
 
-  connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {
+  context.connection.onRequest("modelscript/getStepMeshes", async (params: { uri: string }): Promise<any[]> => {
     try {
       // If the URI isn't a STEP file, scan all indexed STEP files and return
       // the first one with meshes — this handles the case where the active
       // editor is a SysML file referencing STEP geometry.
       let targetUri = params.uri;
       if (!/\.(step|stp|p21)$/i.test(targetUri)) {
-        const unifiedIdx = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIdx = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         for (const [, entry] of unifiedIdx.symbols) {
           if (entry.ruleName === "step_product" && entry.resourceId && /\.(step|stp|p21)$/i.test(entry.resourceId)) {
             targetUri = entry.resourceId;
@@ -115,8 +109,8 @@ export function registerDiagramHandlers(
         }
       }
 
-      let meshes = [...workspaceManager.stepWorkspaceIndex.getMeshes(targetUri)];
-      const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      let meshes = [...context.workspaceManager.stepWorkspaceIndex.getMeshes(targetUri)];
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
 
       // Fallback: If OCCT fails to triangulate (e.g. invalid solid geometry)
       // but we have extracted shapes from the text, return placeholder cubes.
@@ -196,7 +190,7 @@ export function registerDiagramHandlers(
         };
       });
     } catch (e: any) {
-      connection.console.error(`[modelscript/getStepMeshes] Error getting meshes: ${e.message}`);
+      context.connection.console.error(`[modelscript/getStepMeshes] Error getting meshes: ${e.message}`);
       return [];
     }
   });

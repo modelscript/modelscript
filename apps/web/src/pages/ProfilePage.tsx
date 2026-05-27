@@ -2,6 +2,7 @@
 import {
   ArrowLeftIcon,
   CalendarIcon,
+  HubotIcon,
   InfoIcon,
   KebabHorizontalIcon,
   LinkIcon,
@@ -161,6 +162,7 @@ const ProfilePage: React.FC = () => {
           >
             {profile.display_name || profile.username}
             {profile.account_type === "rss" && <RssIcon size={20} color="var(--color-fg-muted)" />}
+            {profile.account_type === "bot" && <HubotIcon size={20} color="var(--color-fg-muted)" />}
           </Heading>
           <Text color="var(--color-fg-muted)" style={{ fontSize: "13px" }}>
             {Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(
@@ -427,6 +429,7 @@ const ProfilePage: React.FC = () => {
         >
           {profile.display_name || profile.username}
           {profile.account_type === "rss" && <RssIcon size={24} color="var(--color-fg-muted)" />}
+          {profile.account_type === "bot" && <HubotIcon size={24} color="var(--color-fg-muted)" />}
           {linkedAccounts.some((acc: any) => acc.provider === "twitter") && (
             <span
               style={{
@@ -446,6 +449,15 @@ const ProfilePage: React.FC = () => {
           )}
         </Heading>
         <Text color="var(--color-fg-muted)">@{profile.username}</Text>
+
+        {profile.account_type === "bot" && profile.owner_username && (
+          <Box mt={1} mb={2}>
+            <Text color="var(--color-fg-muted)" fontSize="14px">
+              <HubotIcon size={14} style={{ marginRight: "4px" }} />
+              Managed by <Link to={`/${profile.owner_username}`}>@{profile.owner_username}</Link>
+            </Text>
+          </Box>
+        )}
 
         {profile.bio && (
           <Box mt={3}>

@@ -67,6 +67,11 @@ export function didClose(uri: string): void {
   versions.delete(uri);
 }
 
+/** Notify the LSP of the currently visible line ranges in the editor. */
+export function didChangeVisibleRanges(uri: string, ranges: { startLine: number; endLine: number }[]): void {
+  lsp().sendNotification("modelscript/visibleRanges", { uri, ranges });
+}
+
 // ────────────────────────────────────────────────────────────────────
 // LSP types used in Morsel
 // ────────────────────────────────────────────────────────────────────

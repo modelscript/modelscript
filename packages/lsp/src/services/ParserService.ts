@@ -1,6 +1,19 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
+// ts-check
 
-import { Connection } from "vscode-languageserver";
+import {
+  Context,
+  FederatedQueryCacheStore,
+  IndexedDBQueryCacheStore,
+  LineIndex,
+  TokenData,
+} from "@modelscript/compiler";
+import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
+import { Connection, TextDocuments } from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
+import { computeTreeEdit } from "../utils/astUtils";
+import { LoaderContext, loadDependencyFromRegistry } from "../vfs/library-loader";
 import { DocumentManager } from "./DocumentManager";
 import { WorkspaceManager } from "./WorkspaceManager";
 
@@ -11,16 +24,22 @@ export class ParserService {
   public sysml2Parser: any = null;
   public stepParserReady = false;
   public stepParser: any = null;
+  public sharedContext: Context | null = null;
+  public owl2ParserReady = false;
+  public owl2Parser: any = null;
+  public csvParserReady = false;
+  public csvParser: any = null;
 
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
     private workspaceManager: WorkspaceManager,
+    private documents: TextDocuments<TextDocument>,
   ) {}
 
   getSharedCstTreeWrapper() {
     return {
-      getText(startByte: number, endByte: number, entry?: any): string | null {
+      getText: (startByte: number, endByte: number, entry?: any): string | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const docTree = this.documentManager.documentTrees.get(uri);
@@ -44,7 +63,7 @@ export class ParserService {
         if (lazyCache) return lazyCache.text.substring(startByte, endByte);
         return null;
       },
-      getNode(startByte: number, endByte: number, entry?: any): any | null {
+      getNode: (startByte: number, endByte: number, entry?: any): any | null => {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const docTree = this.documentManager.documentTrees.get(uri);
@@ -160,7 +179,7 @@ export class ParserService {
     if (!document) return null;
 
     const text = document.getText();
-    return this.documentManager.updateDocumentTree(uri, text);
+    return this.updateDocumentTree(uri, text);
   }
 
   getLineIndexForDoc(uri: string): { lineIndex: LineIndex; tokens: SyntaxNode[] } | null {
@@ -199,7 +218,14 @@ export class ParserService {
     return { lineIndex: cached.lineIndex, tokens: cached.tokens };
   }
 
-  async initTreeSitter(extensionUri: string): Promise<void> {
+  async initTreeSitter(
+    extensionUri: string,
+    validationService?: any,
+    projectDependencies: { name: string; version: string }[] = [
+      { name: "Modelica", version: "4.1.0" },
+      { name: "SysML", version: "2026.3.0" },
+    ],
+  ): Promise<void> {
     try {
       // Construct absolute URLs for WASM files using the extension URI.
       // The extensionUri may be an HTTP URL or a VS Code internal URI scheme.
@@ -284,10 +310,10 @@ export class ParserService {
       // Initialize OWL2 this.parser
       try {
         const Owl2Lang = await Language.load(`${serverDistBase}/tree-sitter-owl2.wasm`);
-        owl2Parser = new Parser();
-        owl2Parser.setLanguage(Owl2Lang);
+        this.owl2Parser = new Parser();
+        this.owl2Parser.setLanguage(Owl2Lang);
         Context.registerParser(".owl", owl2Parser as any);
-        owl2ParserReady = true;
+        this.owl2ParserReady = true;
         this.connection.console.info("Tree-sitter OWL2 this.parser initialized");
       } catch (e) {
         this.connection.console.warn(`[tree-sitter] Failed to load OWL2 language: ${e}`);
@@ -296,10 +322,10 @@ export class ParserService {
       // Initialize CSV this.parser
       try {
         const CsvLang = await Language.load(`${serverDistBase}/tree-sitter-csv.wasm`);
-        csvParser = new Parser();
-        csvParser.setLanguage(CsvLang);
+        this.csvParser = new Parser();
+        this.csvParser.setLanguage(CsvLang);
         Context.registerParser(".csv", csvParser as any);
-        csvParserReady = true;
+        this.csvParserReady = true;
         this.connection.console.info("Tree-sitter CSV this.parser initialized");
       } catch (e) {
         this.connection.console.warn(`[tree-sitter] Failed to load CSV language: ${e}`);
@@ -321,11 +347,12 @@ export class ParserService {
         MAX_MEMOS,
       );
       this.sharedContext = new Context(
-        sharedFs,
+        (globalThis as any).sharedFs,
         this.workspaceManager.globalWorkspaceIndex,
-        this.workspaceManager.globalModelicaQueryEngine,
+        this.workspaceManager.globalModelicaQueryEngine!,
       );
-      this.workspaceManager.globalModelicaQueryEngine.updateTree({
+      (globalThis as any).sharedContext = this.sharedContext;
+      this.workspaceManager.globalModelicaQueryEngine!.updateTree({
         getText: (start: number, end: number, entry?: any) =>
           this.sharedContext!.getTreeText(entry?.resourceId, start, end),
         getNode: (start: number, end: number, entry?: any) =>
@@ -349,85 +376,40 @@ export class ParserService {
         federatedEndpoints,
       };
       savedLoaderCtx = loaderCtx;
-      await loadMSL(serverDistBase, loaderCtx);
 
-      // Re-validate after MSL is loaded for semantic diagnostics
-      this.connection.console.info(
-        `[lsp] MSL loaded. Re-validating ${this.documents.all().length} open this.documents.`,
-      );
+      // Load all project dependencies
+      if (validationService) {
+        for (const dep of projectDependencies) {
+          validationService.declaredDependencies.push(dep);
+        }
+      }
+
+      // Load dependencies concurrently
+      const loadPromises = projectDependencies.map(async (dep) => {
+        try {
+          await loadDependencyFromRegistry(dep, loaderCtx);
+          if (validationService) validationService.markDependencyLoaded(dep.name, dep.version);
+        } catch (err) {
+          this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version} from registry: ${err}`);
+          // Mark loaded anyway so we don't permanently block readiness
+          if (validationService) validationService.markDependencyLoaded(dep.name, dep.version);
+        }
+      });
+
+      await Promise.all(loadPromises);
+
+      this.connection.console.info(`[lsp] Dependencies loaded. Re-validating open documents.`);
+      (globalThis as any).clearIconCache?.();
+      (globalThis as any).diagramCache?.clear();
+
       for (const doc of this.documents.all()) {
-        await validateTextDocument(doc);
+        await (globalThis as any).validateTextDocument?.(doc);
       }
 
-      // Background-index remaining MSL files progressively, then re-validate
-      // with the full unified index for cross-file resolution.
-      const pending = this.workspaceManager.globalWorkspaceIndex.pendingFileCount;
-      if (pending > 0) {
-        this.connection.console.info(`[lsp] Background-indexing ${pending} remaining files...`);
-
-        const workerUrl = `${serverDistBase}/indexerWorker.js`;
-
-        this.workspaceManager.globalWorkspaceIndex
-          .indexRemainingInWorker(
-            workerUrl,
-            serverDistBase,
-            (uri: string) => {
-              try {
-                let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
-                if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
-                return sharedFs.read(fsPath);
-              } catch {
-                return null;
-              }
-            },
-            (indexed, total) => {
-              if (indexed % 100 === 0) {
-                this.connection.console.info(`[lsp] Background indexing: ${indexed}/${total}`);
-                this.connection.sendNotification("modelscript/status", {
-                  state: "loading",
-                  message: `Indexing MSL classes (${indexed}/${total})...`,
-                });
-              }
-            },
-            () =>
-              activeValidationPromises.size > 0 ||
-              activeSemanticTimers.size > 0 ||
-              activeValidationTimers.size > 0 ||
-              revalidationTimer !== null,
-          )
-          .then(async () => {
-            mslStdlibReady = true;
-            clearIconCache(); // Icons rendered before MSL was ready may be incomplete
-            diagramCache.clear(); // Force diagram rebuild with full MSL types
-            this.connection.console.info(`[lsp] Background indexing complete. Re-validating this.documents.`);
-            // Re-validate with full index for cross-file resolution
-            for (const doc of this.documents.all()) {
-              await validateTextDocument(doc);
-            }
-            this.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-          });
-      } else {
-        // No MSL files to index (or all already indexed) — mark ready immediately
-        mslStdlibReady = true;
-        clearIconCache();
-        diagramCache.clear();
-        this.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-      }
-
-      // Load the SysML v2 Standard Library in the BACKGROUND — the 61MB zip
-      // decompression is very heavy and must not block Modelica diagnostics.
-      if (this.sysml2ParserReady) {
-        loadSysML2StandardLibrary(serverDistBase, loaderCtx)
-          .then(() => {
-            sysml2StdlibReady = true;
-            this.connection.console.info("[lsp] SysML2 stdlib loaded in background.");
-            this.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-          })
-          .catch((e) => {
-            this.connection.console.warn(`[lsp] SysML2 stdlib background load failed: ${e}`);
-            this.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
-          });
-      }
+      this.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: (globalThis as any).getReadyMessage?.() ?? "ModelScript",
+      });
     } catch (e: any) {
       this.connection.console.error(`Failed to initialize tree-sitter: ${e}\n${e.stack}`);
       this.parserReady = false;

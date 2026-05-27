@@ -12,10 +12,52 @@ import type { IndexerHook, RefHook, SymbolEntry, SymbolId, SymbolIndex } from ".
  * - **qualified**: Resolve a dotted name path (e.g. `A.B.C`) by chaining
  *   lexical lookup for the root with member lookups for each segment.
  */
+export interface RefDiag {
+  symbolId: SymbolId;
+  startByte: number;
+  endByte: number;
+  name: string;
+  ruleName: string;
+  message: string;
+  severity: "error" | "warning" | "info" | "hint";
+  fqn?: string;
+}
+
 export class ScopeResolver {
   private refHooksByRule: Map<string, RefHook>;
   private indexerHooksByRule: Map<string, IndexerHook>;
   private implicitNames: Set<string> = new Set();
+
+  /** Cached set of all declaration names in the index, rebuilt lazily on updateIndex. */
+  private allDeclNamesCache: Set<string> | null = null;
+
+  // ---- Incremental reference cache ----
+
+  /**
+   * Per-resource cache of reference resolution results.
+   * Key: resourceId, Value: Map<SymbolId, diagnostic | null>.
+   * null means the reference resolved successfully (no diagnostic).
+   */
+  private refCache = new Map<
+    string,
+    Map<
+      SymbolId,
+      {
+        symbolId: SymbolId;
+        startByte: number;
+        endByte: number;
+        name: string;
+        ruleName: string;
+        message: string;
+        severity: "error" | "warning" | "info" | "hint";
+      } | null
+    >
+  >();
+
+  /** Set of symbol IDs that changed since the last resolution.
+   * Updated externally via `setChangedIds()`.
+   */
+  private changedIds: Set<SymbolId> | null = null;
 
   constructor(
     private index: SymbolIndex,
@@ -24,6 +66,14 @@ export class ScopeResolver {
   ) {
     this.refHooksByRule = new Map(refHooks.map((h) => [h.ruleName, h]));
     this.indexerHooksByRule = new Map(indexerHooks.map((h) => [h.ruleName, h]));
+  }
+
+  /**
+   * Provide the set of changed symbol IDs from the last index update.
+   * Used by resolveAllReferencesAsync for incremental caching.
+   */
+  setChangedIds(ids: Set<SymbolId> | null): void {
+    this.changedIds = ids;
   }
 
   /**
@@ -168,6 +218,22 @@ export class ScopeResolver {
     this.index = newIndex;
     this.inheritedMembersCache.clear();
     this.refChildrenCache.clear();
+    this.allDeclNamesCache = null; // Invalidate — will be rebuilt lazily
+    // Note: refCache is NOT cleared here — it's selectively invalidated
+    // by changedIds in resolveAllReferencesAsync for incremental updates.
+  }
+
+  /** Get or build the set of all known declaration names. */
+  private getAllDeclNames(): Set<string> {
+    if (!this.allDeclNamesCache) {
+      this.allDeclNamesCache = new Set<string>();
+      for (const entry of this.index.symbols.values()) {
+        if (!this.refHooksByRule.has(entry.ruleName) && entry.name) {
+          this.allDeclNamesCache.add(entry.name);
+        }
+      }
+    }
+    return this.allDeclNamesCache;
   }
 
   /**
@@ -280,79 +346,97 @@ export class ScopeResolver {
    * Async version of resolveAllReferences that yields to the event loop.
    * If yieldFn returns true, the process is considered stale and aborts early.
    */
-  async resolveAllReferencesAsync(
-    resourceId?: string,
-    yieldFn?: () => Promise<boolean>,
-  ): Promise<
-    Array<{
-      symbolId: SymbolId;
-      startByte: number;
-      endByte: number;
-      name: string;
-      ruleName: string;
-      message: string;
-      severity: "error" | "warning" | "info" | "hint";
-    }>
-  > {
-    const diagnostics: Array<{
-      symbolId: SymbolId;
-      startByte: number;
-      endByte: number;
-      name: string;
-      ruleName: string;
-      message: string;
-      severity: "error" | "warning" | "info" | "hint";
-    }> = [];
+  async resolveAllReferencesAsync(resourceId?: string, yieldFn?: () => Promise<boolean>): Promise<RefDiag[]> {
+    const diagnostics: RefDiag[] = [];
 
-    let entriesToCheck: Iterable<SymbolEntry>;
+    let allEntries: SymbolEntry[];
     if (resourceId && this.index.symbolsByResource) {
       const resourceIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceIds) return diagnostics;
-      entriesToCheck = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
+      allEntries = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
     } else {
-      entriesToCheck = this.index.symbols.values();
+      allEntries = Array.from(this.index.symbols.values());
     }
 
+    // ── Incremental caching ───────────────────────────────────────────────
+    const cacheKey = resourceId ?? "__all__";
+    let perSymbolCache = this.refCache.get(cacheKey);
+    if (!perSymbolCache) {
+      perSymbolCache = new Map();
+      this.refCache.set(cacheKey, perSymbolCache);
+    }
+
+    // Determine which entries need re-resolution vs cached
+    const entriesToResolve: SymbolEntry[] = [];
+    const cachedEntryIds = new Set<SymbolId>();
+
+    for (const entry of allEntries) {
+      const hook = this.refHooksByRule.get(entry.ruleName);
+      if (!hook) continue;
+      if (resourceId && entry.resourceId !== resourceId) continue;
+
+      const name = entry.name;
+      if (!name || name === "<anonymous>") continue;
+
+      // Implicit names → always resolved
+      if (this.implicitNames.has(name)) continue;
+
+      // Check if this entry is affected by changes and needs re-resolution
+      if (this.changedIds && perSymbolCache.has(entry.id)) {
+        // Only re-resolve if this entry or its parent is in the changed set
+        const needsResolve =
+          this.changedIds.has(entry.id) || (entry.parentId !== null && this.changedIds.has(entry.parentId));
+        if (!needsResolve) {
+          cachedEntryIds.add(entry.id);
+          const cached = perSymbolCache.get(entry.id);
+          if (cached) {
+            cached.startByte = entry.startByte;
+            cached.endByte = entry.endByte;
+          }
+          continue;
+        }
+      }
+
+      entriesToResolve.push(entry);
+    }
+
+    // Re-resolve only changed/new entries
+    console.info(
+      `[resolveAllReferencesAsync] resourceId=${resourceId}, total=${allEntries.length}, toResolve=${entriesToResolve.length}, cached=${cachedEntryIds.size}, changedIds=${this.changedIds ? this.changedIds.size : "null"}`,
+    );
     let chunkCount = 0;
     let lastYieldStart = performance.now();
-    for (const entry of entriesToCheck) {
+    for (const entry of entriesToResolve) {
       if (yieldFn && ++chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         const isStale = await yieldFn();
         lastYieldStart = performance.now();
         if (isStale) return diagnostics;
       }
 
-      const hook = this.refHooksByRule.get(entry.ruleName);
-      if (!hook) continue;
-
-      if (resourceId && entry.resourceId !== resourceId) continue;
-
-      const name = entry.name;
-      if (!name || name === "<anonymous>") continue;
+      const hook = this.refHooksByRule.get(entry.ruleName)!;
+      const name = entry.name!;
 
       const lenientResolved =
         hook.resolve === "qualified"
           ? this.resolveQualified(name, entry.parentId, [])
           : this.resolveLexical(name, entry.parentId, []);
 
-      if (lenientResolved.length > 0) continue;
-
-      if (this.resolveViaMemberType(name, entry.parentId)) continue;
-
-      if (this.resolveViaFeatureChain(name, entry)) continue;
-
-      const globalIds = this.index.byName.get(name);
-      if (globalIds && globalIds.length > 0) {
-        const hasDeclaration = globalIds.some((id) => {
-          const sym = this.index.symbols.get(id);
-          return sym && !this.refHooksByRule.has(sym.ruleName);
-        });
-        if (hasDeclaration) continue;
+      if (lenientResolved.length > 0) {
+        perSymbolCache.set(entry.id, null);
+        continue;
       }
 
-      if (this.implicitNames.has(name)) continue;
+      if (this.resolveViaMemberType(name, entry.parentId)) {
+        perSymbolCache.set(entry.id, null);
+        continue;
+      }
 
-      diagnostics.push({
+      if (this.resolveViaFeatureChain(name, entry)) {
+        perSymbolCache.set(entry.id, null);
+        continue;
+      }
+
+      const diag: RefDiag = {
         symbolId: entry.id,
         startByte: entry.startByte,
         endByte: entry.endByte,
@@ -360,7 +444,53 @@ export class ScopeResolver {
         ruleName: entry.ruleName,
         message: `Unresolved reference '${name}'`,
         severity: "error",
-      });
+      };
+      perSymbolCache.set(entry.id, diag);
+      diagnostics.push(diag);
+    }
+
+    // Merge cached results from unchanged entries
+    for (const id of cachedEntryIds) {
+      const cached = perSymbolCache.get(id);
+      if (cached) diagnostics.push(cached);
+    }
+
+    // Prune cache entries for symbols no longer in this resource
+    const currentIds = new Set(allEntries.map((e) => e.id));
+    for (const cachedId of perSymbolCache.keys()) {
+      if (!currentIds.has(cachedId)) perSymbolCache.delete(cachedId);
+    }
+
+    return diagnostics;
+  }
+
+  /**
+   * Fast synchronous method to retrieve cached reference diagnostics for a resource.
+   * Crucially, this updates the start/end byte offsets to match the current tree,
+   * preventing diagnostics from appearing "shifted" in the UI while background
+   * resolution is running.
+   */
+  getPreservedDiagnostics(resourceId: string): RefDiag[] {
+    const diagnostics: RefDiag[] = [];
+    if (!this.index.symbolsByResource) return diagnostics;
+
+    const resourceIds = this.index.symbolsByResource.get(resourceId);
+    if (!resourceIds) return diagnostics;
+
+    const cacheKey = resourceId;
+    const perSymbolCache = this.refCache.get(cacheKey);
+    if (!perSymbolCache) return diagnostics;
+
+    for (const id of resourceIds) {
+      const entry = this.index.symbols.get(id);
+      if (!entry) continue;
+
+      const cached = perSymbolCache.get(id);
+      if (cached) {
+        cached.startByte = entry.startByte;
+        cached.endByte = entry.endByte;
+        diagnostics.push(cached);
+      }
     }
 
     return diagnostics;
@@ -406,8 +536,15 @@ export class ScopeResolver {
 
     // Also check metadata string values as potential type refs (Modelica-style)
     if (parent.metadata) {
-      for (const value of Object.values(parent.metadata)) {
+      for (const [key, value] of Object.entries(parent.metadata)) {
         if (typeof value !== "string" || value.length === 0) continue;
+
+        // Only check metadata fields that sound like types/base classes
+        const lkey = key.toLowerCase();
+        if (!lkey.includes("type") && !lkey.includes("base") && !lkey.includes("extend") && !lkey.includes("class")) {
+          continue;
+        }
+
         const typeDecls = this.resolveLexical(value, parent.parentId, []);
         for (const typeDecl of typeDecls) {
           if (this.refHooksByRule.has(typeDecl.ruleName)) continue;
@@ -443,7 +580,14 @@ export class ScopeResolver {
       .filter((s) => s.id !== entry.id && s.endByte <= entry.startByte)
       .sort((a, b) => b.startByte - a.startByte); // closest first
 
+    // Only check the MOST RECENT sibling reference.
+    // Checking all previous siblings is O(N) and causes massive slowdowns
+    // for unresolved references at the end of large equations/files.
     for (const baseRef of siblings) {
+      // Heuristic: if the closest sibling is more than 50 bytes away, it's likely not
+      // part of the same feature chain (e.g. `foo(a, c)` where c is this entry).
+      if (entry.startByte - baseRef.endByte > 50) break;
+
       if (!baseRef.name || baseRef.name === "<anonymous>") continue;
 
       // Resolve the base reference (e.g., `engine`) to its declaration(s)
@@ -459,6 +603,9 @@ export class ScopeResolver {
         // Follow the declaration's type to find members
         if (this.resolveInTypeOf(name, baseDecl.id)) return true;
       }
+
+      // Stop after checking the most recent valid reference
+      break;
     }
 
     return false;

@@ -1,15 +1,60 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function, @typescript-eslint/prefer-for-of, @typescript-eslint/array-type, @typescript-eslint/no-non-null-assertion, no-empty */
-// @ts-nocheck
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function, @typescript-eslint/prefer-for-of, @typescript-eslint/array-type, @typescript-eslint/no-non-null-assertion, no-empty */
+// ts-check
 import { Connection, Diagnostic } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./DocumentManager";
+import { ParserService } from "./ParserService";
 import { WorkspaceManager } from "./WorkspaceManager";
 
+import {
+  LSPBridge,
+  PositionIndex,
+  QueryEngine,
+  ScopeResolver,
+  SymbolIndexer,
+  VerificationRunner,
+} from "@modelscript/compiler";
+import { simulateArena } from "@modelscript/compiler/simulator";
+import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
+import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
+import { TableauReasoner } from "@modelscript/reasoner";
+import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
+import { DiagnosticSeverity } from "vscode-languageserver";
+import { Node as SyntaxNode } from "web-tree-sitter";
+import { getArenaParameterInfo } from "../utils/arenaUtils";
+import { computeTreeEdit } from "../utils/astUtils";
+
 export class ValidationService {
+  // Instance state (previously module-level variables in browserServerMain.ts)
+  public lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
+  public lastIndexedText = new Map<string, string>();
+  public documentLSPBridges = new Map<string, LSPBridge>();
+  public activeValidationPromises = new Map<string, Promise<void>>();
+  public documentRevisions = new Map<string, number>();
+  public activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  public revalidationTimer: ReturnType<typeof setTimeout> | null = null;
+  public declaredDependencies: Array<{ name: string; version: string }> = [];
+  public loadedDependencies = new Set<string>();
+
+  get dependenciesReady(): boolean {
+    return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
+  }
+
+  markDependencyLoaded(name: string, version: string): void {
+    this.loadedDependencies.add(`${name}@${version}`);
+  }
+
+  /**
+   * Per-document viewport byte ranges, updated by `modelscript/visibleRanges` notifications.
+   * When set, linting and reference resolution prioritize symbols within this range.
+   */
+  public documentViewports = new Map<string, { startByte: number; endByte: number }>();
+
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
     private workspaceManager: WorkspaceManager,
+    public parserService: ParserService,
   ) {}
 
   public collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
@@ -21,7 +66,7 @@ export class ValidationService {
     while (didDescend) {
       if (performance.now() - t0 > 1000) {
         this.connection.console.warn(
-          `[perf] collectSyntaxErrors aborted after ${(performance.now() - t0).toFixed(2)}ms (too many nodes)`,
+          `[perf] this.collectSyntaxErrors aborted after ${(performance.now() - t0).toFixed(2)}ms (too many nodes)`,
         );
         break;
       }
@@ -56,21 +101,21 @@ export class ValidationService {
     const totalMs = performance.now() - t0;
     if (totalMs > 100) {
       this.connection.console.warn(
-        `[perf] collectSyntaxErrors took ${totalMs.toFixed(2)}ms for ${diagnostics.length} diagnostics`,
+        `[perf] this.collectSyntaxErrors took ${totalMs.toFixed(2)}ms for ${diagnostics.length} diagnostics`,
       );
     }
     return diagnostics;
   }
 
   public async flushValidation(uri: string): Promise<void> {
-    const timer = activeValidationTimers.get(uri);
+    const timer = this.activeValidationTimers.get(uri);
     if (timer) {
       clearTimeout(timer);
-      activeValidationTimers.delete(uri);
-      const doc = documents.get(uri);
-      if (doc) await validateTextDocument(doc);
+      this.activeValidationTimers.delete(uri);
+      const doc = this.documentManager.documents.get(uri);
+      if (doc) await this.validateTextDocument(doc);
     }
-    const pending = activeValidationPromises.get(uri);
+    const pending = this.activeValidationPromises.get(uri);
     if (pending) {
       await pending;
     }
@@ -82,7 +127,7 @@ export class ValidationService {
 
     // Handle Javascript/TypeScript sidecar files natively via mock entity
     if (textDocument.uri.endsWith(".js") || textDocument.uri.endsWith(".ts")) {
-      const context = sharedContext;
+      const context = this.parserService.sharedContext;
       if (!context) return;
       const entity = {
         isClassInstance: true,
@@ -98,9 +143,9 @@ export class ValidationService {
         entity.name = filename.replace(/\.[tj]s$/, "");
       }
       entity.instantiate(); // Regex parses and natively hydrates the parameters
-      workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
-      workspaceManager.documentInstances.set(textDocument.uri, [entity]);
-      workspaceManager.documentContexts.set(textDocument.uri, context);
+      this.workspaceManager.workspaceInstances.set(textDocument.uri, [entity]);
+      this.workspaceManager.documentInstances.set(textDocument.uri, [entity]);
+      this.workspaceManager.documentContexts.set(textDocument.uri, context);
       this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
       this.connection.sendNotification("modelscript/projectTreeChanged");
       return;
@@ -113,27 +158,35 @@ export class ValidationService {
 
       try {
         this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
-        this.connection.console.info(`[step] stepParserReady=${stepParserReady}, stepParser=${!!stepParser}`);
+        this.connection.console.info(
+          `[step] this.parserService.stepParserReady=${this.parserService.stepParserReady}, this.parserService.stepParser=${!!this.parserService.stepParser}`,
+        );
 
         // 1. Tree-sitter parsing for LSP features
         let astIndex;
         let tree;
-        if (stepParserReady && stepParser) {
-          tree = stepParser.parse(text);
+        if (this.parserService.stepParserReady && this.parserService.stepParser) {
+          tree = this.parserService.stepParser.parse(text);
           if (tree) {
-            documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
-            const indexer = new SymbolIndexer(stepIndexerHooks as any);
+            this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
+            const indexer = new SymbolIndexer({} as any);
             astIndex = indexer.index(tree.rootNode);
             this.connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
           }
         } else {
-          this.connection.console.info(`[step] Tree-sitter STEP parser not available, using regex-only extraction`);
+          this.connection.console.info(
+            `[step] Tree-sitter STEP this.parserService.parser not available, using regex-only extraction`,
+          );
         }
 
         // 2. Structural indexing (Regex + OCCT) + AST index merge
-        const stepIndex = await workspaceManager.stepWorkspaceIndex.parseStepFile(textDocument.uri, buffer, astIndex);
+        const stepIndex = await this.workspaceManager.stepWorkspaceIndex.parseStepFile(
+          textDocument.uri,
+          buffer,
+          astIndex,
+        );
         this.connection.console.info(
-          `[step] StepWorkspaceIndex: ${stepIndex.symbols.size} symbols, ${workspaceManager.stepWorkspaceIndex.getMeshes(textDocument.uri).length} meshes`,
+          `[step] StepWorkspaceIndex: ${stepIndex.symbols.size} symbols, ${this.workspaceManager.stepWorkspaceIndex.getMeshes(textDocument.uri).length} meshes`,
         );
         for (const [id, entry] of stepIndex.symbols) {
           if (entry.ruleName === "step_product" || entry.ruleName === "step_shape") {
@@ -145,37 +198,37 @@ export class ValidationService {
 
         // Invalidate the unified partial cache so cross-language resolvers pick up
         // the new STEP symbols immediately.
-        const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         this.connection.console.info(`[step] Unified index: ${unifiedIndex.symbols.size} symbols total`);
-        if (workspaceManager.globalModelicaQueryEngine)
-          workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
-        if (workspaceManager.globalSysML2QueryEngine) {
-          workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
+        if (this.workspaceManager.globalModelicaQueryEngine)
+          this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
+        if (this.workspaceManager.globalSysML2QueryEngine) {
+          this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
           // Invalidate the SysML2 resolver cache so it sees the new STEP symbols
-          const cachedResolver = (workspaceManager.globalSysML2QueryEngine as any).__resolverCache;
+          const cachedResolver = (this.workspaceManager.globalSysML2QueryEngine as any).__resolverCache;
           if (cachedResolver) cachedResolver.updateIndex(unifiedIndex);
         }
 
         // Create/update STEP query engine + resolver + bridge
         // Always create a bridge, even without tree-sitter, so hover/completion
         // work on the structural (regex-derived) symbols.
-        if (!workspaceManager.globalStepQueryEngine) {
-          workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, stepQueryHooks as any);
+        if (!this.workspaceManager.globalStepQueryEngine) {
+          this.workspaceManager.globalStepQueryEngine = new QueryEngine(unifiedIndex, {} as any);
         } else {
-          workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
+          this.workspaceManager.globalStepQueryEngine.updateIndex(unifiedIndex);
         }
 
-        const engine = workspaceManager.globalStepQueryEngine;
+        const engine = this.workspaceManager.globalStepQueryEngine;
         let resolver = (engine as any).__resolverCache;
         if (!resolver) {
-          resolver = new ScopeResolver(unifiedIndex, stepRefHooks as any, stepIndexerHooks as any);
+          resolver = new ScopeResolver(unifiedIndex, {} as any, {} as any);
           (engine as any).__resolverCache = resolver;
         } else {
           resolver.updateIndex(unifiedIndex);
         }
 
         const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
-        documentLSPBridges.set(textDocument.uri, bridge);
+        this.documentLSPBridges.set(textDocument.uri, bridge);
         this.connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
 
         const stepDiagnostics: Diagnostic[] = [];
@@ -220,12 +273,12 @@ export class ValidationService {
 
         // Trigger cross-file revalidation so SysML files referencing this STEP file
         // will resolve the newly available CAD entities.
-        if (revalidationTimer) clearTimeout(revalidationTimer);
-        revalidationTimer = setTimeout(() => {
+        if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+        this.revalidationTimer = setTimeout(() => {
           this.connection.console.info(`[step] Cross-file revalidation triggered`);
-          for (const doc of documents.all()) {
+          for (const doc of this.documentManager.documents.all()) {
             if (doc.uri !== textDocument.uri) {
-              validateTextDocument(doc);
+              this.validateTextDocument(doc);
             }
           }
         }, 300);
@@ -236,19 +289,19 @@ export class ValidationService {
     }
 
     // Handle OWL2 files via the polyglot reasoner pipeline
-    if (textDocument.uri.endsWith(".owl") && owl2ParserReady && owl2Parser) {
+    if (textDocument.uri.endsWith(".owl") && this.parserService.owl2ParserReady && this.parserService.owl2Parser) {
       try {
-        const oldCached = documentManager.documentTrees.get(textDocument.uri);
+        const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
         let tree: any;
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
           oldCached.tree.edit(edit as never);
-          tree = owl2Parser.parse(text, oldCached.tree as never);
+          tree = this.parserService.owl2Parser.parse(text, oldCached.tree as never);
         } else if (oldCached) {
           tree = oldCached.tree;
         } else {
-          tree = owl2Parser.parse(text);
+          tree = this.parserService.owl2Parser.parse(text);
         }
 
         if (!tree) {
@@ -256,71 +309,71 @@ export class ValidationService {
           return;
         }
 
-        // Store in documentManager.documentTrees
-        documentManager.documentTrees.set(textDocument.uri, {
+        // Store in this.documentManager.documentTrees
+        this.documentManager.documentTrees.set(textDocument.uri, {
           text,
           tree,
           classCache: oldCached?.classCache ?? new Map(),
         });
 
-        const textChanged = lastIndexedText.get(textDocument.uri) !== text;
+        const textChanged = this.lastIndexedText.get(textDocument.uri) !== text;
 
         // Register/update in OWL2 workspace index
         if (textChanged) {
           let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
-          const lastText = lastIndexedText.get(textDocument.uri);
+          const lastText = this.lastIndexedText.get(textDocument.uri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
           }
 
-          if (workspaceManager.owl2WorkspaceIndex.has(textDocument.uri)) {
-            workspaceManager.owl2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+          if (this.workspaceManager.owl2WorkspaceIndex.has(textDocument.uri)) {
+            this.workspaceManager.owl2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
           } else {
-            workspaceManager.owl2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+            this.workspaceManager.owl2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
           }
 
-          workspaceManager.owl2WorkspaceIndex.getFileIndex(textDocument.uri);
-          lastIndexedText.set(textDocument.uri, text);
+          this.workspaceManager.owl2WorkspaceIndex.getFileIndex(textDocument.uri);
+          this.lastIndexedText.set(textDocument.uri, text);
         }
 
-        const changedIds = workspaceManager.owl2WorkspaceIndex.takeGlobalChangedIds();
-        const changedNames = workspaceManager.owl2WorkspaceIndex.takeGlobalChangedNames();
+        const changedIds = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedIds();
+        const changedNames = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedNames();
 
-        const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
 
         if (changedNames && changedNames.size > 0) {
-          if (revalidationTimer) clearTimeout(revalidationTimer);
-          revalidationTimer = setTimeout(() => {
-            for (const doc of documents.all()) {
+          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+          this.revalidationTimer = setTimeout(() => {
+            for (const doc of this.documentManager.documents.all()) {
               if (doc.uri !== textDocument.uri) {
-                validateTextDocument(doc);
+                this.validateTextDocument(doc);
               }
             }
           }, 500);
         }
 
-        if (workspaceManager.globalOWL2QueryEngine) {
-          if (changedIds && typeof workspaceManager.globalOWL2QueryEngine.swapIndex === "function") {
-            workspaceManager.globalOWL2QueryEngine.swapIndex(unifiedIndex, changedIds);
+        if (this.workspaceManager.globalOWL2QueryEngine) {
+          if (changedIds && typeof this.workspaceManager.globalOWL2QueryEngine.swapIndex === "function") {
+            this.workspaceManager.globalOWL2QueryEngine.swapIndex(unifiedIndex, changedIds);
           } else {
-            workspaceManager.globalOWL2QueryEngine.updateIndex(unifiedIndex);
+            this.workspaceManager.globalOWL2QueryEngine.updateIndex(unifiedIndex);
           }
         } else {
-          workspaceManager.globalOWL2QueryEngine = new QueryEngine(unifiedIndex, owl2QueryHooks as any);
+          this.workspaceManager.globalOWL2QueryEngine = new QueryEngine(unifiedIndex, {} as any);
         }
-        const engine = workspaceManager.globalOWL2QueryEngine;
+        const engine = this.workspaceManager.globalOWL2QueryEngine;
 
         let resolver = (engine as any).__resolverCache;
         if (!resolver) {
-          resolver = new ScopeResolver(unifiedIndex, owl2RefHooks as any, owl2IndexerHooks as any);
+          resolver = new ScopeResolver(unifiedIndex, {} as any, {} as any);
           (engine as any).__resolverCache = resolver;
         } else {
           resolver.updateIndex(unifiedIndex);
         }
 
         const bridge = new LSPBridge(unifiedIndex, engine, resolver, new PositionIndex(text), textDocument.uri);
-        documentLSPBridges.set(textDocument.uri, bridge);
+        this.documentLSPBridges.set(textDocument.uri, bridge);
 
         const owl2Diagnostics: Diagnostic[] = [];
 
@@ -390,7 +443,7 @@ export class ValidationService {
 
           // Run tableau reasoner check
           try {
-            const store = workspaceManager.unifiedWorkspace.owl2Store;
+            const store = this.workspaceManager.unifiedWorkspace.owl2Store;
             const reasoner = new TableauReasoner();
             await reasoner.init();
             reasoner.loadOntology(store.axioms);
@@ -407,7 +460,7 @@ export class ValidationService {
                     targetIri = axiom.subClassIri;
                   } else if (axiom.type === "DisjointClasses" && axiom.classIris && axiom.classIris.length > 0) {
                     for (const iri of axiom.classIris) {
-                      if (findRangeForIri(iri, textDocument.uri)) {
+                      if (this.findRangeForIri(iri, textDocument.uri)) {
                         targetIri = iri;
                         break;
                       }
@@ -422,7 +475,7 @@ export class ValidationService {
                   }
 
                   if (targetIri) {
-                    const range = findRangeForIri(targetIri, textDocument.uri);
+                    const range = this.findRangeForIri(targetIri, textDocument.uri);
                     if (range) {
                       owl2Diagnostics.push({
                         severity: DiagnosticSeverity.Error,
@@ -462,19 +515,23 @@ export class ValidationService {
     }
 
     // Handle SysML2 files via the polyglot SysML2 pipeline
-    if (textDocument.uri.endsWith(".sysml") && sysml2ParserReady && sysml2Parser) {
+    if (
+      textDocument.uri.endsWith(".sysml") &&
+      this.parserService.sysml2ParserReady &&
+      this.parserService.sysml2Parser
+    ) {
       try {
-        const oldCached = documentManager.documentTrees.get(textDocument.uri);
+        const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
         let tree: any;
 
         if (oldCached && oldCached.text !== text) {
           const edit = computeTreeEdit(oldCached.text, text);
           oldCached.tree.edit(edit as never);
-          tree = sysml2Parser.parse(text, oldCached.tree as never);
+          tree = this.parserService.sysml2Parser.parse(text, oldCached.tree as never);
         } else if (oldCached) {
           tree = oldCached.tree;
         } else {
-          tree = sysml2Parser.parse(text);
+          tree = this.parserService.sysml2Parser.parse(text);
         }
 
         if (!tree) {
@@ -482,65 +539,65 @@ export class ValidationService {
           return;
         }
 
-        // Store in documentManager.documentTrees so verification and other LSP operations can access the tree/text
-        documentManager.documentTrees.set(textDocument.uri, {
+        // Store in this.documentManager.documentTrees so verification and other LSP operations can access the tree/text
+        this.documentManager.documentTrees.set(textDocument.uri, {
           text,
           tree,
           classCache: oldCached?.classCache ?? new Map(),
         });
 
-        const textChanged = lastIndexedText.get(textDocument.uri) !== text;
+        const textChanged = this.lastIndexedText.get(textDocument.uri) !== text;
 
         // Register/update in SysML2 workspace index
         if (textChanged) {
           let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
-          const lastText = lastIndexedText.get(textDocument.uri);
+          const lastText = this.lastIndexedText.get(textDocument.uri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
           }
 
-          if (workspaceManager.sysml2WorkspaceIndex.has(textDocument.uri)) {
-            workspaceManager.sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+          if (this.workspaceManager.sysml2WorkspaceIndex.has(textDocument.uri)) {
+            this.workspaceManager.sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
           } else {
-            workspaceManager.sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
+            this.workspaceManager.sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
           }
 
           // Force index evaluation for active document AFTER it is registered/marked dirty
           // so that it actually triggers processing and populates the partial index.
           // Without this, toUnifiedPartial() skips the file (index stays null).
-          workspaceManager.sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
-          lastIndexedText.set(textDocument.uri, text);
+          this.workspaceManager.sysml2WorkspaceIndex.getFileIndex(textDocument.uri);
+          this.lastIndexedText.set(textDocument.uri, text);
         }
 
         // Get ALL changed symbol IDs across the workspace since last check
-        const changedIds = workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedIds();
-        const changedNames = workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedNames();
+        const changedIds = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedIds();
+        const changedNames = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedNames();
 
         // Create or update query engine, resolver, and LSP bridge for the document
-        const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
 
         if (changedNames && changedNames.size > 0) {
-          if (revalidationTimer) clearTimeout(revalidationTimer);
-          revalidationTimer = setTimeout(() => {
-            for (const doc of documents.all()) {
+          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+          this.revalidationTimer = setTimeout(() => {
+            for (const doc of this.documentManager.documents.all()) {
               if (doc.uri !== textDocument.uri) {
-                validateTextDocument(doc);
+                this.validateTextDocument(doc);
               }
             }
           }, 500);
         }
 
-        if (workspaceManager.globalSysML2QueryEngine) {
-          if (changedIds && typeof workspaceManager.globalSysML2QueryEngine.swapIndex === "function") {
-            workspaceManager.globalSysML2QueryEngine.swapIndex(unifiedIndex, changedIds);
+        if (this.workspaceManager.globalSysML2QueryEngine) {
+          if (changedIds && typeof this.workspaceManager.globalSysML2QueryEngine.swapIndex === "function") {
+            this.workspaceManager.globalSysML2QueryEngine.swapIndex(unifiedIndex, changedIds);
           } else {
-            workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
+            this.workspaceManager.globalSysML2QueryEngine.updateIndex(unifiedIndex);
           }
         } else {
-          workspaceManager.globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
+          this.workspaceManager.globalSysML2QueryEngine = createSysML2QueryEngine(unifiedIndex) as any;
         }
-        const engine = workspaceManager.globalSysML2QueryEngine;
+        const engine = this.workspaceManager.globalSysML2QueryEngine;
 
         let resolver = (engine as any).__resolverCache;
         if (!resolver) {
@@ -551,7 +608,7 @@ export class ValidationService {
         }
 
         const bridge = createSysML2LSPBridge(unifiedIndex, engine, resolver, text, textDocument.uri);
-        documentLSPBridges.set(textDocument.uri, bridge);
+        this.documentLSPBridges.set(textDocument.uri, bridge);
 
         // Collect parse errors from the tree
         const sysmlDiagnostics: Diagnostic[] = [];
@@ -602,7 +659,7 @@ export class ValidationService {
           // Skip unresolved-reference diagnostics while the SysML2 standard library
           // is still loading — primitive types like Real/Integer/Boolean/String live
           // in the stdlib and produce false positives until it's indexed.
-          const unresolvedRefs = sysml2StdlibReady
+          const unresolvedRefs = this.dependenciesReady
             ? await (resolver as any).resolveAllReferencesAsync(textDocument.uri, async () => {
                 await new Promise<void>((r) => setTimeout(r, 0));
                 return false;
@@ -624,7 +681,7 @@ export class ValidationService {
           }
         } else {
           // Retain existing semantic diagnostics if the AST is broken to prevent flashing
-          const cachedSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
+          const cachedSemantic = this.lastSemanticDiagnostics.get(textDocument.uri) || [];
           sysmlDiagnostics.push(...cachedSemantic);
         }
 
@@ -638,9 +695,9 @@ export class ValidationService {
         // Auto-trigger verification if this document contains verification/analysis cases.
         // This makes the "compiler actively fails the build" behavior described in the paper
         // happen automatically without requiring the user to run a command.
-        if (workspaceManager.unifiedWorkspace) {
+        if (this.workspaceManager.unifiedWorkspace) {
           try {
-            const udb = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+            const udb = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
             // Use symbolsByResource for O(1) lookup instead of scanning all symbols
             const docSymbolIds = udb.symbolsByResource?.get(textDocument.uri);
             let hasVerifyCases = false;
@@ -681,17 +738,17 @@ export class ValidationService {
       return;
     }
 
-    if (parserReady && parser) {
+    if (this.parserService.parserReady && this.parserService.parser) {
       this.connection.console.info(`[validate] Entering Modelica parsing`);
       // Polyglot-only pipeline: tree-sitter parse → SymbolIndex → QueryEngine → diagnostics
-      const context = sharedContext;
+      const context = this.parserService.sharedContext;
       if (!context) {
-        this.connection.console.info(`[validate] sharedContext is null!`);
+        this.connection.console.info(`[validate] this.parserService.sharedContext is null!`);
         return;
       }
 
       // Parse with tree-sitter (incremental when possible)
-      const oldCached = documentManager.documentTrees.get(textDocument.uri);
+      const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
 
       let tree: any;
       let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
@@ -706,7 +763,7 @@ export class ValidationService {
       } else {
         tree = context.parse(".mo", text);
       }
-      documentManager.documentTrees.set(textDocument.uri, {
+      this.documentManager.documentTrees.set(textDocument.uri, {
         text,
         tree,
         classCache: oldCached?.classCache ?? new Map(),
@@ -717,7 +774,7 @@ export class ValidationService {
       // Collect syntax errors from the tree using the shared pure function.
       // These were likely already sent instantly by the onDidChangeContent handler,
       // but we recompute them here to ensure consistency with the current tree.
-      const syntaxDiags = collectSyntaxErrors(tree.rootNode, textDocument);
+      const syntaxDiags = this.collectSyntaxErrors(tree.rootNode, textDocument);
       diagnostics.push(...syntaxDiags);
 
       this.connection.console.info(
@@ -726,7 +783,7 @@ export class ValidationService {
 
       // Send syntax diagnostics immediately so the user gets instant feedback
       // even if the semantic pipeline takes a long time.
-      const cachedSemantic = lastSemanticDiagnostics.get(textDocument.uri) || [];
+      const cachedSemantic = this.lastSemanticDiagnostics.get(textDocument.uri) || [];
       const allDiags = [...diagnostics, ...cachedSemantic];
       if (allDiags.length > 1000) allDiags.length = 1000;
       this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: allDiags });
@@ -736,10 +793,10 @@ export class ValidationService {
       // pass focuses on producing the merged (syntax + semantic) diagnostic set.
       // Passing the revision allows the pipeline to bail out early if a new edit
       // arrives while it's running (staleness check at each expensive step).
-      const revisionAtStart = documentRevisions.get(textDocument.uri) ?? 0;
+      const revisionAtStart = this.documentRevisions.get(textDocument.uri) ?? 0;
 
-      this.connection.console.info(`[validate] starting runSemanticPipeline`);
-      const promise = runSemanticPipeline(
+      this.connection.console.info(`[validate] starting this.runSemanticPipeline`);
+      const promise = this.runSemanticPipeline(
         textDocument.uri,
         text,
         tree,
@@ -749,13 +806,13 @@ export class ValidationService {
         context,
       ).catch((e) => {
         this.connection.console.error(
-          `[runSemanticPipeline] Failed for ${textDocument.uri}: ${e instanceof Error ? e.message + "\\n" + e.stack : String(e)}`,
+          `[this.runSemanticPipeline] Failed for ${textDocument.uri}: ${e instanceof Error ? e.message + "\\n" + e.stack : String(e)}`,
         );
       });
-      activeValidationPromises.set(textDocument.uri, promise);
+      this.activeValidationPromises.set(textDocument.uri, promise);
       promise.finally(() => {
-        if (activeValidationPromises.get(textDocument.uri) === promise) {
-          activeValidationPromises.delete(textDocument.uri);
+        if (this.activeValidationPromises.get(textDocument.uri) === promise) {
+          this.activeValidationPromises.delete(textDocument.uri);
         }
       });
     } else {
@@ -789,7 +846,7 @@ export class ValidationService {
     const newSemanticDiagnostics: Diagnostic[] = [];
 
     // If the tree has syntax errors, skip the semantic pipeline to preserve the cache
-    // and prevent massive index invalidation cascades when the parser fails to recover.
+    // and prevent massive index invalidation cascades when the this.parserService.parser fails to recover.
     const hasError = typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : tree.rootNode.hasError;
     if (hasError) {
       this.connection.console.info(
@@ -798,10 +855,10 @@ export class ValidationService {
       return;
     }
 
-    const startVersion = workspaceManager.globalWorkspaceIndex.version;
+    const startVersion = this.workspaceManager.globalWorkspaceIndex.version;
     /** Returns true if a newer edit has arrived, meaning we should abandon this pipeline run. */
     const isStale = () => {
-      if (revisionAtStart !== null && (documentRevisions.get(uri) ?? 0) !== revisionAtStart) return true;
+      if (revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart) return true;
       return false;
     };
     /** Yields to the event loop so new edits can be processed. */
@@ -814,7 +871,7 @@ export class ValidationService {
 
     try {
       const t0 = performance.now();
-      this.connection.console.info(`[perf] Starting runSemanticPipeline for ${uri}`);
+      this.connection.console.info(`[perf] Starting this.runSemanticPipeline for ${uri}`);
       const effectiveUri = uri.startsWith("modelscript-lib://global")
         ? "file://" + uri.substring("modelscript-lib://global".length)
         : uri;
@@ -822,7 +879,7 @@ export class ValidationService {
       // ── Step 1: Re-index ─────────────────────────────────────────────────
       // Only update the workspace index if the text actually changed.
       // Prevents infinite revalidation loops from revalidation calls.
-      const textChanged = lastIndexedText.get(effectiveUri) !== text;
+      const textChanged = this.lastIndexedText.get(effectiveUri) !== text;
       let changedIds: Set<number> | null = null;
       let changedNames: Set<string> | null = null;
       let unifiedIndex: any = null;
@@ -830,24 +887,24 @@ export class ValidationService {
       if (textChanged) {
         const step0t = performance.now();
         if (!editRanges) {
-          const lastText = lastIndexedText.get(effectiveUri);
+          const lastText = this.lastIndexedText.get(effectiveUri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
           }
         }
 
-        if (workspaceManager.globalWorkspaceIndex.has(effectiveUri)) {
-          workspaceManager.globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
+        if (this.workspaceManager.globalWorkspaceIndex.has(effectiveUri)) {
+          this.workspaceManager.globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
         } else {
-          workspaceManager.globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
+          this.workspaceManager.globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
         }
         const step0_1t = performance.now();
-        workspaceManager.globalWorkspaceIndex.getFileIndex(effectiveUri);
+        this.workspaceManager.globalWorkspaceIndex.getFileIndex(effectiveUri);
         const step0_2t = performance.now();
-        lastIndexedText.set(effectiveUri, text);
-        changedIds = workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
-        changedNames = workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
+        this.lastIndexedText.set(effectiveUri, text);
+        changedIds = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
+        changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
         this.connection.console.info(
           `[perf] Step 1.0 (markDirty): ${(step0_1t - step0t).toFixed(2)}ms, (getFileIndex): ${(step0_2t - step0_1t).toFixed(2)}ms`,
         );
@@ -858,7 +915,7 @@ export class ValidationService {
       // We ALWAYS need unifiedIndex for downstream steps (bridge, linting, etc.)
       // It's very fast if there are no changes.
       const step0_3t = performance.now();
-      unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const step0_4t = performance.now();
       const cstTreeWrapper = getSharedCstTreeWrapper();
       this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
@@ -871,14 +928,14 @@ export class ValidationService {
         );
 
         if (changedNames && changedNames.size > 0) {
-          if (revalidationTimer) clearTimeout(revalidationTimer);
-          revalidationTimer = setTimeout(() => {
-            for (const doc of documents.all()) {
+          if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+          this.revalidationTimer = setTimeout(() => {
+            for (const doc of this.documentManager.documents.all()) {
               const effectiveDocUri = doc.uri.startsWith("modelscript-lib://global")
                 ? "file://" + doc.uri.substring("modelscript-lib://global".length)
                 : doc.uri;
               if (effectiveDocUri !== effectiveUri) {
-                validateTextDocument(doc);
+                this.validateTextDocument(doc);
               }
             }
           }, 1000);
@@ -886,43 +943,40 @@ export class ValidationService {
 
         step1T = performance.now();
 
-        if (workspaceManager.globalModelicaQueryEngine) {
+        if (this.workspaceManager.globalModelicaQueryEngine) {
           injectPredefinedTypes(unifiedIndex);
           this.connection.console.info(
             `[perf] Step 1.2 (injectPredefinedTypes): ${(performance.now() - step1T).toFixed(2)}ms`,
           );
           step1T = performance.now();
-          if (changedIds && typeof workspaceManager.globalModelicaQueryEngine.swapIndex === "function") {
-            workspaceManager.globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
+          if (changedIds && typeof this.workspaceManager.globalModelicaQueryEngine.swapIndex === "function") {
+            this.workspaceManager.globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
             this.connection.console.info(`[perf] Step 1.3 (swapIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
           } else {
-            workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
+            this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
             this.connection.console.info(`[perf] Step 1.3 (updateIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
           }
-          if (typeof workspaceManager.globalModelicaQueryEngine.updateTree === "function") {
-            workspaceManager.globalModelicaQueryEngine.updateTree(cstTreeWrapper);
-          }
-          // Invalidate wrapper caches for changed symbols so user document
-          // wrappers get fresh data while MSL library wrappers stay warm.
-          if (changedIds && typeof invalidateWrapperCache === "function") {
-            try {
-              invalidateWrapperCache(workspaceManager.globalModelicaQueryEngine.toQueryDB(), changedIds);
-            } catch {
-              // Ignore — invalidation is best-effort
-            }
+          if (typeof this.workspaceManager.globalModelicaQueryEngine.updateTree === "function") {
+            this.workspaceManager.globalModelicaQueryEngine.updateTree(cstTreeWrapper);
           }
         } else {
-          workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
+          this.workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(
+            unifiedIndex,
+            cstTreeWrapper,
+          ) as any;
         }
       } else {
-        if (!workspaceManager.globalModelicaQueryEngine) {
-          workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(unifiedIndex, cstTreeWrapper) as any;
+        if (!this.workspaceManager.globalModelicaQueryEngine) {
+          this.workspaceManager.globalModelicaQueryEngine = createModelicaQueryEngine(
+            unifiedIndex,
+            cstTreeWrapper,
+          ) as any;
         }
       }
       this.connection.console.info(`[perf] Step 1 (Index): ${(performance.now() - t0).toFixed(2)}ms`);
-      context.setQueryEngine(workspaceManager.globalModelicaQueryEngine);
-      context.setWorkspaceIndex(workspaceManager.globalWorkspaceIndex);
-      const engine = workspaceManager.globalModelicaQueryEngine;
+      context.setQueryEngine(this.workspaceManager.globalModelicaQueryEngine);
+      context.setWorkspaceIndex(this.workspaceManager.globalWorkspaceIndex);
+      const engine = this.workspaceManager.globalModelicaQueryEngine;
 
       let resolver = (engine as any).__resolverCache;
       if (!resolver) {
@@ -931,11 +985,15 @@ export class ValidationService {
       } else if (textChanged) {
         resolver.updateIndex(unifiedIndex);
       }
+      // Pass changedIds for incremental reference caching
+      if (resolver.setChangedIds) {
+        resolver.setChangedIds(changedIds ?? null);
+      }
 
-      const currentDoc = documents.get(uri);
+      const currentDoc = this.documentManager.documents.get(uri);
       const currentText = currentDoc ? currentDoc.getText() : text;
       const bridge = createModelicaLSPBridge(unifiedIndex, engine, resolver, currentText, uri);
-      documentLSPBridges.set(uri, bridge);
+      this.documentLSPBridges.set(uri, bridge);
       this.connection.console.info(`[perf] Step 2 (Engine Update): ${(performance.now() - t0).toFixed(2)}ms`);
 
       // Yield before expensive linting
@@ -949,7 +1007,7 @@ export class ValidationService {
       // fetch() calls inside linting and reference resolution.
       const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
       const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
-      const isWorkspaceFile = !!documents.get(uri);
+      const isWorkspaceFile = !!this.documentManager.documents.get(uri);
 
       // We skip preflight for active workspace files because their memos are
       // already hot in memory (or actively re-evaluated efficiently).
@@ -976,18 +1034,19 @@ export class ValidationService {
       // User-authored files always get full diagnostics regardless of size.
       // A file is a "workspace file" if it's tracked by the TextDocuments manager
       // (i.e., currently open in the editor). Library files loaded via loadMSL
-      // or background indexing are not tracked by documents.
+      // or background indexing are not tracked by this.documentManager.documents.
       const hasSyntaxErrors = baseDiagnostics.length > 0;
-      const skipHeavyLints = true; // Temporarily disable tier-2 validations
+      const skipHeavyLints = !isWorkspaceFile && docSymbolCount > 1000;
 
       if (hasSyntaxErrors) {
         // Retain existing semantic diagnostics if the AST is broken to prevent flashing
-        const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+        const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
         newSemanticDiagnostics.push(...cachedSemantic);
       }
 
       if (!skipHeavyLints) {
-        const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale);
+        const viewportRange = this.documentViewports.get(uri) ?? undefined;
+        const engineDiags = await (engine as any).runAllLintsAsync(uri, yieldAndCheckStale, viewportRange);
         if (isStale()) return;
 
         for (const d of engineDiags) {
@@ -1001,44 +1060,9 @@ export class ValidationService {
       }
       this.connection.console.info(`[perf] Step 3 (Lints): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // Yield before expensive reference resolution
-      await yieldToEventLoop();
-      if (isStale()) return;
-
-      // ── Step 4: Resolve references ───────────────────────────────────────
-      if (!skipHeavyLints) {
-        const unresolvedRefs = mslStdlibReady
-          ? await (resolver as any).resolveAllReferencesAsync(uri, yieldAndCheckStale)
-          : [];
-        if (isStale()) return;
-
-        let dirty = false;
-        for (const r of unresolvedRefs) {
-          if (r.fqn) {
-            const uriToFix = (workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
-            if (uriToFix && !workspaceManager.globalWorkspaceIndex.has(uriToFix)) {
-              workspaceManager.globalWorkspaceIndex.getFileIndex(uriToFix);
-              dirty = true;
-              continue;
-            }
-          }
-          const start = (bridge as any).positions.offsetToPosition(r.startByte);
-          const end = (bridge as any).positions.offsetToPosition(r.endByte);
-          let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
-          if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
-          if (r.severity === "info") severity = DiagnosticSeverity.Information;
-          newSemanticDiagnostics.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
-        }
-        if (dirty) {
-          unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
-          injectPredefinedTypes(unifiedIndex);
-          engine!.updateIndex(unifiedIndex);
-          resolver.updateIndex(unifiedIndex);
-        }
-      }
-      this.connection.console.info(`[perf] Step 4 (References): ${(performance.now() - t0).toFixed(2)}ms`);
-
-      // ── Step 5: Create ModelicaClassInstance wrappers ──────────────────
+      // ── Step 5 (moved before Step 4): Create ModelicaClassInstance wrappers
+      // Wrappers are needed by the project tree and diagram rendering.
+      // They don't depend on reference resolution, so run them now.
       const db = engine!.toQueryDB();
       const thisDocInstances: ModelicaClassInstance[] = [];
       const normUri = (u: string) => (u.startsWith("file://") ? u.substring(7) : u);
@@ -1058,22 +1082,121 @@ export class ValidationService {
         const wrapper = new ModelicaClassInstance(id, db) as unknown as ModelicaClassInstance;
         thisDocInstances.push(wrapper);
       }
-      workspaceManager.workspaceInstances.set(uri, thisDocInstances);
-      workspaceManager.documentInstances.set(uri, thisDocInstances);
-      workspaceManager.documentContexts.set(uri, context);
+      this.workspaceManager.workspaceInstances.set(uri, thisDocInstances);
+      this.workspaceManager.documentInstances.set(uri, thisDocInstances);
+      this.workspaceManager.documentContexts.set(uri, context);
       this.connection.console.info(`[perf] Step 5 (Wrappers): ${(performance.now() - t0).toFixed(2)}ms`);
 
-      // Final stale check
+      // ── Immediate delivery: publish lint diagnostics + wrappers now ─────
+      // The user sees lint errors and the project tree immediately.
       if (isStale()) return;
 
-      lastSemanticDiagnostics.set(uri, newSemanticDiagnostics);
-      const diagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
-      if (diagnostics.length > 1000) diagnostics.length = 1000;
+      const preservedRefDiags: Diagnostic[] = [];
+      const cachedRefs = (resolver as any).getPreservedDiagnostics?.(uri) || [];
+      for (const r of cachedRefs) {
+        if (r.fqn) {
+          const uriToFix = (this.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
+          if (uriToFix && !this.workspaceManager.globalWorkspaceIndex.has(uriToFix)) {
+            continue;
+          }
+        }
+        const start = (bridge as any).positions.offsetToPosition(r.startByte);
+        const end = (bridge as any).positions.offsetToPosition(r.endByte);
+        let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+        if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+        if (r.severity === "info") severity = DiagnosticSeverity.Information;
+        preservedRefDiags.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
+      }
 
-      this.connection.sendDiagnostics({ uri, diagnostics });
-      sendProjectTreeChanged();
+      this.lastSemanticDiagnostics.set(uri, [...newSemanticDiagnostics, ...preservedRefDiags]);
+      const earlyDiags = [...baseDiagnostics, ...newSemanticDiagnostics, ...preservedRefDiags];
+      if (earlyDiags.length > 1000) earlyDiags.length = 1000;
+      this.connection.sendDiagnostics({ uri, diagnostics: earlyDiags });
+      this.connection.sendNotification("modelscript/projectTreeChanged");
       this.connection.console.info(
-        `[perf] Finished runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`,
+        `[perf] Immediate delivery for ${uri} in ${(performance.now() - t0).toFixed(2)}ms (preserved ${preservedRefDiags.length} ref errors)`,
+      );
+
+      // ── Step 4 (deferred): Resolve references in the background ─────────
+      // Reference resolution can take 4+ seconds on cold cache. Run it
+      // asynchronously and send an augmented diagnostic update when done.
+      // IMPORTANT: We track this as part of the pipeline promise via
+      // deferredResolve so the inflight check prevents redundant pipeline starts.
+      if (!skipHeavyLints && this.dependenciesReady) {
+        // Capture values needed by the async closure
+        const capturedUri = uri;
+        const capturedBaseDiagnostics = [...baseDiagnostics];
+        const capturedLintDiagnostics = [...newSemanticDiagnostics];
+        const capturedBridge = bridge;
+        const capturedResolver = resolver;
+        const capturedRevision = revisionAtStart;
+        const capturedT0 = t0;
+
+        // Yield to the event loop to let the Tier 2 timer settle.
+        // The pipeline's outer promise (tracked in activeValidationPromises)
+        // won't resolve until this await completes, keeping "inflight" true.
+        await new Promise<void>((r) => setTimeout(r, 0));
+
+        // If a new edit arrived during the yield, abort deferred work
+        if (capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision) {
+          this.connection.console.info(`[perf] Step 4 (deferred) skipped — stale revision for ${capturedUri}`);
+        } else {
+          try {
+            this.connection.console.info(`[perf] Step 4 (deferred) starting for ${capturedUri}`);
+            const refT0 = performance.now();
+
+            const yieldAndCheckStaleDeferred = async () => {
+              await new Promise<void>((r) => setTimeout(r, 0));
+              return capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision;
+            };
+
+            const unresolvedRefs = await (capturedResolver as any).resolveAllReferencesAsync(
+              capturedUri,
+              yieldAndCheckStaleDeferred,
+            );
+
+            // Check again after resolution
+            if (capturedRevision !== null && (this.documentRevisions.get(capturedUri) ?? 0) !== capturedRevision) {
+              this.connection.console.info(
+                `[perf] Step 4 (deferred) aborted — stale after resolution for ${capturedUri}`,
+              );
+            } else {
+              const refDiagnostics: Diagnostic[] = [];
+              for (const r of unresolvedRefs) {
+                if (r.fqn) {
+                  const uriToFix = (this.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(r.fqn);
+                  if (uriToFix && !this.workspaceManager.globalWorkspaceIndex.has(uriToFix)) {
+                    this.workspaceManager.globalWorkspaceIndex.getFileIndex(uriToFix);
+                    continue;
+                  }
+                }
+                const start = (capturedBridge as any).positions.offsetToPosition(r.startByte);
+                const end = (capturedBridge as any).positions.offsetToPosition(r.endByte);
+                let severity: DiagnosticSeverity = DiagnosticSeverity.Error;
+                if (r.severity === "warning") severity = DiagnosticSeverity.Warning;
+                if (r.severity === "info") severity = DiagnosticSeverity.Information;
+                refDiagnostics.push({ severity, range: { start, end }, message: r.message, source: "modelscript" });
+              }
+
+              // Merge lint + reference diagnostics and send update
+              const allSemanticDiags = [...capturedLintDiagnostics, ...refDiagnostics];
+              this.lastSemanticDiagnostics.set(capturedUri, allSemanticDiags);
+              const finalDiags = [...capturedBaseDiagnostics, ...allSemanticDiags];
+              if (finalDiags.length > 1000) finalDiags.length = 1000;
+              this.connection.sendDiagnostics({ uri: capturedUri, diagnostics: finalDiags });
+
+              this.connection.console.info(
+                `[perf] Step 4 (deferred) completed for ${capturedUri} in ${(performance.now() - refT0).toFixed(2)}ms (total pipeline: ${(performance.now() - capturedT0).toFixed(2)}ms), refDiags=${refDiagnostics.length}`,
+              );
+            }
+          } catch (e: any) {
+            this.connection.console.warn(`[perf] Step 4 (deferred) failed: ${e?.message ?? e}`);
+          }
+        }
+      }
+
+      this.connection.console.info(
+        `[perf] Finished this.runSemanticPipeline for ${uri} in ${(performance.now() - t0).toFixed(2)}ms`,
       );
     } catch (e: any) {
       this.connection.console.error(`[modelica] Error in semantic pipeline for ${uri}: ${e.message}\n${e.stack}`);
@@ -1087,14 +1210,14 @@ export class ValidationService {
 
   async runVerificationForUri(uri: string): Promise<{ ok: boolean; error?: string }> {
     try {
-      const textDocument = documents.get(uri);
+      const textDocument = this.documentManager.documents.get(uri);
       if (!textDocument) throw new Error("Document not found");
 
       if (activeVerification) activeVerification.abort();
       activeVerification = new AbortController();
       const signal = activeVerification.signal;
 
-      const db = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+      const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       const fileNodes = Array.from(db.symbols.values()).filter(
         (s) =>
           s.resourceId === textDocument.uri &&
@@ -1108,47 +1231,53 @@ export class ValidationService {
       if (fileNodes.length === 0) return { ok: true };
 
       const verifyCstTreeWrapper = {
-        getText(startByte: number, endByte: number, entry?: any): string | null {
+        getText: (startByte: number, endByte: number, entry?: any): string | null => {
           if (!entry || !entry.resourceId) return null;
           const entryUri = entry.resourceId;
-          const docTree = documentManager.documentTrees.get(entryUri);
+          const docTree = this.documentManager.documentTrees.get(entryUri);
           if (docTree && docTree.text) return docTree.text.substring(startByte, endByte);
 
-          let lazyCache = documentManager.lazyLibTrees.get(entryUri);
-          if (!lazyCache && sharedContext) {
+          let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
+          if (!lazyCache && this.parserService.sharedContext) {
             try {
               const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
-              const text = sharedContext.fs.read(fsPath);
+              const text = this.parserService.sharedContext.fs.read(fsPath);
               if (text) {
-                const tree = sharedContext.parse(entryUri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+                const tree = this.parserService.sharedContext.parse(
+                  entryUri.endsWith(".sysml") ? ".sysml" : ".mo",
+                  text,
+                );
                 lazyCache = { tree, text };
-                documentManager.lazyLibTrees.set(entryUri, lazyCache);
+                this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
               }
             } catch (e) {}
           }
           if (lazyCache) return lazyCache.text.substring(startByte, endByte);
 
-          const doc = documents.get(entryUri);
+          const doc = this.documentManager.documents.get(entryUri);
           if (doc) return doc.getText().substring(startByte, endByte);
           return null;
         },
-        getNode(startByte: number, endByte: number, entry?: any): any | null {
+        getNode: (startByte: number, endByte: number, entry?: any): any | null => {
           if (!entry || !entry.resourceId) return null;
           const entryUri = entry.resourceId;
-          const docTree = documentManager.documentTrees.get(entryUri);
+          const docTree = this.documentManager.documentTrees.get(entryUri);
           if (docTree && docTree.tree) {
             return docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           }
 
-          let lazyCache = documentManager.lazyLibTrees.get(entryUri);
-          if (!lazyCache && sharedContext) {
+          let lazyCache = this.documentManager.lazyLibTrees.get(entryUri);
+          if (!lazyCache && this.parserService.sharedContext) {
             try {
               const fsPath = entryUri.startsWith("file://") ? entryUri.substring(7) : entryUri;
-              const text = sharedContext.fs.read(fsPath);
+              const text = this.parserService.sharedContext.fs.read(fsPath);
               if (text) {
-                const tree = sharedContext.parse(entryUri.endsWith(".sysml") ? ".sysml" : ".mo", text);
+                const tree = this.parserService.sharedContext.parse(
+                  entryUri.endsWith(".sysml") ? ".sysml" : ".mo",
+                  text,
+                );
                 lazyCache = { tree, text };
-                documentManager.lazyLibTrees.set(entryUri, lazyCache);
+                this.documentManager.lazyLibTrees.set(entryUri, lazyCache);
               }
             } catch (e) {}
           }
@@ -1156,17 +1285,17 @@ export class ValidationService {
             return lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
           }
 
-          const doc = documents.get(entryUri);
+          const doc = this.documentManager.documents.get(entryUri);
           if (doc) {
             const text = doc.getText();
             let tree: any;
-            if (entryUri.endsWith(".sysml") && sysml2Parser) {
-              tree = sysml2Parser.parse(text);
-            } else if (sharedContext) {
-              tree = sharedContext.parse(".mo", text);
+            if (entryUri.endsWith(".sysml") && this.parserService.sysml2Parser) {
+              tree = this.parserService.sysml2Parser.parse(text);
+            } else if (this.parserService.sharedContext) {
+              tree = this.parserService.sharedContext.parse(".mo", text);
             }
             if (tree) {
-              documentManager.documentTrees.set(entryUri, { text, tree, classCache: new Map() });
+              this.documentManager.documentTrees.set(entryUri, { text, tree, classCache: new Map() });
               return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
             }
           }
@@ -1208,8 +1337,8 @@ export class ValidationService {
         let targetEngine = undefined;
         if (finalEntry && finalEntry.resourceId) {
           targetEngine = finalEntry.resourceId.endsWith(".sysml")
-            ? workspaceManager.globalSysML2QueryEngine
-            : workspaceManager.globalModelicaQueryEngine;
+            ? this.workspaceManager.globalSysML2QueryEngine
+            : this.workspaceManager.globalModelicaQueryEngine;
           if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
             targetEngine = createModelicaQueryEngine(db, verifyCstTreeWrapper);
           }
@@ -1217,11 +1346,11 @@ export class ValidationService {
 
         const targetDB = targetEngine
           ? (targetEngine as any).toQueryDB()
-          : (workspaceManager.unifiedWorkspace as any).engine?.toQueryDB() || sysmlDB;
+          : (this.workspaceManager.unifiedWorkspace as any).engine?.toQueryDB() || sysmlDB;
         const targetModel = new ModelicaClassInstance(simTargetId, targetDB) as any;
         targetModel.instantiate();
 
-        const context = sharedContext;
+        const context = this.parserService.sharedContext;
         if (!context) return { ok: false, error: "Context not initialized" };
         const arena = flattenArenaFromInstance(targetModel, context);
 
@@ -1250,9 +1379,17 @@ export class ValidationService {
         const vResults = runner.verifyCase(verifyUsage.id, simResult);
         allResults.push(...vResults);
 
-        const bridge = documentLSPBridges.get(uri);
+        const bridge = this.documentLSPBridges.get(uri);
         if (bridge) {
-          const diags = emitVerificationDiagnostics(vResults, sysmlDB, uri, bridge["positions"]);
+          const diags: Diagnostic[] = vResults.map((v) => ({
+            range: bridge["positions"].getRange(v.constraintId) || {
+              start: { line: 0, character: 0 },
+              end: { line: 0, character: 0 },
+            },
+            message: v.message || "Constraint violated",
+            severity: DiagnosticSeverity.Error,
+            source: "sysml2-verifier",
+          }));
           newDiagnostics.push(...diags);
         }
       }
@@ -1262,7 +1399,7 @@ export class ValidationService {
       verificationDiagnosticsByUri.set(uri, newDiagnostics);
       verificationResultsByUri.set(uri, allResults);
 
-      validateTextDocument(textDocument);
+      this.validateTextDocument(textDocument);
       return { ok: true };
     } catch (e: any) {
       this.connection.console.error(`[sysml2-verifier] Error: ${e.message}\n${e.stack}`);
@@ -1274,10 +1411,42 @@ export class ValidationService {
         source: "sysml2-verifier",
       };
       verificationDiagnosticsByUri.set(uri, [crashDiag]);
-      const doc = documents.get(uri);
-      if (doc) validateTextDocument(doc);
+      const doc = this.documentManager.documents.get(uri);
+      if (doc) this.validateTextDocument(doc);
 
       return { ok: false };
     }
+  }
+
+  private findRangeForIri(
+    iri: string,
+    currentUri: string,
+  ): { start: { line: number; character: number }; end: { line: number; character: number } } | null {
+    const db = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+    const nameIds = db.byName.get(iri);
+    if (nameIds && nameIds.length > 0) {
+      for (const id of nameIds) {
+        const entry = db.symbols.get(id);
+        if (
+          entry &&
+          entry.resourceId === currentUri &&
+          typeof entry.startByte === "number" &&
+          typeof entry.endByte === "number"
+        ) {
+          const docTree = this.documentManager.documentTrees.get(currentUri);
+          if (docTree && docTree.tree) {
+            const node = docTree.tree.rootNode.descendantForIndex(
+              entry.startByte,
+              Math.max(entry.startByte, entry.endByte - 1),
+            );
+            return {
+              start: { line: node.startPosition.row, character: node.startPosition.column },
+              end: { line: node.endPosition.row, character: node.endPosition.column },
+            };
+          }
+        }
+      }
+    }
+    return null;
   }
 }

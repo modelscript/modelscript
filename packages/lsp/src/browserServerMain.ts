@@ -25,18 +25,22 @@ import { type SysML2Layout } from "./sysml2-layout";
 // @ts-ignore
 // @ts-ignore
 
-import { Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
+import { Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
-import { ArenaDAEBuilder, Context, LSPBridge, LineIndex, QueryEngine } from "@modelscript/compiler";
+import { ArenaDAEBuilder, Context, LineIndex, QueryEngine } from "@modelscript/compiler";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 
 import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 
-import { createModelicaScopeResolver } from "@modelscript/modelica/factory";
+import {
+  createModelicaQueryEngine,
+  createModelicaScopeResolver,
+  injectPredefinedTypes,
+} from "@modelscript/modelica/factory";
 
-import { createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
+import { createSysML2QueryEngine, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 
@@ -44,6 +48,7 @@ import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-inter
 // @ts-ignore
 // @ts-ignore
 import owl2LangFallback from "@modelscript/owl2/language";
+import { clearIconCache } from "./diagramData";
 import { registerColorProvider } from "./providers/colorProvider";
 import { registerCompletionProvider } from "./providers/completionProvider";
 import { registerDefinitionProvider } from "./providers/definitionProvider";
@@ -53,8 +58,17 @@ import { registerHoverProvider } from "./providers/hoverProvider";
 import { legend, registerSemanticTokensProvider } from "./providers/semanticTokensProvider";
 import { registerWorkspaceFeaturesProvider } from "./providers/workspaceFeaturesProvider";
 import { computeTreeEdit } from "./utils/astUtils";
+import {
+  getCompositeName as _getCompositeName,
+  buildClassHierarchy,
+  buildComponentTree,
+  classKindFromEntry,
+  getTreeChildrenFast,
+  hasClassChildren,
+  isTreeVisible,
+} from "./utils/hierarchyUtils";
 import { BrowserFileSystem } from "./vfs/browser-file-system";
-import { type LoaderContext } from "./vfs/library-loader";
+import { type LoaderContext, loadRegistryPackages } from "./vfs/library-loader";
 
 /**
  * Flatten a class instance using the arena-native pipeline.
@@ -87,11 +101,25 @@ let sharedContext: Context | null = null;
 
 /* Loader context — saved from initTreeSitter so notification handlers can reuse it */
 let savedLoaderCtx: LoaderContext | null = null;
+Object.defineProperty(globalThis, "savedLoaderCtx", { get: () => savedLoaderCtx, set: (v) => (savedLoaderCtx = v) });
+globalThis.flattenArenaFromInstance = flattenArenaFromInstance;
+globalThis.injectPredefinedTypes = injectPredefinedTypes;
+
+// Expose hierarchy utility functions for extracted handlers
+globalThis.getTreeChildrenFast = getTreeChildrenFast;
+globalThis.classKindFromEntry = classKindFromEntry;
+globalThis.isTreeVisible = isTreeVisible;
+globalThis.getCompositeName = _getCompositeName;
+globalThis.hasClassChildren = hasClassChildren;
+globalThis.buildClassHierarchy = buildClassHierarchy;
+globalThis.buildComponentTree = buildComponentTree;
+globalThis.clearIconCache = clearIconCache;
+globalThis.loadRegistryPackages = loadRegistryPackages;
+globalThis.ModelicaClassInstance = ModelicaClassInstance;
+globalThis.createModelicaQueryEngine = createModelicaQueryEngine;
+globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
 
 /* Tree-sitter state */
-
-let parser: any = null;
-let parserReady = false;
 
 /* Incremental parsing — cache last tree per document for reuse */
 
@@ -115,9 +143,9 @@ import { WorkspaceManager } from "./services/WorkspaceManager";
 const documents = new TextDocuments(TextDocument);
 const documentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());
 const workspaceManager = new WorkspaceManager(documentManager);
-const validationService = new ValidationService(connection, documentManager, workspaceManager);
+const parserService = new ParserService(connection, documentManager, workspaceManager, documents);
+const validationService = new ValidationService(connection, documentManager, workspaceManager, parserService);
 const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
-const parserService = new ParserService(connection, documentManager, workspaceManager);
 
 // Expose state to globalThis for loosely-coupled extracted services
 globalThis.documents = documents;
@@ -147,9 +175,27 @@ Object.defineProperty(globalThis, "stepParser", {
   get: () => parserService.stepParser,
   set: (v) => (parserService.stepParser = v),
 });
-Object.defineProperty(globalThis, "owl2ParserReady", { get: () => owl2ParserReady, set: (v) => (owl2ParserReady = v) });
-Object.defineProperty(globalThis, "owl2Parser", { get: () => owl2Parser, set: (v) => (owl2Parser = v) });
+Object.defineProperty(globalThis, "owl2ParserReady", {
+  get: () => parserService.owl2ParserReady,
+  set: (v) => (parserService.owl2ParserReady = v),
+});
+Object.defineProperty(globalThis, "owl2Parser", {
+  get: () => parserService.owl2Parser,
+  set: (v) => (parserService.owl2Parser = v),
+});
 Object.defineProperty(globalThis, "fqnCacheIndex", { get: () => fqnCacheIndex, set: (v) => (fqnCacheIndex = v) });
+Object.defineProperty(globalThis, "fqnCache", { get: () => fqnCache, set: (v: any) => (fqnCache = v) });
+
+// Expose validateTextDocument as a global function so extracted handlers can call it
+globalThis.validateTextDocument = async (doc: any) => {
+  await validationService.validateTextDocument(doc);
+  const promise = validationService.activeValidationPromises.get(doc.uri);
+  if (promise) await promise;
+};
+globalThis.runVerificationForUri = (uri: string) => validationService.runVerificationForUri(uri);
+globalThis.getSharedCstTreeWrapper = () => parserService.getSharedCstTreeWrapper();
+globalThis.sharedFs = sharedFs;
+globalThis.connection = connection;
 
 const diagramService = new DiagramService(connection, documentManager, workspaceManager);
 /* Per-document state for hover resolution */
@@ -200,6 +246,7 @@ const getReadyMessage = () => {
   if (sysmlCount > 0) parts.push(`${sysmlCount} SysML2`);
   return parts.length > 0 ? `ModelScript (${parts.join(", ")})` : "ModelScript";
 };
+globalThis.getReadyMessage = getReadyMessage;
 workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.stepWorkspaceIndex, {
   name: "step",
   adapters: {
@@ -216,30 +263,33 @@ workspaceManager.unifiedWorkspace.registerWorkspace("step", workspaceManager.ste
 });
 
 // ── Multi-Body generation from STEP ───────────────────────────────
-const documentLSPBridges = new Map<string, LSPBridge>();
+globalThis.documentLSPBridges = validationService.documentLSPBridges;
 
 /** Global QueryEngines for cross-file dependency tracking and memoization */
 // Global Query Engines are now managed by workspaceManager
 let globalOWL2QueryEngine: QueryEngine | null = null;
-/* SysML2 parser (separate from Modelica) */
-let sysml2Parser: Parser | null = null;
-let sysml2ParserReady = false;
-let sysml2StdlibReady = false;
 
-let stepParser: Parser | null = null;
-let stepParserReady = false;
+Object.defineProperty(globalThis, "csvParser", {
+  get: () => parserService.csvParser,
+  set: (v) => (parserService.csvParser = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "csvParserReady", {
+  get: () => parserService.csvParserReady,
+  set: (v) => (parserService.csvParserReady = v),
+  configurable: true,
+});
 
-let owl2Parser: Parser | null = null;
-let owl2ParserReady = false;
-
-let csvParser: Parser | null = null;
-let csvParserReady = false;
-
-/* Whether MSL background indexing has completed */
-let mslStdlibReady = false;
+/* Whether dependencies have loaded */
+Object.defineProperty(globalThis, "dependenciesReady", { get: () => validationService.dependenciesReady });
 
 /* Registry URL — read from client initializationOptions or default */
 let registryUrl = "https://api.modelscript.org";
+Object.defineProperty(globalThis, "registryUrl", {
+  get: () => registryUrl,
+  set: (v) => (registryUrl = v),
+  configurable: true,
+});
 
 /* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
 const sysml2Layouts = new Map<string, SysML2Layout>();
@@ -264,9 +314,13 @@ connection.onInitialize((params): InitializeResult => {
     connection.console.info(`[lsp] Using registry URL: ${registryUrl}`);
   }
 
+  const projectDependencies = params.initializationOptions?.projectDependencies as
+    | { name: string; version: string }[]
+    | undefined;
+
   if (extensionUri) {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
-    parserService.initTreeSitter(extensionUri).catch((e) => {
+    parserService.initTreeSitter(extensionUri, validationService, projectDependencies).catch((e) => {
       connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
     });
   } else {
@@ -313,27 +367,55 @@ connection.onInitialize((params): InitializeResult => {
 documents.listen(connection);
 
 // Validate documents when they change, and re-validate other open docs for cross-file resolution
-let revalidationTimer: ReturnType<typeof setTimeout> | null = null;
 let verificationTimer: ReturnType<typeof setTimeout> | null = null;
 let activeVerification: AbortController | null = null;
 const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
 const verificationResultsByUri = new Map<string, any[]>();
-const activeValidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const activeValidationPromises = new Map<string, Promise<void>>();
 // Track deferred semantic work so it can be cancelled when new edits arrive
 const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
+globalThis.activeSemanticTimers = activeSemanticTimers;
 // Per-URI revision counter: incremented on every edit, checked before semantic work
-const documentRevisions = new Map<string, number>();
 // Track last-indexed text per URI to avoid re-marking dirty when text hasn't changed
-const lastIndexedText = new Map<string, string>();
 // Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
-const lastSemanticDiagnostics = new Map<string, Diagnostic[]>();
 // Throttle projectTreeChanged notifications so the diagram editor isn't rebuilt
 // on every keystroke. Uses a leading-edge throttle: the first call fires
 // immediately; subsequent calls within the cooldown window are coalesced
 // into a single trailing fire.
 let projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
 let projectTreeChangedPending = false;
+
+// Expose validation/revision state to globalThis for extracted services/handlers
+globalThis.activeValidationTimers = validationService.activeValidationTimers;
+globalThis.activeValidationPromises = validationService.activeValidationPromises;
+globalThis.documentRevisions = validationService.documentRevisions;
+globalThis.lastIndexedText = validationService.lastIndexedText;
+globalThis.lastSemanticDiagnostics = validationService.lastSemanticDiagnostics;
+globalThis.verificationDiagnosticsByUri = verificationDiagnosticsByUri;
+Object.defineProperty(globalThis, "revalidationTimer", {
+  get: () => validationService.revalidationTimer,
+  set: (v) => (validationService.revalidationTimer = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "verificationTimer", {
+  get: () => verificationTimer,
+  set: (v) => (verificationTimer = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "activeVerification", {
+  get: () => activeVerification,
+  set: (v) => (activeVerification = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "projectTreeChangedTimer", {
+  get: () => projectTreeChangedTimer,
+  set: (v) => (projectTreeChangedTimer = v),
+  configurable: true,
+});
+Object.defineProperty(globalThis, "projectTreeChangedPending", {
+  get: () => projectTreeChangedPending,
+  set: (v) => (projectTreeChangedPending = v),
+  configurable: true,
+});
 documents.onDidChangeContent((change) => {
   const tKeypressStart = performance.now();
   const uri = change.document.uri;
@@ -343,7 +425,7 @@ documents.onDidChangeContent((change) => {
 
   // Bump revision — any in-flight deferred semantic work for an older revision
   // will check this and bail out before doing expensive linting.
-  documentRevisions.set(uri, (documentRevisions.get(uri) ?? 0) + 1);
+  validationService.documentRevisions.set(uri, (validationService.documentRevisions.get(uri) ?? 0) + 1);
 
   // Cancel any pending semantic analysis for this URI
   const semanticTimer = activeSemanticTimers.get(uri);
@@ -354,9 +436,9 @@ documents.onDidChangeContent((change) => {
 
   // Cancel any pending cross-file revalidation to prevent cascading
   // semantic analyses during rapid editing.
-  if (revalidationTimer) {
-    clearTimeout(revalidationTimer);
-    revalidationTimer = null;
+  if (validationService.revalidationTimer) {
+    clearTimeout(validationService.revalidationTimer);
+    validationService.revalidationTimer = null;
   }
 
   // === TIER 1: Instant parse + syntax errors (0ms) ===
@@ -366,7 +448,7 @@ documents.onDidChangeContent((change) => {
   const isSysml = uri.endsWith(".sysml");
   const isStep = /\.(step|stp|p21)$/i.test(uri);
 
-  if (isModelica && parserReady && parser) {
+  if (isModelica && parserService.parserReady && parserService.parser) {
     try {
       const tTextStart = performance.now();
       const text = change.document.getText();
@@ -374,7 +456,7 @@ documents.onDidChangeContent((change) => {
       connection.console.info(`[perf][keypress] getText: ${(tTextEnd - tTextStart).toFixed(2)}ms`);
 
       const tTreeStart = performance.now();
-      const tree = documentManager.updateDocumentTree(uri, text);
+      const tree = parserService.updateDocumentTree(uri, text);
       const tTreeEnd = performance.now();
       connection.console.info(`[perf][keypress] updateDocumentTree: ${(tTreeEnd - tTreeStart).toFixed(2)}ms`);
 
@@ -389,7 +471,7 @@ documents.onDidChangeContent((change) => {
 
       // Merge with last known semantic diagnostics to prevent flashing —
       // semantic squigglies stay visible until the next semantic pass replaces them.
-      const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+      const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
       const tDiagsStart = performance.now();
       const allDiags = [...syntaxDiags, ...cachedSemantic];
       if (allDiags.length > 1000) allDiags.length = 1000;
@@ -399,7 +481,7 @@ documents.onDidChangeContent((change) => {
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
     }
-  } else if (isSysml && sysml2ParserReady && sysml2Parser) {
+  } else if (isSysml && parserService.sysml2ParserReady && parserService.sysml2Parser) {
     try {
       const text = change.document.getText();
       const oldCached = documentManager.documentTrees.get(uri);
@@ -407,16 +489,16 @@ documents.onDidChangeContent((change) => {
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
         oldCached.tree.edit(edit as never);
-        tree = sysml2Parser.parse(text, oldCached.tree);
+        tree = parserService.sysml2Parser.parse(text, oldCached.tree);
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {
-        tree = sysml2Parser.parse(text);
+        tree = parserService.sysml2Parser.parse(text);
       }
       if (tree) {
         documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
         const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
-        const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+        const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
         const allDiags = [...syntaxDiags, ...cachedSemantic];
         if (allDiags.length > 1000) allDiags.length = 1000;
         connection.sendDiagnostics({ uri, diagnostics: allDiags });
@@ -424,14 +506,14 @@ documents.onDidChangeContent((change) => {
     } catch (e: any) {
       connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
     }
-  } else if (isStep && stepParserReady && stepParser) {
+  } else if (isStep && parserService.stepParserReady && parserService.stepParser) {
     try {
       const text = change.document.getText();
-      const tree = stepParser.parse(text);
+      const tree = parserService.stepParser.parse(text);
       if (tree) {
         documentManager.documentTrees.set(uri, { text, tree, classCache: new Map() });
         const syntaxDiags = validationService.collectSyntaxErrors(tree.rootNode, change.document);
-        const cachedSemantic = lastSemanticDiagnostics.get(uri) || [];
+        const cachedSemantic = validationService.lastSemanticDiagnostics.get(uri) || [];
         connection.sendDiagnostics({ uri, diagnostics: [...syntaxDiags, ...cachedSemantic] });
       }
     } catch (e: any) {
@@ -440,21 +522,21 @@ documents.onDidChangeContent((change) => {
   }
 
   // === TIER 2: Debounced semantic analysis (300ms) ===
-  const existingTimer = activeValidationTimers.get(uri);
+  const existingTimer = validationService.activeValidationTimers.get(uri);
   if (existingTimer) clearTimeout(existingTimer);
 
   const tKeypressEnd = performance.now();
   connection.console.info(`[perf][keypress] Total synchronous work: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
 
-  const expectedRevision = documentRevisions.get(uri) ?? 0;
-  activeValidationTimers.set(
+  const expectedRevision = validationService.documentRevisions.get(uri) ?? 0;
+  validationService.activeValidationTimers.set(
     uri,
     setTimeout(async () => {
       connection.console.info(`[timer] 300ms elapsed for ${uri}`);
-      activeValidationTimers.delete(uri);
+      validationService.activeValidationTimers.delete(uri);
       // Wait for any in-flight validation to finish before starting a new one.
       // This prevents concurrent pipelines for the same URI from stacking up.
-      const inflight = activeValidationPromises.get(uri);
+      const inflight = validationService.activeValidationPromises.get(uri);
       connection.console.info(`[timer] inflight is ${!!inflight}`);
       if (inflight) {
         try {
@@ -466,7 +548,7 @@ documents.onDidChangeContent((change) => {
         }
       }
       // Re-check staleness: if another edit arrived while we waited, bail out.
-      if ((documentRevisions.get(uri) ?? 0) !== expectedRevision) {
+      if ((validationService.documentRevisions.get(uri) ?? 0) !== expectedRevision) {
         connection.console.info(`[timer] bailed out due to new edit`);
         return;
       }
@@ -504,13 +586,13 @@ registerSemanticTokensProvider(
 );
 
 // Completion provider — polyglot-driven scoped completion + keyword fallback
-registerCompletionProvider(connection, documents, documentLSPBridges);
+registerCompletionProvider(connection, documents, validationService.documentLSPBridges);
 
-registerHoverProvider(connection, documents, documentLSPBridges);
+registerHoverProvider(connection, documents, validationService.documentLSPBridges);
 
 /* Go to Definition — reuses hover's resolution logic to locate declarations */
 
-registerDefinitionProvider(connection, documents, documentLSPBridges, documentManager.documentTrees);
+registerDefinitionProvider(connection, documents, validationService.documentLSPBridges, documentManager.documentTrees);
 /* Document formatting — uses tree-sitter parse + format() */
 
 registerFormattingProvider(
@@ -562,6 +644,7 @@ registerWorkspaceFeaturesProvider(
 // Cache to avoid rebuilding diagram data when nothing has changed.
 // Key: `${uri}|${className}|${diagramType}|${version}`
 const diagramCache = new Map<string, { version: number | string; data: any }>();
+globalThis.diagramCache = diagramCache;
 
 /** Fast non-cryptographic hash (djb2) for cache key generation. */
 function simpleHash(str: string): number {
@@ -571,6 +654,7 @@ function simpleHash(str: string): number {
   }
   return hash >>> 0;
 }
+globalThis.simpleHash = simpleHash;
 
 // Legacy handler — delegates to shared implementation
 // Custom request: get component properties on-demand (lazy loading for diagram panel)
@@ -682,6 +766,12 @@ const SYSML2_RULE_TO_KIND: Record<string, string> = {
 
 /** Visible SysML2 symbol kinds in the library tree. */
 const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
+
+// Expose constants for extracted handlers
+globalThis.CLASS_KIND_KEYWORDS = CLASS_KIND_KEYWORDS;
+globalThis.SYSML2_RULE_TO_KIND = SYSML2_RULE_TO_KIND;
+globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
+
 /** FQN → SymbolId cache — avoids O(n) scans on repeated getTreeChildren calls. */
 let fqnCache = new Map<string, number>();
 /** The unified index revision this cache was built against. */
@@ -802,26 +892,57 @@ interface SymbolicTraceResult {
 }
 
 // Listen on the connection
-registerDiagramHandlers(connection, documentManager, workspaceManager, diagramService);
-registerSimulationHandlers(connection, documentManager, workspaceManager);
-registerTreeHandlers(connection, documentManager, workspaceManager);
-registerAnalysisHandlers(connection, documentManager, workspaceManager);
+import { LspContext } from "./LspContext";
+const lspContext: LspContext = {
+  connection,
+  documents,
+  workspaceManager,
+  documentManager,
+  validationService,
+  parserService,
+  diagramService,
+  state: {
+    activeValidationPromises: validationService.activeValidationPromises,
+    sharedContext: (globalThis as any).sharedContext,
+    fqnCache: new Map(),
+    fqnCacheIndex: new Map(),
+    documentRevisions: validationService.documentRevisions,
+    documentLSPBridges: validationService.documentLSPBridges,
+    lastSemanticDiagnostics: validationService.lastSemanticDiagnostics,
+    dependenciesReady: validationService.dependenciesReady,
+  },
+};
+
+registerDiagramHandlers(lspContext);
+registerSimulationHandlers(lspContext);
+registerTreeHandlers(lspContext);
+registerAnalysisHandlers(lspContext);
+registerSimulationEndpoints(lspContext);
+registerAnalysisEndpoints(lspContext);
+registerInteropEndpoints(lspContext);
+registerClassQueryEndpoints(lspContext);
+registerMiscEndpoints(lspContext);
+registerDiagramEndpoints(lspContext);
+
 registerSignatureHelpProvider(connection);
 registerCodeLensProvider(connection);
 registerInlayHintProvider(connection);
-registerSimulationEndpoints(connection, documentManager, workspaceManager);
-registerAnalysisEndpoints(connection, documentManager, workspaceManager);
-registerInteropEndpoints(connection, documentManager, workspaceManager);
-registerClassQueryEndpoints(connection, documentManager, workspaceManager);
-registerMiscEndpoints(connection, documentManager, workspaceManager);
-registerDiagramEndpoints(connection, documentManager, workspaceManager, diagramService);
-
 connection.listen();
 
 let debuggerResumeCallback: (() => void) | undefined;
 let currentDebugEnv: Map<string, number> | undefined;
 let stepMode = true; // Initially true to stop on first statement
 const breakpointsMap = new Map<string, { line: number; column?: number }[]>();
+
+// Expose debugger and co-sim state to extracted handlers
+globalThis.cosimSimulators = cosimSimulators;
+globalThis.breakpointsMap = breakpointsMap;
+Object.defineProperty(globalThis, "debuggerResumeCallback", {
+  get: () => debuggerResumeCallback,
+  set: (v) => (debuggerResumeCallback = v),
+});
+Object.defineProperty(globalThis, "currentDebugEnv", { get: () => currentDebugEnv, set: (v) => (currentDebugEnv = v) });
+Object.defineProperty(globalThis, "stepMode", { get: () => stepMode, set: (v) => (stepMode = v) });
 
 function formatDebugValue(val: unknown): string {
   if (val !== null && typeof val === "object" && "elements" in val) {
@@ -869,18 +990,4 @@ export interface FlatSemanticEdit {
 }
 
 // Auto-generated exports for extracted handlers
-export {
-  cadComponentsCache,
-  documents,
-  flattenArenaFromInstance,
-  lastIndexedText,
-  owl2Parser,
-  owl2ParserReady,
-  sharedContext,
-  simpleHash,
-  stepParser,
-  stepParserReady,
-  sysml2Parser,
-  sysml2ParserReady,
-  sysml2StdlibReady,
-};
+export { cadComponentsCache, documents, flattenArenaFromInstance, sharedContext, simpleHash };

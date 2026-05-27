@@ -7,6 +7,7 @@ import {
   DependabotIcon,
   FileIcon,
   HistoryIcon,
+  LinkIcon,
   PackageIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
@@ -158,39 +159,47 @@ const DocCard = styled.div`
   }
 `;
 
-const DetailRow = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-border);
-  &:last-child {
-    border-bottom: none;
-  }
-`;
-
-const DetailLabel = styled.span`
-  font-size: 13px;
-  color: var(--color-text-muted);
-  text-transform: capitalize;
-`;
-
-const DetailValue = styled.span`
-  font-size: 13px;
-  color: var(--color-text-heading);
-  font-weight: 500;
-  text-align: right;
-  max-width: 60%;
-  word-break: break-word;
-`;
-
 const SectionTitle = styled(Heading)`
-  font-size: 12px !important;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+  font-size: 14px !important;
   color: var(--color-text-muted) !important;
   margin-bottom: 12px !important;
   font-weight: 600 !important;
+`;
+
+const MetaGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+`;
+
+const MetaBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 24px;
+`;
+
+const MetaLabel = styled.span`
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+`;
+
+const MetaValue = styled.span`
+  font-size: 14px;
+  color: var(--color-text-heading);
+  font-weight: 600;
+  word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const Divider = styled.hr`
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 24px 0;
 `;
 
 /* ─── tab bar ─── */
@@ -231,9 +240,11 @@ const Tab = styled.button<{ $active: boolean }>`
 /* ─── install copy box ─── */
 
 const InstallBox = styled.div`
-  ${glassCard}
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
   padding: 12px 16px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -252,6 +263,10 @@ const InstallBox = styled.div`
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    &::before {
+      content: "> ";
+      color: var(--color-text-muted);
+    }
   }
 
   .copy-icon {
@@ -448,7 +463,7 @@ const ClassTreeNode: React.FC<{
   return (
     <>
       <TreeItem
-        to={`/${libraryName}/${version}/classes/${node.fullName}`}
+        to={`/packages/${libraryName}/${version}/classes/${node.fullName}`}
         $depth={depth}
         onClick={(e) => {
           if (hasChildren) {
@@ -604,8 +619,13 @@ const PackageDetailPage: React.FC = () => {
         if (status.status === "completed") {
           fetchData();
         }
-      } catch (err) {
-        console.error("Failed to check job status", err);
+      } catch (err: unknown) {
+        const error = err as { response?: { status?: number } };
+        if (error?.response?.status === 404) {
+          setJobStatus("failed"); // No job exists, don't poll forever
+        } else {
+          console.error("Failed to check job status", err);
+        }
       }
     };
 
@@ -850,7 +870,7 @@ const PackageDetailPage: React.FC = () => {
                     <VersionRow key={v}>
                       <Box display="flex" alignItems="center" gap="8px">
                         <Link
-                          to={`/${name}/${v}`}
+                          to={`/packages/${name}/${v}`}
                           style={{
                             color: "var(--color-link)",
                             textDecoration: "none",
@@ -1038,7 +1058,10 @@ const PackageDetailPage: React.FC = () => {
                 {Object.keys(dependencies).length > 0 ? (
                   Object.entries(dependencies).map(([dep, range]) => (
                     <DepRow key={dep}>
-                      <Link to={`/${dep}`} style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}>
+                      <Link
+                        to={`/packages/${dep}`}
+                        style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
+                      >
                         {dep}
                       </Link>
                       <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>
@@ -1075,86 +1098,81 @@ const PackageDetailPage: React.FC = () => {
         </div>
 
         {/* ── Sidebar ── */}
-        <aside>
-          {/* Install command */}
-          <SectionTitle as="h3">Install</SectionTitle>
+        <aside style={{ display: "flex", flexDirection: "column" }}>
+          <MetaLabel style={{ marginBottom: 12 }}>Install</MetaLabel>
           <InstallBox onClick={handleCopy} title="Click to copy">
             <code>{installCmd}</code>
             <span className="copy-icon">{copied ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
           </InstallBox>
 
-          {/* Package details */}
-          <SectionTitle as="h3">Package Details</SectionTitle>
-          <GlassCard>
-            <DetailRow>
-              <DetailLabel>Version</DetailLabel>
-              <DetailValue>{version}</DetailValue>
-            </DetailRow>
+          {packument?.repository?.url && (
+            <MetaBlock>
+              <MetaLabel>Repository</MetaLabel>
+              <MetaValue>
+                <BookIcon size={16} />
+                <a
+                  href={packument.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--color-heading)", textDecoration: "none" }}
+                >
+                  {packument.repository.url.replace(/^git\+https:\/\//, "").replace(/\.git$/, "")}
+                </a>
+              </MetaValue>
+            </MetaBlock>
+          )}
+
+          {packument?.homepage && (
+            <MetaBlock>
+              <MetaLabel>Homepage</MetaLabel>
+              <MetaValue>
+                <LinkIcon size={16} />
+                <a
+                  href={packument.homepage}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--color-heading)", textDecoration: "none" }}
+                >
+                  {packument.homepage.replace(/^https?:\/\//, "")}
+                </a>
+              </MetaValue>
+            </MetaBlock>
+          )}
+
+          <Divider />
+
+          <MetaGrid>
+            <MetaBlock style={{ marginBottom: 0 }}>
+              <MetaLabel>Version</MetaLabel>
+              <MetaValue>{version}</MetaValue>
+            </MetaBlock>
             {packument?.license && (
-              <DetailRow>
-                <DetailLabel>License</DetailLabel>
-                <DetailValue>{packument.license}</DetailValue>
-              </DetailRow>
+              <MetaBlock style={{ marginBottom: 0 }}>
+                <MetaLabel>License</MetaLabel>
+                <MetaValue>{packument.license}</MetaValue>
+              </MetaBlock>
             )}
-            {currentManifest?.modelscript?.modelicaVersion && (
-              <DetailRow>
-                <DetailLabel>Modelica</DetailLabel>
-                <DetailValue>{currentManifest.modelscript.modelicaVersion}</DetailValue>
-              </DetailRow>
-            )}
-            {currentManifest?.dist && (
-              <DetailRow>
-                <DetailLabel>Tarball Size</DetailLabel>
-                <DetailValue>{/* Estimate from shasum length if no explicit size */}—</DetailValue>
-              </DetailRow>
-            )}
-            <DetailRow>
-              <DetailLabel>Classes</DetailLabel>
-              <DetailValue>{classes.length}</DetailValue>
-            </DetailRow>
-            <DetailRow>
-              <DetailLabel>Versions</DetailLabel>
-              <DetailValue>{versionList.length || "—"}</DetailValue>
-            </DetailRow>
-            {packument?.homepage && (
-              <DetailRow>
-                <DetailLabel>Homepage</DetailLabel>
-                <DetailValue>
-                  <a
-                    href={packument.homepage}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "var(--color-link)", textDecoration: "none" }}
-                  >
-                    Link ↗
-                  </a>
-                </DetailValue>
-              </DetailRow>
-            )}
-            {packument?.repository?.url && (
-              <DetailRow>
-                <DetailLabel>Repository</DetailLabel>
-                <DetailValue>
-                  <a
-                    href={packument.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "var(--color-link)", textDecoration: "none" }}
-                  >
-                    Source ↗
-                  </a>
-                </DetailValue>
-              </DetailRow>
-            )}
-          </GlassCard>
+          </MetaGrid>
+
+          <MetaBlock>
+            <MetaLabel>Last publish</MetaLabel>
+            <MetaValue>{publishedAt ? timeAgo(publishedAt) : "—"}</MetaValue>
+          </MetaBlock>
+
+          {currentManifest?.modelscript?.modelicaVersion && (
+            <MetaBlock>
+              <MetaLabel>Modelica Version</MetaLabel>
+              <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
+            </MetaBlock>
+          )}
+
+          <Divider />
 
           {/* Class tree (always visible in sidebar when not on models tab) */}
           {activeTab !== "models" && tree.length > 0 && (
             <>
-              <SectionTitle as="h3" style={{ marginTop: 24 }}>
-                Classes
-              </SectionTitle>
-              <GlassCard style={{ padding: "8px 4px", maxHeight: "calc(100vh - 500px)", overflowY: "auto" }}>
+              <MetaLabel style={{ marginBottom: 12 }}>Classes</MetaLabel>
+              <GlassCard style={{ padding: "8px 4px", maxHeight: "calc(100vh - 500px)", overflowY: "auto", margin: 0 }}>
                 {tree.slice(0, 20).map((node) => (
                   <ClassTreeNode key={node.fullName} node={node} depth={0} libraryName={name!} version={version!} />
                 ))}

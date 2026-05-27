@@ -1,17 +1,17 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerInteropEndpoints(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest(
+export function registerInteropEndpoints(context: LspContext) {
+  context.connection.onRequest(
     "modelscript/exportFmu",
     async (params: { uri: string; fmiVersion: "2.0" | "3.0"; includeWasm?: boolean }) => {
-      const ctx = workspaceManager.documentContexts.get(params.uri);
-      const doc = documents.get(params.uri);
+      const ctx = context.workspaceManager.documentContexts.get(params.uri);
+      const doc = context.documents.get(params.uri);
       if (!ctx || !doc) throw new Error("Document not found or no context available.");
 
       // Get the first class defined in the document as the target for FMU generation
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) throw new Error("No Modelica classes found in the active document.");
 
       const targetInstance = instances[0];
@@ -47,28 +47,28 @@ export function registerInteropEndpoints(connection: Connection, documentManager
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/registerFmu",
     (params: { name: string; data: string }): { ok: boolean; error?: string } => {
       try {
-        const context = sharedContext;
-        if (!context) return { ok: false, error: "Context not initialized" };
+        const sharedCtx = context.state.sharedContext;
+        if (!sharedCtx) return { ok: false, error: "Context not initialized" };
         // Decode base64 to Uint8Array
         const binaryStr = atob(params.data);
         const fmuBytes = new Uint8Array(binaryStr.length);
         for (let i = 0; i < binaryStr.length; i++) {
           fmuBytes[i] = binaryStr.charCodeAt(i);
         }
-        const fmuEntity = ModelicaFmuEntity.fromFmu(context as any, params.name, fmuBytes);
+        const fmuEntity = ModelicaFmuEntity.fromFmu(sharedCtx as any, params.name, fmuBytes);
         fmuEntity.load();
         fmuEntity.instantiate();
         const uri = `__fmu__:${params.name}`;
-        workspaceManager.workspaceInstances.set(uri, [fmuEntity as any]);
+        context.workspaceManager.workspaceInstances.set(uri, [fmuEntity as any]);
         console.log(`[fmu] Registered FMU entity '${params.name}' via custom request`);
         // Re-validate all .mo documents to pick up the new FMU class
-        for (const doc of documents.all()) {
+        for (const doc of context.documents.all()) {
           if (doc.uri.endsWith(".mo")) {
-            validateTextDocument(doc);
+            context.validationService.validateTextDocument(doc);
           }
         }
         return { ok: true };
@@ -80,7 +80,7 @@ export function registerInteropEndpoints(connection: Connection, documentManager
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/importFmu",
     async (params: {
       /** FMU name (without .fmu extension) */
@@ -118,9 +118,9 @@ export function registerInteropEndpoints(connection: Connection, documentManager
 
         // Extract modelDescription.xml from ZIP
         // Re-use the inline extraction or parse directly from ModelicaFmuEntity
-        const context = sharedContext;
-        if (!context) return { ok: false, error: "Context not initialized" };
-        const fmuEntity = ModelicaFmuEntity.fromFmu(context as any, params.name, fmuBytes);
+        const sharedCtx = context.state.sharedContext;
+        if (!sharedCtx) return { ok: false, error: "Context not initialized" };
+        const fmuEntity = ModelicaFmuEntity.fromFmu(sharedCtx as any, params.name, fmuBytes);
         fmuEntity.load();
 
         // Parse the model description for wrapper generation
@@ -174,7 +174,7 @@ export function registerInteropEndpoints(connection: Connection, documentManager
         // Auto-inject into the workspace via LSP workspace edit
         const targetUri = params.targetUri ?? `memfs:///${params.name}.mo`;
         try {
-          await connection.workspace.applyEdit({
+          await context.connection.workspace.applyEdit({
             documentChanges: [
               {
                 kind: "create",
@@ -189,7 +189,7 @@ export function registerInteropEndpoints(connection: Connection, documentManager
               },
             ],
           });
-          connection.console.info(`[fmu-import] Wrote wrapper to ${targetUri}`);
+          context.connection.console.info(`[fmu-import] Wrote wrapper to ${targetUri}`);
         } catch {
           // Non-fatal: the source is still returned in the response
         }
@@ -197,8 +197,8 @@ export function registerInteropEndpoints(connection: Connection, documentManager
         // Also register the FMU entity for class resolution
         fmuEntity.instantiate();
         const fmuUri = `__fmu__:${params.name}`;
-        workspaceManager.workspaceInstances.set(fmuUri, [fmuEntity as any]);
-        connection.console.info(`[fmu-import] Registered FMU entity '${params.name}'`);
+        context.workspaceManager.workspaceInstances.set(fmuUri, [fmuEntity as any]);
+        context.connection.console.info(`[fmu-import] Registered FMU entity '${params.name}'`);
 
         return {
           ok: true,

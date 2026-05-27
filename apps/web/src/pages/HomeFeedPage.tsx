@@ -77,8 +77,8 @@ const SortMenu = styled.div`
   left: 50%;
   transform: translateX(-50%);
   width: 160px;
-  background-color: var(--color-canvas-default);
-  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
   padding: 12px 0;
@@ -99,15 +99,17 @@ const SortMenu = styled.div`
     align-items: center;
 
     &:hover {
-      background-color: var(--color-canvas-subtle);
+      background-color: rgba(128, 128, 128, 0.15);
     }
   }
 
   .menu-header {
     padding: 0 16px 8px 16px;
     font-size: 13px;
-    font-weight: bold;
-    color: var(--color-fg-muted);
+    font-weight: normal;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 8px;
   }
 `;
 
@@ -198,8 +200,7 @@ const HomeFeedPage: React.FC = () => {
                         setShowSortMenu(false);
                       }}
                     >
-                      Popular{" "}
-                      {followingSort === "popular" && <CheckIcon size={16} color="var(--color-accent-emphasis)" />}
+                      Popular {followingSort === "popular" && <CheckIcon size={16} color="#1d9bf0" />}
                     </button>
                     <button
                       onClick={(e) => {
@@ -208,8 +209,7 @@ const HomeFeedPage: React.FC = () => {
                         setShowSortMenu(false);
                       }}
                     >
-                      Recent{" "}
-                      {followingSort === "recent" && <CheckIcon size={16} color="var(--color-accent-emphasis)" />}
+                      Recent {followingSort === "recent" && <CheckIcon size={16} color="#1d9bf0" />}
                     </button>
                   </SortMenu>
                 )}

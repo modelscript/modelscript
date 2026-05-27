@@ -289,15 +289,15 @@ const ClassDetailPage: React.FC = () => {
         <Box mb={3}>
           <Breadcrumbs
             items={[
-              { label: "Libraries", href: "/libraries" },
-              { label: name || "", href: `/${name}` },
-              { label: version || "", href: `/${name}/${version}` },
+              { label: "Libraries", href: "/packages" },
+              { label: name || "", href: `/packages/${name}` },
+              { label: version || "", href: `/packages/${name}/${version}` },
               ...(className || "").split(".").map((segment, i, parts) => {
                 const fullName = parts.slice(0, i + 1).join(".");
                 const isLast = i === parts.length - 1;
                 return {
                   label: segment,
-                  href: isLast ? undefined : `/${name}/${version}/classes/${fullName}`,
+                  href: isLast ? undefined : `/packages/${name}/${version}/classes/${fullName}`,
                 };
               }),
             ]}

@@ -138,6 +138,17 @@ export class QueryEngine {
   /** Tracks when each input (symbol entry) was last modified. */
   private inputRevisions = new Map<SymbolId, Revision>();
 
+  // ---- Incremental lint cache ----
+
+  /**
+   * Per-resource cache of lint diagnostics, keyed by SymbolId.
+   * On incremental edits only changed symbols are re-linted; the rest reuse cached results.
+   */
+  private lintCache = new Map<string, Map<SymbolId, LintDiagnostic[]>>();
+
+  /** The engine revision at which each resource's lint cache was last fully populated. */
+  private lintCacheRevision = new Map<string, Revision>();
+
   /** The active dependency tracker (non-null during query execution). */
   private activeTracker: DependencyTracker | null = null;
 
@@ -473,18 +484,72 @@ export class QueryEngine {
    * Async version of runAllLints that yields to the event loop.
    * If yieldFn returns true, the process is considered stale and aborts early.
    */
-  async runAllLintsAsync(resourceId?: string, yieldFn?: () => Promise<boolean>): Promise<LintDiagnostic[]> {
+  async runAllLintsAsync(
+    resourceId?: string,
+    yieldFn?: () => Promise<boolean>,
+    viewportRange?: { startByte: number; endByte: number },
+  ): Promise<LintDiagnostic[]> {
     const diagnostics: LintDiagnostic[] = [];
 
-    let symbolsToCheck: Iterable<[SymbolId, SymbolEntry]>;
+    let allSymbolPairs: Array<[SymbolId, SymbolEntry]>;
     if (resourceId && this.index.symbolsByResource) {
       const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceSymbolIds) return diagnostics;
-      symbolsToCheck = resourceSymbolIds
+      allSymbolPairs = resourceSymbolIds
         .map((id) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
         .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
     } else {
-      symbolsToCheck = this.index.symbols;
+      allSymbolPairs = Array.from(this.index.symbols);
+    }
+
+    // ── Incremental lint caching ──────────────────────────────────────────
+    // Only re-lint symbols whose inputRevision changed since the last run.
+    // Reuse cached results for unchanged symbols.
+    const cacheKey = resourceId ?? "__all__";
+    let perSymbolCache = this.lintCache.get(cacheKey);
+    const lastRevision = this.lintCacheRevision.get(cacheKey) ?? -1;
+
+    if (!perSymbolCache) {
+      perSymbolCache = new Map();
+      this.lintCache.set(cacheKey, perSymbolCache);
+    }
+
+    // Determine which symbols actually need re-linting
+    const symbolsToRelint: Array<[SymbolId, SymbolEntry]> = [];
+    const validCachedIds = new Set<SymbolId>();
+
+    for (const [id, entry] of allSymbolPairs) {
+      if (resourceId && entry.resourceId !== resourceId) continue;
+      const symbolRev = this.inputRevisions.get(id);
+      if (symbolRev !== undefined && symbolRev <= lastRevision && perSymbolCache.has(id)) {
+        // Unchanged — will reuse cache
+        validCachedIds.add(id);
+      } else {
+        // Changed or new — needs re-linting
+        symbolsToRelint.push([id, entry]);
+      }
+    }
+
+    // ── Viewport prioritization ───────────────────────────────────────────
+    // When a viewport range is provided, sort symbols so those within the
+    // visible area are processed first. This means the user sees diagnostics
+    // for on-screen code immediately while off-screen lints trickle in.
+    if (viewportRange && symbolsToRelint.length > 1) {
+      const { startByte: vpStart, endByte: vpEnd } = viewportRange;
+      const inViewport: Array<[SymbolId, SymbolEntry]> = [];
+      const outViewport: Array<[SymbolId, SymbolEntry]> = [];
+      for (const pair of symbolsToRelint) {
+        const entry = pair[1];
+        // A symbol overlaps the viewport if it starts before the viewport ends
+        // and ends after the viewport starts
+        if (entry.startByte <= vpEnd && entry.endByte >= vpStart) {
+          inViewport.push(pair);
+        } else {
+          outViewport.push(pair);
+        }
+      }
+      symbolsToRelint.length = 0;
+      symbolsToRelint.push(...inViewport, ...outViewport);
     }
 
     let chunkCount = 0;
@@ -492,12 +557,16 @@ export class QueryEngine {
     let yieldTime = 0;
     let lastTime = performance.now();
     let lastYieldStart = performance.now();
+    const totalSymbols = allSymbolPairs.length;
+    const cachedCount = validCachedIds.size;
 
     console.info(
-      `[runAllLintsAsync] starting for ${resourceId}, total=${symbolsToCheck ? Array.from(symbolsToCheck).length : "unknown"}`,
+      `[runAllLintsAsync] starting for ${resourceId}, total=${totalSymbols}, cached=${cachedCount}, relint=${symbolsToRelint.length}${viewportRange ? `, viewport=${viewportRange.startByte}-${viewportRange.endByte}` : ""}`,
     );
-    for (const [id, entry] of symbolsToCheck) {
-      if (resourceId && entry.resourceId !== resourceId) continue;
+
+    // Re-lint only changed symbols
+    for (const [id, entry] of symbolsToRelint) {
+      const symbolDiags: LintDiagnostic[] = [];
 
       for (const { lintName, result } of this.runLints(id)) {
         let startByte = result.startByte ?? entry.startByte;
@@ -511,7 +580,7 @@ export class QueryEngine {
           }
         }
 
-        diagnostics.push({
+        symbolDiags.push({
           symbolId: id,
           startByte,
           endByte,
@@ -521,9 +590,10 @@ export class QueryEngine {
         });
       }
 
+      perSymbolCache.set(id, symbolDiags);
+      diagnostics.push(...symbolDiags);
+
       chunkCount++;
-      // Yield only if we've spent more than 200ms of CPU time since last yield,
-      // and check at least every 500 chunks.
       if (yieldFn && chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         cpuTime += performance.now() - lastTime;
         const yieldStart = performance.now();
@@ -536,13 +606,29 @@ export class QueryEngine {
           console.info(
             `[runAllLintsAsync] STALE at chunk ${chunkCount}, aborting! CPU: ${cpuTime.toFixed(2)}ms, Yield: ${yieldTime.toFixed(2)}ms`,
           );
-          return diagnostics; // Abort early
+          return diagnostics;
         }
       }
     }
+
+    // Merge cached results from unchanged symbols
+    for (const id of validCachedIds) {
+      const cached = perSymbolCache.get(id);
+      if (cached && cached.length > 0) diagnostics.push(...cached);
+    }
+
+    // Prune cache entries for symbols that no longer exist in this resource
+    const currentSymbolIds = new Set(allSymbolPairs.map(([id]) => id));
+    for (const cachedId of perSymbolCache.keys()) {
+      if (!currentSymbolIds.has(cachedId)) perSymbolCache.delete(cachedId);
+    }
+
+    // Record this revision as the cache baseline
+    this.lintCacheRevision.set(cacheKey, this.currentRevision);
+
     cpuTime += performance.now() - lastTime;
     console.info(
-      `[runAllLintsAsync] COMPLETED for ${resourceId}, chunks=${chunkCount}, CPU=${cpuTime.toFixed(2)}ms, Yield=${yieldTime.toFixed(2)}ms`,
+      `[runAllLintsAsync] COMPLETED for ${resourceId}, relinted=${symbolsToRelint.length}/${totalSymbols}, CPU=${cpuTime.toFixed(2)}ms, Yield=${yieldTime.toFixed(2)}ms`,
     );
     return diagnostics;
   }

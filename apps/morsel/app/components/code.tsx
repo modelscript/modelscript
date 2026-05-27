@@ -21,7 +21,7 @@ import * as monaco from "monaco-editor";
 import { editor, type IDisposable } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useEffect, useRef } from "react";
-import { didChange, didOpen } from "~/util/lsp-bridge";
+import { didChange, didChangeVisibleRanges, didOpen } from "~/util/lsp-bridge";
 import { getLsp, startLsp } from "~/util/lsp-worker";
 import { setupMonacoLspAdapter } from "~/util/monaco-lsp-adapter";
 
@@ -140,6 +140,24 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       lastValueRef.current = value;
       didOpen(props.uri, value);
     }
+
+    // ── Viewport tracking: send visible line ranges to LSP ──
+    // This enables the server to prioritize linting symbols within
+    // the user's visible area for large files.
+    const sendVisibleRanges = debounce(() => {
+      const visibleRanges = ed.getVisibleRanges();
+      if (visibleRanges.length > 0) {
+        const ranges = visibleRanges.map((r) => ({
+          startLine: r.startLineNumber - 1, // Monaco is 1-indexed, LSP is 0-indexed
+          endLine: r.endLineNumber - 1,
+        }));
+        didChangeVisibleRanges(props.uri, ranges);
+      }
+    }, 150);
+
+    ed.onDidScrollChange(sendVisibleRanges);
+    // Send initial viewport on mount
+    sendVisibleRanges();
   };
 
   // ── Handler: content changed ──

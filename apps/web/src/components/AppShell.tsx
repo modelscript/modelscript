@@ -149,6 +149,7 @@ const AppShell: React.FC = () => {
   // Make wide layout for /settings/* and /repos/* (but NOT the main /repos index)
   const isWideLayout =
     location.pathname.startsWith("/settings") ||
+    (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
     (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
 
   return (

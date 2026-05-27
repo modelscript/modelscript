@@ -1,14 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 import { TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { Parser, Tree as TreeSitterTree } from "web-tree-sitter";
+import { Tree as TreeSitterTree } from "web-tree-sitter";
 
 export class DocumentManager {
   public documents: TextDocuments<TextDocument>;
   public documentTrees = new Map<string, any>();
   public lazyLibTrees = new Map<string, any>();
   public sharedContext: any;
-  public modelicaParser: Parser | null = null;
   public getSharedCstTreeWrapper: () => any;
 
   constructor(documents: TextDocuments<TextDocument>, getSharedCstTreeWrapper: () => any) {
@@ -24,23 +23,6 @@ export class DocumentManager {
       return this.lazyLibTrees.get(uri)!;
     }
     return null;
-  }
-
-  public updateDocumentTree(uri: string, newText: string): any {
-    const oldTree = this.getDocumentTree(uri);
-    let newTree: any;
-    if (oldTree && this.modelicaParser) {
-      newTree = this.modelicaParser.parse(newText, oldTree);
-    } else {
-      newTree = this.modelicaParser!.parse(newText);
-    }
-
-    if (uri.startsWith("modelscript-lib://")) {
-      this.lazyLibTrees.set(uri, newTree);
-    } else {
-      this.documentTrees.set(uri, newTree);
-    }
-    return newTree;
   }
 
   public getLineIndexForDoc(uri: string): any | null {

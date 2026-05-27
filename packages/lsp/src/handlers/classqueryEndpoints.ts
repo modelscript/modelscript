@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/prefer-for-of */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerClassQueryEndpoints(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest(
+export function registerClassQueryEndpoints(context: LspContext) {
+  context.connection.onRequest(
     "modelscript/getExperiments",
     (): {
       experiments: {
@@ -26,7 +26,7 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
         tolerance?: number;
       }[] = [];
 
-      for (const [uri, instances] of workspaceManager.documentInstances) {
+      for (const [uri, instances] of context.workspaceManager.documentInstances) {
         for (const instance of instances) {
           if (!instance.instantiated) {
             try {
@@ -44,10 +44,10 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
 
           // Check for experiment annotation
           try {
-            const context = workspaceManager.documentContexts.get(uri);
+            const docContext = context.workspaceManager.documentContexts.get(uri);
             if (!context) continue;
 
-            const arena = flattenArenaFromInstance(instance, context);
+            const arena = flattenArenaFromInstance(instance, docContext);
             const exp = arena.experiment;
             // Only consider classes with actual experiment data (not the default empty {})
             if (
@@ -82,14 +82,14 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/searchClasses",
     (params: { query: string; limit?: number }): { results: TreeNodeInfo[] } => {
       const query = (params.query ?? "").toLowerCase();
       if (!query) return { results: [] };
 
       const limit = params.limit ?? 50;
-      const unifiedIndex = workspaceManager.unifiedWorkspace.toTreeIndex();
+      const unifiedIndex = context.workspaceManager.unifiedWorkspace.toTreeIndex();
       if (!unifiedIndex) return { results: [] };
 
       const results: TreeNodeInfo[] = [];
@@ -115,11 +115,11 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getClassSource",
     (params: { className: string }): { content: string | null; error?: string } => {
       try {
-        const unifiedIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+        const unifiedIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
         const parts = params.className.split(".");
         let entries = unifiedIndex.byName.get(parts[parts.length - 1]);
         let entry = undefined;
@@ -138,14 +138,14 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
         if (!uri) {
           // Fallback: try to resolve file path via index
           uri =
-            (workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(params.className) ||
-            (workspaceManager.sysml2WorkspaceIndex as any).getFileUriForFQN?.(params.className);
+            (context.workspaceManager.globalWorkspaceIndex as any).getFileUriForFQN?.(params.className) ||
+            (context.workspaceManager.sysml2WorkspaceIndex as any).getFileUriForFQN?.(params.className);
         }
 
-        if (uri && sharedContext) {
+        if (uri && context.state.sharedContext) {
           let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
           if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
-          const text = sharedContext.fs.read(fsPath);
+          const text = context.state.sharedContext.fs.read(fsPath);
           return { content: text || null };
         }
 
@@ -156,7 +156,7 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/addComponent",
     async (params: { uri: string; className: string; x: number; y: number }) => {
       // SysML2 — dispatch handles element insert + layout storage
@@ -170,12 +170,12 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
       }
 
       // Modelica — uses context-aware name generation (defaultComponentName annotation)
-      const instances = workspaceManager.documentInstances.get(params.uri);
-      const doc = documents.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
+      const doc = context.documents.get(params.uri);
       if (!instances?.[0] || !doc) return [];
 
       const classInstance = instances[0];
-      const context = workspaceManager.documentContexts.get(params.uri);
+      const docContext = context.workspaceManager.documentContexts.get(params.uri);
 
       try {
         // Get base name from defaultComponentName annotation or class name
@@ -183,8 +183,8 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
         let baseName = shortName.toLowerCase();
         try {
           let droppedClass: any = null;
-          if (workspaceManager.globalModelicaQueryEngine) {
-            const db = workspaceManager.globalModelicaQueryEngine.toQueryDB();
+          if (context.workspaceManager.globalModelicaQueryEngine) {
+            const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
             const parts = params.className.split(".");
             let currentId: any = null;
             for (const part of parts) {
@@ -228,22 +228,22 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/flatten",
     async (params: { name: string; uri?: string }): Promise<{ text: string | null; error?: string }> => {
-      let instances = params.uri ? workspaceManager.documentInstances.get(params.uri) : undefined;
+      let instances = params.uri ? context.workspaceManager.documentInstances.get(params.uri) : undefined;
 
       // Fallback to finding instances via context if URI isn't provided or didn't work
       if (!instances && params.uri) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
 
       if (!instances && !params.uri) {
-        for (const insts of workspaceManager.documentInstances.values()) {
+        for (const insts of context.workspaceManager.documentInstances.values()) {
           if (insts && insts.length > 0) {
             instances = insts;
             break;
@@ -262,21 +262,20 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
       }
 
       try {
-        // Ensure the full MSL index is available before flattening
-        if (!mslStdlibReady && workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          connection.sendNotification("modelscript/status", {
+        // Ensure the full index is available before flattening
+        if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
+          context.connection.sendNotification("modelscript/status", {
             state: "loading",
-            message: "Indexing MSL for flattening...",
+            message: "Indexing dependencies for flattening...",
           });
-          await workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          mslStdlibReady = true;
-          connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
+          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
+          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
 
-          const fullIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
           const engine = params.uri?.endsWith(".sysml")
-            ? workspaceManager.globalSysML2QueryEngine
-            : workspaceManager.globalModelicaQueryEngine;
+            ? context.workspaceManager.globalSysML2QueryEngine
+            : context.workspaceManager.globalModelicaQueryEngine;
           if (engine) {
             engine.updateIndex(fullIndex);
             const resolver = (engine as any).__resolverCache;
@@ -284,9 +283,9 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
           }
 
           if (params.uri) {
-            const doc = documents.get(params.uri);
-            if (doc) await validateTextDocument(doc);
-            instances = workspaceManager.documentInstances.get(params.uri);
+            const doc = context.documents.get(params.uri);
+            if (doc) await context.validationService.validateTextDocument(doc);
+            instances = context.workspaceManager.documentInstances.get(params.uri);
             if (instances && instances.length > 0) {
               classInstance = params.name
                 ? (instances.find((i) => i.name === params.name) ?? instances[0])
@@ -295,15 +294,15 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
           }
         }
 
-        let context = params.uri ? workspaceManager.documentContexts.get(params.uri) : undefined;
-        if (!context) {
-          context = workspaceManager.documentContexts.values().next().value;
+        let context = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
+        if (!docContext) {
+          context = context.workspaceManager.documentContexts.values().next().value;
         }
-        if (!context) {
+        if (!docContext) {
           return { text: null, error: "No Modelica context found." };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
         return { text: printArenaDAE(arena) };
       } catch (e) {
         return { text: null, error: e instanceof Error ? e.stack : String(e) };
@@ -311,7 +310,7 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/query",
     (params: {
       name: string;
@@ -325,9 +324,9 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
       error?: string;
     } | null => {
       let ctx: Context | undefined;
-      if (params.uri) ctx = workspaceManager.documentContexts.get(params.uri);
+      if (params.uri) ctx = context.workspaceManager.documentContexts.get(params.uri);
       if (!ctx) {
-        for (const c of workspaceManager.documentContexts.values()) {
+        for (const c of context.workspaceManager.documentContexts.values()) {
           ctx = c;
           break;
         }
@@ -335,8 +334,8 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
       if (!ctx) return null;
 
       try {
-        if (!workspaceManager.globalModelicaQueryEngine) return null;
-        const db = workspaceManager.globalModelicaQueryEngine.toQueryDB();
+        if (!context.workspaceManager.globalModelicaQueryEngine) return null;
+        const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
         const parts = params.name.split(".");
         let currentId: any = null;
         for (const part of parts) {
@@ -381,11 +380,11 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/parse",
     (params: { code: string }): { classes: { name: string; kind: string }[]; syntaxErrors: string[] } => {
       let ctx: Context | undefined;
-      for (const c of workspaceManager.documentContexts.values()) {
+      for (const c of context.workspaceManager.documentContexts.values()) {
         ctx = c;
         break;
       }
@@ -422,10 +421,10 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getClassHierarchy",
     (params: { uri: string; className?: string }): ClassHierarchyNode | null => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
       let target = instances[0];
@@ -446,10 +445,10 @@ export function registerClassQueryEndpoints(connection: Connection, documentMana
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getComponentTree",
     (params: { uri: string; className?: string }): ComponentTreeNode | null => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
       let target = instances[0];

@@ -142,5 +142,61 @@ export function usersRouter(database: LibraryDatabase): Router {
     res.json({ success: true });
   });
 
+  /**
+   * GET /api/v1/users/me/bots
+   */
+  router.get("/me/bots", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const bots = database.getUserBots(userId);
+    res.json({ bots });
+  });
+
+  /**
+   * POST /api/v1/users/me/bots
+   */
+  router.post("/me/bots", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const { username, display_name, bio, avatar_url } = req.body;
+
+    if (!username || !display_name) {
+      res.status(400).json({ error: "Missing username or display_name" });
+      return;
+    }
+
+    if (database.getUserByUsername(username)) {
+      res.status(409).json({ error: "Username already taken" });
+      return;
+    }
+
+    // Generate a secure API token for the bot
+    const crypto = require("crypto");
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenPrefix = "ms_bot_";
+    const fullToken = `${tokenPrefix}${rawToken}`;
+
+    // Hash the token before storing
+    const tokenHash = crypto.createHash("sha256").update(fullToken).digest("hex");
+
+    const bot = database.createBot(userId, username, display_name, bio || "", avatar_url || "", tokenHash);
+
+    res.json({ success: true, bot, token: fullToken });
+  });
+
+  /**
+   * DELETE /api/v1/users/me/bots/:botId
+   */
+  router.delete("/me/bots/:botId", requireAuth, (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const botId = parseInt(req.params.botId as string, 10);
+
+    if (isNaN(botId)) {
+      res.status(400).json({ error: "Invalid bot ID" });
+      return;
+    }
+
+    database.deleteBot(userId, botId);
+    res.json({ success: true });
+  });
+
   return router;
 }

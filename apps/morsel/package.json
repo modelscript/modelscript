@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prebuild": "node ../../scripts/download-msl.cjs && node ../../scripts/download-sysml2.cjs && cp -n ../../scripts/ModelicaStandardLibrary_v4.1.0.zip public/ModelicaStandardLibrary_v4.1.0.zip 2>/dev/null || true && cp -n ../../scripts/SysML-v2-Release-2026-03.zip public/SysML-v2-Release-2026-03.zip 2>/dev/null || true",
+    "prebuild": "echo 'No prebuild needed'",
     "build": "react-router build",
     "clean": "rimraf build .react-router",
     "dev": "react-router dev --port 3002",

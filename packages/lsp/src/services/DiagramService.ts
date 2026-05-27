@@ -33,10 +33,10 @@ export class DiagramService {
     const indexedText = lastIndexedText.get(effectiveUri);
     const version =
       indexedText != null
-        ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${mslStdlibReady}`
-        : mslStdlibReady
-          ? "msl-ready"
-          : "msl-loading";
+        ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${dependenciesReady}`
+        : dependenciesReady
+          ? "deps-ready"
+          : "deps-loading";
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
     const cached = diagramCache.get(cacheKey);
     if (cached && cached.version === version) {
@@ -48,7 +48,7 @@ export class DiagramService {
     const classInstance = workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
 
     if (!classInstance) {
-      if (!mslStdlibReady) {
+      if (!dependenciesReady) {
         return {
           nodes: [],
           edges: [],
@@ -57,9 +57,9 @@ export class DiagramService {
           isLoading: true,
         };
       }
-      // MSL is ready but class instance not yet available (re-validation in progress).
+      // Dependencies are ready but class instance not yet available (re-validation in progress).
       // Return last cached data to avoid blanking the diagram during the brief window
-      // between MSL loading and re-validation completing.
+      // between dependencies loading and re-validation completing.
       if (cached) {
         this.connection.console.info(`[diagram-perf] class not resolved, returning stale cache for ${params.uri}`);
         return cached.data;
@@ -74,7 +74,7 @@ export class DiagramService {
       const result = await buildDiagramData(classInstance);
       const tBuild = performance.now() - tBuild0;
       if (result) {
-        (result as any).isLoading = !mslStdlibReady;
+        (result as any).isLoading = !dependenciesReady;
       }
       this.connection.console.error(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,

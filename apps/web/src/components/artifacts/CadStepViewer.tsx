@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Spinner, Text } from "@primer/react";
-import { Center, Html, OrbitControls, useProgress } from "@react-three/drei";
+import { Environment, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
 import * as THREE from "three";
@@ -86,12 +86,29 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
             geo.setIndex(new THREE.Uint32BufferAttribute(mergedIndices, 1));
           }
 
+          // Center the geometry and normalize its scale to fit the camera
+          geo.computeBoundingBox();
+          if (geo.boundingBox) {
+            const center = new THREE.Vector3();
+            geo.boundingBox.getCenter(center);
+            geo.translate(-center.x, -center.y, -center.z);
+          }
+          geo.computeBoundingSphere();
+          if (geo.boundingSphere && geo.boundingSphere.radius > 0) {
+            const scale = 20 / geo.boundingSphere.radius;
+            geo.scale(scale, scale, scale);
+          }
+
           setGeometry(geo);
+          setTimeout(() => {
+            (window as any).__ARTIFACT_READY = true;
+          }, 100);
         } else if (active) {
           setError("No meshes found in STEP file");
         }
       } catch (err: any) {
         if (active) setError(err.message || "Error parsing STEP file");
+        (window as any).__ARTIFACT_READY = true;
       }
     }
 
@@ -136,15 +153,21 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       overflow="hidden"
     >
       <Canvas camera={{ position: [0, 0, 50], fov: 50 }}>
-        <ambientLight intensity={0.5} />
-        <directionalLight position={[10, 10, 10]} intensity={1} />
-        <directionalLight position={[-10, -10, -10]} intensity={0.5} />
+        <ambientLight intensity={0.3} />
+        <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.3} castShadow />
+
         <Suspense fallback={<Loader />}>
-          <Center>
-            <mesh geometry={geometry}>
-              <meshStandardMaterial color="#888888" roughness={0.4} metalness={0.6} side={THREE.DoubleSide} />
-            </mesh>
-          </Center>
+          {/* Local HDRI Texture */}
+          <Environment files="/hdri/studio.hdr" />
+          <mesh geometry={geometry}>
+            <meshPhysicalMaterial
+              color="#8a929a"
+              metalness={0.15}
+              roughness={0.65}
+              clearcoat={0.0}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
         </Suspense>
         <OrbitControls makeDefault />
       </Canvas>

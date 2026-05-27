@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 
-export function registerAnalysisEndpoints(connection: Connection, documentManager: any, workspaceManager: any) {
-  connection.onRequest(
+export function registerAnalysisEndpoints(context: LspContext) {
+  context.connection.onRequest(
     "modelscript/trainSurrogate",
     async (params: {
       uri: string;
@@ -34,15 +34,15 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       exportedFunctions?: string[];
       error?: string;
     }> => {
-      connection.console.info(`[trainSurrogate] Requested for URI: ${params.uri}`);
+      context.connection.console.info(`[trainSurrogate] Requested for URI: ${params.uri}`);
 
       try {
         // 1. Flatten the model to get a DAE, then build a simulator
-        let instances = workspaceManager.documentInstances.get(params.uri);
+        let instances = context.workspaceManager.documentInstances.get(params.uri);
         if (!instances || instances.length === 0) {
-          const doc = documents.get(params.uri);
-          if (doc) await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          const doc = context.documents.get(params.uri);
+          if (doc) await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
         if (!instances || instances.length === 0) {
           return { success: false, error: "No class instances found for this document." };
@@ -54,12 +54,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
           if (found) classInstance = found;
         }
 
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           return { success: false, error: `No Modelica context found for URI '${params.uri}'` };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 1;
@@ -83,7 +83,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
         }
 
         // 3. Run the surrogate pipeline
-        connection.console.info(
+        context.connection.console.info(
           `[trainSurrogate] Running DoE (${params.strategy ?? "latin-hypercube"}, ${params.numSamples ?? 50} samples)...`,
         );
 
@@ -118,11 +118,11 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
             },
           },
           (phase, _progress, detail) => {
-            connection.console.info(`[trainSurrogate] ${phase}: ${detail}`);
+            context.connection.console.info(`[trainSurrogate] ${phase}: ${detail}`);
           },
         );
 
-        connection.console.info(
+        context.connection.console.info(
           `[trainSurrogate] Complete: R²=${surrogateResult.metrics.r2.toFixed(4)}, Train MSE=${surrogateResult.metrics.trainMSE.toExponential(4)}`,
         );
 
@@ -142,7 +142,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
           exportedFunctions: wasmResult.exportedFunctions,
         };
       } catch (e) {
-        connection.console.error(`[trainSurrogate] Error: ${e}`);
+        context.connection.console.error(`[trainSurrogate] Error: ${e}`);
         return {
           success: false,
           error: e instanceof Error ? e.message : String(e),
@@ -151,7 +151,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/optimizeModel",
     async (params: {
       uri: string;
@@ -182,13 +182,13 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       messages: string;
       error?: string;
     }> => {
-      connection.console.info(`[optimize] Requested optimization for URI: ${params.uri}`);
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      context.connection.console.info(`[optimize] Requested optimization for URI: ${params.uri}`);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) {
@@ -212,37 +212,36 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        if (!mslStdlibReady && workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
-          connection.sendNotification("modelscript/status", {
+        if (!context.state.dependenciesReady && context.workspaceManager.globalWorkspaceIndex.pendingFileCount > 0) {
+          context.connection.sendNotification("modelscript/status", {
             state: "loading",
-            message: "Indexing MSL for optimization...",
+            message: "Indexing dependencies for optimization...",
           });
-          await workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
-          mslStdlibReady = true;
-          connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
+          await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(50);
+          context.connection.sendNotification("modelscript/status", { state: "ready", message: getReadyMessage() });
 
-          const fullIndex = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+          const fullIndex = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
           injectPredefinedTypes(fullIndex);
           const engine = params.uri.endsWith(".sysml")
-            ? workspaceManager.globalSysML2QueryEngine
-            : workspaceManager.globalModelicaQueryEngine;
+            ? context.workspaceManager.globalSysML2QueryEngine
+            : context.workspaceManager.globalModelicaQueryEngine;
           if (engine) engine.updateIndex(fullIndex);
 
-          const doc = documents.get(params.uri);
-          if (doc) await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          const doc = context.documents.get(params.uri);
+          if (doc) await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
           if (!instances || instances.length === 0) throw new Error("No class instances found after indexing.");
           classInstance = params.className
             ? (instances.find((i) => i.name === params.className) ?? instances[0])
             : instances[0];
         }
 
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
         const exp = arena.experiment;
 
         // In Optimica, the controls are usually identified by looking at variables with free=true.
@@ -264,25 +263,25 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
 
         // ── SysML2 constraint injection ──
         let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
-        if (params.sysmlUri && workspaceManager.globalSysML2QueryEngine) {
+        if (params.sysmlUri && context.workspaceManager.globalSysML2QueryEngine) {
           try {
             // Ensure the SysML2 document is indexed
-            const sysmlDoc = documents.get(params.sysmlUri);
-            if (sysmlDoc) await validateTextDocument(sysmlDoc);
+            const sysmlDoc = context.documents.get(params.sysmlUri);
+            if (sysmlDoc) await context.validationService.validateTextDocument(sysmlDoc);
 
-            const sysmlDb = workspaceManager.globalSysML2QueryEngine.toQueryDB();
+            const sysmlDb = context.workspaceManager.globalSysML2QueryEngine.toQueryDB();
             const rawConstraints = extractSysML2Constraints(sysmlDb, params.sysmlFilter);
             const variableMap = params.sysmlVariableMap ? new Map(Object.entries(params.sysmlVariableMap)) : undefined;
             stateConstraints = mapConstraintsToOptimizer(rawConstraints, variableMap);
-            connection.console.info(
+            context.connection.console.info(
               `[optimize] Extracted ${stateConstraints.length} SysML2 constraints` +
                 (params.sysmlFilter ? ` (filter: ${params.sysmlFilter})` : ""),
             );
             for (const sc of stateConstraints) {
-              connection.console.info(`[optimize]   ${sc.variable} ${sc.type} ${sc.bound}`);
+              context.connection.console.info(`[optimize]   ${sc.variable} ${sc.type} ${sc.bound}`);
             }
           } catch (e) {
-            connection.console.warn(
+            context.connection.console.warn(
               `[optimize] SysML2 constraint extraction failed: ${e instanceof Error ? e.message : String(e)}`,
             );
           }
@@ -332,7 +331,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/calibrate",
     async (params: {
       uri: string;
@@ -358,15 +357,15 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       costHistory: number[];
       error?: string;
     }> => {
-      connection.console.info(`[calibrate] Requested calibration for URI: ${params.uri}`);
+      context.connection.console.info(`[calibrate] Requested calibration for URI: ${params.uri}`);
 
       // Validate document and fetch instances
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
 
@@ -389,12 +388,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
 
         // Parse CSV
         const csvOptions: any = { skipNaN: true };
@@ -430,7 +429,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
           maxIterations: params.maxIterations ?? 100,
           method: params.method ?? "lm",
           onProgress: (progress) => {
-            connection.sendNotification("modelscript/calibrationProgress", progress);
+            context.connection.sendNotification("modelscript/calibrationProgress", progress);
           },
         });
 
@@ -474,7 +473,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/montecarlo",
     async (params: {
       uri: string;
@@ -516,17 +515,17 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       convergence: { coeffOfVariation: number; effectiveSampleSize: number };
       error?: string;
     }> => {
-      connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
+      context.connection.console.info(`[montecarlo] Requested MC for URI: ${params.uri}`);
       const { runMonteCarloSimulation } = await import("@modelscript/compiler/simulator");
       type RandomVariable = import("@modelscript/compiler/simulator").RandomVariable;
       type Distribution = import("@modelscript/compiler/simulator").Distribution;
 
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) {
@@ -547,12 +546,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
-        if (!context) {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, context);
+        const arena = flattenArenaFromInstance(classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 10;
@@ -633,7 +632,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
           };
         }
 
-        connection.console.info(
+        context.connection.console.info(
           `[montecarlo] Completed ${mcResult.numSamples} samples, ${Object.keys(statistics).length} variables`,
         );
 
@@ -658,10 +657,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/analyzeBlt",
     (params: { uri: string; className?: string }): BltAnalysisResult | null => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
       let target = instances[0];
@@ -679,10 +678,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         // Run BLT transformation
         const { blocks } = performBltTransformationArena(arena);
@@ -734,10 +733,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getIntervals",
     (params: { uri: string; className?: string }): IntervalAnalysisResult | null => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
       let target = instances[0];
@@ -755,10 +754,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         const bounds: IntervalBound[] = [];
         for (let i = 0; i < arena.varCount; i++) {
@@ -793,15 +792,15 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/runOptimization",
     async (params: { uri: string; className?: string }): Promise<OptimizationResult | null> => {
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) return null;
@@ -813,10 +812,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         // Build a simple optimization problem from the DAE
         const controls: string[] = [];
@@ -872,7 +871,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getCalibrationParameters",
     async (params: {
       uri: string;
@@ -887,12 +886,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
         unit?: string;
       }[];
     } | null> => {
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) return null;
@@ -904,10 +903,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         return { parameters: getArenaParameterInfo(arena) };
       } catch (e) {
@@ -917,7 +916,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/runCalibration",
     async (params: {
       uri: string;
@@ -969,12 +968,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       // Resolve class instance
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) {
@@ -988,10 +987,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return errorResult("No Modelica context found.");
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         const simulator = new ArenaSimulator(arena);
 
@@ -1131,7 +1130,7 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/systemIdentification",
     async (params: {
       uri: string;
@@ -1139,12 +1138,12 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       data: { time: number[]; signals: Record<string, number[]> };
       parametersToFit: string[];
     }): Promise<SysIdResult | null> => {
-      let instances = workspaceManager.documentInstances.get(params.uri);
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) {
-        const doc = documents.get(params.uri);
+        const doc = context.documents.get(params.uri);
         if (doc) {
-          await validateTextDocument(doc);
-          instances = workspaceManager.documentInstances.get(params.uri);
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
         }
       }
       if (!instances || instances.length === 0) return null;
@@ -1156,10 +1155,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         // Extract initial parameter values
         const fittedParameters: { name: string; initial: number; fitted: number }[] = [];
@@ -1282,10 +1281,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     "modelscript/getSymbolicTrace",
     (params: { uri: string; className?: string; equationIndex?: number }): SymbolicTraceResult | null => {
-      const instances = workspaceManager.documentInstances.get(params.uri);
+      const instances = context.workspaceManager.documentInstances.get(params.uri);
       if (!instances || instances.length === 0) return null;
 
       let target = instances[0];
@@ -1303,10 +1302,10 @@ export function registerAnalysisEndpoints(connection: Connection, documentManage
       }
 
       try {
-        const context = workspaceManager.documentContexts.get(params.uri);
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!context) return null;
 
-        const arena = flattenArenaFromInstance(target, context);
+        const arena = flattenArenaFromInstance(target, docContext);
 
         const eqIdx = params.equationIndex ?? 0;
         if (eqIdx >= arena.eqCount) return null;

@@ -1,26 +1,20 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { LspContext } from "../LspContext";
 import { DiagramMethods } from "../diagramProtocol";
-import { DiagramService } from "../services/DiagramService";
 
-export function registerDiagramEndpoints(
-  connection: Connection,
-  documentManager: any,
-  workspaceManager: any,
-  diagramService: DiagramService,
-) {
-  connection.onRequest(
+export function registerDiagramEndpoints(context: LspContext) {
+  context.connection.onRequest(
     DiagramMethods.getData,
     async (params: { uri: string; className?: string; diagramType?: string }) => {
-      return await diagramService.handleGetDiagramData(params);
+      return await context.diagramService.handleGetDiagramData(params);
     },
   );
 
-  connection.onRequest(
+  context.connection.onRequest(
     DiagramMethods.getComponentProperties,
     async (params: { uri: string; componentName: string; className?: string }) => {
-      return await diagramService.getDiagramDispatch().getComponentProperties(params);
+      return await context.diagramService.getDiagramDispatch().getComponentProperties(params);
     },
   );
 }

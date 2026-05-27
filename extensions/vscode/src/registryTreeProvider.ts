@@ -328,10 +328,34 @@ export function registerRegistryView(context: vscode.ExtensionContext) {
           return;
         }
 
-        const terminal = vscode.window.createTerminal({ name: "ModelScript Install", cwd: targetFolder.uri });
-        terminal.show();
-        terminal.sendText(
-          `npm install @modelscript/${packageName.toLowerCase()}@${packageVersion} --registry=${registryUrl}`,
+        vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: `Installing ${packageName}...`,
+            cancellable: false,
+          },
+          async () => {
+            const terminal = vscode.window.createTerminal({
+              name: "ModelScript Install",
+              cwd: targetFolder?.uri,
+              hideFromUser: true,
+            });
+
+            terminal.sendText(
+              `npm install @modelscript/${packageName.toLowerCase()}@${packageVersion} --registry=${registryUrl}`,
+            );
+            terminal.sendText("exit");
+
+            return new Promise<void>((resolve) => {
+              const disp = vscode.window.onDidCloseTerminal((t) => {
+                if (t === terminal) {
+                  disp.dispose();
+                  vscode.commands.executeCommand("modelscript.registryView.focus");
+                  resolve();
+                }
+              });
+            });
+          },
         );
       },
     ),
@@ -346,9 +370,50 @@ export function registerRegistryView(context: vscode.ExtensionContext) {
         packageName = input;
       }
 
-      const terminal = vscode.window.createTerminal("ModelScript Uninstall");
-      terminal.show();
-      terminal.sendText(`npm uninstall @modelscript/${packageName.toLowerCase()}`);
+      const folders = vscode.workspace.workspaceFolders;
+      let targetFolder = folders ? folders[0] : undefined;
+
+      if (folders && folders.length > 1) {
+        const picks = folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f }));
+        const picked = await vscode.window.showQuickPick(picks, {
+          placeHolder: `Select workspace to uninstall ${packageName}`,
+        });
+        if (!picked) return;
+        targetFolder = picked.folder;
+      }
+
+      if (!targetFolder) {
+        vscode.window.showErrorMessage("No workspace folder open. Cannot uninstall package.");
+        return;
+      }
+
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Uninstalling ${packageName}...`,
+          cancellable: false,
+        },
+        async () => {
+          const terminal = vscode.window.createTerminal({
+            name: "ModelScript Uninstall",
+            cwd: targetFolder?.uri,
+            hideFromUser: true,
+          });
+
+          terminal.sendText(`npm uninstall @modelscript/${packageName.toLowerCase()}`);
+          terminal.sendText("exit");
+
+          return new Promise<void>((resolve) => {
+            const disp = vscode.window.onDidCloseTerminal((t) => {
+              if (t === terminal) {
+                disp.dispose();
+                vscode.commands.executeCommand("modelscript.registryView.focus");
+                resolve();
+              }
+            });
+          });
+        },
+      );
     }),
   );
 
@@ -359,14 +424,41 @@ export function registerRegistryView(context: vscode.ExtensionContext) {
         "modelscript.packageDetail",
         `${name}@${version}`,
         vscode.ViewColumn.One,
-        { enableScripts: false },
+        { enableScripts: true },
       );
+
+      panel.webview.onDidReceiveMessage((message) => {
+        if (message.command === "install") {
+          vscode.commands.executeCommand("modelscript.registry.install", name, version);
+        }
+      });
+
       try {
         const resp = await fetch(`${registryUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const packument = (await resp.json()) as any;
         const readme = packument.description || "No description available.";
-        panel.webview.html = `<!DOCTYPE html><html><head><style>body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); } h1 { font-size: 24px; margin-bottom: 4px; } .meta { color: var(--vscode-descriptionForeground); font-size: 13px; margin-bottom: 24px; } .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); } .install-box { background: var(--vscode-textBlockQuote-background); border: 1px solid var(--vscode-textBlockQuote-border); border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 13px; margin-bottom: 24px; cursor: text; user-select: all; } .readme { line-height: 1.7; }</style></head><body><h1>${escapeHtml(packument.name)}</h1><div class="meta"><span class="badge">${escapeHtml(packument.version)}</span>${packument.modelicaVersion ? `<span class="badge">Modelica ${escapeHtml(packument.modelicaVersion)}</span>` : ""}<span>${Math.round(packument.size / 1024)} KB</span></div><div class="install-box">npm install @modelscript/${escapeHtml(packument.name.toLowerCase())}@${escapeHtml(packument.version)}</div><div class="readme">${escapeHtml(readme)}</div></body></html>`;
+        panel.webview.html = `<!DOCTYPE html><html><head><style>
+          body { font-family: var(--vscode-font-family); padding: 24px; color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+          h1 { font-size: 24px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+          .meta { color: var(--vscode-descriptionForeground); font-size: 13px; margin-bottom: 24px; }
+          .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+          .install-box { background: var(--vscode-textBlockQuote-background); border: 1px solid var(--vscode-textBlockQuote-border); border-radius: 6px; padding: 12px 16px; font-family: monospace; font-size: 13px; margin-bottom: 24px; cursor: text; user-select: all; display: flex; justify-content: space-between; align-items: center; }
+          .install-btn { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; outline: none; }
+          .install-btn:hover { background: var(--vscode-button-hoverBackground); }
+          .readme { line-height: 1.7; }
+        </style></head><body>
+          <h1>${escapeHtml(packument.name)} <button class="install-btn" onclick="acquireVsCodeApi().postMessage({command: 'install'})">Install Package</button></h1>
+          <div class="meta">
+            <span class="badge">${escapeHtml(packument.version)}</span>
+            ${packument.modelicaVersion ? `<span class="badge">Modelica ${escapeHtml(packument.modelicaVersion)}</span>` : ""}
+            <span>${packument.size ? Math.round(packument.size / 1024) : 0} KB</span>
+          </div>
+          <div class="install-box">
+            <span>npm install @modelscript/${escapeHtml(packument.name.toLowerCase())}@${escapeHtml(packument.version)}</span>
+          </div>
+          <div class="readme">${escapeHtml(readme)}</div>
+        </body></html>`;
       } catch (e) {
         panel.webview.html = `<html><body><p>Failed to load package details: ${e}</p></body></html>`;
       }

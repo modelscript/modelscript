@@ -12,19 +12,10 @@ import ProfileHoverCard from "./ProfileHoverCard";
 
 const PanelContainer = styled.aside`
   width: 350px;
-  height: 100vh;
   position: sticky;
   top: 0;
-  overflow-y: auto;
   padding: 12px 24px;
   box-sizing: border-box;
-
-  /* Hide scrollbar for a cleaner look while keeping it scrollable */
-  &::-webkit-scrollbar {
-    display: none;
-  }
-  -ms-overflow-style: none;
-  scrollbar-width: none;
 
   @media (max-width: 1000px) {
     display: none;
@@ -57,7 +48,7 @@ const XIcon = () => (
 
 const SearchContainer = styled.div`
   position: sticky;
-  top: -12px;
+  top: var(--dev-header-height, 0px);
   z-index: 100;
   margin-top: -12px;
   margin-left: -24px;
@@ -488,7 +479,7 @@ const RightPanel: React.FC = () => {
             <SearchIcon size={16} />
             <input
               type="text"
-              placeholder="Search ModelScript"
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearch}

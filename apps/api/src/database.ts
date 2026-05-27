@@ -191,7 +191,9 @@ export class LibraryDatabase {
         inbox_url       TEXT,
         outbox_url      TEXT,
         remote_domain   TEXT,
-        created_at    TEXT DEFAULT (datetime('now'))
+        owner_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        bot_token_hash  TEXT,
+        created_at      TEXT DEFAULT (datetime('now'))
       );
 
       CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -637,7 +639,75 @@ export class LibraryDatabase {
         inboxUrl,
         outboxUrl,
       );
-    return { id: Number(result.lastInsertRowid), username, email };
+    return { id: result.lastInsertRowid as number, username, email };
+  }
+
+  createBot(
+    ownerId: number,
+    username: string,
+    displayName: string,
+    bio: string,
+    avatarUrl: string,
+    tokenHash: string,
+  ): { id: number; username: string } {
+    const email = `${username}@bots.modelscript.org`; // dummy email for bots
+    const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
+
+    const keys = this.#generateRSAKeys();
+    const publicUrl = process.env.PUBLIC_URL || "https://hub.modelscript.org";
+    const actorUrl = `${publicUrl}/users/${username}`;
+    const inboxUrl = `${actorUrl}/inbox`;
+    const outboxUrl = `${actorUrl}/outbox`;
+
+    const result = this.#db
+      .prepare(
+        `INSERT INTO users (username, email, display_name, bio, avatar_url, banner_url, account_type, owner_id, bot_token_hash, rsa_private_key, rsa_public_key, actor_url, inbox_url, outbox_url) VALUES (?, ?, ?, ?, ?, ?, 'bot', ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        username,
+        email,
+        displayName,
+        bio,
+        avatarUrl ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random&color=fff`,
+        bannerUrl,
+        ownerId,
+        tokenHash,
+        keys.privateKey,
+        keys.publicKey,
+        actorUrl,
+        inboxUrl,
+        outboxUrl,
+      );
+    return { id: result.lastInsertRowid as number, username };
+  }
+
+  getUserBots(ownerId: number): Array<{
+    id: number;
+    username: string;
+    display_name: string;
+    avatar_url: string;
+    bio: string;
+    created_at: string;
+  }> {
+    return this.#db
+      .prepare(
+        `SELECT id, username, display_name, avatar_url, bio, created_at FROM users WHERE owner_id = ? AND account_type = 'bot' ORDER BY created_at DESC`,
+      )
+      .all(ownerId) as any;
+  }
+
+  deleteBot(ownerId: number, botId: number): void {
+    this.#db.prepare(`DELETE FROM users WHERE id = ? AND owner_id = ? AND account_type = 'bot'`).run(botId, ownerId);
+  }
+
+  getUserByBotTokenHash(
+    tokenHash: string,
+  ): { id: number; username: string; email: string; account_type: string } | null {
+    const row = this.#db
+      .prepare(`SELECT id, username, email, account_type FROM users WHERE bot_token_hash = ? AND account_type = 'bot'`)
+      .get(tokenHash) as any;
+    return row || null;
   }
 
   createOAuthUser(
@@ -750,7 +820,8 @@ export class LibraryDatabase {
     return this.#db
       .prepare(
         `
-      SELECT u.id, u.username, u.display_name, u.bio, u.avatar_url, u.banner_url, u.location, u.website, u.created_at, u.account_type,
+      SELECT u.id, u.username, u.display_name, u.bio, u.avatar_url, u.banner_url, u.location, u.website, u.created_at, u.account_type, u.owner_id,
+        (SELECT username FROM users WHERE id = u.owner_id) as owner_username,
         (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count,
         (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count,
         (SELECT COUNT(*) FROM posts WHERE author_id = u.id) as post_count
@@ -896,9 +967,7 @@ export class LibraryDatabase {
 
   // ── Public Keys ─────────────────────────────────────────────────
 
-  getPublicKeysForUser(
-    userId: number,
-  ): Array<{
+  getPublicKeysForUser(userId: number): Array<{
     id: number;
     key_id_string: string;
     public_key_pem: string;

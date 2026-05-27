@@ -128,7 +128,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ data }) => {
 
   return (
     <MapContainer>
-      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120, center: [0, 30] }} viewBox="0 0 800 450">
+      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 100, center: [0, 20] }} viewBox="0 0 800 450">
         <Geographies geography={geoUrl}>
           {({ geographies }) =>
             geographies.map((geo) => {

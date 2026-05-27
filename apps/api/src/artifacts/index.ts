@@ -16,6 +16,8 @@ export type { FmuDetails, FmuScalarVariable } from "./fmu-handler.js";
 export { MermaidArtifactHandler } from "./mermaid-handler.js";
 export { ArtifactRegistry, getArtifactRegistry } from "./registry.js";
 export type { ArtifactHandler, ArtifactMetadata, ArtifactViewDescriptor } from "./registry.js";
+export { SimulationArtifactHandler } from "./simulation-handler.js";
+export type { SimulationDetails, SimulationFieldMeta } from "./simulation-handler.js";
 export { SysmlArtifactHandler } from "./sysml-handler.js";
 export { VegaArtifactHandler } from "./vega-handler.js";
 
@@ -25,6 +27,7 @@ import { DatasetArtifactHandler } from "./dataset-handler.js";
 import { FmuArtifactHandler } from "./fmu-handler.js";
 import { MermaidArtifactHandler } from "./mermaid-handler.js";
 import { getArtifactRegistry } from "./registry.js";
+import { SimulationArtifactHandler } from "./simulation-handler.js";
 import { SysmlArtifactHandler } from "./sysml-handler.js";
 import { VegaArtifactHandler } from "./vega-handler.js";
 
@@ -42,6 +45,7 @@ export function initializeArtifactSystem(): void {
   registry.register(new VegaArtifactHandler());
   registry.register(new MermaidArtifactHandler());
   registry.register(new CsvArtifactHandler());
+  registry.register(new SimulationArtifactHandler());
 
   console.log(
     `[ArtifactSystem] Initialized with ${registry.getRegisteredTypes().length} handlers: ${registry.getRegisteredTypes().join(", ")}`,

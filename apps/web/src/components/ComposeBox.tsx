@@ -46,6 +46,8 @@ const ComposeInput = styled.textarea`
   }
 `;
 
+import type { SpatialPin } from "./artifacts/spatial-pin";
+
 interface ComposeBoxProps {
   onPostCreated?: (post: any) => void;
   quotePost?: any;
@@ -53,6 +55,7 @@ interface ComposeBoxProps {
   placeholder?: string;
   minRows?: number;
   autoFocus?: boolean;
+  pendingPin?: SpatialPin;
 }
 
 export default function ComposeBox({
@@ -62,6 +65,7 @@ export default function ComposeBox({
   placeholder,
   minRows = 2,
   autoFocus,
+  pendingPin,
 }: ComposeBoxProps) {
   const { user, token } = useAuth();
   const [content, setContent] = useState("");
@@ -192,6 +196,7 @@ export default function ComposeBox({
         artifact_view_id: artifactId,
         quote_post_id: quotePost?.id,
         reply_to_id: replyToPost?.id,
+        metadata: pendingPin ? { spatialPin: pendingPin } : undefined,
       };
 
       if (signatureObj) {
@@ -309,6 +314,20 @@ export default function ComposeBox({
           }}
         />
 
+        {pendingPin && (
+          <Box
+            mb={2}
+            p={2}
+            border="1px solid var(--color-border-subtle)"
+            borderRadius="8px"
+            backgroundColor="var(--color-canvas-subtle)"
+          >
+            <span style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
+              📍 Pinned to <b>{pendingPin.fieldName}</b> = {pendingPin.scalarValue.toFixed(2)}
+            </span>
+          </Box>
+        )}
+
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Box display="flex" gap={1} alignItems="center">
             <IconButton
@@ -369,7 +388,6 @@ export default function ComposeBox({
                   <SimpleEmojiPicker
                     onEmojiClick={(emojiData) => {
                       setContent((prev) => prev + emojiData.emoji);
-                      setShowEmojiPicker(false);
                     }}
                   />
                 </div>

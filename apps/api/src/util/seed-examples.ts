@@ -139,3 +139,62 @@ export async function seedExamplePackages(
     jobQueue.enqueueProcess(jobKey, workerScript, { name, version, libraryPath });
   }
 }
+
+export async function seedPrepackagedLibraries(
+  storage: LibraryStorage,
+  database: LibraryDatabase,
+  jobQueue: JobQueue,
+): Promise<void> {
+  const prepackaged = [
+    { name: "Modelica", version: "4.1.0", filename: "ModelicaStandardLibrary_v4.1.0.zip" },
+    { name: "SysML", version: "2026.3.0", filename: "SysML-v2-Release-2026-03.zip" },
+  ];
+
+  for (const pkg of prepackaged) {
+    const existingPkg = database.getPackage(pkg.name);
+    if (existingPkg && database.getPackageVersion(existingPkg.id, pkg.version)) {
+      continue; // Already seeded
+    }
+
+    const zipPath = path.resolve(`scripts/${pkg.filename}`);
+    if (!fs.existsSync(zipPath)) {
+      console.warn(`[Seed] Prepackaged library zip not found: ${zipPath}`);
+      continue;
+    }
+
+    console.log(`[Seed] Loading prepackaged library: ${pkg.name}@${pkg.version}`);
+    const zipBuffer = fs.readFileSync(zipPath);
+
+    try {
+      await storage.store(pkg.name, pkg.version, zipBuffer);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      if (err.name !== "ConflictError" && !err.message.includes("already exists")) {
+        throw err;
+      }
+    }
+    const libraryPath = await storage.extractLibrary(pkg.name, pkg.version);
+
+    const { id: packageId } = database.getOrCreatePackage(pkg.name);
+    database.updatePackageMeta(packageId, { description: `Prepackaged ${pkg.name} library` });
+
+    const shasum = crypto.createHash("sha1").update(zipBuffer).digest("hex");
+    database.storePackageVersion(
+      packageId,
+      pkg.version,
+      `file://${zipPath}`,
+      shasum,
+      null,
+      zipBuffer.length,
+      JSON.stringify({ name: pkg.name, version: pkg.version }),
+      null,
+      null,
+    );
+    database.setDistTag(packageId, "latest", pkg.version);
+
+    const jobKey = `${pkg.name}@${pkg.version}`;
+    const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+    const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+    jobQueue.enqueueProcess(jobKey, workerScript, { name: pkg.name, version: pkg.version, libraryPath });
+  }
+}

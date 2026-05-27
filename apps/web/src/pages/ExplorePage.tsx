@@ -350,7 +350,7 @@ const ExplorePage: React.FC = () => {
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
               onKeyDown={handleSearchSubmit}
-              placeholder="Search ModelScript"
+              placeholder="Search"
             />
           </SearchInputWrapper>
         </SearchHeader>
@@ -388,7 +388,7 @@ const ExplorePage: React.FC = () => {
               value={localQuery}
               onChange={(e) => setLocalQuery(e.target.value)}
               onKeyDown={handleSearchSubmit}
-              placeholder="Search ModelScript"
+              placeholder="Search"
             />
           </SearchInputWrapper>
         </SearchHeader>
@@ -738,7 +738,7 @@ const ExplorePage: React.FC = () => {
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
             onKeyDown={handleSearchSubmit}
-            placeholder="Search ModelScript"
+            placeholder="Search"
           />
         </SearchInputWrapper>
       </SearchHeader>

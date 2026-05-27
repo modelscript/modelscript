@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import crypto from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { LibraryDatabase } from "../database.js";
@@ -34,6 +35,23 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   const token = authHeader.substring(7);
+
+  // Check if it's a bot token
+  if (token.startsWith("ms_bot_") && sharedAuthDatabase) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const botUser = sharedAuthDatabase.getUserByBotTokenHash(tokenHash);
+
+    if (!botUser) {
+      res.status(401).json({ error: "Invalid bot token" });
+      return;
+    }
+
+    req.user = botUser;
+    next();
+    return;
+  }
+
+  // Otherwise, handle as a JWT
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthUser;
 

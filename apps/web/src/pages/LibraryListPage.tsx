@@ -165,6 +165,17 @@ const MetaRow = styled.div`
   }
 `;
 
+const SpinAnimation = styled.div`
+  @keyframes spin {
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+  animation: spin 1s linear infinite;
+  display: flex;
+  justify-content: center;
+`;
+
 /* ─── main page ─── */
 
 const LibraryListPage: React.FC = () => {
@@ -221,7 +232,9 @@ const LibraryListPage: React.FC = () => {
         {/* Content */}
         {loading && libraries.length === 0 ? (
           <Box display="flex" justifyContent="center" p={12}>
-            <Spinner size="large" />
+            <SpinAnimation>
+              <Spinner size="large" />
+            </SpinAnimation>
           </Box>
         ) : error ? (
           <Box

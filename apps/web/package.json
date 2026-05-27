@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@modelscript/core": "*",
+    "@monaco-editor/react": "^4.7.0",
     "@primer/octicons-react": "^19.23.1",
     "@primer/react": "^38.14.0",
     "@react-three/drei": "^10.7.7",
