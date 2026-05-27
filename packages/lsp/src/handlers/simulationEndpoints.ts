@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
+import { ArenaDAEBuilder, Causality } from "@modelscript/compiler";
+import { simulateArena, simulateArenaAsync } from "@modelscript/compiler/simulator";
+import { generateMultiModelWrapper } from "@modelscript/fmi";
 import { LspContext } from "../LspContext";
+import { getArenaParameterInfo } from "../utils/arenaUtils";
 
 export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest(

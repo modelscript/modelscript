@@ -16,7 +16,6 @@
  * structural check (`isExplicitlySolvableFor`) cannot handle.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import {
   add,
   differentiateExpr,
@@ -29,6 +28,7 @@ import {
   sub,
   ZERO,
 } from "../calculus/derivative.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,

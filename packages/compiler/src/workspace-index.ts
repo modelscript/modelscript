@@ -595,7 +595,7 @@ export class WorkspaceIndex {
     const total = urisToIndex.length;
     let indexed = 0;
 
-    const worker = new Worker(workerUrl);
+    const worker = new Worker(workerUrl, { type: "module" });
 
     return new Promise((resolve, reject) => {
       let batchId = 0;

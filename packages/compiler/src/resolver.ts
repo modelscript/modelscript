@@ -512,13 +512,36 @@ export class ScopeResolver {
     const parent = this.index.symbols.get(parentId);
     if (!parent) return false;
 
-    // Find sibling reference entries (type references of the parent)
-    const siblingRefs = this.findRefChildren(parentId);
-    for (const ref of siblingRefs) {
+    // 1. Direct children references (SysML2 style, e.g., UsageDeclaration -> TypeReference)
+    const childRefs = this.findRefChildren(parentId);
+
+    // 2. Preceding sibling references (Modelica style, e.g., TypeSpecifier preceding ComponentDeclaration)
+    let precedingRefs: SymbolEntry[] = [];
+    if (parent.parentId) {
+      precedingRefs = this.findRefChildren(parent.parentId)
+        .filter((s) => s.id !== parent.id && s.endByte <= parent.startByte)
+        .sort((a, b) => b.endByte - a.endByte);
+    }
+
+    const refsToCheck = [...childRefs];
+
+    // To maintain performance, only take the closest preceding siblings that are likely type specifiers
+    // We filter for those that target "Class" or "Type" and limit to the first 3 to handle complex array subscripts
+    let addedSiblings = 0;
+    for (const s of precedingRefs) {
+      if (addedSiblings >= 3) break;
+      const hook = this.refHooksByRule.get(s.ruleName);
+      if (hook && hook.targetKinds && (hook.targetKinds.includes("Class") || hook.targetKinds.includes("Type"))) {
+        refsToCheck.push(s);
+        addedSiblings++;
+      }
+    }
+
+    for (const ref of refsToCheck) {
       if (!ref.name || ref.name.length === 0) continue;
 
-      // Resolve the type name to a declaration
-      const typeDecls = this.resolveLexical(ref.name, parent.parentId, []);
+      // Resolve the type name to a declaration (using the ref's own scope)
+      const typeDecls = this.resolveLexical(ref.name, ref.parentId, []);
       for (const typeDecl of typeDecls) {
         if (this.refHooksByRule.has(typeDecl.ruleName)) continue; // skip ref entries
 
@@ -530,30 +553,6 @@ export class ScopeResolver {
         // Also check inherited members
         for (const member of this.inheritedMembers(typeDecl.id, new Set())) {
           if (member.name === name) return true;
-        }
-      }
-    }
-
-    // Also check metadata string values as potential type refs (Modelica-style)
-    if (parent.metadata) {
-      for (const [key, value] of Object.entries(parent.metadata)) {
-        if (typeof value !== "string" || value.length === 0) continue;
-
-        // Only check metadata fields that sound like types/base classes
-        const lkey = key.toLowerCase();
-        if (!lkey.includes("type") && !lkey.includes("base") && !lkey.includes("extend") && !lkey.includes("class")) {
-          continue;
-        }
-
-        const typeDecls = this.resolveLexical(value, parent.parentId, []);
-        for (const typeDecl of typeDecls) {
-          if (this.refHooksByRule.has(typeDecl.ruleName)) continue;
-          for (const child of this.exportedChildren(typeDecl.id)) {
-            if (child.name === name) return true;
-          }
-          for (const member of this.inheritedMembers(typeDecl.id, new Set())) {
-            if (member.name === name) return true;
-          }
         }
       }
     }

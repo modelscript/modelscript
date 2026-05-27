@@ -73,7 +73,6 @@
   },
   "nx": {
     "implicitDependencies": [
-      "!@modelscript/modelica",
       "!@modelscript/compiler"
     ]
   }

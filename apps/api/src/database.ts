@@ -113,6 +113,7 @@ export class LibraryDatabase {
       "post_topics",
       "packages",
       "package_versions",
+      "classes",
       "dist_tags",
       "artifacts",
       "post_syndications",
@@ -2251,6 +2252,13 @@ export class LibraryDatabase {
         publishedBy,
       );
     return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * Update the manifest of a package version.
+   */
+  updatePackageVersionManifest(versionId: number, manifest: string): void {
+    this.#db.prepare(`UPDATE package_versions SET manifest = ? WHERE id = ?`).run(manifest, versionId);
   }
 
   /**

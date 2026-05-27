@@ -24,6 +24,7 @@ export class JobQueue {
   readonly #queue: { key: string; fn: JobFn }[] = [];
   readonly #status = new Map<string, JobInfo>();
   #running = false;
+  #runningChildProcess: ChildProcess | null = null;
 
   /** Enqueue an in-process async job. */
   enqueue(key: string, fn: JobFn): void {
@@ -53,6 +54,18 @@ export class JobQueue {
     return this.#status.get(key) ?? null;
   }
 
+  /** Clear all jobs from the queue and reset status map (useful for dev resets). */
+  clear(): void {
+    this.#queue.length = 0;
+    this.#status.clear();
+
+    if (this.#runningChildProcess) {
+      console.log("[JobQueue] Killing currently running child process...");
+      this.#runningChildProcess.kill("SIGTERM");
+      this.#runningChildProcess = null;
+    }
+  }
+
   /** Update progress info for a running job. */
   updateProgress(key: string, classesProcessed: number): void {
     const current = this.#status.get(key);
@@ -63,12 +76,17 @@ export class JobQueue {
 
   async #runChildProcess(key: string, scriptPath: string, data: Record<string, unknown>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      const isDev = process.env["NODE_ENV"] !== "production";
+      const maxSpace = isDev ? "4096" : "16384";
+
       const child: ChildProcess = fork(scriptPath, {
         stdio: ["pipe", "inherit", "inherit", "ipc"],
-        execArgv: [...process.execArgv, "--max-old-space-size=16384", "--expose-gc"],
+        execArgv: [...process.execArgv, `--max-old-space-size=${maxSpace}`, "--expose-gc"],
         // Clear NODE_OPTIONS so the parent's --max-old-space-size=8192 doesn't override ours
         env: { ...process.env, NODE_OPTIONS: "" },
       });
+
+      this.#runningChildProcess = child;
 
       child.on("message", (msg: { type: string; classesProcessed?: number }) => {
         if (msg.type === "progress" && msg.classesProcessed !== undefined) {
@@ -83,6 +101,7 @@ export class JobQueue {
       });
 
       child.on("exit", (code, signal) => {
+        this.#runningChildProcess = null;
         if (code === 0) {
           resolve();
         } else if (signal) {

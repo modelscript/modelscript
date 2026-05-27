@@ -21,10 +21,10 @@ const ShellContainer = styled.div`
   padding-top: var(--dev-header-height, 0px);
 `;
 
-const ContentWrapper = styled.div`
+const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean }>`
   display: flex;
   width: 100%;
-  max-width: 1290px;
+  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : "1290px")};
 `;
 
 const SidebarWrapper = styled.div`
@@ -40,10 +40,10 @@ const RightPanelWrapper = styled.div`
   justify-content: flex-start;
 `;
 
-const MainColumn = styled.main<{ $isWideLayout?: boolean }>`
-  flex: ${(props) => (props.$isWideLayout ? "1" : "0 1 600px")};
+const MainColumn = styled.main<{ $isWideLayout?: boolean; $isFullScreenLayout?: boolean }>`
+  flex: ${(props) => (props.$isWideLayout || props.$isFullScreenLayout ? "1" : "0 1 600px")};
   width: 100%;
-  max-width: ${(props) => (props.$isWideLayout ? "1050px" : "600px")};
+  max-width: ${(props) => (props.$isFullScreenLayout ? "100%" : props.$isWideLayout ? "1050px" : "600px")};
   min-width: 0;
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
@@ -146,9 +146,11 @@ const AppShell: React.FC = () => {
 
   const isDev = import.meta.env.DEV;
 
-  // Make wide layout for /settings/* and /repos/* (but NOT the main /repos index)
-  const isWideLayout =
-    location.pathname.startsWith("/settings") ||
+  // Make wide layout for /settings/*
+  const isWideLayout = location.pathname.startsWith("/settings");
+
+  // Make full screen layout for /packages/* and /repos/*
+  const isFullScreenLayout =
     (location.pathname.startsWith("/packages/") && location.pathname !== "/packages/") ||
     (location.pathname.startsWith("/repos") && location.pathname !== "/repos" && location.pathname !== "/repos/");
 
@@ -276,18 +278,19 @@ const AppShell: React.FC = () => {
           </div>
         )}
         <ShellContainer>
-          <ContentWrapper>
+          <ContentWrapper $isFullScreenLayout={isFullScreenLayout}>
             <SidebarWrapper>
               <Sidebar onPostClick={() => setIsComposeOpen(true)} />
             </SidebarWrapper>
-            <MainColumn $isWideLayout={isWideLayout}>
+            <MainColumn $isWideLayout={isWideLayout} $isFullScreenLayout={isFullScreenLayout}>
               <Outlet context={{ openCompose: () => setIsComposeOpen(true) }} />
             </MainColumn>
-            {!isWideLayout && (
+            {!isWideLayout && !isFullScreenLayout && (
               <RightPanelWrapper>
                 <RightPanel />
               </RightPanelWrapper>
             )}
+            {isFullScreenLayout && <div style={{ flex: 1, maxWidth: "max(0px, calc(340px - 275px))" }} />}
           </ContentWrapper>
         </ShellContainer>
 

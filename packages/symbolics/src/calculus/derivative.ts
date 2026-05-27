@@ -6,7 +6,7 @@
  */
 
 import { ArenaDAEBuilder, differentiateArenaExpr, simplifyArenaExpr } from "@modelscript/compiler";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
   materializeExpression,

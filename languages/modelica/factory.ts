@@ -154,8 +154,15 @@ const BUILTIN_MODELICA_NAMES = new Set([
   "abs",
   "sign",
   "der",
+  "pre",
+  "edge",
+  "change",
+  "reinit",
   "initial",
   "terminal",
+  "sample",
+  "noEvent",
+  "smooth",
   "delay",
   "cardinality",
   "homotopy",
@@ -194,6 +201,14 @@ const BUILTIN_MODELICA_NAMES = new Set([
   "Connections",
   "Subtask",
   "super",
+  // Modelica Script (.mos) built-in functions
+  "loadFile",
+  "loadString",
+  "loadModel",
+  "simulate",
+  "calibrate",
+  "getClassNames",
+  "print",
 ]);
 
 export function createModelicaScopeResolver(index: any): ScopeResolver {

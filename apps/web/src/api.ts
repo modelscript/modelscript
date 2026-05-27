@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
 
 const api = axios.create({
@@ -65,23 +65,26 @@ export const getLibraries = async (q?: string) => {
     if (!import.meta.env.DEV) throw err;
   }
 
-  if (import.meta.env.DEV) {
-    try {
-      const res = await axios.get("https://registry.npmjs.org/-/v1/search", {
-        params: { text: "modelica " + (q || ""), size: 10 },
-      });
-      return res.data.objects.map((obj: any) => ({
-        name: obj.package.name,
-        versions: [obj.package.version],
-        latestVersion: obj.package.version,
-        description: obj.package.description,
-      }));
-    } catch (err) {
-      return [];
-    }
-  }
+  // Fallback to local standard libraries in development
+  const stdLibs: LibraryListItem[] = [
+    {
+      name: "Modelica",
+      versions: ["4.1.0"],
+      latestVersion: "4.1.0",
+      description: "Modelica Standard Library",
+    },
+    {
+      name: "SysML",
+      versions: ["2026.3.0"],
+      latestVersion: "2026.3.0",
+      description: "SysML v2 Standard Library",
+    },
+  ];
 
-  return [];
+  if (q) {
+    return stdLibs.filter((lib) => lib.name.toLowerCase().includes(q.toLowerCase()));
+  }
+  return stdLibs;
 };
 
 export const getLibraryVersions = async (name: string) => {
@@ -98,7 +101,7 @@ export const getClasses = async (name: string, version: string, kind?: string, q
   const { data } = await api.get<{ classes: ClassSummary[] }>(`/libraries/${name}/${version}/classes`, {
     params: { kind, q },
   });
-  return data.classes;
+  return data?.classes || [];
 };
 
 export const getClassDetail = async (name: string, version: string, className: string) => {
@@ -211,6 +214,9 @@ export interface NpmSearchResult {
 export const getPackument = async (name: string): Promise<NpmPackument | null> => {
   try {
     const { data } = await api.get<NpmPackument>(`/npm/${encodeURIComponent(name)}`);
+    if (typeof data !== "object" || !data || !data.versions) {
+      return null;
+    }
     return data;
   } catch {
     return null;
@@ -276,7 +282,7 @@ export const getArtifactViewers = async (name: string, version: string): Promise
     const { data } = await axios.get<{ artifacts: ArtifactViewerInfo[] }>(
       `/api/v1/packages/${encodeURIComponent(name)}/${version}/artifacts`,
     );
-    return data.artifacts;
+    return data?.artifacts || [];
   } catch {
     return [];
   }

@@ -2,6 +2,8 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext", "DOM"],

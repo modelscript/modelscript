@@ -8,6 +8,7 @@ interface InvertedSvgProps {
   width?: number | string;
   height?: number | string;
   style?: React.CSSProperties;
+  fallback?: React.ReactNode;
   onLoad?: () => void;
   onError?: (e: unknown) => void;
 }
@@ -30,7 +31,7 @@ function reducer(_state: State, action: Action): State {
  * Renders an SVG inline with Helmlab-based perceptual color inversion
  * for dark mode. Falls back to hiding on error.
  */
-const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, style, onLoad, onError }) => {
+const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, style, fallback, onLoad, onError }) => {
   const { theme } = useTheme();
   const [state, dispatch] = useReducer(reducer, { svgContent: null, error: false });
 
@@ -68,7 +69,7 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
   }, [src]);
 
   if (state.error || state.svgContent === null) {
-    return null;
+    return fallback ? <>{fallback}</> : null;
   }
 
   const isDark = theme === "dark";

@@ -40,8 +40,13 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
 
     let metadataBatch: ClassMetadata[] = [];
     let classCount = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let rootMetadata: any = null;
 
     const context = await processLibrary(libraryPath, async (_className, metadata, svgs) => {
+      if (metadata.className === name) {
+        rootMetadata = metadata;
+      }
       storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
 
       metadataBatch.push(metadata);
@@ -73,12 +78,46 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
     const { id: packageId } = database.getOrCreatePackage(name);
     const versionRow = database.getPackageVersion(packageId, version);
     let versionId: number;
+    let manifestStr = "{}";
     if (versionRow) {
       versionId = versionRow.id;
+      manifestStr = versionRow.manifest;
     } else {
       const manifestPath = path.join(libraryPath, "package.json");
-      const manifestStr = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : "{}";
+      manifestStr = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, "utf-8") : "{}";
       versionId = database.storePackageVersion(packageId, version, "", "", null, 0, manifestStr, null, null);
+    }
+
+    // --- Update package metadata and dependencies from annotations ---
+    const rootDependencies: Record<string, string> = {};
+    const packageMoPath = path.join(libraryPath, "package.mo");
+    if (fs.existsSync(packageMoPath)) {
+      const content = fs.readFileSync(packageMoPath, "utf-8");
+      const depRegex = /([a-zA-Z0-9_]+)\s*\(\s*version\s*=\s*"([^"]+)"/g;
+      let match;
+      while ((match = depRegex.exec(content)) !== null) {
+        if (match[1] && match[2] && match[1] !== "conversion" && match[1] !== "from") {
+          rootDependencies[match[1]] = match[2];
+        }
+      }
+    }
+
+    if (rootMetadata) {
+      database.updatePackageMeta(packageId, {
+        description: rootMetadata.description,
+        readme: rootMetadata.documentation,
+      });
+
+      try {
+        const manifestObj = JSON.parse(manifestStr);
+        if (Object.keys(rootDependencies).length > 0) {
+          manifestObj.dependencies = { ...manifestObj.dependencies, ...rootDependencies };
+        }
+        database.updatePackageVersionManifest(versionId, JSON.stringify(manifestObj));
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (_e) {
+        console.warn(`[publish] Failed to update manifest for ${name}@${version}`);
+      }
     }
 
     const ignorePath = path.join(libraryPath, ".modelscriptignore");

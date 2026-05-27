@@ -134,7 +134,7 @@ export async function processLibrary(
     console.log(`[publish] Memory after GC: ${Math.round(memGC.heapUsed / 1024 / 1024)}MB heap`);
   }
 
-  const HEAP_LIMIT = 4 * 1024 * 1024 * 1024; // 4 GB — aggressive to leave headroom
+  const HEAP_LIMIT = 8 * 1024 * 1024 * 1024; // 8 GB — aggressive to leave headroom
   let classesProcessed = 0;
 
   function isMemoryTight(): boolean {
@@ -150,6 +150,7 @@ export async function processLibrary(
   // Process classes recursively
   async function processElement(element: unknown) {
     if (!(element instanceof ModelicaClassInstance)) return;
+    if (element.isComponentInstance || (element as { kind?: string }).kind === "Extends") return;
 
     const className = element.compositeName;
     if (className) {
@@ -199,15 +200,17 @@ export async function processLibrary(
         // (declaredElements is a plain array, safe to check without triggering lazy resolution)
         let iconSvg: string | null = null;
         let diagramSvg: string | null = null;
-        const skipRendering =
-          memoryTight || classKind.toString() === "package" || (element.declaredElements?.length ?? 0) > 200;
+        const skipRendering = memoryTight || (element.declaredElements?.length ?? 0) > 200;
 
         if (!skipRendering) {
           try {
             const icon = renderIcon(element);
             if (icon) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              iconSvg = (xmlFormat as any)(icon.svg());
+              const svgStr: string = (xmlFormat as any)(icon.svg());
+              if (hasVisualContent(svgStr)) {
+                iconSvg = svgStr;
+              }
             }
           } catch {
             // Skip classes that fail to render

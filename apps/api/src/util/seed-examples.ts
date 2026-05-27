@@ -156,7 +156,10 @@ export async function seedPrepackagedLibraries(
       continue; // Already seeded
     }
 
-    const zipPath = path.resolve(`scripts/${pkg.filename}`);
+    // Resolve relative to this file's location to always find the workspace root
+    const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+    const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
+    const zipPath = path.resolve(path.dirname(workerScript), "../../../scripts", pkg.filename);
     if (!fs.existsSync(zipPath)) {
       console.warn(`[Seed] Prepackaged library zip not found: ${zipPath}`);
       continue;
@@ -193,8 +196,6 @@ export async function seedPrepackagedLibraries(
     database.setDistTag(packageId, "latest", pkg.version);
 
     const jobKey = `${pkg.name}@${pkg.version}`;
-    const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-    const workerScript = fileURLToPath(new URL(`../publish-worker${ext}`, import.meta.url));
     jobQueue.enqueueProcess(jobKey, workerScript, { name: pkg.name, version: pkg.version, libraryPath });
   }
 }

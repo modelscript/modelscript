@@ -20,6 +20,23 @@ export function npmRegistryRouter(database: LibraryDatabase): Router {
 
   router.use(async (req: Request, res: Response) => {
     try {
+      // Extract package name from path (e.g. /Modelica or /@org/pkg)
+      // Path usually looks like /pkgname
+      const pkgName = req.path.split("/")[1];
+      if (pkgName) {
+        const decodedName = decodeURIComponent(pkgName);
+        const hostUrl = `${req.protocol}://${req.get("host")}`;
+        const localPackument = database.buildPackument(decodedName, `${hostUrl}/api/v1/npm`);
+        if (localPackument) {
+          return res.json(localPackument);
+        }
+
+        // Do not proxy internal prepackaged libraries to the external registry
+        if (decodedName === "SysML" || decodedName === "Modelica" || decodedName.startsWith("ModelScript")) {
+          return res.status(404).json({ error: "Package not found or still processing" });
+        }
+      }
+
       // GitLab NPM Package Registry Endpoint
       const targetUrl = `${GITLAB_URL}/api/v4/packages/npm${req.path}`;
 
@@ -57,8 +74,9 @@ export function npmRegistryRouter(database: LibraryDatabase): Router {
 
       // Copy response headers
       response.headers.forEach((value, key) => {
-        // Prevent duplicate chunked encoding headers from crashing Express
-        if (key.toLowerCase() !== "transfer-encoding") {
+        const lowerKey = key.toLowerCase();
+        // Prevent duplicate chunked encoding headers and decompression mismatches from crashing Express
+        if (lowerKey !== "transfer-encoding" && lowerKey !== "content-encoding" && lowerKey !== "content-length") {
           res.setHeader(key, value);
         }
       });

@@ -137,18 +137,32 @@ export class SymbolIndexer {
     // Compute changed IDs
     const changedIds = new Set<SymbolId>();
 
+    const invalidateParent = (parentId: SymbolId | null) => {
+      if (parentId !== null) changedIds.add(parentId);
+    };
+
     // New or modified symbols
     for (const [id, entry] of newSymbols) {
       const oldEntry = oldIndex.symbols.get(id);
       if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
         changedIds.add(id);
+
+        if (!oldEntry) {
+          // New symbol: parent's childrenOf changed
+          invalidateParent(entry.parentId);
+        } else if (oldEntry.parentId !== entry.parentId) {
+          // Reparented symbol: both old and new parents' childrenOf changed
+          invalidateParent(oldEntry.parentId);
+          invalidateParent(entry.parentId);
+        }
       }
     }
 
     // Deleted symbols
-    for (const id of oldIndex.symbols.keys()) {
+    for (const [id, oldEntry] of oldIndex.symbols.entries()) {
       if (!newSymbols.has(id)) {
         changedIds.add(id);
+        invalidateParent(oldEntry.parentId);
       }
     }
 

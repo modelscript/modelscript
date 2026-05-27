@@ -1,9 +1,10 @@
 {
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
-    // File Layout
     "rootDir": "./src",
     "outDir": "./dist",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
@@ -11,6 +12,10 @@
     "target": "esnext",
     "lib": ["esnext", "DOM"],
     "types": ["node"],
+    "paths": {
+      "@modelscript/compiler": ["./src/index.ts"],
+      "@modelscript/compiler/*": ["./src/*"]
+    },
 
     "sourceMap": true,
     "declaration": true,

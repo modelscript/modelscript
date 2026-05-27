@@ -17,6 +17,7 @@ import { MqttTreeProvider } from "./mqttTreeProvider";
 import { ModelicaNotebookController } from "./notebookController";
 import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { registerRegistryView } from "./registryTreeProvider";
+import { registerRepl } from "./replTerminal";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
 import { StepViewerPanel } from "./stepViewerPanel";
 
@@ -461,6 +462,12 @@ export async function activate(context: vscode.ExtensionContext) {
   });
   context.subscriptions.push(treeView);
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("modelscript.libraryView.refresh", () => {
+      treeProvider.refresh();
+    }),
+  );
+
   // Register MQTT participant tree view
   const mqttTreeProvider = new MqttTreeProvider(client, context);
   const mqttTreeView = vscode.window.createTreeView("modelscript.mqttTree", {
@@ -496,7 +503,12 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(owl2PropTreeView);
 
   // Register ModelScript package registry tree view (Extensions-bar style)
-  registerRegistryView(context);
+  registerRegistryView(context, client);
+
+  // Register REPL terminal command
+  if (client) {
+    registerRepl(context, client);
+  }
 
   // Register co-simulation panel (sidebar webview)
   const cosimProvider = new CosimViewProvider(context.extensionUri, client);
@@ -1475,20 +1487,8 @@ export async function deactivate(): Promise<void> {
 }
 
 async function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
-  // The server bundle is built into server/dist/ by webpack
   const serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
-
-  // Workaround for importScripts NetworkError: fetch the script and create a Blob worker directly.
-  // This bypasses COEP/CORS mismatches that sometimes occur when the VS Code Extension Host
-  // polyfills `new Worker()` via a Blob worker and importScripts.
-  const response = await fetch(serverMain.toString(true));
-  if (!response.ok) {
-    throw new Error(`Failed to fetch LSP worker: ${response.statusText}`);
-  }
-  const blob = await response.blob();
-  const blobUrl = URL.createObjectURL(blob);
-  const worker = new Worker(blobUrl);
-
+  const worker = new Worker(serverMain.toString(true)); // No { type: "module" } because VS Code's web worker polyfill uses importScripts
   return new LanguageClient("modelscript", "ModelScript Language Server", clientOptions, worker);
 }
 
@@ -2063,6 +2063,13 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
       "calibrate.mos": [
         "// Parameter calibration of a spring-damper system",
         "// True parameters: k=80, c=5 — initial guesses: k=50, c=2",
+        "//",
+        "// METHOD 1: Script-based calibration (this file)",
+        "//   Right-click → Run Script, or press the ▶ button.",
+        "//",
+        "// METHOD 2: Interactive UI panel (recommended)",
+        '//   Open SpringDamper.mo, then Ctrl+Shift+P → "ModelScript: Open Calibration Dashboard".',
+        "//   The dashboard provides live convergence plots and parameter sliders.",
         "",
         'loadFile("SpringDamper.mo");',
         "",
@@ -2073,6 +2080,37 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         '  measurementFile = "measurements.csv",',
         '  method = "lm"',
         ");",
+        "",
+      ].join("\n"),
+      "README.md": [
+        "# Parameter Calibration Example",
+        "",
+        "This example demonstrates **parameter calibration** of a spring-damper system against synthetic measurement data.",
+        "",
+        "## The Model",
+        "",
+        "`SpringDamper.mo` defines a simple mass-spring-damper system with two unknown parameters:",
+        "- `k` — spring stiffness (initial guess: 50 N/m, true value: 80 N/m)",
+        "- `c` — damping coefficient (initial guess: 2 Ns/m, true value: 5 Ns/m)",
+        "",
+        "## Measurement Data",
+        "",
+        "`measurements.csv` contains synthetic displacement measurements generated from the true system with added noise.",
+        "",
+        "## Two Ways to Calibrate",
+        "",
+        "### 1. Script-Based (`calibrate.mos`)",
+        "Right-click `calibrate.mos` → **Run Script**. The `calibrate()` function runs the Levenberg–Marquardt optimizer and prints the optimal parameters to the console.",
+        "",
+        "### 2. Calibration Dashboard (Interactive UI)",
+        "1. Open `SpringDamper.mo`",
+        '2. `Ctrl+Shift+P` → **"ModelScript: Open Calibration Dashboard"**',
+        "3. The dashboard provides:",
+        "   - Live convergence plots",
+        "   - Measurement vs. simulated overlay",
+        "   - One-click export of the optimized parameters as a Modelica `extends` class",
+        "",
+        "Both methods use the same Levenberg–Marquardt / SQP optimizer under the hood.",
         "",
       ].join("\n"),
     },

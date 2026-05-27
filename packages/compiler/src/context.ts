@@ -83,7 +83,7 @@ export class Context {
     if (!resourceId) return null;
     const tree = this._trees.get(resourceId);
     if (!tree) return null;
-    return tree.rootNode.descendantForIndex(startByte, endByte);
+    return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
   }
 
   getParser(extname: string): Parser {

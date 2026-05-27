@@ -110,6 +110,10 @@ async function shutdown(signal: string): Promise<void> {
     clearInterval(app.locals.rssWorkerInterval);
   }
 
+  if (app.locals.jobQueue) {
+    app.locals.jobQueue.clear();
+  }
+
   server.close();
 
   if (recorder) {

@@ -38,7 +38,8 @@ interface PredefinedTypeInfo {
 const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
   {
     name: "Real",
-    description: "Built-in Real type",
+    description:
+      "The built-in `Real` type represents floating-point continuous or discrete variables. It defines properties such as physical unit, limits, and initialization start values.",
     attributes: {
       unit: "",
       displayUnit: "",
@@ -52,7 +53,8 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
   },
   {
     name: "Integer",
-    description: "Built-in Integer type",
+    description:
+      "The built-in `Integer` type represents discrete integer variables. Commonly used for counters, indices, and discrete state machines.",
     attributes: {
       min: -2147483648,
       max: 2147483647,
@@ -62,7 +64,8 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
   },
   {
     name: "Boolean",
-    description: "Built-in Boolean type",
+    description:
+      "The built-in `Boolean` type represents true/false values. Typically used in conditional equations (`if`, `when`) and discrete logic.",
     attributes: {
       start: false,
       fixed: false,
@@ -70,19 +73,22 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
   },
   {
     name: "String",
-    description: "Built-in String type",
+    description:
+      "The built-in `String` type represents character sequences. Used primarily for file paths, messages, and external function interactions.",
     attributes: {
       start: "",
     },
   },
   {
     name: "Clock",
-    description: "Built-in Clock type for synchronous language elements",
+    description:
+      "The built-in `Clock` type is used for synchronous language elements. It defines the triggering time instants for clocked variables.",
     attributes: {},
   },
   {
     name: "StateSelect",
-    description: "Priority for state variable selection",
+    description:
+      "An enumeration type indicating the priority for a continuous-time variable to be selected as a state during simulation.",
     attributes: {
       isEnumeration: true,
       literals: ["never", "avoid", "default", "prefer", "always"],
@@ -90,7 +96,8 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
   },
   {
     name: "AssertionLevel",
-    description: "Level for assert() and terminate()",
+    description:
+      "An enumeration type indicating the severity of an `assert` or `terminate` failure (`error` or `warning`).",
     attributes: {
       isEnumeration: true,
       literals: ["error", "warning"],
@@ -134,6 +141,7 @@ export function injectPredefinedTypes(index: SymbolIndex): SymbolIndex {
         classKind: "type",
         isPredefined: true,
         description: typeInfo.description,
+        completionMembers: Object.keys(typeInfo.attributes).filter((k) => k !== "isEnumeration" && k !== "literals"),
         ...typeInfo.attributes,
       },
     };

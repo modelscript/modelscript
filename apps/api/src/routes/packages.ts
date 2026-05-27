@@ -418,6 +418,13 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       return;
     }
 
+    // Return 404 if the icon has no meaningful visual content
+    const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+    if (!hasVisual) {
+      res.status(404).json({ error: `Icon SVG is empty for "${className}" in ${name}@${version}` });
+      return;
+    }
+
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(svg);
   });

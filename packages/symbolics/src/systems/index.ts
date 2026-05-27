@@ -12,9 +12,9 @@ import {
   Variability,
   VarType,
 } from "@modelscript/compiler";
-import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "@modelscript/modelica/ast";
 import type { JSONValue, Triple, Writer } from "@modelscript/utils";
 import { createHash } from "@modelscript/utils";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator, ModelicaVariability } from "../modelica-types.js";
 
 // ─────────────────────────────────────────────────────────────────────
 // Structural interfaces for types that live in @modelscript/core.

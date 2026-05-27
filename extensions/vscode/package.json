@@ -29,13 +29,15 @@
   "publisher": "modelscript",
   "browser": "./dist/browserClientMain",
   "scripts": {
-    "build": "webpack --mode production --devtool hidden-source-map",
-    "compile": "webpack",
-    "dev": "webpack --watch",
+    "prebuild": "echo 'No prebuild needed'",
+    "build": "tsx build.ts",
+    "clean": "rimraf dist server/dist",
+    "compile": "tsx build.ts",
+    "dev": "npm run watch",
     "lint": "eslint src",
     "package": "npx @vscode/vsce package --no-dependencies",
     "test-web": "npm run compile && vscode-test-web --browserType=chromium --quality stable --commit cfbea10c5ffb233ea9177d34726e6056e89913dc --port 3100 --testRunnerDataDir=$HOME/.vscode-test-web --extensionDevelopmentPath=. ./test-data",
-    "watch": "webpack --watch"
+    "watch": "tsx build.ts --watch"
   },
   "contributes": {
     "breakpoints": [
@@ -243,6 +245,11 @@
         "command": "modelscript.owl2.refreshPropertyHierarchy",
         "title": "ModelScript: Refresh Property Hierarchy",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "modelscript.startRepl",
+        "title": "ModelScript: Start REPL Terminal",
+        "icon": "$(terminal)"
       }
     ],
     "configuration": [
@@ -264,7 +271,7 @@
           "modelscript.cosim.apiUrl": {
             "type": "string",
             "scope": "window",
-            "default": "http://localhost:3000",
+            "default": "http://127.0.0.1:3000",
             "description": "ModelScript API server URL for co-simulation services."
           },
           "modelscript.cosim.mqttWsUrl": {
@@ -276,8 +283,8 @@
           "modelscript.registryUrl": {
             "type": "string",
             "scope": "window",
-            "default": "https://api.modelscript.org",
-            "description": "ModelScript package registry URL. Use http://localhost:3000 for local development."
+            "default": "http://127.0.0.1:3000/api/v1",
+            "description": "ModelScript package registry URL. Use http://127.0.0.1:3000 for local development."
           }
         }
       }
@@ -919,14 +926,12 @@
     "@types/vscode": "^1.100.0",
     "@vscode/test-web": "^0.0.80",
     "@vscode/vsce": "^3.7.1",
-    "copy-webpack-plugin": "^14.0.0",
+    "esbuild": "^0.20.0",
     "eslint": "^9.13.0",
     "path-browserify": "^1.0.1",
-    "ts-loader": "^9.5.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.2",
-    "typescript-eslint": "^8.39.0",
-    "webpack": "^5.90.1",
-    "webpack-cli": "^5.1.4"
+    "typescript-eslint": "^8.39.0"
   },
   "engines": {
     "vscode": "^1.100.0"

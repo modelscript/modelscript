@@ -10,7 +10,12 @@
     "rootDirs": [".", "./.react-router/types"],
     "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./app/*"],
+      "@modelscript/modelica": ["../../languages/modelica/src/index.ts"],
+      "@modelscript/sysml2": ["../../languages/sysml2/src/index.ts"],
+      "@modelscript/owl2": ["../../languages/owl2/src/index.ts"],
+      "@modelscript/step": ["../../languages/step/src/index.ts"],
+      "@modelscript/*": ["../../packages/*/src/index.ts"]
     },
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,

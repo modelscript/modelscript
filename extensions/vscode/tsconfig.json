@@ -8,6 +8,6 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  "include": ["src", "build.ts"],
   "exclude": [".vscode-test-web", "src/webview"]
 }

@@ -764,7 +764,7 @@ export class ArenaQueryFlattener {
     // --- Compute effective modification from stack + inline CST ---
     const outerMod = lookupModInStack(modStack, entry.name);
     const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", entry.id);
-    const effectiveMod = mergeModArgs(outerMod, inlineMod);
+    let effectiveMod = mergeModArgs(outerMod, inlineMod);
 
     // --- Outer/inner resolution ---
     // If the component is declared `outer` (and NOT also `inner`),
@@ -814,7 +814,7 @@ export class ArenaQueryFlattener {
           rule: "arena-flattener",
           severity: "error",
           message: `Cannot resolve type for component '${fullName}'`,
-          range: null,
+          range: { startByte: entry.startByte, endByte: entry.endByte },
         });
       }
       return;
@@ -827,10 +827,13 @@ export class ArenaQueryFlattener {
         rule: "arena-flattener",
         severity: "error",
         message: `Type resolved to invalid symbol for '${fullName}'`,
-        range: null,
+        range: { startByte: classEntry.startByte, endByte: classEntry.endByte },
       });
       return;
     }
+
+    console.error(`[Flattener] ${fullName} classInstanceId=${classInstanceId} classEntry=${classEntry.name}`);
+    console.error(`[Flattener] classMeta: ${JSON.stringify(classEntry.metadata)}`);
 
     // Resolve type aliases (ShortClassSpecifiers) recursively
     let resolvedClassEntry = classEntry;
@@ -876,13 +879,62 @@ export class ArenaQueryFlattener {
     }
 
     // --- Predefined scalar types ---
-    if (classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName)) {
-      this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
+    let isPredefined = classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName);
+    let primitiveTypeName = resolvedTypeName;
+
+    if (!isPredefined) {
+      // Walk extends chain to check if this is a derived type like `type MyReal extends Real;`
+      let currentClassId: SymbolId | null = resolvedClassInstanceId;
+      const visitedBase = new Set<SymbolId>();
+      let typeMods: ModelicaModArgs | null = null;
+
+      while (currentClassId && !visitedBase.has(currentClassId)) {
+        visitedBase.add(currentClassId);
+
+        // Class-level modifications (if any, though rare for pure types)
+        const classInlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", currentClassId);
+        typeMods = mergeModArgs(typeMods, classInlineMod);
+
+        const children = this.db.childrenOf(currentClassId);
+        const extendsClause = children.find((c) => c.kind === "Extends");
+        if (!extendsClause) break;
+
+        // Merge modifications from the extends clause!
+        const extendsMod = this.db.query<ModelicaModArgs | null>("extendsModificationParsed", extendsClause.id);
+        typeMods = mergeModArgs(typeMods, extendsMod);
+
+        const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", extendsClause.id);
+        if (!baseClass) break;
+
+        if ((baseClass.metadata as Record<string, unknown>)?.isPredefined || isPredefinedScalar(baseClass.name)) {
+          isPredefined = true;
+          primitiveTypeName = baseClass.name;
+          break;
+        }
+        currentClassId = baseClass.id;
+      }
+
+      if (isPredefined && typeMods) {
+        effectiveMod = mergeModArgs(effectiveMod, typeMods);
+      }
+    }
+
+    if (isPredefined) {
+      this.emitVariable(fullName, primitiveTypeName, entry, dae, effectiveMod);
       return;
     }
 
     // --- Enumeration types ---
-    if (classMeta?.classPrefixes === "enumeration") {
+    let isEnum = classMeta?.classPrefixes === "enumeration" || !!classMeta?.enumeration;
+    if (!isEnum && classInstanceId !== null) {
+      const classCst = this.db.cstNode(classInstanceId) as any;
+      const spec = classCst?.childForFieldName?.("classSpecifier");
+      if (spec?.type === "ShortClassSpecifier" && spec.childForFieldName?.("enumeration")) {
+        isEnum = true;
+      }
+    }
+
+    if (isEnum) {
       this.emitEnumerationVariable(fullName, resolvedTypeName, entry, classInstanceId, dae, effectiveMod);
       return;
     }
@@ -1159,6 +1211,29 @@ export class ArenaQueryFlattener {
       dae.setVarAttrExprId(varIdx, "start", startExprId);
     }
 
+    // Set other scalar attributes
+    const parseAttr = (attrName: string) => {
+      const val = this.resolveModAttribute(mod, attrName, typeName, dae, componentEntry);
+      if (val !== undefined && val !== null) {
+        if (typeof val === "number") {
+          const exprId = varType === VarType.Integer ? dae.addIntLiteral(Math.round(val)) : dae.addRealLiteral(val);
+          dae.setVarAttrExprId(varIdx, attrName, exprId);
+        } else if (typeof val === "string") {
+          const exprId = dae.addStringLiteral(val);
+          dae.setVarAttrExprId(varIdx, attrName, exprId);
+        } else if (typeof val === "boolean") {
+          const exprId = dae.addBoolLiteral(val);
+          dae.setVarAttrExprId(varIdx, attrName, exprId);
+        }
+      }
+    };
+    parseAttr("min");
+    parseAttr("max");
+    parseAttr("nominal");
+    parseAttr("unit");
+    parseAttr("displayUnit");
+    parseAttr("quantity");
+
     // Set variable description string from CST description field
     const meta = componentEntry.metadata as Record<string, unknown>;
     const descNode = meta?.description as { descriptionString?: string } | undefined;
@@ -1273,20 +1348,34 @@ export class ArenaQueryFlattener {
 
     // Attach enumeration literal metadata
     const enumChildren = this.db.childrenOf(classInstanceId);
-    const literals: { ordinal: number; name: string }[] = [];
+    const literals: { ordinal: number; stringValue: string }[] = [];
     let ordinal = 1;
     for (const child of enumChildren) {
-      if (child.kind === "EnumerationLiteral") {
-        literals.push({ ordinal: ordinal++, name: child.name });
+      if (child.kind === "EnumerationLiteral" || child.kind === "EnumLiteral") {
+        literals.push({ ordinal: ordinal++, stringValue: child.name });
       }
     }
+
+    // Fallback: parse from CST if children list is empty
+    if (literals.length === 0) {
+      const classCst = this.db.cstNode(classInstanceId) as any;
+      const spec = classCst?.childForFieldName?.("classSpecifier");
+      const enumNode = spec?.childForFieldName?.("enumeration") || classCst?.childForFieldName?.("enumeration");
+      const list = enumNode?.childForFieldName?.("enumList");
+      if (list) {
+        for (const child of list.children) {
+          if (child.type === "enum_literal" || child.type === "EnumLiteral") {
+            // tree-sitter name is usually `identifier` inside `enum_literal`
+            const ident = child.childForFieldName?.("identifier") || child;
+            literals.push({ ordinal: ordinal++, stringValue: ident.text });
+          }
+        }
+      }
+    }
+
     if (literals.length > 0) {
       dae.setVarEnumerationLiterals(varIdx, literals);
     }
-
-    // Set enumeration type name for the printer
-    dae.setVarDescription(varIdx, `enumeration(${literals.map((l) => l.name).join(", ")})`);
-
     // Handle binding expression (same logic as emitVariable)
     if (mod?.bindingExpression) {
       if (mod.bindingExpression.kind === "literal") {
@@ -1710,31 +1799,39 @@ export class ArenaQueryFlattener {
     if (mod) {
       const arg = mod.args.find((a) => a.name === attrName);
       if (arg?.value) {
-        if (arg.value.kind === "literal") return arg.value.value;
+        if (arg.value.kind === "literal") {
+          return arg.value.value;
+        }
         if (arg.value.kind === "expression") {
           const bytes = arg.value.cstBytes;
-          // Use the text property directly if available (avoids CST tree lookup)
           if (arg.value.text) {
             const numVal = Number(arg.value.text);
-            if (!isNaN(numVal)) return numVal;
+            if (!isNaN(numVal)) {
+              return numVal;
+            }
             if (arg.value.text === "true") return true;
             if (arg.value.text === "false") return false;
           }
           const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], contextEntry);
           if (cstNode) {
             const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-            const visitor = this.createExprVisitor(dae, undefined, undefined, contextEntry.parentId ?? contextEntry.id);
+            const visitor = this.createExprVisitor(
+              dae,
+              undefined,
+              undefined,
+              contextEntry?.parentId ?? contextEntry?.id,
+            );
             const exprId = visitor.visit(astNode);
             if (exprId !== undefined) {
-              return evaluateArenaExpression(dae, exprId);
+              const res = evaluateArenaExpression(dae, exprId);
+              return res;
             }
           }
         }
       }
     }
 
-    // Fall back to type defaults
-    return this.getTypeDefault(typeName, attrName);
+    return undefined;
   }
 
   private getTypeDefault(typeName: string, attrName: string): unknown {

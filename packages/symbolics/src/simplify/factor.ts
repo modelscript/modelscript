@@ -18,8 +18,8 @@ export {
 
 // ── Legacy API ──
 
-import { ModelicaBinaryOperator } from "@modelscript/modelica/ast";
 import { add, mul, sub, ZERO } from "../calculus/derivative.js";
+import { ModelicaBinaryOperator } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import { ModelicaBinaryExpression, ModelicaNameExpression, ModelicaRealLiteral } from "../systems/index.js";
 import { egraphSimplify } from "./egraph.js";

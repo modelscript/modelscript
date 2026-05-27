@@ -12,13 +12,11 @@ export default defineConfig(({ isSsrBuild }) => {
       "process.browser": true,
       "process.versions": {},
     },
-    esbuild: {
-      keepNames: true,
-    },
+
     plugins: [
       tailwindcss(),
       reactRouter(),
-      tsconfigPaths(),
+      tsconfigPaths({ root: import.meta.dirname }),
       !isSsrBuild &&
         nodePolyfills({
           include: ["buffer", "fs", "path", "process"],
@@ -35,12 +33,8 @@ export default defineConfig(({ isSsrBuild }) => {
               dest: "lsp/server/dist",
             },
             {
-              src: "../../packages/lsp/dist/browserServerMain.js.map",
-              dest: "lsp/server/dist",
-            },
-            {
-              src: "../../packages/lsp/dist/indexerWorker.js",
-              dest: "lsp/server/dist",
+              src: "../../packages/lsp/dist/workers/indexer.worker.js",
+              dest: "lsp/server/dist/workers",
             },
             {
               src: "../../node_modules/web-tree-sitter/web-tree-sitter.wasm",
@@ -78,18 +72,8 @@ export default defineConfig(({ isSsrBuild }) => {
         }),
     ],
     build: {
-      rollupOptions: {
-        output: isSsrBuild
-          ? {}
-          : {
-              manualChunks: {
-                monaco: ["monaco-editor"],
-                x6: ["@antv/x6", "@antv/layout"],
-                primer: ["@primer/react"],
-                recharts: ["recharts"],
-              },
-            },
-      },
+      target: "esnext",
+      minify: false,
     },
     resolve: {
       alias: {
@@ -104,7 +88,7 @@ export default defineConfig(({ isSsrBuild }) => {
       strictPort: true,
       proxy: {
         "/api/v1": {
-          target: "http://localhost:3000",
+          target: "http://127.0.0.1:3000",
           changeOrigin: true,
         },
       },

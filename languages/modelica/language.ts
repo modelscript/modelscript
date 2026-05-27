@@ -56,10 +56,12 @@ function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
       const eachNode = n.children.find((c: any) => c.type === "each");
 
       const name = nameNode ? nameNode.text : "";
+      const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
       const nested = parseModArgsFromCst(modNode, scopeId);
 
       args.push({
         name,
+        nameRange,
         each: !!eachNode,
         final: !!finalNode,
         isRedeclaration: false,
@@ -78,11 +80,13 @@ function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
         const modNode = decl?.childForFieldName("modification");
 
         const name = ident ? ident.text : "";
+        const nameRange = ident ? ([ident.startIndex, ident.endIndex] as const) : undefined;
         const typeName = typeSpec ? typeSpec.text : "";
         const nested = parseModArgsFromCst(modNode, scopeId);
 
         args.push({
           name,
+          nameRange,
           each: false,
           final: false,
           isRedeclaration: true,
@@ -1019,6 +1023,7 @@ export default language({
               replaceable: self.replaceable,
               encapsulated: self.encapsulated,
               annotationClause: (self.classSpecifier as any).annotationClause,
+              endIdentifier: (self as any).classSpecifier.endIdentifier,
             },
           };
         },
@@ -1162,6 +1167,136 @@ export default language({
               kind === "expandable connector" ||
               (typeof kind === "string" && kind.includes("connector"))
             );
+          },
+          /**
+           * Check if this class is an operator record type.
+           */
+          isOperatorRecord: (db: QueryDB, self: SymbolEntry) => {
+            const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
+            return kind === "operator record";
+          },
+          /**
+           * For an `operator record` class, collect all operator functions.
+           *
+           * Returns a Map from operator name (e.g. "'+'", "'-'", "'*'") to an
+           * array of function overloads. Each overload describes input types
+           * and the qualified function name for call emission.
+           *
+           * Structure of each operator class:
+           *   operator record C
+           *     operator '+'
+           *       function self ... end self;
+           *       function rightInt ... end rightInt;
+           *     end '+';
+           *     operator function '+' ... end '+';  // shorthand form
+           *   end C;
+           */
+          operatorFunctions: (db: QueryDB, self: SymbolEntry) => {
+            const kind = (self.metadata as Record<string, unknown>)?.classPrefixes;
+            if (kind !== "operator record") return null;
+
+            type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
+            const recordName = self.name;
+
+            interface OperatorOverload {
+              qualifiedName: string;
+              inputTypes: string[];
+              outputType: string;
+              inputCount: number;
+            }
+
+            const result = new Map<string, OperatorOverload[]>();
+
+            const children = db.childrenOf(self.id);
+            console.error(`[debug] operatorFunctions for ${self.name}, children count: ${children.length}`);
+
+            // Walk children of the operator record
+            for (const child of children) {
+              if (child.kind !== "Class") continue;
+              const childMeta = child.metadata as Record<string, unknown>;
+              const childPrefix = childMeta?.classPrefixes as string | undefined;
+
+              console.error(`[debug] child: ${child.name}, prefix: ${childPrefix}`);
+
+              // Case 1: `operator function '+'` (shorthand — the class IS the function)
+              if (childPrefix === "operator function") {
+                const opName = child.name; // e.g., "'+'"
+                const inputTypes: string[] = [];
+                let outputType = "";
+                let inputCount = 0;
+
+                // Extract input/output types from function children
+                for (const param of db.childrenOf(child.id)) {
+                  if (param.kind !== "Component") continue;
+                  const pMeta = param.metadata as Record<string, unknown>;
+                  const causality = pMeta?.causality as string | undefined;
+                  const typeSpec = pMeta?.typeSpecifier as string | undefined;
+                  if (causality === "input") {
+                    inputTypes.push(typeSpec ?? "Real");
+                    inputCount++;
+                  } else if (causality === "output") {
+                    outputType = typeSpec ?? "Real";
+                  }
+                }
+
+                const overloads = result.get(opName) ?? [];
+                overloads.push({
+                  qualifiedName: `${recordName}.${opName}`,
+                  inputTypes,
+                  outputType,
+                  inputCount,
+                });
+                result.set(opName, overloads);
+                continue;
+              }
+
+              // Case 2: `operator '+'` containing function children
+              if (childPrefix === "operator") {
+                const opName = child.name; // e.g., "'+'"
+
+                const funcs = db.childrenOf(child.id);
+                console.error(`[debug] found operator ${opName}, funcs count: ${funcs.length}`);
+
+                for (const func of funcs) {
+                  console.error(`[debug]   func: ${func.name}, kind: ${func.kind}`);
+                  if (func.kind !== "Class") continue;
+                  const funcMeta = func.metadata as Record<string, unknown>;
+                  const funcPrefix = funcMeta?.classPrefixes as string | undefined;
+                  console.error(`[debug]   funcPrefix: ${funcPrefix}`);
+                  if (funcPrefix !== "function" && funcPrefix !== "operator function") continue;
+
+                  const inputTypes: string[] = [];
+                  let outputType = "";
+                  let inputCount = 0;
+
+                  for (const param of db.childrenOf(func.id)) {
+                    if (param.kind !== "Component") continue;
+                    const pMeta = param.metadata as Record<string, unknown>;
+                    const causality = pMeta?.causality as string | undefined;
+                    const typeSpec = pMeta?.typeSpecifier as string | undefined;
+                    if (causality === "input") {
+                      inputTypes.push(typeSpec ?? "Real");
+                      inputCount++;
+                    } else if (causality === "output") {
+                      outputType = typeSpec ?? "Real";
+                    }
+                  }
+
+                  const overloads = result.get(opName) ?? [];
+                  overloads.push({
+                    qualifiedName: `${recordName}.${opName}.${func.name}`,
+                    inputTypes,
+                    outputType,
+                    inputCount,
+                  });
+                  result.set(opName, overloads);
+                }
+                continue;
+              }
+            }
+
+            console.error(`[debug] returning result size: ${result.size}`);
+            return result.size > 0 ? result : null;
           },
           /**
            * Resolve a modification argument by name from the class's
@@ -1592,14 +1727,27 @@ export default language({
               const endIdNode = classSpec.childForFieldName("endIdentifier");
               const endId = endIdNode?.text;
               if (startId && endId && startId !== endId) {
-                // Narrow to the endIdentifier token
-                if (endIdNode && typeof endIdNode.startIndex === "number") {
-                  return error(`Class end identifier '${endId}' does not match class name '${startId}'`, {
-                    startByte: endIdNode.startIndex,
-                    endByte: endIdNode.endIndex,
-                  });
+                const errors = [];
+                const startIdNode = classSpec.childForFieldName("identifier");
+                if (startIdNode && typeof startIdNode.startIndex === "number") {
+                  errors.push(
+                    error(`Class end identifier '${endId}' does not match class name '${startId}'`, {
+                      startByte: startIdNode.startIndex,
+                      endByte: startIdNode.endIndex,
+                    }),
+                  );
                 }
-                return error(`Class end identifier '${endId}' does not match class name '${startId}'`);
+                if (endIdNode && typeof endIdNode.startIndex === "number") {
+                  errors.push(
+                    error(`Class end identifier '${endId}' does not match class name '${startId}'`, {
+                      startByte: endIdNode.startIndex,
+                      endByte: endIdNode.endIndex,
+                    }),
+                  );
+                }
+                return errors.length > 0
+                  ? errors
+                  : error(`Class end identifier '${endId}' does not match class name '${startId}'`);
               }
             }
             return null;
@@ -1622,13 +1770,26 @@ export default language({
             if (duplicates.size > 0) {
               const results = [];
               for (const dup of duplicates) {
-                // Narrow to the duplicate element's byte range
+                // Narrow to the duplicate element's identifier
                 const dupEl = elements.find((e) => e.name === dup && names.has(e.name));
                 if (dupEl) {
+                  // Try to find the identifier CST node for a narrower range
+                  let startByte = dupEl.startByte;
+                  let endByte = dupEl.endByte;
+                  const cst = db.cstNode(dupEl.id) as any;
+                  if (cst) {
+                    const identNode =
+                      cst.childForFieldName?.("declaration")?.childForFieldName?.("identifier") ??
+                      cst.childForFieldName?.("classSpecifier")?.childForFieldName?.("identifier");
+                    if (identNode && typeof identNode.startIndex === "number") {
+                      startByte = identNode.startIndex;
+                      endByte = identNode.endIndex;
+                    }
+                  }
                   results.push(
                     error(`Duplicate element '${dup}' in class '${self.name}'`, {
-                      startByte: dupEl.startByte,
-                      endByte: dupEl.endByte,
+                      startByte,
+                      endByte,
                     }),
                   );
                 } else {
@@ -1650,11 +1811,17 @@ export default language({
                 const causality = db.query<string | null>("causality", el.id);
                 const isProtected = db.query<boolean>("isProtected", el.id);
                 if (!causality && !isProtected) {
-                  // Narrow to the offending component's byte range
+                  const cst = db.cstNode(el.id) as any;
+                  let identNode = cst;
+                  if (cst?.type === "ComponentDeclaration") {
+                    const dNode = cst.childForFieldName("declaration");
+                    if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                  }
+                  // Narrow to the offending component's identifier range
                   results.push(
                     error(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
-                      startByte: el.startByte,
-                      endByte: el.endByte,
+                      startByte: identNode?.startIndex ?? el.startByte,
+                      endByte: identNode?.endIndex ?? el.endByte,
                     }),
                   );
                 }
@@ -1684,11 +1851,17 @@ export default language({
             }
 
             if (algoNode) {
-              // Narrow to the AlgorithmSection node (the `algorithm` keyword + body)
-              if (typeof algoNode.startIndex === "number") {
+              // Narrow to the first statement inside the algorithm section, matching OMC
+              let targetNode = algoNode;
+              for (const c of algoNode.children || []) {
+                if (c.type === "algorithm" || c.type === "initial" || c.isNamed === false) continue;
+                targetNode = c;
+                break;
+              }
+              if (typeof targetNode.startIndex === "number") {
                 return error(`Function '${self.name}' cannot have both an external clause and an algorithm section`, {
-                  startByte: algoNode.startIndex,
-                  endByte: algoNode.endIndex,
+                  startByte: targetNode.startIndex,
+                  endByte: targetNode.endIndex,
                 });
               }
               return error(`Function '${self.name}' cannot have both an external clause and an algorithm section`, {
@@ -1718,11 +1891,20 @@ export default language({
                       prefix === "expandable connector"
                     ) {
                       const typeName = db.query<string | null>("typeSpecifier", el.id) ?? "?";
-                      // Narrow to the offending component's byte range
+                      const cst = db.cstNode(el.id) as any;
+                      let identNode = cst;
+                      if (cst?.type === "ComponentDeclaration") {
+                        const dNode = cst.childForFieldName("declaration");
+                        if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                      }
+                      // Narrow to the offending component's identifier range
                       results.push(
                         error(
                           `Function '${self.name}' cannot have an input/output variable '${el.name}' of type '${typeName}'`,
-                          { startByte: el.startByte, endByte: el.endByte },
+                          {
+                            startByte: identNode?.startIndex ?? el.startByte,
+                            endByte: identNode?.endIndex ?? el.endByte,
+                          },
                         ),
                       );
                     }
@@ -1743,11 +1925,17 @@ export default language({
                 const causality = db.query<string | null>("causality", el.id);
                 const isProtected = db.query<boolean>("isProtected", el.id);
                 if (causality && isProtected) {
-                  // Narrow to the offending component's byte range
+                  const cst = db.cstNode(el.id) as any;
+                  let identNode = cst;
+                  if (cst?.type === "ComponentDeclaration") {
+                    const dNode = cst.childForFieldName("declaration");
+                    if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                  }
+                  // Narrow to the offending component's identifier range
                   results.push(
                     error(`Function input/output variable '${el.name}' cannot be protected`, {
-                      startByte: el.startByte,
-                      endByte: el.endByte,
+                      startByte: identNode?.startIndex ?? el.startByte,
+                      endByte: identNode?.endIndex ?? el.endByte,
                     }),
                   );
                 }
@@ -2206,10 +2394,16 @@ export default language({
               if (!referenced.has(inputName)) {
                 const inputEntry = db.childrenOf(self.id).find((c) => c.name === inputName);
                 if (inputEntry) {
+                  const cst = db.cstNode(inputEntry.id) as any;
+                  let identNode = cst;
+                  if (cst?.type === "ComponentDeclaration") {
+                    const dNode = cst.childForFieldName("declaration");
+                    if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                  }
                   results.push(
                     warning(`Input variable '${inputName}' is never used in the function body`, {
-                      startByte: inputEntry.startByte,
-                      endByte: inputEntry.endByte,
+                      startByte: identNode?.startIndex ?? inputEntry.startByte,
+                      endByte: identNode?.endIndex ?? inputEntry.endByte,
                     }),
                   );
                 }
@@ -2621,10 +2815,16 @@ export default language({
               if (child.kind !== "Component") continue;
               const cMeta = child.metadata as Record<string, unknown>;
               if (cMeta?.variability !== "constant") {
+                const cst = db.cstNode(child.id) as any;
+                let identNode = cst;
+                if (cst?.type === "ComponentDeclaration") {
+                  const dNode = cst.childForFieldName("declaration");
+                  if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                }
                 results.push(
                   error(`Variable '${child.name}' in package '${self.name}' is not constant.`, {
-                    startByte: child.startByte,
-                    endByte: child.endByte,
+                    startByte: identNode?.startIndex ?? child.startByte,
+                    endByte: identNode?.endIndex ?? child.endByte,
                   }),
                 );
               }
@@ -2660,23 +2860,41 @@ export default language({
             if (!noEquations.has(prefix) && !noAlgorithms.has(prefix)) return null;
 
             const results: any[] = [];
+            // Helper: find the first equation/statement inside a section (skip keywords/comments)
+            const firstBodyChild = (sectionNode: any): any => {
+              for (const c of sectionNode.children || []) {
+                if (
+                  c.type === "equation" ||
+                  c.type === "algorithm" ||
+                  c.type === "initial" ||
+                  c.type.startsWith("//") ||
+                  c.type === "comment" ||
+                  c.isNamed === false
+                )
+                  continue;
+                return c;
+              }
+              return null;
+            };
             for (const child of classSpec.children) {
               if (child.type === "EquationSection" && noEquations.has(prefix)) {
-                if (typeof child.startIndex === "number") {
+                const targetNode = firstBodyChild(child) || child;
+                if (typeof targetNode.startIndex === "number") {
                   results.push(
                     error(`Equation sections are not allowed in ${prefix}.`, {
-                      startByte: child.startIndex,
-                      endByte: child.endIndex,
+                      startByte: targetNode.startIndex,
+                      endByte: targetNode.endIndex,
                     }),
                   );
                 }
               }
               if (child.type === "AlgorithmSection" && noAlgorithms.has(prefix)) {
-                if (typeof child.startIndex === "number") {
+                const targetNode = firstBodyChild(child) || child;
+                if (typeof targetNode.startIndex === "number") {
                   results.push(
                     error(`Algorithm sections are not allowed in ${prefix}.`, {
-                      startByte: child.startIndex,
-                      endByte: child.endIndex,
+                      startByte: targetNode.startIndex,
+                      endByte: targetNode.endIndex,
                     }),
                   );
                 }
@@ -2712,10 +2930,16 @@ export default language({
               const typePrefix = typeMeta?.classPrefixes as string | undefined;
               if (typePrefix?.includes("partial")) {
                 if (db.query<boolean>("isReplaceable", child.id)) continue;
+                const cst = db.cstNode(child.id) as any;
+                let identNode = cst;
+                if (cst?.type === "ComponentDeclaration") {
+                  const dNode = cst.childForFieldName("declaration");
+                  if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
+                }
                 results.push(
                   error(`Illegal to instantiate partial class '${typeName}'.`, {
-                    startByte: child.startByte,
-                    endByte: child.endByte,
+                    startByte: identNode?.startIndex ?? child.startByte,
+                    endByte: identNode?.endIndex ?? child.endByte,
                   }),
                 );
               }
@@ -3936,11 +4160,20 @@ export default language({
             const results = [];
             for (const arg of mod.args) {
               if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
-                results.push(
-                  error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
-                    field: "declaration.modification",
-                  }),
-                );
+                if (arg.nameRange) {
+                  results.push(
+                    error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
+                      startByte: arg.nameRange[0],
+                      endByte: arg.nameRange[1],
+                    }),
+                  );
+                } else {
+                  results.push(
+                    error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
+                      field: "declaration.modification",
+                    }),
+                  );
+                }
               }
             }
             return results.length > 0 ? results : null;

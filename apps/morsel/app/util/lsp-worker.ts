@@ -29,7 +29,6 @@ export async function startLsp(): Promise<ProtocolConnection> {
   // The LSP bundle is copied to /lsp/server/dist/browserServerMain.js
   // by viteStaticCopy. We create a plain Worker pointing at that URL.
   worker = new Worker(new URL("/lsp/server/dist/browserServerMain.js", globalThis.location.origin), {
-    type: "classic",
     name: "modelscript-lsp",
   });
 

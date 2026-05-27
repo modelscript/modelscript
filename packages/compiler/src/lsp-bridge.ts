@@ -183,8 +183,22 @@ export class LSPBridge {
       const entries = childrenOf.get(parentId) || [];
       return entries.map((entry) => {
         const range = this.positions.rangeFromBytes(entry.startByte, entry.endByte);
+
+        let name = entry.name;
+        if (name === "<anonymous>") {
+          try {
+            const source = this.engine.cstText(entry.startByte, entry.endByte, entry);
+            if (source) {
+              const firstLine = source.trim().split("\n")[0].trim();
+              name = firstLine.length > 40 ? firstLine.substring(0, 37) + "..." : firstLine;
+            }
+          } catch {
+            // fallback if engine doesn't support cstText
+          }
+        }
+
         const symbol: LSPDocumentSymbol = {
-          name: entry.name,
+          name,
           kind: this.mapSymbolKind(entry.kind),
           range,
           selectionRange: range, // Could be narrowed to name range
@@ -449,6 +463,20 @@ export class LSPBridge {
       }
     }
 
+    // Virtual completion members defined in metadata
+    if (typeEntry.metadata?.completionMembers && Array.isArray(typeEntry.metadata.completionMembers)) {
+      for (const name of typeEntry.metadata.completionMembers) {
+        if (!seen.has(name) && typeof name === "string") {
+          seen.add(name);
+          results.push({
+            label: name,
+            kind: LSPSymbolKind.Property,
+            detail: "Property (built-in)",
+          });
+        }
+      }
+    }
+
     return results;
   }
 
@@ -471,36 +499,189 @@ export class LSPBridge {
   // textDocument/hover
   // =========================================================================
 
-  hover(byteOffset: number): LSPHover | null {
+  hover(byteOffset: number, sourceText?: string): LSPHover | null {
+    if (sourceText) {
+      const modHover = this.hoverModificationContext(byteOffset, sourceText);
+      if (modHover) return modHover;
+    }
+
     const entry = this.findEntryAtOffset(byteOffset);
     if (!entry) return null;
 
-    // Try to use a user-defined hover query
+    let targetDecl = entry;
+    if (entry.kind === "Reference") {
+      const resolved = this.resolver.resolve(entry);
+      if (resolved.length > 0) {
+        targetDecl = resolved[0];
+      }
+    }
+
+    let startByte = entry.startByte;
+    let endByte = entry.endByte;
+    if (entry.fieldRanges) {
+      const nameRange =
+        entry.fieldRanges[entry.namePath] || entry.fieldRanges["name"] || entry.fieldRanges["identifier"];
+      if (nameRange) {
+        startByte = nameRange.startByte;
+        endByte = nameRange.endByte;
+      }
+    }
+    const hoverRange = this.positions.rangeFromBytes(startByte, endByte);
+
+    const md = this.hoverEntry(targetDecl);
+
+    return {
+      contents: md,
+      range: hoverRange,
+    };
+  }
+
+  private formatDeclaration(entry: SymbolEntry): string {
+    const meta = entry.metadata;
+    let declStr = "";
+
+    if (meta?.isPredefined) {
+      const cKind = typeof meta.classKind === "string" ? meta.classKind : "type";
+      declStr = `${cKind} ${entry.name}`;
+      const attrs = meta.completionMembers;
+      if (Array.isArray(attrs) && attrs.length > 0) {
+        declStr += `(\n`;
+        const lines: string[] = [];
+        for (const attr of attrs) {
+          if (typeof attr === "string") {
+            const val = meta[attr];
+            if (val === "") {
+              lines.push(`  ${attr}`);
+            } else {
+              const valStr = typeof val === "string" ? `"${val}"` : String(val);
+              lines.push(`  ${attr} = ${valStr}`);
+            }
+          }
+        }
+        declStr += lines.join(",\n");
+        declStr += `\n)`;
+      }
+      return declStr;
+    }
+
+    if (entry.kind === "Class" || entry.kind === "Function") {
+      if (meta && typeof meta.classKind === "string" && meta.classKind) {
+        declStr += `${meta.classKind} `;
+      } else {
+        declStr += `${entry.kind.toLowerCase()} `;
+      }
+      declStr += entry.name;
+      return declStr;
+    }
+
+    const source = this.engine.cstText(entry.startByte, entry.endByte, entry);
+    if (source) {
+      declStr = source
+        .replace(/\s*"[^"]*"\s*;\s*$/, "")
+        .replace(/\s*;\s*$/, "")
+        .trim();
+      return declStr;
+    }
+
+    if (meta && typeof meta.causality === "string" && meta.causality) declStr += `${meta.causality} `;
+    if (meta && typeof meta.variability === "string" && meta.variability) declStr += `${meta.variability} `;
+    if (meta && typeof meta.typeSpecifier === "string" && meta.typeSpecifier) declStr += `${meta.typeSpecifier} `;
+    declStr += entry.name;
+
+    return declStr;
+  }
+
+  private hoverEntry(entry: SymbolEntry): string {
     try {
       const hoverResult = this.engine.query<string>("hover", entry.id);
-      if (hoverResult) {
-        return {
-          contents: hoverResult,
-          range: this.positions.rangeFromBytes(entry.startByte, entry.endByte),
-        };
-      }
+      if (hoverResult) return hoverResult;
     } catch {
       // No hover query defined — fall back to default
     }
 
-    let md = `**${entry.kind}** \`${entry.name}\``;
     const meta = entry.metadata;
-    if (meta) {
-      if (typeof meta.typeSpecifier === "string") md += ` : ${meta.typeSpecifier}`;
-      if (typeof meta.variability === "string") md = `${meta.variability} ` + md;
-      if (typeof meta.causality === "string") md = `${meta.causality} ` + md;
-      if (typeof meta.description === "string" && meta.description) md += `\n\n*${meta.description}*`;
+    const lang = entry.language ?? "modelica";
+    const declStr = this.formatDeclaration(entry);
+
+    let md = "";
+    if (declStr.includes("\n")) {
+      md = `<details>\n<summary><b>Declaration</b></summary>\n\n\`\`\`${lang}\n${declStr}\n\`\`\`\n\n</details>`;
+    } else {
+      md = `\`\`\`${lang}\n${declStr}\n\`\`\``;
     }
 
-    return {
-      contents: md,
-      range: this.positions.rangeFromBytes(entry.startByte, entry.endByte),
-    };
+    if (meta && typeof meta.description === "string" && meta.description) {
+      md += `\n---\n${meta.description}`;
+    }
+    return md;
+  }
+
+  private hoverModificationContext(byteOffset: number, sourceText: string): LSPHover | null {
+    let start = byteOffset;
+    if (start > 0 && !/[a-zA-Z0-9_]/.test(sourceText[start]) && /[a-zA-Z0-9_]/.test(sourceText[start - 1])) {
+      start--;
+    }
+    while (start > 0 && /[a-zA-Z0-9_]/.test(sourceText[start - 1])) start--;
+    let end = start;
+    while (end < sourceText.length && /[a-zA-Z0-9_]/.test(sourceText[end])) end++;
+
+    if (start >= end) return null;
+    const word = sourceText.slice(start, end);
+
+    const before = sourceText.slice(0, start);
+    let depth = 0;
+    let parenPos = -1;
+    for (let i = before.length - 1; i >= 0; i--) {
+      const ch = before[i];
+      if (ch === ")") depth++;
+      if (ch === "(") {
+        if (depth === 0) {
+          parenPos = i;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (parenPos < 0) return null;
+
+    const beforeParen = before.slice(0, parenPos).trimEnd();
+    const declMatch = beforeParen.match(/([a-zA-Z_][a-zA-Z0-9_.]*)\s+[a-zA-Z_][a-zA-Z0-9_]*$/);
+    if (!declMatch) return null;
+
+    const typeName = declMatch[1];
+    const scopeEntry = this.findScopeAtOffset(byteOffset);
+    const scopeId = scopeEntry?.id ?? null;
+    const typeDecls = this.resolver.resolveName(typeName, scopeId);
+    if (typeDecls.length === 0) return null;
+
+    const typeEntry = typeDecls[0];
+    const hoverRange = this.positions.rangeFromBytes(start, end);
+
+    const children = this.getExportedChildren(typeEntry.id);
+    for (const child of children) {
+      if (child.name === word && this.resolver.isDeclaration(child)) {
+        return { contents: this.hoverEntry(child), range: hoverRange };
+      }
+    }
+
+    const inherited = this.resolver.inheritedMembersOf(typeEntry.id);
+    for (const member of inherited) {
+      if (member.name === word) {
+        return { contents: this.hoverEntry(member), range: hoverRange };
+      }
+    }
+
+    if (typeEntry.metadata?.completionMembers && Array.isArray(typeEntry.metadata.completionMembers)) {
+      if (typeEntry.metadata.completionMembers.includes(word)) {
+        const lang = typeEntry.language ?? "modelica";
+        return {
+          contents: `\`\`\`${lang}\n${word}\n\`\`\`\n---\nBuilt-in attribute of ${typeEntry.name}`,
+          range: hoverRange,
+        };
+      }
+    }
+
+    return null;
   }
 
   // =========================================================================

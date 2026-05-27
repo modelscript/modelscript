@@ -9,7 +9,7 @@
  * live in the purely symbolic layer.
  */
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "./modelica-types.js";
 import {
   ModelicaArray,
   ModelicaBinaryExpression,

@@ -616,6 +616,7 @@ registerColorProvider(
 registerDocumentFeaturesProvider(
   connection,
   documents,
+  validationService.documentLSPBridges,
   parserService.getDocumentTree.bind(parserService),
   parserService.getLineIndexForDoc.bind(parserService),
   () => parserService.parserReady && !!parserService.parser,

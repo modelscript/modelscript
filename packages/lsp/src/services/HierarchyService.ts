@@ -4,7 +4,7 @@ import {
   ClassHierarchyNode,
   ComponentTreeNode,
   ModelicaClassInstance,
-  ModelicaComponentInstance,
+  type ModelicaComponentInstance,
   TreeNodeInfo,
 } from "@modelscript/compiler";
 import { Connection } from "vscode-languageserver";

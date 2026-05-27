@@ -9,15 +9,29 @@ const __dirname = path.dirname(__filename);
 // Step 0: Regenerate grammar.js (and other artifacts) from language.ts
 const languagePath = path.join(__dirname, "language.ts");
 const cliPath = path.resolve(__dirname, "..", "..", "packages", "compiler", "src", "cli.ts");
-console.log("[csv] Generating artifacts from language.ts...");
-try {
-  execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
-} catch (err) {
-  console.error("[csv] Failed to generate artifacts:", err.message);
-  process.exit(1);
+const grammarPath = path.join(__dirname, "grammar.js");
+
+const srcGenPath = path.join(__dirname, "src-gen");
+
+let shouldGenerate = true;
+if (fs.existsSync(grammarPath) && fs.existsSync(srcGenPath)) {
+  const langStats = fs.statSync(languagePath);
+  const grammarStats = fs.statSync(grammarPath);
+  if (langStats.mtimeMs <= grammarStats.mtimeMs) {
+    shouldGenerate = false;
+  }
 }
 
-const grammarPath = path.join(__dirname, "grammar.js");
+if (shouldGenerate) {
+  console.log("[csv] Generating artifacts from language.ts...");
+  try {
+    execSync(`npx tsx ${cliPath} generate ${languagePath}`, { stdio: "inherit", cwd: __dirname });
+  } catch (err) {
+    console.error("[csv] Failed to generate artifacts:", err.message);
+    process.exit(1);
+  }
+}
+
 const wasmPath = path.join(__dirname, "tree-sitter-csv.wasm");
 
 let shouldBuild = false;

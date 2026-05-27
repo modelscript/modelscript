@@ -1,15 +1,13 @@
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
 import { ArenaQueryFlattener } from "../../../../languages/modelica/flattener-query.js";
+import { Context } from "../../../core/src/compiler/context.js";
 import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
-import { Context } from "../../src/context.js";
-import { QueryEngine } from "../../src/query-engine.js";
 import { simulateArena } from "../../src/simulator/core/simulate-arena.js";
-import { WorkspaceIndex } from "../../src/workspace-index.js";
 
 const parser = new Parser();
 parser.setLanguage(Modelica);
-Context.registerParser(".mo", parser);
+Context._parsers.set(".mo", parser);
 
 const bouncingBall = `
 model BouncingBall
@@ -28,9 +26,7 @@ end BouncingBall;
 
 async function main() {
   const fs = new NodeFileSystem();
-  const ws = new WorkspaceIndex();
-  const qe = new QueryEngine(ws);
-  const ctx = new Context(fs, ws, qe);
+  const ctx = new Context(fs);
 
   ctx.load(bouncingBall, "bouncing-ball.mo");
 
@@ -40,17 +36,27 @@ async function main() {
   const entries = ctx.queryEngine.index.byName.get("BouncingBall") || [];
   const firstId = entries[0];
   const arena = flattener.flatten(firstId);
+  console.log("equations in arena:", arena.eqCount);
+  console.log("variables in arena:", arena.varCount);
 
+  // Eliminate aliases
+  const { eliminateArenaAliases } = await import("@modelscript/compiler");
+  eliminateArenaAliases(arena);
+
+  // Run simulation
   const resultDopri = simulateArena(arena, {
     startTime: 0,
-    stopTime: 3,
-    step: 0.1,
+    stopTime: 5,
+    step: 0.05,
     solver: "dopri5",
   });
 
   const hIdx = resultDopri.states.indexOf("h");
-  for (let i = 0; i < resultDopri.t.length; i++) {
-    console.log(`t: ${resultDopri.t[i].toFixed(4)}, h: ${resultDopri.y[i][hIdx].toFixed(4)}`);
+  if (hIdx !== -1) {
+    const bounces = resultDopri.y.filter((y) => y[hIdx] <= 0).length;
+    console.log(`[simulateArena] Found ${bounces} bounces with dopri5, states:`, resultDopri.states);
+  } else {
+    console.log("[simulateArena] h state missing!");
   }
 }
 

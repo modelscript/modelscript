@@ -85,6 +85,35 @@ const ARENA_BUILTIN_FOLDS = new Map<string, BuiltinFoldDef>([
  * Translates a Modelica CST/AST expression tree into integer-based `ExprId`s
  * inside the given `ArenaDAEBuilder`.
  */
+
+// ── Operator name mapping for operator record dispatch ──
+
+/** Map from ModelicaBinaryOperator enum to the quoted Modelica operator name. */
+const BINARY_OP_TO_MODELICA: Record<string, string> = {
+  [ModelicaBinaryOperator.ADDITION]: "'+'",
+  [ModelicaBinaryOperator.SUBTRACTION]: "'-'",
+  [ModelicaBinaryOperator.MULTIPLICATION]: "'*'",
+  [ModelicaBinaryOperator.DIVISION]: "'/'",
+  [ModelicaBinaryOperator.EXPONENTIATION]: "'^'",
+  [ModelicaBinaryOperator.EQUALITY]: "'=='",
+  [ModelicaBinaryOperator.INEQUALITY]: "'<>'",
+  [ModelicaBinaryOperator.LESS_THAN]: "'<'",
+  [ModelicaBinaryOperator.LESS_THAN_OR_EQUAL]: "'<='",
+  [ModelicaBinaryOperator.GREATER_THAN]: "'>'",
+  [ModelicaBinaryOperator.GREATER_THAN_OR_EQUAL]: "'>='",
+  [ModelicaBinaryOperator.LOGICAL_AND]: "'and'",
+  [ModelicaBinaryOperator.LOGICAL_OR]: "'or'",
+};
+
+/** Map from ModelicaUnaryOperator enum to the quoted Modelica operator name. */
+const UNARY_OP_TO_MODELICA: Record<string, string> = {
+  [ModelicaUnaryOperator.UNARY_MINUS]: "'-'",
+  [ModelicaUnaryOperator.LOGICAL_NEGATION]: "'not'",
+};
+
+/** Predefined scalar types that are NOT operator records. */
+const BUILTIN_SCALAR_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+
 /** Names that should never be prefixed (Modelica built-in variables). */
 const BUILTIN_NAMES = new Set(["time"]);
 
@@ -405,6 +434,14 @@ export class ArenaExprVisitor {
     let rightId = this.visit(node.operand2);
     if (leftId === undefined || rightId === undefined) return undefined;
 
+    const op = node.operator;
+
+    // --- Operator record dispatch ---
+    // Check if either operand is an operator record type. If so, dispatch
+    // to the matching operator function instead of emitting a primitive BinOp.
+    const operatorCallId = this.tryOperatorOverloadBinary(op, node, leftId, rightId);
+    if (operatorCallId !== undefined) return operatorCallId;
+
     // Coerce operands if one is Real-typed and the other is not
     const leftReal = this.isRealTypedExpr(leftId);
     const rightReal = this.isRealTypedExpr(rightId);
@@ -414,7 +451,6 @@ export class ArenaExprVisitor {
       leftId = this.castToRealExpr(leftId);
     }
 
-    const op = node.operator;
     let binOp: BinOp;
     switch (op) {
       case ModelicaBinaryOperator.ADDITION:
@@ -500,6 +536,11 @@ export class ArenaExprVisitor {
     if (exprId === undefined) return undefined;
 
     const op = node.operator;
+
+    // --- Operator record dispatch for unary ---
+    const operatorCallId = this.tryOperatorOverloadUnary(op, node, exprId);
+    if (operatorCallId !== undefined) return operatorCallId;
+
     let unOp: UnaryOp;
     switch (op) {
       case ModelicaUnaryOperator.UNARY_MINUS:
@@ -1250,5 +1291,262 @@ export class ArenaExprVisitor {
     this.dae.functions.delete(funcNameId);
 
     return resultExprId;
+  }
+
+  // ── Operator Record Dispatch ──
+
+  /**
+   * Resolve the operator record type name for a CST expression operand.
+   * Returns the type name (e.g. "C", "Complex") if the operand is a
+   * component of an operator record type, or null otherwise.
+   */
+  private resolveOperandRecordType(operandNode: unknown): string | null {
+    if (!this.db || !this.scopeId) return null;
+
+    // Extract the variable name from the operand's CST
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const n = operandNode as any;
+    let varName: string | null = null;
+
+    if (n instanceof ModelicaComponentReferenceSyntaxNode) {
+      // Use just the first part (e.g., "c1" from "c1.re")
+      const firstPart = n.parts[0];
+      varName = firstPart?.identifier?.text ?? null;
+    } else if (n instanceof ModelicaIdentifierSyntaxNode) {
+      varName = n.text ?? null;
+    }
+
+    if (!varName) return null;
+
+    // Resolve the variable in scope to find its type
+    const resolver = this.db.query<
+      ((name: string) => { id: SymbolId; kind: string; name: string; metadata?: Record<string, unknown> } | null) | null
+    >("resolveSimpleName", this.scopeId);
+    if (!resolver) return null;
+    const entry = resolver(varName);
+    if (!entry || entry.kind !== "Component") return null;
+
+    const typeSpec = (entry.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
+    if (!typeSpec || BUILTIN_SCALAR_TYPES.has(typeSpec)) return null;
+
+    // Check if the resolved type is an operator record
+    const typeEntries = this.db.byName(typeSpec);
+    const typeEntry = typeEntries?.find((e: { kind: string }) => e.kind === "Class");
+    if (!typeEntry) return null;
+
+    const classPrefixes = (typeEntry.metadata as Record<string, unknown>)?.classPrefixes as string | undefined;
+    if (classPrefixes !== "operator record") return null;
+
+    return typeSpec;
+  }
+
+  /**
+   * Get the operator function overloads for a given operator record type and operator name.
+   */
+  private getOperatorOverloads(
+    recordTypeName: string,
+    operatorName: string,
+  ):
+    | {
+        qualifiedName: string;
+        inputTypes: string[];
+        outputType: string;
+        inputCount: number;
+      }[]
+    | null {
+    if (!this.db) return null;
+
+    const typeEntries = this.db.byName(recordTypeName);
+    const typeEntry = typeEntries?.find((e: { kind: string }) => e.kind === "Class");
+    if (!typeEntry) return null;
+
+    const opMap = this.db.query<Map<
+      string,
+      {
+        qualifiedName: string;
+        inputTypes: string[];
+        outputType: string;
+        inputCount: number;
+      }[]
+    > | null>("operatorFunctions", typeEntry.id);
+    if (!opMap) return null;
+
+    return opMap.get(operatorName) ?? null;
+  }
+
+  /**
+   * Get the builtin type name of an operand ("Real", "Integer", etc.),
+   * or the operator record type name if it's a record-typed variable.
+   */
+  private getOperandTypeName(operandNode: unknown): string {
+    const recordType = this.resolveOperandRecordType(operandNode);
+    if (recordType) return recordType;
+
+    // Check if it's a literal
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const n = operandNode as any;
+    if (n instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) return "Integer";
+    if (n instanceof ModelicaUnsignedRealLiteralSyntaxNode) return "Real";
+    if (n instanceof ModelicaBooleanLiteralSyntaxNode) return "Boolean";
+    if (n instanceof ModelicaStringLiteralSyntaxNode) return "String";
+
+    // Fallback: try to resolve component type
+    if (n instanceof ModelicaComponentReferenceSyntaxNode || n instanceof ModelicaIdentifierSyntaxNode) {
+      const varName = n instanceof ModelicaComponentReferenceSyntaxNode ? n.parts[0]?.identifier?.text : n.text;
+      if (varName && this.db && this.scopeId) {
+        const resolver = this.db.query<
+          ((name: string) => { id: SymbolId; kind: string; metadata?: Record<string, unknown> } | null) | null
+        >("resolveSimpleName", this.scopeId);
+        if (resolver) {
+          const entry = resolver(varName);
+          if (entry?.kind === "Component") {
+            return ((entry.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? "Real";
+          }
+        }
+      }
+    }
+
+    return "Real"; // default
+  }
+
+  /**
+   * Try to dispatch a binary operator to an operator record overload.
+   * Returns the CallExpr ID if a matching overload is found, undefined otherwise.
+   */
+  private tryOperatorOverloadBinary(
+    op: ModelicaBinaryOperator,
+    node: ModelicaBinaryExpressionSyntaxNode,
+    leftId: number,
+    rightId: number,
+  ): number | undefined {
+    if (!this.db || !this.scopeId) return undefined;
+
+    const opName = BINARY_OP_TO_MODELICA[op];
+    if (!opName) return undefined;
+
+    const leftType = this.getOperandTypeName(node.operand1);
+    const rightType = this.getOperandTypeName(node.operand2);
+
+    // Only dispatch if at least one operand is an operator record
+    const leftIsRecord = !BUILTIN_SCALAR_TYPES.has(leftType);
+    const rightIsRecord = !BUILTIN_SCALAR_TYPES.has(rightType);
+    if (!leftIsRecord && !rightIsRecord) return undefined;
+
+    // Look up overloads from the operator record type (prefer left, fallback to right)
+    const recordType = leftIsRecord ? leftType : rightType;
+    const overloads = this.getOperatorOverloads(recordType, opName);
+    if (!overloads || overloads.length === 0) return undefined;
+
+    // Find matching overload by input types
+    let bestMatch = this.findOverload(overloads, leftType, rightType);
+
+    if (!bestMatch) {
+      // Implicit constructor coercion
+      if (leftIsRecord && !rightIsRecord) {
+        const coercedRight = this.coerceToRecord(recordType, rightType, rightId);
+        if (coercedRight !== undefined) {
+          bestMatch = this.findOverload(overloads, recordType, recordType);
+          if (bestMatch) rightId = coercedRight;
+        }
+      } else if (!leftIsRecord && rightIsRecord) {
+        const coercedLeft = this.coerceToRecord(recordType, leftType, leftId);
+        if (coercedLeft !== undefined) {
+          bestMatch = this.findOverload(overloads, recordType, recordType);
+          if (bestMatch) leftId = coercedLeft;
+        }
+      }
+    }
+
+    if (!bestMatch) return undefined;
+
+    this.onFunctionCall?.(bestMatch.qualifiedName);
+    // Emit as a function call
+    return this.dae.addCallExpr(bestMatch.qualifiedName, [leftId, rightId]);
+  }
+
+  private findOverload(
+    overloads: { qualifiedName: string; inputTypes: string[]; outputType: string; inputCount: number }[],
+    t1: string,
+    t2: string,
+  ) {
+    for (const overload of overloads) {
+      if (
+        overload.inputCount >= 2 &&
+        overload.inputTypes[0] !== undefined &&
+        overload.inputTypes[1] !== undefined &&
+        this.typeMatches(t1, overload.inputTypes[0]) &&
+        this.typeMatches(t2, overload.inputTypes[1])
+      ) {
+        return overload;
+      }
+    }
+    return null;
+  }
+
+  private coerceToRecord(recordType: string, scalarType: string, exprId: number): number | undefined {
+    const constructors = this.getOperatorOverloads(recordType, "'constructor'");
+    if (!constructors) return undefined;
+
+    for (const ctor of constructors) {
+      if (
+        ctor.inputTypes.length >= 1 &&
+        ctor.inputTypes[0] !== undefined &&
+        this.typeMatches(scalarType, ctor.inputTypes[0])
+      ) {
+        this.onFunctionCall?.(ctor.qualifiedName);
+        return this.dae.addCallExpr(ctor.qualifiedName, [exprId]);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Try to dispatch a unary operator to an operator record overload.
+   * Returns the CallExpr ID if a matching overload is found, undefined otherwise.
+   */
+  private tryOperatorOverloadUnary(
+    op: ModelicaUnaryOperator,
+    node: ModelicaUnaryExpressionSyntaxNode,
+    exprId: number,
+  ): number | undefined {
+    if (!this.db || !this.scopeId) return undefined;
+
+    const opName = UNARY_OP_TO_MODELICA[op];
+    if (!opName) return undefined;
+
+    const operandType = this.getOperandTypeName(node.operand);
+    if (BUILTIN_SCALAR_TYPES.has(operandType)) return undefined;
+
+    const overloads = this.getOperatorOverloads(operandType, opName);
+    if (!overloads || overloads.length === 0) return undefined;
+
+    // Find matching unary overload (1 input)
+    let bestMatch: (typeof overloads)[0] | null = null;
+    for (const overload of overloads) {
+      if (overload.inputCount !== 1) continue;
+      if (overload.inputTypes[0] !== undefined && this.typeMatches(operandType, overload.inputTypes[0])) {
+        bestMatch = overload;
+        break;
+      }
+    }
+
+    if (!bestMatch) return undefined;
+
+    this.onFunctionCall?.(bestMatch.qualifiedName);
+    return this.dae.addCallExpr(bestMatch.qualifiedName, [exprId]);
+  }
+
+  /**
+   * Check if an actual type matches an expected parameter type.
+   * Handles the case where the record type name matches itself,
+   * and basic builtin compatibility.
+   */
+  private typeMatches(actual: string, expected: string): boolean {
+    if (actual === expected) return true;
+    // Integer is compatible with Real parameter
+    if (actual === "Integer" && expected === "Real") return true;
+    // Real is compatible with Integer parameter (with coercion)
+    if (actual === "Real" && expected === "Integer") return true;
+    return false;
   }
 }

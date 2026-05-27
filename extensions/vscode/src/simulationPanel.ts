@@ -730,17 +730,17 @@ export class SimulationPanel {
   <div id="main-layout">
     <div id="sidebar">
       <div class="sidebar-section">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Variables</div>
+        <div class="sidebar-header">Variables</div>
         <div class="sidebar-content">
           <ul id="tree-view" class="tree-node tree-root"></ul>
         </div>
       </div>
       <div class="sidebar-section" id="params-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Parameters</div>
+        <div class="sidebar-header">Parameters</div>
         <div class="sidebar-content" id="parameters-view"></div>
       </div>
       <div class="sidebar-section" id="settings-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Simulation Settings</div>
+        <div class="sidebar-header">Simulation Settings</div>
         <div class="sidebar-content" id="settings-view">
           <div class="settings-row"><label>Start Time</label><input type="number" id="st-start" step="any"></div>
           <div class="settings-row"><label>Stop Time</label><input type="number" id="st-stop" step="any"></div>
@@ -748,46 +748,6 @@ export class SimulationPanel {
           <div class="settings-row"><label>Tolerance</label><input type="number" id="st-tolerance" step="any"></div>
           <div class="simulate-btn-container">
             <button id="btn-simulate" class="simulate-btn">Simulate</button>
-          </div>
-        </div>
-      </div>
-      <div class="sidebar-section collapsed" id="surrogate-section" style="display: none;">
-        <div class="sidebar-header" onclick="this.parentElement.classList.toggle('collapsed')">Surrogate Training</div>
-        <div class="sidebar-content" id="surrogate-view">
-          <div class="settings-row">
-            <label>DoE Strategy</label>
-            <select id="surrogate-strategy" style="width: 100px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);">
-              <option value="latin-hypercube">LHS</option>
-              <option value="full-factorial">Factorial</option>
-              <option value="sobol">Sobol</option>
-              <option value="central-composite">CCD</option>
-            </select>
-          </div>
-          <div class="settings-row">
-            <label>Samples</label>
-            <input type="number" id="surrogate-samples" value="50" min="1">
-          </div>
-          <div class="settings-row">
-            <label>Architecture</label>
-            <select id="surrogate-arch" style="width: 100px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border);">
-              <option value="mlp">MLP</option>
-              <option value="rbf">RBF</option>
-              <option value="polynomial">Polynomial</option>
-            </select>
-          </div>
-          <div class="simulate-btn-container">
-            <button id="btn-train-surrogate" class="simulate-btn">Train Surrogate</button>
-          </div>
-          <div id="surrogate-progress" style="padding: 0 16px; font-size: 11px; display: none;">
-            <div style="margin-bottom: 4px;">Training... <span id="surrogate-status">0%</span></div>
-            <div style="width: 100%; height: 4px; background: var(--vscode-editor-background); border-radius: 2px;">
-              <div id="surrogate-progress-bar" style="width: 0%; height: 100%; background: var(--vscode-progressBar-background, #0e70c0); border-radius: 2px;"></div>
-            </div>
-          </div>
-          <div id="surrogate-results" style="padding: 8px 16px; font-size: 11px; display: none; border-top: 1px solid var(--vscode-panel-border);">
-            <div style="margin-bottom: 4px;"><strong>R² Score:</strong> <span id="surrogate-r2"></span></div>
-            <div style="margin-bottom: 8px;"><strong>Train MSE:</strong> <span id="surrogate-mse"></span></div>
-            <button id="btn-export-surrogate" class="simulate-btn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);">Generate WASM</button>
           </div>
         </div>
       </div>

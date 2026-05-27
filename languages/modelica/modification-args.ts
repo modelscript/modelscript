@@ -62,6 +62,8 @@ export interface ModificationArg {
   readonly value: ModificationValue | null;
   /** Nested sub-modifications (e.g., `T(a = 1, b = 2)` → T has nested args). */
   readonly nestedArgs: readonly ModificationArg[];
+  /** Byte range of the modifier name in the source text (start, end). */
+  readonly nameRange?: readonly [number, number];
   /** Whether this is a redeclaration (replaces a class/component definition). */
   readonly isRedeclaration: boolean;
   /** For redeclarations: the new class prefixes (e.g., "model", "type"). */
@@ -109,7 +111,7 @@ export const EMPTY_MOD: ModelicaModArgs = Object.freeze({
 export function modArg(
   name: string,
   value: ModificationValue | null,
-  opts?: Partial<Pick<ModificationArg, "each" | "final" | "nestedArgs" | "isRedeclaration">>,
+  opts?: Partial<Pick<ModificationArg, "each" | "final" | "nestedArgs" | "isRedeclaration" | "nameRange">>,
 ): ModificationArg {
   return {
     name,
@@ -118,6 +120,7 @@ export function modArg(
     value,
     nestedArgs: opts?.nestedArgs ?? [],
     isRedeclaration: opts?.isRedeclaration ?? false,
+    nameRange: opts?.nameRange,
   };
 }
 

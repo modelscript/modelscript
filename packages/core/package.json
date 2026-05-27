@@ -37,7 +37,7 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && npm run lint && tsc",
+    "build": "npm run lint && tsc",
     "clean": "rimraf dist",
     "lint": "eslint src tests",
     "test": "npx tsx tests/testsuite-runner.ts",

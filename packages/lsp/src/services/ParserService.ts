@@ -67,7 +67,18 @@ export class ParserService {
         if (!entry || !entry.resourceId) return null;
         const uri = entry.resourceId;
         const docTree = this.documentManager.documentTrees.get(uri);
-        if (docTree && docTree.tree) return docTree.tree.rootNode.descendantForIndex(startByte, endByte);
+        if (docTree && docTree.tree) {
+          let n = docTree.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+          if (n && n.type === "source_file") {
+            for (let i = 0; i < n.childCount; i++) {
+              if (n.child(i).type === "class_definition") {
+                n = n.child(i);
+                break;
+              }
+            }
+          }
+          return n;
+        }
 
         let lazyCache = this.documentManager.lazyLibTrees.get(uri);
         if (!lazyCache && this.sharedContext) {
@@ -87,7 +98,15 @@ export class ParserService {
           }
         }
         if (lazyCache) {
-          const n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+          let n = lazyCache.tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+          if (n && n.type === "source_file") {
+            for (let i = 0; i < n.childCount; i++) {
+              if (n.child(i).type === "class_definition") {
+                n = n.child(i);
+                break;
+              }
+            }
+          }
           if (!n)
             this.connection.console.error(
               `[cstTreeWrapper] descendantForIndex returned null for ${uri} [${startByte}-${endByte}]`,

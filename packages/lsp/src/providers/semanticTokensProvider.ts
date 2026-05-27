@@ -456,15 +456,15 @@ export function registerSemanticTokensProvider(
         }
 
         if (
-          parent?.type === "LongClassSpecifier" ||
-          parent?.type === "ShortClassSpecifier" ||
-          parent?.type === "DerClassSpecifier" ||
+          p?.type === "LongClassSpecifier" ||
+          p?.type === "ShortClassSpecifier" ||
+          p?.type === "DerClassSpecifier" ||
           p?.type === "WithinDirective" ||
           p?.type === "ExtendsClause" ||
           p?.type === "TypeSpecifier"
         ) {
           tokenType = "type";
-        } else if (parent?.type === "Declaration") {
+        } else if (p?.type === "Declaration") {
           tokenType = "variable";
         } else if (typeKeywords.includes(node.text)) {
           tokenType = "type";

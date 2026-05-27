@@ -314,7 +314,7 @@ export function dopri5(
             }
 
             // Track temporal clustering of events
-            if (Math.abs(tEvent - lastEventTime) < 1e-10) {
+            if (Math.abs(tEvent - lastEventTime) < 1e-6) {
               consecutiveEvents++;
             } else {
               consecutiveEvents = 1;
@@ -327,6 +327,24 @@ export function dopri5(
               // equations (e.g., der(v) = -g) will pull the state through the floor.
               result.times.push(tEvent);
               result.states.push([...yAfter]);
+
+              // Pad the rest of the simulation time with the resting state
+              if (equidistant) {
+                while (outputIdx < outputTimes.length) {
+                  const tOut = outputTimes[outputIdx] ?? tEnd;
+                  if (tOut > tEvent + 1e-14) {
+                    result.times.push(tOut);
+                    result.states.push([...yAfter]);
+                  }
+                  outputIdx++;
+                }
+              } else {
+                if (tEnd > tEvent + 1e-14) {
+                  result.times.push(tEnd);
+                  result.states.push([...yAfter]);
+                }
+              }
+
               return result;
             }
 

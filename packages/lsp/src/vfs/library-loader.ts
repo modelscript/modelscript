@@ -251,7 +251,7 @@ export async function loadDependencyFromRegistry(
       return;
     }
 
-    const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://localhost:3001";
+    const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
     const res = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/files`);
 
     if (!res.ok) {

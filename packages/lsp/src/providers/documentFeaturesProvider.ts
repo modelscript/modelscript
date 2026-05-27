@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/prefer-for-of, @typescript-eslint/no-non-null-assertion */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-for-of, @typescript-eslint/no-non-null-assertion */
 import { Connection, DocumentHighlightKind, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { Node as SyntaxNode } from "web-tree-sitter";
@@ -7,6 +7,7 @@ import { nodeRange } from "../utils/astUtils";
 export function registerDocumentFeaturesProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
+  documentLSPBridges: Map<string, any>,
   getDocumentTree: (uri: string) => any,
   getLineIndexForDoc: (uri: string) => any,
   isParserReady: () => boolean,
@@ -15,7 +16,14 @@ export function registerDocumentFeaturesProvider(
 ) {
   /* Document symbols — enables Outline panel and breadcrumb navigation */
   connection.onDocumentSymbol((params) => {
-    return [];
+    try {
+      const bridge = documentLSPBridges.get(params.textDocument.uri);
+      if (!bridge) return [];
+      return bridge.documentSymbols() as any[];
+    } catch (e: any) {
+      connection.console.error(`[documentSymbol] ${e.message}`);
+      return [];
+    }
   });
 
   /* Folding Ranges — enables code folding for classes, sections, and control structures */

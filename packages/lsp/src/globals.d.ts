@@ -49,6 +49,7 @@ declare global {
   var buildClassHierarchy: (classInstance: any, visited?: Set<string>) => any;
   var buildComponentTree: (classInstance: any, depth?: number) => any;
   var loadRegistryPackages: (packages: any[], ctx: any) => Promise<void>;
+  var loadDependencyFromRegistry: (dep: { name: string; version: string }, ctx: any) => Promise<void>;
   // Constants
   var CLASS_KIND_KEYWORDS: string[];
   var SYSML2_RULE_TO_KIND: Record<string, string>;

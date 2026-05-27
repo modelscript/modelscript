@@ -26,7 +26,7 @@
     }
   },
   "scripts": {
-    "build": "node build.js && prettier --write . --ignore-unknown && tsc",
+    "build": "node build.js && tsc",
     "clean": "rimraf dist *.wasm"
   },
   "dependencies": {

@@ -11,8 +11,8 @@ export { arenaTermsToExpr, expandArenaExpr, isArenaLiteral, normalizeArenaExpr }
 
 // ── Legacy API ──
 
-import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "@modelscript/modelica/ast";
 import { add, div, isZero, mul, pow, sub, ZERO } from "../calculus/derivative.js";
+import { ModelicaBinaryOperator, ModelicaUnaryOperator } from "../modelica-types.js";
 import type { ModelicaExpression } from "../systems/index.js";
 import {
   ModelicaBinaryExpression,

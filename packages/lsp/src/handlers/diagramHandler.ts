@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { LspContext } from "../LspContext";
-import { cadComponentsCache, flattenArenaFromInstance, lastIndexedText, simpleHash } from "../browserServerMain";
+import { cadComponentsCache, flattenArenaFromInstance, simpleHash } from "../browserServerMain";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol";
 
 export function registerDiagramHandlers(context: LspContext) {
@@ -54,7 +54,7 @@ export function registerDiagramHandlers(context: LspContext) {
     const effectiveUri = params.uri.startsWith("modelscript-lib://global")
       ? "file://" + params.uri.substring("modelscript-lib://global".length)
       : params.uri;
-    const indexedText = lastIndexedText.get(effectiveUri);
+    const indexedText = context.validationService.lastIndexedText.get(effectiveUri);
     const version = indexedText != null ? `idx:${indexedText.length}:${simpleHash(indexedText)}` : "unknown";
     const cached = cadComponentsCache.get(params.uri);
     if (cached && cached.version === version) {

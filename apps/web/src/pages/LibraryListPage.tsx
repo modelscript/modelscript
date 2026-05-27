@@ -314,7 +314,7 @@ const LibraryListPage: React.FC = () => {
                       {lib.name}
                     </Heading>
                     <Text color="var(--color-fg-muted)" style={{ fontSize: "14px", display: "block" }}>
-                      @npm/{lib.name} · v{lib.latestVersion || "1.0.0"}
+                      @{lib.name} · v{lib.latestVersion || "1.0.0"}
                     </Text>
                     <Text
                       as="p"
@@ -325,7 +325,7 @@ const LibraryListPage: React.FC = () => {
                         lineHeight: 1.4,
                       }}
                     >
-                      Modelica library package
+                      {lib.description || "Modelica library package"}
                     </Text>
                   </Box>
                 </Link>

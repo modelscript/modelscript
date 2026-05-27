@@ -732,9 +732,32 @@ export class ModelicaClassInstance extends ModelicaElement {
       if (spec?.type === "LongClassSpecifier") {
         for (let i = 0; i < spec.childCount; i++) {
           const child = spec.child(i);
-          if (child.type === "classAnnotationClause") {
+          if (child.type === "classAnnotationClause" || child.type === "AnnotationClause") {
             const ast = abstractSyntaxNodeFactory(child);
             if (ast) result.push(ast);
+          } else if (
+            child.type === "EquationSection" ||
+            child.type === "AlgorithmSection" ||
+            child.type === "ElementSection" ||
+            child.type === "InitialEquationSection" ||
+            child.type === "InitialAlgorithmSection"
+          ) {
+            // Workaround: tree-sitter sometimes parses the class annotation as a standalone
+            // AnnotationClause at the very end of the last section.
+            let foundAnn = null;
+            for (let j = child.childCount - 1; j >= 0; j--) {
+              const subChild = child.child(j);
+              if (subChild.type === "AnnotationClause") {
+                foundAnn = subChild;
+                break;
+              } else if (subChild.type !== ";" && subChild.type !== "comment" && subChild.type !== "string_comment") {
+                break;
+              }
+            }
+            if (foundAnn) {
+              const ast = abstractSyntaxNodeFactory(foundAnn);
+              if (ast && !result.includes(ast)) result.push(ast);
+            }
           }
         }
       }
@@ -781,9 +804,30 @@ export class ModelicaClassInstance extends ModelicaElement {
       if (spec?.type === "LongClassSpecifier") {
         for (let i = 0; i < spec.childCount; i++) {
           const child = spec.child(i);
-          if (child.type === "classAnnotationClause") {
+          if (child.type === "classAnnotationClause" || child.type === "AnnotationClause") {
             const ast = abstractSyntaxNodeFactory(child);
             if (ast) clauses.push(ast);
+          } else if (
+            child.type === "EquationSection" ||
+            child.type === "AlgorithmSection" ||
+            child.type === "ElementSection" ||
+            child.type === "InitialEquationSection" ||
+            child.type === "InitialAlgorithmSection"
+          ) {
+            let foundAnn = null;
+            for (let j = child.childCount - 1; j >= 0; j--) {
+              const subChild = child.child(j);
+              if (subChild.type === "AnnotationClause") {
+                foundAnn = subChild;
+                break;
+              } else if (subChild.type !== ";" && subChild.type !== "comment" && subChild.type !== "string_comment") {
+                break;
+              }
+            }
+            if (foundAnn) {
+              const ast = abstractSyntaxNodeFactory(foundAnn);
+              if (ast && !clauses.includes(ast)) clauses.push(ast);
+            }
           }
         }
       }

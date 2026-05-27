@@ -6,6 +6,15 @@
 
 import http from "node:http";
 import https from "node:https";
+import type {
+  GitCommitItem,
+  GitIssueItem,
+  GitJobItem,
+  GitMergeRequestItem,
+  GitPipelineItem,
+  GitTreeItem,
+  IGitProvider,
+} from "../interfaces/git-provider.js";
 
 const GITLAB_URL = process.env.GITLAB_URL || "https://gitlab.com";
 const GITLAB_TOKEN = process.env.GITLAB_TOKEN || "";
@@ -41,7 +50,7 @@ export function gitlabRequest<T = unknown>(path: string, options?: RequestInit):
       {
         method: options?.method || "GET",
         headers,
-        family: 4, // Force IPv4 to bypass dual-stack fetch bugs in restricted networks
+        family: 4, // Force IPv4
       },
       (res) => {
         let data = "";
@@ -66,68 +75,86 @@ export function gitlabRequest<T = unknown>(path: string, options?: RequestInit):
   });
 }
 
-/**
- * Get a single project by ID or URL-encoded path.
- */
-export async function getProject(projectIdOrPath: string) {
-  const encodedPath = encodeURIComponent(projectIdOrPath);
-  return gitlabRequest(`/projects/${encodedPath}`);
-}
+export class GitLabProvider implements IGitProvider {
+  async getProject(projectIdOrPath: string): Promise<unknown> {
+    const encodedPath = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest(`/projects/${encodedPath}`);
+  }
 
-/**
- * Get repository tree for a project.
- */
-export async function getRepositoryTree(projectIdOrPath: string, ref = "main", path = "") {
-  const encodedId = encodeURIComponent(projectIdOrPath);
-  const params = new URLSearchParams({ ref, path });
-  return gitlabRequest(`/projects/${encodedId}/repository/tree?${params.toString()}`);
-}
-
-/**
- * Get raw file content from the repository.
- */
-export function getRepositoryFileRaw(projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> {
-  return new Promise((resolve, reject) => {
+  async getRepositoryTree(projectIdOrPath: string, ref = "main", path = ""): Promise<GitTreeItem[]> {
     const encodedId = encodeURIComponent(projectIdOrPath);
-    const encodedFile = encodeURIComponent(filePath);
-    const url = new URL(`${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${ref}`);
-    const client = url.protocol === "http:" ? http : https;
+    const params = new URLSearchParams({ ref, path });
+    return gitlabRequest<GitTreeItem[]>(`/projects/${encodedId}/repository/tree?${params.toString()}`);
+  }
 
-    const headers: Record<string, string> = {};
-    if (GITLAB_TOKEN) {
-      headers["Authorization"] = `Bearer ${GITLAB_TOKEN}`;
-    }
+  async getRepositoryFileRaw(projectIdOrPath: string, filePath: string, ref = "main"): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const encodedId = encodeURIComponent(projectIdOrPath);
+      const encodedFile = encodeURIComponent(filePath);
+      const url = new URL(`${GITLAB_URL}/api/v4/projects/${encodedId}/repository/files/${encodedFile}/raw?ref=${ref}`);
+      const client = url.protocol === "http:" ? http : https;
 
-    const req = client.request(
-      url,
-      {
-        method: "GET",
-        headers,
-        family: 4, // Force IPv4
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          if (!res.statusCode || res.statusCode >= 400) {
-            reject(new Error(`Failed to fetch raw file: ${res.statusCode}`));
-          } else {
-            resolve(data);
-          }
-        });
-      },
-    );
+      const headers: Record<string, string> = {};
+      if (GITLAB_TOKEN) {
+        headers["Authorization"] = `Bearer ${GITLAB_TOKEN}`;
+      }
 
-    req.on("error", reject);
-    req.end();
-  });
-}
+      const req = client.request(
+        url,
+        {
+          method: "GET",
+          headers,
+          family: 4, // Force IPv4
+        },
+        (res) => {
+          let data = "";
+          res.on("data", (chunk) => (data += chunk));
+          res.on("end", () => {
+            if (!res.statusCode || res.statusCode >= 400) {
+              reject(new GitlabError(res.statusCode || 500, `Failed to fetch raw file: ${res.statusCode}`));
+            } else {
+              resolve(data);
+            }
+          });
+        },
+      );
 
-/**
- * List commits for a project.
- */
-export async function getCommits(projectIdOrPath: string, refName = "main") {
-  const encodedId = encodeURIComponent(projectIdOrPath);
-  const params = new URLSearchParams({ ref_name: refName });
-  return gitlabRequest(`/projects/${encodedId}/repository/commits?${params.toString()}`);
+      req.on("error", reject);
+      req.end();
+    });
+  }
+
+  async getCommits(projectIdOrPath: string, refName = "main"): Promise<GitCommitItem[]> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    const params = new URLSearchParams({ ref_name: refName });
+    return gitlabRequest<GitCommitItem[]>(`/projects/${encodedId}/repository/commits?${params.toString()}`);
+  }
+
+  async getPipelines(projectIdOrPath: string, refName = "main"): Promise<GitPipelineItem[]> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest<GitPipelineItem[]>(`/projects/${encodedId}/pipelines?ref=${encodeURIComponent(refName)}`);
+  }
+
+  async getPipelineJobs(projectIdOrPath: string, pipelineId: string): Promise<GitJobItem[]> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest<GitJobItem[]>(`/projects/${encodedId}/pipelines/${pipelineId}/jobs`);
+  }
+
+  async getIssues(projectIdOrPath: string): Promise<GitIssueItem[]> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest<GitIssueItem[]>(`/projects/${encodedId}/issues?state=opened`);
+  }
+
+  async createIssue(projectIdOrPath: string, body: unknown): Promise<GitIssueItem> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest<GitIssueItem>(`/projects/${encodedId}/issues`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getMergeRequests(projectIdOrPath: string): Promise<GitMergeRequestItem[]> {
+    const encodedId = encodeURIComponent(projectIdOrPath);
+    return gitlabRequest<GitMergeRequestItem[]>(`/projects/${encodedId}/merge_requests?state=opened`);
+  }
 }

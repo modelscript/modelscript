@@ -8,7 +8,6 @@ import {
   FileIcon,
   HistoryIcon,
   LinkIcon,
-  PackageIcon,
   VerifiedIcon,
 } from "@primer/octicons-react";
 import { Heading, Label, Spinner, Text } from "@primer/react";
@@ -56,14 +55,50 @@ const PageWrap = styled.div`
   color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
 `;
 
+const TreeSidebar = styled.div`
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+`;
+
+const TreeScrollArea = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 8px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-strong);
+  }
+`;
+
+const MainContentWrap = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+`;
+
 const ContentGrid = styled.div`
-  max-width: 1280px;
+  max-width: none;
   margin: 0 auto;
   padding: 0 40px 60px;
   display: grid;
@@ -79,7 +114,7 @@ const ContentGrid = styled.div`
 `;
 
 const HeaderBar = styled.div`
-  max-width: 1280px;
+  max-width: none;
   width: 100%;
   margin: 0 auto;
   padding: 32px 40px 0;
@@ -209,7 +244,7 @@ const TabBar = styled.div`
   gap: 0;
   border-bottom: 2px solid var(--color-border);
   margin-bottom: 24px;
-  max-width: 1280px;
+  max-width: none;
   width: 100%;
   margin-left: auto;
   margin-right: auto;
@@ -538,11 +573,10 @@ function timeAgo(dateStr: string): string {
 
 /* ─── tab types ─── */
 
-type TabId = "readme" | "models" | "versions" | "artifacts" | "dependencies";
+type TabId = "readme" | "versions" | "artifacts" | "dependencies";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "readme", label: "Readme", icon: <BookIcon size={16} /> },
-  { id: "models", label: "Models", icon: <PackageIcon size={16} /> },
   { id: "versions", label: "Versions", icon: <HistoryIcon size={16} /> },
   { id: "artifacts", label: "Artifacts", icon: <FileIcon size={16} /> },
   { id: "dependencies", label: "Dependencies", icon: <DependabotIcon size={16} /> },
@@ -698,504 +732,521 @@ const PackageDetailPage: React.FC = () => {
 
   return (
     <PageWrap>
-      {/* ── Header ── */}
-      <HeaderBar>
-        <Box mb={3}>
-          <Breadcrumbs
-            items={[
-              { label: "Libraries", href: "/packages" },
-              { label: name || "", href: `/packages/${name}` },
-              { label: version || "" },
-            ]}
-          />
-        </Box>
-        <Box display="flex" alignItems="center" gap="16px" mb={3}>
-          {/* Package icon */}
+      {/* ── Left Sidebar (Classes) ── */}
+      {tree.length > 0 && (
+        <TreeSidebar>
           <Box
             style={{
-              width: 48,
-              height: 48,
-              borderRadius: 8,
-              background: "var(--gradient-icon-box)",
-              border: "1px solid var(--color-border-strong)",
+              height: "84px",
+              minHeight: "84px",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              overflow: "hidden",
+              gap: "12px",
+              padding: "0 16px",
+              boxSizing: "border-box",
             }}
           >
-            <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={36} height={36} />
-          </Box>
-          <Box>
-            <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
+            <Box
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: "var(--gradient-icon-box)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                border: "1px solid var(--color-border-strong)",
+              }}
+            >
+              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={24} height={24} />
+            </Box>
+            <Box display="flex" flexDirection="column">
+              <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.2 }}>
                 {name}
-              </Heading>
-              <Label
-                variant="accent"
-                style={{
-                  fontSize: 14,
-                  padding: "2px 10px",
-                  background: "var(--color-accent-blue-bg)",
-                  color: "var(--color-accent-blue)",
-                  border: "1px solid var(--color-accent-blue-border)",
-                }}
-              >
-                {version}
-              </Label>
-              {jobStatus && jobStatus !== "completed" && (
-                <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
-              )}
-              {packument?.license && (
-                <Label variant="secondary" style={{ fontSize: 11 }}>
-                  {packument.license}
+              </Text>
+              <Text style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: "2px" }}>v{version}</Text>
+            </Box>
+          </Box>
+
+          <TreeScrollArea>
+            <Divider style={{ marginTop: 0, marginBottom: 12 }} />
+            {tree.map((node) => (
+              <ClassTreeNode key={node.fullName} node={node} depth={0} libraryName={name!} version={version!} />
+            ))}
+          </TreeScrollArea>
+        </TreeSidebar>
+      )}
+
+      <MainContentWrap>
+        {/* ── Header ── */}
+        <HeaderBar>
+          <Box mb={3}>
+            <Breadcrumbs
+              items={[
+                { label: "Libraries", href: "/packages" },
+                { label: name || "", href: `/packages/${name}` },
+                { label: version || "" },
+              ]}
+            />
+          </Box>
+          <Box display="flex" alignItems="center" gap="16px" mb={3}>
+            {/* Package icon */}
+            <Box
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 8,
+                background: "var(--gradient-icon-box)",
+                border: "1px solid var(--color-border-strong)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                overflow: "hidden",
+              }}
+            >
+              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={36} height={36} />
+            </Box>
+            <Box>
+              <Box display="flex" alignItems="center" gap="8px">
+                <Heading
+                  as="h1"
+                  style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}
+                >
+                  {name}
+                </Heading>
+                <Label
+                  variant="accent"
+                  style={{
+                    fontSize: 14,
+                    padding: "2px 10px",
+                    background: "var(--color-accent-blue-bg)",
+                    color: "var(--color-accent-blue)",
+                    border: "1px solid var(--color-accent-blue-border)",
+                  }}
+                >
+                  {version}
                 </Label>
+                {jobStatus && jobStatus !== "completed" && jobStatus !== "failed" && (
+                  <Label
+                    variant="attention"
+                    style={
+                      jobStatus === "processing" ? { display: "flex", alignItems: "center", gap: "6px" } : undefined
+                    }
+                  >
+                    {jobStatus === "processing" && <Spinner size="small" />}
+                    {jobStatus === "processing" ? "Processing…" : "Pending"}
+                  </Label>
+                )}
+                {packument?.license && (
+                  <Label variant="secondary" style={{ fontSize: 11 }}>
+                    {packument.license}
+                  </Label>
+                )}
+              </Box>
+              {description && (
+                <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
+                  {description}
+                </Text>
+              )}
+              {publishedAt && (
+                <Text as="p" style={{ color: "var(--color-text-tertiary)", fontSize: 12, margin: "2px 0 0" }}>
+                  Published {timeAgo(publishedAt)}
+                </Text>
               )}
             </Box>
-            {description && (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
-                {description}
-              </Text>
-            )}
-            {publishedAt && (
-              <Text as="p" style={{ color: "var(--color-text-tertiary)", fontSize: 12, margin: "2px 0 0" }}>
-                Published {timeAgo(publishedAt)}
-              </Text>
-            )}
           </Box>
-        </Box>
-      </HeaderBar>
+        </HeaderBar>
 
-      {/* ── Tabs ── */}
-      <TabBar>
-        {TABS.map((tab) => (
-          <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
-            {tab.icon}
-            {tab.label}
-            {tab.id === "artifacts" && (artifactViewers.length > 0 || artifacts.length > 0) && (
-              <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
-                {artifactViewers.length || artifacts.length}
-              </Label>
-            )}
-            {tab.id === "dependencies" && Object.keys(dependencies).length > 0 && (
-              <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
-                {Object.keys(dependencies).length}
-              </Label>
-            )}
-          </Tab>
-        ))}
-      </TabBar>
+        {/* ── Tabs ── */}
+        <TabBar>
+          {TABS.map((tab) => (
+            <Tab key={tab.id} $active={activeTab === tab.id} onClick={() => setTab(tab.id)}>
+              {tab.icon}
+              {tab.label}
+              {tab.id === "artifacts" && (artifactViewers.length > 0 || artifacts.length > 0) && (
+                <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
+                  {artifactViewers.length || artifacts.length}
+                </Label>
+              )}
+              {tab.id === "dependencies" && Object.keys(dependencies).length > 0 && (
+                <Label variant="secondary" style={{ fontSize: 10, padding: "0 4px", marginLeft: 4 }}>
+                  {Object.keys(dependencies).length}
+                </Label>
+              )}
+            </Tab>
+          ))}
+        </TabBar>
 
-      {/* ── Body ── */}
-      <ContentGrid>
-        {/* ── Main column ── */}
-        <div>
-          {/* README tab */}
-          {activeTab === "readme" && (
-            <>
-              {/* Root class diagram */}
-              {!diagramError && (
-                <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
-                  <DiagramWrap>
-                    <InvertedSvg
-                      src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
-                      alt={`${name} diagram`}
-                      onLoad={() => setDiagramLoaded(true)}
-                      onError={() => {
-                        if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                          setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                        } else {
-                          setDiagramError(true);
-                        }
+        {/* ── Body ── */}
+        <ContentGrid>
+          {/* ── Main column ── */}
+          <div>
+            {/* README tab */}
+            {activeTab === "readme" && (
+              <>
+                {/* Root class diagram */}
+                {!diagramError && (
+                  <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
+                    <DiagramWrap>
+                      <InvertedSvg
+                        src={`${getDiagramUrl(name!, version!, name!)}?t=${retryCount}`}
+                        alt={`${name} diagram`}
+                        onLoad={() => setDiagramLoaded(true)}
+                        onError={() => {
+                          if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                            setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                          } else {
+                            setDiagramError(true);
+                          }
+                        }}
+                      />
+                    </DiagramWrap>
+                  </div>
+                )}
+
+                <DocCard>
+                  {rootClass?.documentation ? (
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(rewriteModelicaUris(rootClass.documentation, version!)),
                       }}
                     />
-                  </DiagramWrap>
-                </div>
-              )}
+                  ) : packument?.readme && !packument.readme.includes("ERROR: No README data found!") ? (
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(packument.readme),
+                      }}
+                    />
+                  ) : rootClass?.description ? (
+                    <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
+                      {rootClass.description}
+                    </Text>
+                  ) : (
+                    <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
+                      No documentation available for this package.
+                    </Text>
+                  )}
+                </DocCard>
+              </>
+            )}
 
-              <DocCard>
-                {packument?.readme ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(packument.readme),
-                    }}
-                  />
-                ) : rootClass?.documentation ? (
-                  <div
-                    dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(rewriteModelicaUris(rootClass.documentation, version!)),
-                    }}
-                  />
-                ) : rootClass?.description ? (
-                  <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
-                    {rootClass.description}
-                  </Text>
-                ) : (
-                  <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                    No documentation available for this package.
-                  </Text>
-                )}
-              </DocCard>
-            </>
-          )}
-
-          {/* Models tab */}
-          {activeTab === "models" && (
-            <>
-              <SectionTitle as="h3">Class Hierarchy</SectionTitle>
-              {tree.length > 0 ? (
-                <GlassCard style={{ padding: "8px 4px", maxHeight: "calc(100vh - 300px)", overflowY: "auto" }}>
-                  {tree.map((node) => (
-                    <ClassTreeNode key={node.fullName} node={node} depth={0} libraryName={name!} version={version!} />
-                  ))}
-                </GlassCard>
-              ) : (
+            {/* Versions tab */}
+            {activeTab === "versions" && (
+              <>
+                <SectionTitle as="h3">Version History</SectionTitle>
                 <GlassCard>
-                  <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                    No model classes found — the package may still be processing.
-                  </Text>
+                  {versionList.length > 0 ? (
+                    versionList.map((v) => (
+                      <VersionRow key={v}>
+                        <Box display="flex" alignItems="center" gap="8px">
+                          <Link
+                            to={`/packages/${name}/${v}`}
+                            style={{
+                              color: "var(--color-link)",
+                              textDecoration: "none",
+                              fontWeight: v === version ? 600 : 400,
+                              fontSize: 14,
+                            }}
+                          >
+                            {v}
+                          </Link>
+                          {packument?.["dist-tags"]?.["latest"] === v && (
+                            <Label variant="accent" style={{ fontSize: 10, padding: "0 6px" }}>
+                              latest
+                            </Label>
+                          )}
+                          {v === version && (
+                            <Label variant="success" style={{ fontSize: 10, padding: "0 6px" }}>
+                              current
+                            </Label>
+                          )}
+                        </Box>
+                        <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+                          {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
+                        </Text>
+                      </VersionRow>
+                    ))
+                  ) : (
+                    <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
+                      No version history available.
+                    </Text>
+                  )}
                 </GlassCard>
-              )}
-            </>
-          )}
+              </>
+            )}
 
-          {/* Versions tab */}
-          {activeTab === "versions" && (
-            <>
-              <SectionTitle as="h3">Version History</SectionTitle>
-              <GlassCard>
-                {versionList.length > 0 ? (
-                  versionList.map((v) => (
-                    <VersionRow key={v}>
-                      <Box display="flex" alignItems="center" gap="8px">
-                        <Link
-                          to={`/packages/${name}/${v}`}
-                          style={{
-                            color: "var(--color-link)",
-                            textDecoration: "none",
-                            fontWeight: v === version ? 600 : 400,
-                            fontSize: 14,
-                          }}
-                        >
-                          {v}
-                        </Link>
-                        {packument?.["dist-tags"]?.["latest"] === v && (
-                          <Label variant="accent" style={{ fontSize: 10, padding: "0 6px" }}>
-                            latest
-                          </Label>
-                        )}
-                        {v === version && (
-                          <Label variant="success" style={{ fontSize: 10, padding: "0 6px" }}>
-                            current
-                          </Label>
-                        )}
-                      </Box>
-                      <Text style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
-                        {packument?.time?.[v] ? formatDate(packument.time[v]) : ""}
-                      </Text>
-                    </VersionRow>
-                  ))
-                ) : (
-                  <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                    No version history available.
-                  </Text>
-                )}
-              </GlassCard>
-            </>
-          )}
+            {/* Artifacts tab */}
+            {activeTab === "artifacts" && (
+              <>
+                <SectionTitle as="h3">Bundled Artifacts</SectionTitle>
+                <Text as="p" style={{ color: "var(--color-text-muted)", marginBottom: 24, fontSize: 14 }}>
+                  Artifacts are compiled resources, datasets, or external files bundled with this package version. They
+                  provide pre-compiled simulations (FMUs), CAD models, or supplementary data that can be executed or
+                  viewed directly in the browser.
+                </Text>
 
-          {/* Artifacts tab */}
-          {activeTab === "artifacts" && (
-            <>
-              <SectionTitle as="h3">Bundled Artifacts</SectionTitle>
-
-              {/* Render enriched artifact viewers from the API */}
-              {artifactViewers.length > 0 ? (
-                artifactViewers.map((av) => {
-                  // Render interactive viewers based on handler-provided descriptors
-                  if (av.viewer?.viewer === "fmu-simulator") {
-                    return (
-                      <FmuSimulatorViewer
-                        key={av.id}
-                        config={
-                          av.viewer.config as Record<string, unknown> & {
-                            fmiVersion?: string;
-                            modelName?: string;
-                            hasWasm?: boolean;
-                            inputs?: {
-                              name: string;
-                              valueReference: number;
-                              causality: string;
-                              variability: string;
-                              type: string;
-                              start?: string;
-                              unit?: string;
-                              description?: string;
-                            }[];
-                            outputs?: {
-                              name: string;
-                              valueReference: number;
-                              causality: string;
-                              variability: string;
-                              type: string;
-                              start?: string;
-                              unit?: string;
-                              description?: string;
-                            }[];
-                            parameters?: {
-                              name: string;
-                              valueReference: number;
-                              causality: string;
-                              variability: string;
-                              type: string;
-                              start?: string;
-                              unit?: string;
-                              description?: string;
-                            }[];
-                            platforms?: string[];
+                {/* Render enriched artifact viewers from the API */}
+                {artifactViewers.length > 0 ? (
+                  artifactViewers.map((av) => {
+                    // Render interactive viewers based on handler-provided descriptors
+                    if (av.viewer?.viewer === "fmu-simulator") {
+                      return (
+                        <FmuSimulatorViewer
+                          key={av.id}
+                          config={
+                            av.viewer.config as Record<string, unknown> & {
+                              fmiVersion?: string;
+                              modelName?: string;
+                              hasWasm?: boolean;
+                              inputs?: {
+                                name: string;
+                                valueReference: number;
+                                causality: string;
+                                variability: string;
+                                type: string;
+                                start?: string;
+                                unit?: string;
+                                description?: string;
+                              }[];
+                              outputs?: {
+                                name: string;
+                                valueReference: number;
+                                causality: string;
+                                variability: string;
+                                type: string;
+                                start?: string;
+                                unit?: string;
+                                description?: string;
+                              }[];
+                              parameters?: {
+                                name: string;
+                                valueReference: number;
+                                causality: string;
+                                variability: string;
+                                type: string;
+                                start?: string;
+                                unit?: string;
+                                description?: string;
+                              }[];
+                              platforms?: string[];
+                            }
                           }
-                        }
-                        artifactPath={av.path}
-                      />
-                    );
-                  }
+                          artifactPath={av.path}
+                        />
+                      );
+                    }
 
-                  if (av.viewer?.viewer === "dataset-table") {
-                    return (
-                      <DatasetTableViewer
-                        key={av.id}
-                        config={
-                          av.viewer.config as Record<string, unknown> & {
-                            columns?: {
-                              name: string;
-                              type: "number" | "string" | "boolean";
-                              min?: number;
-                              max?: number;
-                              mean?: number;
-                              unique?: number;
-                            }[];
-                            rowCount?: number;
-                            format?: string;
-                            previewRows?: string[][];
-                            hasHeader?: boolean;
+                    if (av.viewer?.viewer === "dataset-table") {
+                      return (
+                        <DatasetTableViewer
+                          key={av.id}
+                          config={
+                            av.viewer.config as Record<string, unknown> & {
+                              columns?: {
+                                name: string;
+                                type: "number" | "string" | "boolean";
+                                min?: number;
+                                max?: number;
+                                mean?: number;
+                                unique?: number;
+                              }[];
+                              rowCount?: number;
+                              format?: string;
+                              previewRows?: string[][];
+                              hasHeader?: boolean;
+                            }
                           }
-                        }
-                        artifactPath={av.path}
-                      />
+                          artifactPath={av.path}
+                        />
+                      );
+                    }
+
+                    if (av.viewer?.viewer === "cad-3d-viewer") {
+                      return <CadStepViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
+                    }
+
+                    if (av.viewer?.viewer === "sysml-architecture-viewer") {
+                      return <SysmlViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
+                    }
+
+                    // Fallback: render a generic artifact card for unrecognized types
+                    return (
+                      <ArtifactCard key={av.id}>
+                        <ArtifactBadge $type={av.type}>{av.type}</ArtifactBadge>
+                        <Box flex={1}>
+                          <Text style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-heading)" }}>
+                            {av.path}
+                          </Text>
+                          <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "4px 0 0" }}>
+                            {av.displayName}
+                          </Text>
+                        </Box>
+                      </ArtifactCard>
                     );
-                  }
-
-                  if (av.viewer?.viewer === "cad-3d-viewer") {
-                    return <CadStepViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
-                  }
-
-                  if (av.viewer?.viewer === "sysml-architecture-viewer") {
-                    return <SysmlViewer key={av.id} config={av.viewer.config} artifactPath={av.path} />;
-                  }
-
-                  // Fallback: render a generic artifact card for unrecognized types
-                  return (
-                    <ArtifactCard key={av.id}>
-                      <ArtifactBadge $type={av.type}>{av.type}</ArtifactBadge>
+                  })
+                ) : artifacts.length > 0 ? (
+                  // Fallback to basic artifact list from packument metadata
+                  artifacts.map((artifact, i) => (
+                    <ArtifactCard key={i}>
+                      <ArtifactBadge $type={artifact.type}>{artifact.type}</ArtifactBadge>
                       <Box flex={1}>
                         <Text style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-heading)" }}>
-                          {av.path}
+                          {artifact.path}
                         </Text>
-                        <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "4px 0 0" }}>
-                          {av.displayName}
-                        </Text>
+                        {artifact.description && (
+                          <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "4px 0 0" }}>
+                            {artifact.description}
+                          </Text>
+                        )}
                       </Box>
-                    </ArtifactCard>
-                  );
-                })
-              ) : artifacts.length > 0 ? (
-                // Fallback to basic artifact list from packument metadata
-                artifacts.map((artifact, i) => (
-                  <ArtifactCard key={i}>
-                    <ArtifactBadge $type={artifact.type}>{artifact.type}</ArtifactBadge>
-                    <Box flex={1}>
-                      <Text style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-heading)" }}>
-                        {artifact.path}
-                      </Text>
-                      {artifact.description && (
-                        <Text as="p" style={{ fontSize: 12, color: "var(--color-text-muted)", margin: "4px 0 0" }}>
-                          {artifact.description}
-                        </Text>
+                      {artifact.fmiVersion && (
+                        <Label variant="secondary" style={{ fontSize: 10 }}>
+                          FMI {artifact.fmiVersion}
+                        </Label>
                       )}
-                    </Box>
-                    {artifact.fmiVersion && (
-                      <Label variant="secondary" style={{ fontSize: 10 }}>
-                        FMI {artifact.fmiVersion}
-                      </Label>
-                    )}
-                    {artifact.platforms && (
-                      <Box display="flex" gap="4px">
-                        {artifact.platforms.map((p) => (
-                          <Label key={p} variant="secondary" style={{ fontSize: 10 }}>
-                            {p}
-                          </Label>
-                        ))}
-                      </Box>
-                    )}
-                  </ArtifactCard>
-                ))
-              ) : (
-                <GlassCard>
-                  <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                    No artifacts bundled with this version.
-                  </Text>
-                </GlassCard>
-              )}
-            </>
-          )}
-
-          {/* Dependencies tab */}
-          {activeTab === "dependencies" && (
-            <>
-              <SectionTitle as="h3">Dependencies</SectionTitle>
-              <GlassCard>
-                {Object.keys(dependencies).length > 0 ? (
-                  Object.entries(dependencies).map(([dep, range]) => (
-                    <DepRow key={dep}>
-                      <Link
-                        to={`/packages/${dep}`}
-                        style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
-                      >
-                        {dep}
-                      </Link>
-                      <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>
-                        {range}
-                      </Text>
-                    </DepRow>
+                      {artifact.platforms && (
+                        <Box display="flex" gap="4px">
+                          {artifact.platforms.map((p) => (
+                            <Label key={p} variant="secondary" style={{ fontSize: 10 }}>
+                              {p}
+                            </Label>
+                          ))}
+                        </Box>
+                      )}
+                    </ArtifactCard>
                   ))
                 ) : (
-                  <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                    No dependencies.
-                  </Text>
-                )}
-              </GlassCard>
-
-              {currentManifest?.devDependencies && Object.keys(currentManifest.devDependencies).length > 0 && (
-                <>
-                  <SectionTitle as="h3" style={{ marginTop: 24 }}>
-                    Dev Dependencies
-                  </SectionTitle>
                   <GlassCard>
-                    {Object.entries(currentManifest.devDependencies).map(([dep, range]) => (
+                    <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
+                      No artifacts bundled with this version.
+                    </Text>
+                  </GlassCard>
+                )}
+              </>
+            )}
+
+            {/* Dependencies tab */}
+            {activeTab === "dependencies" && (
+              <>
+                <SectionTitle as="h3">Dependencies</SectionTitle>
+                <GlassCard>
+                  {Object.keys(dependencies).length > 0 ? (
+                    Object.entries(dependencies).map(([dep, range]) => (
                       <DepRow key={dep}>
-                        <Text style={{ color: "var(--color-text-primary)", fontSize: 14 }}>{dep}</Text>
+                        <Link
+                          to={`/packages/${dep}`}
+                          style={{ color: "var(--color-link)", textDecoration: "none", fontSize: 14 }}
+                        >
+                          {dep}
+                        </Link>
                         <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>
                           {range}
                         </Text>
                       </DepRow>
-                    ))}
-                  </GlassCard>
-                </>
-              )}
-            </>
-          )}
-        </div>
+                    ))
+                  ) : (
+                    <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
+                      No dependencies.
+                    </Text>
+                  )}
+                </GlassCard>
 
-        {/* ── Sidebar ── */}
-        <aside style={{ display: "flex", flexDirection: "column" }}>
-          <MetaLabel style={{ marginBottom: 12 }}>Install</MetaLabel>
-          <InstallBox onClick={handleCopy} title="Click to copy">
-            <code>{installCmd}</code>
-            <span className="copy-icon">{copied ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
-          </InstallBox>
+                {currentManifest?.devDependencies && Object.keys(currentManifest.devDependencies).length > 0 && (
+                  <>
+                    <SectionTitle as="h3" style={{ marginTop: 24 }}>
+                      Dev Dependencies
+                    </SectionTitle>
+                    <GlassCard>
+                      {Object.entries(currentManifest.devDependencies).map(([dep, range]) => (
+                        <DepRow key={dep}>
+                          <Text style={{ color: "var(--color-text-primary)", fontSize: 14 }}>{dep}</Text>
+                          <Text style={{ color: "var(--color-text-muted)", fontSize: 13, fontFamily: "monospace" }}>
+                            {range}
+                          </Text>
+                        </DepRow>
+                      ))}
+                    </GlassCard>
+                  </>
+                )}
+              </>
+            )}
+          </div>
 
-          {packument?.repository?.url && (
-            <MetaBlock>
-              <MetaLabel>Repository</MetaLabel>
-              <MetaValue>
-                <BookIcon size={16} />
-                <a
-                  href={packument.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--color-heading)", textDecoration: "none" }}
-                >
-                  {packument.repository.url.replace(/^git\+https:\/\//, "").replace(/\.git$/, "")}
-                </a>
-              </MetaValue>
-            </MetaBlock>
-          )}
+          {/* ── Sidebar ── */}
+          <aside style={{ display: "flex", flexDirection: "column" }}>
+            <MetaLabel style={{ marginBottom: 12 }}>Install</MetaLabel>
+            <InstallBox onClick={handleCopy} title="Click to copy">
+              <code>{installCmd}</code>
+              <span className="copy-icon">{copied ? <VerifiedIcon size={16} /> : <CopyIcon size={16} />}</span>
+            </InstallBox>
 
-          {packument?.homepage && (
-            <MetaBlock>
-              <MetaLabel>Homepage</MetaLabel>
-              <MetaValue>
-                <LinkIcon size={16} />
-                <a
-                  href={packument.homepage}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "var(--color-heading)", textDecoration: "none" }}
-                >
-                  {packument.homepage.replace(/^https?:\/\//, "")}
-                </a>
-              </MetaValue>
-            </MetaBlock>
-          )}
-
-          <Divider />
-
-          <MetaGrid>
-            <MetaBlock style={{ marginBottom: 0 }}>
-              <MetaLabel>Version</MetaLabel>
-              <MetaValue>{version}</MetaValue>
-            </MetaBlock>
-            {packument?.license && (
-              <MetaBlock style={{ marginBottom: 0 }}>
-                <MetaLabel>License</MetaLabel>
-                <MetaValue>{packument.license}</MetaValue>
+            {packument?.repository?.url && (
+              <MetaBlock>
+                <MetaLabel>Repository</MetaLabel>
+                <MetaValue>
+                  <BookIcon size={16} />
+                  <a
+                    href={packument.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--color-heading)", textDecoration: "none" }}
+                  >
+                    {packument.repository.url.replace(/^git\+https:\/\//, "").replace(/\.git$/, "")}
+                  </a>
+                </MetaValue>
               </MetaBlock>
             )}
-          </MetaGrid>
 
-          <MetaBlock>
-            <MetaLabel>Last publish</MetaLabel>
-            <MetaValue>{publishedAt ? timeAgo(publishedAt) : "—"}</MetaValue>
-          </MetaBlock>
-
-          {currentManifest?.modelscript?.modelicaVersion && (
-            <MetaBlock>
-              <MetaLabel>Modelica Version</MetaLabel>
-              <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
-            </MetaBlock>
-          )}
-
-          <Divider />
-
-          {/* Class tree (always visible in sidebar when not on models tab) */}
-          {activeTab !== "models" && tree.length > 0 && (
-            <>
-              <MetaLabel style={{ marginBottom: 12 }}>Classes</MetaLabel>
-              <GlassCard style={{ padding: "8px 4px", maxHeight: "calc(100vh - 500px)", overflowY: "auto", margin: 0 }}>
-                {tree.slice(0, 20).map((node) => (
-                  <ClassTreeNode key={node.fullName} node={node} depth={0} libraryName={name!} version={version!} />
-                ))}
-                {tree.length > 20 && (
-                  <Text
-                    as="p"
-                    style={{
-                      color: "var(--color-text-muted)",
-                      fontSize: 12,
-                      textAlign: "center",
-                      margin: "8px 0 4px",
-                      cursor: "pointer",
-                    }}
-                    onClick={() => setTab("models")}
+            {packument?.homepage && (
+              <MetaBlock>
+                <MetaLabel>Homepage</MetaLabel>
+                <MetaValue>
+                  <LinkIcon size={16} />
+                  <a
+                    href={packument.homepage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--color-heading)", textDecoration: "none" }}
                   >
-                    + {tree.length - 20} more — view all →
-                  </Text>
-                )}
-              </GlassCard>
-            </>
-          )}
-        </aside>
-      </ContentGrid>
+                    {packument.homepage.replace(/^https?:\/\//, "")}
+                  </a>
+                </MetaValue>
+              </MetaBlock>
+            )}
+
+            <Divider />
+
+            <MetaGrid>
+              <MetaBlock style={{ marginBottom: 0 }}>
+                <MetaLabel>Version</MetaLabel>
+                <MetaValue>{version}</MetaValue>
+              </MetaBlock>
+              {packument?.license && (
+                <MetaBlock style={{ marginBottom: 0 }}>
+                  <MetaLabel>License</MetaLabel>
+                  <MetaValue>{packument.license}</MetaValue>
+                </MetaBlock>
+              )}
+            </MetaGrid>
+
+            <MetaBlock>
+              <MetaLabel>Last publish</MetaLabel>
+              <MetaValue>{publishedAt ? timeAgo(publishedAt) : "—"}</MetaValue>
+            </MetaBlock>
+
+            {currentManifest?.modelscript?.modelicaVersion && (
+              <MetaBlock>
+                <MetaLabel>Modelica Version</MetaLabel>
+                <MetaValue>{currentManifest.modelscript.modelicaVersion}</MetaValue>
+              </MetaBlock>
+            )}
+
+            <Divider />
+          </aside>
+        </ContentGrid>
+      </MainContentWrap>
     </PageWrap>
   );
 };

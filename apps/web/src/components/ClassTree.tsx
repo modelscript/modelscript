@@ -1,4 +1,4 @@
-import { ChevronDownIcon, ChevronRightIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ChevronRightIcon, PackageIcon } from "@primer/octicons-react";
 import { Label } from "@primer/react";
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
@@ -81,7 +81,7 @@ export const ClassTreeNode: React.FC<{
         ) : (
           <span style={{ width: 14, flexShrink: 0 }} />
         )}
-        <InvertedSvg src={iconUrl} alt="" width={16} height={16} />
+        <InvertedSvg src={iconUrl} fallback={<PackageIcon size={16} />} alt="" width={16} height={16} />
         <span>{node.name}</span>
         <Label
           variant="secondary"

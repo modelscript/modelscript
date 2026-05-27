@@ -24,9 +24,12 @@
     "languages/*/*"
   ],
   "scripts": {
-    "build": "nx run-many --target=build",
+    "prebuild": "mkdir -p data",
+    "build": "nx run-many --target=build --parallel=8",
+    "build:all": "nx run-many --target=build --parallel=8",
     "clean": "nx run-many --target=clean",
-    "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/morsel,@modelscript/web,@modelscript/ide --parallel=4",
+    "predev": "mkdir -p data",
+    "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/web,@modelscript/ide,@modelscript/lsp --parallel=4",
     "dev:docs": "npm run dev --workspace=@modelscript/docs",
     "dev:ide": "npm run dev --workspace=@modelscript/ide",
     "dev:vscode": "npm run test-web --workspace=extensions/vscode",
@@ -68,6 +71,7 @@
     "@eslint/js": "^10.0.1",
     "@nx/js": "^22.6.5",
     "@types/node": "^25.3.2",
+    "esbuild": "^0.28.0",
     "eslint": "^10.1.0",
     "husky": "^9.1.7",
     "jiti": "^2.6.1",

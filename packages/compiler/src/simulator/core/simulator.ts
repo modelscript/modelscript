@@ -614,23 +614,23 @@ export class ArenaSimulator {
 
   private extractEventIndicators() {
     this.eventIndicators = [];
-    // Event indicators from the DAE builder (query-based flattener path)
-    for (const exprId of this.arena.eventIndicatorExprIds) {
-      this.eventIndicators.push({ exprId, prevValue: 0, direction: 0 });
-    }
-    // If no explicit event indicators exist, derive them from when-clause conditions.
+    // Derive event indicators from when-clause conditions.
     // For adaptive solvers (Dopri5/BDF), event indicators must be CONTINUOUS functions
     // that smoothly cross zero — not boolean conditions that jump between 0 and 1.
     //
     // Relational conditions are decomposed:
-    //   h <= 0  → indicator = lhs - rhs = h - 0 = h  (sign change at h=0)
-    //   a >= b  → indicator = lhs - rhs = a - b       (sign change at a=b)
+    //   h < 0   → indicator = lhs - rhs = h - 0 = h  (sign change at h=0, direction = -1)
+    //   a >= b  → indicator = lhs - rhs = a - b       (sign change at a=b, direction = +1)
     //   etc.
-    if (this.eventIndicators.length === 0) {
-      for (const clause of this.whenClauses) {
-        const { exprId: indicatorExprId, direction } = this.buildContinuousEventIndicator(clause.conditionExprId);
-        this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0, direction });
-      }
+    //
+    // We always derive indicators from when-clause conditions rather than from the
+    // DAE's eventIndicatorExprIds, because when-clause conditions carry the relational
+    // operator which determines the crossing direction (-1 for Lt/Lte, +1 for Gt/Gte).
+    // The DAE's explicit indicators are generated for ALL relational expressions
+    // (including those outside when-clauses) and lack direction information.
+    for (const clause of this.whenClauses) {
+      const { exprId: indicatorExprId, direction } = this.buildContinuousEventIndicator(clause.conditionExprId);
+      this.eventIndicators.push({ exprId: indicatorExprId, prevValue: 0, direction });
     }
   }
 
@@ -1123,9 +1123,13 @@ export class ArenaSimulator {
 
       // Project state onto the zero-crossing surface BEFORE evaluating when-clauses.
       // The bisection locates events to ~1e-12 precision, but the residual non-zero
-      // value can cause strict inequalities (e.g. h <= 0) to evaluate to false.
-      // By projecting the involved state variable exactly to the threshold (e.g. h = 0),
-      // we ensure boolean event conditions evaluate robustly.
+      // value can cause strict inequalities (e.g. h < 0) to evaluate to false.
+      //
+      // We nudge the projected value slightly PAST the surface in the crossing
+      // direction so that both strict (h < 0) and non-strict (h <= 0) conditions
+      // evaluate to true at the event instant. The nudge magnitude (1e-10) is
+      // large enough to flip the boolean but small enough to be physically
+      // negligible (well within solver tolerance).
       if (eventIdx >= 0 && eventIdx < this.eventIndicators.length) {
         const ei = this.eventIndicators[eventIdx];
         if (ei) {
@@ -1143,7 +1147,22 @@ export class ArenaSimulator {
                       this.arena.getExprRight(ei.exprId),
                       valuesByStringId,
                     );
-                    valuesByStringId[nameId] = rhsVal;
+                    // Nudge past the surface: for direction -1 (g goes + → −,
+                    // e.g. h < 0), the condition becomes true when the variable
+                    // is below the threshold, so subtract a tiny epsilon.
+                    // For direction +1, add epsilon. For direction 0, use the
+                    // actual crossing direction inferred from the sign change.
+                    let nudge = 0;
+                    if (ei.direction === -1) {
+                      nudge = -1e-10;
+                    } else if (ei.direction === 1) {
+                      nudge = 1e-10;
+                    } else {
+                      // Direction 0 (both): infer from sign of current g value
+                      const gCurrent = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+                      nudge = gCurrent >= 0 ? -1e-10 : 1e-10;
+                    }
+                    valuesByStringId[nameId] = rhsVal + nudge;
                   }
                 }
               }

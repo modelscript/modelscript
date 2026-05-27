@@ -49,6 +49,42 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
+  // Handler for installing a single dependency from the registry (triggered by web IDE install button)
+  context.connection.onNotification(
+    "modelscript/installDependency",
+    async (params: { name: string; version: string }) => {
+      if (!savedLoaderCtx) {
+        context.connection.console.warn("[lsp] installDependency: loader context not ready.");
+        return;
+      }
+      context.connection.console.info(`[lsp] Installing dependency ${params.name}@${params.version} from registry...`);
+      context.connection.sendNotification("modelscript/status", {
+        state: "loading",
+        message: `Loading ${params.name}@${params.version}...`,
+      });
+      try {
+        await loadDependencyFromRegistry(params, savedLoaderCtx);
+        context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
+        // Re-validate all open documents
+        for (const doc of context.documents.all()) {
+          context.validationService.validateTextDocument(doc);
+        }
+        // Notify client that the project tree changed (refreshes Libraries panel)
+        context.connection.sendNotification("modelscript/projectTreeChanged");
+        context.connection.sendNotification("modelscript/status", {
+          state: "ready",
+          message: `Loaded ${params.name}@${params.version}`,
+        });
+      } catch (e) {
+        context.connection.console.error(`[lsp] Failed to install ${params.name}@${params.version}: ${e}`);
+        context.connection.sendNotification("modelscript/status", {
+          state: "error",
+          message: `Failed to load ${params.name}`,
+        });
+      }
+    },
+  );
+
   context.connection.onRequest("modelscript/getTraceabilityMatrix", (params: { uri: string }) => {
     try {
       const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();

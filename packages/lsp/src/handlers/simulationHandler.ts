@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
-
+import { ArenaSimulator } from "@modelscript/compiler/simulator";
+import { generateFmuWasmSource } from "@modelscript/fmi";
+import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { LspContext } from "../LspContext";
 
 export function registerSimulationHandlers(context: LspContext) {

@@ -1,7 +1,10 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 
 import { LspContext } from "../LspContext";
+import { getClassIconSvg } from "../diagramData";
+
+const iconCache = new Map<string, string | null>();
 
 export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
@@ -134,8 +137,29 @@ export function registerTreeHandlers(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getClassIcon",
-    (params: { className: string; uri?: string }): string | null => {
-      return null; // Disabled temporarily for performance testing
+    async (params: { className: string; uri?: string }): Promise<string | null> => {
+      if (iconCache.has(params.className)) {
+        return iconCache.get(params.className) || null;
+      }
+
+      // Yield to event loop to avoid blocking LSP completely
+      await new Promise((r) => setTimeout(r, 0));
+
+      const cls = context.workspaceManager.resolveClassInstance(params.uri || "modelica:/", params.className);
+      if (!cls) {
+        iconCache.set(params.className, null);
+        return null;
+      }
+
+      try {
+        const svg = getClassIconSvg(cls, 20, false);
+        iconCache.set(params.className, svg || null);
+        return svg || null;
+      } catch (e) {
+        console.warn(`Failed to render icon for ${params.className}:`, e);
+        iconCache.set(params.className, null);
+        return null;
+      }
     },
   );
 

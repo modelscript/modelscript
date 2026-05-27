@@ -56,6 +56,7 @@
     "puppeteer": "^25.1.0",
     "rss-parser": "^3.13.0",
     "semver": "^7.7.1",
+    "simple-git": "^3.36.0",
     "stemmer": "^2.0.1",
     "svgdom": "^0.1.22",
     "tree-sitter": "^0.21.1",

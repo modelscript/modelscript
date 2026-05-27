@@ -61,8 +61,11 @@ lerna-debug.log*
 # Database files
 *.db*
 
-# API data (published libraries)
+# API data (published libraries and sqlite databases)
+/data/
 packages/api/data/
+apps/api/data/
+apps/api/public/thumbnails
 
 # React Router (morsel)
 packages/morsel/.react-router/

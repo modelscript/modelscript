@@ -26,7 +26,7 @@ globalThis.WeakRef = class WeakRefMock {
 } as unknown as typeof WeakRef;
 
 import { simulateArena } from "@modelscript/compiler/simulator";
-import CSV from "@modelscript/csv/parser";
+
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
@@ -56,10 +56,6 @@ function cleanOmcOutput(text: string): string {
 const parser = new Parser();
 parser.setLanguage(Modelica);
 Context.registerParser(".mo", parser);
-
-const csvParser = new Parser();
-csvParser.setLanguage(CSV);
-Context.registerParser(".csv", csvParser);
 
 // ── Types (duplicated from runner — kept in sync) ────────────────────────────
 
@@ -309,6 +305,23 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       }
     }
 
+    // ── Build line offset index for byte → row/col conversion ──
+    const lineOffsets: number[] = [0];
+    for (let i = 0; i < testCase.source.length; i++) {
+      if (testCase.source[i] === "\n") lineOffsets.push(i + 1);
+    }
+    const byteToPosition = (byte: number): { row: number; column: number } => {
+      // Binary search for the line containing this byte
+      let lo = 0;
+      let hi = lineOffsets.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if ((lineOffsets[mid] ?? 0) <= byte) lo = mid;
+        else hi = mid - 1;
+      }
+      return { row: lo, column: byte - (lineOffsets[lo] ?? 0) };
+    };
+
     // ── Lint diagnostics ──
     interface DiagEntry {
       type: string;
@@ -322,12 +335,20 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     // Arena diagnostics
     if (arena) {
       for (const diag of arena.diagnostics) {
+        let range: DiagEntry["range"] = diag.range as DiagEntry["range"];
+        const rangeRec = diag.range as Record<string, unknown> | null;
+        if (rangeRec && typeof rangeRec.startByte === "number" && typeof rangeRec.endByte === "number") {
+          range = {
+            startPosition: byteToPosition(rangeRec.startByte),
+            endPosition: byteToPosition(rangeRec.endByte),
+          };
+        }
         diagnostics.push({
           type: diag.severity,
           code: diag.code,
           message: diag.message,
           resource: null,
-          range: diag.range as DiagEntry["range"],
+          range,
         });
       }
     }
@@ -353,15 +374,12 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       const codeMatch = d.message.match(/^\[M(\d+)\]/);
       if (codeMatch) code = parseInt(codeMatch[1], 10);
 
+      // Convert startByte/endByte from LintDiagnostic to row/col positions
       let range: DiagEntry["range"] = null;
-      if (dd.node) {
-        const node = dd.node as {
-          startPosition: { row: number; column: number };
-          endPosition: { row: number; column: number };
-        };
+      if (typeof d.startByte === "number" && typeof d.endByte === "number") {
         range = {
-          startPosition: { row: node.startPosition.row, column: node.startPosition.column },
-          endPosition: { row: node.endPosition.row, column: node.endPosition.column },
+          startPosition: byteToPosition(d.startByte),
+          endPosition: byteToPosition(d.endByte),
         };
       }
 
@@ -393,7 +411,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
               const startPos = `${r.startPosition.row + 1}:${r.startPosition.column + 1}`;
               const endPos = `${r.endPosition.row + 1}:${r.endPosition.column + 1}`;
               const relPath = d.resource ? path.relative(testsuiteRoot, d.resource) : "";
-              const prefix = relPath ? `${relPath.split(path.sep).slice(1).join("/")}:` : "";
+              const prefix = relPath ? `${relPath.split(path.sep).join("/")}:` : "";
               return `[${prefix}${startPos}-${endPos}] ${severity}: ${codeStr}${d.message}`;
             }
           }
@@ -421,9 +439,15 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
             )
             .map((d) => {
               const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-              const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-              const match = expected.match(prefixRegex);
-              const prefix = match ? match[1] : `[${testCase.file}]`;
+              // Use actual diagnostic range (from LintDiagnostic byte offsets)
+              let prefix = `[${testCase.file}]`;
+              if (d.range && d.range.startPosition && d.range.endPosition) {
+                const relPath = path.relative(testsuiteRoot, testCase.file);
+                const relPathParts = relPath.split(path.sep).join("/");
+                const sp = d.range.startPosition;
+                const ep = d.range.endPosition;
+                prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable]`;
+              }
               return `${prefix} ${severity}: ${d.message}`;
             });
           const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
@@ -468,9 +492,15 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           )
           .map((d) => {
             const severity = d.type.charAt(0).toUpperCase() + d.type.slice(1);
-            const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-            const match = expected.match(prefixRegex);
-            const prefix = match ? match[1] : `[${testCase.file}]`;
+            // Use actual diagnostic range (from LintDiagnostic byte offsets)
+            let prefix = `[${testCase.file}]`;
+            if (d.range && d.range.startPosition && d.range.endPosition) {
+              const relPath = path.relative(testsuiteRoot, testCase.file);
+              const relPathParts = relPath.split(path.sep).join("/");
+              const sp = d.range.startPosition;
+              const ep = d.range.endPosition;
+              prefix = `[${relPathParts}:${sp.row + 1}:${sp.column + 1}-${ep.row + 1}:${ep.column + 1}:writable]`;
+            }
             return `${prefix} ${severity}: ${d.message}`;
           });
         const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
@@ -561,9 +591,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     const expected = stripWarnings(testCase.expectedResult.trim());
 
     const severity = "Error";
-    const prefixRegex = new RegExp(`(\\[.*?\\]) ${severity}:`);
-    const match = expected.match(prefixRegex);
-    const prefix = match ? match[1] : `[${testCase.file}]`;
+    // Use file-level prefix since we don't have byte offsets for thrown errors
+    const prefix = `[${testCase.file}]`;
 
     const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${prefix} ${severity}: ${errorMsg}\nError: Error occurred while flattening model ${lastClassName}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
 

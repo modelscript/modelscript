@@ -16,7 +16,7 @@ import { authRouter } from "./routes/auth.js";
 import { cosimRouter, mqttParticipantsRouter } from "./routes/cosim.js";
 import { federationRouter } from "./routes/federation.js";
 import { fmuRouter } from "./routes/fmu.js";
-import { gitlabRouter } from "./routes/gitlab.js";
+import { gitRouter } from "./routes/git.js";
 import { graphqlRouter } from "./routes/graphql.js";
 import { historianRouter } from "./routes/historian.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
@@ -55,6 +55,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   const libraryStorage = opts.storage ?? new LibraryStorage();
   const jobQueue = new JobQueue();
+  app.locals.jobQueue = jobQueue;
+
   const database = new LibraryDatabase();
   const mqttClient = opts.mqttClient ?? null;
   const dbPool = opts.dbPool ?? null;
@@ -96,6 +98,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     app.post("/api/v1/dev/reset", async (req, res) => {
       console.log("[DevServer] Resetting database and re-seeding...");
       try {
+        jobQueue.clear();
         database.resetDevData();
         for (const u of devUsers) {
           if (!database.getUserByUsername(u.username)) {
@@ -317,7 +320,8 @@ graph TD
   app.use("/api/v1/mqtt/participants", mqttParticipantsRouter(mqttClient));
   app.use("/api/v1/historian", historianRouter(dbPool, mqttClient));
   app.use("/api/v1/fmus", fmuRouter());
-  app.use("/api/v1/gitlab", gitlabRouter());
+  app.use("/api/v1/git", gitRouter());
+  app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
 
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
     app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));

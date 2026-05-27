@@ -218,6 +218,11 @@ export class QueryEngine {
   // Public API
   // =========================================================================
 
+  cstText(startByte: number, endByte: number, entry?: SymbolEntry): string | null {
+    if (!this.tree) return null;
+    return this.tree.getText(startByte, endByte, entry);
+  }
+
   /**
    * Execute a named query for a symbol, with Salsa-style memoization.
    *
@@ -807,7 +812,9 @@ export class QueryEngine {
     }
 
     // Try to deep-verify: check if all dependencies are still current
-    if (memo && this.deepVerify(memo)) {
+    // We must also check if the symbol itself was modified since the memo was verified.
+    const inputRev = this.inputRevisions.get(symbolId) ?? 0;
+    if (memo && inputRev <= memo.verified_at && this.deepVerify(memo)) {
       memo.verified_at = this.currentRevision;
       return memo.value;
     }

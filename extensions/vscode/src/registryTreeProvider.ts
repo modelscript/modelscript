@@ -8,7 +8,7 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
   constructor(private readonly context: vscode.ExtensionContext) {
     this.registryUrl = vscode.workspace
       .getConfiguration("modelscript")
-      .get("registryUrl", "http://localhost:3000/api/v1");
+      .get("registryUrl", "http://127.0.0.1:3000/api/v1");
   }
 
   public resolveWebviewView(
@@ -285,13 +285,16 @@ export class RegistryWebviewProvider implements vscode.WebviewViewProvider {
   }
 }
 
-export function registerRegistryView(context: vscode.ExtensionContext) {
+export function registerRegistryView(
+  context: vscode.ExtensionContext,
+  lspClient?: { sendNotification: (method: string, params: unknown) => void },
+) {
   const provider = new RegistryWebviewProvider(context);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider("modelscript.registryView", provider));
 
   const registryUrl = vscode.workspace
     .getConfiguration("modelscript")
-    .get("registryUrl", "http://localhost:3000/api/v1");
+    .get("registryUrl", "http://127.0.0.1:3000/api/v1");
 
   // Open Registry command
   context.subscriptions.push(
@@ -335,26 +338,68 @@ export function registerRegistryView(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async () => {
-            const terminal = vscode.window.createTerminal({
-              name: "ModelScript Install",
-              cwd: targetFolder?.uri,
-              hideFromUser: true,
-            });
+            const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
 
-            terminal.sendText(
-              `npm install @modelscript/${packageName.toLowerCase()}@${packageVersion} --registry=${registryUrl}`,
-            );
-            terminal.sendText("exit");
+            if (!isWeb) {
+              // Desktop: use npm terminal install
+              try {
+                const terminal = vscode.window.createTerminal({
+                  name: "ModelScript Install",
+                  cwd: targetFolder?.uri,
+                  hideFromUser: true,
+                });
 
-            return new Promise<void>((resolve) => {
-              const disp = vscode.window.onDidCloseTerminal((t) => {
-                if (t === terminal) {
-                  disp.dispose();
-                  vscode.commands.executeCommand("modelscript.registryView.focus");
-                  resolve();
-                }
-              });
-            });
+                terminal.sendText(
+                  `npm install @modelscript/${packageName.toLowerCase()}@${packageVersion} --registry=${registryUrl}`,
+                );
+                terminal.sendText("exit");
+
+                return new Promise<void>((resolve) => {
+                  const disp = vscode.window.onDidCloseTerminal((t) => {
+                    if (t === terminal) {
+                      disp.dispose();
+                      vscode.commands.executeCommand("modelscript.registryView.focus");
+                      resolve();
+                    }
+                  });
+                });
+              } catch (err) {
+                // Fall through to web fallback
+              }
+            }
+
+            // Web IDE fallback: update package.json and notify LSP to load from registry
+            try {
+              if (!targetFolder) throw new Error("No target folder");
+              const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
+              let packageJsonObj: any = {};
+              try {
+                const data = await vscode.workspace.fs.readFile(packageJsonUri);
+                packageJsonObj = JSON.parse(new TextDecoder().decode(data));
+              } catch (e) {
+                // Ignore read errors
+              }
+              packageJsonObj.dependencies = packageJsonObj.dependencies || {};
+              packageJsonObj.dependencies[`@modelscript/${packageName.toLowerCase()}`] = packageVersion;
+
+              const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
+              await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
+
+              vscode.window.showInformationMessage(`Loading ${packageName}@${packageVersion}...`);
+              vscode.commands.executeCommand("modelscript.registryView.focus");
+              // Notify the LSP to actually load the library files from the registry
+              if (lspClient) {
+                lspClient.sendNotification("modelscript/installDependency", {
+                  name: packageName,
+                  version: packageVersion,
+                });
+                setTimeout(() => {
+                  vscode.commands.executeCommand("modelscript.libraryView.refresh");
+                }, 500); // Give the LSP a moment to process before refreshing the view
+              }
+            } catch (fallbackErr) {
+              vscode.window.showErrorMessage(`Failed to install package: ${fallbackErr}`);
+            }
           },
         );
       },
@@ -394,24 +439,60 @@ export function registerRegistryView(context: vscode.ExtensionContext) {
           cancellable: false,
         },
         async () => {
-          const terminal = vscode.window.createTerminal({
-            name: "ModelScript Uninstall",
-            cwd: targetFolder?.uri,
-            hideFromUser: true,
-          });
+          const isWeb = vscode.env.uiKind === vscode.UIKind.Web;
 
-          terminal.sendText(`npm uninstall @modelscript/${packageName.toLowerCase()}`);
-          terminal.sendText("exit");
+          if (!isWeb) {
+            try {
+              const terminal = vscode.window.createTerminal({
+                name: "ModelScript Uninstall",
+                cwd: targetFolder?.uri,
+                hideFromUser: true,
+              });
 
-          return new Promise<void>((resolve) => {
-            const disp = vscode.window.onDidCloseTerminal((t) => {
-              if (t === terminal) {
-                disp.dispose();
-                vscode.commands.executeCommand("modelscript.registryView.focus");
-                resolve();
+              terminal.sendText(`npm uninstall @modelscript/${packageName.toLowerCase()}`);
+              terminal.sendText("exit");
+
+              return new Promise<void>((resolve) => {
+                const disp = vscode.window.onDidCloseTerminal((t) => {
+                  if (t === terminal) {
+                    disp.dispose();
+                    vscode.commands.executeCommand("modelscript.registryView.focus");
+                    resolve();
+                  }
+                });
+              });
+            } catch (err) {
+              // Fall through to web fallback
+            }
+          }
+
+          // Web IDE fallback
+          try {
+            if (!targetFolder) throw new Error("No target folder");
+            const packageJsonUri = vscode.Uri.joinPath(targetFolder.uri, "package.json");
+            try {
+              const data = await vscode.workspace.fs.readFile(packageJsonUri);
+              const packageJsonObj = JSON.parse(new TextDecoder().decode(data));
+              if (packageJsonObj.dependencies) {
+                // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+                delete packageJsonObj.dependencies[`@modelscript/${packageName.toLowerCase()}`];
+                const encoded = new TextEncoder().encode(JSON.stringify(packageJsonObj, null, 2));
+                await vscode.workspace.fs.writeFile(packageJsonUri, encoded);
+                vscode.window.showInformationMessage(`Removed ${packageName} from package.json.`);
               }
-            });
-          });
+            } catch (e) {
+              // Ignore
+            }
+            vscode.commands.executeCommand("modelscript.registryView.focus");
+            if (lspClient) {
+              lspClient.sendNotification("modelscript/uninstallDependency", { name: packageName });
+              setTimeout(() => {
+                vscode.commands.executeCommand("modelscript.libraryView.refresh");
+              }, 500);
+            }
+          } catch (fallbackErr) {
+            vscode.window.showErrorMessage(`Failed to uninstall package: ${fallbackErr}`);
+          }
         },
       );
     }),

@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import puppeteer from "puppeteer";
+import { fileURLToPath } from "url";
 import { LibraryDatabase } from "../database.js";
+
+const _filename = fileURLToPath(import.meta.url);
+const _dirname = path.dirname(_filename);
 
 const database = new LibraryDatabase();
 const db = database.db;
@@ -49,7 +53,7 @@ export async function generateThumbnail(artifactId: number): Promise<string | nu
 
     // 4. Capture screenshot
     const thumbnailName = `artifact_${artifactId}_${Date.now()}.png`;
-    const outDir = path.join(__dirname, "../../public/thumbnails");
+    const outDir = path.join(_dirname, "../../public/thumbnails");
     if (!fs.existsSync(outDir)) {
       fs.mkdirSync(outDir, { recursive: true });
     }

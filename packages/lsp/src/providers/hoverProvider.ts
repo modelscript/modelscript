@@ -13,8 +13,9 @@ export function registerHoverProvider(
     const bridge = documentLSPBridges.get(params.textDocument.uri);
     if (!document || !bridge) return null;
 
+    const text = document.getText();
     const offset = document.offsetAt(params.position);
-    const hoverDef = bridge.hover(offset);
+    const hoverDef = bridge.hover(offset, text);
     if (!hoverDef) return null;
 
     return {

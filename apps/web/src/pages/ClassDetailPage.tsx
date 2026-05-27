@@ -1,4 +1,4 @@
-import { AlertIcon } from "@primer/octicons-react";
+import { AlertIcon, PackageIcon } from "@primer/octicons-react";
 import { Heading, Label, NavList, Spinner, Text, Truncate } from "@primer/react";
 import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,14 +24,56 @@ const PageWrap = styled.div`
   color: var(--color-text-primary);
   min-height: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
 `;
 
+const TreeSidebar = styled.div`
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+`;
+
+const TreeScrollArea = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 8px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-strong);
+  }
+`;
+
+const MainContentWrap = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+`;
+
+const Divider = styled.hr`
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 24px 0;
+`;
+
 const ContentGrid = styled.div`
-  max-width: 1280px;
+  max-width: none;
   margin: 0 auto;
   padding: 0 40px 60px;
   display: grid;
@@ -47,7 +89,7 @@ const ContentGrid = styled.div`
 `;
 
 const HeaderBar = styled.div`
-  max-width: 1280px;
+  max-width: none;
   width: 100%;
   margin: 0 auto;
   padding: 32px 40px 40px;
@@ -69,8 +111,7 @@ const GlassCard = styled.div`
 `;
 
 const DocCard = styled.div`
-  ${glassCard}
-  padding: 32px;
+  padding: 0;
 
   h1,
   h2,
@@ -176,6 +217,40 @@ const SectionTitle = styled(Heading)`
   color: var(--color-text-muted) !important;
   margin-bottom: 12px !important;
   font-weight: 600 !important;
+`;
+
+const ClassIconBox = styled.div`
+  width: 100%;
+  padding: 40px;
+  border-radius: 12px;
+  background: var(--gradient-icon-box);
+  border: 1px solid var(--color-border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  overflow: hidden;
+  box-sizing: border-box;
+
+  div[role="img"],
+  svg {
+    width: 100% !important;
+    height: auto !important;
+  }
+`;
+
+const ComponentIconWrap = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+
+  div[role="img"],
+  svg {
+    width: 32px !important;
+    height: 32px !important;
+  }
 `;
 
 /* ─── main page ─── */
@@ -284,218 +359,247 @@ const ClassDetailPage: React.FC = () => {
 
   return (
     <PageWrap>
-      {/* ── Header ── */}
-      <HeaderBar>
-        <Box mb={3}>
-          <Breadcrumbs
-            items={[
-              { label: "Libraries", href: "/packages" },
-              { label: name || "", href: `/packages/${name}` },
-              { label: version || "", href: `/packages/${name}/${version}` },
-              ...(className || "").split(".").map((segment, i, parts) => {
-                const fullName = parts.slice(0, i + 1).join(".");
-                const isLast = i === parts.length - 1;
-                return {
-                  label: segment,
-                  href: isLast ? undefined : `/packages/${name}/${version}/classes/${fullName}`,
-                };
-              }),
-            ]}
-          />
-        </Box>
-        <Box display="flex" alignItems="center" gap="16px">
-          {/* Class icon */}
+      {/* ── Left Sidebar (Classes) ── */}
+      {tree.length > 0 && (
+        <TreeSidebar>
           <Box
             style={{
-              width: 48,
-              height: 48,
-              borderRadius: 8,
-              background: "var(--gradient-icon-box)",
-              border: "1px solid var(--color-border-strong)",
+              height: "84px",
+              minHeight: "84px",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              overflow: "hidden",
+              gap: "12px",
+              padding: "0 16px",
+              boxSizing: "border-box",
             }}
           >
-            <InvertedSvg
-              src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
-              alt=""
-              width={36}
-              height={36}
+            <Box
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                background: "var(--gradient-icon-box)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                border: "1px solid var(--color-border-strong)",
+              }}
+            >
+              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={24} height={24} />
+            </Box>
+            <Box display="flex" flexDirection="column">
+              <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.2 }}>
+                {name}
+              </Text>
+              <Text style={{ fontSize: 12, color: "var(--color-text-muted)", marginTop: "2px" }}>v{version}</Text>
+            </Box>
+          </Box>
+
+          <TreeScrollArea>
+            <Divider style={{ marginTop: 0, marginBottom: 12 }} />
+            {tree.map((node) => (
+              <ClassTreeNode
+                key={node.fullName}
+                node={node}
+                depth={0}
+                libraryName={name!}
+                version={version!}
+                activeClassName={className}
+              />
+            ))}
+          </TreeScrollArea>
+        </TreeSidebar>
+      )}
+
+      <MainContentWrap>
+        {/* ── Header ── */}
+        <HeaderBar>
+          <Box mb={3}>
+            <Breadcrumbs
+              items={[
+                { label: "Libraries", href: "/packages" },
+                { label: name || "", href: `/packages/${name}` },
+                { label: version || "", href: `/packages/${name}/${version}` },
+                ...(className || "").split(".").map((segment, i, parts) => {
+                  const fullName = parts.slice(0, i + 1).join(".");
+                  const isLast = i === parts.length - 1;
+                  return {
+                    label: segment,
+                    href: isLast ? undefined : `/packages/${name}/${version}/classes/${fullName}`,
+                  };
+                }),
+              ]}
             />
           </Box>
-          <Box>
-            <Box display="flex" alignItems="center" gap="8px">
-              <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>
-                {className}
-              </Heading>
-              <Label
-                variant="accent"
-                style={{
-                  fontSize: 14,
-                  padding: "2px 10px",
-                  background: "var(--color-accent-blue-bg)",
-                  color: "var(--color-accent-blue)",
-                  border: "1px solid var(--color-accent-blue-border)",
-                }}
-              >
-                {cls.classKind}
-              </Label>
-              {jobStatus && jobStatus !== "completed" && (
-                <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
-              )}
-            </Box>
-            {cls.description && (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
-                {cls.description}
-              </Text>
-            )}
-          </Box>
-        </Box>
-      </HeaderBar>
-
-      {/* ── Body ── */}
-      <ContentGrid>
-        {/* ── Main column ── */}
-        <div>
-          {/* Class diagram */}
-          {!diagramError && (
-            <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
-              <SectionTitle as="h3">Diagram</SectionTitle>
-              <DiagramWrap>
-                <InvertedSvg
-                  src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
-                  alt={`${className} diagram`}
-                  onLoad={() => setDiagramLoaded(true)}
-                  onError={() => {
-                    if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
-                      setTimeout(() => setRetryCount((p) => p + 1), 3000);
-                    } else {
-                      setDiagramError(true);
-                    }
+          <Box display="flex" alignItems="center" gap="16px">
+            <Box>
+              <Box display="flex" alignItems="center" gap="8px">
+                <Heading
+                  as="h1"
+                  style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}
+                >
+                  {className}
+                </Heading>
+                <Label
+                  variant="accent"
+                  style={{
+                    fontSize: 14,
+                    padding: "2px 10px",
+                    background: "var(--color-accent-blue-bg)",
+                    color: "var(--color-accent-blue)",
+                    border: "1px solid var(--color-accent-blue-border)",
                   }}
-                />
-              </DiagramWrap>
-            </div>
-          )}
-
-          {/* Documentation */}
-          <SectionTitle as="h3">Documentation</SectionTitle>
-          <DocCard>
-            {cls.documentation ? (
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(rewriteModelicaUris(cls.documentation, version!)),
-                }}
-              />
-            ) : cls.description ? (
-              <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
-                {cls.description}
-              </Text>
-            ) : (
-              <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                No documentation available for this class.
-              </Text>
-            )}
-          </DocCard>
-        </div>
-
-        {/* ── Sidebar ── */}
-        <aside>
-          {/* Class info */}
-          <SectionTitle as="h3">Class Details</SectionTitle>
-          <GlassCard>
-            <DetailRow>
-              <DetailLabel>Name</DetailLabel>
-              <DetailValue>{className}</DetailValue>
-            </DetailRow>
-            <DetailRow>
-              <DetailLabel>Kind</DetailLabel>
-              <DetailValue>
-                <Label variant="accent" style={{ fontSize: 11 }}>
+                >
                   {cls.classKind}
                 </Label>
-              </DetailValue>
-            </DetailRow>
-            <DetailRow>
-              <DetailLabel>Library</DetailLabel>
-              <DetailValue>{name}</DetailValue>
-            </DetailRow>
-            <DetailRow>
-              <DetailLabel>Version</DetailLabel>
-              <DetailValue>{version}</DetailValue>
-            </DetailRow>
-            {cls.extends.length > 0 && (
+                {jobStatus && jobStatus !== "completed" && (
+                  <Label variant="attention">{jobStatus === "processing" ? "Processing…" : "Pending"}</Label>
+                )}
+              </Box>
+              {cls.description && (
+                <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: "4px 0 0" }}>
+                  {cls.description}
+                </Text>
+              )}
+            </Box>
+          </Box>
+        </HeaderBar>
+
+        {/* ── Body ── */}
+        <ContentGrid>
+          {/* ── Main column ── */}
+          <div style={{ minWidth: 0 }}>
+            {/* Class diagram */}
+            {!diagramError && (
+              <div style={diagramLoaded ? undefined : { position: "absolute", opacity: 0, pointerEvents: "none" }}>
+                <SectionTitle as="h3">Diagram</SectionTitle>
+                <DiagramWrap>
+                  <InvertedSvg
+                    src={`${getDiagramUrl(name!, version!, className!)}?t=${retryCount}`}
+                    alt={`${className} diagram`}
+                    onLoad={() => setDiagramLoaded(true)}
+                    onError={() => {
+                      if (jobStatus && jobStatus !== "completed" && jobStatus !== "failed") {
+                        setTimeout(() => setRetryCount((p) => p + 1), 3000);
+                      } else {
+                        setDiagramError(true);
+                      }
+                    }}
+                  />
+                </DiagramWrap>
+              </div>
+            )}
+
+            {/* Documentation */}
+            <DocCard>
+              {cls.documentation ? (
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(rewriteModelicaUris(cls.documentation, version!)),
+                  }}
+                />
+              ) : cls.description ? (
+                <Text as="p" style={{ color: "var(--color-text-primary)", lineHeight: 1.7, margin: 0 }}>
+                  {cls.description}
+                </Text>
+              ) : (
+                <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
+                  No documentation available for this class.
+                </Text>
+              )}
+            </DocCard>
+          </div>
+
+          {/* ── Sidebar ── */}
+          <aside>
+            {/* Class icon */}
+            <ClassIconBox>
+              <InvertedSvg
+                src={`${getIconUrl(name!, version!, className!)}?t=${retryCount}`}
+                alt=""
+                fallback={<PackageIcon size={32} />}
+              />
+            </ClassIconBox>
+
+            {/* Class info */}
+            <SectionTitle as="h3">Class Details</SectionTitle>
+            <GlassCard>
+              <DetailRow>
+                <DetailLabel>Name</DetailLabel>
+                <DetailValue>{className}</DetailValue>
+              </DetailRow>
+              <DetailRow>
+                <DetailLabel>Kind</DetailLabel>
+                <DetailValue>
+                  <Label variant="accent" style={{ fontSize: 11 }}>
+                    {cls.classKind}
+                  </Label>
+                </DetailValue>
+              </DetailRow>
+              <DetailRow>
+                <DetailLabel>Library</DetailLabel>
+                <DetailValue>{name}</DetailValue>
+              </DetailRow>
+              <DetailRow>
+                <DetailLabel>Version</DetailLabel>
+                <DetailValue>{version}</DetailValue>
+              </DetailRow>
+              {cls.extends.length > 0 && (
+                <>
+                  <DetailRow style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                    <DetailLabel>Extends</DetailLabel>
+                    <Box display="flex" gap="6px" flexWrap="wrap">
+                      {cls.extends.map((base) => (
+                        <Label key={base} variant="secondary" style={{ fontSize: 11 }}>
+                          {base}
+                        </Label>
+                      ))}
+                    </Box>
+                  </DetailRow>
+                </>
+              )}
+            </GlassCard>
+
+            {/* Components */}
+            {cls.components.length > 0 && (
               <>
-                <DetailRow style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-                  <DetailLabel>Extends</DetailLabel>
-                  <Box display="flex" gap="6px" flexWrap="wrap">
-                    {cls.extends.map((base) => (
-                      <Label key={base} variant="secondary" style={{ fontSize: 11 }}>
-                        {base}
-                      </Label>
+                <SectionTitle as="h3" style={{ marginTop: 24 }}>
+                  Components
+                </SectionTitle>
+                <GlassCard style={{ padding: "8px", maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
+                  <NavList>
+                    {cls.components.map((comp) => (
+                      <NavList.Item key={comp.component_name} style={{ color: "var(--color-text-primary)" }}>
+                        <NavList.LeadingVisual>
+                          <ComponentIconWrap>
+                            <InvertedSvg
+                              src={getIconUrl(name!, version!, comp.type_name)}
+                              fallback={<PackageIcon size={16} />}
+                              alt=""
+                            />
+                          </ComponentIconWrap>
+                        </NavList.LeadingVisual>
+                        <Box fontWeight="bold" style={{ color: "var(--color-text-heading)" }}>
+                          {comp.component_name}
+                        </Box>
+                        <Box fontSize="12px" opacity={0.6}>
+                          <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
+                        </Box>
+                        {comp.description && (
+                          <Box fontSize="12px" opacity={0.8} mt={1}>
+                            {comp.description}
+                          </Box>
+                        )}
+                      </NavList.Item>
                     ))}
-                  </Box>
-                </DetailRow>
+                  </NavList>
+                </GlassCard>
               </>
             )}
-          </GlassCard>
-
-          {/* Class tree */}
-          {tree.length > 0 && (
-            <>
-              <SectionTitle as="h3" style={{ marginTop: 24 }}>
-                Explorer
-              </SectionTitle>
-              <GlassCard style={{ padding: "8px", maxHeight: "40vh", overflowY: "auto" }}>
-                {tree.map((node) => (
-                  <ClassTreeNode
-                    key={node.fullName}
-                    node={node}
-                    depth={0}
-                    libraryName={name!}
-                    version={version!}
-                    activeClassName={className}
-                  />
-                ))}
-              </GlassCard>
-            </>
-          )}
-
-          {/* Components */}
-          {cls.components.length > 0 && (
-            <>
-              <SectionTitle as="h3" style={{ marginTop: 24 }}>
-                Components
-              </SectionTitle>
-              <GlassCard style={{ padding: "8px", maxHeight: "calc(100vh - 400px)", overflowY: "auto" }}>
-                <NavList>
-                  {cls.components.map((comp) => (
-                    <NavList.Item key={comp.component_name} style={{ color: "var(--color-text-primary)" }}>
-                      <NavList.LeadingVisual>
-                        <InvertedSvg src={getIconUrl(name!, version!, comp.type_name)} alt="" width={32} height={32} />
-                      </NavList.LeadingVisual>
-                      <Box fontWeight="bold" style={{ color: "var(--color-text-heading)" }}>
-                        {comp.component_name}
-                      </Box>
-                      <Box fontSize="12px" opacity={0.6}>
-                        <Truncate title={comp.type_name}>{comp.type_name}</Truncate>
-                      </Box>
-                      {comp.description && (
-                        <Box fontSize="12px" opacity={0.8} mt={1}>
-                          {comp.description}
-                        </Box>
-                      )}
-                    </NavList.Item>
-                  ))}
-                </NavList>
-              </GlassCard>
-            </>
-          )}
-        </aside>
-      </ContentGrid>
+          </aside>
+        </ContentGrid>
+      </MainContentWrap>
     </PageWrap>
   );
 };

@@ -22,7 +22,15 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@modelscript/modelica": ["../../languages/modelica/src/index.ts"],
+      "@modelscript/sysml2": ["../../languages/sysml2/src/index.ts"],
+      "@modelscript/owl2": ["../../languages/owl2/src/index.ts"],
+      "@modelscript/step": ["../../languages/step/src/index.ts"],
+      "@modelscript/*": ["../../packages/*/src/index.ts"]
+    }
   },
   "include": ["src"]
 }
