@@ -1,17 +1,33 @@
 import { PlayIcon } from "@primer/octicons-react";
+import { useTheme } from "@primer/react";
 import React, { useEffect, useRef, useState } from "react";
 import Box from "../Box";
 
 interface LazyHeavyViewerProps {
   artifactId: number;
   thumbnailUrl?: string;
+  thumbnailUrlLight?: string;
+  thumbnailUrlDark?: string;
   title?: string;
+  placeholderType?: "fea" | "cfd" | "cad" | "pdf" | "generic";
   children: React.ReactNode;
 }
 
-const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({ artifactId, thumbnailUrl, title, children }) => {
+const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({
+  artifactId,
+  thumbnailUrl,
+  thumbnailUrlLight,
+  thumbnailUrlDark,
+  title,
+  placeholderType = "generic",
+  children,
+}) => {
   const [isActive, setIsActive] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { resolvedColorMode } = useTheme();
+
+  const currentThumbnailUrl =
+    resolvedColorMode === "dark" ? thumbnailUrlDark || thumbnailUrl : thumbnailUrlLight || thumbnailUrl;
 
   // Handle global mutual exclusion
   useEffect(() => {
@@ -59,28 +75,35 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({ artifactId, thumbnail
   // Render thumbnail / load button
   return (
     <div ref={containerRef} style={{ width: "100%", height: "450px", position: "relative" }}>
-      {thumbnailUrl ? (
+      {currentThumbnailUrl ? (
         <img
-          src={thumbnailUrl}
+          src={currentThumbnailUrl}
           alt={title || "3D View"}
-          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
-        />
-      ) : (
-        <div
           style={{
             width: "100%",
             height: "100%",
-            background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-            borderRadius: "8px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            color: "rgba(255,255,255,0.7)",
+            objectFit: "cover",
+            borderTopLeftRadius: "8px",
+            borderTopRightRadius: "8px",
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
           }}
-        >
-          <span style={{ fontSize: "14px", fontFamily: "monospace" }}>{title || "Interactive 3D Viewer"}</span>
-        </div>
+        />
+      ) : (
+        <img
+          src={`/placeholders/${placeholderType}_${resolvedColorMode === "dark" ? "dark" : "light"}.png`}
+          alt={title || "Placeholder"}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            borderTopLeftRadius: "8px",
+            borderTopRightRadius: "8px",
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
+            filter: "brightness(0.7) blur(2px)",
+          }}
+        />
       )}
 
       {/* Play button overlay */}
@@ -96,7 +119,10 @@ const LazyHeavyViewer: React.FC<LazyHeavyViewerProps> = ({ artifactId, thumbnail
           alignItems: "center",
           justifyContent: "center",
           cursor: "pointer",
-          borderRadius: "8px",
+          borderTopLeftRadius: "8px",
+          borderTopRightRadius: "8px",
+          borderBottomLeftRadius: 0,
+          borderBottomRightRadius: 0,
         }}
         onClick={() => {
           setIsActive(true);

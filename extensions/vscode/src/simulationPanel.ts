@@ -37,12 +37,6 @@ export class SimulationPanel {
   public sourceUri?: string;
   private client?: LanguageClient;
   private disposables: vscode.Disposable[] = [];
-  private currentSurrogate?: {
-    modelId: string;
-    wasmC: string;
-    emccFlags: string[];
-    exportedFunctions: string[];
-  };
 
   static async createOrShow(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
@@ -262,93 +256,6 @@ export class SimulationPanel {
               this.postResults(result);
             },
           );
-        } else if (msg.type === "trainSurrogate" && this.client) {
-          const uri = this.sourceUri;
-          if (!uri) return;
-
-          this.panel.webview.postMessage({
-            type: "surrogateTrainingProgress",
-            progress: 10,
-            message: "Running Design of Experiments...",
-          });
-
-          try {
-            const result = await this.client.sendRequest<{
-              success: boolean;
-              metrics?: { trainMSE: number; valMSE: number; r2: number };
-              wasmC: string;
-              emccFlags: string[];
-              exportedFunctions: string[];
-              error?: string;
-            }>("modelscript/trainSurrogate", {
-              uri,
-              ...msg.payload,
-            });
-
-            if (result.success && result.metrics) {
-              this.currentSurrogate = {
-                modelId: (uri.split("/").pop() ?? "Surrogate").replace(".mo", ""),
-                wasmC: result.wasmC,
-                emccFlags: result.emccFlags,
-                exportedFunctions: result.exportedFunctions,
-              };
-
-              this.panel.webview.postMessage({
-                type: "surrogateTrainingComplete",
-                metrics: result.metrics,
-              });
-            } else {
-              this.panel.webview.postMessage({
-                type: "surrogateTrainingError",
-                error: result.error || "Unknown error occurred during training.",
-              });
-            }
-          } catch (e) {
-            this.panel.webview.postMessage({
-              type: "surrogateTrainingError",
-              error: e instanceof Error ? e.message : String(e),
-            });
-          }
-        } else if (msg.type === "exportSurrogate") {
-          if (!this.currentSurrogate) return;
-          const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
-          const modelName = this.currentSurrogate.modelId;
-          const cUri = vscode.Uri.joinPath(folder, `${modelName}_wasm.c`);
-          const buildUri = vscode.Uri.joinPath(folder, `BUILD_WASM.md`);
-
-          try {
-            await vscode.workspace.fs.writeFile(cUri, new TextEncoder().encode(this.currentSurrogate.wasmC));
-
-            const buildCmd = `emcc ${modelName}_wasm.c ${this.currentSurrogate.emccFlags.join(" ")} -o ${modelName}.js`;
-            await vscode.workspace.fs.writeFile(
-              buildUri,
-              new TextEncoder().encode(
-                [
-                  `# WebAssembly Surrogate Build Instructions`,
-                  ``,
-                  `## Prerequisites`,
-                  `- Install [Emscripten](https://emscripten.org/)`,
-                  `- Activate the Emscripten environment: \`source emsdk_env.sh\``,
-                  ``,
-                  `## Build Command`,
-                  `\`\`\`bash`,
-                  buildCmd,
-                  `\`\`\``,
-                  ``,
-                  `## Output`,
-                  `- \`${modelName}.js\` — Emscripten JS glue code`,
-                  `- \`${modelName}.wasm\` — WebAssembly binary`,
-                  ``,
-                  `## Exported Functions`,
-                  ...this.currentSurrogate.exportedFunctions.map((f: string) => `- \`${f}\``),
-                ].join("\n"),
-              ),
-            );
-
-            vscode.window.showInformationMessage(`Exported surrogate WASM source to ${modelName}_wasm.c`);
-          } catch (e) {
-            vscode.window.showErrorMessage(`Failed to export surrogate WASM: ${e}`);
-          }
         } else if (msg.type === "open3dAnimation" && this.client && this.sourceUri) {
           // Launch the 3D Multi-Body Animation viewer
           MultiBodyAnimationPanel.createOrShow(

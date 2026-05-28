@@ -25,8 +25,8 @@
   ],
   "scripts": {
     "prebuild": "mkdir -p data",
-    "build": "nx run-many --target=build --parallel=8",
-    "build:all": "nx run-many --target=build --parallel=8",
+    "build": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=8",
+    "build:all": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=8",
     "clean": "nx run-many --target=clean",
     "predev": "mkdir -p data",
     "dev": "nx run-many --target=dev --projects=@modelscript/api,@modelscript/web,@modelscript/ide,@modelscript/lsp --parallel=4",

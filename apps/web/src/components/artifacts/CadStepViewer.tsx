@@ -102,7 +102,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
           setGeometry(geo);
           setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
-          }, 100);
+          }, 1500);
         } else if (active) {
           setError("No meshes found in STEP file");
         }
@@ -152,7 +152,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       borderRadius={isFullScreen ? "0" : "8px"}
       overflow="hidden"
     >
-      <Canvas camera={{ position: [0, 0, 50], fov: 50 }}>
+      <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
         <ambientLight intensity={0.3} />
         <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={0.3} castShadow />
 

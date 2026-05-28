@@ -127,7 +127,7 @@ export const getDiagramUrl = (name: string, version: string, className: string) 
  *    → `/api/v1/libraries/Modelica/4.1.0/resources/Resources/Images/foo.png`
  *
  * 2. Class references: `modelica://Modelica.Electrical.Analog`
- *    → `/Modelica/4.1.0/classes/Modelica.Electrical.Analog`
+ *    → `/packages/Modelica/4.1.0/classes/Modelica.Electrical.Analog`
  */
 export function rewriteModelicaUris(html: string, version: string): string {
   // First pass: resource paths (modelica://LibName/path — contains a slash after lib name)
@@ -138,7 +138,7 @@ export function rewriteModelicaUris(html: string, version: string): string {
   // Second pass: class references (modelica://Lib.Class.Name — dotted name, no slash)
   result = result.replace(/modelica:\/\/([A-Za-z_][\w.]*)/g, (_match, className) => {
     const libName = className.split(".")[0];
-    return `/${libName}/${version}/classes/${className}`;
+    return `/packages/${libName}/${version}/classes/${className}`;
   });
 
   return result;

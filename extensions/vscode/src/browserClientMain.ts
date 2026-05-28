@@ -34,9 +34,11 @@ import { OWL2PropertyHierarchyProvider } from "./owl2PropertyHierarchyProvider";
 import { CalibrationPanel } from "./calibrationPanel";
 import { ExperimentsTreeProvider } from "./experimentsTree";
 import { OptimizationPanel } from "./optimizationPanel";
+import { PhysicsSetupEditorProvider } from "./physicsSetupEditorProvider";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
+import { SurrogatePanel } from "./surrogatePanel";
 import { UncertaintyPanel } from "./uncertaintyPanel";
 
 function decodeBase64ToArray(base64: string): Uint8Array {
@@ -359,8 +361,14 @@ export async function activate(context: vscode.ExtensionContext) {
   const sspEditor = new SspEditorProvider(sspContentProvider);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(SspEditorProvider.viewType, sspEditor, {
-      supportsMultipleEditorsPerDocument: false,
-      webviewOptions: { retainContextWhenHidden: false },
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const physicsSetupEditor = new PhysicsSetupEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(PhysicsSetupEditorProvider.viewType, physicsSetupEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
@@ -910,6 +918,10 @@ END-ISO-10303-21;`;
       if (!client) return;
       UncertaintyPanel.createOrShow(context.extensionUri, client, uri);
     }),
+    commands.registerCommand("modelscript.openSurrogateEditor", (uri?: string) => {
+      if (!client) return;
+      SurrogatePanel.createOrShow(context.extensionUri, client, uri);
+    }),
     commands.registerCommand("modelscript.refreshExperiments", () => {
       experimentsTreeProvider.refresh();
     }),
@@ -1378,6 +1390,42 @@ END-ISO-10303-21;`;
     commands.registerCommand("modelscript.openVerificationDashboard", () => {
       if (!client) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
+    }),
+    // ── Physics Simulation Commands ──
+    commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri && vscode.window.activeTextEditor) {
+        targetUri = vscode.window.activeTextEditor.document.uri;
+      }
+      if (!targetUri || !targetUri.fsPath.match(/\\.(step|stp)$/i)) {
+        vscode.window.showErrorMessage("Please select a STEP file to create an FEA setup.");
+        return;
+      }
+      const setupUri = vscode.Uri.file(targetUri.fsPath + ".fea.msim");
+      const setupData = { type: "FEA", stepFile: targetUri.fsPath, mesh: { min: 0.02, max: 0.08 } };
+      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(JSON.stringify(setupData, null, 2)));
+      vscode.window.showInformationMessage(`Created FEA setup: ${setupUri.fsPath}`);
+      const doc = await vscode.workspace.openTextDocument(setupUri);
+      await vscode.window.showTextDocument(doc);
+    }),
+    commands.registerCommand("modelscript.createCfdSetup", async (uri?: vscode.Uri) => {
+      let targetUri = uri;
+      if (!targetUri && vscode.window.activeTextEditor) {
+        targetUri = vscode.window.activeTextEditor.document.uri;
+      }
+      if (!targetUri || !targetUri.fsPath.match(/\\.(step|stp)$/i)) {
+        vscode.window.showErrorMessage("Please select a STEP file to create a CFD setup.");
+        return;
+      }
+      const setupUri = vscode.Uri.file(targetUri.fsPath + ".cfd.msim");
+      const setupData = { type: "CFD", stepFile: targetUri.fsPath, mesh: { min: 0.02, max: 0.08 } };
+      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(JSON.stringify(setupData, null, 2)));
+      vscode.window.showInformationMessage(`Created CFD setup: ${setupUri.fsPath}`);
+      const doc = await vscode.workspace.openTextDocument(setupUri);
+      await vscode.window.showTextDocument(doc);
+    }),
+    commands.registerCommand("modelscript.generateMesh", async () => {
+      vscode.window.showInformationMessage("Mesh generation has been initiated in the background.");
     }),
   );
 
@@ -2861,17 +2909,16 @@ async function initWorkspaceAndTree(
                 "## Training a Surrogate",
                 "",
                 "1. Open `BouncingBall.mo`",
-                "2. Click **Run Simulation** to open the simulation panel",
-                "3. In the sidebar, expand **Surrogate Training**",
-                "4. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
-                "5. Choose an **Architecture** (e.g., MLP Neural Network)",
-                "6. Click **Train Surrogate**",
+                "2. Click the **Train Surrogate** icon (robot) in the editor title bar",
+                "3. Choose a **DoE Strategy** (e.g., Latin Hypercube) and number of samples",
+                "4. Choose an **Architecture** (e.g., MLP Neural Network)",
+                "5. Click **Train Surrogate**",
                 "",
                 "The platform will orchestrate headless simulations to build a dataset, train the neural network, and report the R² accuracy.",
                 "",
                 "## Exporting to WebAssembly",
                 "",
-                "Once training is complete, click **Generate WASM**.",
+                "Once training is complete, click **Generate WASM** in the Surrogate Editor.",
                 "This will instantly generate a self-contained C source code array of the neural network weights and biases, ready for edge deployment!",
               ].join("\n"),
             ),

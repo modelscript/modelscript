@@ -2,7 +2,7 @@
 
 import { collectArenaExprDeps } from "./arena-blt.js";
 import { differentiateArenaExpression, simplifyArenaExpression } from "./arena-cas.js";
-import { ArenaDAEBuilder, EqKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind, ExprKind } from "./dae-arena.js";
 import type { StringId } from "./interner.js";
 
 /**
@@ -13,6 +13,44 @@ export interface ArenaPantelidesResult {
   dummyDerivatives: Set<number>;
   /** newly generated constraint equations (EqIdxs added to the arena). */
   generatedEquations: number[];
+}
+
+/**
+ * Returns true if the expression contains a derivative operator `der()`.
+ */
+function containsDerivative(arena: ArenaDAEBuilder, exprId: number): boolean {
+  if (exprId < 0) return false;
+  const kind = arena.getExprKind(exprId);
+  if (kind === ExprKind.Der) return true;
+
+  // Recurse into children based on kind
+  switch (kind) {
+    case ExprKind.Binary:
+    case ExprKind.IfElse:
+    case ExprKind.Subscript:
+    case ExprKind.Range:
+      if (containsDerivative(arena, arena.getExprLeft(exprId))) return true;
+      if (containsDerivative(arena, arena.getExprRight(exprId))) return true;
+      if (kind === ExprKind.IfElse || kind === ExprKind.Subscript || kind === ExprKind.Range) {
+        if (containsDerivative(arena, arena.getExprData1(exprId))) return true;
+      }
+      return false;
+    case ExprKind.Unary:
+    case ExprKind.Negate:
+    case ExprKind.Pre:
+      return containsDerivative(arena, arena.getExprLeft(exprId));
+    case ExprKind.Call:
+    case ExprKind.ArrayCtor:
+    case ExprKind.Tuple: {
+      const count = kind === ExprKind.Call ? arena.getExprRight(exprId) : arena.getExprData1(exprId);
+      const first = arena.getExprLeft(exprId);
+      for (let j = 0; j < count; j++) {
+        if (containsDerivative(arena, first + j)) return true;
+      }
+      return false;
+    }
+  }
+  return false;
 }
 
 /**
@@ -39,6 +77,9 @@ export function pantelidesIndexReductionArena(
 
     const left = arena.getEqLhs(i);
     const right = arena.getEqRhs(i);
+
+    // If the equation contains a derivative ANYWHERE, it's an ODE, not an algebraic constraint on states.
+    if (containsDerivative(arena, left) || containsDerivative(arena, right)) continue;
 
     const deps = new Set<number>();
     collectArenaExprDeps(arena, left, deps);

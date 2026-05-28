@@ -322,6 +322,7 @@ graph TD
   app.use("/api/v1/fmus", fmuRouter());
   app.use("/api/v1/git", gitRouter());
   app.use("/api/v1/gitlab", gitRouter()); // Keep for backwards compatibility
+  app.use("/api/thumbnails", express.static(path.resolve(process.cwd(), "public/thumbnails")));
 
   if (process.env["NODE_ENV"] !== "production" || process.env["SEED_EXAMPLES"] === "true") {
     app.use("/static-examples", express.static(path.resolve(process.cwd(), "../../packages/examples")));

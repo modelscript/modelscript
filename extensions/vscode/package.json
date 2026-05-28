@@ -217,6 +217,11 @@
         "icon": "$(graph-line)"
       },
       {
+        "command": "modelscript.openSurrogateEditor",
+        "title": "ModelScript: Open Surrogate Editor",
+        "icon": "$(hubot)"
+      },
+      {
         "command": "modelscript.openUncertainty",
         "title": "ModelScript: Open Uncertainty",
         "icon": "$(pulse)"
@@ -250,6 +255,21 @@
         "command": "modelscript.startRepl",
         "title": "ModelScript: Start REPL Terminal",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "modelscript.createFeaSetup",
+        "title": "ModelScript: Create FEA Setup",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "modelscript.createCfdSetup",
+        "title": "ModelScript: Create CFD Setup",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "modelscript.generateMesh",
+        "title": "ModelScript: Generate Mesh",
+        "icon": "$(triangle-right)"
       }
     ],
     "configuration": [
@@ -337,6 +357,16 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "modelscript.physicsSetupEditor",
+        "displayName": "Physics Simulation Setup",
+        "selector": [
+          {
+            "filenamePattern": "*.msim"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "debuggers": [
@@ -669,6 +699,11 @@
           "command": "modelscript.owl2.openDiagram",
           "when": "editorLangId == owl2",
           "group": "navigation"
+        },
+        {
+          "command": "modelscript.openSurrogateEditor",
+          "when": "editorLangId == modelica && resourceScheme != 'fmu-view'",
+          "group": "navigation"
         }
       ],
       "view/title": [
@@ -734,6 +769,23 @@
         {
           "command": "modelscript.scm.generateCommitMessage",
           "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "modelscript.createFeaSetup",
+          "when": "resourceExtname == .step || resourceExtname == .stp",
+          "group": "modelscript@1"
+        },
+        {
+          "command": "modelscript.createCfdSetup",
+          "when": "resourceExtname == .step || resourceExtname == .stp",
+          "group": "modelscript@2"
+        },
+        {
+          "command": "modelscript.generateMesh",
+          "when": "resourceExtname == .step || resourceExtname == .stp || resourceExtname == .msim",
+          "group": "modelscript@3"
         }
       ]
     },
@@ -825,7 +877,7 @@
       "explorer": [
         {
           "id": "modelscript.libraryTree",
-          "name": "Libraries",
+          "name": "Classes",
           "visibility": "visible"
         },
         {

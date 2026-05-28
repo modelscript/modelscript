@@ -27,8 +27,9 @@ export async function generateThumbnail(artifactId: number): Promise<string | nu
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
-        "--use-gl=swiftshader", // Fallback software rasterizer if no GPU
         "--enable-webgl",
+        "--ignore-gpu-blocklist",
+        "--enable-unsafe-swiftshader",
         "--window-size=800,600",
       ],
     });
@@ -36,47 +37,60 @@ export async function generateThumbnail(artifactId: number): Promise<string | nu
     const page = await browser.newPage();
     await page.setViewport({ width: 800, height: 600, deviceScaleFactor: 2 }); // 2x for high-res
 
-    // 2. Navigate to the frontend render route
-    // Assumes the web app is running locally on 3001 for development, or the production port
+    // 2. Capture themes
     const webPort = process.env.WEB_PORT || 3001;
-    const url = `http://localhost:${webPort}/render-artifact/${artifactId}`;
-    console.log(`[Thumbnail Worker] Navigating to ${url}`);
+    const url = `http://localhost:${webPort}/render-artifact/${artifactId}?thumbnail=true`;
 
-    await page.goto(url, { waitUntil: "networkidle0" });
+    const captureTheme = async (theme: "light" | "dark") => {
+      await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
+      console.log(`[Thumbnail Worker] Navigating to ${url} (Theme: ${theme})`);
 
-    // 3. Wait for the WebGL scene to signal it's fully loaded
-    console.log(`[Thumbnail Worker] Waiting for window.__ARTIFACT_READY`);
-    await page.waitForFunction("window.__ARTIFACT_READY === true", { timeout: 45000 });
+      // Reset the artifact ready flag in case it's a reload
+      await page.evaluateOnNewDocument(() => {
+        (globalThis as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = false;
+      });
 
-    // Wait a brief moment for the first few animation frames to render (e.g. flow streaks)
-    await new Promise((r) => setTimeout(r, 1000));
+      await page.goto(url, { waitUntil: "domcontentloaded" });
 
-    // 4. Capture screenshot
-    const thumbnailName = `artifact_${artifactId}_${Date.now()}.png`;
-    const outDir = path.join(_dirname, "../../public/thumbnails");
-    if (!fs.existsSync(outDir)) {
-      fs.mkdirSync(outDir, { recursive: true });
-    }
-    const outPath = path.join(outDir, thumbnailName);
+      // 3. Wait for the WebGL scene to signal it's fully loaded
+      console.log(`[Thumbnail Worker] Waiting for window.__ARTIFACT_READY`);
+      await page.waitForFunction("window.__ARTIFACT_READY === true", { timeout: 45000 });
 
-    console.log(`[Thumbnail Worker] Capturing screenshot to ${outPath}`);
-    await page.screenshot({ path: outPath });
+      // Wait a brief moment for the first few animation frames to render
+      await new Promise((r) => setTimeout(r, 1000));
+
+      // 4. Capture screenshot
+      const thumbnailName = `artifact_${artifactId}_${theme}_${Date.now()}.png`;
+      const outDir = path.join(_dirname, "../../public/thumbnails");
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+      const outPath = path.join(outDir, thumbnailName);
+
+      console.log(`[Thumbnail Worker] Capturing screenshot to ${outPath}`);
+      await page.screenshot({ path: outPath });
+
+      return `/thumbnails/${thumbnailName}`;
+    };
+
+    const thumbnailUrlLight = await captureTheme("light");
+    const thumbnailUrlDark = await captureTheme("dark");
 
     await browser.close();
-
-    const thumbnailUrl = `/thumbnails/${thumbnailName}`;
 
     // 5. Update Database
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = db.prepare(`SELECT view_config FROM artifact_views WHERE id = ?`).get(artifactId) as any;
     if (row && row.view_config) {
       const config = JSON.parse(row.view_config);
-      config.thumbnailUrl = thumbnailUrl;
+      config.thumbnailUrl = thumbnailUrlLight; // fallback
+      config.thumbnailUrlLight = thumbnailUrlLight;
+      config.thumbnailUrlDark = thumbnailUrlDark;
       db.prepare(`UPDATE artifact_views SET view_config = ? WHERE id = ?`).run(JSON.stringify(config), artifactId);
       console.log(`[Thumbnail Worker] Successfully updated database for artifact ${artifactId}`);
     }
 
-    return thumbnailUrl;
+    return thumbnailUrlLight;
   } catch (err) {
     console.error(`[Thumbnail Worker] Error generating thumbnail for ${artifactId}:`, err);
     return null;

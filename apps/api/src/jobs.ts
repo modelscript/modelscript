@@ -77,7 +77,7 @@ export class JobQueue {
   async #runChildProcess(key: string, scriptPath: string, data: Record<string, unknown>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const isDev = process.env["NODE_ENV"] !== "production";
-      const maxSpace = isDev ? "4096" : "16384";
+      const maxSpace = isDev ? "8192" : "16384";
 
       const child: ChildProcess = fork(scriptPath, {
         stdio: ["pipe", "inherit", "inherit", "ipc"],

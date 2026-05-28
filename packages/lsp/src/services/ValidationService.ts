@@ -903,12 +903,13 @@ export class ValidationService {
         this.workspaceManager.globalWorkspaceIndex.getFileIndex(effectiveUri);
         const step0_2t = performance.now();
         this.lastIndexedText.set(effectiveUri, text);
-        changedIds = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
-        changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
         this.connection.console.info(
           `[perf] Step 1.0 (markDirty): ${(step0_1t - step0t).toFixed(2)}ms, (getFileIndex): ${(step0_2t - step0_1t).toFixed(2)}ms`,
         );
       }
+
+      changedIds = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
+      changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
 
       if (isStale()) return;
 
@@ -920,7 +921,9 @@ export class ValidationService {
       const cstTreeWrapper = getSharedCstTreeWrapper();
       this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
 
-      if (textChanged) {
+      const engineNeedsUpdate = textChanged || (changedIds && changedIds.size > 0);
+
+      if (engineNeedsUpdate) {
         // ── Step 2: Unified index merge + QueryEngine update ─────────────────
         let step1T = performance.now();
         this.connection.console.info(
@@ -982,7 +985,7 @@ export class ValidationService {
       if (!resolver) {
         resolver = createModelicaScopeResolver(unifiedIndex);
         (engine as any).__resolverCache = resolver;
-      } else if (textChanged) {
+      } else if (engineNeedsUpdate) {
         resolver.updateIndex(unifiedIndex);
       }
       // Pass changedIds for incremental reference caching

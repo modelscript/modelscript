@@ -146,15 +146,10 @@ const ScalarMesh: React.FC<{
 
   // Update uniforms when they change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/immutability
     material.uniforms.scalarMin.value = scalarMin;
-    // eslint-disable-next-line react-hooks/immutability
     material.uniforms.scalarMax.value = scalarMax;
-    // eslint-disable-next-line react-hooks/immutability
     material.uniforms.colormap.value = colormapTexture;
-    // eslint-disable-next-line react-hooks/immutability
     material.uniforms.loadFactor.value = loadFactor / 100.0;
-    // eslint-disable-next-line react-hooks/immutability
     material.needsUpdate = true;
   }, [material, scalarMin, scalarMax, colormapTexture, loadFactor]);
 
@@ -523,6 +518,8 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
   const [animateFlow, setAnimateFlow] = useState(true);
   const orbitControlsRef = useRef<any>(null);
 
+  const isThumbnail = new URLSearchParams(window.location.search).get("thumbnail") === "true";
+
   // Load and parse the VTU data
   useEffect(() => {
     let active = true;
@@ -588,7 +585,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
           setLoading(false);
           setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
-          }, 100);
+          }, 1500);
         }
       }
     }
@@ -668,47 +665,49 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
       position="relative"
     >
       {/* Header info bar */}
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          padding: "8px 16px",
-          zIndex: 5,
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-        }}
-      >
-        <span
+      {!isThumbnail && (
+        <div
           style={{
-            fontSize: 11,
-            color: "var(--color-fg-muted)",
-            fontFamily: "monospace",
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            padding: "8px 16px",
+            zIndex: 5,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
           }}
         >
-          {vtuData.numPoints.toLocaleString()} nodes · {vtuData.numCells.toLocaleString()} cells
-        </span>
-        {viewConfig.solverInfo && (
           <span
             style={{
-              fontSize: 10,
-              color: "var(--color-accent-fg)",
-              background: "var(--color-accent-subtle)",
-              padding: "1px 8px",
-              borderRadius: 10,
-              border: "1px solid var(--color-accent-emphasis)",
-              fontWeight: 600,
+              fontSize: 11,
+              color: "var(--color-fg-muted)",
+              fontFamily: "monospace",
             }}
           >
-            {viewConfig.solverInfo.name}
+            {vtuData.numPoints.toLocaleString()} nodes · {vtuData.numCells.toLocaleString()} cells
           </span>
-        )}
-      </div>
+          {viewConfig.solverInfo && (
+            <span
+              style={{
+                fontSize: 10,
+                color: "var(--color-accent-fg)",
+                background: "var(--color-accent-subtle)",
+                padding: "1px 8px",
+                borderRadius: 10,
+                border: "1px solid var(--color-accent-emphasis)",
+                fontWeight: 600,
+              }}
+            >
+              {viewConfig.solverInfo.name}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Color legend */}
-      {currentField && (
+      {currentField && !isThumbnail && (
         <ColorLegend
           preset={colormapPreset}
           min={currentField.range[0]}
@@ -719,7 +718,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
       )}
 
       {/* 3D Canvas */}
-      <Canvas camera={{ position: [0, 0, 50], fov: 50 }}>
+      <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 10, 8]} intensity={0.6} />
 
@@ -758,70 +757,72 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
       </Canvas>
 
       {/* Bottom control bar */}
-      <div style={controlStyle}>
-        {/* Field selector */}
-        {scalarFields.length > 1 && (
+      {!isThumbnail && (
+        <div style={controlStyle}>
+          {/* Field selector */}
+          {scalarFields.length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={sliderLabelStyle}>Field</span>
+              <select value={activeField} onChange={(e) => setActiveField(e.target.value)} style={selectStyle}>
+                {scalarFields.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Animated Flow toggle */}
+          {velocityField && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+              <input
+                id="animate-flow-cb"
+                type="checkbox"
+                checked={animateFlow}
+                onChange={(e) => setAnimateFlow(e.target.checked)}
+                style={{ accentColor: "#8b5cf6", cursor: "pointer", width: 14, height: 14 }}
+              />
+              <label htmlFor="animate-flow-cb" style={{ ...sliderLabelStyle, cursor: "pointer", margin: 0 }}>
+                Animate Flow
+              </label>
+            </div>
+          )}
+
+          {/* Colormap selector */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={sliderLabelStyle}>Field</span>
-            <select value={activeField} onChange={(e) => setActiveField(e.target.value)} style={selectStyle}>
-              {scalarFields.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.name}
+            <span style={sliderLabelStyle}>Color</span>
+            <select
+              value={colormapPreset}
+              onChange={(e) => setColormapPreset(e.target.value as ColormapPreset)}
+              style={selectStyle}
+            >
+              {COLORMAP_NAMES.map((name) => (
+                <option key={name} value={name}>
+                  {name.charAt(0).toUpperCase() + name.slice(1)}
                 </option>
               ))}
             </select>
           </div>
-        )}
 
-        {/* Animated Flow toggle */}
-        {velocityField && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-            <input
-              id="animate-flow-cb"
-              type="checkbox"
-              checked={animateFlow}
-              onChange={(e) => setAnimateFlow(e.target.checked)}
-              style={{ accentColor: "#8b5cf6", cursor: "pointer", width: 14, height: 14 }}
-            />
-            <label htmlFor="animate-flow-cb" style={{ ...sliderLabelStyle, cursor: "pointer", margin: 0 }}>
-              Animate Flow
-            </label>
-          </div>
-        )}
-
-        {/* Colormap selector */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={sliderLabelStyle}>Color</span>
-          <select
-            value={colormapPreset}
-            onChange={(e) => setColormapPreset(e.target.value as ColormapPreset)}
-            style={selectStyle}
-          >
-            {COLORMAP_NAMES.map((name) => (
-              <option key={name} value={name}>
-                {name.charAt(0).toUpperCase() + name.slice(1)}
-              </option>
-            ))}
-          </select>
+          {/* Load factor slider */}
+          {displacementField && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={sliderLabelStyle}>Load %</span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={loadFactor}
+                onChange={(e) => setLoadFactor(parseFloat(e.target.value))}
+                style={{ width: 60, accentColor: "#8b5cf6" }}
+              />
+              <span style={{ ...sliderLabelStyle, width: 28, textAlign: "right" }}>{loadFactor}%</span>
+            </div>
+          )}
         </div>
-
-        {/* Load factor slider */}
-        {displacementField && (
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={sliderLabelStyle}>Load %</span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={loadFactor}
-              onChange={(e) => setLoadFactor(parseFloat(e.target.value))}
-              style={{ width: 60, accentColor: "#8b5cf6" }}
-            />
-            <span style={{ ...sliderLabelStyle, width: 28, textAlign: "right" }}>{loadFactor}%</span>
-          </div>
-        )}
-      </div>
+      )}
     </Box>
   );
 };

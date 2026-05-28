@@ -23,6 +23,7 @@ import {
   UnaryOp,
   Variability,
   differentiateArenaExpressionWrt,
+  pantelidesIndexReductionArena,
   performBltTransformationArena,
   simplifyArenaExpression,
 } from "@modelscript/compiler";
@@ -348,7 +349,44 @@ function generateAlgebraicLoopSolvers(
   lines.push("");
   lines.push(`void ${id}_solveAlgebraicLoops(${id}_Instance* inst) {`);
 
-  const blt = performBltTransformationArena(dae);
+  const parameterVars = new Set<number>();
+  const stateVars = new Set<number>();
+  const derivativeVars = new Set<number>();
+
+  for (let i = 0; i < dae.varCount; i++) {
+    if (dae.isVarRemoved(i)) continue;
+    if (dae.getVarVariability(i) === Variability.Parameter) {
+      parameterVars.add(i);
+    }
+  }
+
+  for (let i = 0; i < dae.exprCount; i++) {
+    if (dae.getExprKind(i) === ExprKind.Der) {
+      const argId = dae.getExprData1(i);
+      if (dae.getExprKind(argId) === ExprKind.Name) {
+        const nameId = dae.getExprData1(argId);
+        const name = dae.interner.resolve(nameId);
+        if (!name) continue;
+        const varIdx = dae.getVarIdxByName(name);
+        if (varIdx !== -1) {
+          stateVars.add(varIdx);
+          const derName = `der(${name})`;
+          let derVarIdx = dae.getVarIdxByName(derName);
+          if (derVarIdx === -1) {
+            const baseVarType = dae.getVarType(varIdx);
+            const baseVarVariability = dae.getVarVariability(varIdx);
+            derVarIdx = dae.addVariable(derName, baseVarType, baseVarVariability, dae.getVarCausality(varIdx), 0.0);
+          }
+          derivativeVars.add(derVarIdx);
+        }
+      }
+    }
+  }
+
+  const pantelidesRes = pantelidesIndexReductionArena(dae, stateVars, derivativeVars, parameterVars);
+  const dummyDerivatives = pantelidesRes.dummyDerivatives;
+
+  const blt = performBltTransformationArena(dae, stateVars, dummyDerivatives);
   const algebraicLoops = blt.blocks
     .filter((b) => b.vars.length > 1)
     .map((b) => ({

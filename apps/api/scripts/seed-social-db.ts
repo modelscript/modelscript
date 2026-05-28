@@ -237,5 +237,21 @@ db.linkRepo(
   "master",
   "Functional Mock-up Interface standard definitions",
 );
+db.linkRepo(
+  createdUsers["dev"],
+  "local",
+  "local_drone",
+  "https://github.com/PX4/PX4-Autopilot.git",
+  "main",
+  "PX4 Autopilot (Local cache)",
+);
+db.linkRepo(
+  createdUsers["dev"],
+  "local",
+  "local_helloworld",
+  "https://github.com/octocat/Hello-World.git",
+  "master",
+  "Hello World Test Repo (Local cache)",
+);
 
 console.log("Database seeded successfully!");

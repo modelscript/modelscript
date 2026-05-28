@@ -5,6 +5,8 @@ import { getSalsaIndexCache, idbGet, idbPut, openMSLCache, putSalsaIndexCache } 
 
 import type { FederatedQueryCacheStore } from "@modelscript/compiler";
 import type { Parser, Tree } from "@modelscript/utils";
+import { strFromU8, unzipSync } from "fflate";
+import { iconCache } from "../handlers/treeHandler";
 import { ingestSalsaIndex } from "./salsa-index-ingester";
 
 export interface LoaderContext {
@@ -237,33 +239,88 @@ export async function loadDependencyFromRegistry(
   ctx: LoaderContext,
 ): Promise<void> {
   const label = `${dep.name}@${dep.version}`;
-  ctx.logger.log(`[deps] Loading ${label} from registry...`);
+  ctx.logger.log(`[deps] Loading ${label} from registry via LSP bundle...`);
 
   try {
     const db = await openMSLCache();
-    const cacheKey = `dep:${label}`;
-    const cached = await idbGet<{ files: Record<string, string> }>(db, cacheKey);
+    const cacheKey = `lsp-bundle:dep:${label}`;
 
-    if (cached && cached.files) {
-      ctx.logger.log(`[deps] Cache hit for ${label}`);
-      await loadRegistryPackage({ name: dep.name, version: dep.version, files: cached.files }, ctx);
-      db.close();
-      return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cached = await idbGet<any>(db, cacheKey);
+
+    if (!cached || !cached.indexJson || !cached.files) {
+      const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
+      const res = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/lsp-bundle`);
+
+      if (!res.ok) {
+        db.close();
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const buffer = await res.arrayBuffer();
+      const zipped = unzipSync(new Uint8Array(buffer));
+
+      let indexJson: Record<string, unknown> | null = null;
+      let iconsJson: Record<string, string> | null = null;
+      const files: Record<string, string> = {};
+
+      for (const [relativePath, data] of Object.entries(zipped)) {
+        if (data.length === 0) continue; // directory
+        if (relativePath === "index.json") {
+          indexJson = JSON.parse(strFromU8(data));
+        } else if (relativePath === "icons.json") {
+          iconsJson = JSON.parse(strFromU8(data));
+        } else if (relativePath.startsWith("sources/")) {
+          const fileRelPath = relativePath.substring("sources/".length);
+          files[fileRelPath] = strFromU8(data);
+        }
+      }
+
+      cached = { indexJson, iconsJson, files };
+      await idbPut(db, cacheKey, cached);
     }
 
-    const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
-    const res = await fetch(`${baseUrl}/api/v1/libraries/${dep.name}/${dep.version}/files`);
-
-    if (!res.ok) {
-      db.close();
-      throw new Error(`HTTP ${res.status}`);
-    }
-
-    const { files } = await res.json();
-    await idbPut(db, cacheKey, { files });
     db.close();
 
-    await loadRegistryPackage({ name: dep.name, version: dep.version, files }, ctx);
+    // 1. Hydrate icons
+    if (cached.iconsJson) {
+      for (const [className, svg] of Object.entries(cached.iconsJson)) {
+        iconCache.set(className, svg as string);
+      }
+    }
+
+    // 2. Load sources into VFS
+    const pkg = { name: dep.name, version: dep.version, files: cached.files };
+    // We bypass the lazy registration of `loadRegistryPackage` since we have a pre-computed index
+    // But we still need the files in the VFS so hovers and goto-definition work!
+    const basePath = `/modelscript_registry/${pkg.name}/${pkg.version}`;
+    ctx.sharedFs.mkdir(basePath, { recursive: true });
+
+    let fileCount = 0;
+    for (const [relPath, content] of Object.entries(pkg.files)) {
+      const fullPath = ctx.sharedFs.join(basePath, relPath);
+      const dir = ctx.sharedFs.dirname(fullPath);
+      ctx.sharedFs.mkdir(dir, { recursive: true });
+      ctx.sharedFs.write(fullPath, content);
+      fileCount++;
+    }
+
+    // 3. Hydrate WorkspaceIndex
+    if (cached.indexJson) {
+      const uri = `library-bundle:/${dep.name}@${dep.version}`;
+
+      const symbols = new Map(cached.indexJson.symbols);
+      const byName = new Map(cached.indexJson.byName);
+      const childrenOf = new Map(cached.indexJson.childrenOf);
+
+      ctx.globalWorkspaceIndex.hydrate(uri, {
+        symbols,
+        byName,
+        childrenOf,
+      });
+
+      ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbols.size} symbols.`);
+    }
   } catch (e) {
     ctx.logger.error(`[deps] Failed to load ${label} from registry:`, e);
     throw e;

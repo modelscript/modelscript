@@ -87,10 +87,23 @@ function collectExprNameIds(arena: ArenaDAEBuilder, exprId: number, nameIds: Set
   const left = arena.getExprLeft(exprId);
   const right = arena.getExprRight(exprId);
 
+  if (kind === ExprKind.Der) {
+    if (arena.getExprKind(data1) === ExprKind.Name) {
+      const nameId = arena.getExprData1(data1);
+      const name = arena.interner.resolve(nameId);
+      if (name) {
+        const derNameId = arena.interner.intern(`der(${name})`);
+        nameIds.add(derNameId);
+      }
+    } else {
+      collectExprNameIds(arena, data1, nameIds);
+    }
+    return;
+  }
+
   switch (kind) {
     case ExprKind.Unary:
     case ExprKind.Negate:
-    case ExprKind.Der:
     case ExprKind.Pre:
       collectExprNameIds(arena, left, nameIds);
       break;
@@ -154,33 +167,58 @@ export function solveInitialEquationsArena(arena: ArenaDAEBuilder, initialValues
     converged: true,
   };
 
-  // ── Step 1: Collect initial equations ──
+  // ── Step 1: Collect initial equations (both continuous and initial) ──
   const initialEqIndices: number[] = [];
   for (let i = 0; i < arena.eqCount; i++) {
-    if (arena.getEqKind(i) === EqKind.InitialSimple) {
+    const kind = arena.getEqKind(i);
+    if (kind === EqKind.InitialSimple || kind === EqKind.Simple) {
       initialEqIndices.push(i);
     }
   }
   if (initialEqIndices.length === 0) return result;
 
   // ── Step 2: Identify unknowns via intersection ──
+  // Identify state variables by scanning for ExprKind.Der in all expressions
+  const stateVars = new Set<number>();
+  for (let i = 0; i < arena.exprCount; i++) {
+    if (arena.getExprKind(i) === ExprKind.Der) {
+      const argId = arena.getExprData1(i);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const nameId = arena.getExprData1(argId);
+        const name = arena.interner.resolve(nameId);
+        if (name) {
+          const varIdx = arena.getVarIdxByName(name);
+          if (varIdx !== -1) {
+            stateVars.add(varIdx);
+          }
+        }
+      }
+    }
+  }
+
   // Build set of variable StringIds that are not parameters/constants and not fixed
   const solvableVarNameIds = new Set<number>();
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
     if (v === Variability.Parameter || v === Variability.Constant) continue;
+
+    // State variables are fixed/known during initialization, so exclude them from unknowns
+    if (stateVars.has(i)) {
+      // But we must solve for their derivatives
+      const derNameId = arena.interner.intern(`der(${arena.getVarName(i)})`);
+      solvableVarNameIds.add(derNameId);
+      continue;
+    }
+
+    // Explicitly fixed variables are also excluded
     if (arena.isVarFixed(i)) continue;
 
     const nameId = arena.getVarNameId(i);
     solvableVarNameIds.add(nameId);
-
-    // Also include der(x) as solvable
-    const derNameId = arena.interner.intern(`der(${arena.getVarName(i)})`);
-    solvableVarNameIds.add(derNameId);
   }
 
-  // Collect all variable name IDs actually referenced in the initial equations
+  // Collect all variable name IDs actually referenced in the equations
   const referencedNameIds = new Set<number>();
   for (const eqIdx of initialEqIndices) {
     collectExprNameIds(arena, arena.getEqLhs(eqIdx), referencedNameIds);

@@ -54,6 +54,10 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
       })
       .then((text) => {
         if (cancelled) return;
+        if (!text || !text.trim()) {
+          dispatch({ type: "failed" });
+          return;
+        }
         dispatch({ type: "loaded", content: text });
         onLoadRef.current?.();
       })

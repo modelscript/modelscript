@@ -80,12 +80,34 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         // 2. Prepare DoE input parameter ranges
         const inputRanges = new Map<string, ArenaDoEInputRange>();
-        for (const [name, range] of Object.entries(params.inputs)) {
-          inputRanges.set(name, range as ArenaDoEInputRange);
+        if (params.inputs) {
+          for (const [name, range] of Object.entries(params.inputs)) {
+            inputRanges.set(name, range as ArenaDoEInputRange);
+          }
+        } else {
+          // Auto-discover parameters with min/max bounds
+          for (let i = 0; i < arena.varCount; i++) {
+            if (arena.isVarRemoved(i)) continue;
+            if (arena.getVarVariability(i) !== Variability.Parameter) continue;
+
+            const minVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "min"));
+            const maxVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "max"));
+            if (minVal !== null && maxVal !== null && minVal < maxVal) {
+              inputRanges.set(arena.getVarName(i), { min: minVal, max: maxVal });
+            }
+          }
+        }
+
+        if (inputRanges.size === 0) {
+          return {
+            success: false,
+            error:
+              "No input parameters found. Please define 'min' and 'max' attributes on at least one parameter (e.g., parameter Real p(min=0, max=1);).",
+          };
         }
 
         // If no outputs specified, use all state + algebraic variables from arena
-        const outputNames = params.outputs.length > 0 ? params.outputs : [];
+        const outputNames = params.outputs && params.outputs.length > 0 ? params.outputs : [];
         if (outputNames.length === 0) {
           for (let i = 0; i < arena.varCount; i++) {
             if (arena.isVarRemoved(i)) continue;

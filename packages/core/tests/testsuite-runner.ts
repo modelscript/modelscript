@@ -415,7 +415,7 @@ async function main(): Promise<void> {
   const omcMode = rawArgs.includes("--omc");
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
   const concurrency = concurrencyArg
-    ? parseInt(concurrencyArg.split("=")[1] ?? "4", 10)
+    ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
     : Math.max(1, Math.floor(os.availableParallelism() / 2));
   const args = rawArgs.filter(
     (a) => a !== "--update" && a !== "--omc" && !a.startsWith("--concurrency=") && a !== "--legacy",

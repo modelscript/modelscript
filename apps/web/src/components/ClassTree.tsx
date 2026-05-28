@@ -58,7 +58,7 @@ export const ClassTreeNode: React.FC<{
   return (
     <>
       <TreeItem
-        to={`/${libraryName}/${version}/classes/${node.fullName}`}
+        to={`/packages/${libraryName}/${version}/classes/${node.fullName}`}
         $depth={depth}
         style={isActive ? { background: "var(--color-tree-active-bg)", color: "var(--color-link)" } : undefined}
         onClick={(e) => {

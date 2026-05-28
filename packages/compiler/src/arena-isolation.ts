@@ -90,8 +90,10 @@ function isTargetVar(arena: ArenaDAEBuilder, exprId: number, targetVarIdx: numbe
   if (kind === ExprKind.Der) {
     const argId = arena.getExprData1(exprId);
     if (arena.getExprKind(argId) === ExprKind.Name) {
+      const innerNameId = arena.getExprData1(argId);
+      const innerName = arena.interner.resolve(innerNameId);
       const targetName = arena.getVarName(targetVarIdx);
-      if (targetName.startsWith("der(")) return true;
+      if (targetName === `der(${innerName})`) return true;
     }
   }
   return false;

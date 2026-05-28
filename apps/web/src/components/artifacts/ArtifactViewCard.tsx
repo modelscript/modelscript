@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { ScreenFullIcon } from "@primer/octicons-react";
-import { Spinner, Text } from "@primer/react";
+import { Spinner, Text, useTheme } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { API_BASE_URL } from "../../config";
 import Box from "../Box";
@@ -33,6 +33,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
   const [loading, setLoading] = useState(true);
   const [isLoaded, setIsLoaded] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const { resolvedColorMode } = useTheme();
 
   useEffect(() => {
     async function fetchArtifact() {
@@ -69,12 +70,34 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
 
   const viewConfig = JSON.parse(artifact.view_config || "{}");
 
+  let resolvedThumbnailUrl = viewConfig.thumbnailUrl || viewConfig.thumbnail_url;
+  if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/thumbnails/")) {
+    resolvedThumbnailUrl = `/api${resolvedThumbnailUrl}`;
+  }
+
+  let resolvedThumbnailUrlLight = viewConfig.thumbnailUrlLight;
+  if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/thumbnails/")) {
+    resolvedThumbnailUrlLight = `/api${resolvedThumbnailUrlLight}`;
+  }
+
+  let resolvedThumbnailUrlDark = viewConfig.thumbnailUrlDark;
+  if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/thumbnails/")) {
+    resolvedThumbnailUrlDark = `/api${resolvedThumbnailUrlDark}`;
+  }
+
   const renderViewer = () => {
     switch (artifact.view_type) {
       case "cad-step":
       case "cad_step":
         return (
-          <LazyHeavyViewer artifactId={artifactId} thumbnailUrl={viewConfig.thumbnailUrl} title="CAD STEP Viewer">
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="CAD 3D Viewer"
+            placeholderType="cad"
+          >
             <CadStepViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
@@ -90,7 +113,14 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
         return <MermaidViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "3d-model":
         return (
-          <LazyHeavyViewer artifactId={artifactId} thumbnailUrl={viewConfig.thumbnailUrl} title="USD 3D Viewer">
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="USD 3D Viewer"
+            placeholderType="cad"
+          >
             <UsdViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
@@ -114,8 +144,11 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
         return (
           <LazyHeavyViewer
             artifactId={artifactId}
-            thumbnailUrl={viewConfig.thumbnailUrl}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
             title="Simulation Result Viewer"
+            placeholderType={artifact.view_type === "cfd-result" ? "cfd" : "fea"}
           >
             <SimulationResultViewer viewConfig={viewConfig} isFullScreen={isFullScreen} onPinCreated={onPinCreated} />
           </LazyHeavyViewer>
@@ -143,17 +176,44 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             e.stopPropagation();
           }}
         >
-          {viewConfig.thumbnail_url ? (
-            <img
-              src={viewConfig.thumbnail_url}
-              style={{ width: "100%", display: "block", objectFit: "cover" }}
-              alt="thumbnail"
-            />
-          ) : (
-            <Box p={3}>
-              <Text>Viewing in full screen...</Text>
-            </Box>
-          )}
+          {(() => {
+            const currentThumbnailUrl =
+              resolvedColorMode === "dark"
+                ? resolvedThumbnailUrlDark || resolvedThumbnailUrl
+                : resolvedThumbnailUrlLight || resolvedThumbnailUrl;
+
+            if (currentThumbnailUrl) {
+              return (
+                <img
+                  src={currentThumbnailUrl}
+                  style={{ width: "100%", display: "block", objectFit: "cover" }}
+                  alt="thumbnail"
+                />
+              );
+            }
+
+            const placeholderType = ["cfd-result", "fea-result"].includes(artifact.view_type)
+              ? artifact.view_type === "cfd-result"
+                ? "cfd"
+                : "fea"
+              : ["cad-step", "3d-model"].includes(artifact.view_type)
+                ? "cad"
+                : artifact.view_type === "pdf"
+                  ? "pdf"
+                  : "generic";
+            return (
+              <img
+                src={`/placeholders/${placeholderType}_${resolvedColorMode === "dark" ? "dark" : "light"}.png`}
+                alt="thumbnail placeholder"
+                style={{
+                  width: "100%",
+                  display: "block",
+                  objectFit: "cover",
+                  filter: "brightness(0.7) blur(2px)",
+                }}
+              />
+            );
+          })()}
         </Box>
 
         <div

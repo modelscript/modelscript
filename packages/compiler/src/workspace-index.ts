@@ -75,6 +75,27 @@ export class WorkspaceIndex {
   }
 
   /**
+   * Hydrates a pre-computed SymbolIndex into the workspace.
+   * Useful for loading massive libraries (like MSL) instantly from an LSP bundle
+   * without needing to parse individual files.
+   */
+  hydrate(uri: string, index: SymbolIndex, parentFQN?: string): void {
+    // We assume the pre-computed index already has valid resourceIds for its symbols
+    this.files.set(uri, {
+      index,
+      oldIndex: null,
+      editRanges: null,
+      loader: null,
+      parentFQN,
+      dirty: false,
+    });
+    this.unifiedCache = null;
+    this.dirtyUris.add(uri);
+    this.skeletonCache = null;
+    this._version++;
+  }
+
+  /**
    * Mark a file as dirty (will re-index on next access).
    * Optionally provide a new loader.
    */

@@ -4,7 +4,7 @@
 import { LspContext } from "../LspContext";
 import { getClassIconSvg } from "../diagramData";
 
-const iconCache = new Map<string, string | null>();
+export const iconCache = new Map<string, string | null>();
 
 export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
@@ -13,6 +13,8 @@ export function registerTreeHandlers(context: LspContext) {
       // Use the unified workspace — merges all language indices
       const unifiedIndex = context.workspaceManager.unifiedWorkspace.toTreeIndex();
       if (!unifiedIndex) return [];
+
+      injectPredefinedTypes(unifiedIndex);
 
       // Invalidate FQN cache when the index changes
       if (fqnCacheIndex !== unifiedIndex) {

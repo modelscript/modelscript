@@ -121,7 +121,8 @@ export async function processLibrary(
 
   const library = await context.addLibrary(libraryPath);
   if (!library) {
-    throw new Error(`Failed to load library from: ${libraryPath}`);
+    console.warn(`[publish] Warning: Not a valid Modelica library or missing package.mo at: ${libraryPath}`);
+    return context;
   }
 
   const memAfter = process.memoryUsage();

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, prefer-const, @typescript-eslint/no-non-null-assertion */
 // @ts-nocheck
 import { LspContext } from "../LspContext";
+import { loadDependencyFromRegistry } from "../vfs/library-loader";
 
 export function registerMiscEndpoints(context: LspContext) {
   // ── Viewport tracking for prioritized linting ────────────────────────
@@ -65,6 +66,20 @@ export function registerMiscEndpoints(context: LspContext) {
       try {
         await loadDependencyFromRegistry(params, savedLoaderCtx);
         context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
+
+        context.connection.sendNotification("modelscript/status", {
+          state: "loading",
+          message: `Indexing ${params.name}...`,
+        });
+        await context.workspaceManager.globalWorkspaceIndex.indexRemainingInBackground(100, (indexed, total) => {
+          if (indexed % 100 === 0) {
+            context.connection.sendNotification("modelscript/status", {
+              state: "loading",
+              message: `Indexing ${params.name} (${indexed}/${total})...`,
+            });
+          }
+        });
+
         // Re-validate all open documents
         for (const doc of context.documents.all()) {
           context.validationService.validateTextDocument(doc);

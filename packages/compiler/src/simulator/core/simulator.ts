@@ -245,7 +245,7 @@ export class ArenaSimulator {
   public eventIndicators: ArenaEventIndicator[] = [];
 
   /** Extracted derivative equations: der(x) = expr. */
-  public derivativeEquations: { derivNameId: number; rhsExprId: number }[] = [];
+  // derivativeEquations removed
 
   /** State machine runtimes. */
   public stateMachineRuntimes: ArenaStateMachineRuntime[] = [];
@@ -280,12 +280,11 @@ export class ArenaSimulator {
     this.dummyDerivatives = pantelidesRes.dummyDerivatives;
 
     // Arena-Native BLT / Bipartite Matching
-    const bltRes = performBltTransformationArena(this.arena);
+    const bltRes = performBltTransformationArena(this.arena, this.stateVars, this.dummyDerivatives);
     this.sortedEquations = bltRes.sortedEquations;
     this.blocks = bltRes.blocks;
 
     this.buildExecutionBlocks();
-    this.extractDerivativeEquations();
     this.extractWhenClauses();
     this.extractAssertions();
     this.extractEventIndicators();
@@ -437,12 +436,22 @@ export class ArenaSimulator {
           const varIdx = this.arena.getVarIdxByName(name);
           if (varIdx !== -1) {
             this.stateVars.add(varIdx);
-            // O(1): look up derivative variable
+            // O(1): look up derivative variable, or create it if it doesn't exist
             const derName = `der(${name})`;
-            const derVarIdx = this.arena.getVarIdxByName(derName);
-            if (derVarIdx !== -1) {
-              this.derivativeVars.add(derVarIdx);
+            let derVarIdx = this.arena.getVarIdxByName(derName);
+            if (derVarIdx === -1) {
+              const baseVarType = this.arena.getVarType(varIdx);
+              const baseVarVariability = this.arena.getVarVariability(varIdx);
+              // The derivative variable inherits continuous variability and base causality/type.
+              derVarIdx = this.arena.addVariable(
+                derName,
+                baseVarType,
+                baseVarVariability,
+                this.arena.getVarCausality(varIdx),
+                0.0,
+              );
             }
+            this.derivativeVars.add(derVarIdx);
           }
         }
       }
@@ -458,43 +467,10 @@ export class ArenaSimulator {
   // environment so the ODE integrator can read dy/dt.
   // ─────────────────────────────────────────────────────────────────────────
 
-  private extractDerivativeEquations() {
-    this.derivativeEquations = [];
-    for (let eqIdx = 0; eqIdx < this.arena.eqCount; eqIdx++) {
-      if (this.arena.getEqKind(eqIdx) !== EqKind.Simple) continue;
+  // extractDerivativeEquations removed
 
-      const lhsId = this.arena.getEqLhs(eqIdx);
-      const rhsId = this.arena.getEqRhs(eqIdx);
-
-      // Check if LHS is der(x)
-      if (this.arena.getExprKind(lhsId) === ExprKind.Der) {
-        const argId = this.arena.getExprData1(lhsId);
-        if (this.arena.getExprKind(argId) === ExprKind.Name) {
-          const varNameId = this.arena.getExprData1(argId);
-          const varName = this.arena.interner.resolve(varNameId);
-          const derivNameId = this.arena.interner.intern(`der(${varName})`);
-          this.derivativeEquations.push({ derivNameId, rhsExprId: rhsId });
-        }
-      }
-      // Also check if RHS is der(x) (for equations written as `expr = der(x)`)
-      else if (this.arena.getExprKind(rhsId) === ExprKind.Der) {
-        const argId = this.arena.getExprData1(rhsId);
-        if (this.arena.getExprKind(argId) === ExprKind.Name) {
-          const varNameId = this.arena.getExprData1(argId);
-          const varName = this.arena.interner.resolve(varNameId);
-          const derivNameId = this.arena.interner.intern(`der(${varName})`);
-          this.derivativeEquations.push({ derivNameId, rhsExprId: lhsId });
-        }
-      }
-    }
-  }
-
-  /** Evaluate all derivative equations, writing der(x) values to the environment. */
   private evaluateDerivativeEquations(valuesByStringId: Float64Array): void {
-    for (const deq of this.derivativeEquations) {
-      const val = evaluateArenaRuntime(this.arena, deq.rhsExprId, valuesByStringId);
-      valuesByStringId[deq.derivNameId] = isFinite(val) ? val : 0;
-    }
+    // Handled by BLT
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -1772,13 +1748,7 @@ export class ArenaSimulator {
         }
       }
 
-      // Propagate through derivative equations
-      for (const deq of this.derivativeEquations) {
-        const val = evaluateArenaDualExpression(this.arena, deq.rhsExprId, dualEnv);
-        if (val !== null) {
-          dualEnv[deq.derivNameId] = val;
-        }
-      }
+      // Derivative equations are now part of execution blocks, so they are already propagated above.
 
       // Read sensitivities for each state
       for (const varIdx of this.stateVars) {

@@ -15,6 +15,7 @@ import path from "node:path";
 import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
 import { LibraryStorage } from "./storage.js";
+import { exportLspBundle } from "./util/lsp-bundle-exporter.js";
 import { exportSalsaIndex } from "./util/salsa-index-exporter.js";
 import { processLibrary } from "./util/svg-renderer.js";
 
@@ -42,12 +43,16 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
     let classCount = 0;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let rootMetadata: any = null;
+    const iconSvgs: Record<string, string> = {};
 
     const context = await processLibrary(libraryPath, async (_className, metadata, svgs) => {
       if (metadata.className === name) {
         rootMetadata = metadata;
       }
       storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
+      if (svgs.icon) {
+        iconSvgs[metadata.className] = svgs.icon;
+      }
 
       metadataBatch.push(metadata);
       if (metadataBatch.length >= 50) {
@@ -72,6 +77,11 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
     console.log(`[publish] ${name}@${version}: exporting salsa-index.db...`);
     const indexPath = storage.getIndexPath(name, version);
     await exportSalsaIndex(context.queryEngine, indexPath);
+
+    // Export the LSP bundle zip
+    console.log(`[publish] ${name}@${version}: exporting lsp-bundle.zip...`);
+    const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
+    await exportLspBundle(context.queryEngine, libraryPath, bundlePath, iconSvgs);
 
     // --- Automatic Artifact Scanning ---
     console.log(`[publish] ${name}@${version}: scanning artifacts...`);

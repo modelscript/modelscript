@@ -165,6 +165,30 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const extractedDir = storage.getExtractedPath(name, version);
     if (!fs.existsSync(extractedDir)) {
+      // FEDERATION: Proxy from upstream
+      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+      try {
+        const upstreamUrl = isStream
+          ? `${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/files?stream=true`
+          : `${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/files`;
+
+        const upstreamRes = await fetch(upstreamUrl);
+        if (upstreamRes.ok) {
+          if (isStream && upstreamRes.body) {
+            res.setHeader("Content-Type", "application/x-ndjson");
+            const { Readable } = await import("node:stream");
+            Readable.fromWeb(upstreamRes.body as import("stream/web").ReadableStream).pipe(res);
+            return;
+          } else {
+            const data = await upstreamRes.json();
+            res.json(data);
+            return;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+
       res.status(404).json({ error: "Library not extracted" });
       return;
     }
@@ -248,6 +272,56 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}.zip"`);
     res.setHeader("Content-Length", file.size);
     res.send(file.buffer);
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/lsp-bundle
+   *
+   * Download the optimized pre-computed bundle for the LSP client.
+   * Includes index.json, icons.json, and all .mo source files.
+   */
+  router.get("/:name/:version/lsp-bundle", async (req: Request, res: Response): Promise<void> => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const indexPath = storage.getIndexPath(name, version);
+    const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
+
+    if (!fs.existsSync(bundlePath)) {
+      // FEDERATION: Proxy download from upstream and cache it
+      const UPSTREAM_HUB = process.env.UPSTREAM_HUB || "https://hub.modelscript.org";
+      try {
+        const upstreamRes = await fetch(`${UPSTREAM_HUB}/api/v1/libraries/${name}/${version}/lsp-bundle`);
+        if (upstreamRes.ok) {
+          const buffer = await upstreamRes.arrayBuffer();
+          const nodeBuffer = Buffer.from(buffer);
+
+          // We can optionally cache this bundle locally to serve subsequent requests faster
+          fs.mkdirSync(path.dirname(bundlePath), { recursive: true });
+          fs.writeFileSync(bundlePath, nodeBuffer);
+
+          res.setHeader("Content-Type", "application/zip");
+          res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+          res.setHeader("Content-Length", nodeBuffer.length);
+          res.send(nodeBuffer);
+          return;
+        }
+      } catch {
+        // Fall through
+      }
+
+      res.status(404).json({ error: `LSP bundle not found for "${name}@${version}"` });
+      return;
+    }
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}-${version}-lsp-bundle.zip"`);
+    res.sendFile(path.resolve(bundlePath));
   });
 
   /**
@@ -414,14 +488,14 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const svg = storage.readSvg(name, version, className, "icon");
     if (!svg) {
-      res.status(404).json({ error: `Icon SVG not found for "${className}" in ${name}@${version}` });
+      res.status(204).end();
       return;
     }
 
     // Return 404 if the icon has no meaningful visual content
     const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
     if (!hasVisual) {
-      res.status(404).json({ error: `Icon SVG is empty for "${className}" in ${name}@${version}` });
+      res.status(204).end();
       return;
     }
 
@@ -446,14 +520,14 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     const svg = storage.readSvg(name, version, className, "diagram");
     if (!svg) {
-      res.status(404).json({ error: `Diagram SVG not found for "${className}" in ${name}@${version}` });
+      res.status(204).end();
       return;
     }
 
     // Return 404 if the diagram has no meaningful visual content
     const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
     if (!hasVisual) {
-      res.status(404).json({ error: `Diagram SVG is empty for "${className}" in ${name}@${version}` });
+      res.status(204).end();
       return;
     }
 

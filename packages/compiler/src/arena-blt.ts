@@ -33,13 +33,26 @@ export function collectArenaExprDeps(
     case ExprKind.Negate:
       collectArenaExprDeps(arena, arena.getExprLeft(exprId), deps, excludeDer);
       break;
-    case ExprKind.Der:
-      // Der stores its argument in data1.
-      // When excludeDer is set, skip: der(x) defines the derivative, not x.
+    case ExprKind.Der: {
+      // Always treat der(x) as a separate algebraic variable if it exists in the arena
+      const argId = arena.getExprData1(exprId);
+      if (arena.getExprKind(argId) === ExprKind.Name) {
+        const nameId = arena.getExprData1(argId);
+        const name = arena.interner.resolve(nameId);
+        if (name) {
+          const derVarIdx = arena.getVarIdxByName(`der(${name})`);
+          if (derVarIdx !== -1) {
+            deps.add(derVarIdx);
+          }
+        }
+      }
+      // excludeDer only controls whether we recursively collect the inner variable 'x'.
+      // Usually we don't, because der(x) defines the derivative, not the state x.
       if (!excludeDer) {
         collectArenaExprDeps(arena, arena.getExprData1(exprId), deps, excludeDer);
       }
       break;
+    }
     case ExprKind.Pre:
       // Pre stores its argument in data1.
       collectArenaExprDeps(arena, arena.getExprData1(exprId), deps, excludeDer);
@@ -106,7 +119,12 @@ export interface ArenaBltResult {
 /**
  * Performs Block Lower Triangular (BLT) Transformation natively on the DAE arena.
  */
-export function performBltTransformationArena(arena: ArenaDAEBuilder): ArenaBltResult {
+export function performBltTransformationArena(
+  arena: ArenaDAEBuilder,
+  stateVars: Set<number>,
+  dummyDerivatives: Set<number>,
+): ArenaBltResult {
+  // 1. Identify unknown variables (Continuous, Discrete)
   const unknowns = new Set<number>();
   const unknownList: number[] = [];
 
@@ -115,6 +133,10 @@ export function performBltTransformationArena(arena: ArenaDAEBuilder): ArenaBltR
     if (arena.isVarRemoved(i)) continue;
     const v = arena.getVarVariability(i);
     if (v === Variability.Continuous || v === Variability.Discrete) {
+      if (stateVars.has(i) && !dummyDerivatives.has(i)) {
+        // State variables are managed by the ODE integrator and their values are known
+        continue;
+      }
       unknowns.add(i);
       unknownList.push(i);
     }
@@ -127,11 +149,7 @@ export function performBltTransformationArena(arena: ArenaDAEBuilder): ArenaBltR
   for (let i = 0; i < arena.eqCount; i++) {
     if (arena.getEqKind(i) !== EqKind.Simple) continue;
 
-    // Skip derivative equations: der(x) = expr or expr = der(x).
-    // These are ODE definitions handled by the integrator, not algebraic equations.
-    const lhsKind = arena.getExprKind(arena.getEqLhs(i));
-    const rhsKind = arena.getExprKind(arena.getEqRhs(i));
-    if (lhsKind === ExprKind.Der || rhsKind === ExprKind.Der) continue;
+    // Do NOT skip derivative equations. They will be matched to der() variables.
 
     equations.push(i);
     const deps = new Set<number>();

@@ -29,7 +29,7 @@ const SearchHeader = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: var(--color-canvas-default);
+    background-color: var(--color-bg-primary);
     opacity: 0.85;
     z-index: -1;
   }
@@ -51,15 +51,15 @@ const SearchInputWrapper = styled.div`
     width: 100%;
     padding: 10px 16px 10px 40px;
     border-radius: 9999px;
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-bg-primary);
     border: 1px solid var(--color-border-default, var(--color-border, #cfd9de));
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
-    color: var(--color-fg-default);
+    color: var(--color-text-primary);
 
     &:focus {
-      background-color: var(--color-canvas-default);
+      background-color: var(--color-bg-primary);
       border-color: #1d9bf0;
       box-shadow: 0 0 0 1px #1d9bf0;
     }
@@ -799,6 +799,57 @@ const ExplorePage: React.FC = () => {
               </Box>
             </Box>
           )}
+
+          <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-default)">
+            <Heading
+              as="h3"
+              style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-fg-default)" }}
+            >
+              Physics Simulation
+            </Heading>
+            <Box display="flex" gap="12px" flexWrap="wrap">
+              <Box
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="8px"
+                p="16px"
+                flex="1"
+                minWidth="200px"
+                sx={{
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  "&:hover": { borderColor: "var(--color-accent-emphasis)" },
+                }}
+              >
+                <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", marginBottom: "4px" }}>
+                  Drone Chassis FEA
+                </Text>
+                <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px" }}>
+                  Quick start template for structural analysis on a drone chassis STEP file.
+                </Text>
+              </Box>
+              <Box
+                bg="var(--color-canvas-subtle)"
+                border="1px solid var(--color-border-default)"
+                borderRadius="8px"
+                p="16px"
+                flex="1"
+                minWidth="200px"
+                sx={{
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                  "&:hover": { borderColor: "var(--color-accent-emphasis)" },
+                }}
+              >
+                <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", marginBottom: "4px" }}>
+                  Aerodynamic Drag CFD
+                </Text>
+                <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px" }}>
+                  Quick start template for external aerodynamics around a 3D geometry.
+                </Text>
+              </Box>
+            </Box>
+          </Box>
 
           <Box p={3} borderBottom="1px solid var(--color-border-subtle)">
             <Heading as="h3" style={{ fontSize: "16px", fontWeight: 800, color: "var(--color-fg-default)" }}>

@@ -11,6 +11,10 @@ import { API_BASE_URL } from "../config";
 
 import { CircleIconButton, StickyHeader } from "../components/SharedStyles";
 
+const BookmarksHeader = styled(StickyHeader)`
+  border-bottom: none;
+`;
+
 const HeaderTop = styled.div`
   display: flex;
   align-items: center;
@@ -33,15 +37,15 @@ const SearchInputWrapper = styled.div`
     width: 100%;
     padding: 10px 16px 10px 40px;
     border-radius: 9999px;
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-bg-primary);
     border: 1px solid var(--color-border-default);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
-    color: var(--color-fg-default);
+    color: var(--color-text-primary);
 
     &:focus {
-      background-color: var(--color-canvas-default);
+      background-color: var(--color-bg-primary);
       border-color: #1d9bf0;
     }
   }
@@ -90,7 +94,7 @@ const BookmarksPage: React.FC = () => {
 
   return (
     <Box>
-      <StickyHeader style={{ flexDirection: "column", alignItems: "stretch" }}>
+      <BookmarksHeader style={{ flexDirection: "column", alignItems: "stretch" }}>
         <HeaderTop>
           <CircleIconButton onClick={() => navigate(-1)}>
             <ArrowLeftIcon size={20} />
@@ -103,7 +107,7 @@ const BookmarksPage: React.FC = () => {
           <SearchIcon size={16} />
           <input placeholder="Search Bookmarks" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </SearchInputWrapper>
-      </StickyHeader>
+      </BookmarksHeader>
 
       {loading ? (
         <Box p={4} display="flex" justifyContent="center">
