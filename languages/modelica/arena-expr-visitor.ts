@@ -1133,6 +1133,8 @@ export class ArenaExprVisitor {
       const nameId = this.dae.getExprData1(exprId);
       const name = this.dae.interner.resolve(nameId);
       if (name) {
+        // Built-in "time" is always Real
+        if (name === "time") return true;
         const varIdx = this.dae.getVarIdxByName(name);
         if (varIdx >= 0) {
           return this.dae.getVarType(varIdx) === VarType.Real;
@@ -1153,6 +1155,30 @@ export class ArenaExprVisitor {
     }
     if (kind === ExprKind.Der) {
       return true;
+    }
+    // Call expressions: check if the function returns Real
+    if (kind === ExprKind.Call) {
+      const fn = this.dae.interner.resolve(this.dae.getExprData1(exprId));
+      // Explicit cast to Real
+      if (fn === "/*Real*/" || fn === "Real") return true;
+      // Transcendental functions always return Real
+      if (
+        fn === "sin" ||
+        fn === "cos" ||
+        fn === "tan" ||
+        fn === "exp" ||
+        fn === "log" ||
+        fn === "log10" ||
+        fn === "asin" ||
+        fn === "acos" ||
+        fn === "atan" ||
+        fn === "atan2" ||
+        fn === "sinh" ||
+        fn === "cosh" ||
+        fn === "tanh" ||
+        fn === "sqrt"
+      )
+        return true;
     }
     return false;
   }

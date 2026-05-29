@@ -56,6 +56,19 @@ const LOW_PREC_OPS = new Set([
   BinOp.Neq,
 ]);
 
+const COMMUTATIVE_OPS = new Set([
+  BinOp.Add,
+  BinOp.Mul,
+  BinOp.ElemAdd,
+  BinOp.ElemMul,
+  BinOp.And,
+  BinOp.Or,
+  BinOp.Eq,
+  BinOp.Neq,
+]);
+
+const ASSOCIATIVE_OPS = new Set([BinOp.Add, BinOp.Mul, BinOp.ElemAdd, BinOp.ElemMul, BinOp.And, BinOp.Or]);
+
 export class ArenaDAEPrinter {
   private out: Writer;
   private depth = 0;
@@ -64,6 +77,97 @@ export class ArenaDAEPrinter {
   constructor(out: Writer, arena: ArenaDAEBuilder) {
     this.out = out;
     this.arena = arena;
+  }
+
+  private getExprRank(id: number): number {
+    if (id < 0) return 99;
+    switch (this.arena.getExprKind(id)) {
+      case ExprKind.IntLiteral:
+      case ExprKind.RealLiteral:
+      case ExprKind.BoolLiteral:
+      case ExprKind.StringLiteral:
+      case ExprKind.EnumLiteral:
+        return 10;
+      case ExprKind.Name:
+        return 20;
+      case ExprKind.Binary:
+      case ExprKind.Unary:
+      case ExprKind.Negate:
+        return 30;
+      default:
+        return 40;
+    }
+  }
+
+  private getExprStringFallback(id: number): string {
+    if (id < 0) return "";
+    const a = this.arena;
+    switch (a.getExprKind(id)) {
+      case ExprKind.Name:
+        return a.interner.resolve(a.getExprData1(id)) ?? "";
+      case ExprKind.EnumLiteral:
+        return a.interner.resolve(a.getExprLeft(id)) ?? "";
+      case ExprKind.IntLiteral:
+        return String(a.getExprData1(id));
+      case ExprKind.RealLiteral:
+        return String(a.getExprRealValue(id));
+      case ExprKind.BoolLiteral:
+        return a.getExprData1(id) !== 0 ? "true" : "false";
+      case ExprKind.StringLiteral:
+        return a.interner.resolve(a.getExprData1(id)) ?? "";
+      default:
+        return "";
+    }
+  }
+
+  /**
+   * Check if an expression is a numeric literal (Int or Real).
+   */
+  private isNumericLiteral(id: number): boolean {
+    if (id < 0) return false;
+    const k = this.arena.getExprKind(id);
+    return k === ExprKind.IntLiteral || k === ExprKind.RealLiteral;
+  }
+
+  /**
+   * Check if an expression is a negated numeric literal (Negate(lit) or Unary(Negate, lit)).
+   */
+  private isNegatedLiteral(id: number): boolean {
+    if (id < 0) return false;
+    const a = this.arena;
+    const k = a.getExprKind(id);
+    if (k === ExprKind.Negate) return this.isNumericLiteral(a.getExprLeft(id));
+    if (k === ExprKind.Unary && (a.getExprData1(id) as UnaryOp) === UnaryOp.Negate)
+      return this.isNumericLiteral(a.getExprLeft(id));
+    return false;
+  }
+
+  /**
+   * Get the numeric value of a literal expression (Int or Real).
+   */
+  private getNumericValue(id: number): number {
+    const a = this.arena;
+    if (a.getExprKind(id) === ExprKind.IntLiteral) return a.getExprData1(id);
+    return a.getExprRealValue(id);
+  }
+
+  /**
+   * Print a real value in OMC canonical format.
+   */
+  private printRealValue(v: number): void {
+    if (v === 0) {
+      this.out.write("0.0");
+      return;
+    }
+    if (Number.isInteger(v) && Math.abs(v) < 1e7) {
+      this.out.write(v.toFixed(1));
+      return;
+    }
+    let s: string;
+    if (Number.isInteger(v) && Math.abs(v) >= 1e7) s = v.toExponential();
+    else if (Math.abs(v) < 0.0001 && Math.abs(v) > 0) s = v.toExponential();
+    else s = v.toString();
+    this.out.write(s.replace(/e\+/g, "e"));
   }
 
   private indent(): string {
@@ -130,8 +234,6 @@ export class ArenaDAEPrinter {
 
       case ExprKind.Binary: {
         const op = a.getExprData1(id) as BinOp;
-        const lhs = a.getExprLeft(id);
-        const rhs = a.getExprRight(id);
         const isHigh = HIGH_PREC_OPS.has(op);
 
         const needsParens = (childId: number, isRhs = false): boolean => {
@@ -154,6 +256,195 @@ export class ArenaDAEPrinter {
           if (ck === ExprKind.IfElse) return true;
           return false;
         };
+
+        // ── OMC algebraic identity: a - lit → -lit + a ──
+        // Rewrite subtraction of a numeric literal into addition with
+        // negated literal, then fall through to the Add associative path.
+        if (op === BinOp.Sub && this.isNumericLiteral(a.getExprRight(id))) {
+          const lhsId = a.getExprLeft(id);
+          const rhsVal = this.getNumericValue(a.getExprRight(id));
+          // Collect additive operands: flatten the LHS if it's also Add/Sub
+          type VirtualOperand = { exprId: number; virtual?: undefined } | { exprId?: undefined; virtual: number };
+          const operands: VirtualOperand[] = [];
+          const collectAddSub = (nodeId: number): void => {
+            if (nodeId < 0) return;
+            const nk = a.getExprKind(nodeId);
+            if (nk === ExprKind.Binary) {
+              const nop = a.getExprData1(nodeId) as BinOp;
+              if (nop === BinOp.Add) {
+                collectAddSub(a.getExprLeft(nodeId));
+                collectAddSub(a.getExprRight(nodeId));
+                return;
+              }
+              if (nop === BinOp.Sub && this.isNumericLiteral(a.getExprRight(nodeId))) {
+                collectAddSub(a.getExprLeft(nodeId));
+                operands.push({ virtual: -this.getNumericValue(a.getExprRight(nodeId)) });
+                return;
+              }
+            }
+            operands.push({ exprId: nodeId });
+          };
+          collectAddSub(lhsId);
+          operands.push({ virtual: -rhsVal });
+
+          // Sort: virtual negated literals by value, real exprs by rank
+          const opRank = (o: VirtualOperand): number =>
+            o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
+          const opStr = (o: VirtualOperand): string =>
+            o.virtual !== undefined ? String(o.virtual) : this.getExprStringFallback(o.exprId as number);
+          operands.sort((oa, ob) => {
+            const ra = opRank(oa),
+              rb = opRank(ob);
+            if (ra !== rb) return ra - rb;
+            const sa = opStr(oa),
+              sb = opStr(ob);
+            if (sa < sb) return -1;
+            if (sa > sb) return 1;
+            return 0;
+          });
+
+          for (let i = 0; i < operands.length; i++) {
+            if (i > 0) this.out.write(" + ");
+            const o = operands[i] as VirtualOperand;
+            if (o.virtual !== undefined) {
+              this.printRealValue(o.virtual);
+            } else {
+              const cid = o.exprId as number;
+              if (needsParens(cid, i > 0)) {
+                this.out.write("(");
+                this.printExpr(cid);
+                this.out.write(")");
+              } else {
+                this.printExpr(cid);
+              }
+            }
+          }
+          break;
+        }
+
+        // ── OMC algebraic identity: a / lit → (1/lit) * a ──
+        // Rewrite division by a numeric literal into multiplication by
+        // its reciprocal, then fall through to the Mul associative path.
+        if (op === BinOp.Div && this.isNumericLiteral(a.getExprRight(id))) {
+          const lhsId = a.getExprLeft(id);
+          const rhsVal = this.getNumericValue(a.getExprRight(id));
+          if (rhsVal !== 0) {
+            const reciprocal = 1 / rhsVal;
+            // Collect multiplicative operands from LHS if also Mul
+            type VirtualMulOp = { exprId: number; virtual?: undefined } | { exprId?: undefined; virtual: number };
+            const operands: VirtualMulOp[] = [];
+            const collectMul = (nodeId: number): void => {
+              if (nodeId < 0) return;
+              if (a.getExprKind(nodeId) === ExprKind.Binary && a.getExprData1(nodeId) === BinOp.Mul) {
+                collectMul(a.getExprLeft(nodeId));
+                collectMul(a.getExprRight(nodeId));
+                return;
+              }
+              operands.push({ exprId: nodeId });
+            };
+            collectMul(lhsId);
+            operands.push({ virtual: reciprocal });
+
+            // Sort: virtual literals by rank 10, real exprs by rank
+            const opRank = (o: VirtualMulOp): number =>
+              o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
+            const opStr = (o: VirtualMulOp): string =>
+              o.virtual !== undefined ? String(o.virtual) : this.getExprStringFallback(o.exprId as number);
+            operands.sort((oa, ob) => {
+              const ra = opRank(oa),
+                rb = opRank(ob);
+              if (ra !== rb) return ra - rb;
+              const sa = opStr(oa),
+                sb = opStr(ob);
+              if (sa < sb) return -1;
+              if (sa > sb) return 1;
+              return 0;
+            });
+
+            for (let i = 0; i < operands.length; i++) {
+              if (i > 0) this.out.write(" * ");
+              const o = operands[i] as VirtualMulOp;
+              if (o.virtual !== undefined) {
+                this.printRealValue(o.virtual);
+              } else {
+                const cid = o.exprId as number;
+                if (needsParens(cid, i > 0)) {
+                  this.out.write("(");
+                  this.printExpr(cid);
+                  this.out.write(")");
+                } else {
+                  this.printExpr(cid);
+                }
+              }
+            }
+            break;
+          }
+        }
+
+        if (ASSOCIATIVE_OPS.has(op)) {
+          // Flatten associative chain
+          const operands: number[] = [];
+          const collect = (nodeId: number) => {
+            if (nodeId < 0) return;
+            if (a.getExprKind(nodeId) === ExprKind.Binary && a.getExprData1(nodeId) === op) {
+              collect(a.getExprLeft(nodeId));
+              collect(a.getExprRight(nodeId));
+            } else {
+              operands.push(nodeId);
+            }
+          };
+          collect(id);
+
+          // Sort operands by rank
+          operands.sort((idA, idB) => {
+            const rankA = this.getExprRank(idA);
+            const rankB = this.getExprRank(idB);
+            if (rankA !== rankB) return rankA - rankB;
+            const strA = this.getExprStringFallback(idA);
+            const strB = this.getExprStringFallback(idB);
+            if (strA < strB) return -1;
+            if (strA > strB) return 1;
+            return 0;
+          });
+
+          for (let i = 0; i < operands.length; i++) {
+            if (i > 0) {
+              this.out.write(" " + (binOpStr[op] ?? "+") + " ");
+            }
+            const childId = operands[i];
+            if (needsParens(childId, i > 0)) {
+              this.out.write("(");
+              this.printExpr(childId);
+              this.out.write(")");
+            } else {
+              this.printExpr(childId);
+            }
+          }
+          break;
+        }
+
+        let lhs = a.getExprLeft(id);
+        let rhs = a.getExprRight(id);
+
+        if (COMMUTATIVE_OPS.has(op)) {
+          const rankL = this.getExprRank(lhs);
+          const rankR = this.getExprRank(rhs);
+          let shouldSwap = false;
+
+          if (rankR < rankL) {
+            shouldSwap = true;
+          } else if (rankR === rankL) {
+            if (this.getExprStringFallback(rhs) < this.getExprStringFallback(lhs)) {
+              shouldSwap = true;
+            }
+          }
+
+          if (shouldSwap) {
+            const temp = lhs;
+            lhs = rhs;
+            rhs = temp;
+          }
+        }
 
         if (needsParens(lhs)) {
           this.out.write("(");

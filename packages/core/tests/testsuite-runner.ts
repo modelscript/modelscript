@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline";
 import { generateHtmlReport } from "./ctrf-to-html.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -384,9 +385,14 @@ function findMoDirectories(dir: string): string[] {
 
 // ── Concurrency limiter ──────────────────────────────────────────────────────
 
-async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], concurrency: number): Promise<T[]> {
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  concurrency: number,
+  onProgress?: (result: T, completed: number, total: number) => void,
+): Promise<T[]> {
   const results: T[] = new Array(tasks.length);
   let nextIdx = 0;
+  let completed = 0;
 
   async function worker() {
     while (nextIdx < tasks.length) {
@@ -394,6 +400,8 @@ async function runWithConcurrency<T>(tasks: (() => Promise<T>)[], concurrency: n
       const task = tasks[idx];
       if (task) {
         results[idx] = await task();
+        completed++;
+        if (onProgress) onProgress(results[idx], completed, tasks.length);
       }
     }
   }
@@ -536,7 +544,59 @@ async function main(): Promise<void> {
   });
 
   // Run all tests in parallel with concurrency limit
-  const workerResults = await runWithConcurrency(tasks, concurrency);
+  let livePassed = 0;
+  let liveFailed = 0;
+
+  const updateProgressBar = (completed: number, total: number) => {
+    if (!process.stdout.isTTY) return;
+    const width = 40;
+    const percent = completed / total;
+    const filled = Math.round(width * percent);
+    const bar = "█".repeat(filled) + "░".repeat(width - filled);
+
+    const passedStr = livePassed > 0 ? `${GREEN}${livePassed} passed${RESET}` : `0 passed`;
+    const failedStr = liveFailed > 0 ? `${RED}${liveFailed} failed${RESET}` : `0 failed`;
+
+    readline.clearLine(process.stdout, 0);
+    readline.cursorTo(process.stdout, 0);
+    process.stdout.write(
+      `  [${bar}] ${Math.floor(percent * 100)}% | ${completed}/${total} | ${passedStr}, ${failedStr}`,
+    );
+  };
+
+  if (process.stdout.isTTY && allQueued.length > 0) {
+    updateProgressBar(0, allQueued.length);
+  }
+
+  const workerResults = await runWithConcurrency(tasks, concurrency, (res, completed, total) => {
+    const r = res as unknown as TestResult;
+    if (r.status === "passed") livePassed++;
+    else if (r.status === "failed") {
+      liveFailed++;
+      // Print failure immediately during run
+      if (process.stdout.isTTY) {
+        readline.clearLine(process.stdout, 0);
+        readline.cursorTo(process.stdout, 0);
+      }
+      const q = allQueued.find((x) => x.testCase.file === r.file);
+      const suiteStr = q ? `${DIM}[${q.suiteName}]${RESET} ` : "";
+      console.log(`  ${RED}✗${RESET} ${suiteStr}${r.name}`);
+      if (r.message) {
+        console.log(
+          r.message
+            .split("\n")
+            .map((l) => `      ${l}`)
+            .join("\n"),
+        );
+      }
+    }
+
+    updateProgressBar(completed, total);
+  });
+
+  if (process.stdout.isTTY && allQueued.length > 0) {
+    process.stdout.write("\n");
+  }
 
   // Merge with skipped results and group by suite for display
   const suiteResults = new Map<string, TestResult[]>();

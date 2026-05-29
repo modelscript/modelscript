@@ -38,13 +38,15 @@ import Parser from "tree-sitter";
 import { Context } from "../src/compiler/context.js";
 import { NodeFileSystem } from "./node-filesystem.js";
 
-function cleanOmcOutput(text: string): string {
+function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
   return text
     .split("\n")
     .filter((line) => {
       const trimmed = line.trim();
       if (trimmed.includes("Warning:") || trimmed.includes("Warning ")) return false;
-      if (trimmed.startsWith("[") && trimmed.includes("]")) return false;
+      // For correct tests, strip OMC's [file:line:col] annotation lines.
+      // For incorrect tests, these ARE the expected diagnostic output — keep them.
+      if (!keepDiagnosticLines && trimmed.startsWith("[") && trimmed.includes("]")) return false;
       return true;
     })
     .join("\n")
@@ -252,8 +254,8 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     if (omcMode) {
       try {
         const cmd = `echo "instantiate(${lastClassName});" | omc ${testCase.file}`;
-        const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "ignore"] });
-        omcExpected = cleanOmcOutput(output);
+        const output = execSync(cmd, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+        omcExpected = cleanOmcOutput(output, testCase.metadata.status === "incorrect");
         testCase.expectedResult = omcExpected;
 
         if (testCase.metadata.simulate || testCase.expectedSimulationResult !== undefined) {
@@ -278,14 +280,239 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
         updateExpectedResult(testCase.file, omcExpected, testCase.expectedSimulationResult);
       } catch (err) {
-        omcExpected = `Error running OMC: ${err instanceof Error ? err.message : err}`;
+        // execSync throws when OMC exits with non-zero (expected for `status: incorrect` tests).
+        // The error object has .stdout/.stderr with the actual OMC diagnostic output.
+        const execErr = err as { stdout?: string; stderr?: string; message?: string };
+        const omcOutput = (execErr.stdout ?? "") + (execErr.stderr ?? "");
+        const cleaned = cleanOmcOutput(omcOutput, true);
+        if (cleaned) {
+          // Normalize absolute paths to relative (matching ModelScript's format)
+          const absPath = testCase.file;
+          const relPath = path.relative(testsuiteRoot, absPath).split(path.sep).join("/");
+          const baseName = path.basename(absPath);
+          omcExpected = cleaned
+            .replace(`Error processing file: ${absPath}`, `Error processing file: ${baseName}`)
+            .replaceAll(absPath, relPath);
+        } else {
+          omcExpected = `Error running OMC: ${err instanceof Error ? err.message : err}`;
+        }
         testCase.expectedResult = omcExpected;
         updateExpectedResult(testCase.file, omcExpected, testCase.expectedSimulationResult);
       }
     }
 
     const formatMismatch = (expectedStr: string, actualStr: string, prefix = "Output mismatch"): string => {
-      return `${prefix}:\n--- Expected ---\n${expectedStr}\n--- Actual ---\n${actualStr}`;
+      const expLines = expectedStr.split("\n");
+      const actLines = actualStr.split("\n");
+      const contextWindow = 2;
+      const maxDiffOutputLines = 40; // truncate output after this many lines
+
+      // ── LCS-based diff (Myers O(ND) algorithm) ──
+      // Produces a list of edit operations: 'equal', 'delete', 'insert'
+      type EditOp =
+        | { kind: "equal"; expIdx: number; actIdx: number }
+        | { kind: "delete"; expIdx: number }
+        | { kind: "insert"; actIdx: number };
+
+      const computeEdits = (a: string[], b: string[]): EditOp[] => {
+        const n = a.length;
+        const m = b.length;
+        const max = n + m;
+        // For very large inputs, fall back to simple line-by-line to avoid O(N²) cost
+        if (max > 2000) {
+          const ops: EditOp[] = [];
+          const minLen = Math.min(n, m);
+          for (let i = 0; i < minLen; i++) {
+            if (a[i] === b[i]) ops.push({ kind: "equal", expIdx: i, actIdx: i });
+            else {
+              ops.push({ kind: "delete", expIdx: i });
+              ops.push({ kind: "insert", actIdx: i });
+            }
+          }
+          for (let i = minLen; i < n; i++) ops.push({ kind: "delete", expIdx: i });
+          for (let i = minLen; i < m; i++) ops.push({ kind: "insert", actIdx: i });
+          return ops;
+        }
+
+        // Myers algorithm: find shortest edit script
+        const v = new Map<number, number>();
+        v.set(1, 0);
+        const trace: Map<number, number>[] = [];
+
+        outer: for (let d = 0; d <= max; d++) {
+          const vSnap = new Map(v);
+          trace.push(vSnap);
+          for (let k = -d; k <= d; k += 2) {
+            let x: number;
+            if (k === -d || (k !== d && (v.get(k - 1) ?? 0) < (v.get(k + 1) ?? 0))) {
+              x = v.get(k + 1) ?? 0;
+            } else {
+              x = (v.get(k - 1) ?? 0) + 1;
+            }
+            let y = x - k;
+            while (x < n && y < m && a[x] === b[y]) {
+              x++;
+              y++;
+            }
+            v.set(k, x);
+            if (x >= n && y >= m) break outer;
+          }
+        }
+
+        // Backtrack to find the actual edits
+        const edits: EditOp[] = [];
+        let cx = n,
+          cy = m;
+        for (let d = trace.length - 1; d >= 0; d--) {
+          const k = cx - cy;
+          const vPrev = d > 0 ? (trace[d - 1] as Map<number, number>) : new Map([[1, 0]]);
+          let prevK: number;
+          if (k === -d || (k !== d && (vPrev.get(k - 1) ?? 0) < (vPrev.get(k + 1) ?? 0))) {
+            prevK = k + 1;
+          } else {
+            prevK = k - 1;
+          }
+          const prevX = vPrev.get(prevK) ?? 0;
+          const prevY = prevX - prevK;
+
+          // Diagonal (equal) moves
+          let tx = cx,
+            ty = cy;
+          while (tx > prevX && ty > prevY && tx > 0 && ty > 0) {
+            tx--;
+            ty--;
+            edits.push({ kind: "equal", expIdx: tx, actIdx: ty });
+          }
+
+          // The edit move
+          if (d > 0) {
+            if (cx === prevX && cy > 0) {
+              cy--;
+              edits.push({ kind: "insert", actIdx: cy });
+            } else if (cx > 0) {
+              cx--;
+              edits.push({ kind: "delete", expIdx: cx });
+            }
+          }
+          cx = prevX;
+          cy = prevY;
+        }
+        edits.reverse();
+        return edits;
+      };
+
+      const edits = computeEdits(expLines, actLines);
+
+      // ── Build unified diff hunks ──
+      interface HunkLine {
+        tag: " " | "-" | "+";
+        text: string;
+        lineNo: number;
+      }
+      const allDiffLines: HunkLine[] = [];
+      for (const op of edits) {
+        if (op.kind === "equal") {
+          allDiffLines.push({ tag: " ", text: expLines[op.expIdx] as string, lineNo: op.expIdx + 1 });
+        } else if (op.kind === "delete") {
+          allDiffLines.push({ tag: "-", text: expLines[op.expIdx] as string, lineNo: op.expIdx + 1 });
+        } else {
+          allDiffLines.push({ tag: "+", text: actLines[op.actIdx] as string, lineNo: op.actIdx + 1 });
+        }
+      }
+
+      // Find change indices and expand with context
+      const changeIndices = new Set<number>();
+      for (let i = 0; i < allDiffLines.length; i++) {
+        if ((allDiffLines[i] as HunkLine).tag !== " ") {
+          for (let c = Math.max(0, i - contextWindow); c <= Math.min(allDiffLines.length - 1, i + contextWindow); c++) {
+            changeIndices.add(c);
+          }
+        }
+      }
+
+      if (changeIndices.size === 0) return `${prefix}: (no visible diff)`;
+
+      const visible = [...changeIndices].sort((a, b) => a - b);
+
+      // Inline character diff marker
+      const inlineDiff = (exp: string, act: string): string => {
+        let first = 0;
+        while (first < exp.length && first < act.length && exp[first] === act[first]) first++;
+        let lastE = exp.length - 1,
+          lastA = act.length - 1;
+        while (lastE > first && lastA > first && exp[lastE] === act[lastA]) {
+          lastE--;
+          lastA--;
+        }
+        return " ".repeat(first) + "^".repeat(Math.max(1, Math.max(lastE - first + 1, lastA - first + 1)));
+      };
+
+      // ANSI color codes for diff output
+      const R = "\x1b[0m"; // reset
+      const RED = "\x1b[31m";
+      const GRN = "\x1b[32m";
+      const DIM = "\x1b[2m";
+      const CYN = "\x1b[36m";
+
+      const output: string[] = [`${prefix}:`];
+      let lastVisIdx = -2;
+      let outputLineCount = 0;
+      let truncated = false;
+
+      for (const vi of visible) {
+        if (outputLineCount >= maxDiffOutputLines) {
+          truncated = true;
+          break;
+        }
+
+        // Hunk separator
+        if (vi > lastVisIdx + 1 && lastVisIdx >= 0) {
+          output.push(`${DIM}      ···${R}`);
+        }
+        lastVisIdx = vi;
+
+        const dl = allDiffLines[vi] as HunkLine;
+        const lineNoStr = String(dl.lineNo).padStart(3);
+
+        if (dl.tag === " ") {
+          output.push(`${DIM}   ${lineNoStr}  ${dl.text}${R}`);
+          outputLineCount++;
+        } else if (dl.tag === "-") {
+          output.push(`${RED}  -${lineNoStr}  ${dl.text}${R}`);
+          outputLineCount++;
+          // Check if the next visible entry is a matching "+" for inline diff
+          const nextVi = visible[visible.indexOf(vi) + 1];
+          if (nextVi === vi + 1 && allDiffLines[nextVi]?.tag === "+") {
+            const nextDl = allDiffLines[nextVi] as HunkLine;
+            output.push(`${GRN}  +${String(nextDl.lineNo).padStart(3)}  ${nextDl.text}${R}`);
+            outputLineCount++;
+            const marker = inlineDiff(dl.text, nextDl.text);
+            output.push(`${DIM}${CYN}       ${marker}${R}`);
+            // Skip the "+" entry since we consumed it
+            visible.splice(visible.indexOf(nextVi), 1);
+          }
+        } else {
+          output.push(`${GRN}  +${lineNoStr}  ${dl.text}${R}`);
+          outputLineCount++;
+        }
+      }
+
+      if (truncated) {
+        const totalChanges = allDiffLines.filter((l) => l.tag !== " ").length;
+        output.push(`${DIM}      ... (${totalChanges} total changed lines, showing first ${maxDiffOutputLines})${R}`);
+      }
+
+      if (expLines.length !== actLines.length) {
+        output.push(`${DIM}      (expected ${expLines.length} lines, got ${actLines.length} lines)${R}`);
+      }
+
+      // Full expected/actual for reference
+      output.push(`--- Expected ---`);
+      for (const l of expLines) output.push(`${DIM}${l}${R}`);
+      output.push(`--- Actual ---`);
+      for (const l of actLines) output.push(`${DIM}${l}${R}`);
+
+      return output.join("\n");
     };
 
     // ── Arena-native flattening ──
@@ -420,13 +647,18 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       return Array.from(new Set(lines));
     };
 
+    // Strip line:col ranges from diagnostic bracket prefixes for range-insensitive comparison
+    // e.g. "[path/file.mo:12:3-12:9:writable] Error: ..." → "[path/file.mo:writable] Error: ..."
+    const stripDiagRanges = (text: string): string =>
+      text.replace(/\[([^\]]*\.mo):\d+:\d+-\d+:\d+:writable\]/g, "[$1:writable]");
+
     // ── Compare results ──
     if (testCase.metadata.status === "incorrect") {
       const diagLines = formatDiagLines();
       if (diagLines.length > 0) {
         const actual = diagLines.join("\n");
         const expected = stripWarnings(testCase.expectedResult.trim());
-        if (actual === expected) return makeResult("passed");
+        if (stripDiagRanges(actual) === stripDiagRanges(expected)) return makeResult("passed");
 
         let reformatActual = actual;
         if (expected.includes("Error processing file:")) {
@@ -453,11 +685,12 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           const uniqueOmcDiagLines = Array.from(new Set(omcDiagLines));
           const hasErrorOccurred = expected.includes("Error: Error occurred while flattening model");
           const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
-          if (reformatActual === expected) return makeResult("passed");
+          // Match OMC's output order: boilerplate first, then diagnostics
+          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
+          if (stripDiagRanges(reformatActual) === stripDiagRanges(expected)) return makeResult("passed");
         }
 
-        if (updateMode) {
+        if (updateMode && !omcMode) {
           updateExpectedResult(testCase.file, reformatActual);
           return makeResult("passed", "(updated expected output)");
         }
@@ -508,7 +741,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
         const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
         if (reformatActual === expected) return makeResult("passed");
-        if (updateMode) {
+        if (updateMode && !omcMode) {
           updateExpectedResult(testCase.file, reformatActual);
           return makeResult("passed", "(updated expected output)");
         }
@@ -533,7 +766,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     let flatteningPassed = actual === normalizedExpected;
     if (!flatteningPassed) {
-      if (updateMode) {
+      if (updateMode && !omcMode) {
         updateExpectedResult(testCase.file, actual, testCase.expectedSimulationResult);
         flatteningPassed = true;
       } else {
@@ -597,7 +830,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     const reformatActual = `Error processing file: ${path.basename(testCase.file)}\n${prefix} ${severity}: ${errorMsg}\nError: Error occurred while flattening model ${lastClassName}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
 
     if (reformatActual === expected) return makeResult("passed");
-    if (updateMode) {
+    if (updateMode && !omcMode) {
       updateExpectedResult(testCase.file, reformatActual);
       return makeResult("passed", "(updated expected output)");
     }

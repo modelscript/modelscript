@@ -1533,3 +1533,213 @@ function growInt32(old: Int32Array): Int32Array {
 const SHARED_BUFFER = new ArrayBuffer(8);
 const FLOAT64_VIEW = new Float64Array(SHARED_BUFFER);
 const INT32_VIEW = new Int32Array(SHARED_BUFFER);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Arena Expression Type Inference
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** VarType name strings for diagnostic messages. */
+const VAR_TYPE_NAMES: Record<VarType, string> = {
+  [VarType.Real]: "Real",
+  [VarType.Integer]: "Integer",
+  [VarType.Boolean]: "Boolean",
+  [VarType.String]: "String",
+  [VarType.Enumeration]: "enumeration",
+  [VarType.Clock]: "Clock",
+};
+
+/**
+ * Get the human-readable name for a VarType.
+ */
+export function varTypeName(t: VarType): string {
+  return VAR_TYPE_NAMES[t] ?? "Real";
+}
+
+/**
+ * Infer the VarType of an arena expression.
+ *
+ * Recursively determines the result type of an expression by inspecting
+ * literal kinds, variable declarations, operator semantics, and function
+ * return types. Returns `null` when the type cannot be determined.
+ *
+ * Type promotion rules (Modelica spec §10.6.13):
+ *   - Integer op Real → Real  (for arithmetic +, -, *, /, ^)
+ *   - Comparison ops → Boolean
+ *   - Logical ops (and, or, not) → Boolean
+ */
+export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): VarType | null {
+  if (exprId < 0) return null;
+
+  const kind = dae.getExprKind(exprId);
+  switch (kind) {
+    // ── Literals ──
+    case ExprKind.IntLiteral:
+      return VarType.Integer;
+    case ExprKind.RealLiteral:
+      return VarType.Real;
+    case ExprKind.BoolLiteral:
+      return VarType.Boolean;
+    case ExprKind.StringLiteral:
+      return VarType.String;
+    case ExprKind.EnumLiteral:
+      return VarType.Enumeration;
+
+    // ── Variable reference ──
+    case ExprKind.Name: {
+      const name = dae.interner.resolve(dae.getExprData1(exprId));
+      const idx = dae.getVarIdxByName(name);
+      if (idx >= 0) return dae.getVarType(idx);
+      // Built-in "time" is Real
+      if (name === "time") return VarType.Real;
+      return null;
+    }
+
+    // ── Binary operators ──
+    case ExprKind.Binary: {
+      const op = dae.getExprData1(exprId) as BinOp;
+      // Comparison operators always produce Boolean
+      if (
+        op === BinOp.Lt ||
+        op === BinOp.Gt ||
+        op === BinOp.Lte ||
+        op === BinOp.Gte ||
+        op === BinOp.Eq ||
+        op === BinOp.Neq
+      ) {
+        return VarType.Boolean;
+      }
+      // Logical operators always produce Boolean
+      if (op === BinOp.And || op === BinOp.Or) {
+        return VarType.Boolean;
+      }
+      // Arithmetic: promote Integer + Real → Real
+      const lhsType = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+      const rhsType = inferArenaExprVarType(dae, dae.getExprRight(exprId));
+      if (lhsType === VarType.Real || rhsType === VarType.Real) return VarType.Real;
+      if (lhsType === VarType.Integer && rhsType === VarType.Integer) return VarType.Integer;
+      return lhsType ?? rhsType;
+    }
+
+    // ── Unary operators ──
+    case ExprKind.Unary: {
+      const uop = dae.getExprData1(exprId) as UnaryOp;
+      if (uop === UnaryOp.Not) return VarType.Boolean;
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+    }
+
+    case ExprKind.Negate:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+
+    // ── Function calls ──
+    case ExprKind.Call: {
+      const funcName = dae.interner.resolve(dae.getExprData1(exprId));
+      // Explicit type cast functions
+      if (funcName === "/*Real*/" || funcName === "Real") return VarType.Real;
+      if (funcName === "/*Integer*/" || funcName === "Integer" || funcName === "integer") return VarType.Integer;
+      if (funcName === "/*Boolean*/" || funcName === "Boolean") return VarType.Boolean;
+      if (funcName === "/*String*/" || funcName === "String") return VarType.String;
+      // Built-in functions that return specific types
+      if (
+        funcName === "abs" ||
+        funcName === "sqrt" ||
+        funcName === "sin" ||
+        funcName === "cos" ||
+        funcName === "tan" ||
+        funcName === "exp" ||
+        funcName === "log" ||
+        funcName === "log10" ||
+        funcName === "asin" ||
+        funcName === "acos" ||
+        funcName === "atan" ||
+        funcName === "atan2" ||
+        funcName === "sinh" ||
+        funcName === "cosh" ||
+        funcName === "tanh" ||
+        funcName === "max" ||
+        funcName === "min" ||
+        funcName === "mod" ||
+        funcName === "rem" ||
+        funcName === "ceil" ||
+        funcName === "floor" ||
+        funcName === "div" ||
+        funcName === "sign" ||
+        funcName === "smooth" ||
+        funcName === "noEvent" ||
+        funcName === "sum" ||
+        funcName === "product"
+      ) {
+        // These return type of their argument (or Real for transcendentals)
+        const argType = dae.getExprLeft(exprId) >= 0 ? inferArenaExprVarType(dae, dae.getExprLeft(exprId)) : null;
+        // Transcendental functions always return Real
+        if (
+          funcName === "sin" ||
+          funcName === "cos" ||
+          funcName === "tan" ||
+          funcName === "exp" ||
+          funcName === "log" ||
+          funcName === "log10" ||
+          funcName === "asin" ||
+          funcName === "acos" ||
+          funcName === "atan" ||
+          funcName === "atan2" ||
+          funcName === "sinh" ||
+          funcName === "cosh" ||
+          funcName === "tanh" ||
+          funcName === "sqrt"
+        ) {
+          return VarType.Real;
+        }
+        return argType ?? VarType.Real;
+      }
+      // size() returns Integer
+      if (funcName === "size" || funcName === "ndims" || funcName === "cardinality") return VarType.Integer;
+      // String conversion functions
+      if (funcName === "String") return VarType.String;
+      // Default: assume Real for unknown functions
+      return null;
+    }
+
+    // ── der(x) always produces Real ──
+    case ExprKind.Der:
+      return VarType.Real;
+
+    // ── pre(x) preserves the type of x ──
+    case ExprKind.Pre:
+      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
+
+    // ── If-else: type of the then-branch ──
+    case ExprKind.IfElse:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+
+    // ── Array constructor: type of first element ──
+    case ExprKind.ArrayCtor:
+      return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+
+    // ── Subscript: type of the base expression ──
+    case ExprKind.Subscript:
+      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
+
+    // ── Range: type of the start expression ──
+    case ExprKind.Range:
+      return inferArenaExprVarType(dae, dae.getExprData1(exprId));
+
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check if a source type is assignable to a target type in Modelica.
+ *
+ * Modelica implicit conversions (§10.6.13):
+ *   - Integer → Real  (implicit widening)
+ *   - All others must match exactly
+ *
+ * @returns `true` if `sourceType` can be assigned to a variable of `targetType`.
+ */
+export function isAssignableType(targetType: VarType, sourceType: VarType): boolean {
+  if (targetType === sourceType) return true;
+  // Integer → Real is allowed (implicit widening)
+  if (targetType === VarType.Real && sourceType === VarType.Integer) return true;
+  return false;
+}

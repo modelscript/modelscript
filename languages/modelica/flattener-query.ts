@@ -146,8 +146,11 @@ import {
   evaluateArenaExpression,
   ExprKind,
   foldArenaConstants,
+  inferArenaExprVarType,
+  isAssignableType,
   Variability,
   VarType,
+  varTypeName,
 } from "@modelscript/compiler";
 import { ArenaExprVisitor } from "./arena-expr-visitor.js";
 import {
@@ -406,7 +409,7 @@ export class ArenaQueryFlattener {
     if (!classDef) return;
 
     const sections = [...classDef.sections];
-    for (let i = sections.length - 1; i >= 0; i--) {
+    for (let i = 0; i < sections.length; i++) {
       const section = sections[i]!;
       if (section instanceof ModelicaEquationSectionSyntaxNode) {
         this.flattenEquationSection(section, prefix, dae, classId);
@@ -495,6 +498,32 @@ export class ArenaQueryFlattener {
       } else if (eq instanceof ModelicaSpecialEquationSyntaxNode) {
         this.handleSpecialEquation(eq, prefix, dae, scopeId);
       }
+    }
+  }
+
+  /**
+   * Serialize an arena expression ID to a human-readable string for diagnostics.
+   */
+  private serializeArenaExpr(dae: ArenaDAEBuilder, exprId: number): string {
+    if (exprId < 0) return "...";
+    const kind = dae.getExprKind(exprId);
+    switch (kind) {
+      case ExprKind.Name:
+        return dae.interner.resolve(dae.getExprData1(exprId));
+      case ExprKind.IntLiteral:
+        return String(dae.getExprData1(exprId));
+      case ExprKind.RealLiteral:
+        return String(dae.getExprRealValue(exprId));
+      case ExprKind.BoolLiteral:
+        return dae.getExprData1(exprId) ? "true" : "false";
+      case ExprKind.StringLiteral:
+        return `"${dae.interner.resolve(dae.getExprData1(exprId))}"`;
+      case ExprKind.Call: {
+        const fn = dae.interner.resolve(dae.getExprData1(exprId));
+        return `${fn}(...)`;
+      }
+      default:
+        return "...";
     }
   }
 
@@ -2363,7 +2392,32 @@ export class ArenaQueryFlattener {
       const lhsId = stmt.target ? visitor.visit(stmt.target) : undefined;
       const rhsId = stmt.source ? visitor.visit(stmt.source) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
-        dae.addAssignmentStmt(lhsId, rhsId);
+        // ── Type-mismatch check for assignments (OMC M5006) ──
+        // Use general-purpose type inference to check all expression types.
+        const targetType = inferArenaExprVarType(dae, lhsId);
+        const sourceType = inferArenaExprVarType(dae, rhsId);
+        if (targetType !== null && sourceType !== null && !isAssignableType(targetType, sourceType)) {
+          const targetName = this.serializeArenaExpr(dae, lhsId);
+          const sourceName = this.serializeArenaExpr(dae, rhsId);
+          const range = stmt.sourceRange
+            ? { startByte: stmt.sourceRange.startIndex, endByte: stmt.sourceRange.endIndex }
+            : null;
+          dae.diagnostics.push({
+            code: 5006,
+            rule: "assignment-type-mismatch",
+            severity: "error",
+            message: `Type mismatch in assignment in ${targetName} := ${sourceName} of ${varTypeName(targetType)} := ${varTypeName(sourceType)}`,
+            range,
+          });
+          return; // skip emitting the assignment
+        }
+        // ── Implicit Integer→Real coercion ──
+        // When assigning Integer to Real, OMC inserts /*Real*/() cast
+        let finalRhsId = rhsId;
+        if (targetType === VarType.Real && sourceType === VarType.Integer) {
+          finalRhsId = visitor.castToRealExpr(rhsId);
+        }
+        dae.addAssignmentStmt(lhsId, finalRhsId);
       }
     } else if (stmt instanceof ModelicaForStatementSyntaxNode) {
       // For statement: for i in range loop ... end for;
