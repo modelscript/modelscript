@@ -2605,7 +2605,7 @@ export class ArenaQueryFlattener {
       let thenTrue = false;
       let thenFalse = false;
       if (thenCondId !== undefined) {
-        const condVal = evaluateArenaExpression(dae, thenCondId, undefined, this.db, scopeId);
+        const condVal = evaluateArenaExpression(dae, thenCondId, undefined, this.db, scopeId, undefined, true);
         if (condVal === true) thenTrue = true;
         if (condVal === false) thenFalse = true;
       }
@@ -2617,7 +2617,7 @@ export class ArenaQueryFlattener {
         let eifTrue = false;
         let eifFalse = false;
         if (eifCondId !== undefined) {
-          const condVal = evaluateArenaExpression(dae, eifCondId, undefined, this.db, scopeId);
+          const condVal = evaluateArenaExpression(dae, eifCondId, undefined, this.db, scopeId, undefined, true);
           if (condVal === true) eifTrue = true;
           if (condVal === false) eifFalse = true;
         }
