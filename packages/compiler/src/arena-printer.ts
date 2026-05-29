@@ -864,6 +864,10 @@ export class ArenaDAEPrinter {
         this.out.write(";\n");
         break;
 
+      case EqKind.Connect:
+        // Do not print expanded connect equations, matching OMC output
+        break;
+
       default:
         // Unknown equation kind: fall back to simple printing
         this.out.write(this.indent());

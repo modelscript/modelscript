@@ -411,8 +411,11 @@ export class ArenaQueryFlattener {
       const typeSpec = spec.childForFieldName?.("typeSpecifier");
       const typeName = typeSpec?.text;
       const entry = this.db.symbol(classId);
-      if (typeName && entry && entry.parentId !== null) {
-        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>("resolveName", entry.parentId);
+      if (typeName && entry) {
+        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>(
+          "resolveName",
+          entry.parentId ?? classId,
+        );
         if (parentResolver) {
           const resolved = parentResolver(typeName);
           if (resolved && resolved.id !== classId) {
@@ -689,8 +692,11 @@ export class ArenaQueryFlattener {
       const typeSpec = spec.childForFieldName?.("typeSpecifier");
       const typeName = typeSpec?.text;
       const entry = this.db.symbol(classId);
-      if (typeName && entry && entry.parentId !== null) {
-        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>("resolveName", entry.parentId);
+      if (typeName && entry) {
+        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>(
+          "resolveName",
+          entry.parentId ?? classId,
+        );
         if (parentResolver) {
           const resolved = parentResolver(typeName);
           if (resolved && resolved.id !== classId) {
@@ -794,7 +800,7 @@ export class ArenaQueryFlattener {
 
                 const childStack: ModificationStack =
                   mergedMod && mergedMod.args.length > 0
-                    ? [...modStack, { mods: mergedMod, evaluationScopeId: classEntry.parentId }]
+                    ? [...modStack, { mods: mergedMod, evaluationScopeId: classId, evaluationScopePrefix: prefix }]
                     : modStack;
 
                 this.flattenClassWithMods(resolvedBase.id, prefix, dae, childStack, new Set(visited));
@@ -1754,6 +1760,9 @@ export class ArenaQueryFlattener {
     ) as string;
     const qVariability = this.db.query<string | null>("variability", componentEntry.id);
     const vStr = modVariability ?? qVariability ?? "continuous";
+    console.error(
+      `[Variability] component=${componentEntry.name} qVariability=${qVariability} modVariability=${modVariability} vStr=${vStr}`,
+    );
     if (vStr === "discrete") variability = Variability.Discrete;
     else if (vStr === "parameter") variability = Variability.Parameter;
     else if (vStr === "constant") variability = Variability.Constant;
