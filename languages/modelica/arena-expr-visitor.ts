@@ -125,7 +125,7 @@ export class ArenaExprVisitor {
   constructor(
     private dae: ArenaDAEBuilder,
     loopVars?: Map<string, number>,
-    private onFunctionCall?: (funcName: string) => void,
+    private onFunctionCall?: (funcName: string) => string | undefined,
     private cardinalityMap?: Map<string, number>,
     private resolveFunctionInputs?: (funcName: string) => string[],
     private namePrefix?: string,
@@ -908,8 +908,10 @@ export class ArenaExprVisitor {
     if (folded !== undefined) return folded;
 
     // Trigger function collection callback for non-builtins
+    let effectiveFuncName = funcName;
     if (this.onFunctionCall) {
-      this.onFunctionCall(funcName);
+      const qualifiedName = this.onFunctionCall(funcName);
+      if (typeof qualifiedName === "string") effectiveFuncName = qualifiedName;
     }
 
     // If there are named arguments, append them after positional args
@@ -922,10 +924,10 @@ export class ArenaExprVisitor {
 
     // Attempt function inlining: if all args are constant and the function body
     // can be fully evaluated, replace the call with the computed result.
-    const inlined = this.tryInlineFunctionCall(funcName, argIds);
+    const inlined = this.tryInlineFunctionCall(effectiveFuncName, argIds);
     if (inlined !== undefined) return inlined;
 
-    return this.dae.addCallExpr(funcName, argIds);
+    return this.dae.addCallExpr(effectiveFuncName, argIds);
   }
 
   /**

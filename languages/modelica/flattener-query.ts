@@ -241,6 +241,12 @@ export class ArenaQueryFlattener {
     functionInlining: "preserve",
     canonicalizeEquations: false,
   };
+  /** Name of the root model being flattened (e.g. "Extends10"). */
+  private rootClassName = "";
+  /** Set of SymbolIds that are ancestors of the root class via extends chains. */
+  private rootExtendsAncestors = new Set<SymbolId>();
+  /** Map from short/unqualified function name → fully qualified name (for OMC parity). */
+  private functionNameMap = new Map<string, string>();
 
   constructor(private db: QueryDB) {}
 
@@ -258,6 +264,12 @@ export class ArenaQueryFlattener {
 
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "<unknown>";
+    this.rootClassName = className;
+    this.functionNameMap.clear();
+
+    // Collect all extends ancestors of the root class for function name qualification
+    this.rootExtendsAncestors.clear();
+    this.collectExtendsAncestors(rootClassId, this.rootExtendsAncestors);
 
     const dae = new ArenaDAEBuilder(undefined, className, "");
 
@@ -3122,7 +3134,10 @@ export class ArenaQueryFlattener {
     return new ArenaExprVisitor(
       dae,
       loopVars,
-      (funcName) => this.collectFunctionDefinition(funcName, dae),
+      (funcName) => {
+        this.collectFunctionDefinition(funcName, dae);
+        return this.functionNameMap.get(funcName);
+      },
       this.connectorCardinality,
       (funcName) => this.resolveFunctionInputs(funcName),
       namePrefix,
@@ -3193,6 +3208,55 @@ export class ArenaQueryFlattener {
         }
       }
     }
+  }
+
+  /**
+   * Recursively collect all SymbolIds that are ancestors of the given class via extends chains.
+   */
+  private collectExtendsAncestors(classId: SymbolId, ancestors: Set<SymbolId>): void {
+    if (ancestors.has(classId)) return;
+    ancestors.add(classId);
+    const entry = this.db.symbol(classId);
+    if (!entry) return;
+
+    // Walk extends declarations using the resolvedBaseClass query
+    const children = this.db.childrenOf(classId);
+    for (const child of children) {
+      if (child.kind === "Extends") {
+        const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+        if (baseClass && baseClass.kind === "Class") {
+          this.collectExtendsAncestors(baseClass.id, ancestors);
+        }
+      }
+    }
+  }
+
+  /**
+   * Compute the fully-qualified function name for OMC output parity.
+   *
+   * Rules:
+   * - If the function is a direct child of the root class or any of its extends ancestors,
+   *   qualify it with rootClassName.funcLocalName (e.g. "Extends10.f")
+   * - Otherwise, use the function's own composite name from the symbol table
+   *   (e.g. "Package.Func")
+   */
+  private getQualifiedFunctionName(funcName: string, resolvedId: SymbolId): string {
+    const entry = this.db.symbol(resolvedId);
+    if (!entry) return funcName;
+
+    // Check if the function's parent is in the root's extends ancestry
+    if (entry.parentId !== null && this.rootExtendsAncestors.has(entry.parentId)) {
+      return this.rootClassName + "." + entry.name;
+    }
+
+    // Build the composite name from the symbol table parent chain
+    const parts: string[] = [entry.name];
+    let current = entry.parentId !== null ? this.db.symbol(entry.parentId) : undefined;
+    while (current) {
+      parts.unshift(current.name);
+      current = current.parentId !== null ? (this.db.symbol(current.parentId) ?? undefined) : undefined;
+    }
+    return parts.join(".");
   }
 
   private collectingFunctions = new Set<string>();
@@ -3297,6 +3361,14 @@ export class ArenaQueryFlattener {
         return;
       }
 
+      // Compute the fully-qualified function name for OMC parity
+      const qualifiedName = this.getQualifiedFunctionName(funcName, resolvedId);
+      this.functionNameMap.set(funcName, qualifiedName);
+
+      // Check if already collected under the qualified name
+      const qualifiedNameId = dae.interner.intern(qualifiedName);
+      if (dae.functions.has(qualifiedNameId)) return;
+
       // Get the CST to extract metadata (description, external decl, impure)
       const cstNode = this.db.cstNode(resolvedId) as any;
       const classDef = cstNode ? ModelicaClassDefinitionSyntaxNode.new(null, cstNode) : null;
@@ -3314,9 +3386,9 @@ export class ArenaQueryFlattener {
       // Flatten the function into a new ArenaDAEBuilder
       const fnDae = new ArenaDAEBuilder();
 
-      // Set function metadata
+      // Set function metadata — use qualified name
       fnDae.classKind = "function";
-      fnDae.nameId = fnDae.interner.intern(funcName);
+      fnDae.nameId = fnDae.interner.intern(qualifiedName);
       if (classDef?.classPrefixes?.purity === "impure") {
         fnDae.isImpure = true;
       }
@@ -3383,7 +3455,7 @@ export class ArenaQueryFlattener {
         }
       }
 
-      dae.functions.set(funcNameId, fnDae);
+      dae.functions.set(qualifiedNameId, fnDae);
     } finally {
       this.collectingFunctions.delete(funcName);
     }
