@@ -11,7 +11,7 @@
 
 import type { ArenaValue } from "./arena-eval.js";
 import { evaluateArenaExpression } from "./arena-eval.js";
-import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
+import { ArenaDAEBuilder, EqKind, ExprKind, inferArenaExprVarType, Variability, VarType } from "./dae-arena.js";
 import type { QueryDB, SymbolId } from "./runtime.js";
 
 /**
@@ -253,10 +253,41 @@ export function foldArenaConstants(
       // Evaluate the constant to a literal value
       const val = paramMap.get(name) ?? arena.getVarStartValue(varIdx);
       if (val !== undefined && typeof val === "number") {
-        // Rewrite this expression slot in-place to a RealLiteral
-        arena.setExprKind(e, ExprKind.RealLiteral);
-        arena.setExprRealValue(e, val);
+        const varType = arena.getVarType(varIdx);
+        if (varType === VarType.Integer) {
+          arena.setExprKind(e, ExprKind.IntLiteral);
+          arena.setExprData1(e, Math.trunc(val));
+        } else if (varType === VarType.Boolean) {
+          arena.setExprKind(e, ExprKind.BoolLiteral);
+          arena.setExprData1(e, val ? 1 : 0);
+        } else {
+          arena.setExprKind(e, ExprKind.RealLiteral);
+          arena.setExprRealValue(e, val);
+        }
         changed = true;
+      }
+    }
+
+    // Phase 4: Fold pure constant arithmetic expressions
+    for (let e = 0; e < arena.exprCount; e++) {
+      const kind = arena.getExprKind(e);
+      if (kind === ExprKind.Binary || kind === ExprKind.Unary) {
+        // Pass empty paramMap and onlyConstants=true to safely evaluate purely static arithmetic
+        const val = evaluateArenaExpression(arena, e, new Map(), undefined, undefined, undefined, true);
+        if (val !== null && typeof val === "number") {
+          const varType = inferArenaExprVarType(arena, e);
+          if (varType === VarType.Integer) {
+            arena.setExprKind(e, ExprKind.IntLiteral);
+            arena.setExprData1(e, Math.trunc(val));
+          } else if (varType === VarType.Boolean) {
+            arena.setExprKind(e, ExprKind.BoolLiteral);
+            arena.setExprData1(e, val ? 1 : 0);
+          } else {
+            arena.setExprKind(e, ExprKind.RealLiteral);
+            arena.setExprRealValue(e, val);
+          }
+          changed = true;
+        }
       }
     }
   }
