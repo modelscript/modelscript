@@ -629,7 +629,15 @@ export class ArenaDAEPrinter {
     if (isFinal && (variability === Variability.Parameter || variability === Variability.Constant))
       this.out.write("final ");
 
-    if (variability === Variability.Discrete) this.out.write("discrete ");
+    const type = a.getVarType(idx);
+    if (
+      variability === Variability.Discrete &&
+      type !== VarType.Integer &&
+      type !== VarType.Boolean &&
+      type !== VarType.String &&
+      type !== VarType.Enumeration
+    )
+      this.out.write("discrete ");
     else if (variability === Variability.Parameter) this.out.write("parameter ");
     else if (variability === Variability.Constant) this.out.write("constant ");
 
@@ -637,7 +645,6 @@ export class ArenaDAEPrinter {
     if (causality === 1) this.out.write("input ");
     else if (causality === 2) this.out.write("output ");
 
-    const type = a.getVarType(idx);
     const customType = a.getVarCustomType(idx);
     if (type === VarType.Real) this.out.write(customType ?? "Real");
     else if (type === VarType.Integer) this.out.write("Integer");

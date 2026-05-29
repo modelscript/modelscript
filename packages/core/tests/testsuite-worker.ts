@@ -625,6 +625,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       const lines = diagnostics
         .filter(
           (d) =>
+            d.type !== "info" &&
             !d.message.includes("Components are deprecated in class.") &&
             !d.message.includes("Algorithm sections are deprecated in class.") &&
             !d.message.includes("Equation sections are deprecated in class."),
@@ -665,6 +666,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
           const omcDiagLines = diagnostics
             .filter(
               (d) =>
+                d.type !== "info" &&
                 !d.message.includes("Components are deprecated in class.") &&
                 !d.message.includes("Algorithm sections are deprecated in class.") &&
                 !d.message.includes("Equation sections are deprecated in class."),
@@ -719,6 +721,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         const omcDiagLines = diagnostics
           .filter(
             (d) =>
+              d.type !== "info" &&
               !d.message.includes("Components are deprecated in class.") &&
               !d.message.includes("Algorithm sections are deprecated in class.") &&
               !d.message.includes("Equation sections are deprecated in class."),

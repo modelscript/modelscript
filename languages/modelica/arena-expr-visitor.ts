@@ -1185,10 +1185,21 @@ export class ArenaExprVisitor {
 
   public castToRealExpr(exprId: number): number {
     const kind = this.dae.getExprKind(exprId);
+    // IntLiteral → promote to RealLiteral
     if (kind === ExprKind.IntLiteral) {
       const val = this.dae.getExprData1(exprId);
       return this.dae.addRealLiteral(val);
     }
+    // RealLiteral, BoolLiteral, StringLiteral, EnumLiteral — already correct type
+    if (
+      kind === ExprKind.RealLiteral ||
+      kind === ExprKind.BoolLiteral ||
+      kind === ExprKind.StringLiteral ||
+      kind === ExprKind.EnumLiteral
+    ) {
+      return exprId;
+    }
+    // ArrayCtor — recursively cast each element
     if (kind === ExprKind.ArrayCtor) {
       const count = this.dae.getExprData1(exprId);
       if (count === 0) return exprId;
@@ -1202,14 +1213,19 @@ export class ArenaExprVisitor {
       }
       return this.dae.addArrayCtorExpr(elements);
     }
-    if (kind === ExprKind.Unary) {
-      const op = this.dae.getExprData1(exprId);
+    // Unary — recursively cast operand
+    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
       const operand = this.dae.getExprLeft(exprId);
       const casted = this.castToRealExpr(operand);
       if (casted !== operand) {
-        return this.dae.addUnaryExpr(op, casted);
+        if (kind === ExprKind.Negate) {
+          return this.dae.addUnaryExpr(UnaryOp.Negate, casted);
+        }
+        return this.dae.addUnaryExpr(this.dae.getExprData1(exprId), casted);
       }
+      return exprId;
     }
+    // Binary — recursively cast both operands
     if (kind === ExprKind.Binary) {
       const op = this.dae.getExprData1(exprId);
       const op1 = this.dae.getExprLeft(exprId);
@@ -1219,28 +1235,38 @@ export class ArenaExprVisitor {
       if (casted1 !== op1 || casted2 !== op2) {
         return this.dae.addBinaryExpr(op, casted1, casted2);
       }
-    }
-    if (kind === ExprKind.RealLiteral) {
       return exprId;
     }
-    if (kind === ExprKind.Call) {
-      const funcNameId = this.dae.getExprData1(exprId);
-      const funcName = this.dae.interner.resolve(funcNameId);
-      if (funcName === "/*Real*/") {
-        return exprId;
-      }
-    }
+    // Name — check if it's a known Integer variable; if so, wrap it.
+    // Otherwise assume it's already Real (or unknown, which is safe to leave as-is).
     if (kind === ExprKind.Name) {
       const nameId = this.dae.getExprData1(exprId);
       const name = this.dae.interner.resolve(nameId);
       if (name) {
+        // Built-in "time" is always Real
+        if (name === "time") return exprId;
         const varIdx = this.dae.getVarIdxByName(name);
-        if (varIdx >= 0 && this.dae.getVarType(varIdx) === VarType.Real) {
+        if (varIdx >= 0) {
+          const varType = this.dae.getVarType(varIdx);
+          if (varType === VarType.Integer) {
+            // Provably Integer — wrap with cast
+            return this.dae.addCallExpr("/*Real*/", [exprId]);
+          }
+          // Real or other type — no cast needed
           return exprId;
         }
       }
+      // Unknown variable (not yet in DAE) — assume Real, don't wrap
+      return exprId;
     }
-    return this.dae.addCallExpr("/*Real*/", [exprId]);
+    // Call — check if it's already a /*Real*/ cast; otherwise return as-is
+    // (function calls return their declared type; wrapping blindly is wrong)
+    if (kind === ExprKind.Call) {
+      return exprId;
+    }
+    // Der, Pre, IfElse, Range, Subscript, Comprehension, etc. —
+    // these are already typed by their context; don't wrap.
+    return exprId;
   }
   // -------------------------------------------------------------------------
   // Function Inlining

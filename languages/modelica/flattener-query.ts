@@ -864,33 +864,70 @@ export class ArenaQueryFlattener {
     console.error(`[Flattener] ${fullName} classInstanceId=${classInstanceId} classEntry=${classEntry.name}`);
     console.error(`[Flattener] classMeta: ${JSON.stringify(classEntry.metadata)}`);
 
-    // Resolve type aliases (ShortClassSpecifiers) recursively
-    let resolvedClassEntry = classEntry;
-    let resolvedClassInstanceId = classInstanceId;
-    while (resolvedClassEntry) {
-      const cst = this.db.cstNode(resolvedClassEntry.id) as any;
-      const spec = cst?.childForFieldName?.("classSpecifier");
-      if (spec?.type === "ShortClassSpecifier") {
-        const typeSpec = spec.childForFieldName?.("typeSpecifier");
-        const typeName = typeSpec?.text;
-        if (typeName) {
-          const resolvedId = this.resolveTypeNameInScope(typeName, resolvedClassEntry.parentId);
-          if (resolvedId !== null && resolvedId !== resolvedClassEntry.id) {
-            resolvedClassInstanceId = resolvedId;
-            resolvedClassEntry = this.db.symbol(resolvedClassInstanceId)!;
+    const classMeta = classEntry.metadata as Record<string, unknown>;
+    const resolvedTypeName = classEntry.name;
+
+    let isPredefined = classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName);
+    let primitiveTypeName = resolvedTypeName;
+
+    let currentClassId: SymbolId | null = classInstanceId;
+    const visitedBase = new Set<SymbolId>();
+    let typeMods: import("./modification-args.js").ModelicaModArgs | null = null;
+
+    if (!isPredefined) {
+      while (currentClassId && !visitedBase.has(currentClassId)) {
+        visitedBase.add(currentClassId);
+
+        const currentEntry = this.db.symbol(currentClassId);
+        if (!currentEntry) break;
+
+        if ((currentEntry.metadata as Record<string, unknown>)?.isPredefined || isPredefinedScalar(currentEntry.name)) {
+          isPredefined = true;
+          primitiveTypeName = currentEntry.name;
+          break;
+        }
+
+        const classInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+          "effectiveModification",
+          currentClassId,
+        );
+        typeMods = mergeModArgs(typeMods, classInlineMod);
+
+        const cst = this.db.cstNode(currentClassId) as any;
+        const spec = cst?.childForFieldName?.("classSpecifier");
+        if (spec?.type === "ShortClassSpecifier") {
+          const typeSpec = spec.childForFieldName?.("typeSpecifier");
+          if (typeSpec?.text) {
+            const resolvedId = this.resolveTypeNameInScope(typeSpec.text, currentEntry.parentId);
+            if (resolvedId !== null && resolvedId !== currentClassId) {
+              currentClassId = resolvedId;
+              continue;
+            }
+          }
+        }
+
+        const children = this.db.childrenOf(currentClassId);
+        const extendsClause = children.find((c) => c.kind === "Extends");
+        if (extendsClause) {
+          const extendsMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+            "extendsModificationParsed",
+            extendsClause.id,
+          );
+          typeMods = mergeModArgs(typeMods, extendsMod);
+          const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", extendsClause.id);
+          if (baseClass) {
+            currentClassId = baseClass.id;
             continue;
           }
         }
+
+        break;
       }
-      break;
-    }
-    if (resolvedClassEntry) {
-      classEntry = resolvedClassEntry;
-      classInstanceId = resolvedClassInstanceId;
     }
 
-    const classMeta = classEntry.metadata as Record<string, unknown>;
-    const resolvedTypeName = classEntry.name;
+    if (typeMods) {
+      effectiveMod = mergeModArgs(effectiveMod, typeMods);
+    }
 
     // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
     const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
@@ -903,49 +940,18 @@ export class ArenaQueryFlattener {
         if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
         return;
       }
-      this.flattenArrayComponent(fullName, classInstanceId, arrayDims, entry, dae, modStack, effectiveMod);
+      this.flattenArrayComponent(
+        fullName,
+        classInstanceId,
+        arrayDims,
+        entry,
+        dae,
+        modStack,
+        effectiveMod,
+        !!isPredefined,
+        primitiveTypeName,
+      );
       return;
-    }
-
-    // --- Predefined scalar types ---
-    let isPredefined = classMeta?.isPredefined || isPredefinedScalar(resolvedTypeName);
-    let primitiveTypeName = resolvedTypeName;
-
-    if (!isPredefined) {
-      // Walk extends chain to check if this is a derived type like `type MyReal extends Real;`
-      let currentClassId: SymbolId | null = resolvedClassInstanceId;
-      const visitedBase = new Set<SymbolId>();
-      let typeMods: ModelicaModArgs | null = null;
-
-      while (currentClassId && !visitedBase.has(currentClassId)) {
-        visitedBase.add(currentClassId);
-
-        // Class-level modifications (if any, though rare for pure types)
-        const classInlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", currentClassId);
-        typeMods = mergeModArgs(typeMods, classInlineMod);
-
-        const children = this.db.childrenOf(currentClassId);
-        const extendsClause = children.find((c) => c.kind === "Extends");
-        if (!extendsClause) break;
-
-        // Merge modifications from the extends clause!
-        const extendsMod = this.db.query<ModelicaModArgs | null>("extendsModificationParsed", extendsClause.id);
-        typeMods = mergeModArgs(typeMods, extendsMod);
-
-        const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", extendsClause.id);
-        if (!baseClass) break;
-
-        if ((baseClass.metadata as Record<string, unknown>)?.isPredefined || isPredefinedScalar(baseClass.name)) {
-          isPredefined = true;
-          primitiveTypeName = baseClass.name;
-          break;
-        }
-        currentClassId = baseClass.id;
-      }
-
-      if (isPredefined && typeMods) {
-        effectiveMod = mergeModArgs(effectiveMod, typeMods);
-      }
     }
 
     if (isPredefined) {
@@ -1004,6 +1010,8 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     modStack: ModificationStack,
     effectiveMod: ModelicaModArgs | null,
+    isPredefined: boolean = false,
+    primitiveTypeName: string = "Real",
   ): void {
     // For a multi-dimensional array, expand recursively
     // e.g., Real[3,2] x → x[1,1], x[1,2], x[2,1], ...
@@ -1015,19 +1023,112 @@ export class ArenaQueryFlattener {
     // Strip the binding expression from the per-element modification:
     // array bindings like `Integer x[3] = {1,2,3}` must be emitted as a single
     // array-level equation `x = {1,2,3}`, NOT duplicated for each element.
+    const variability = (entry.metadata as Record<string, unknown>)?.variability;
+    const isParam = variability === "parameter" || variability === "constant";
+
+    console.error("flattenArrayComponent effectiveMod:", JSON.stringify(effectiveMod, null, 2));
     const arrayBinding = effectiveMod?.bindingExpression ?? null;
-    const elementMod: ModelicaModArgs | null = effectiveMod ? { ...effectiveMod, bindingExpression: null } : null;
+    let elementMod: import("./modification-args.js").ModelicaModArgs | null = effectiveMod
+      ? { ...effectiveMod, bindingExpression: null }
+      : null;
+
+    let arrayBindingVal: any = undefined;
+    if (arrayBinding && isParam) {
+      if (arrayBinding.kind === "expression") {
+        const bytes = arrayBinding.cstBytes;
+        const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], entry);
+        if (cstNode) {
+          const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+          const dotIdx = baseName.lastIndexOf(".");
+          const parentPrefix = dotIdx >= 0 ? baseName.substring(0, dotIdx) : undefined;
+          const visitor = this.createExprVisitor(dae, undefined, parentPrefix, entry.parentId ?? entry.id);
+          const exprId = visitor.visit(astNode ?? cstNode);
+          if (exprId !== undefined) {
+            arrayBindingVal = evaluateArenaExpression(dae, exprId);
+          }
+        }
+      } else if (arrayBinding.kind === "literal") {
+        arrayBindingVal = arrayBinding.value;
+      }
+    }
+
+    let startValArray: any = undefined;
+    const startMod = elementMod?.args.find((a) => a.name === "start");
+    if (startMod) {
+      startValArray = this.resolveModAttribute(effectiveMod, "start", typeName, dae, entry);
+      console.error("startValArray:", JSON.stringify(startValArray));
+    }
+
+    const getShape = (a: any): number[] => {
+      if (!Array.isArray(a)) return [];
+      return [a.length, ...getShape(a[0])];
+    };
+    const arrShape = getShape(startValArray);
+    const bindingShape = getShape(arrayBindingVal);
+    console.error("arrShape:", arrShape, "bindingShape:", bindingShape);
 
     for (const idx of indices) {
       const indexStr = idx.map(String).join(",");
       const fullName = `${baseName}[${indexStr}]`;
 
-      if (isPredefinedScalar(typeName) || classEntry?.metadata?.isPredefined) {
-        this.emitVariable(fullName, typeName, entry, dae, elementMod);
+      let currentElementMod = elementMod;
+      if (startValArray !== undefined && Array.isArray(startValArray)) {
+        if (arrShape.length <= idx.length) {
+          const relevantIdx = idx.slice(idx.length - arrShape.length);
+          let current = startValArray;
+          for (let d = 0; d < relevantIdx.length; d++) {
+            const i = relevantIdx[d]! - 1;
+            if (!Array.isArray(current) || i < 0 || i >= current.length) {
+              current = undefined;
+              break;
+            }
+            current = current[i];
+          }
+          if ((current !== undefined && typeof current === "number") || typeof current === "boolean") {
+            const numVal = typeof current === "boolean" ? (current ? 1.0 : 0.0) : current;
+            if (currentElementMod) {
+              currentElementMod = {
+                ...currentElementMod,
+                args: currentElementMod.args.map((a) =>
+                  a.name === "start" ? { ...a, value: { kind: "literal", value: numVal } } : a,
+                ),
+              };
+              if (idx.join(",") === "1,1,1,1") {
+                console.error("idx 1,1,1,1 currentElementMod:", JSON.stringify(currentElementMod));
+              }
+            }
+          }
+        }
+      }
+
+      if (arrayBindingVal !== undefined && Array.isArray(arrayBindingVal)) {
+        if (bindingShape.length <= idx.length) {
+          const relevantIdx = idx.slice(idx.length - bindingShape.length);
+          let current = arrayBindingVal;
+          for (let d = 0; d < relevantIdx.length; d++) {
+            const i = relevantIdx[d]! - 1;
+            if (!Array.isArray(current) || i < 0 || i >= current.length) {
+              current = undefined;
+              break;
+            }
+            current = current[i];
+          }
+          if (current !== undefined && (typeof current === "number" || typeof current === "boolean")) {
+            const numVal = typeof current === "boolean" ? (current ? 1.0 : 0.0) : current;
+            currentElementMod = {
+              ...(currentElementMod || { args: [] }),
+              bindingExpression: { kind: "literal", value: numVal },
+            };
+          }
+        }
+      }
+
+      if (isPredefined || isPredefinedScalar(typeName) || classEntry?.metadata?.isPredefined) {
+        this.emitVariable(fullName, isPredefined ? primitiveTypeName : typeName, entry, dae, currentElementMod);
       } else {
         // Compound array element — recurse using flattenClassWithMods
-        const childStack: ModificationStack = elementMod
-          ? [...modStack, { mods: elementMod, evaluationScopeId: entry.parentId }]
+        const childStack: ModificationStack = currentElementMod
+          ? [...modStack, { mods: currentElementMod, evaluationScopeId: entry.parentId }]
           : modStack;
         this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
         this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
@@ -1035,7 +1136,7 @@ export class ArenaQueryFlattener {
     }
 
     // Emit the array-level binding equation once for the entire array
-    if (arrayBinding) {
+    if (arrayBinding && (!isParam || arrayBindingVal === undefined)) {
       if (arrayBinding.kind === "expression") {
         const bytes = arrayBinding.cstBytes;
         const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], entry);
@@ -1214,7 +1315,10 @@ export class ArenaQueryFlattener {
     }
 
     // Resolve start value and set as attribute expression
-    const startVal = this.resolveModAttribute(mod, "start", typeName, dae, componentEntry) ?? 0.0;
+    const hasExplicitStart = mod?.args.some((a) => a.name === "start") ?? false;
+    const startVal = hasExplicitStart
+      ? (this.resolveModAttribute(mod, "start", typeName, dae, componentEntry) ?? 0.0)
+      : 0.0;
     const initialValue =
       typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
 
@@ -1224,13 +1328,8 @@ export class ArenaQueryFlattener {
     }
 
     // Set start value as an attribute expression for the printer
-    // (if explicitly modified, or if non-default: non-zero for Real, non-false for Boolean)
-    const hasExplicitStart = mod?.args.some((a) => a.name === "start");
-    const isDefaultStart =
-      (varType === VarType.Real && initialValue === 0.0) ||
-      (varType === VarType.Integer && initialValue === 0) ||
-      (varType === VarType.Boolean && initialValue === 0.0);
-    if (!isDefaultStart || hasExplicitStart) {
+    // Only emit when explicitly modified in the source model
+    if (hasExplicitStart) {
       const startExprId =
         varType === VarType.Boolean
           ? dae.addBoolLiteral(initialValue !== 0)
@@ -1989,6 +2088,17 @@ export class ArenaQueryFlattener {
         }
 
         if (arrayDims) {
+          console.error(
+            `[DEBUG SCAL] SCALARIZING EQUATION: lhs=${varName}, rhsId=${rhsId}, rhsKind=${dae.getExprKind(rhsId)}`,
+          );
+          if (dae.getExprKind(rhsId) === 5) {
+            const rhsName = dae.interner.resolve(dae.getExprData1(rhsId));
+            console.error(`[DEBUG SCAL] rhsName = ${rhsName}`);
+            console.error(`[DEBUG SCAL] hasVar(${rhsName}[1]) = ${dae.hasVar(`${rhsName}[1]`)}`);
+            if (!dae.hasVar(`${rhsName}[1]`)) {
+              console.error(`[DEBUG SCAL] All vars in DAE:`, Array.from((dae as any)._nameIndex.keys()));
+            }
+          }
           this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
           return;
         }

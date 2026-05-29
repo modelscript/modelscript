@@ -1067,6 +1067,19 @@ export default language({
             }
             return subscripts;
           },
+          /**
+           * Get the effective modification for this class (specifically for ShortClassSpecifier).
+           */
+          effectiveModification: (db: QueryDB, self: SymbolEntry) => {
+            console.error("Executing effectiveModification on ClassDefinition for " + self.name);
+            const cst = db.cstNode(self.id) as import("@modelscript/compiler/symbol-indexer").CSTNode | null;
+            if (!cst) return null;
+            const classSpec = cst.childForFieldName("classSpecifier");
+            if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
+            const modNode = classSpec.childForFieldName("classModification");
+            if (!modNode) return null;
+            return parseModArgsFromCst(modNode, self.parentId) as import("./modification-args.js").ModelicaModArgs;
+          },
           /** Only nested class definitions. */
           nestedClasses: (db, self) => db.childrenOf(self.id).filter((c) => c.kind === "Class"),
           /** Only component declarations. */
@@ -3965,9 +3978,54 @@ export default language({
             // Also check if the resolved type has its own array dimensions (e.g. type T = Real[3])
             const classInstanceId = db.query<SymbolId | null>("classInstance", self.id);
             if (classInstanceId !== null) {
-              const typeClassDims = db.query<any[] | null>("arrayDimensions", classInstanceId);
-              if (typeClassDims && typeClassDims.length > 0) {
-                subscripts.push(...typeClassDims);
+              let currentClassId: SymbolId | null = classInstanceId;
+              const visitedBase = new Set<SymbolId>();
+
+              while (currentClassId && !visitedBase.has(currentClassId)) {
+                visitedBase.add(currentClassId);
+                const typeClassDims = db.query<any[] | null>("arrayDimensions", currentClassId);
+                if (typeClassDims && typeClassDims.length > 0) {
+                  subscripts.push(...typeClassDims);
+                  break;
+                }
+
+                // Check Extends
+                const children = db.childrenOf(currentClassId);
+                const extendsClause = children.find((c) => c.kind === "Extends");
+                if (extendsClause) {
+                  const baseClass = db.query<{ id: SymbolId } | null>("resolvedBaseClass", extendsClause.id);
+                  if (baseClass) {
+                    currentClassId = baseClass.id;
+                    continue;
+                  }
+                }
+
+                // Check ShortClassSpecifier
+                const cstNode = db.cstNode(currentClassId) as any;
+                const spec = cstNode?.childForFieldName?.("classSpecifier");
+                if (spec?.type === "ShortClassSpecifier") {
+                  const typeSpec = spec.childForFieldName?.("typeSpecifier");
+                  if (typeSpec?.text) {
+                    const currentEntry = db.symbol(currentClassId);
+                    if (currentEntry) {
+                      // We need to resolve the type name in the scope of the class
+                      const resolvedEntry = resolveQualified(db, typeSpec.text); // Fast path
+                      if (resolvedEntry) {
+                        currentClassId = resolvedEntry.id;
+                        continue;
+                      }
+                      const simpleName = typeSpec.text.includes(".") ? typeSpec.text.split(".").pop()! : typeSpec.text;
+                      const entries = db.byName(simpleName);
+                      const typeEntry = entries?.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
+                      if (typeEntry) {
+                        currentClassId = typeEntry.id;
+                        continue;
+                      }
+                    }
+                  }
+                }
+
+                break;
               }
             }
 
