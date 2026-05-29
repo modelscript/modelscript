@@ -779,7 +779,13 @@ export class ArenaExprVisitor {
     }
 
     // Specialized: smooth(p, expr) — pass through as generic call (semantically a hint)
-    // Specialized: sample(start, interval) — pass through as generic call
+    // Specialized: sample(start, interval) — coerce arguments to Real
+    if (funcName === "sample") {
+      const argIds = getArgExprs().map((id) => this.castToRealExpr(id));
+      const namedArgs = getNamedArgs().map((na) => ({ name: na.name, exprId: this.castToRealExpr(na.exprId) }));
+      for (const na of namedArgs) argIds.push(na.exprId);
+      return this.dae.addCallExpr(funcName, argIds);
+    }
     // Specialized: initial() / terminal() — zero-arg built-ins
     // Specialized: edge(b) / change(b) — pass through as generic call
     // These are all correctly handled as generic calls below, no special arena treatment needed.
