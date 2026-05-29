@@ -264,7 +264,9 @@ export class ArenaDAEPrinter {
           const lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           // Collect additive operands: flatten the LHS if it's also Add/Sub
-          type VirtualOperand = { exprId: number; virtual?: undefined } | { exprId?: undefined; virtual: number };
+          type VirtualOperand =
+            | { exprId: number; virtual?: undefined; isInt?: undefined }
+            | { exprId?: undefined; virtual: number; isInt: boolean };
           const operands: VirtualOperand[] = [];
           const collectAddSub = (nodeId: number): void => {
             if (nodeId < 0) return;
@@ -278,14 +280,20 @@ export class ArenaDAEPrinter {
               }
               if (nop === BinOp.Sub && this.isNumericLiteral(a.getExprRight(nodeId))) {
                 collectAddSub(a.getExprLeft(nodeId));
-                operands.push({ virtual: -this.getNumericValue(a.getExprRight(nodeId)) });
+                operands.push({
+                  virtual: -this.getNumericValue(a.getExprRight(nodeId)),
+                  isInt: a.getExprKind(a.getExprRight(nodeId)) === ExprKind.IntLiteral,
+                });
                 return;
               }
             }
             operands.push({ exprId: nodeId });
           };
           collectAddSub(lhsId);
-          operands.push({ virtual: -rhsVal });
+          operands.push({
+            virtual: -rhsVal,
+            isInt: a.getExprKind(a.getExprRight(id)) === ExprKind.IntLiteral,
+          });
 
           // Sort: virtual negated literals by value, real exprs by rank
           const opRank = (o: VirtualOperand): number =>
@@ -307,7 +315,11 @@ export class ArenaDAEPrinter {
             if (i > 0) this.out.write(" + ");
             const o = operands[i] as VirtualOperand;
             if (o.virtual !== undefined) {
-              this.printRealValue(o.virtual);
+              if (o.isInt) {
+                this.out.write(o.virtual.toString());
+              } else {
+                this.printRealValue(o.virtual);
+              }
             } else {
               const cid = o.exprId as number;
               if (needsParens(cid, i > 0)) {
