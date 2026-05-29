@@ -1,166 +1,382 @@
 import * as vscode from "vscode";
+import { LanguageClient } from "vscode-languageclient/browser";
 
-export class PhysicsSetupEditorProvider implements vscode.CustomTextEditorProvider {
-  static readonly viewType = "modelscript.physicsSetupEditor";
+export class SimulationViewPanel {
+  public static currentPanel: SimulationViewPanel | undefined;
+  public static readonly viewType = "modelscript.simulationView";
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  private readonly _panel: vscode.WebviewPanel;
+  private readonly _context: vscode.ExtensionContext;
+  private readonly _client: LanguageClient;
+  private _disposables: vscode.Disposable[] = [];
 
-  public async resolveCustomTextEditor(
-    document: vscode.TextDocument,
-    webviewPanel: vscode.WebviewPanel,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _token: vscode.CancellationToken,
-  ): Promise<void> {
-    webviewPanel.webview.options = {
-      enableScripts: true,
-    };
+  private _className: string;
+  private _documentUri: string;
 
-    const updateWebview = () => {
-      webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document.getText());
-    };
+  public static async createOrShow(
+    context: vscode.ExtensionContext,
+    client: LanguageClient,
+    className: string,
+    documentUri: string,
+  ) {
+    const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
 
-    updateWebview();
-
-    const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === document.uri.toString()) {
-        updateWebview();
-      }
-    });
-
-    webviewPanel.onDidDispose(() => {
-      changeDocumentSubscription.dispose();
-    });
-
-    webviewPanel.webview.onDidReceiveMessage((e) => {
-      switch (e.type) {
-        case "update":
-          this.updateDocument(document, e.text);
-          return;
-        case "generateMesh":
-          vscode.commands.executeCommand("modelscript.generateMesh");
-          return;
-      }
-    });
-  }
-
-  private updateDocument(document: vscode.TextDocument, text: string) {
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
-    return vscode.workspace.applyEdit(edit);
-  }
-
-  private getHtmlForWebview(webview: vscode.Webview, text: string): string {
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { type: "Unknown", stepFile: "", mesh: { min: 0.02, max: 0.08 } };
+    if (SimulationViewPanel.currentPanel) {
+      SimulationViewPanel.currentPanel._panel.reveal(column);
+      SimulationViewPanel.currentPanel.setStudyContext(className, documentUri);
+      return;
     }
 
-    return `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Physics Simulation Setup</title>
-        <style>
-          body { font-family: var(--vscode-font-family); padding: 20px; color: var(--vscode-editor-foreground); }
-          .container { display: flex; flex-direction: column; gap: 20px; max-width: 600px; margin: 0 auto; }
-          .card { background: var(--vscode-editorWidget-background); padding: 20px; border-radius: 8px; border: 1px solid var(--vscode-widget-border); }
-          h2 { margin-top: 0; }
-          .form-group { margin-bottom: 15px; }
-          label { display: block; margin-bottom: 5px; font-weight: bold; }
-          input, select { width: 100%; padding: 8px; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); }
-          button { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; padding: 10px 15px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; border-radius: 4px; }
-          button:hover { background: var(--vscode-button-hoverBackground); }
-          .mesh-preview { height: 300px; background: #1e1e1e; display: flex; align-items: center; justify-content: center; border-radius: 4px; margin-top: 10px; border: 1px solid #444; color: #888; text-align: center;}
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>${data.type} Simulation Setup</h1>
-          
-          <div class="card">
-            <h2>Geometry</h2>
-            <div class="form-group">
-              <label>Target File</label>
-              <input type="text" value="${data.stepFile}" readonly />
-            </div>
-            <div class="mesh-preview">
-              <div>
-                [ Interactive 3D WebGL / VTK.js Preview ]<br/><br/>
-                File: ${data.stepFile ? data.stepFile.split("/").pop() : "None"}
-              </div>
-            </div>
-          </div>
+    const panel = vscode.window.createWebviewPanel(
+      SimulationViewPanel.viewType,
+      "Simulation View",
+      column || vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")],
+      },
+    );
 
-          <div class="card">
-            <h2>Meshing (Gmsh)</h2>
-            <div class="form-group">
-              <label>Mesh Size Min</label>
-              <input type="number" step="0.01" id="meshMin" value="${data.mesh?.min || 0.02}" />
-            </div>
-            <div class="form-group">
-              <label>Mesh Size Max</label>
-              <input type="number" step="0.01" id="meshMax" value="${data.mesh?.max || 0.08}" />
-            </div>
-            <button onclick="generateMesh()">Generate Preview Mesh</button>
-          </div>
-
-          ${
-            data.type === "FEA"
-              ? `
-          <div class="card">
-            <h2>Boundary Conditions</h2>
-            <div class="form-group">
-              <label>Fixed Supports</label>
-              <button>Select Faces in 3D View</button>
-            </div>
-            <div class="form-group">
-              <label>Applied Forces</label>
-              <button>Add Force Vector</button>
-            </div>
-            <div class="form-group">
-              <label>Material</label>
-              <select>
-                <option>Aluminum 6061-T6</option>
-                <option>Carbon Fiber (Isotropic Proxy)</option>
-                <option>Steel AISI 1020</option>
-              </select>
-            </div>
-          </div>
-          `
-              : `
-          <div class="card">
-            <h2>Boundary Conditions</h2>
-            <div class="form-group">
-              <label>Inlet Velocity (m/s)</label>
-              <input type="text" value="-15.0, 0, 0" />
-            </div>
-            <div class="form-group">
-              <label>Bounding Box (Domain)</label>
-              <input type="text" value="Auto-fit + 500%" />
-            </div>
-            <div class="form-group">
-              <label>Fluid Properties</label>
-              <select>
-                <option>Air (Incompressible)</option>
-                <option>Water</option>
-              </select>
-            </div>
-          </div>
-          `
-          }
-        </div>
-        <script>
-          const vscode = acquireVsCodeApi();
-          function generateMesh() {
-            vscode.postMessage({ type: 'generateMesh' });
-          }
-        </script>
-      </body>
-      </html>
-    `;
+    SimulationViewPanel.currentPanel = new SimulationViewPanel(panel, context, client, className, documentUri);
   }
+
+  private constructor(
+    panel: vscode.WebviewPanel,
+    context: vscode.ExtensionContext,
+    client: LanguageClient,
+    className: string,
+    documentUri: string,
+  ) {
+    this._panel = panel;
+    this._context = context;
+    this._client = client;
+    this._className = className;
+    this._documentUri = documentUri;
+
+    this._update();
+
+    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+    this._panel.webview.onDidReceiveMessage(
+      async (message) => {
+        switch (message.type) {
+          case "ready":
+            this._loadStudyFromLSP();
+            break;
+          case "update":
+            try {
+              const newConfig = JSON.parse(message.text);
+              const uri = vscode.Uri.parse(this._documentUri);
+              const doc = await vscode.workspace.openTextDocument(uri);
+              const text = doc.getText();
+              const edit = new vscode.WorkspaceEdit();
+
+              // Simple regex-based replacement for parameter modifiers within the study class.
+              // Finds `key = value` patterns and updates them safely.
+              let modifiedText = text;
+              let hasChanges = false;
+
+              if (newConfig.parameters) {
+                for (const [key, value] of Object.entries(newConfig.parameters)) {
+                  // Only replace if it looks like an assignment in a modifier or equation
+                  const regex = new RegExp(`(${key}\\s*=\\s*)[^,)\\n]+`, "g");
+                  if (regex.test(modifiedText)) {
+                    modifiedText = modifiedText.replace(regex, `$1${value}`);
+                    hasChanges = true;
+                  }
+                }
+              }
+
+              if (hasChanges && modifiedText !== text) {
+                const fullRange = new vscode.Range(doc.positionAt(0), doc.positionAt(text.length));
+                edit.replace(uri, fullRange, modifiedText);
+                await vscode.workspace.applyEdit(edit);
+              }
+            } catch (err) {
+              console.error("Failed to save parameters", err);
+              vscode.window.showErrorMessage("Failed to save parameters to the Modelica file.");
+            }
+            break;
+          case "runSimulation":
+            vscode.commands.executeCommand("modelscript.runPhysicsSimulation", {
+              uri: this._documentUri,
+              className: this._className,
+            });
+            break;
+          case "selectFaces":
+            vscode.window.showInformationMessage(
+              `Face selection for ${message.target}: click faces in the 3D view (coming soon)`,
+            );
+            break;
+          case "generateMesh":
+            vscode.commands.executeCommand("modelscript.generateMesh");
+            break;
+        }
+      },
+      null,
+      this._disposables,
+    );
+  }
+
+  public setStudyContext(className: string, documentUri: string) {
+    this._className = className;
+    this._documentUri = documentUri;
+    this._panel.title = `Simulation: ${className.split(".").pop()}`;
+    this._loadStudyFromLSP();
+  }
+
+  private async _loadStudyFromLSP() {
+    try {
+      this._panel.webview.postMessage({ type: "setLoading", data: true });
+
+      // Call the flattenStudy endpoint!
+      const config = await this._client.sendRequest<Record<string, unknown>>("modelscript/flattenStudy", {
+        uri: this._documentUri,
+        className: this._className,
+      });
+
+      if (config) {
+        // Send study config to webview
+        this._panel.webview.postMessage({ type: "configData", data: config });
+
+        // Also fetch step meshes
+        const stepFile = config.parameters?.stepFile || config.stepFile || "";
+        let stepUri = this._documentUri;
+        if (stepFile) {
+          const docDir = this._documentUri.replace(/[^/]+$/, "");
+          stepUri = docDir + stepFile;
+        } else {
+          stepUri = this._documentUri.replace(/[^/]+$/, "geometry.step");
+        }
+
+        const stepMeshes = await this._client.sendRequest<unknown[]>("modelscript/getStepMeshes", { uri: stepUri });
+        this._panel.webview.postMessage({ type: "stepMeshes", data: stepMeshes });
+      }
+    } catch (e) {
+      console.warn("[SimulationView] Failed to load study:", e);
+      vscode.window.showErrorMessage("Failed to load study parameters via LSP.");
+    } finally {
+      this._panel.webview.postMessage({ type: "setLoading", data: false });
+    }
+  }
+
+  public dispose() {
+    SimulationViewPanel.currentPanel = undefined;
+    this._panel.dispose();
+    while (this._disposables.length) {
+      const x = this._disposables.pop();
+      if (x) x.dispose();
+    }
+  }
+
+  private _update() {
+    this._panel.webview.html = this._getHtmlForWebview();
+  }
+
+  private _getHtmlForWebview(): string {
+    const scriptUri = this._panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this._context.extensionUri, "dist", "physicsSetupWebview.js"),
+    );
+    const nonce = getNonce();
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Physics Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+
+    .root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ── 3D viewer fills entire view ── */
+    .viewer-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* ── Floating config panel ── */
+    .floating-panel {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      bottom: 12px;
+      width: 280px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      background: var(--vscode-sideBar-background, rgba(30, 30, 30, 0.92));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--vscode-sideBar-border, rgba(255,255,255,0.08));
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      font-family: var(--vscode-font-family, 'Segoe UI', system-ui, sans-serif);
+      font-size: 12px;
+      color: var(--vscode-foreground, #ccc);
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+    .floating-panel.collapsed {
+      width: 42px;
+      bottom: auto;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--vscode-sideBar-border, rgba(255,255,255,0.08));
+      flex-shrink: 0;
+    }
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .collapsed .panel-title { display: none; }
+    .panel-icon { font-size: 16px; }
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: var(--vscode-foreground, #ccc);
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 10px;
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+    .collapse-btn:hover { opacity: 1; }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+    /* ── sections ── */
+    .section { border-bottom: 1px solid var(--vscode-sideBar-border, rgba(255,255,255,0.06)); }
+    .section:last-child { border-bottom: none; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      padding: 8px 12px;
+      background: none;
+      border: none;
+      color: var(--vscode-foreground, #ccc);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .section-header:hover { background: rgba(255,255,255,0.04); }
+    .chevron { font-size: 10px; opacity: 0.5; width: 12px; }
+    .section-body { padding: 4px 12px 10px; }
+
+    /* ── fields ── */
+    .field { margin-bottom: 8px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #999);
+      margin-bottom: 3px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 5px 8px;
+      background: var(--vscode-input-background, #2a2a2a);
+      color: var(--vscode-input-foreground, #eee);
+      border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.1));
+      border-radius: 4px;
+      font-size: 12px;
+      outline: none;
+    }
+    .field input:focus, .field select:focus {
+      border-color: var(--vscode-focusBorder, #007acc);
+    }
+
+    .file-badge {
+      padding: 4px 8px;
+      background: rgba(0,122,204,0.12);
+      border: 1px solid rgba(0,122,204,0.25);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--vscode-textLink-foreground, #4daafc);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 6px 10px;
+      margin-bottom: 6px;
+      background: var(--vscode-button-secondaryBackground, #333);
+      color: var(--vscode-button-secondaryForeground, #ccc);
+      border: 1px solid var(--vscode-button-border, rgba(255,255,255,0.08));
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      text-align: left;
+    }
+    .action-btn:hover { background: var(--vscode-button-secondaryHoverBackground, #444); }
+
+    .bc-tag {
+      padding: 4px 8px;
+      margin-bottom: 4px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, #aaa);
+    }
+
+    .run-section { padding: 10px 12px; }
+    .run-btn {
+      width: 100%;
+      padding: 8px 14px;
+      background: var(--vscode-button-background, #007acc);
+      color: var(--vscode-button-foreground, #fff);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .run-btn:hover { background: var(--vscode-button-hoverBackground, #1a8ad4); }
+  </style>
+</head>
+<body class="vscode-dark">
+  <div id="root"></div>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+  }
+}
+
+function getNonce() {
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
 }

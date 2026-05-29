@@ -99,7 +99,31 @@ const refAsIndexerHooks = (refHooks ?? [])
     inheritPaths: [],
     metadataFieldPaths: {},
   }));
-const allIndexerHooks = [...baseIndexerHooks, ...refAsIndexerHooks];
+
+const msimIndexerHook: any = {
+  ruleName: "virtual_msim_record",
+  kind: "Class",
+  namePath: "name",
+  exportPaths: [],
+  inheritPaths: [],
+  metadataFieldPaths: {
+    class_prefixes: "prefixes",
+  },
+};
+
+const msimPropertyHook: any = {
+  ruleName: "virtual_msim_property",
+  kind: "Component",
+  namePath: "name",
+  exportPaths: [],
+  inheritPaths: [],
+  metadataFieldPaths: {
+    type: "type",
+    variability: "variability",
+  },
+};
+
+const allIndexerHooks = [...baseIndexerHooks, ...refAsIndexerHooks, msimIndexerHook, msimPropertyHook];
 
 import { injectPredefinedTypes } from "./predefined-types.js";
 
@@ -230,7 +254,8 @@ export function createModelicaLSPBridge(
   return new LSPBridge(index, engine, resolver, new PositionIndex(sourceText), documentUri);
 }
 
-export { injectPredefinedTypes, LSPBridge, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
+import { MsimParser } from "./msim-parser.js";
+export { injectPredefinedTypes, LSPBridge, MsimParser, PositionIndex, QueryEngine, ScopeResolver, WorkspaceIndex };
 
 export {
   ModelicaArrayClassInstance,

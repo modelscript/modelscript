@@ -449,22 +449,13 @@ const LibraryDetailPage: React.FC = () => {
         </Box>
         <Box display="flex" alignItems="center" gap="16px">
           {/* Library icon */}
-          <Box
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 8,
-              background: "var(--gradient-icon-box)",
-              border: "1px solid var(--color-border-strong)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              overflow: "hidden",
-            }}
-          >
-            <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={36} height={36} />
-          </Box>
+          <InvertedSvg
+            src={getIconUrl(name!, version!, name!)}
+            alt=""
+            width={48}
+            height={48}
+            style={{ flexShrink: 0 }}
+          />
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
               <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>

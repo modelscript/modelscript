@@ -1,0 +1,208 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://modelscript.io/schemas/msim/v1.json",
+  "title": "ModelScript Physics Simulation Configuration",
+  "description": "Configuration file (.msim) for FEA and CFD simulation setups in ModelScript.",
+  "oneOf": [{ "$ref": "#/definitions/FeaConfig" }, { "$ref": "#/definitions/CfdConfig" }],
+  "definitions": {
+    "MeshConfig": {
+      "type": "object",
+      "properties": {
+        "min": { "type": "number", "description": "Minimum mesh element size.", "default": 0.02 },
+        "max": { "type": "number", "description": "Maximum mesh element size.", "default": 0.08 },
+        "algorithm": { "type": "string", "enum": ["auto", "delaunay", "frontal", "netgen"], "default": "auto" },
+        "boundaryLayers": {
+          "type": "object",
+          "description": "Boundary layer inflation settings for CFD meshes.",
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "numLayers": { "type": "integer", "default": 5 },
+            "growthRatio": { "type": "number", "default": 1.2 },
+            "firstLayerHeight": { "type": "number", "default": 0.001 }
+          }
+        },
+        "localRefinements": {
+          "type": "array",
+          "description": "Per-face or per-region refinement overrides.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "faceIds": { "type": "array", "items": { "type": "integer" } },
+              "size": { "type": "number" }
+            },
+            "required": ["faceIds", "size"]
+          }
+        }
+      }
+    },
+
+    "Material": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Material name, e.g. 'Aluminum 6061-T6'." },
+        "youngsModulus": { "type": "number", "description": "Young's modulus in Pa." },
+        "poissonsRatio": { "type": "number", "description": "Poisson's ratio (dimensionless)." },
+        "density": { "type": "number", "description": "Density in kg/m³." },
+        "yieldStrength": { "type": "number", "description": "Yield strength in Pa (optional)." }
+      },
+      "required": ["name", "youngsModulus", "poissonsRatio", "density"]
+    },
+
+    "FixedSupport": {
+      "type": "object",
+      "properties": {
+        "faceIds": { "type": "array", "items": { "type": "integer" }, "description": "OCCT face IDs to constrain." },
+        "dof": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["x", "y", "z", "rx", "ry", "rz"] },
+          "description": "Degrees of freedom to lock. Default: all.",
+          "default": ["x", "y", "z"]
+        }
+      },
+      "required": ["faceIds"]
+    },
+
+    "ForceLoad": {
+      "type": "object",
+      "properties": {
+        "faceIds": { "type": "array", "items": { "type": "integer" } },
+        "vector": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "Force vector [Fx, Fy, Fz] in Newtons."
+        }
+      },
+      "required": ["faceIds", "vector"]
+    },
+
+    "FeaConfig": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "FEA" },
+        "version": { "type": "integer", "const": 1 },
+        "className": { "type": "string", "description": "The Modelica class name for this simulation record." },
+        "stepFile": { "type": "string", "description": "Relative path to the .step geometry file." },
+        "mesh": { "$ref": "#/definitions/MeshConfig" },
+        "material": { "$ref": "#/definitions/Material" },
+        "fixedSupports": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FixedSupport" }
+        },
+        "forces": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ForceLoad" }
+        },
+        "analysisType": {
+          "type": "string",
+          "enum": ["static-linear", "static-nonlinear", "modal"],
+          "default": "static-linear"
+        },
+        "loadCases": {
+          "type": "array",
+          "description": "Named discrete load cases for multi-run scenarios.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "forces": { "type": "array", "items": { "$ref": "#/definitions/ForceLoad" } }
+            },
+            "required": ["name", "forces"]
+          }
+        },
+        "customOverrides": {
+          "type": "object",
+          "properties": {
+            "gmsh": { "type": "array", "items": { "type": "string" } },
+            "calculix": { "type": "string" }
+          }
+        }
+      },
+      "required": ["type", "stepFile"]
+    },
+
+    "CfdConfig": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "const": "CFD" },
+        "version": { "type": "integer", "const": 1 },
+        "className": { "type": "string", "description": "The Modelica class name for this simulation record." },
+        "stepFile": { "type": "string" },
+        "mesh": { "$ref": "#/definitions/MeshConfig" },
+        "solver": {
+          "type": "string",
+          "enum": ["simpleFoam", "pimpleFoam", "interFoam"],
+          "default": "simpleFoam"
+        },
+        "turbulenceModel": {
+          "type": "string",
+          "enum": ["kOmegaSST", "kEpsilon", "laminar"],
+          "default": "kOmegaSST"
+        },
+        "fluid": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "default": "air" },
+            "density": { "type": "number", "default": 1.225 },
+            "kinematicViscosity": { "type": "number", "default": 1.5e-5 }
+          }
+        },
+        "boundaryConditions": {
+          "type": "object",
+          "properties": {
+            "inlet": {
+              "type": "object",
+              "properties": {
+                "velocity": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+              }
+            },
+            "outlet": {
+              "type": "object",
+              "properties": {
+                "pressure": { "type": "number", "default": 0 }
+              }
+            },
+            "domain": {
+              "type": "object",
+              "description": "Bounding box for the air volume.",
+              "properties": {
+                "autoFit": { "type": "boolean", "default": true },
+                "padding": { "type": "number", "default": 5.0, "description": "Multiplier on geometry bounding box." }
+              }
+            }
+          }
+        },
+        "transient": {
+          "type": "object",
+          "description": "Transient simulation settings (only for pimpleFoam).",
+          "properties": {
+            "endTime": { "type": "number" },
+            "deltaT": { "type": "number" },
+            "writeInterval": { "type": "number" }
+          }
+        },
+        "sweep": {
+          "type": "object",
+          "description": "Parametric sweep configuration.",
+          "properties": {
+            "parameter": {
+              "type": "string",
+              "description": "Dot path to the parameter to sweep, e.g. 'boundaryConditions.inlet.velocity[0]'."
+            },
+            "values": { "type": "array", "items": { "type": "number" } }
+          },
+          "required": ["parameter", "values"]
+        },
+        "customOverrides": {
+          "type": "object",
+          "properties": {
+            "openfoam": { "type": "object", "additionalProperties": { "type": "string" } },
+            "gmsh": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "required": ["type", "stepFile"]
+    }
+  }
+}

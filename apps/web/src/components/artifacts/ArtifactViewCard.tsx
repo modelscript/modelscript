@@ -7,6 +7,7 @@ import Box from "../Box";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
 import CsvViewer from "./CsvViewer";
+import GCodeViewer from "./GCodeViewer";
 import LazyHeavyViewer from "./LazyHeavyViewer";
 import LinkPreviewViewer from "./LinkPreviewViewer";
 import MermaidViewer from "./MermaidViewer";
@@ -16,6 +17,7 @@ import PdfViewer from "./PdfViewer";
 import PictureViewer from "./PictureViewer";
 import SimulationPlotViewer from "./SimulationPlotViewer";
 import SimulationResultViewer from "./SimulationResultViewer";
+import TeiViewer from "./TeiViewer";
 import UsdViewer from "./UsdViewer";
 import VegaViewer from "./VegaViewer";
 import VideoViewer from "./VideoViewer";
@@ -136,6 +138,8 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
         return <PdfViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "csv":
         return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "tei-document":
+        return <TeiViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "link-preview":
         return <LinkPreviewViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "simulation-result":
@@ -151,6 +155,20 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             placeholderType={artifact.view_type === "cfd-result" ? "cfd" : "fea"}
           >
             <SimulationResultViewer viewConfig={viewConfig} isFullScreen={isFullScreen} onPinCreated={onPinCreated} />
+          </LazyHeavyViewer>
+        );
+      case "gcode":
+      case "cam-result":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="GCode Viewer"
+            placeholderType="cad"
+          >
+            <GCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
       default:
@@ -198,7 +216,7 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
                 : "fea"
               : ["cad-step", "3d-model"].includes(artifact.view_type)
                 ? "cad"
-                : artifact.view_type === "pdf"
+                : artifact.view_type === "pdf" || artifact.view_type === "tei-document"
                   ? "pdf"
                   : "generic";
             return (

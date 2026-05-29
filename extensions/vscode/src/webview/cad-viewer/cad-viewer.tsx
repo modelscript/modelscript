@@ -408,9 +408,9 @@ function EmptyState({ dark }: { dark?: boolean }) {
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
       </svg>
-      <span>No CAD annotations found</span>
+      <span>No shape classes found</span>
       <span style={{ fontSize: 12, opacity: 0.7 }}>
-        Add <code>annotation(CAD(uri=&quot;...&quot;))</code> to your components
+        Add <code>shape</code> components to your model
       </span>
     </div>
   );

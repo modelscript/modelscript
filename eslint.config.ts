@@ -27,6 +27,7 @@ export default defineConfig([
             "languages/example/src/language.ts",
             "apps/api/scripts/check_db.ts",
             "apps/api/scripts/seed-social-db.ts",
+            "packages/examples/drone-chassis/cad/drone.mcad.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

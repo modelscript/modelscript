@@ -14,7 +14,7 @@ const PanelContainer = styled.aside`
   width: 350px;
   position: sticky;
   top: 0;
-  padding: 12px 24px;
+  padding: 16px 24px 12px 24px;
   box-sizing: border-box;
 
   @media (max-width: 1000px) {
@@ -50,10 +50,10 @@ const SearchContainer = styled.div`
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 100;
-  margin-top: -12px;
+  margin-top: -16px;
   margin-left: -24px;
   margin-right: -24px;
-  padding-top: 12px;
+  padding-top: 16px;
   padding-bottom: 12px;
   padding-left: 24px;
   padding-right: 24px;
@@ -90,14 +90,14 @@ const SearchWrapper = styled.div`
     width: 100%;
     padding: 12px 16px 12px 42px;
     border-radius: 9999px;
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-bg-primary);
     border: 1px solid var(--color-border);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;
 
     &:focus {
-      background-color: var(--color-canvas-default);
+      background-color: var(--color-bg-primary);
       border-color: #1d9bf0;
       box-shadow: 0 0 0 1px #1d9bf0;
     }
@@ -144,7 +144,7 @@ const DropdownItem = styled.div`
   cursor: pointer;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-bg-secondary);
   }
 `;
 
@@ -209,6 +209,56 @@ const ProviderButton = styled.button`
 
   &:hover {
     background: var(--color-canvas-subtle);
+  }
+`;
+
+const TrendingItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin: 0 -16px;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: var(--color-bg-secondary);
+  }
+`;
+
+const ShowMoreLink = styled(Link)`
+  color: #1d9bf0;
+  text-decoration: none;
+  font-size: 15px;
+  padding: 16px;
+  margin: 0 -16px -16px -16px;
+  border-radius: 0 0 16px 16px;
+  display: block;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: var(--color-bg-secondary);
+  }
+`;
+
+const KebabButton = styled.button`
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+
+  &:hover {
+    background-color: rgba(29, 155, 240, 0.1);
+    color: #1d9bf0;
   }
 `;
 
@@ -520,7 +570,7 @@ const RightPanel: React.FC = () => {
                   )}
                   {searchCompletions.packages.length > 0 && (
                     <DropdownSection>
-                      <DropdownTitle>Packages</DropdownTitle>
+                      <DropdownTitle>Artifacts</DropdownTitle>
                       {searchCompletions.packages.map((p, i) => (
                         <DropdownItem key={`pkg-${i}`} onClick={() => navigate(`/packages/${p.name}`)}>
                           <Box display="flex" flexDirection="column">
@@ -583,10 +633,10 @@ const RightPanel: React.FC = () => {
               <XIcon />
               Sign up with X
             </ProviderButton>
-            <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "var(--color-border)" }}>
-              <div style={{ flex: 1, borderBottom: "1px solid currentColor" }}></div>
-              <span style={{ margin: "0 8px", fontSize: "13px", color: "var(--color-fg-muted)" }}>or</span>
-              <div style={{ flex: 1, borderBottom: "1px solid currentColor" }}></div>
+            <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "#536471" }}>
+              <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
+              <span style={{ margin: "0 8px", fontSize: "13px", color: "#536471" }}>or</span>
+              <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
             </div>
             <button
               onClick={() => navigate("/signup")}
@@ -620,6 +670,29 @@ const RightPanel: React.FC = () => {
             </a>
             .
           </Text>
+          <Box mt={4} pt={3} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "16px" }}>
+            <Text style={{ fontSize: "15px", fontWeight: "bold", color: "var(--color-fg-default)" }}>
+              Already have an account?
+            </Text>
+            <button
+              onClick={() => navigate("/login")}
+              style={{
+                height: 40,
+                backgroundColor: "transparent",
+                color: "#1d9bf0",
+                border: "1px solid var(--color-border)",
+                borderRadius: 9999,
+                fontSize: 15,
+                fontWeight: "bold",
+                cursor: "pointer",
+                width: "100%",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(29, 155, 240, 0.1)")}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+            >
+              Sign in
+            </button>
+          </Box>
         </Card>
       )}
 
@@ -635,47 +708,32 @@ const RightPanel: React.FC = () => {
         >
           What's happening
         </Heading>
-        <Box display="flex" flexDirection="column" gap="16px">
+        <Box display="flex" flexDirection="column">
           {trending.length > 0 ? (
             trending.map((topic) => (
-              <Box
-                key={topic.id}
-                style={{
-                  cursor: "pointer",
-                  position: "relative",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
+              <TrendingItem key={topic.id}>
                 <Box flex={1} onClick={() => navigate(`/explore?topic=${encodeURIComponent(topic.concept)}`)}>
-                  <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px", display: "block", marginBottom: "2px" }}>
+                  <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "2px" }}>
                     {topic.location ? `Trending in ${topic.location}` : "Trending"}
-                  </Text>
-                  <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
+                  </div>
+                  <Text
+                    as="div"
+                    fontWeight="bold"
+                    style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-text-primary)" }}
+                  >
                     {topic.display_name}
                   </Text>
                 </Box>
                 <Box position="relative">
-                  <button
+                  <KebabButton
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
                       setActiveTrendMenu(activeTrendMenu === topic.id ? null : topic.id);
                     }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--color-fg-muted)",
-                      cursor: "pointer",
-                      padding: "4px",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
                   >
                     <KebabHorizontalIcon size={16} />
-                  </button>
+                  </KebabButton>
                   {activeTrendMenu === topic.id && (
                     <>
                       <div
@@ -729,7 +787,7 @@ const RightPanel: React.FC = () => {
                               alignItems: "center",
                               gap: "12px",
                             }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)")}
                             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           >
                             <span style={{ fontSize: "16px", color: "var(--color-fg-muted)", lineHeight: 1 }}>☹️</span>
@@ -740,7 +798,7 @@ const RightPanel: React.FC = () => {
                     </>
                   )}
                 </Box>
-              </Box>
+              </TrendingItem>
             ))
           ) : (
             <Text color="var(--color-fg-muted)" sx={{ fontSize: "14px" }}>
@@ -748,9 +806,7 @@ const RightPanel: React.FC = () => {
             </Text>
           )}
 
-          <Link to="/explore" style={{ color: "#1d9bf0", textDecoration: "none", fontSize: "15px", marginTop: "8px" }}>
-            Show more
-          </Link>
+          <ShowMoreLink to="/explore">Show more</ShowMoreLink>
         </Box>
       </Card>
 
@@ -767,24 +823,34 @@ const RightPanel: React.FC = () => {
                     <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
                   </ProfileNameLink>
                 </ProfileHoverCard>
-                <Box flex={1} minWidth={0} style={{ margin: "0 12px" }} display="flex" flexDirection="column">
-                  <ProfileHoverCard username={u.username}>
-                    <ProfileNameLink to={`/${u.username}`}>
-                      <Text
-                        style={{
-                          fontWeight: "bold",
-                          fontSize: "15px",
-                          color: "var(--color-fg-default)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={u.display_name || u.username}
-                      >
-                        {u.display_name || u.username}
-                      </Text>
-                    </ProfileNameLink>
-                  </ProfileHoverCard>
+                <Box
+                  flex={1}
+                  minWidth={0}
+                  style={{ margin: "0 12px" }}
+                  display="flex"
+                  flexDirection="column"
+                  alignItems="flex-start"
+                >
+                  <div style={{ maxWidth: "100%", display: "flex", minWidth: 0 }}>
+                    <ProfileHoverCard username={u.username}>
+                      <ProfileNameLink to={`/${u.username}`} style={{ maxWidth: "100%" }}>
+                        <Text
+                          style={{
+                            fontWeight: "bold",
+                            fontSize: "15px",
+                            color: "var(--color-fg-default)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            display: "block",
+                          }}
+                          title={u.display_name || u.username}
+                        >
+                          {u.display_name || u.username}
+                        </Text>
+                      </ProfileNameLink>
+                    </ProfileHoverCard>
+                  </div>
                   <Text
                     className="handle-text"
                     style={{
@@ -793,6 +859,7 @@ const RightPanel: React.FC = () => {
                       whiteSpace: "nowrap",
                       marginTop: "-2px",
                       display: "block",
+                      maxWidth: "100%",
                     }}
                     title={`@${u.username}`}
                   >

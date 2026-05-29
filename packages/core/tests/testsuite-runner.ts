@@ -19,7 +19,6 @@
  * Options:
  *   --update      Rewrite expected output in .mo files to match actual
  *   --concurrency=N  Number of parallel workers (default: CPU count / 2)
- *   --legacy      Use legacy in-process flattener (flattenDAE) instead of arena
  *
  * If no arguments are given, all subdirectories under testsuite/ are run.
  */
@@ -417,9 +416,7 @@ async function main(): Promise<void> {
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
     : Math.max(1, Math.floor(os.availableParallelism() / 2));
-  const args = rawArgs.filter(
-    (a) => a !== "--update" && a !== "--omc" && !a.startsWith("--concurrency=") && a !== "--legacy",
-  );
+  const args = rawArgs.filter((a) => a !== "--update" && a !== "--omc" && !a.startsWith("--concurrency="));
 
   console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
   console.log();

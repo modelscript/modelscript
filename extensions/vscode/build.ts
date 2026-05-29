@@ -65,6 +65,8 @@ const webviewConfig: esbuild.BuildOptions = {
     "src/webview/uncertaintyWebview.tsx",
     "src/webview/markdownPreview.ts",
     "src/webview/surrogateWebview.tsx",
+    "src/webview/physicsSetupWebview.tsx",
+    "src/webview/gcodeWebview.tsx",
   ],
   outdir: "dist",
   bundle: true,

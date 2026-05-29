@@ -80,20 +80,35 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         // 2. Prepare DoE input parameter ranges
         const inputRanges = new Map<string, ArenaDoEInputRange>();
-        if (params.inputs) {
+        if (params.inputs && Object.keys(params.inputs).length > 0) {
           for (const [name, range] of Object.entries(params.inputs)) {
             inputRanges.set(name, range as ArenaDoEInputRange);
           }
         } else {
-          // Auto-discover parameters with min/max bounds
+          // Auto-discover parameters with min/max bounds or fallback to bindings
           for (let i = 0; i < arena.varCount; i++) {
             if (arena.isVarRemoved(i)) continue;
             if (arena.getVarVariability(i) !== Variability.Parameter) continue;
 
+            const name = arena.getVarName(i);
+            // Skip Modelica string/boolean parameters (which evaluate to null)
+
             const minVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "min"));
             const maxVal = evaluateArenaExprToNum(arena, arena.getVarAttrExprId(i, "max"));
+
             if (minVal !== null && maxVal !== null && minVal < maxVal) {
-              inputRanges.set(arena.getVarName(i), { min: minVal, max: maxVal });
+              inputRanges.set(name, { min: minVal, max: maxVal });
+            } else {
+              // Fallback: use nominal binding +/- 20%
+              const bindingExprId = arena.getVarBindingExprId(i);
+              if (bindingExprId !== undefined) {
+                const startVal = evaluateArenaExprToNum(arena, bindingExprId);
+                if (startVal !== null) {
+                  const min = startVal === 0 ? -1 : startVal > 0 ? startVal * 0.8 : startVal * 1.2;
+                  const max = startVal === 0 ? 1 : startVal > 0 ? startVal * 1.2 : startVal * 0.8;
+                  inputRanges.set(name, { min, max });
+                }
+              }
             }
           }
         }

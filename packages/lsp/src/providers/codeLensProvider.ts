@@ -1,10 +1,41 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars */
+import { CodeLens, Range } from "vscode-languageserver";
+import type { LspContext } from "../LspContext";
 
-// @ts-nocheck
-import { Connection } from "vscode-languageserver";
+export function registerCodeLensProvider(context: LspContext) {
+  context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
+    const uri = params.textDocument.uri;
+    const lenses: CodeLens[] = [];
 
-export function registerCodeLensProvider(connection: Connection) {
-  connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
-    return [];
+    // Only apply to Modelica files
+    if (!uri.endsWith(".mo")) {
+      return lenses;
+    }
+
+    const index = context.workspaceManager.globalWorkspaceIndex.getFileIndex(uri);
+    if (!index) return lenses;
+
+    for (const [, symbol] of index.symbols.entries()) {
+      // Find classes with the "study" kind
+      if (symbol.classKind === "study" && symbol.name) {
+        // We only want the top-level declaration range, not the whole body
+        const range = Range.create(
+          symbol.selectionRange?.start.line ?? symbol.range.start.line,
+          symbol.selectionRange?.start.character ?? symbol.range.start.character,
+          symbol.selectionRange?.start.line ?? symbol.range.start.line,
+          symbol.selectionRange?.start.character ?? symbol.range.start.character,
+        );
+
+        lenses.push({
+          range,
+          command: {
+            title: "▶ Run Study",
+            command: "modelscript.openSimulationView",
+            arguments: [uri, symbol.name],
+          },
+        });
+      }
+    }
+
+    return lenses;
   });
 }

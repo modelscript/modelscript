@@ -10,7 +10,8 @@
   --color-link: #58a6ff;
   --color-link-hover: #79c0ff;
   --color-border: rgba(255, 255, 255, 0.06);
-  --color-border-strong: rgba(255, 255, 255, 0.1);
+  --color-border-default: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
   --color-error: #f85149;
 
   /* Glass / surface */
@@ -75,6 +76,7 @@
   --color-link: #6639e6;
   --color-link-hover: #8752ff;
   --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-default: rgba(0, 0, 0, 0.12);
   --color-border-strong: rgba(0, 0, 0, 0.15);
   --color-error: #cf222e;
 
@@ -143,4 +145,36 @@ body {
 .handle-text {
   color: var(--color-text-muted) !important;
   font-size: 15px !important;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spinner-spin-anim {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-spin {
+  animation: spinner-spin-anim 1s linear infinite !important;
+  transform-origin: center;
 }

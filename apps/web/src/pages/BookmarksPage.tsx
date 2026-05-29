@@ -38,7 +38,7 @@ const SearchInputWrapper = styled.div`
     padding: 10px 16px 10px 40px;
     border-radius: 9999px;
     background-color: var(--color-bg-primary);
-    border: 1px solid var(--color-border-default);
+    border: 1px solid var(--color-border);
     font-size: 15px;
     outline: none;
     box-sizing: border-box;

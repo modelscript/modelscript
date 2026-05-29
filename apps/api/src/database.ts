@@ -67,6 +67,39 @@ export interface TrendingTopicRow {
   last_updated_at: string;
 }
 
+export interface JobRow {
+  id: number;
+  name: string;
+  status: string;
+  type: string;
+  repository_id: number | null;
+  trigger_source: string | null;
+  metadata: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface JobStepRow {
+  id: number;
+  job_id: number;
+  name: string;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface ScriptTemplateRow {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  category: string;
+  icon: string;
+  config: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * SQLite-backed storage for Modelica class metadata.
  */
@@ -120,7 +153,11 @@ export class LibraryDatabase {
       "post_location_stats",
       "cad_cache",
       "settings",
+      "settings",
       "user_public_keys",
+      "jobs",
+      "job_steps",
+      "script_templates",
     ];
     this.#db.exec("PRAGMA foreign_keys = OFF;");
     this.#db.transaction(() => {
@@ -266,6 +303,7 @@ export class LibraryDatabase {
         ap_id            TEXT UNIQUE,
         url              TEXT,
         metadata         TEXT,
+        reply_visibility TEXT DEFAULT 'everyone',
         created_at       TEXT DEFAULT (datetime('now')),
         updated_at       TEXT DEFAULT (datetime('now'))
       );
@@ -436,6 +474,39 @@ export class LibraryDatabase {
         geometry_json TEXT NOT NULL,
         created_at TEXT DEFAULT (datetime('now'))
       );
+
+      CREATE TABLE IF NOT EXISTS jobs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name            TEXT NOT NULL,
+        status          TEXT NOT NULL,
+        type            TEXT NOT NULL,
+        repository_id   INTEGER REFERENCES linked_repos(id) ON DELETE CASCADE,
+        trigger_source  TEXT,
+        metadata        TEXT,
+        started_at      TEXT DEFAULT (datetime('now')),
+        completed_at    TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS job_steps (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id          INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        name            TEXT NOT NULL,
+        status          TEXT NOT NULL,
+        started_at      TEXT DEFAULT (datetime('now')),
+        completed_at    TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS script_templates (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name            TEXT NOT NULL,
+        slug            TEXT NOT NULL UNIQUE,
+        description     TEXT NOT NULL DEFAULT '',
+        category        TEXT NOT NULL DEFAULT 'general',
+        icon            TEXT NOT NULL DEFAULT 'terminal',
+        config          TEXT NOT NULL DEFAULT '{}',
+        created_at      TEXT DEFAULT (datetime('now')),
+        updated_at      TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // Migrations
@@ -518,9 +589,17 @@ export class LibraryDatabase {
     } catch (e) {}
 
     try {
+      this.#db.exec(`ALTER TABLE posts ADD COLUMN reply_visibility TEXT DEFAULT 'everyone'`);
+    } catch (e) {}
+
+    try {
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN access_token TEXT`);
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN refresh_token TEXT`);
       this.#db.exec(`ALTER TABLE oauth_accounts ADD COLUMN expires_at TEXT`);
+    } catch (e) {}
+
+    try {
+      this.#db.exec(`ALTER TABLE jobs ADD COLUMN metadata TEXT`);
     } catch (e) {}
   }
 
@@ -1008,12 +1087,13 @@ export class LibraryDatabase {
     createdAt?: string,
     updatedAt?: string,
     metadata?: any,
+    replyVisibility?: string,
   ): { id: number } {
     const res = this.#db
       .prepare(
         `
-      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
+      INSERT INTO posts (author_id, content, artifact_view_id, reply_to_id, quote_post_id, repost_of_id, ap_id, url, metadata, reply_visibility, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'everyone'), COALESCE(?, datetime('now')), COALESCE(?, datetime('now')))
     `,
       )
       .run(
@@ -1026,6 +1106,7 @@ export class LibraryDatabase {
         apId ?? null,
         url ?? null,
         metadata ? JSON.stringify(metadata) : null,
+        replyVisibility ?? "everyone",
         createdAt ?? null,
         updatedAt ?? null,
       );
@@ -2540,6 +2621,93 @@ export class LibraryDatabase {
 
   setCachedCadGeometry(url: string, geometryJson: string): void {
     this.#db.prepare(`INSERT OR REPLACE INTO cad_cache (url, geometry_json) VALUES (?, ?)`).run(url, geometryJson);
+  }
+
+  // ── Jobs ────────────────────────────────────────────────────────
+
+  createJob(
+    name: string,
+    status: string,
+    type: string,
+    triggerSource: string | null = null,
+    repositoryId: number | null = null,
+    metadata: any = null,
+  ): number {
+    const result = this.#db
+      .prepare(
+        `INSERT INTO jobs (name, status, type, trigger_source, repository_id, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(name, status, type, triggerSource, repositoryId, metadata ? JSON.stringify(metadata) : null);
+    return result.lastInsertRowid as number;
+  }
+
+  updateJobStatus(jobId: number, status: string): void {
+    if (status === "SUCCESS" || status === "FAILED" || status === "CANCELLED") {
+      this.#db.prepare(`UPDATE jobs SET status = ?, completed_at = datetime('now') WHERE id = ?`).run(status, jobId);
+    } else {
+      this.#db.prepare(`UPDATE jobs SET status = ? WHERE id = ?`).run(status, jobId);
+    }
+  }
+
+  getJob(jobId: number): JobRow | undefined {
+    return this.#db.prepare(`SELECT * FROM jobs WHERE id = ?`).get(jobId) as JobRow | undefined;
+  }
+
+  getJobs(limit = 50, offset = 0): JobRow[] {
+    return this.#db
+      .prepare(`SELECT * FROM jobs ORDER BY started_at DESC LIMIT ? OFFSET ?`)
+      .all(limit, offset) as JobRow[];
+  }
+
+  createJobStep(jobId: number, name: string, status: string): number {
+    const result = this.#db
+      .prepare(`INSERT INTO job_steps (job_id, name, status) VALUES (?, ?, ?)`)
+      .run(jobId, name, status);
+    return result.lastInsertRowid as number;
+  }
+
+  updateJobStepStatus(stepId: number, status: string): void {
+    if (status === "SUCCESS" || status === "FAILED" || status === "CANCELLED") {
+      this.#db
+        .prepare(`UPDATE job_steps SET status = ?, completed_at = datetime('now') WHERE id = ?`)
+        .run(status, stepId);
+    } else {
+      this.#db.prepare(`UPDATE job_steps SET status = ? WHERE id = ?`).run(status, stepId);
+    }
+  }
+
+  getJobSteps(jobId: number): JobStepRow[] {
+    return this.#db.prepare(`SELECT * FROM job_steps WHERE job_id = ? ORDER BY id ASC`).all(jobId) as JobStepRow[];
+  }
+
+  // ── Script Templates ────────────────────────────────────────────
+
+  createScriptTemplate(
+    name: string,
+    slug: string,
+    description: string,
+    category: string,
+    icon: string,
+    config: Record<string, unknown>,
+  ): number {
+    const result = this.#db
+      .prepare(
+        `INSERT OR IGNORE INTO script_templates (name, slug, description, category, icon, config) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(name, slug, description, category, icon, JSON.stringify(config));
+    return result.lastInsertRowid as number;
+  }
+
+  getScriptTemplates(): ScriptTemplateRow[] {
+    return this.#db.prepare(`SELECT * FROM script_templates ORDER BY category, name`).all() as ScriptTemplateRow[];
+  }
+
+  getScriptTemplate(id: number): ScriptTemplateRow | undefined {
+    return this.#db.prepare(`SELECT * FROM script_templates WHERE id = ?`).get(id) as ScriptTemplateRow | undefined;
+  }
+
+  getScriptTemplateBySlug(slug: string): ScriptTemplateRow | undefined {
+    return this.#db.prepare(`SELECT * FROM script_templates WHERE slug = ?`).get(slug) as ScriptTemplateRow | undefined;
   }
 
   close(): void {

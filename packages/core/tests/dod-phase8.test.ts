@@ -17,7 +17,7 @@ describe("Phase 8: Batch CLI Mode", () => {
     expect(ctx).toBeDefined();
   });
 
-  it("flattenDAE works correctly in batch mode", async () => {
+  it("flattenArena works correctly in batch mode", async () => {
     const ctx = Context.createBatch(new NodeFileSystem());
 
     const tempFile = join("/tmp", "dod_phase8_test.mo");
@@ -34,18 +34,14 @@ describe("Phase 8: Batch CLI Mode", () => {
     );
 
     await ctx.addLibrary(tempFile);
-    const dae = ctx.flattenDAE("BatchTest");
+    const arena = ctx.flattenArena("BatchTest");
 
-    expect(dae).not.toBeNull();
-    if (!dae) throw new Error("DAE is null");
+    expect(arena).not.toBeNull();
+    if (!arena) throw new Error("Arena is null");
 
     // Validate that flattening produced correct output
-    expect(dae.variables.length).toBeGreaterThanOrEqual(2); // x and k
-    expect(dae.equations.length).toBeGreaterThanOrEqual(1);
-
-    // Validate arena is populated (dual-write works in batch mode)
-    expect(dae.arena.varCount).toBe(dae.variables.length);
-    expect(dae.arena.eqCount).toBeGreaterThanOrEqual(1);
+    expect(arena.varCount).toBeGreaterThanOrEqual(2); // x and k
+    expect(arena.eqCount).toBeGreaterThanOrEqual(1);
   });
 
   it("gcBetweenPhases() is a safe no-op without --expose-gc", () => {

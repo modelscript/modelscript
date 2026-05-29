@@ -152,6 +152,17 @@ const artifactDiag = db.createArtifactView(
   "Electrical Subsystem Diagram",
 );
 
+const artifactGCode = db.createArtifactView(
+  createdUsers["engineer_jane"],
+  "gcode",
+  "upload",
+  JSON.stringify({
+    url: "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gcode/benchy.gcode",
+    thumbnail_url: "https://images.unsplash.com/photo-1620917670359-4781498b0ed1?auto=format&fit=crop&q=80&w=600",
+  }),
+  "3DBenchy Toolpath",
+);
+
 // 4. Create Posts
 const post1 = db.createPost(
   createdUsers["modelica"],
@@ -180,6 +191,11 @@ db.createPost(createdUsers["modelica"], "Missed the keynote? Watch the full reca
 db.createPost(createdUsers["sysml_guru"], "Working on the new high-level architecture diagram.", artifactImg);
 db.createPost(createdUsers["dev"], "I've attached the FMI 3.0 spec for reference.", artifactPdf);
 db.createPost(createdUsers["omar"], "Here is a quick electrical subsystem diagram I sketched up.", artifactDiag);
+db.createPost(
+  createdUsers["engineer_jane"],
+  "Check out the sliced GCode for the 3DBenchy benchmark test. Ready for the machine!",
+  artifactGCode,
+);
 
 // 5. Interactions
 db.toggleLike(createdUsers["omar"], post1.id);

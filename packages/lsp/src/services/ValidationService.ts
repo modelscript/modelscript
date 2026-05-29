@@ -23,6 +23,7 @@ import { DiagnosticSeverity } from "vscode-languageserver";
 import { Node as SyntaxNode } from "web-tree-sitter";
 import { getArenaParameterInfo } from "../utils/arenaUtils";
 import { computeTreeEdit } from "../utils/astUtils";
+import { parseStepReferences, STEP_SCHEMA } from "../utils/stepUtils";
 
 export class ValidationService {
   // Instance state (previously module-level variables in browserServerMain.ts)
@@ -152,10 +153,12 @@ export class ValidationService {
     }
 
     // Handle STEP files
-    if (textDocument.uri.match(/\.(step|stp|p21)$/i)) {
+    const isStep = textDocument.languageId === "step" || /\.(step|stp|p21)$/i.test(textDocument.uri);
+    if (isStep) {
       const text = textDocument.getText();
       const buffer = new TextEncoder().encode(text);
 
+      const stepDiagnostics: Diagnostic[] = [];
       try {
         this.connection.console.info(`[step] Validating ${textDocument.uri} (${text.length} chars)`);
         this.connection.console.info(
@@ -169,7 +172,7 @@ export class ValidationService {
           tree = this.parserService.stepParser.parse(text);
           if (tree) {
             this.documentManager.documentTrees.set(textDocument.uri, { text, tree, classCache: new Map() });
-            const indexer = new SymbolIndexer({} as any);
+            const indexer = new SymbolIndexer([]);
             astIndex = indexer.index(tree.rootNode);
             this.connection.console.info(`[step] AST index: ${astIndex.symbols.size} symbols`);
           }
@@ -231,7 +234,6 @@ export class ValidationService {
         this.documentLSPBridges.set(textDocument.uri, bridge);
         this.connection.console.info(`[step] LSPBridge created for ${textDocument.uri}`);
 
-        const stepDiagnostics: Diagnostic[] = [];
         if (tree) {
           const collectErrors = (node: any) => {
             if (!node) return;
@@ -255,36 +257,124 @@ export class ValidationService {
           collectErrors(tree.rootNode);
 
           // Check for unresolved semantic references
-          const unresolved = resolver.resolveAllReferences(textDocument.uri);
-          for (const unres of unresolved) {
-            const start = bridge["positions"].offsetToPosition(unres.startByte);
-            const end = bridge["positions"].offsetToPosition(unres.endByte);
-            stepDiagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              range: { start, end },
-              message: unres.message,
-              source: "step",
-            });
+          try {
+            const unresolved = resolver.resolveAllReferences(textDocument.uri);
+            for (const unres of unresolved) {
+              const start = bridge["positions"].offsetToPosition(unres.startByte);
+              const end = bridge["positions"].offsetToPosition(unres.endByte);
+              stepDiagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: { start, end },
+                message: unres.message,
+                source: "step",
+              });
+            }
+          } catch {
+            // resolveAllReferences might not exist for the STEP resolver — that's ok
           }
         }
+      } catch (e: any) {
+        this.connection.console.error(
+          `[step] Error in STEP pipeline for ${textDocument.uri}: ${e.message}\n${e.stack}`,
+        );
+      }
 
-        this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
-        this.connection.sendNotification("modelscript/projectTreeChanged");
+      // ── Always run regex-based reference checking (independent of tree-sitter/OCCT) ──
+      const { definitions, references } = parseStepReferences(text);
+      for (const ref of references) {
+        if (!definitions.has(ref.id)) {
+          const start = textDocument.positionAt(ref.startOffset);
+          const end = textDocument.positionAt(ref.endOffset);
+          stepDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: `Reference to undefined entity '${ref.id}'`,
+            source: "step",
+          });
+        }
+      }
 
-        // Trigger cross-file revalidation so SysML files referencing this STEP file
-        // will resolve the newly available CAD entities.
-        if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
-        this.revalidationTimer = setTimeout(() => {
-          this.connection.console.info(`[step] Cross-file revalidation triggered`);
-          for (const doc of this.documentManager.documents.all()) {
-            if (doc.uri !== textDocument.uri) {
-              this.validateTextDocument(doc);
+      // Schema arity checking
+      for (const [, def] of definitions.entries()) {
+        const schema = STEP_SCHEMA[def.type];
+        if (schema) {
+          let i = def.endOffset;
+          while (i < text.length && /\s/.test(text[i])) i++;
+          if (text[i] === "(") {
+            const argsStart = i;
+            let depth = 0;
+            let inStr = false;
+            let argCount = 0;
+            let hasContent = false;
+
+            for (i = argsStart; i < text.length; i++) {
+              const ch = text[i];
+              if (ch === "'") {
+                inStr = !inStr;
+                hasContent = true;
+              } else if (!inStr && ch === "(") {
+                if (depth > 0) hasContent = true;
+                depth++;
+              } else if (!inStr && ch === ")") {
+                depth--;
+                if (depth === 0) {
+                  if (hasContent || argCount > 0) argCount++;
+                  break;
+                }
+                hasContent = true;
+              } else if (!inStr && depth === 1 && ch === ",") {
+                argCount++;
+                hasContent = false;
+              } else if (depth > 0 && !/\s/.test(ch)) {
+                hasContent = true;
+              }
+            }
+
+            if (argCount !== schema.parameters.length) {
+              const start = textDocument.positionAt(def.startOffset);
+              const end = textDocument.positionAt(def.endOffset);
+              stepDiagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: { start, end },
+                message: `Schema violation for ${def.type}: expected ${schema.parameters.length} arguments, got ${argCount}.`,
+                source: "step",
+              });
             }
           }
-        }, 300);
-      } catch (e: any) {
-        this.connection.console.error(`[step] Error parsing ${textDocument.uri}: ${e.message}\n${e.stack}`);
+        } else if (def.type !== "COMPLEX_ENTITY") {
+          // Identify the exact position of the type name for a precise underline
+          // def.text contains the full match e.g. "#123 = AXIS2_PLACEMENT_3D"
+          // We want to highlight just the "AXIS2_PLACEMENT_3D" part.
+          const typeMatchIndex = def.text.indexOf(def.type);
+          const typeStartOffset = typeMatchIndex !== -1 ? def.startOffset + typeMatchIndex : def.startOffset;
+
+          const start = textDocument.positionAt(typeStartOffset);
+          const end = textDocument.positionAt(typeStartOffset + def.type.length);
+          stepDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            message: `Undefined STEP entity type '${def.type}'`,
+            source: "step",
+          });
+        }
       }
+
+      this.connection.console.info(`[step] Sending ${stepDiagnostics.length} diagnostics for ${textDocument.uri}`);
+      this.lastSemanticDiagnostics.set(textDocument.uri, stepDiagnostics);
+      this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: stepDiagnostics });
+      this.connection.sendNotification("modelscript/projectTreeChanged");
+
+      // Trigger cross-file revalidation so SysML files referencing this STEP file
+      // will resolve the newly available CAD entities.
+      if (this.revalidationTimer) clearTimeout(this.revalidationTimer);
+      this.revalidationTimer = setTimeout(() => {
+        this.connection.console.info(`[step] Cross-file revalidation triggered`);
+        for (const doc of this.documentManager.documents.all()) {
+          if (doc.uri !== textDocument.uri) {
+            this.validateTextDocument(doc);
+          }
+        }
+      }, 300);
       return;
     }
 
@@ -747,6 +837,10 @@ export class ValidationService {
         return;
       }
 
+      // Pre-process Modelica text to replace the custom 'shape' keyword with 'model'
+      // Since both are 5 characters long, byte offsets remain perfectly aligned!
+      const processedText = text.replace(/\bshape\b/g, "model");
+
       // Parse with tree-sitter (incremental when possible)
       const oldCached = this.documentManager.documentTrees.get(textDocument.uri);
 
@@ -755,16 +849,16 @@ export class ValidationService {
       if (oldCached && oldCached.text !== text) {
         const edit = computeTreeEdit(oldCached.text, text);
         oldCached.tree.edit(edit as never);
-        tree = context.parse(".mo", text, oldCached.tree as never);
+        tree = context.parse(".mo", processedText, oldCached.tree as never);
         // Capture edit byte ranges for incremental indexing
         editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
       } else if (oldCached) {
         tree = oldCached.tree;
       } else {
-        tree = context.parse(".mo", text);
+        tree = context.parse(".mo", processedText);
       }
       this.documentManager.documentTrees.set(textDocument.uri, {
-        text,
+        text, // Keep the original text in the cache!
         tree,
         classCache: oldCached?.classCache ?? new Map(),
       });

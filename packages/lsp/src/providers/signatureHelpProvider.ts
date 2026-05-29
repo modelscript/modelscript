@@ -1,15 +1,70 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-non-null-assertion, @typescript-eslint/no-explicit-any */
 
 // @ts-nocheck
-import { Connection } from "vscode-languageserver";
+import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
+import { STEP_SCHEMA } from "../utils/stepUtils";
 
-export function registerSignatureHelpProvider(connection: Connection) {
+function isStepDocument(document: any): boolean {
+  return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
+}
+
+export function registerSignatureHelpProvider(
+  connection: Connection,
+  documents: any,
+  documentLSPBridges: any,
+  getDocumentTree: any,
+  isParserReady: () => boolean,
+  getParser: () => any,
+  getLineIndexForDoc: any,
+) {
   connection.onSignatureHelp((params) => {
-    if (!parserReady || !parser) return null;
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
 
     const text = document.getText();
+    const offset = document.offsetAt(params.position);
+
+    // ── STEP-specific signature help (does NOT require bridge or parser) ──
+    if (isStepDocument(document)) {
+      // Look backwards from cursor to find an entity type name followed by '('
+      const searchStart = Math.max(0, offset - 2000);
+      const textBefore = text.slice(searchStart, offset);
+      // Match STEP entity names like CARTESIAN_POINT, AXIS2_PLACEMENT_3D, etc.
+      const match = textBefore.match(/([A-Z][A-Z0-9_]*)\s*\([^)]*$/);
+      if (match) {
+        const entityName = match[1];
+        const schema = STEP_SCHEMA[entityName];
+        if (schema) {
+          const openParenIdx = match.index! + match[0].indexOf("(");
+          const argsStr = textBefore.slice(openParenIdx + 1);
+          let activeParameter = 0;
+          let depth = 0;
+          let inStr = false;
+          for (const ch of argsStr) {
+            if (ch === "'") inStr = !inStr;
+            else if (!inStr && ch === "(") depth++;
+            else if (!inStr && ch === ")") depth--;
+            else if (!inStr && depth === 0 && ch === ",") activeParameter++;
+          }
+
+          return {
+            signatures: [
+              SignatureInformation.create(
+                `${entityName}(${schema.parameters.map((p) => p.name).join(", ")})`,
+                schema.description,
+                ...schema.parameters.map((p) => ParameterInformation.create(p.name, `Type: ${p.type}`)),
+              ),
+            ],
+            activeSignature: 0,
+            activeParameter,
+          };
+        }
+      }
+      return null; // STEP file — don't fall through to Modelica logic
+    }
+
+    // ── Standard Modelica/SysML signature help (requires parser + bridge) ──
+    if (!isParserReady() || !getParser()) return null;
     const tree = getDocumentTree(document.uri);
     if (!tree) return null;
 

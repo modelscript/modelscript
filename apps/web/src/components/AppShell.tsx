@@ -1,11 +1,12 @@
 /* eslint-disable */
 import Box from "./Box";
 
-import { BellIcon, HomeIcon, PersonIcon, PlusIcon, SearchIcon } from "@primer/octicons-react";
+import { BellIcon, HomeIcon, MoonIcon, PersonIcon, PlusIcon, SearchIcon, SunIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
+import { useTheme } from "../theme";
 import ComposeModal from "./ComposeModal";
 import RightPanel from "./RightPanel";
 import Sidebar from "./Sidebar";
@@ -19,6 +20,7 @@ const ShellContainer = styled.div`
   background-color: var(--color-canvas-default);
   color: var(--color-text-primary);
   padding-top: var(--dev-header-height, 0px);
+  box-sizing: border-box;
 `;
 
 const ContentWrapper = styled.div<{ $isFullScreenLayout?: boolean }>`
@@ -48,10 +50,13 @@ const MainColumn = styled.main<{ $isWideLayout?: boolean; $isFullScreenLayout?: 
   border-left: 1px solid var(--color-border);
   border-right: 1px solid var(--color-border);
   min-height: calc(100vh - var(--dev-header-height, 0px));
-  padding-bottom: 80px;
+  padding-bottom: ${(props) => (props.$isFullScreenLayout ? "0px" : "80px")};
+  display: flex;
+  flex-direction: column;
 
   @media (max-width: 500px) {
-    padding-bottom: 120px; /* Leave space for bottom bar + banner */
+    padding-bottom: ${(props) =>
+      props.$isFullScreenLayout ? "0px" : "120px"}; /* Leave space for bottom bar + banner */
     border-left: none;
     border-right: none;
   }
@@ -140,9 +145,11 @@ const BannerContent = styled.div`
 
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
+  const [isDevHeaderVisible, setIsDevHeaderVisible] = React.useState(true);
   const { user, loading, login, logout, unreadCount } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   const isDev = import.meta.env.DEV;
 
@@ -156,8 +163,8 @@ const AppShell: React.FC = () => {
 
   return (
     <ComposeContext.Provider value={{ openCompose: () => setIsComposeOpen(true) }}>
-      <div style={{ "--dev-header-height": isDev ? "40px" : "0px" } as React.CSSProperties}>
-        {isDev && (
+      <div style={{ "--dev-header-height": isDev && isDevHeaderVisible ? "40px" : "0px" } as React.CSSProperties}>
+        {isDev && isDevHeaderVisible && (
           <div
             style={{
               backgroundColor: "#6f42c1",
@@ -185,8 +192,8 @@ const AppShell: React.FC = () => {
               }}
             >
               <span style={{ fontWeight: "bold", fontSize: "13px", letterSpacing: "1px" }}>DEV MODE</span>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <div style={{ display: "flex", gap: "8px", marginRight: "16px", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <button
                     onClick={async () => {
                       if (confirm("Are you sure you want to reload the database with dev data?")) {
@@ -255,6 +262,24 @@ const AppShell: React.FC = () => {
                       {u.initial}
                     </button>
                   ))}
+                  <button
+                    onClick={toggleTheme}
+                    style={{
+                      background: "rgba(255,255,255,0.2)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginLeft: "8px",
+                    }}
+                    title="Toggle Theme"
+                  >
+                    {theme === "dark" ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+                  </button>
                 </div>
                 {user && (
                   <button
@@ -273,6 +298,25 @@ const AppShell: React.FC = () => {
                     Logout
                   </button>
                 )}
+                <button
+                  onClick={() => setIsDevHeaderVisible(false)}
+                  style={{
+                    background: "transparent",
+                    color: "white",
+                    border: "none",
+                    padding: "4px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: 0.7,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
+                  title="Hide Dev Mode Header"
+                >
+                  <XIcon size={16} />
+                </button>
               </div>
             </div>
           </div>

@@ -38,6 +38,7 @@ export type JobStatus = "pending" | "processing" | "completed" | "failed";
 export interface JobInfo {
   status: JobStatus;
   error?: string;
+  logs?: string[];
 }
 
 export interface ClassDetail {
@@ -53,6 +54,11 @@ export interface LibraryListItem {
   versions: string[];
   latestVersion: string | null;
   description?: string;
+  jobStatus?: {
+    status: JobStatus;
+    classesProcessed?: number;
+    error?: string;
+  } | null;
 }
 
 export const getLibraries = async (q?: string) => {

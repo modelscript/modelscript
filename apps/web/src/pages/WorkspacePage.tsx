@@ -244,7 +244,7 @@ function CodeTab({ projectId, repo, provider }: { projectId: string; repo: Gitla
       }
     }
     load();
-  }, [projectId, currentPath, currentFile]);
+  }, [projectId, currentPath, currentFile, provider]);
 
   const navigateUp = () => {
     if (currentFile) {
@@ -750,7 +750,7 @@ function IssuesTab({ projectId, provider }: { projectId: string; provider: strin
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, provider]);
 
   const handleCreateIssue = async () => {
     await createGitlabIssue(projectId, newIssueTitle, newIssueBody, provider);
@@ -867,7 +867,7 @@ function PullRequestsTab({ projectId, provider }: { projectId: string; provider:
       setLoading(false);
     }
     load();
-  }, [projectId]);
+  }, [projectId, provider]);
 
   return (
     <Box>
@@ -1081,7 +1081,7 @@ function ActionsTab({ projectId, provider }: { projectId: string; provider: stri
       }
     }
     load();
-  }, [projectId]);
+  }, [projectId, provider]);
 
   if (loading) {
     return (
@@ -1166,7 +1166,7 @@ export default function WorkspacePage() {
       }
     }
     load();
-  }, [projectId]);
+  }, [projectId, provider]);
 
   if (loading) {
     return (

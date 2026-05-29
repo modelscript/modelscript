@@ -4,11 +4,11 @@ export * from "@modelscript/modelica/annotation";
 export * from "@modelscript/modelica/ast";
 export * from "@modelscript/modelica/diagram";
 export * from "@modelscript/modelica/factory";
+export * from "@modelscript/modelica/geometry";
 export * from "@modelscript/modelica/multibody-generator";
 export * from "@modelscript/symbolics";
 export * from "@modelscript/utils";
 export * from "./compiler/context.js";
-export * from "./compiler/modelica/flattener.js";
 export * from "./compiler/modelica/interpreter.js";
 
 export {

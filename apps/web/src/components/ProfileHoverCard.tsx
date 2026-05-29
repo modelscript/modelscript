@@ -1,5 +1,6 @@
 /* eslint-disable */
 import React, { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
@@ -8,9 +9,6 @@ import Box from "./Box";
 
 const PopoverContainer = styled.div`
   position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 1000;
   margin-top: 8px;
   background-color: var(--color-bg-primary);
@@ -20,6 +18,7 @@ const PopoverContainer = styled.div`
   width: 300px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   cursor: default;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 `;
 
 interface AvatarProps {
@@ -131,6 +130,8 @@ export default function ProfileHoverCard({
   showProfileSummaryBtn?: boolean;
 }) {
   const [show, setShow] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<any>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -155,6 +156,9 @@ export default function ProfileHoverCard({
 
   const handleMouseEnter = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (wrapperRef.current) {
+      setRect(wrapperRef.current.getBoundingClientRect());
+    }
     timerRef.current = setTimeout(() => {
       setShow(true);
       fetchProfile();
@@ -205,78 +209,117 @@ export default function ProfileHoverCard({
     setShowUnblockModal(false);
   };
 
+  let finalTop = rect ? rect.bottom + window.scrollY : 0;
+  let finalLeft = rect ? rect.left + rect.width / 2 + window.scrollX : 0;
+  let finalTransform = "translateX(-50%)";
+  let finalMarginTop = "8px";
+
+  if (rect) {
+    const popoverEstimatedHeight = 250;
+    if (rect.bottom + popoverEstimatedHeight > window.innerHeight && rect.top > popoverEstimatedHeight) {
+      finalTop = rect.top + window.scrollY;
+      finalTransform = "translate(-50%, -100%)";
+      finalMarginTop = "-8px";
+    }
+
+    const center = rect.left + rect.width / 2;
+    const popoverWidth = 300;
+    const padding = 10;
+    if (center - popoverWidth / 2 < padding) {
+      finalLeft = window.scrollX + padding;
+      finalTransform = finalTransform.replace("-50%", "0");
+    } else if (center + popoverWidth / 2 > window.innerWidth - padding) {
+      finalLeft = window.scrollX + window.innerWidth - popoverWidth - padding;
+      finalTransform = finalTransform.replace("-50%", "0");
+    }
+  }
+
   return (
     <div
+      ref={wrapperRef}
       style={{ position: "relative", display: "inline-block" }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {children}
 
-      {show && (
-        <PopoverContainer onClick={(e) => e.stopPropagation()}>
-          {!data ? (
-            <Box display="flex" justifyContent="center" p={3}>
-              <div style={{ color: "var(--color-fg-muted)" }}>Loading...</div>
-            </Box>
-          ) : (
-            <>
-              <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                <Avatar $url={data.avatar_url} $letter={data.username.charAt(0).toUpperCase()} />
-                {user && user.id !== data.id && (
-                  <FollowButton
-                    $following={isFollowing}
-                    $blocked={isBlocked}
-                    onClick={isBlocked ? handleBlockClick : handleFollowToggle}
-                  >
-                    {isBlocked ? "Blocked" : isFollowing ? "Following" : "Follow"}
-                  </FollowButton>
-                )}
+      {show &&
+        rect &&
+        createPortal(
+          <PopoverContainer
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              top: finalTop,
+              left: finalLeft,
+              transform: finalTransform,
+              marginTop: finalMarginTop,
+            }}
+          >
+            {!data ? (
+              <Box display="flex" justifyContent="center" p={3}>
+                <div style={{ color: "var(--color-fg-muted)" }}>Loading...</div>
               </Box>
-              <Box mt={2}>
-                <div style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
-                  {data.display_name || data.username}
-                </div>
-                <div className="handle-text" style={{ marginTop: "2px" }}>
-                  @{data.username}
-                </div>
-              </Box>
-
-              {data.bio && <BioText>{data.bio}</BioText>}
-
-              <Box display="flex" gap={3} mt={2}>
-                <StatLink to={`/${data.username}/following`}>
-                  <StatCount>{data.following_count}</StatCount> Following
-                </StatLink>
-                <StatLink to={`/${data.username}/followers`}>
-                  <StatCount>{data.follower_count}</StatCount> Followers
-                </StatLink>
-              </Box>
-
-              {showProfileSummaryBtn && (
-                <Box mt={3} pt={3} borderTop="1px solid var(--color-border-default)">
-                  <Link to={`/${data.username}`} style={{ textDecoration: "none" }}>
-                    <button
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        borderRadius: "9999px",
-                        backgroundColor: "transparent",
-                        border: "1px solid var(--color-border-default)",
-                        cursor: "pointer",
-                        fontWeight: "bold",
-                        color: "var(--color-fg-default)",
-                      }}
+            ) : (
+              <>
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+                  <Avatar $url={data.avatar_url} $letter={data.username?.charAt(0).toUpperCase()} />
+                  {user?.username !== data.username && (
+                    <FollowButton
+                      $following={isFollowing}
+                      $blocked={isBlocked}
+                      onClick={isBlocked ? handleBlockClick : handleFollowToggle}
                     >
-                      Profile Summary
-                    </button>
-                  </Link>
+                      {isBlocked ? "Blocked" : isFollowing ? "Following" : "Follow"}
+                    </FollowButton>
+                  )}
                 </Box>
-              )}
-            </>
-          )}
-        </PopoverContainer>
-      )}
+                <Box mt={2}>
+                  <div style={{ fontWeight: "bold", fontSize: "17px", color: "var(--color-fg-default)" }}>
+                    {data.display_name || data.username}
+                  </div>
+                  <div className="handle-text" style={{ marginTop: "2px" }}>
+                    @{data.username}
+                  </div>
+                </Box>
+
+                {data.bio && <BioText>{data.bio}</BioText>}
+
+                <Box display="flex" gap={3} mt={2}>
+                  <StatLink to={`/${data.username}/following`}>
+                    <StatCount>{data.following_count}</StatCount>{" "}
+                    <span style={{ color: "var(--color-fg-muted)" }}>Following</span>
+                  </StatLink>
+                  <StatLink to={`/${data.username}/followers`}>
+                    <StatCount>{data.follower_count}</StatCount>{" "}
+                    <span style={{ color: "var(--color-fg-muted)" }}>Followers</span>
+                  </StatLink>
+                </Box>
+
+                {showProfileSummaryBtn && (
+                  <Box mt={3} pt={3} borderTop="1px solid var(--color-border-default)">
+                    <Link to={`/${data.username}`} style={{ textDecoration: "none" }}>
+                      <button
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          borderRadius: "9999px",
+                          backgroundColor: "transparent",
+                          border: "1px solid var(--color-border-default)",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                          color: "var(--color-fg-default)",
+                        }}
+                      >
+                        Profile Summary
+                      </button>
+                    </Link>
+                  </Box>
+                )}
+              </>
+            )}
+          </PopoverContainer>,
+          document.getElementById("portal-root") || document.body,
+        )}
 
       {showUnblockModal && (
         <ModalOverlay

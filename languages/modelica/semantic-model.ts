@@ -739,6 +739,7 @@ export class ModelicaClassInstance extends ModelicaElement {
             child.type === "EquationSection" ||
             child.type === "AlgorithmSection" ||
             child.type === "ElementSection" ||
+            child.type === "InitialElementSection" ||
             child.type === "InitialEquationSection" ||
             child.type === "InitialAlgorithmSection"
           ) {
@@ -747,7 +748,7 @@ export class ModelicaClassInstance extends ModelicaElement {
             let foundAnn = null;
             for (let j = child.childCount - 1; j >= 0; j--) {
               const subChild = child.child(j);
-              if (subChild.type === "AnnotationClause") {
+              if (subChild.type === "AnnotationClause" || subChild.type === "ElementAnnotation") {
                 foundAnn = subChild;
                 break;
               } else if (subChild.type !== ";" && subChild.type !== "comment" && subChild.type !== "string_comment") {
@@ -811,13 +812,14 @@ export class ModelicaClassInstance extends ModelicaElement {
             child.type === "EquationSection" ||
             child.type === "AlgorithmSection" ||
             child.type === "ElementSection" ||
+            child.type === "InitialElementSection" ||
             child.type === "InitialEquationSection" ||
             child.type === "InitialAlgorithmSection"
           ) {
             let foundAnn = null;
             for (let j = child.childCount - 1; j >= 0; j--) {
               const subChild = child.child(j);
-              if (subChild.type === "AnnotationClause") {
+              if (subChild.type === "AnnotationClause" || subChild.type === "ElementAnnotation") {
                 foundAnn = subChild;
                 break;
               } else if (subChild.type !== ";" && subChild.type !== "comment" && subChild.type !== "string_comment") {

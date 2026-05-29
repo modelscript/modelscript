@@ -37,6 +37,8 @@ export enum ModelicaClassKind {
   OPERATOR_RECORD = "operator record",
   PACKAGE = "package",
   RECORD = "record",
+  SHAPE = "shape",
+  STUDY = "study",
   TYPE = "type",
 }
 

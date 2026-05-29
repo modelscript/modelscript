@@ -25,6 +25,7 @@ function getArtifactType(filename: string): string | null {
   if (ext === ".sysml") return "sysml";
   if (ext === ".fmu") return "fmu";
   if (ext === ".csv") return "dataset";
+  if (ext === ".tei" || ext === ".xml") return "tei-document";
   return null;
 }
 
@@ -37,51 +38,84 @@ process.on("message", async (data: { name: string; version: string; libraryPath:
   try {
     console.log(`[publish] Processing ${name}@${version}...`);
 
-    database.clearLibraryMetadata(name, version);
+    const existingClasses = database.getClasses(name, version);
+    const processedClassNames = new Set(existingClasses.map((c) => c.class_name));
+
+    console.log(`[publish] Checkpoint resume: ${processedClassNames.size} classes already processed.`);
 
     let metadataBatch: ClassMetadata[] = [];
-    let classCount = 0;
+    let classCount = processedClassNames.size;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let rootMetadata: any = null;
     const iconSvgs: Record<string, string> = {};
 
-    const context = await processLibrary(libraryPath, async (_className, metadata, svgs) => {
-      if (metadata.className === name) {
-        rootMetadata = metadata;
+    // Prepopulate iconSvgs from existing storage for the final lsp-bundle export
+    const classesWithSvgs = storage.listClasses(name, version);
+    for (const className of classesWithSvgs) {
+      if (processedClassNames.has(className)) {
+        const svg = storage.readSvg(name, version, className, "icon");
+        if (svg) iconSvgs[className] = svg;
       }
-      storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
-      if (svgs.icon) {
-        iconSvgs[metadata.className] = svgs.icon;
-      }
+    }
 
-      metadataBatch.push(metadata);
-      if (metadataBatch.length >= 50) {
-        database.storeClassBatch(name, version, metadataBatch);
-        classCount += metadataBatch.length;
-        metadataBatch = [];
+    let queryEngineRef: import("@modelscript/compiler").QueryEngine | null = null;
 
-        process.send?.({ type: "progress", classesProcessed: classCount });
-
-        if (classCount % 100 === 0) {
-          console.log(`[publish] ${name}@${version}: processed ${classCount} classes...`);
+    await processLibrary(
+      libraryPath,
+      processedClassNames,
+      async (_className, metadata, svgs) => {
+        if (metadata.className === name) {
+          rootMetadata = metadata;
         }
-      }
-    });
+        storage.storeSvg(name, version, metadata.className, svgs.icon, svgs.diagram);
+        if (svgs.icon) {
+          iconSvgs[metadata.className] = svgs.icon;
+        }
 
+        metadataBatch.push(metadata);
+        if (metadataBatch.length >= 50) {
+          database.storeClassBatch(name, version, metadataBatch);
+          classCount += metadataBatch.length;
+          metadataBatch = [];
+
+          process.send?.({ type: "progress", classesProcessed: classCount });
+
+          if (classCount % 100 === 0) {
+            console.log(`[publish] ${name}@${version}: processed ${classCount} classes...`);
+          }
+        }
+      },
+      async (readyContext) => {
+        // onReady: fires right after library indexing, before SVG pass.
+        // Export salsa-index and an initial lsp-bundle immediately so the
+        // LSP can hydrate the workspace even while SVGs are still rendering.
+        queryEngineRef = readyContext.queryEngine;
+        const indexPath = storage.getIndexPath(name, version);
+
+        console.log(`[publish] ${name}@${version}: exporting salsa-index.db (early)...`);
+        await exportSalsaIndex(queryEngineRef, indexPath);
+
+        console.log(`[publish] ${name}@${version}: exporting lsp-bundle.zip (early, no icons)...`);
+        const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
+        await exportLspBundle(queryEngineRef, libraryPath, bundlePath, {});
+      },
+    );
+
+    // Flush remaining metadata batch
     if (metadataBatch.length > 0) {
       database.storeClassBatch(name, version, metadataBatch);
       classCount += metadataBatch.length;
     }
 
-    // Export the Salsa index to a SQLite database artifact
-    console.log(`[publish] ${name}@${version}: exporting salsa-index.db...`);
-    const indexPath = storage.getIndexPath(name, version);
-    await exportSalsaIndex(context.queryEngine, indexPath);
-
-    // Export the LSP bundle zip
-    console.log(`[publish] ${name}@${version}: exporting lsp-bundle.zip...`);
-    const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
-    await exportLspBundle(context.queryEngine, libraryPath, bundlePath, iconSvgs);
+    // Re-export lsp-bundle with collected icons (overwrites the early no-icons version)
+    if (queryEngineRef && Object.keys(iconSvgs).length > 0) {
+      console.log(
+        `[publish] ${name}@${version}: re-exporting lsp-bundle.zip with ${Object.keys(iconSvgs).length} icons...`,
+      );
+      const indexPath = storage.getIndexPath(name, version);
+      const bundlePath = path.join(path.dirname(indexPath), "lsp-bundle.zip");
+      await exportLspBundle(queryEngineRef, libraryPath, bundlePath, iconSvgs);
+    }
 
     // --- Automatic Artifact Scanning ---
     console.log(`[publish] ${name}@${version}: scanning artifacts...`);

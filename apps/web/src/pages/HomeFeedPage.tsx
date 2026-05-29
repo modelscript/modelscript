@@ -15,7 +15,7 @@ const TabBar = styled.div`
   border-bottom: 1px solid var(--color-border);
   position: sticky;
   top: var(--dev-header-height, 0px);
-  z-index: 10;
+  z-index: 20;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 

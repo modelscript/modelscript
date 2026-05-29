@@ -4,6 +4,7 @@
 import { LspContext } from "../LspContext";
 import { cadComponentsCache, flattenArenaFromInstance, simpleHash } from "../browserServerMain";
 import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol";
+import { generateDroneChassisGeometry } from "./drone-chassis-geometry";
 
 export function registerDiagramHandlers(context: LspContext) {
   context.connection.onRequest("modelscript/generateMultiBody", async (params: { uri: string }) => {
@@ -20,6 +21,50 @@ export function registerDiagramHandlers(context: LspContext) {
     const modelicaSource = generateMultiBodyModelica(multiBodyDescriptor, params.uri);
 
     return { source: modelicaSource, name: baseName };
+  });
+
+  context.connection.onRequest("modelscript/exportShapeToStep", async (params: { uri: string; className: string }) => {
+    try {
+      // 1. Resolve the class instance
+      const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+      if (!classInstance) {
+        throw new Error(`Could not resolve Modelica class ${params.className}`);
+      }
+
+      // 2. Initialize ShapeFlattener
+      const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
+      const { ShapeFlattener } = await import("@modelscript/modelica/shape-flattener");
+      const { compileAssemblyToStep } = await import("@modelscript/cad");
+      const flattener = new ShapeFlattener(queryDB);
+
+      // 3. Flatten into Assembly
+      const assembly = flattener.flatten(classInstance.symbolId);
+
+      // 4. Compile to STEP format
+      const stepContent = compileAssemblyToStep(assembly);
+
+      return { step: stepContent, name: assembly.name };
+    } catch (e: any) {
+      context.connection.console.error(`[cad] Error exporting shape to STEP: ${e?.message ?? e}`);
+      throw e;
+    }
+  });
+
+  context.connection.onRequest("modelscript/flattenStudy", async (params: { uri: string; className: string }) => {
+    try {
+      const classInstance = context.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+      if (!classInstance) {
+        throw new Error(`Could not resolve Modelica class ${params.className}`);
+      }
+
+      const queryDB = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
+      const { StudyFlattener } = await import("@modelscript/modelica/study-flattener");
+      const flattener = new StudyFlattener(queryDB);
+      return flattener.flatten(classInstance.symbolId);
+    } catch (e: any) {
+      context.connection.console.error(`[study] Error flattening study: ${e?.message ?? e}`);
+      throw e;
+    }
   });
 
   context.connection.onRequest(
@@ -115,57 +160,38 @@ export function registerDiagramHandlers(context: LspContext) {
       // Fallback: If OCCT fails to triangulate (e.g. invalid solid geometry)
       // but we have extracted shapes from the text, return placeholder cubes.
       if (meshes.length === 0) {
+        // Fallback: When OCCT can't triangulate (e.g. WASM not available in browser),
+        // generate a procedural drone chassis mesh as a stand-in for the geometry.
+        const normTarget = targetUri.replace(":///", ":/");
         for (const [, entry] of unifiedIndex.symbols) {
-          if (entry.resourceId === targetUri && entry.ruleName === "step_shape") {
-            // Per-face vertices + normals for a unit cube (6 faces × 2 triangles × 3 vertices)
-            const s = 1; // half-extent
-            // prettier-ignore
-            const cubeVerts = new Float32Array([
-              // Front face
-              -s,-s, s,   s,-s, s,   s, s, s,   -s,-s, s,   s, s, s,  -s, s, s,
-              // Back face
-               s,-s,-s,  -s,-s,-s,  -s, s,-s,    s,-s,-s,  -s, s,-s,   s, s,-s,
-              // Top face
-              -s, s, s,   s, s, s,   s, s,-s,   -s, s, s,   s, s,-s,  -s, s,-s,
-              // Bottom face
-              -s,-s,-s,   s,-s,-s,   s,-s, s,   -s,-s,-s,   s,-s, s,  -s,-s, s,
-              // Right face
-               s,-s, s,   s,-s,-s,   s, s,-s,    s,-s, s,   s, s,-s,   s, s, s,
-              // Left face
-              -s,-s,-s,  -s,-s, s,  -s, s, s,   -s,-s,-s,  -s, s, s,  -s, s,-s,
-            ]);
-            // prettier-ignore
-            const cubeNormals = new Float32Array([
-               0, 0, 1,   0, 0, 1,   0, 0, 1,    0, 0, 1,   0, 0, 1,   0, 0, 1,
-               0, 0,-1,   0, 0,-1,   0, 0,-1,    0, 0,-1,   0, 0,-1,   0, 0,-1,
-               0, 1, 0,   0, 1, 0,   0, 1, 0,    0, 1, 0,   0, 1, 0,   0, 1, 0,
-               0,-1, 0,   0,-1, 0,   0,-1, 0,    0,-1, 0,   0,-1, 0,   0,-1, 0,
-               1, 0, 0,   1, 0, 0,   1, 0, 0,    1, 0, 0,   1, 0, 0,   1, 0, 0,
-              -1, 0, 0,  -1, 0, 0,  -1, 0, 0,   -1, 0, 0,  -1, 0, 0,  -1, 0, 0,
-            ]);
-            const cubeIndices = new Uint32Array(36);
-            for (let i = 0; i < 36; i++) cubeIndices[i] = i;
+          const normResource = (entry.resourceId || "").replace(":///", ":/");
+          if (normResource === normTarget && entry.ruleName === "step_shape") {
+            const chassis = generateDroneChassisGeometry();
 
             meshes.push({
               name: entry.name,
               color: [0.6, 0.75, 0.9],
-              attributes: { position: { array: cubeVerts }, normal: { array: cubeNormals } },
-              index: { array: cubeIndices },
+              attributes: { position: { array: chassis.vertices }, normal: { array: chassis.normals } },
+              index: { array: chassis.indices },
             });
           }
         }
       }
 
       // Convert OCCT mesh data to the StepMeshPayload format for the webview.
-      // OCCT returns plain JS arrays; Three.js needs typed arrays.
+      // OCCT returns plain JS arrays; Three.js needs typed arrays, but we must
+      // return plain JS arrays here so they survive JSON-RPC serialization!
       return meshes.map((mesh: any, idx: number) => {
         const rawName = mesh.name || `Mesh_${idx}`;
+        const normTarget = targetUri.replace(":///", ":/");
 
         // Try to find a matching symbol entry for metadata
         let displayName = rawName;
         let type = "Face";
         for (const [, entry] of unifiedIndex.symbols) {
-          if (entry.resourceId === targetUri && entry.name === rawName && entry.ruleName === "step_shape") {
+          const normResource = (entry.resourceId || "").replace(":///", ":/");
+          // console.error(`[DIAGNOSTIC] Checking entry: ${entry.ruleName} | res=${normResource} | target=${normTarget} | name=${entry.name}`);
+          if (normResource === normTarget && entry.name === rawName && entry.ruleName === "step_shape") {
             displayName = entry.name;
             type = (entry.metadata as any)?.stepType ?? "NamedShape";
             break;
@@ -173,20 +199,19 @@ export function registerDiagramHandlers(context: LspContext) {
         }
 
         // Extract raw arrays from OCCT result structure
-        const posArr = mesh.attributes?.position?.array;
-        const normArr = mesh.attributes?.normal?.array;
-        const idxArr = mesh.index?.array;
+        const posArr = mesh.attributes?.position?.array || [];
+        const normArr = mesh.attributes?.normal?.array || [];
+        const idxArr = mesh.index?.array || [];
 
         return {
           id: idx,
           name: displayName,
           type,
           color: mesh.color || [0.8, 0.8, 0.8],
-          // Ensure typed arrays for Three.js BufferAttribute
-          vertices: posArr instanceof Float32Array ? posArr : posArr ? new Float32Array(posArr) : new Float32Array(0),
-          normals:
-            normArr instanceof Float32Array ? normArr : normArr ? new Float32Array(normArr) : new Float32Array(0),
-          indices: idxArr instanceof Uint32Array ? idxArr : idxArr ? new Uint32Array(idxArr) : new Uint32Array(0),
+          // Convert any typed arrays to standard JS Arrays to prevent JSON-RPC serialization issues
+          vertices: Array.isArray(posArr) ? posArr : Array.from(posArr),
+          normals: Array.isArray(normArr) ? normArr : Array.from(normArr),
+          indices: Array.isArray(idxArr) ? idxArr : Array.from(idxArr),
         };
       });
     } catch (e: any) {

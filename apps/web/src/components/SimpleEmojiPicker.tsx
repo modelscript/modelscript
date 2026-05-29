@@ -498,8 +498,16 @@ interface SimpleEmojiPickerProps {
 
 export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerProps) {
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [hoveredEmoji, setHoveredEmoji] = useState<Emoji | null>(null);
-  const [skinTone, setSkinTone] = useState<string>("");
+  const [skinTone, setSkinTone] = useState<string>(() => {
+    try {
+      return localStorage.getItem("emoji-skin-tone") || "";
+    } catch {
+      /* ignore */
+      return "";
+    }
+  });
   const [showSkinTones, setShowSkinTones] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>(EMOJI_CATEGORIES[0].title);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -572,17 +580,20 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
             display: "flex",
             alignItems: "center",
             backgroundColor: "var(--color-canvas-subtle)",
-            borderRadius: "20px",
+            borderRadius: "9999px",
             padding: "4px 12px",
-            border: "1px solid var(--color-border-default)",
+            border: searchFocused ? "2px solid #1d9bf0" : "1px solid var(--color-border)",
+            margin: searchFocused ? "-1px" : "0",
           }}
         >
-          <SearchIcon size={16} fill="var(--color-fg-muted)" />
+          <SearchIcon size={16} fill={searchFocused ? "#1d9bf0" : "var(--color-fg-muted)"} />
           <input
             type="text"
             placeholder="Search emojis"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             style={{
               border: "none",
               background: "transparent",
@@ -604,42 +615,49 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
             justifyContent: "space-between",
           }}
         >
-          {EMOJI_CATEGORIES.map((cat) => (
-            <button
-              key={cat.title}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setActiveCategory(cat.title);
-                if (categoryRefs.current[cat.title]) {
-                  categoryRefs.current[cat.title]?.scrollIntoView({ behavior: "smooth" });
-                }
-              }}
-              title={cat.title}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "16px",
-                padding: "4px 4px 8px 4px",
-                marginBottom: "-9px",
-                borderBottom: activeCategory === cat.title ? "2px solid #1d9bf0" : "2px solid transparent",
-                color: activeCategory === cat.title ? "var(--color-fg-default)" : "var(--color-fg-muted)",
-              }}
-              onMouseOver={(e) => {
-                if (activeCategory !== cat.title) {
-                  e.currentTarget.style.borderBottom = "2px solid var(--color-border-default)";
-                }
-              }}
-              onMouseOut={(e) => {
-                if (activeCategory !== cat.title) {
-                  e.currentTarget.style.borderBottom = "2px solid transparent";
-                }
-              }}
-            >
-              {cat.icon}
-            </button>
-          ))}
+          {EMOJI_CATEGORIES.map((cat) => {
+            let catIcon = cat.icon;
+            const catEmoji = cat.emojis.find((e) => e.char === cat.icon);
+            if (catEmoji) {
+              catIcon = getEmojiChar(catEmoji);
+            }
+            return (
+              <button
+                key={cat.title}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setActiveCategory(cat.title);
+                  if (categoryRefs.current[cat.title]) {
+                    categoryRefs.current[cat.title]?.scrollIntoView({ behavior: "smooth" });
+                  }
+                }}
+                title={cat.title}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: "16px",
+                  padding: "4px 4px 8px 4px",
+                  marginBottom: "-9px",
+                  borderBottom: activeCategory === cat.title ? "2px solid #1d9bf0" : "2px solid transparent",
+                  color: activeCategory === cat.title ? "var(--color-fg-default)" : "var(--color-fg-muted)",
+                }}
+                onMouseOver={(e) => {
+                  if (activeCategory !== cat.title) {
+                    e.currentTarget.style.borderBottom = "2px solid var(--color-border-default)";
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (activeCategory !== cat.title) {
+                    e.currentTarget.style.borderBottom = "2px solid transparent";
+                  }
+                }}
+              >
+                {catIcon}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -677,7 +695,7 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
               >
                 {category.emojis.map((emoji) => (
                   <button
-                    key={emoji.char}
+                    key={emoji.char + skinTone}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -690,15 +708,25 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
                       border: "none",
                       fontSize: "24px",
                       cursor: "pointer",
-                      padding: "4px",
-                      borderRadius: "4px",
+                      padding: 0,
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
                       lineHeight: 1,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      justifySelf: "center",
+                      transition: "transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.1s ease",
                     }}
-                    onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
-                    onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--color-btn-secondary-bg)";
+                      e.currentTarget.style.transform = "scale(1.25)";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
                   >
                     {getEmojiChar(emoji)}
                   </button>
@@ -746,6 +774,11 @@ export default function SimpleEmojiPicker({ onEmojiClick }: SimpleEmojiPickerPro
                     e.preventDefault();
                     e.stopPropagation();
                     setSkinTone(tone.char);
+                    try {
+                      localStorage.setItem("emoji-skin-tone", tone.char);
+                    } catch {
+                      /* ignore */
+                    }
                     setShowSkinTones(false);
                   }}
                   style={{

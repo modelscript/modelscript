@@ -318,9 +318,11 @@ connection.onInitialize((params): InitializeResult => {
     | { name: string; version: string }[]
     | undefined;
 
+  const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
+
   if (extensionUri) {
     connection.console.info(`[lsp] Triggering initTreeSitter with extensionUri=${extensionUri}`);
-    parserService.initTreeSitter(extensionUri, validationService, projectDependencies).catch((e) => {
+    parserService.initTreeSitter(extensionUri, validationService, projectDependencies, useLocalMsl).catch((e) => {
       connection.console.error(`[lsp] initTreeSitter threw an error: ${e}\n${e.stack}`);
     });
   } else {
@@ -444,7 +446,7 @@ documents.onDidChangeContent((change) => {
   // === TIER 1: Instant parse + syntax errors (0ms) ===
   // Parse and send syntax errors immediately — before any debounce.
   // Tree-sitter incremental parse is ~2ms even for large files.
-  const isModelica = uri.endsWith(".mo") || uri.endsWith(".mos");
+  const isModelica = uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim");
   const isSysml = uri.endsWith(".sysml");
   const isStep = /\.(step|stp|p21)$/i.test(uri);
 
@@ -925,8 +927,16 @@ registerClassQueryEndpoints(lspContext);
 registerMiscEndpoints(lspContext);
 registerDiagramEndpoints(lspContext);
 
-registerSignatureHelpProvider(connection);
-registerCodeLensProvider(connection);
+registerSignatureHelpProvider(
+  connection,
+  documents,
+  validationService.documentLSPBridges,
+  parserService.getDocumentTree.bind(parserService),
+  () => parserService.parserReady,
+  () => parserService.parser,
+  parserService.getLineIndexForDoc.bind(parserService),
+);
+registerCodeLensProvider(lspContext);
 registerInlayHintProvider(connection);
 connection.listen();
 

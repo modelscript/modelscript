@@ -29,7 +29,8 @@ export async function generateThumbnail(artifactId: number): Promise<string | nu
         "--disable-setuid-sandbox",
         "--enable-webgl",
         "--ignore-gpu-blocklist",
-        "--enable-unsafe-swiftshader",
+        "--enable-gpu",
+        "--use-gl=egl",
         "--window-size=800,600",
       ],
     });

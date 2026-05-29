@@ -648,6 +648,26 @@
           }
         ]
       },
+      "shape": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "shape",
+            "named": false
+          }
+        ]
+      },
+      "study": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "study",
+            "named": false
+          }
+        ]
+      },
       "type": {
         "multiple": false,
         "required": false,
@@ -5838,7 +5858,15 @@
     "named": false
   },
   {
+    "type": "shape",
+    "named": false
+  },
+  {
     "type": "stream",
+    "named": false
+  },
+  {
+    "type": "study",
     "named": false
   },
   {

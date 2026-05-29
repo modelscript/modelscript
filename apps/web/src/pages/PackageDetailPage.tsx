@@ -15,14 +15,7 @@ import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import styled, { css, keyframes } from "styled-components";
-import type {
-  ArtifactViewerInfo,
-  ClassDetail,
-  ClassSummary,
-  JobStatus,
-  NpmPackument,
-  NpmVersionManifest,
-} from "../api";
+import type { ArtifactViewerInfo, ClassDetail, JobInfo, NpmPackument, NpmVersionManifest } from "../api";
 import {
   getArtifactViewers,
   getClassDetail,
@@ -59,15 +52,16 @@ const PageWrap = styled.div`
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
+  flex: 1;
 `;
 
 const TreeSidebar = styled.div`
   width: 260px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
-  height: 100vh;
+  height: calc(100vh - var(--dev-header-height, 0px));
   position: sticky;
-  top: 0;
+  top: var(--dev-header-height, 0px);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -594,7 +588,8 @@ const PackageDetailPage: React.FC = () => {
   const [classes, setClasses] = useState<ClassSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [jobInfo, setJobInfo] = useState<JobInfo | null>(null);
+  const jobStatus = jobInfo?.status ?? null;
   const [diagramLoaded, setDiagramLoaded] = useState(false);
   const [diagramError, setDiagramError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -624,7 +619,7 @@ const PackageDetailPage: React.FC = () => {
       setPackument(npmData);
       setArtifactViewers(viewers);
     } catch (err) {
-      setError("Failed to load package details");
+      setError("Failed to load artifact details");
       console.error(err);
     } finally {
       setLoading(false);
@@ -649,14 +644,14 @@ const PackageDetailPage: React.FC = () => {
     const checkStatus = async () => {
       try {
         const status = await getJobStatus(name, version);
-        setJobStatus(status.status);
+        setJobInfo(status);
         if (status.status === "completed") {
           fetchData();
         }
       } catch (err: unknown) {
         const error = err as { response?: { status?: number } };
         if (error?.response?.status === 404) {
-          setJobStatus("failed"); // No job exists, don't poll forever
+          setJobInfo({ status: "failed" }); // No job exists, don't poll forever
         } else {
           console.error("Failed to check job status", err);
         }
@@ -714,10 +709,10 @@ const PackageDetailPage: React.FC = () => {
         >
           <AlertIcon size={48} fill="var(--color-error)" />
           <Heading as="h2" style={{ color: "var(--color-text-heading)", fontSize: 22, margin: 0 }}>
-            Failed to load package details
+            Failed to load artifact details
           </Heading>
           <Text as="p" style={{ color: "var(--color-text-muted)", fontSize: 15, margin: 0, maxWidth: 400 }}>
-            The package may not exist, is still being processed, or the server is unavailable.
+            The artifact may not exist, is still being processed, or the server is unavailable.
           </Text>
           <Link to="/packages" style={{ color: "var(--color-link)", fontSize: 14, textDecoration: "none" }}>
             ← Back to libraries
@@ -746,21 +741,13 @@ const PackageDetailPage: React.FC = () => {
               boxSizing: "border-box",
             }}
           >
-            <Box
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: "var(--gradient-icon-box)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                border: "1px solid var(--color-border-strong)",
-              }}
-            >
-              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={24} height={24} />
-            </Box>
+            <InvertedSvg
+              src={getIconUrl(name!, version!, name!)}
+              alt=""
+              width={32}
+              height={32}
+              style={{ flexShrink: 0 }}
+            />
             <Box display="flex" flexDirection="column">
               <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.2 }}>
                 {name}
@@ -792,22 +779,13 @@ const PackageDetailPage: React.FC = () => {
           </Box>
           <Box display="flex" alignItems="center" gap="16px" mb={3}>
             {/* Package icon */}
-            <Box
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 8,
-                background: "var(--gradient-icon-box)",
-                border: "1px solid var(--color-border-strong)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                overflow: "hidden",
-              }}
-            >
-              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={36} height={36} />
-            </Box>
+            <InvertedSvg
+              src={getIconUrl(name!, version!, name!)}
+              alt=""
+              width={48}
+              height={48}
+              style={{ flexShrink: 0 }}
+            />
             <Box>
               <Box display="flex" alignItems="center" gap="8px">
                 <Heading
@@ -858,6 +836,42 @@ const PackageDetailPage: React.FC = () => {
             </Box>
           </Box>
         </HeaderBar>
+
+        {/* ── Job Logs ── */}
+        {(jobStatus === "processing" || jobStatus === "failed") && jobInfo?.logs && jobInfo.logs.length > 0 && (
+          <Box
+            mb={4}
+            p={3}
+            style={{
+              background: "var(--color-canvas-subtle)",
+              borderRadius: 6,
+              border: "1px solid var(--color-border-default)",
+            }}
+          >
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+              <Text style={{ fontWeight: 600, fontSize: 13, color: "var(--color-text-primary)" }}>Processing Logs</Text>
+              {jobStatus === "processing" && <Spinner size="small" />}
+            </Box>
+            <Box
+              as="pre"
+              style={{
+                margin: 0,
+                padding: "12px",
+                background: "#0d1117",
+                color: "#e6edf3",
+                borderRadius: 6,
+                fontSize: 12,
+                fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace",
+                maxHeight: "300px",
+                overflowY: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+              }}
+            >
+              {jobInfo.logs.join("\n")}
+            </Box>
+          </Box>
+        )}
 
         {/* ── Tabs ── */}
         <TabBar>
@@ -925,7 +939,7 @@ const PackageDetailPage: React.FC = () => {
                     </Text>
                   ) : (
                     <Text as="p" style={{ color: "var(--color-text-muted)", fontStyle: "italic", margin: 0 }}>
-                      No documentation available for this package.
+                      No documentation available for this artifact.
                     </Text>
                   )}
                 </DocCard>
@@ -982,7 +996,7 @@ const PackageDetailPage: React.FC = () => {
               <>
                 <SectionTitle as="h3">Bundled Artifacts</SectionTitle>
                 <Text as="p" style={{ color: "var(--color-text-muted)", marginBottom: 24, fontSize: 14 }}>
-                  Artifacts are compiled resources, datasets, or external files bundled with this package version. They
+                  Artifacts are compiled resources, datasets, or external files bundled with this artifact version. They
                   provide pre-compiled simulations (FMUs), CAD models, or supplementary data that can be executed or
                   viewed directly in the browser.
                 </Text>

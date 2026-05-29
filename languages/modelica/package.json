@@ -23,6 +23,10 @@
       "types": "./dist/annotation.d.ts",
       "default": "./dist/annotation.js"
     },
+    "./geometry": {
+      "types": "./dist/geometry.d.ts",
+      "default": "./dist/geometry.js"
+    },
     "./scripting": {
       "types": "./dist/scripting.d.ts",
       "default": "./dist/scripting.js"
@@ -58,6 +62,14 @@
     "./flattener-query": {
       "types": "./dist/flattener-query.d.ts",
       "default": "./dist/flattener-query.js"
+    },
+    "./shape-flattener": {
+      "types": "./dist/shape-flattener.d.ts",
+      "default": "./dist/shape-flattener.js"
+    },
+    "./study-flattener": {
+      "types": "./dist/study-flattener.d.ts",
+      "default": "./dist/study-flattener.js"
     },
     "./query_hooks": {
       "types": "./dist/src-gen/query-hooks.d.ts",
@@ -111,6 +123,7 @@
     "test:native": "node --test bindings/node/*_test.cjs"
   },
   "dependencies": {
+    "@modelscript/cad": "*",
     "@modelscript/compiler": "*",
     "node-addon-api": "^8.5.0",
     "node-gyp-build": "^4.8.4"

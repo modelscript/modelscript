@@ -123,10 +123,38 @@ const Box = styled.div.withConfig({
   padding-top: ${(props) => (typeof props.py === "number" ? `${props.py * 4}px` : props.py || props.p)};
   padding-bottom: ${(props) => (typeof props.py === "number" ? `${props.py * 4}px` : props.py || props.p)};
   margin: ${(props) => (typeof props.m === "number" ? `${props.m * 4}px` : props.m)};
-  margin-left: ${(props) => (typeof props.mx === "number" ? `${props.mx * 4}px` : props.mx || props.m)};
-  margin-right: ${(props) => (typeof props.mx === "number" ? `${props.mx * 4}px` : props.mx || props.m)};
-  margin-top: ${(props) => (typeof props.my === "number" ? `${props.my * 4}px` : props.mt || props.my || props.m)};
-  margin-bottom: ${(props) => (typeof props.my === "number" ? `${props.my * 4}px` : props.mb || props.my || props.m)};
+  margin-left: ${(props) =>
+    typeof props.ml === "number"
+      ? `${props.ml * 4}px`
+      : props.ml !== undefined
+        ? props.ml
+        : typeof props.mx === "number"
+          ? `${props.mx * 4}px`
+          : props.mx || props.m};
+  margin-right: ${(props) =>
+    typeof props.mr === "number"
+      ? `${props.mr * 4}px`
+      : props.mr !== undefined
+        ? props.mr
+        : typeof props.mx === "number"
+          ? `${props.mx * 4}px`
+          : props.mx || props.m};
+  margin-top: ${(props) =>
+    typeof props.mt === "number"
+      ? `${props.mt * 4}px`
+      : props.mt !== undefined
+        ? props.mt
+        : typeof props.my === "number"
+          ? `${props.my * 4}px`
+          : props.my || props.m};
+  margin-bottom: ${(props) =>
+    typeof props.mb === "number"
+      ? `${props.mb * 4}px`
+      : props.mb !== undefined
+        ? props.mb
+        : typeof props.my === "number"
+          ? `${props.my * 4}px`
+          : props.my || props.m};
   width: ${(props) => (typeof props.width === "number" ? `${props.width}px` : props.width)};
   height: ${(props) => (typeof props.height === "number" ? `${props.height}px` : props.height)};
   min-height: ${(props) => (typeof props.minHeight === "number" ? `${props.minHeight}px` : props.minHeight)};

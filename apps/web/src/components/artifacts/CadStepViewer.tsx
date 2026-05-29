@@ -1,8 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Spinner, Text } from "@primer/react";
+import { PlayIcon } from "@primer/octicons-react";
+import { Button, Dialog, FormControl, Spinner, Text, TextInput } from "@primer/react";
 import { Environment, Html, OrbitControls, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
 import Box from "../Box";
 interface CadStepViewerProps {
@@ -31,8 +33,87 @@ function Loader() {
 }
 
 const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen }) => {
-  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
+  const [geometries, setGeometries] = useState<THREE.BufferGeometry[] | null>(null);
+  const [assemblyCenter, setAssemblyCenter] = useState<THREE.Vector3 | null>(null);
+  const [assemblyScale, setAssemblyScale] = useState<number>(1);
+  const [explosionFactor, setExplosionFactor] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // Physics Config State
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [className, setClassName] = useState("SimulationConfig");
+  const [config, setConfig] = useState<any>({ parameters: {} });
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+
+  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadConfig = async () => {
+    setIsLoadingConfig(true);
+    try {
+      const res = await fetch(`/api/v1/physics/flattenStudy?className=${encodeURIComponent(className)}`);
+      if (!res.ok) throw new Error("Failed to load study configuration");
+      const data = await res.json();
+      setConfig(data);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to load config");
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  };
+
+  const updateField = (key: string, value: unknown) => {
+    setConfig((prev: any) => ({
+      ...prev,
+      parameters: {
+        ...prev.parameters,
+        [key]: value,
+      },
+    }));
+  };
+
+  const runSimulation = async () => {
+    setIsSubmitting(true);
+    try {
+      const runConfig = {
+        type: config.workflowClass?.includes("FEA") ? "FEA" : config.workflowClass?.includes("CFD") ? "CFD" : "unknown",
+        version: 1,
+        className: className,
+        stepFile: viewConfig.url.split("/").pop() || "geometry.step",
+        parameters: config.parameters || {},
+      };
+
+      // 1. Fetch step file blob
+      const stepRes = await fetch(viewConfig.url);
+      const stepBlob = await stepRes.blob();
+
+      // 2. Upload geometry to get hash
+      const formData = new FormData();
+      formData.append("file", stepBlob, config.stepFile);
+      const uploadRes = await fetch("/api/v1/physics/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (!uploadRes.ok) throw new Error("Failed to upload geometry");
+      const { hash: geometryHash } = await uploadRes.json();
+
+      // 3. Submit physics run
+      const runRes = await fetch("/api/v1/physics/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometryHash, config: runConfig }),
+      });
+      if (!runRes.ok) throw new Error("Failed to submit physics job");
+      const { jobId } = await runRes.json();
+
+      setIsConfigOpen(false);
+      navigate(`/scripts/${jobId}`);
+    } catch (err: any) {
+      alert(err.message || "Failed to run simulation");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -50,56 +131,39 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
         const result = await response.json();
 
         if (result && result.meshes && result.meshes.length > 0 && active) {
-          // Merge multiple meshes into one BufferGeometry
-          const mergedPositions: number[] = [];
-          const mergedNormals: number[] = [];
-          const mergedIndices: number[] = [];
-          let indexOffset = 0;
+          const geos: THREE.BufferGeometry[] = [];
+          const boundingBox = new THREE.Box3();
 
           for (const meshData of result.meshes) {
-            const positions = meshData.attributes.position.array;
-            for (let i = 0; i < positions.length; i++) mergedPositions.push(positions[i]);
-
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute("position", new THREE.Float32BufferAttribute(meshData.attributes.position.array, 3));
             if (meshData.attributes.normal) {
-              const normals = meshData.attributes.normal.array;
-              for (let i = 0; i < normals.length; i++) mergedNormals.push(normals[i]);
+              geo.setAttribute("normal", new THREE.Float32BufferAttribute(meshData.attributes.normal.array, 3));
+            } else {
+              geo.computeVertexNormals();
             }
-
             if (meshData.index) {
-              const indices = meshData.index.array;
-              for (let i = 0; i < indices.length; i++) mergedIndices.push(indices[i] + indexOffset);
+              geo.setIndex(new THREE.Uint32BufferAttribute(meshData.index.array, 1));
             }
-
-            indexOffset += positions.length / 3;
+            geo.computeBoundingSphere();
+            geo.computeBoundingBox();
+            if (geo.boundingBox) {
+              boundingBox.union(geo.boundingBox);
+            }
+            geos.push(geo);
           }
 
-          const geo = new THREE.BufferGeometry();
-          geo.setAttribute("position", new THREE.Float32BufferAttribute(mergedPositions, 3));
+          const center = new THREE.Vector3();
+          boundingBox.getCenter(center);
 
-          if (mergedNormals.length > 0) {
-            geo.setAttribute("normal", new THREE.Float32BufferAttribute(mergedNormals, 3));
-          } else {
-            geo.computeVertexNormals();
-          }
+          const sphere = new THREE.Sphere();
+          boundingBox.getBoundingSphere(sphere);
+          const scale = sphere.radius > 0 ? 20 / sphere.radius : 1;
 
-          if (mergedIndices.length > 0) {
-            geo.setIndex(new THREE.Uint32BufferAttribute(mergedIndices, 1));
-          }
+          setGeometries(geos);
+          setAssemblyCenter(center);
+          setAssemblyScale(scale);
 
-          // Center the geometry and normalize its scale to fit the camera
-          geo.computeBoundingBox();
-          if (geo.boundingBox) {
-            const center = new THREE.Vector3();
-            geo.boundingBox.getCenter(center);
-            geo.translate(-center.x, -center.y, -center.z);
-          }
-          geo.computeBoundingSphere();
-          if (geo.boundingSphere && geo.boundingSphere.radius > 0) {
-            const scale = 20 / geo.boundingSphere.radius;
-            geo.scale(scale, scale, scale);
-          }
-
-          setGeometry(geo);
           setTimeout(() => {
             (window as any).__ARTIFACT_READY = true;
           }, 1500);
@@ -127,7 +191,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
     );
   }
 
-  if (!geometry) {
+  if (!geometries) {
     return (
       <Box
         p={4}
@@ -151,6 +215,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
       bg="var(--color-canvas-subtle)"
       borderRadius={isFullScreen ? "0" : "8px"}
       overflow="hidden"
+      position="relative"
     >
       <Canvas gl={{ preserveDrawingBuffer: true }} camera={{ position: [0, 0, 50], fov: 50 }}>
         <ambientLight intensity={0.3} />
@@ -159,18 +224,134 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({ viewConfig, isFullScreen 
         <Suspense fallback={<Loader />}>
           {/* Local HDRI Texture */}
           <Environment files="/hdri/studio.hdr" />
-          <mesh geometry={geometry}>
-            <meshPhysicalMaterial
-              color="#8a929a"
-              metalness={0.15}
-              roughness={0.65}
-              clearcoat={0.0}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
+          <group
+            scale={[assemblyScale, assemblyScale, assemblyScale]}
+            position={
+              assemblyCenter
+                ? [
+                    -assemblyCenter.x * assemblyScale,
+                    -assemblyCenter.y * assemblyScale,
+                    -assemblyCenter.z * assemblyScale,
+                  ]
+                : [0, 0, 0]
+            }
+          >
+            {geometries.map((geo, idx) => {
+              const meshCenter = geo.boundingSphere?.center || new THREE.Vector3();
+              const offset =
+                assemblyCenter && explosionFactor > 0
+                  ? meshCenter.clone().sub(assemblyCenter).multiplyScalar(explosionFactor)
+                  : new THREE.Vector3();
+
+              return (
+                <mesh key={idx} geometry={geo} position={offset}>
+                  <meshPhysicalMaterial
+                    color="#8a929a"
+                    metalness={0.15}
+                    roughness={0.65}
+                    clearcoat={0.0}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+              );
+            })}
+          </group>
         </Suspense>
         <OrbitControls makeDefault />
       </Canvas>
+      <Box
+        position="absolute"
+        bottom={16}
+        left="50%"
+        style={{ transform: "translateX(-50%)" }}
+        display="flex"
+        alignItems="center"
+        bg="var(--color-canvas-overlay)"
+        p={2}
+        borderRadius="8px"
+        boxShadow="var(--color-shadow-medium)"
+        sx={{ gap: 2 }}
+      >
+        <Text fontSize="12px" fontWeight="bold">
+          Explode
+        </Text>
+        <input
+          type="range"
+          min="0"
+          max="2"
+          step="0.01"
+          value={explosionFactor}
+          onChange={(e) => setExplosionFactor(parseFloat(e.target.value))}
+          style={{ width: "150px" }}
+        />
+      </Box>
+      <Box position="absolute" bottom={16} right={16}>
+        <Button variant="primary" leadingVisual={PlayIcon} onClick={() => setIsConfigOpen(true)}>
+          Create Simulation
+        </Button>
+      </Box>
+
+      {isConfigOpen && (
+        <Dialog
+          isOpen={isConfigOpen}
+          onDismiss={() => setIsConfigOpen(false)}
+          title="Create Physics Configuration"
+          width="medium"
+        >
+          <Box p={3} display="flex" flexDirection="column" sx={{ gap: 3 }}>
+            <FormControl>
+              <FormControl.Label>Study Class Name</FormControl.Label>
+              <Box display="flex" sx={{ gap: 2 }}>
+                <TextInput
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  placeholder="e.g. DroneCAD.StaticTest"
+                  sx={{ flex: 1 }}
+                />
+                <Button onClick={loadConfig} disabled={isLoadingConfig}>
+                  {isLoadingConfig ? <Spinner size="small" /> : "Load Properties"}
+                </Button>
+              </Box>
+              <FormControl.Caption>Enter the Modelica study class name to load its parameters.</FormControl.Caption>
+            </FormControl>
+
+            {Object.keys(config.parameters || {}).length > 0 && (
+              <Box
+                mt={3}
+                p={3}
+                bg="var(--color-canvas-subtle)"
+                borderRadius="6px"
+                sx={{ display: "flex", flexDirection: "column", gap: 3 }}
+              >
+                <Text fontWeight="bold" display="block">
+                  Study Parameters
+                </Text>
+                {Object.keys(config.parameters).map((key) => (
+                  <FormControl key={key}>
+                    <FormControl.Label>{key}</FormControl.Label>
+                    <TextInput
+                      type={typeof config.parameters[key] === "number" ? "number" : "text"}
+                      value={config.parameters[key]}
+                      onChange={(e) => {
+                        const val =
+                          typeof config.parameters[key] === "number" ? parseFloat(e.target.value) : e.target.value;
+                        updateField(key, val);
+                      }}
+                      sx={{ width: "100%" }}
+                    />
+                  </FormControl>
+                ))}
+              </Box>
+            )}
+            <Box mt={3} display="flex" justifyContent="flex-end" sx={{ gap: 2 }}>
+              <Button onClick={() => setIsConfigOpen(false)}>Cancel</Button>
+              <Button variant="primary" onClick={runSimulation} disabled={isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Run Simulation"}
+              </Button>
+            </Box>
+          </Box>
+        </Dialog>
+      )}
     </Box>
   );
 };

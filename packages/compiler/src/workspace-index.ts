@@ -80,9 +80,42 @@ export class WorkspaceIndex {
    * without needing to parse individual files.
    */
   hydrate(uri: string, index: SymbolIndex, parentFQN?: string): void {
-    // We assume the pre-computed index already has valid resourceIds for its symbols
+    const offset = globalIdCounter;
+    let localMaxId = 0;
+
+    const symbols = new Map<SymbolId, SymbolEntry>();
+    for (const [localId, entry] of index.symbols) {
+      if (localId > localMaxId) localMaxId = localId;
+      const globalId = localId >= 0 ? localId + offset : localId;
+      entry.id = globalId;
+      entry.resourceId = uri;
+      if (entry.parentId !== null) {
+        entry.parentId = entry.parentId >= 0 ? entry.parentId + offset : entry.parentId;
+      }
+      symbols.set(globalId, entry);
+    }
+
+    const byName = new Map<string, SymbolId[]>();
+    for (const [name, ids] of index.byName) {
+      byName.set(
+        name,
+        ids.map((id: number) => (id >= 0 ? id + offset : id)),
+      );
+    }
+
+    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    for (const [parentId, ids] of index.childrenOf) {
+      const newParentId = parentId !== null ? (parentId >= 0 ? parentId + offset : parentId) : null;
+      childrenOf.set(
+        newParentId,
+        ids.map((id: number) => (id >= 0 ? id + offset : id)),
+      );
+    }
+
+    globalIdCounter += localMaxId;
+
     this.files.set(uri, {
-      index,
+      index: { symbols, byName, childrenOf },
       oldIndex: null,
       editRanges: null,
       loader: null,
@@ -948,7 +981,24 @@ export class WorkspaceIndex {
     }> = [];
 
     for (const [uri, file] of this.files) {
-      // Infer class name from URI
+      if (file.index) {
+        // File is already parsed or hydrated from bundle
+        // Create copies of entries so we don't mutate the underlying parsed index when stitching
+        for (const [id, entry] of file.index.symbols) symbols.set(id, { ...entry });
+        for (const [name, ids] of file.index.byName) {
+          const existing = byName.get(name);
+          if (existing) existing.push(...ids);
+          else byName.set(name, [...ids]);
+        }
+        for (const [parentId, ids] of file.index.childrenOf) {
+          const existing = childrenOf.get(parentId);
+          if (existing) existing.push(...ids);
+          else childrenOf.set(parentId, [...ids]);
+        }
+        continue;
+      }
+
+      // Infer class name from URI for unparsed files
       const path = uri.startsWith("file://") ? uri.substring(7) : uri;
       const segments = path.split("/");
       const fileName = segments[segments.length - 1];
@@ -980,7 +1030,7 @@ export class WorkspaceIndex {
       pendingEntries.push({ id, name, parentFQN, isPackage, uri });
     }
 
-    // Second pass: resolve parents and build the index
+    // Second pass: resolve parents and build the index for unparsed files
     for (const { id, name, parentFQN, isPackage, uri } of pendingEntries) {
       const parentId = parentFQN ? (fqnToId.get(parentFQN) ?? null) : null;
 
@@ -1000,15 +1050,56 @@ export class WorkspaceIndex {
         resourceId: uri,
       };
 
-      symbols.set(id, entry);
+      // Since nextId started at 1, we must ensure these dummy IDs don't collide with parsed symbols
+      // We'll use negative IDs for these skeleton items
+      const negativeId = -id;
+      entry.id = negativeId;
+      if (entry.parentId !== null) {
+        entry.parentId = -entry.parentId;
+      }
+
+      symbols.set(negativeId, entry);
 
       const existing = byName.get(name);
-      if (existing) existing.push(id);
-      else byName.set(name, [id]);
+      if (existing) existing.push(negativeId);
+      else byName.set(name, [negativeId]);
 
-      const siblings = childrenOf.get(parentId);
-      if (siblings) siblings.push(id);
-      else childrenOf.set(parentId, [id]);
+      const siblings = childrenOf.get(entry.parentId);
+      if (siblings) siblings.push(negativeId);
+      else childrenOf.set(entry.parentId, [negativeId]);
+    }
+
+    // Third pass: stitch parsed files that have parentFQNs so they aren't incorrectly left at the root
+    for (const [uri, file] of this.files) {
+      if (file.index && file.parentFQN) {
+        const parts = file.parentFQN.split(".");
+        const lastName = parts[parts.length - 1];
+        const candidates = byName.get(lastName);
+        if (!candidates || candidates.length === 0) continue;
+        const parentId = candidates[0]; // Simple resolution for skeleton
+
+        const rootChildIds = file.index.childrenOf.get(null);
+        if (rootChildIds) {
+          for (const id of rootChildIds) {
+            const entry = symbols.get(id);
+            if (entry) {
+              entry.parentId = parentId;
+              let children = childrenOf.get(parentId);
+              if (!children) {
+                children = [];
+                childrenOf.set(parentId, children);
+              }
+              if (!children.includes(id)) children.push(id);
+
+              const rootChildren = childrenOf.get(null);
+              if (rootChildren) {
+                const idx = rootChildren.indexOf(id);
+                if (idx !== -1) rootChildren.splice(idx, 1);
+              }
+            }
+          }
+        }
+      }
     }
 
     this.skeletonCache = { symbols, byName, childrenOf };

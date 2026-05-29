@@ -22,17 +22,21 @@ import { historianRouter } from "./routes/historian.js";
 import { npmAuthRouter } from "./routes/npm-auth.js";
 import { npmRegistryRouter } from "./routes/npm-registry.js";
 import { packagesRouter } from "./routes/packages.js";
+import { physicsRouter } from "./routes/physics.js";
 import { publishRouter } from "./routes/publish.js";
 import { rdfRouter } from "./routes/rdf.js";
 import { reposRouter } from "./routes/repos.js";
+import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { simulateRouter } from "./routes/simulate.js";
 import { socialRouter } from "./routes/social.js";
 import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { usersRouter } from "./routes/users.js";
+import { seedCadAssembly } from "./seed-cad-assembly.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
+import { seedScriptsAndTemplates } from "./seed-scripts.js";
 import { LibraryStorage } from "./storage.js";
 import { seedExamplePackages, seedPrepackagedLibraries } from "./util/seed-examples.js";
 
@@ -85,7 +89,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
     // Seed FEA examples
     seedDroneFea(database);
+    seedCadAssembly(database);
     seedDroneCfd(database);
+    seedScriptsAndTemplates(database);
 
     // Run asynchronously in the background
     void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
@@ -225,9 +231,29 @@ graph TD
             csvViewId,
           );
 
+          // GCode Toolpath
+          const gcodeViewId = database.createArtifactView(
+            alice.id,
+            "gcode",
+            "upload",
+            JSON.stringify({
+              url: "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gcode/benchy.gcode",
+              thumbnail_url:
+                "https://images.unsplash.com/photo-1620917670359-4781498b0ed1?auto=format&fit=crop&q=80&w=600",
+            }),
+            "3DBenchy Toolpath",
+          );
+          database.createPost(
+            alice.id,
+            "Check out the sliced GCode for the 3DBenchy benchmark test. Ready for the machine!",
+            gcodeViewId,
+          );
+
           // FEA Simulation
           seedDroneFea(database);
+          seedCadAssembly(database);
           seedDroneCfd(database);
+          seedScriptsAndTemplates(database);
         }
 
         await seedExamplePackages(libraryStorage, database, jobQueue);
@@ -311,6 +337,8 @@ graph TD
   app.use("/api/v1/libraries", graphqlRouter(database));
   app.use("/api/v1/libraries", sparqlRouter(database));
   app.use("/api/v1", simulateRouter(libraryStorage, jobQueue));
+  app.use("/api/v1", physicsRouter(jobQueue, database));
+  app.use("/api/v1/jobs", scriptsRouter(database));
 
   // Artifact viewer routes (query artifact metadata, viewer configs)
   app.use("/api/v1", artifactViewerRouter(database));

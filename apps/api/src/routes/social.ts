@@ -33,6 +33,7 @@ export function socialRouter(database: LibraryDatabase): Router {
       client_signature,
       key_id_string,
       metadata,
+      reply_visibility,
     } = req.body;
 
     if (!content && !repost_of_id && !artifact_view_id) {
@@ -41,6 +42,36 @@ export function socialRouter(database: LibraryDatabase): Router {
     }
 
     try {
+      if (reply_to_id) {
+        const parentPost = database.getPost(reply_to_id, authorId);
+        if (!parentPost) {
+          res.status(404).json({ error: "Parent post not found" });
+          return;
+        }
+
+        const author = database.getUserById(authorId);
+
+        if (parentPost.reply_visibility === "following") {
+          // The author of the parent post must follow the person replying
+          // Wait, is parentPost.author_id accessible? Yes.
+          // Or if they are the same user, it's allowed.
+          if (parentPost.author_id !== authorId) {
+            const isFollowedByAuthor = database.isFollowing(parentPost.author_id, authorId);
+            if (!isFollowedByAuthor) {
+              res.status(403).json({ error: "Only people the author follows can reply" });
+              return;
+            }
+          }
+        } else if (parentPost.reply_visibility === "mentioned") {
+          if (parentPost.author_id !== authorId && author) {
+            const mentionRegex = new RegExp(`@${author.username}\\b`, "i");
+            if (!mentionRegex.test(parentPost.content || "")) {
+              res.status(403).json({ error: "Only accounts mentioned in the post can reply" });
+              return;
+            }
+          }
+        }
+      }
       const { id } = database.createPost(
         authorId,
         content,
@@ -53,6 +84,7 @@ export function socialRouter(database: LibraryDatabase): Router {
         undefined,
         undefined,
         metadata ? JSON.stringify(metadata) : undefined,
+        reply_visibility,
       );
       const post = database.getPost(id, authorId);
 

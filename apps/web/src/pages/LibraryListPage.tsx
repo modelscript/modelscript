@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { AlertIcon, SearchIcon } from "@primer/octicons-react";
-import { Heading, Spinner, Text } from "@primer/react";
+import { AlertIcon, HourglassIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
+import { Heading, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
@@ -90,19 +90,6 @@ const CardInner = styled.div`
   gap: 16px;
 `;
 
-const IconBox = styled.div`
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
-  background: var(--gradient-icon-box);
-  border: 1px solid var(--gradient-icon-box-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-`;
-
 const CardBody = styled.div`
   flex: 1;
   min-width: 0;
@@ -165,16 +152,41 @@ const MetaRow = styled.div`
   }
 `;
 
-const SpinAnimation = styled.div`
-  @keyframes spin {
-    100% {
-      transform: rotate(360deg);
-    }
+const PackageIcon = ({ name, version }: { name: string; version: string }) => {
+  const [error, setError] = useState(false);
+  const iconUrl = `/api/v1/libraries/${name}/${version}/classes/${name}/icon.svg`;
+
+  if (error) {
+    return (
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius: "8px",
+          backgroundColor: "var(--color-done-emphasis)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
+          fontWeight: "bold",
+          fontSize: "16px",
+          flexShrink: 0,
+        }}
+      >
+        📦
+      </Box>
+    );
   }
-  animation: spin 1s linear infinite;
-  display: flex;
-  justify-content: center;
-`;
+
+  return (
+    <img
+      src={iconUrl}
+      alt={`${name} icon`}
+      style={{ width: 40, height: 40, borderRadius: "8px", flexShrink: 0, objectFit: "contain" }}
+      onError={() => setError(true)}
+    />
+  );
+};
 
 /* ─── main page ─── */
 
@@ -190,11 +202,20 @@ const LibraryListPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+
     const fetchLibraries = async () => {
       try {
-        setLoading(true);
         const libs = await getLibraries(query);
         setLibraries(libs);
+
+        // If any library is processing, poll again after 2 seconds
+        const isProcessing = libs.some(
+          (lib) => lib.jobStatus?.status === "pending" || lib.jobStatus?.status === "processing",
+        );
+        if (isProcessing) {
+          timeoutId = setTimeout(fetchLibraries, 2000);
+        }
       } catch (err) {
         setError("Failed to load libraries");
         console.error(err);
@@ -203,8 +224,13 @@ const LibraryListPage: React.FC = () => {
       }
     };
 
-    const timer = setTimeout(fetchLibraries, 300);
-    return () => clearTimeout(timer);
+    setLoading(true);
+    const initialDelay = setTimeout(fetchLibraries, 300);
+
+    return () => {
+      clearTimeout(initialDelay);
+      clearTimeout(timeoutId);
+    };
   }, [query]);
 
   return (
@@ -232,9 +258,7 @@ const LibraryListPage: React.FC = () => {
         {/* Content */}
         {loading && libraries.length === 0 ? (
           <Box display="flex" justifyContent="center" p={12}>
-            <SpinAnimation>
-              <Spinner size="large" />
-            </SpinAnimation>
+            <SyncIcon size={32} className="spinner-spin" fill="var(--color-fg-muted)" />
           </Box>
         ) : error ? (
           <Box
@@ -289,23 +313,7 @@ const LibraryListPage: React.FC = () => {
                   to={lib.latestVersion ? `/packages/${lib.name}/${lib.latestVersion}` : `/packages/${lib.name}`}
                   style={{ textDecoration: "none", color: "inherit", display: "flex", gap: "12px", flex: 1 }}
                 >
-                  <Box
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: "8px",
-                      backgroundColor: "var(--color-done-emphasis)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "white",
-                      fontWeight: "bold",
-                      fontSize: "20px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    📦
-                  </Box>
+                  <PackageIcon name={lib.name} version={lib.latestVersion || "1.0.0"} />
                   <Box flex={1}>
                     <Heading
                       as="h4"
@@ -325,15 +333,39 @@ const LibraryListPage: React.FC = () => {
                         lineHeight: 1.4,
                       }}
                     >
-                      {lib.description || "Modelica library package"}
+                      {lib.description || "Artifact library"}
                     </Text>
+                    {lib.jobStatus && (lib.jobStatus.status === "pending" || lib.jobStatus.status === "processing") && (
+                      <Box display="flex" alignItems="center" gap="8px" mt="8px">
+                        {lib.jobStatus.status === "pending" ? (
+                          <HourglassIcon size={16} fill="var(--color-fg-muted)" />
+                        ) : (
+                          <SyncIcon size={16} className="spinner-spin" fill="var(--color-fg-muted)" />
+                        )}
+                        <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          {lib.jobStatus.status === "pending"
+                            ? "Queued for processing..."
+                            : `Processing... ${
+                                lib.jobStatus.classesProcessed ? `(${lib.jobStatus.classesProcessed} classes)` : ""
+                              }`}
+                        </Text>
+                      </Box>
+                    )}
+                    {lib.jobStatus?.status === "failed" && (
+                      <Box display="flex" alignItems="center" gap="6px" mt="8px">
+                        <AlertIcon size={14} fill="var(--color-danger-fg)" />
+                        <Text style={{ fontSize: "12px", color: "var(--color-danger-fg)" }}>
+                          Processing failed: {lib.jobStatus.error || "Unknown error"}
+                        </Text>
+                      </Box>
+                    )}
                   </Box>
                 </Link>
                 <button
                   style={{
-                    backgroundColor: "var(--color-fg-default)",
-                    color: "var(--color-canvas-default)",
-                    border: "none",
+                    backgroundColor: "transparent",
+                    color: "var(--color-fg-default)",
+                    border: "1px solid var(--color-border)",
                     borderRadius: "9999px",
                     padding: "6px 16px",
                     fontWeight: "bold",

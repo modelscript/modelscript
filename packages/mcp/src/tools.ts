@@ -15,11 +15,7 @@ import {
   createSysML2QueryEngine,
   ModelicaClassInstance,
   ModelicaComponentInstance,
-  ModelicaDAE,
-  ModelicaDAEPrinter,
-  ModelicaFlattener,
   ModelicaStoredDefinitionSyntaxNode,
-  StringWriter,
 } from "@modelscript/core";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import modelicaLangFallback from "@modelscript/modelica/language";
@@ -249,50 +245,16 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           });
           return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
         }
-      } catch {
-        // Fallback to legacy simulator path
-        const instance = ctx.current.query(name);
-        if (!instance) {
-          return {
-            content: [{ type: "text" as const, text: `Class '${name}' not found.` }],
-            isError: true,
-          };
-        }
-
-        const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (instance as any).accept(new ModelicaFlattener(), ["", dae]);
-
-        const exp = dae.experiment;
-        const t0 = startTime ?? exp.startTime ?? 0;
-        const t1 = stopTime ?? exp.stopTime ?? 10;
-        const dt = interval ?? exp.interval ?? (t1 - t0) / 1000;
-
-        const result = simulateArena(dae.arena, {
-          startTime: t0,
-          stopTime: t1,
-          step: dt,
-          solver: (solver ?? "dopri5") as "euler" | "rk4" | "dopri5" | "auto",
-        });
-        const states = result.states;
-
-        if ((format ?? "json") === "csv") {
-          const lines = [`time,${states.join(",")}`];
-          for (let i = 0; i < result.t.length; i++) {
-            const values = [result.t[i], ...states.map((_: string, vi: number) => result.y[i]?.[vi] ?? 0)];
-            lines.push(values.join(","));
-          }
-          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
-        } else {
-          const rows = result.t.map((t: number, i: number) => {
-            const row: Record<string, number> = { time: t };
-            states.forEach((state: string, vi: number) => {
-              row[state] = result.y[i]?.[vi] ?? 0;
-            });
-            return row;
-          });
-          return { content: [{ type: "text" as const, text: JSON.stringify(rows, null, 2) }] };
-        }
+      } catch (e) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Simulation failed: ${e instanceof Error ? e.message : String(e)}`,
+            },
+          ],
+          isError: true,
+        };
       }
     },
   );
@@ -576,18 +538,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
 
       // Flatten to get equations
-      const dae = new ModelicaDAE(element.name ?? name, element.description);
+      let flatText = "";
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (element as any).accept(new ModelicaFlattener(), ["", dae]);
+        flatText = ctx.current.flatten(name) ?? "";
       } catch {
         // Flatten may fail for some classes — still return what we can
       }
 
       const equationTexts: string[] = [];
-      const out = new StringWriter();
-      dae.accept(new ModelicaDAEPrinter(out));
-      const flatText = out.toString();
       // Extract equation lines from flattened output
       const eqMatch = flatText.match(/equation\n([\s\S]*?)(?:\nend |$)/);
       if (eqMatch?.[1]) {

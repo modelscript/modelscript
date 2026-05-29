@@ -299,7 +299,7 @@ app.get("/", (_req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; height: 100vh; }
+  body { font-family: system-ui, sans-serif; background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 40px 0; }
   .container { text-align: center; width: 100%; max-width: 800px; padding: 0 20px; }
   h1 { font-size: 2.5rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #58a6ff, #bc8cff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   p { margin-bottom: 2rem; opacity: 0.7; }
@@ -355,6 +355,11 @@ app.get("/", (_req, res) => {
       <span class="tpl-name">STEP to Multi-Body</span>
       <span class="tpl-desc">Auto-generate simulation-ready Modelica assemblies directly from 3D STEP CAD geometry.</span>
     </a>
+    <a href="/vscode/workbench/#memfs:modelica-procedural-cad" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path><circle cx="12" cy="12" r="2" fill="currentColor"></circle></svg></div>
+      <span class="tpl-name">Modelica Procedural CAD</span>
+      <span class="tpl-desc">Construct 3D CAD geometries procedurally using the Modelica shape language extension.</span>
+    </a>
   </div>
 
   <div class="divider">Basic Templates</div>
@@ -402,6 +407,22 @@ app.get("/", (_req, res) => {
     <a href="/vscode/workbench/#memfs:cad" class="tpl-card">
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg></div>
       <span class="tpl-name">3D CAD Polyglot</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:cad-assembly" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path></svg></div>
+      <span class="tpl-name">CAD Assembly Explorer</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:drone-meshing" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4zM4 12h16M12 4v16M8 4v16M16 4v16M4 8h16M4 16h16" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">Drone Meshing</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:drone-fea" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 12l4-4M12 12l-4-4M12 12l-4 4M12 12l4 4M12 12V3" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">Drone FEA</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:drone-cfd" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M8 8h8M8 16h8" stroke-linecap="round"/><path d="M19 12a3 3 0 11-6 0M16 8a3 3 0 11-6 0M16 16a3 3 0 11-6 0" stroke-linecap="round"/></svg></div>
+      <span class="tpl-name">Drone CFD</span>
     </a>
   </div>
 </div>

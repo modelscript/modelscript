@@ -193,7 +193,18 @@ const FlowStreaks: React.FC<{
   colormapTexture: THREE.DataTexture;
   scale?: number;
   animate?: boolean;
-}> = ({ geometry, velocityData, association, vMin, vMax, colormapTexture, scale = 1.0, animate = true }) => {
+  downsampleFactor?: number;
+}> = ({
+  geometry,
+  velocityData,
+  association,
+  vMin,
+  vMax,
+  colormapTexture,
+  scale = 1.0,
+  animate = true,
+  downsampleFactor = 1,
+}) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   // Compute model scale to size the streaks relative to the model
@@ -207,7 +218,8 @@ const FlowStreaks: React.FC<{
     const indices = geometry.getIndex()?.array;
 
     const isCellData = association === "cell";
-    const count = isCellData ? velocityData.length / 3 : posOriginal.length / 3;
+    const totalCount = isCellData ? velocityData.length / 3 : posOriginal.length / 3;
+    const count = Math.ceil(totalCount / downsampleFactor);
 
     // Use a small thin cylinder
     const baseCylinder = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 5);
@@ -226,26 +238,28 @@ const FlowStreaks: React.FC<{
     const thickness = modelScale * 0.003;
 
     for (let i = 0; i < count; i++) {
+      const idx = Math.min(i * downsampleFactor, totalCount - 1);
+
       // eslint-disable-next-line react-hooks/purity
       randoms[i] = Math.random();
 
       let px: number, py: number, pz: number;
-      if (isCellData && indices && i * 3 + 2 < indices.length) {
-        const a = indices[i * 3];
-        const b = indices[i * 3 + 1];
-        const c = indices[i * 3 + 2];
+      if (isCellData && indices && idx * 3 + 2 < indices.length) {
+        const a = indices[idx * 3];
+        const b = indices[idx * 3 + 1];
+        const c = indices[idx * 3 + 2];
         px = (posOriginal[a * 3] + posOriginal[b * 3] + posOriginal[c * 3]) / 3.0;
         py = (posOriginal[a * 3 + 1] + posOriginal[b * 3 + 1] + posOriginal[c * 3 + 1]) / 3.0;
         pz = (posOriginal[a * 3 + 2] + posOriginal[b * 3 + 2] + posOriginal[c * 3 + 2]) / 3.0;
       } else {
-        px = posOriginal[i * 3];
-        py = posOriginal[i * 3 + 1];
-        pz = posOriginal[i * 3 + 2];
+        px = posOriginal[idx * 3];
+        py = posOriginal[idx * 3 + 1];
+        pz = posOriginal[idx * 3 + 2];
       }
 
-      const vx = velocityData[i * 3];
-      const vy = velocityData[i * 3 + 1];
-      const vz = velocityData[i * 3 + 2];
+      const vx = velocityData[idx * 3];
+      const vy = velocityData[idx * 3 + 1];
+      const vz = velocityData[idx * 3 + 2];
 
       const vel = new THREE.Vector3(vx, vy, vz);
       const mag = vel.length();
@@ -268,7 +282,7 @@ const FlowStreaks: React.FC<{
     instancedGeo.setAttribute("velocityMag", new THREE.InstancedBufferAttribute(velocityMags, 1));
 
     return { instancedGeo, numInstances: count };
-  }, [geometry, velocityData, association, modelScale]);
+  }, [geometry, velocityData, association, modelScale, downsampleFactor]);
 
   const material = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -747,6 +761,7 @@ const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({ viewCon
                   colormapTexture={colormapTexture}
                   scale={0.02} // Adjust this based on your velocity magnitude vs mesh scale
                   animate={animateFlow}
+                  downsampleFactor={isThumbnail ? 100 : 1}
                 />
               )}
             </group>

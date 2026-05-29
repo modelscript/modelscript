@@ -58,6 +58,8 @@ export default grammar({
           ),
           field("operator", "operator"),
           field("optimization", "optimization"),
+          field("shape", "shape"),
+          field("study", "study"),
         ),
       ),
     _ClassSpecifier: ($) => choice($.LongClassSpecifier, $.ShortClassSpecifier, $.DerClassSpecifier),

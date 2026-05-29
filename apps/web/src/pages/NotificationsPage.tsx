@@ -2,25 +2,70 @@
 import { HeartFillIcon, MentionIcon, PersonIcon, ReplyIcon, StarIcon } from "@primer/octicons-react";
 import { Heading, Spinner, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
+import ProfileHoverCard from "../components/ProfileHoverCard";
 import { API_BASE_URL } from "../config";
 
 import { StickyHeader } from "../components/SharedStyles";
+
+function formatRelativeTime(dateString: string): string {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return `${Math.max(1, diffInSeconds)}s`;
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h`;
+
+  if (now.getFullYear() !== date.getFullYear()) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function formatPostContent(content: string) {
+  if (!content) return null;
+  const parts = content.split(/((?:^|\s)@[a-zA-Z0-9_]+)/g);
+  return parts.map((part, idx) => {
+    const match = part.match(/^(\s*)(@[a-zA-Z0-9_]+)$/);
+    if (match) {
+      const username = match[2].substring(1);
+      return (
+        <React.Fragment key={idx}>
+          {match[1]}
+          <ProfileHoverCard username={username}>
+            <Link
+              to={`/${username}`}
+              style={{ color: "#1d9bf0", textDecoration: "none" }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+            >
+              {match[2]}
+            </Link>
+          </ProfileHoverCard>
+        </React.Fragment>
+      );
+    }
+    return <React.Fragment key={idx}>{part}</React.Fragment>;
+  });
+}
 
 const NotificationWrapper = styled.div<{ $unread: boolean }>`
   display: flex;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid var(--color-border-default);
-  background-color: ${(props) => (props.$unread ? "var(--color-canvas-subtle)" : "transparent")};
+  border-bottom: 1px solid var(--color-border);
+  background-color: ${(props) => (props.$unread ? "var(--color-bg-secondary)" : "transparent")};
   cursor: pointer;
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-bg-secondary);
   }
 `;
 
@@ -152,6 +197,7 @@ function groupNotifications(notifs: any[]) {
 
 const NotificationsPage: React.FC = () => {
   const { token, user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -219,57 +265,162 @@ const NotificationsPage: React.FC = () => {
             }
 
             return (
-              <Link
+              <NotificationWrapper
                 key={notif.id}
-                to={
-                  notif.type === "follow"
-                    ? `/${notif.actors[0].username}`
-                    : `/${user?.username}/status/${notif.post_id}`
-                }
-                style={{ textDecoration: "none", color: "inherit" }}
+                $unread={!notif.read}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("a, button, .interactive-element")) return;
+                  const url =
+                    notif.type === "follow"
+                      ? `/${notif.actors[0].username}`
+                      : `/${user?.username}/status/${notif.post_id}`;
+                  navigate(url);
+                }}
               >
-                <NotificationWrapper $unread={!notif.read}>
-                  <Box width={40} display="flex" justifyContent="flex-end" pt={1}>
-                    {getIconForType(notif.type)}
-                  </Box>
-                  <Box flex={1} display="flex" flexDirection="row">
-                    <Box flex={1}>
-                      <AvatarsRow>
-                        {notif.actors.slice(0, 10).map((a: any) => (
-                          <Avatar key={a.username} $url={a.avatar_url} />
-                        ))}
-                      </AvatarsRow>
-                      <Box mt={1} fontSize="15px">
-                        {getMessageForType(notif.type, notif.actors)}
+                {notif.type === "mention" || notif.type === "reply" ? (
+                  <>
+                    <Box width={40} display="flex" justifyContent="flex-end" pt={1}>
+                      <Avatar $url={notif.actors[0].avatar_url} style={{ width: 40, height: 40 }} />
+                    </Box>
+                    <Box flex={1} display="flex" flexDirection="row">
+                      <Box flex={1}>
+                        <Box display="flex" alignItems="center" gap="4px" mb="4px" fontSize="15px">
+                          <ProfileHoverCard username={notif.actors[0].username}>
+                            <Link
+                              to={`/${notif.actors[0].username}`}
+                              style={{
+                                fontWeight: "bold",
+                                color: "var(--color-fg-default)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                textDecoration: "none",
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                              onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                            >
+                              {notif.actors[0].display_name || notif.actors[0].username}
+                            </Link>
+                          </ProfileHoverCard>
+                          <span
+                            style={{
+                              color: "var(--color-text-muted)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            @{notif.actors[0].username}
+                          </span>
+                          <span style={{ color: "var(--color-text-muted)" }}>·</span>
+                          <span style={{ color: "var(--color-text-muted)", whiteSpace: "nowrap" }}>
+                            {formatRelativeTime(notif.created_at || new Date().toISOString())}
+                          </span>
+                        </Box>
+                        {notif.type === "reply" && (
+                          <Box fontSize="15px" color="var(--color-fg-muted)" mb="4px">
+                            Replying to{" "}
+                            {(() => {
+                              const mentions = new Set<string>();
+                              const regex = /(?:^|\s)@([a-zA-Z0-9_]+)/g;
+                              let match;
+                              while ((match = regex.exec(notif.post_content || "")) !== null) {
+                                mentions.add(match[1]);
+                              }
+                              const handles = Array.from(mentions);
+                              if (handles.length === 0 && user?.username) {
+                                handles.push(user.username);
+                              }
+                              return handles.map((handle, idx) => (
+                                <React.Fragment key={handle}>
+                                  <ProfileHoverCard username={handle}>
+                                    <Link
+                                      to={`/${handle}`}
+                                      style={{ color: "#1d9bf0", textDecoration: "none" }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                                      onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
+                                    >
+                                      @{handle}
+                                    </Link>
+                                  </ProfileHoverCard>
+                                  {idx < handles.length - 1 && " "}
+                                </React.Fragment>
+                              ));
+                            })()}
+                          </Box>
+                        )}
+                        {notif.post_content && (
+                          <Box
+                            fontSize="15px"
+                            color="var(--color-text-muted)"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {formatPostContent(notif.post_content)}
+                          </Box>
+                        )}
                       </Box>
-                      {notif.post_content && (
-                        <Box
-                          mt={1}
-                          color="var(--color-fg-muted)"
-                          fontSize="15px"
-                          style={{
-                            display: "-webkit-box",
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: "vertical",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {notif.post_content}
+                      {thumbnail && (
+                        <Box width="60px" height="60px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
+                          <img
+                            src={thumbnail}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            alt="attachment thumbnail"
+                          />
                         </Box>
                       )}
                     </Box>
-                    {thumbnail && (
-                      <Box width="60px" height="60px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
-                        <img
-                          src={thumbnail}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          alt="attachment thumbnail"
-                        />
+                  </>
+                ) : (
+                  <>
+                    <Box width={40} display="flex" justifyContent="flex-end" pt={1}>
+                      {getIconForType(notif.type)}
+                    </Box>
+                    <Box flex={1} display="flex" flexDirection="row">
+                      <Box flex={1}>
+                        <AvatarsRow>
+                          {notif.actors.slice(0, 10).map((a: any) => (
+                            <Avatar key={a.username} $url={a.avatar_url} />
+                          ))}
+                        </AvatarsRow>
+                        <Box mt={1} fontSize="15px">
+                          {getMessageForType(notif.type, notif.actors)}
+                        </Box>
+                        {notif.post_content && (
+                          <Box
+                            mt={1}
+                            color="var(--color-text-muted)"
+                            fontSize="15px"
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                            }}
+                          >
+                            {formatPostContent(notif.post_content)}
+                          </Box>
+                        )}
                       </Box>
-                    )}
-                  </Box>
-                </NotificationWrapper>
-              </Link>
+                      {thumbnail && (
+                        <Box width="60px" height="60px" borderRadius="8px" overflow="hidden" ml={2} flexShrink={0}>
+                          <img
+                            src={thumbnail}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            alt="attachment thumbnail"
+                          />
+                        </Box>
+                      )}
+                    </Box>
+                  </>
+                )}
+              </NotificationWrapper>
             );
           })}
           {notifications.length === 0 && token && (

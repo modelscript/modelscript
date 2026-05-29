@@ -81,14 +81,14 @@ const SearchInput = styled.input`
   padding: 12px 16px;
   border-radius: 9999px;
   border: 1px solid var(--color-border-default);
-  background-color: var(--color-canvas-subtle);
+  background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
   outline: none;
   font-size: 15px;
 
   &:focus {
     border-color: var(--color-accent-emphasis);
-    background-color: var(--color-canvas-default);
+    background-color: var(--color-bg-primary);
   }
 `;
 

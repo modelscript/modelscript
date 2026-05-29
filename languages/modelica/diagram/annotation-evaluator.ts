@@ -3,7 +3,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import {
-  ModelicaAnnotationClauseSyntaxNode,
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -28,29 +27,29 @@ import {
 // in Icon/Diagram/Placement annotations. The evaluator resolves qualified
 // references like FillPattern.Solid directly from this table.
 
-type EnumDef = Record<string, number>;
+type EnumDef = Record<string, string>;
 
 const ANNOTATION_ENUMS: Record<string, EnumDef> = {
   FillPattern: {
-    None: 0,
-    Solid: 1,
-    Horizontal: 2,
-    Vertical: 3,
-    Cross: 4,
-    Forward: 5,
-    Backward: 6,
-    CrossDiag: 7,
-    HorizontalCylinder: 8,
-    VerticalCylinder: 9,
-    Sphere: 10,
+    None: "None",
+    Solid: "Solid",
+    Horizontal: "Horizontal",
+    Vertical: "Vertical",
+    Cross: "Cross",
+    Forward: "Forward",
+    Backward: "Backward",
+    CrossDiag: "CrossDiag",
+    HorizontalCylinder: "HorizontalCylinder",
+    VerticalCylinder: "VerticalCylinder",
+    Sphere: "Sphere",
   },
-  LinePattern: { None: 0, Solid: 1, Dash: 2, Dot: 3, DashDot: 4, DashDotDot: 5 },
-  Arrow: { None: 0, Open: 1, Filled: 2, Half: 3 },
-  Smooth: { None: 0, Bezier: 1 },
-  BorderPattern: { None: 0, Raised: 1, Sunken: 2, Engraved: 3 },
-  EllipseClosure: { None: 0, Chord: 1, Radial: 2, Automatic: 3 },
-  TextAlignment: { Left: 0, Center: 1, Right: 2 },
-  TextStyle: { Bold: 0, Italic: 1, UnderLine: 2 },
+  LinePattern: { None: "None", Solid: "Solid", Dash: "Dash", Dot: "Dot", DashDot: "DashDot", DashDotDot: "DashDotDot" },
+  Arrow: { None: "None", Open: "Open", Filled: "Filled", Half: "Half" },
+  Smooth: { None: "None", Bezier: "Bezier" },
+  BorderPattern: { None: "None", Raised: "Raised", Sunken: "Sunken", Engraved: "Engraved" },
+  EllipseClosure: { None: "None", Chord: "Chord", Radial: "Radial", Automatic: "Automatic" },
+  TextAlignment: { Left: "Left", Center: "Center", Right: "Right" },
+  TextStyle: { Bold: "Bold", Italic: "Italic", UnderLine: "UnderLine" },
 };
 
 // ── Lightweight CST Expression Evaluator ────────────────────────────────────
@@ -346,9 +345,13 @@ export class AnnotationEvaluator {
   /**
    * Evaluate an annotation by name (like "Icon", "Diagram", or "Placement")
    */
-  public evaluate(ast: ModelicaAnnotationClauseSyntaxNode | null | undefined, name: string): any {
-    if (!ast?.classModification) return null;
-    const layerMod = this.findModByName(ast.classModification, name);
+  public evaluate(ast: any, name: string): any {
+    let classMod = ast?.classModification;
+    if (!classMod && ast?.annotationClause?.classModification) {
+      classMod = ast.annotationClause.classModification;
+    }
+    if (!classMod) return null;
+    const layerMod = this.findModByName(classMod, name);
     if (!layerMod) return null;
 
     return this.parseMod(layerMod, name);

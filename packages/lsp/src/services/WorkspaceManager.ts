@@ -33,7 +33,31 @@ export class WorkspaceManager {
   public resolveModelicaClassInstance(uri: string, className?: string): ModelicaClassInstance | null {
     if (className) {
       const idx = this.unifiedWorkspace.toUnifiedPartial();
-      const symbolIds = idx.byName.get(className) || [];
+      let symbolIds = idx.byName.get(className) || [];
+
+      // Try multi-part resolution for fully qualified names ("A.B.C")
+      if (symbolIds.length === 0 && className.includes(".")) {
+        const parts = className.split(".");
+        let currentIds = idx.byName.get(parts[0]) || [];
+        for (let i = 1; i < parts.length && currentIds.length > 0; i++) {
+          const part = parts[i];
+          const nextIds: any[] = [];
+          for (const parentId of currentIds) {
+            const children = idx.childrenOf.get(parentId);
+            if (children) {
+              for (const childId of children) {
+                const childEntry = idx.symbols.get(childId);
+                if (childEntry && childEntry.name === part) {
+                  nextIds.push(childId);
+                }
+              }
+            }
+          }
+          currentIds = nextIds;
+        }
+        symbolIds = currentIds;
+      }
+
       const entry = idx.symbols.get(symbolIds[0]);
       if (entry && entry.resourceId) {
         let engine = entry.resourceId.endsWith(".sysml")

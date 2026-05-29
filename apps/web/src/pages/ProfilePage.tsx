@@ -513,7 +513,7 @@ const ProfilePage: React.FC = () => {
       </Box>
 
       <TabBar>
-        {["Posts", ...(profile.account_type === "rss" ? [] : ["Replies", "Packages", "Repos"])].map((tab) => (
+        {["Posts", ...(profile.account_type === "rss" ? [] : ["Replies", "Artifacts", "Repos"])].map((tab) => (
           <Tab key={tab} $active={activeTab === tab} onClick={() => setActiveTab(tab)}>
             {tab}
           </Tab>

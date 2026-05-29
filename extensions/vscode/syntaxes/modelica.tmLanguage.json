@@ -6,12 +6,39 @@
     { "include": "#comments" },
     { "include": "#strings" },
     { "include": "#numbers" },
+    { "include": "#declarations" },
     { "include": "#keywords" },
     { "include": "#type-keywords" },
     { "include": "#operators" },
     { "include": "#identifiers" }
   ],
   "repository": {
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(class|model|block|connector|record|function|type|enumeration|expandable)\\s+([_a-zA-Z][_a-zA-Z0-9]*)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.type.modelica"
+            },
+            "2": {
+              "name": "support.type.modelica"
+            }
+          }
+        },
+        {
+          "match": "\\b(package)\\s+([_a-zA-Z][_a-zA-Z0-9]*)\\b",
+          "captures": {
+            "1": {
+              "name": "storage.modifier.modelica"
+            },
+            "2": {
+              "name": "support.type.modelica"
+            }
+          }
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {
@@ -55,8 +82,28 @@
     "keywords": {
       "patterns": [
         {
+          "name": "keyword.control.modelica",
+          "match": "\\b(if|then|else|elseif|when|elsewhen|while|for|loop|return|break|each)\\b"
+        },
+        {
+          "name": "storage.type.modelica",
+          "match": "\\b(class|model|package|shape|block|connector|record|function|type|enumeration|expandable)\\b"
+        },
+        {
+          "name": "storage.modifier.modelica",
+          "match": "\\b(parameter|constant|discrete|continuous|partial|protected|public|inner|outer|replaceable|redeclare|final|encapsulated|flow|stream|input|output|pure|impure|import|annotation|end|extends|constrainedby)\\b"
+        },
+        {
+          "name": "constant.language.modelica",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.modelica",
+          "match": "\\b(and|or|not)\\b"
+        },
+        {
           "name": "keyword.other.modelica",
-          "match": "\\b(algorithm|and|annotation|block|break|class|connect|connector|constant|constrainedby|der|discrete|each|else|elseif|elsewhen|encapsulated|end|enumeration|equation|expandable|extends|external|false|final|flow|for|function|if|import|impure|initial|inner|input|loop|model|not|operator|or|outer|output|package|parameter|partial|protected|public|pure|record|redeclare|replaceable|return|stream|then|true|type|when|while|within)\\b"
+          "match": "\\b(algorithm|connect|der|equation|external|initial|operator|within)\\b"
         }
       ]
     },
@@ -79,8 +126,20 @@
     "identifiers": {
       "patterns": [
         {
+          "name": "entity.name.function.modelica",
+          "match": "\\b[_a-zA-Z][_a-zA-Z0-9]*(?=\\s*\\()"
+        },
+        {
+          "name": "variable.other.readwrite.modelica",
+          "match": "\\b[_a-zA-Z][_a-zA-Z0-9]*(?=\\s*=)"
+        },
+        {
+          "name": "support.type.modelica",
+          "match": "\\b[A-Z][_a-zA-Z0-9]*\\b"
+        },
+        {
           "name": "variable.other.modelica",
-          "match": "\\b[_a-zA-Z][_a-zA-Z0-9]*\\b"
+          "match": "\\b[_a-z][_a-zA-Z0-9]*\\b"
         },
         {
           "name": "variable.other.quoted.modelica",

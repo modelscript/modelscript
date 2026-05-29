@@ -93,18 +93,6 @@ const VersionName = styled.span`
   gap: 8px;
 `;
 
-const IconBox = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: var(--gradient-icon-box);
-  border: 1px solid var(--color-border-strong);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-`;
-
 /* ─── main page ─── */
 
 const LibraryVersionPage: React.FC = () => {
@@ -163,9 +151,7 @@ const LibraryVersionPage: React.FC = () => {
           <Breadcrumbs items={[{ label: "Libraries", href: "/packages" }, { label: name || "" }]} />
         </Box>
         <Box display="flex" alignItems="center" gap="16px">
-          <IconBox>
-            <PackageIcon size={24} fill="var(--color-accent-purple)" />
-          </IconBox>
+          <PackageIcon size={48} fill="var(--color-accent-purple)" style={{ flexShrink: 0 }} />
           <Box>
             <Box display="flex" alignItems="center" gap="8px">
               <Heading as="h1" style={{ color: "var(--color-text-heading)", fontWeight: 700, fontSize: 28, margin: 0 }}>

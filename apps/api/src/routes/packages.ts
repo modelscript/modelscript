@@ -42,10 +42,23 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
     const names = storage.list(query);
     const packages = names.map((name) => {
       const versions = storage.versions(name);
+      const latestVersion = versions[0] || null;
+      let jobStatus = null;
+      if (latestVersion) {
+        const status = jobQueue.getStatus(`${name}@${latestVersion}`);
+        if (status) {
+          jobStatus = {
+            status: status.status,
+            classesProcessed: status.classesProcessed,
+            error: status.error,
+          };
+        }
+      }
       return {
         name,
         versions,
-        latestVersion: versions[0] || null,
+        latestVersion,
+        jobStatus,
       };
     });
     res.json({ packages });
@@ -501,6 +514,37 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
 
     res.setHeader("Content-Type", "image/svg+xml");
     res.send(svg);
+  });
+
+  /**
+   * GET /api/v1/libraries/:name/:version/icons
+   *
+   * Serve all icon SVGs as a JSON map { className: svgString }.
+   * Used by the LSP to bulk-populate the icon cache when lsp-bundle is unavailable.
+   */
+  router.get("/:name/:version/icons", (req: Request, res: Response): void => {
+    const name = req.params["name"];
+    const version = req.params["version"];
+
+    if (typeof name !== "string" || typeof version !== "string") {
+      res.status(400).json({ error: "Package name and version are required" });
+      return;
+    }
+
+    const classNames = storage.listClasses(name, version);
+    const icons: Record<string, string> = {};
+
+    for (const className of classNames) {
+      const svg = storage.readSvg(name, version, className, "icon");
+      if (svg) {
+        const hasVisual = /<(line|rect|circle|path|polygon|polyline|ellipse|text|image)\b/i.test(svg);
+        if (hasVisual) {
+          icons[className] = svg;
+        }
+      }
+    }
+
+    res.json({ icons });
   });
 
   /**

@@ -2854,8 +2854,9 @@ export default language({
               "record",
               "operator record",
               "package",
+              "shape",
             ]);
-            const noAlgorithms = new Set(["type", "connector", "expandable connector", "package"]);
+            const noAlgorithms = new Set(["type", "connector", "expandable connector", "package", "shape"]);
 
             if (!noEquations.has(prefix) && !noAlgorithms.has(prefix)) return null;
 
@@ -3119,6 +3120,7 @@ export default language({
           ),
           field("operator", "operator"),
           field("optimization", "optimization"),
+          field("shape", "shape"),
         ),
       ),
 

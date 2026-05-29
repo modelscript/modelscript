@@ -1,10 +1,27 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
 // @ts-nocheck
+import { buildSysML2DiagramData, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import { Connection } from "vscode-languageserver";
+import { ModelicaDiagramBackend, SysML2DiagramBackend, createDiagramDispatch } from "../diagramApi";
+import { buildDiagramData } from "../diagramData";
+import { createEmptyLayout, removeElements, updateConnectionVertices, updateElementPositions } from "../sysml2-layout";
+import {
+  computeSysML2ConnectionDelete,
+  computeSysML2ConnectionInsert,
+  computeSysML2DescriptionEdit,
+  computeSysML2ElementDelete,
+  computeSysML2ElementInsert,
+  computeSysML2NameEdit,
+  computeSysML2ParameterEdit,
+  generateUniqueName,
+} from "../sysml2DiagramEdits";
 import { DocumentManager } from "./DocumentManager";
 import { WorkspaceManager } from "./WorkspaceManager";
 
 export class DiagramService {
+  private sysml2Layouts = new Map<string, any>();
+  private diagramDispatch: any;
+
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
@@ -24,31 +41,31 @@ export class DiagramService {
     // Modelica — check cache first.
     // Use the last-indexed text as the cache key rather than doc.version.
     // doc.version increments on every keystroke, making the cache useless
-    // during interactive editing. lastIndexedText only updates when the
+    // during interactive editing. (globalThis as any).lastIndexedText only updates when the
     // semantic pipeline actually re-indexes, so intermediate keystrokes
     // reuse the previous diagram data.
     const effectiveUri = params.uri.startsWith("modelscript-lib://global")
       ? "file://" + params.uri.substring("modelscript-lib://global".length)
       : params.uri;
-    const indexedText = lastIndexedText.get(effectiveUri);
+    const indexedText = (globalThis as any).lastIndexedText.get(effectiveUri);
     const version =
       indexedText != null
-        ? `idx:${indexedText.length}:${simpleHash(indexedText)}|${dependenciesReady}`
-        : dependenciesReady
+        ? `idx:${indexedText.length}:${(globalThis as any).simpleHash(indexedText)}|${(globalThis as any).dependenciesReady}`
+        : (globalThis as any).dependenciesReady
           ? "deps-ready"
           : "deps-loading";
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-    const cached = diagramCache.get(cacheKey);
+    const cached = (globalThis as any).diagramCache.get(cacheKey);
     if (cached && cached.version === version) {
       this.connection.console.info(`[diagram-perf] cache hit for ${params.uri}`);
       return cached.data;
     }
 
     const t0 = performance.now();
-    const classInstance = workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
+    const classInstance = this.workspaceManager.resolveModelicaClassInstance(params.uri, params.className);
 
     if (!classInstance) {
-      if (!dependenciesReady) {
+      if (!(globalThis as any).dependenciesReady) {
         return {
           nodes: [],
           edges: [],
@@ -74,14 +91,14 @@ export class DiagramService {
       const result = await buildDiagramData(classInstance);
       const tBuild = performance.now() - tBuild0;
       if (result) {
-        (result as any).isLoading = !dependenciesReady;
+        (result as any).isLoading = !(globalThis as any).dependenciesReady;
       }
       this.connection.console.error(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
       );
 
       // Cache the result
-      diagramCache.set(cacheKey, { version, data: result });
+      (globalThis as any).diagramCache.set(cacheKey, { version, data: result });
 
       return result;
     } catch (e: any) {
@@ -91,18 +108,25 @@ export class DiagramService {
   }
 
   getDiagramDispatch() {
-    if (!diagramDispatch) {
+    if (!this.diagramDispatch) {
       const modelicaBackend = new ModelicaDiagramBackend({
-        getDocumentInstances: (uri) => workspaceManager.documentInstances.get(uri),
-        getDocumentText: (uri) => documents.get(uri)?.getText(),
-        resolveClassInstance: resolveModelicaClassInstance,
-        flushValidation,
+        getDocumentInstances: (uri) => this.workspaceManager.documentInstances.get(uri),
+        getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
+        resolveClassInstance: (uri: string, name?: string) =>
+          this.workspaceManager.resolveModelicaClassInstance(uri, name),
+        flushValidation: async (uri: string) => {
+          const f = (globalThis as any).validateTextDocument;
+          if (f) {
+            const doc = this.documentManager.documents.get(uri);
+            if (doc) await f(doc);
+          }
+        },
       });
 
       const sysml2Backend = new SysML2DiagramBackend({
-        getDocumentText: (uri) => documents.get(uri)?.getText(),
-        getLayout: (uri) => sysml2Layouts.get(uri),
-        setLayout: (uri, layout) => sysml2Layouts.set(uri, layout),
+        getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
+        getLayout: (uri) => this.sysml2Layouts.get(uri),
+        setLayout: (uri, layout) => this.sysml2Layouts.set(uri, layout),
         createEmptyLayout,
         updateElementPositions,
         updateConnectionVertices,
@@ -110,7 +134,7 @@ export class DiagramService {
         buildDiagramData: (params) => {
           // Delegate to the existing SysML2 diagram data builder inline
           try {
-            const unified = workspaceManager.unifiedWorkspace.toUnified();
+            const unified = this.workspaceManager.unifiedWorkspace.toUnified();
             const resolver = createSysML2ScopeResolver(unified);
             const diagramTypeRaw = params.diagramType ?? "All";
             const validTypes = [
@@ -141,7 +165,7 @@ export class DiagramService {
             const data = buildSysML2DiagramData(unified, params.uri, resolver, diagramType);
 
             // Merge stored layout positions
-            const layout = sysml2Layouts.get(params.uri);
+            const layout = this.sysml2Layouts.get(params.uri);
             if (layout && data) {
               for (const node of data.nodes) {
                 const sym = [...unified.symbols.values()].find(
@@ -166,7 +190,10 @@ export class DiagramService {
             return null;
           }
         },
-        getSysML2Parser: () => (sysml2ParserReady && sysml2Parser ? sysml2Parser : null),
+        getSysML2Parser: () =>
+          (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
+            ? (globalThis as any).sysml2Parser
+            : null,
         computeConnectionInsert: computeSysML2ConnectionInsert,
         computeConnectionDelete: computeSysML2ConnectionDelete,
         computeElementInsert: computeSysML2ElementInsert,
@@ -177,7 +204,7 @@ export class DiagramService {
         computeParameterEdit: computeSysML2ParameterEdit,
         getSymbolData: (uri, componentName) => {
           try {
-            const unified = workspaceManager.unifiedWorkspace.toUnifiedPartial();
+            const unified = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
             // Find the symbol matching the component name in this document
             for (const [, sym] of unified.symbols) {
               if (sym.resourceId === uri && sym.name === componentName) {
@@ -197,7 +224,7 @@ export class DiagramService {
                 }
                 // Try to extract doc comment from source text
                 let description: string | undefined;
-                const docText = documents.get(uri)?.getText();
+                const docText = this.documentManager.documents.get(uri)?.getText();
                 if (docText && typeof sym.startByte === "number" && typeof sym.endByte === "number") {
                   const snippet = docText.substring(sym.startByte, sym.endByte);
                   const docMatch = snippet.match(/doc\s*\/\*\s*(.*?)\s*\*\//);
@@ -219,11 +246,11 @@ export class DiagramService {
         },
       });
 
-      diagramDispatch = createDiagramDispatch({
+      this.diagramDispatch = createDiagramDispatch({
         modelica: modelicaBackend,
         sysml2: sysml2Backend,
       });
     }
-    return diagramDispatch;
+    return this.diagramDispatch;
   }
 }

@@ -32,6 +32,7 @@ export function getCompositeName(entry: any, index: any): string {
 
 export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
   const nodes: TreeNodeInfo[] = [];
+  const seen = new Set<string>();
 
   if (!parentId) {
     // Root level: get children of null (top-level symbols)
@@ -40,6 +41,9 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;
       const compositeName = entry.name; // Root classes have no parent
+      if (seen.has(compositeName)) continue;
+      seen.add(compositeName);
+
       nodes.push({
         id: compositeName,
         name: entry.name,
@@ -72,6 +76,9 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
         const entry = index.symbols.get(id);
         if (!entry || !isTreeVisible(entry)) continue;
         const compositeName = parentId + "." + entry.name;
+        if (seen.has(compositeName)) continue;
+        seen.add(compositeName);
+
         nodes.push({
           id: compositeName,
           name: entry.name,

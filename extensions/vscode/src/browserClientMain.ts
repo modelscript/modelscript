@@ -4,7 +4,8 @@ import { LanguageClientOptions } from "vscode-languageclient";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { AnalysisPanel } from "./analysisPanel";
 import { boxTexturedBase64, foxBase64 } from "./cadModels";
-import { CadViewerPanel } from "./cadViewerPanel";
+import { droneStepContent } from "./droneStepContent";
+
 import { ChatViewProvider } from "./chatPanel";
 import { CosimViewProvider } from "./cosimPanel";
 import { ModelScriptDebugSession } from "./debugAdapter";
@@ -19,7 +20,6 @@ import { ModelicaNotebookSerializer } from "./notebookSerializer";
 import { registerRegistryView } from "./registryTreeProvider";
 import { registerRepl } from "./replTerminal";
 import { RequirementsEditorProvider } from "./requirementsEditorProvider";
-import { StepViewerPanel } from "./stepViewerPanel";
 
 import { MarkdownResolver, createMarkdownItPlugin } from "./markdownItPlugin";
 import { registerScmIntegration } from "./scmIntegration";
@@ -33,11 +33,13 @@ import { OWL2PropertyHierarchyProvider } from "./owl2PropertyHierarchyProvider";
 
 import { CalibrationPanel } from "./calibrationPanel";
 import { ExperimentsTreeProvider } from "./experimentsTree";
+import { GCodeEditorProvider } from "./gcodeEditorProvider";
 import { OptimizationPanel } from "./optimizationPanel";
-import { PhysicsSetupEditorProvider } from "./physicsSetupEditorProvider";
+import { SimulationViewPanel } from "./physicsSetupEditorProvider";
 import { SimulationPanel } from "./simulationPanel";
 import { SINE_WAVE_FMU_BASE64 } from "./sineWaveFmu";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "./sspDocumentProvider";
+import { StepEditorProvider } from "./stepEditorProvider";
 import { SurrogatePanel } from "./surrogatePanel";
 import { UncertaintyPanel } from "./uncertaintyPanel";
 
@@ -365,12 +367,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  const physicsSetupEditor = new PhysicsSetupEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(PhysicsSetupEditorProvider.viewType, physicsSetupEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
+  // Physics editor is registered after the LSP client starts (needs client for STEP meshes)
 
   const documentSelector = [
     { language: "modelica" },
@@ -387,7 +384,12 @@ export async function activate(context: vscode.ExtensionContext) {
     synchronize: {},
     initializationOptions: {
       extensionUri: context.extensionUri.toString(),
-      registryUrl: vscode.workspace.getConfiguration("modelscript").get("registryUrl", "https://api.modelscript.org"),
+      registryUrl:
+        vscode.workspace.getConfiguration("modelscript").get("registryUrl") ||
+        (typeof location !== "undefined" && (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+          ? `${location.protocol}//${location.hostname}:3000`
+          : "https://api.modelscript.org"),
+      useLocalMsl: vscode.workspace.getConfiguration("modelscript").get("library.useLocalMsl") ?? false,
       projectDependencies: await getProjectDependencies(),
     },
     outputChannel: lspOutputChannel,
@@ -399,6 +401,22 @@ export async function activate(context: vscode.ExtensionContext) {
     await client.start();
     console.log("ModelScript language server is ready");
     lspOutputChannel.appendLine("[client] Language server started successfully");
+
+    // Register 3D CAD step viewer
+    const stepEditor = new StepEditorProvider(context, client);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(StepEditorProvider.viewType, stepEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
+
+    // Register GCode viewer
+    const gcodeEditor = new GCodeEditorProvider(context);
+    context.subscriptions.push(
+      vscode.window.registerCustomEditorProvider(GCodeEditorProvider.viewType, gcodeEditor, {
+        webviewOptions: { retainContextWhenHidden: true },
+      }),
+    );
   } catch (e) {
     console.error("ModelScript language server failed to start:", e);
     lspOutputChannel.appendLine(`[client] Language server FAILED to start: ${e}`);
@@ -657,13 +675,95 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.commands.executeCommand("vscode.openWith", tab.input.uri, "default");
       }
     }),
-    commands.registerCommand("modelscript.openCadViewer", () => {
-      if (!client) return;
-      CadViewerPanel.createOrShow(context.extensionUri, client);
-    }),
     commands.registerCommand("modelscript.openStepViewer", () => {
+      vscode.window.showInformationMessage(
+        "Clicking on a .step file in the explorer now opens the 3D Viewer directly.",
+      );
+    }),
+    commands.registerCommand("modelscript.openGCodeViewer", () => {
+      vscode.window.showInformationMessage(
+        "Clicking on a .gcode file in the explorer now opens the Toolpath Viewer directly.",
+      );
+    }),
+    commands.registerCommand("modelscript.exportShapeToStep", async () => {
       if (!client) return;
-      StepViewerPanel.createOrShow(context.extensionUri, client);
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== "modelica") {
+        vscode.window.showErrorMessage("Please open a Modelica file containing a shape class.");
+        return;
+      }
+
+      const uri = editor.document.uri.toString();
+
+      let symbols: vscode.DocumentSymbol[] | unknown[] | undefined;
+      try {
+        symbols = await vscode.commands.executeCommand<vscode.DocumentSymbol[] | unknown[]>(
+          "vscode.executeDocumentSymbolProvider",
+          editor.document.uri,
+        );
+      } catch (e) {
+        vscode.window.showErrorMessage("Error fetching symbols: " + e);
+      }
+
+      const classNames: string[] = [];
+      if (symbols && symbols.length > 0) {
+        const extractClasses = (syms: vscode.DocumentSymbol[], prefix: string) => {
+          for (const sym of syms) {
+            const fullName = prefix ? `${prefix}.${sym.name}` : sym.name;
+            // Include everything except primitive variables/fields
+            if (
+              sym.kind !== vscode.SymbolKind.Variable &&
+              sym.kind !== vscode.SymbolKind.Property &&
+              sym.kind !== vscode.SymbolKind.Field &&
+              sym.kind !== vscode.SymbolKind.Constant &&
+              sym.kind !== vscode.SymbolKind.Function &&
+              sym.kind !== vscode.SymbolKind.Method
+            ) {
+              classNames.push(fullName);
+            }
+            if (sym.children && sym.children.length > 0) {
+              extractClasses(sym.children, fullName);
+            }
+          }
+        };
+        extractClasses(symbols, "");
+      }
+
+      let className: string | undefined;
+      if (classNames.length === 1) {
+        className = classNames[0];
+      } else if (classNames.length > 1) {
+        className = await vscode.window.showQuickPick(classNames, {
+          placeHolder: "Select the shape class to export to STEP",
+        });
+      } else {
+        className = await vscode.window.showInputBox({
+          prompt: `Enter shape class (Fallback - symbols: ${symbols?.length || "undefined"})`,
+          placeHolder: "e.g., DroneCAD.DroneChassis",
+        });
+      }
+
+      if (!className) return;
+
+      try {
+        const result = await client.sendRequest<{ step: string; name: string }>("modelscript/exportShapeToStep", {
+          uri,
+          className,
+        });
+
+        if (result && result.step) {
+          // Write to file
+          const folder = vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file("/");
+          const fileUri = vscode.Uri.joinPath(folder, `${result.name.split(".").pop()}.step`);
+          await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(result.step));
+          vscode.window.showInformationMessage(`Exported ${result.name} to ${fileUri.fsPath}`);
+
+          // Open the generated step file
+          vscode.commands.executeCommand("vscode.openWith", fileUri, "modelscript.stepEditor");
+        }
+      } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Failed to export shape: ${e instanceof Error ? e.message : e}`);
+      }
     }),
     commands.registerCommand("modelscript.owl2.openDiagram", () => {
       if (!client) return;
@@ -796,14 +896,10 @@ END-ISO-10303-21;`;
 
         // Wait a short bit to allow the LSP to index the step file when it's created
         setTimeout(() => {
-          // Open the Step viewer in the right pane
-          // We will set the active document to stepUri temporarily so the StepViewerPanel picks it up
-          vscode.workspace.openTextDocument(stepUri).then((stepDoc) => {
-            vscode.window
-              .showTextDocument(stepDoc, { viewColumn: vscode.ViewColumn.Two, preserveFocus: true })
-              .then(() => {
-                if (client) StepViewerPanel.createOrShow(context.extensionUri, client);
-              });
+          // Open the Step viewer in the right pane natively using the custom editor
+          vscode.commands.executeCommand("vscode.open", vscode.Uri.parse(stepUri), {
+            viewColumn: vscode.ViewColumn.Two,
+            preserveFocus: true,
           });
         }, 1000);
       } catch (e) {
@@ -1392,19 +1488,44 @@ END-ISO-10303-21;`;
       VerificationPanel.createOrShow(context.extensionUri, client);
     }),
     // ── Physics Simulation Commands ──
+    commands.registerCommand("modelscript.openSimulationView", async (uri?: vscode.Uri, className?: string) => {
+      let targetUri = uri;
+      if (!targetUri && vscode.window.activeTextEditor) {
+        targetUri = vscode.window.activeTextEditor.document.uri;
+      }
+      if (!targetUri) return;
+      if (!className) {
+        className = await vscode.window.showInputBox({ prompt: "Enter the Study class name to simulate:" });
+        if (!className) return;
+      }
+      if (client) {
+        SimulationViewPanel.createOrShow(context, client, className, targetUri.toString());
+      }
+    }),
     commands.registerCommand("modelscript.createFeaSetup", async (uri?: vscode.Uri) => {
       let targetUri = uri;
       if (!targetUri && vscode.window.activeTextEditor) {
         targetUri = vscode.window.activeTextEditor.document.uri;
       }
-      if (!targetUri || !targetUri.fsPath.match(/\\.(step|stp)$/i)) {
+      if (!targetUri || !targetUri.fsPath.match(/\.(step|stp)$/i)) {
         vscode.window.showErrorMessage("Please select a STEP file to create an FEA setup.");
         return;
       }
-      const setupUri = vscode.Uri.file(targetUri.fsPath + ".fea.msim");
-      const setupData = { type: "FEA", stepFile: targetUri.fsPath, mesh: { min: 0.02, max: 0.08 } };
-      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(JSON.stringify(setupData, null, 2)));
-      vscode.window.showInformationMessage(`Created FEA setup: ${setupUri.fsPath}`);
+      const studyName =
+        targetUri.fsPath
+          .split("/")
+          .pop()
+          ?.replace(/\.(step|stp)$/i, "") + "_FEA";
+      const setupUri = vscode.Uri.file(targetUri.fsPath + ".fea.mo");
+      const moContent = `model ${studyName}
+  extends ModelScript.Studies.StaticStructuralFEA(
+    meshResolution = 0.05
+  );
+  // Add target component here
+end ${studyName};
+`;
+      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
+      vscode.window.showInformationMessage(`Created FEA study: ${setupUri.fsPath}`);
       const doc = await vscode.workspace.openTextDocument(setupUri);
       await vscode.window.showTextDocument(doc);
     }),
@@ -1413,16 +1534,79 @@ END-ISO-10303-21;`;
       if (!targetUri && vscode.window.activeTextEditor) {
         targetUri = vscode.window.activeTextEditor.document.uri;
       }
-      if (!targetUri || !targetUri.fsPath.match(/\\.(step|stp)$/i)) {
+      if (!targetUri || !targetUri.fsPath.match(/\.(step|stp)$/i)) {
         vscode.window.showErrorMessage("Please select a STEP file to create a CFD setup.");
         return;
       }
-      const setupUri = vscode.Uri.file(targetUri.fsPath + ".cfd.msim");
-      const setupData = { type: "CFD", stepFile: targetUri.fsPath, mesh: { min: 0.02, max: 0.08 } };
-      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(JSON.stringify(setupData, null, 2)));
-      vscode.window.showInformationMessage(`Created CFD setup: ${setupUri.fsPath}`);
+      const studyName =
+        targetUri.fsPath
+          .split("/")
+          .pop()
+          ?.replace(/\.(step|stp)$/i, "") + "_CFD";
+      const setupUri = vscode.Uri.file(targetUri.fsPath + ".cfd.mo");
+      const moContent = `model ${studyName}
+  extends ModelScript.Studies.SteadyStateCFD(
+    meshResolution = 0.05
+  );
+  // Add target component here
+end ${studyName};
+`;
+      await vscode.workspace.fs.writeFile(setupUri, new TextEncoder().encode(moContent));
+      vscode.window.showInformationMessage(`Created CFD study: ${setupUri.fsPath}`);
       const doc = await vscode.workspace.openTextDocument(setupUri);
       await vscode.window.showTextDocument(doc);
+    }),
+    commands.registerCommand("modelscript.migrateMsimToStudy", async () => {
+      const uris = await vscode.workspace.findFiles("**/*.msim");
+      if (uris.length === 0) {
+        vscode.window.showInformationMessage("No .msim files found to migrate.");
+        return;
+      }
+
+      let migratedCount = 0;
+      for (const uri of uris) {
+        try {
+          const content = await vscode.workspace.fs.readFile(uri);
+          const json = JSON.parse(new TextDecoder().decode(content));
+
+          const studyName =
+            uri.path
+              .split("/")
+              .pop()
+              ?.replace(".msim", "")
+              .replace(/[^a-zA-Z0-9_]/g, "_") || "MigratedStudy";
+          const workflowClass =
+            json.type === "CFD"
+              ? "ModelScript.Studies.SteadyStateCFD"
+              : json.type === "FEA"
+                ? "ModelScript.Studies.StaticStructuralFEA"
+                : json.type === "MESHING"
+                  ? "ModelScript.Studies.Meshing"
+                  : "ModelScript.Studies.TransientSimulation";
+
+          const targetClass = json.targetClass || "TargetModel";
+          const meshSize = json.mesh?.size || json.mesh?.min || 0.05;
+
+          const moContent = `model ${studyName}
+  extends ${workflowClass}(
+    meshResolution = ${meshSize}
+  );
+  extends ${targetClass};
+end ${studyName};
+`;
+
+          const moUri = uri.with({ path: uri.path.replace(/\.msim$/, ".mo") });
+          await vscode.workspace.fs.writeFile(moUri, new TextEncoder().encode(moContent));
+          await vscode.workspace.fs.delete(uri);
+          migratedCount++;
+        } catch (e) {
+          console.error("Failed to migrate", uri.path, e);
+        }
+      }
+
+      vscode.window.showInformationMessage(
+        `Successfully migrated ${migratedCount} .msim files to native Modelica studies.`,
+      );
     }),
     commands.registerCommand("modelscript.generateMesh", async () => {
       vscode.window.showInformationMessage("Mesh generation has been initiated in the background.");
@@ -1449,7 +1633,7 @@ END-ISO-10303-21;`;
 
   // Pre-open all .mo files in the workspace so the LSP server can track them.
   // This is fire-and-forget: don't crash the extension if the filesystem isn't ready.
-  initWorkspaceAndTree(treeProvider, treeView, context).catch((e) => {
+  initWorkspaceAndTree(treeProvider, treeView).catch((e) => {
     console.warn("[workspace-init] Non-fatal initialization error:", e);
   });
 
@@ -1548,6 +1732,7 @@ async function createWorkerLanguageClient(context: vscode.ExtensionContext, clie
 function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vscode.Uri): void {
   const encoder = new TextEncoder();
   const template = workspaceUri.path.substring(1) || "empty";
+
   const templates: Record<string, Record<string, string>> = {
     empty: {
       "HelloWorld.mo": `model HelloWorld "A simple Modelica model"\n  Real x(start = 1);\n  parameter Real a = -1;\nequation\n  der(x) = a * x;\nend HelloWorld;\n`,
@@ -1921,71 +2106,245 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
         "  part def Rotor {}",
         "}",
       ].join("\n"),
-      "drone.step": [
-        "ISO-10303-21;",
-        "HEADER;",
-        "FILE_DESCRIPTION((''),'2;1');",
-        "FILE_NAME('drone','2023-10-25T12:00:00',(''),(''),'','','');",
-        "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));",
-        "ENDSEC;",
-        "DATA;",
-        "#1=APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#2);",
-        "#2=APPLICATION_CONTEXT('core data for automotive mechanical design processes');",
-        "#3=SHAPE_DEFINITION_REPRESENTATION(#4,#10);",
-        "#4=PRODUCT_DEFINITION_SHAPE('','',#5);",
-        "#5=PRODUCT_DEFINITION('design','',#6,#9);",
-        "#6=PRODUCT_DEFINITION_FORMATION('','',#7);",
-        "#7=PRODUCT('DroneCAD','DroneCAD','',(#8));",
-        "#8=PRODUCT_CONTEXT('',#2,'mechanical');",
-        "#9=PRODUCT_DEFINITION_CONTEXT('part definition',#2,'design');",
-        "#10=SHAPE_REPRESENTATION('',(#11),#15);",
-        "#11=AXIS2_PLACEMENT_3D('',#12,#13,#14);",
-        "#12=CARTESIAN_POINT('',(0.,0.,0.));",
-        "#13=DIRECTION('',(0.,0.,1.));",
-        "#14=DIRECTION('',(1.,0.,0.));",
-        "#15=(GEOMETRIC_REPRESENTATION_CONTEXT(3)GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#16))GLOBAL_UNIT_ASSIGNED_CONTEXT((#17,#18,#19))REPRESENTATION_CONTEXT('Context #1','3D Context with PROGRAM and LENGTH unit'));",
-        "#16=UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#17,'distance_accuracy_value','confusion accuracy');",
-        "#17=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));",
-        "#18=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));",
-        "#19=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());",
-        "#20=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#11,#21),#15);",
-        "#21=MANIFOLD_SOLID_BREP('ChassisShape',#22);",
-        "#22=CLOSED_SHELL('',(#23));",
-        "#23=ADVANCED_FACE('',(#24),#29,.T.);",
-        "#24=FACE_BOUND('',#25,.T.);",
-        "#25=EDGE_LOOP('',(#26,#27,#28));",
-        "#26=ORIENTED_EDGE('',*,*,#30,.T.);",
-        "#27=ORIENTED_EDGE('',*,*,#31,.T.);",
-        "#28=ORIENTED_EDGE('',*,*,#32,.T.);",
-        "#29=PLANE('',#33);",
-        "#30=EDGE_CURVE('',#34,#35,#36,.T.);",
-        "#31=EDGE_CURVE('',#35,#37,#38,.T.);",
-        "#32=EDGE_CURVE('',#37,#34,#39,.T.);",
-        "#33=AXIS2_PLACEMENT_3D('',#40,#41,#42);",
-        "#34=VERTEX_POINT('',#43);",
-        "#35=VERTEX_POINT('',#44);",
-        "#36=LINE('',#45,#46);",
-        "#37=VERTEX_POINT('',#47);",
-        "#38=LINE('',#48,#49);",
-        "#39=LINE('',#50,#51);",
-        "#40=CARTESIAN_POINT('',(0.,0.,0.));",
-        "#41=DIRECTION('',(0.,0.,1.));",
-        "#42=DIRECTION('',(1.,0.,0.));",
-        "#43=CARTESIAN_POINT('',(0.,0.,0.));",
-        "#44=CARTESIAN_POINT('',(10.,0.,0.));",
-        "#45=CARTESIAN_POINT('',(0.,0.,0.));",
-        "#46=VECTOR('',#52,1.);",
-        "#47=CARTESIAN_POINT('',(0.,10.,0.));",
-        "#48=CARTESIAN_POINT('',(10.,0.,0.));",
-        "#49=VECTOR('',#53,1.);",
-        "#50=CARTESIAN_POINT('',(0.,10.,0.));",
-        "#51=VECTOR('',#54,1.);",
-        "#52=DIRECTION('',(1.,0.,0.));",
-        "#53=DIRECTION('',(-0.707106781186547,0.707106781186547,0.));",
-        "#54=DIRECTION('',(0.,-1.,0.));",
-        "ENDSEC;",
-        "END-ISO-10303-21;",
+      "drone.step": droneStepContent,
+    },
+    "drone-meshing": {
+      "drone.step": droneStepContent,
+      "README.md":
+        "# Drone Chassis Meshing\n\nRight-click `drone.step` and select **Create FEA Setup** or **Create CFD Setup** to begin configuring your mesh and physical simulation.",
+    },
+    "drone-fea": {
+      "drone.step": droneStepContent,
+      "DroneFEA.mo": [
+        'model DroneFEA "Static Structural FEA of Drone Chassis"',
+        "  extends ModelScript.Studies.StaticStructuralFEA(",
+        "    meshResolution = 0.05,",
+        "    elementOrder = 2",
+        "  );",
+        "",
+        '  parameter String stepFile = "drone.step" annotation(Dialog(loadSelector=true, filter="STEP Files (*.step *.stp)"));',
+        "",
+        "  Real maxDisplacementZ;",
+        "  Real maxVonMisesStress;",
+        "end DroneFEA;",
       ].join("\n"),
+      "DroneDynamics.mo": [
+        'model DroneDynamics "Drone dynamics consuming FEA results"',
+        "  import DroneFEA;",
+        '  parameter Real max_displacement = DroneFEA.maxDisplacementZ "Imported from FEA";',
+        '  parameter Real max_stress = DroneFEA.maxVonMisesStress "Imported from FEA";',
+        "equation",
+        "  // Logic using FEA results",
+        "end DroneDynamics;",
+      ].join("\n"),
+    },
+    "drone-cfd": {
+      "drone.step": droneStepContent,
+      "DroneCFD.msim": [
+        "{",
+        '  "type": "CFD",',
+        '  "solver": "OpenFOAM",',
+        '  "stepFile": "drone.step",',
+        '  "mesh": {',
+        '    "size": 0.05',
+        "  },",
+        '  "exposeProperties": [',
+        '    { "name": "maxVelocityMagnitude", "type": "Real" },',
+        '    { "name": "maxPressure", "type": "Real" }',
+        "  ]",
+        "}",
+      ].join("\n"),
+      "DroneFlight.mo": [
+        'model DroneFlight "Drone flight consuming CFD results"',
+        "  import DroneCFD;",
+        '  parameter Real max_velocity = DroneCFD.maxVelocityMagnitude "Imported from CFD";',
+        '  parameter Real max_pressure = DroneCFD.maxPressure "Imported from CFD";',
+        "equation",
+        "  // Logic using CFD results",
+        "end DroneFlight;",
+      ].join("\n"),
+    },
+    "modelica-procedural-cad": {
+      "DroneCAD.mo": [
+        'package DroneCAD "Procedural CAD model of a quadcopter drone chassis"',
+        "",
+        "  import Geometry.*;",
+        "",
+        "  // ─── Reusable sub-assemblies ──────────────────────────────────────────",
+        "",
+        '  shape MotorMount "Cylindrical motor mount with propeller guard ring"',
+        '    parameter Real radius = 1.5 "Motor housing radius [mm]";',
+        '    parameter Real height = 2 "Motor housing height [mm]";',
+        "",
+        "    replaceable Cylinder housing(radius = radius, height = height)",
+        "      annotation(material = Aluminum);",
+        "",
+        "    Torus guard(major = radius * 2, minor = 0.1)",
+        "      annotation(Placement(origin = {0, height, 0}));",
+        "  end MotorMount;",
+        "",
+        '  shape DroneArm "Single arm extending from the body to a motor"',
+        '    parameter Real length = 12 "Arm length [mm]";',
+        '    parameter Real thickness = 1 "Arm thickness [mm]";',
+        '    parameter Real width = 1.5 "Arm width [mm]";',
+        '    parameter Real motorRadius = 1.5 "Motor mount radius [mm]";',
+        "",
+        "    Box beam(width = length, height = thickness, depth = width)",
+        "      annotation(material = CarbonFiber);",
+        "",
+        "    replaceable MotorMount motor(radius = motorRadius)",
+        "      annotation(Placement(origin = {length/2, thickness/2 + 0.5, 0}));",
+        "  end DroneArm;",
+        "",
+        '  shape LandingGear "Two-skid landing gear with vertical struts"',
+        '    parameter Real span = 8 "Distance between skids [mm]";',
+        '    parameter Real skidLength = 10 "Skid bar length [mm]";',
+        '    parameter Real strutHeight = 4 "Strut height from body to skid [mm]";',
+        "",
+        "    // Horizontal skid bars",
+        "    Box skidL(width = 0.5, height = 0.3, depth = skidLength)",
+        "      annotation(",
+        "        Placement(origin = {-span/2, -strutHeight, 0}),",
+        "        material = Aluminum",
+        "      );",
+        "    Box skidR(width = 0.5, height = 0.3, depth = skidLength)",
+        "      annotation(",
+        "        Placement(origin = {span/2, -strutHeight, 0}),",
+        "        material = Aluminum",
+        "      );",
+        "",
+        "    // Vertical struts",
+        "    Box strutLF(width = 0.3, height = strutHeight, depth = 0.3)",
+        "      annotation(Placement(origin = {-span/2, -strutHeight/2, skidLength/3}));",
+        "    Box strutLR(width = 0.3, height = strutHeight, depth = 0.3)",
+        "      annotation(Placement(origin = {-span/2, -strutHeight/2, -skidLength/3}));",
+        "    Box strutRF(width = 0.3, height = strutHeight, depth = 0.3)",
+        "      annotation(Placement(origin = {span/2, -strutHeight/2, skidLength/3}));",
+        "    Box strutRR(width = 0.3, height = strutHeight, depth = 0.3)",
+        "      annotation(Placement(origin = {span/2, -strutHeight/2, -skidLength/3}));",
+        "  end LandingGear;",
+        "",
+        '  shape CameraAssembly "Front-mounted camera with gimbal bracket"',
+        '    parameter Real gimbalWidth = 2 "Gimbal bracket width [mm]";',
+        '    parameter Real lensSize = 1.5 "Camera lens diameter [mm]";',
+        "",
+        "    Box mount(width = gimbalWidth, height = 0.8, depth = 3)",
+        "      annotation(material = ABS);",
+        "",
+        "    Box lens(width = lensSize, height = lensSize, depth = 1)",
+        "      annotation(",
+        "        Placement(origin = {0, -0.4, 2}),",
+        "        material = ABS",
+        "      );",
+        "  end CameraAssembly;",
+        "",
+        "  // ─── Main chassis assembly ────────────────────────────────────────────",
+        "",
+        '  shape DroneChassis "Complete quadcopter drone chassis"',
+        '    parameter Real bodySize = 10 "Central body width/depth [mm]";',
+        '    parameter Real bodyHeight = 3 "Central body height [mm]";',
+        '    parameter Real armLength = 12 "Arm length [mm]";',
+        '    parameter Real armAngle = 45 "Diagonal angle from X axis [deg]";',
+        "",
+        "    // ── Central body ──────────────────────────────────────────",
+        "    Box body(width = bodySize, height = bodyHeight, depth = bodySize)",
+        "      annotation(material = CarbonFiber);",
+        "",
+        "    Box topCover(width = bodySize - 2, height = 0.6, depth = bodySize - 2)",
+        "      annotation(",
+        "        Placement(origin = {0, bodyHeight/2 + 0.3, 0}),",
+        "        material = CarbonFiber",
+        "      );",
+        "",
+        "    Box electronicsBay(width = 6, height = 1, depth = 6)",
+        "      annotation(",
+        "        Placement(origin = {0, -bodyHeight/2 - 0.5, 0}),",
+        "        material = ABS",
+        "      );",
+        "",
+        "    // ── Four diagonal arms ────────────────────────────────────",
+        "    DroneArm armFR(length = armLength)",
+        "      annotation(Placement(origin = {6, 0, 6}, rotation = {0, armAngle, 0}));",
+        "",
+        "    DroneArm armFL(length = armLength)",
+        "      annotation(Placement(origin = {-6, 0, 6}, rotation = {0, -armAngle, 0}));",
+        "",
+        "    DroneArm armRR(length = armLength)",
+        "      annotation(Placement(origin = {6, 0, -6}, rotation = {0, 180 - armAngle, 0}));",
+        "",
+        "    DroneArm armRL(length = armLength)",
+        "      annotation(Placement(origin = {-6, 0, -6}, rotation = {0, -(180 - armAngle), 0}));",
+        "",
+        "    // ── Landing gear ──────────────────────────────────────────",
+        "    LandingGear gear(span = bodySize - 2, strutHeight = 4);",
+        "",
+        "    // ── Camera ────────────────────────────────────────────────",
+        "    CameraAssembly camera",
+        "      annotation(Placement(origin = {0, -1, bodySize/2 + 1.5}));",
+        "",
+        "    // ── Battery ───────────────────────────────────────────────",
+        "    Box battery(width = 5, height = 1.2, depth = 8)",
+        "      annotation(",
+        "        Placement(origin = {0, -bodyHeight/2 - 1.5, 0}),",
+        "        material = LiPo",
+        "      );",
+        "  end DroneChassis;",
+        "",
+        "  // ─── Parametric variants ──────────────────────────────────────────────",
+        "",
+        '  shape CargoDrone "Heavy-lift drone with larger body and longer arms"',
+        "    extends DroneChassis(",
+        "      bodySize = 15,",
+        "      bodyHeight = 4,",
+        "      armLength = 18",
+        "    );",
+        "  end CargoDrone;",
+        "",
+        '  shape RacingDrone "Lightweight racing drone with compact form"',
+        "    extends DroneChassis(",
+        "      bodySize = 8,",
+        "      bodyHeight = 2,",
+        "      armLength = 9,",
+        "      armAngle = 50",
+        "    );",
+        "  end RacingDrone;",
+        "",
+        "  // Demonstration of redeclare — swap motor mounts for tapered cones",
+        "  shape TaperedMotorMount",
+        "    extends MotorMount(",
+        "      redeclare Cone housing(",
+        "        radiusBottom = radius * 1.2,",
+        "        radiusTop = radius * 0.8,",
+        "        height = 2.5",
+        "      )",
+        "    );",
+        "  end TaperedMotorMount;",
+        "",
+        '  shape StealthDrone "Drone with tapered motor housings for aerodynamics"',
+        "    extends DroneChassis(",
+        "      bodySize = 9,",
+        "      armLength = 11,",
+        "      // Redeclare the motor mount type inside each arm",
+        "      redeclare DroneArm armFR(",
+        "        redeclare TaperedMotorMount motor",
+        "      ),",
+        "      redeclare DroneArm armFL(",
+        "        redeclare TaperedMotorMount motor",
+        "      ),",
+        "      redeclare DroneArm armRR(",
+        "        redeclare TaperedMotorMount motor",
+        "      ),",
+        "      redeclare DroneArm armRL(",
+        "        redeclare TaperedMotorMount motor",
+        "      )",
+        "    );",
+        "  end StealthDrone;",
+        "",
+        "end DroneCAD;",
+        "",
+      ].join("\n"),
+      "README.md":
+        "# Modelica Procedural CAD\n\nThis example demonstrates how to build 3D CAD geometries using the Modelica `shape` language extension.\n\nRight click on `DroneCAD.mo` and select **Generate STEP** to compile the procedural design into a standard 3D CAD model.",
     },
     "cfd-verification": {
       "AirflowROM.mo": [
@@ -2313,7 +2672,6 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
 async function initWorkspaceAndTree(
   treeProvider: LibraryTreeProvider,
   treeView: vscode.TreeView<vscode.TreeItem>,
-  context: vscode.ExtensionContext,
 ): Promise<void> {
   const folders = workspace.workspaceFolders;
 
@@ -2996,17 +3354,51 @@ async function initWorkspaceAndTree(
           content = massiveModelRows.join("\n");
           break;
         }
+        case "modelica-procedural-cad": {
+          filename = "Drone.mo";
+          content = [
+            'model Drone "Procedural CAD Drone"',
+            "  // A drone model constructed entirely from Modelica procedural CAD primitives",
+            "",
+            "  Real chassis annotation(CAD(",
+            '    shapeType="box", length=0.2, width=0.1, height=0.05, color={50,50,50}',
+            "  ));",
+            "",
+            "  Real motor1 annotation(CAD(",
+            '    shapeType="cylinder", radius=0.02, length=0.05, position={0.1, 0.05, 0.02}, color={200,50,50}',
+            "  ));",
+            "",
+            "  Real motor2 annotation(CAD(",
+            '    shapeType="cylinder", radius=0.02, length=0.05, position={-0.1, 0.05, 0.02}, color={50,50,200}',
+            "  ));",
+            "",
+            "  Real motor3 annotation(CAD(",
+            '    shapeType="cylinder", radius=0.02, length=0.05, position={0.1, -0.05, 0.02}, color={200,50,50}',
+            "  ));",
+            "",
+            "  Real motor4 annotation(CAD(",
+            '    shapeType="cylinder", radius=0.02, length=0.05, position={-0.1, -0.05, 0.02}, color={50,50,200}',
+            "  ));",
+            "",
+            "  Real payload_camera annotation(CAD(",
+            '    shapeType="sphere", radius=0.025, position={0.12, 0, -0.01}, color={20,20,20}',
+            "  ));",
+            "equation",
+            "  chassis = 0;",
+            "  motor1 = 0; motor2 = 0; motor3 = 0; motor4 = 0;",
+            "  payload_camera = 0;",
+            "end Drone;",
+            "",
+          ].join("\n");
+          break;
+        }
         case "cad": {
           const sysmlUri = Uri.joinPath(workspaceUri, "drone_architecture.sysml");
           const stepUri = Uri.joinPath(workspaceUri, "drone.step");
           const doc = await workspace.openTextDocument(sysmlUri);
           await vscode.window.showTextDocument(doc, { viewColumn: 1 });
           setTimeout(() => {
-            workspace.openTextDocument(stepUri).then((stepDoc) => {
-              vscode.window.showTextDocument(stepDoc, { viewColumn: 2, preview: false }).then(() => {
-                if (client) StepViewerPanel.createOrShow(context.extensionUri, client);
-              });
-            });
+            vscode.commands.executeCommand("vscode.open", stepUri, { viewColumn: 2, preview: false });
           }, 1000);
           break;
         }
@@ -3080,8 +3472,8 @@ async function scanWorkspaceFiles(): Promise<vscode.Uri[]> {
   const maxRetries = 5;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml,step,stp,p21,owl}");
-      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts/.step rules`);
+      const moFiles = await workspace.findFiles("**/*.{mo,js,ts,sysml,step,stp,p21,owl,msim}");
+      console.log(`[workspace-scan] Found ${moFiles.length} files matching .mo/.sysml/.js/.ts/.step/.msim rules`);
       for (const uri of moFiles) {
         try {
           await workspace.openTextDocument(uri);

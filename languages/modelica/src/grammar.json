@@ -423,6 +423,22 @@
                 "type": "STRING",
                 "value": "optimization"
               }
+            },
+            {
+              "type": "FIELD",
+              "name": "shape",
+              "content": {
+                "type": "STRING",
+                "value": "shape"
+              }
+            },
+            {
+              "type": "FIELD",
+              "name": "study",
+              "content": {
+                "type": "STRING",
+                "value": "study"
+              }
             }
           ]
         }

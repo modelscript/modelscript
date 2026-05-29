@@ -125,6 +125,9 @@ export function injectPredefinedTypes(index: SymbolIndex): SymbolIndex {
     const typeInfo = PREDEFINED_TYPES[i]!;
     const id: SymbolId = PREDEFINED_BASE_ID - i;
 
+    // Skip if already injected (prevents duplicates when called on cached indices)
+    if (index.symbols.has(id)) continue;
+
     const entry: SymbolEntry = {
       id,
       kind: "Class",

@@ -3,7 +3,6 @@
 
 import {
   Context as BaseContext,
-  eliminateArenaAliases,
   printArenaDAE,
   type ArenaDAEBuilder,
   type HomotopyMode,
@@ -21,10 +20,11 @@ import {
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 import { ModelicaPoParser, ModelicaTranslation } from "@modelscript/modelica/po";
 import { ModelicaClassInstance, type ModelicaElement } from "@modelscript/modelica/semantic-model";
-import { MODELSCRIPT_CAS_PACKAGE, ModelicaDAE, ModelicaDAEPrinter } from "@modelscript/symbolics";
+import { MODELSCRIPT_CAS_PACKAGE } from "@modelscript/symbolics";
 import type { FileSystem, Parser, Tree } from "@modelscript/utils";
-import { StringWriter } from "@modelscript/utils";
-import { ModelicaFlattener, findAlgebraicLoops } from "./modelica/flattener.js";
+
+import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./modelica/builtins/geometry.js";
+import { MODELSCRIPT_STUDIES_PACKAGE } from "./modelica/builtins/studies.js";
 
 export type { HomotopyMode, InitSolverConfig, ModelicaCompilerOptions, PreconditionerMode };
 
@@ -124,6 +124,8 @@ export class Context extends BaseContext {
     this.#workspaceIndex = workspaceIndex;
     this.#queryEngine = queryEngine;
     this.load(MODELSCRIPT_CAS_PACKAGE, "modelscript-cas.mo");
+    this.load(MODELSCRIPT_STUDIES_PACKAGE, "modelscript-studies.mo");
+    this.load(MODELSCRIPT_GEOMETRY_PACKAGE, "modelscript-geometry.mo");
   }
 
   /**
@@ -220,7 +222,7 @@ export class Context extends BaseContext {
       const s = this.#fs.stat(dir);
       if (!s) return;
       if (s.isFile()) {
-        if (dir.endsWith(".mo")) {
+        if (dir.endsWith(".mo") || dir.endsWith(".msim")) {
           const basename = dir.split(/[/\\]/).pop();
           let parentFQN: string | undefined = currentFQN;
 
@@ -351,26 +353,18 @@ export class Context extends BaseContext {
    * Flattens a loaded Modelica class by name, generating the flattened DAE textual representation.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.
-   * @returns The flattened DAE (Differential Algebraic Equation) output as a string, or null if the class is not found or has errors.
+   * @returns The flattened DAE output as a string, or null if the class is not found.
    */
-  flatten(name: string, options?: ModelicaCompilerOptions): string | null {
-    const dae = this.flattenDAE(name, options);
-    if (!dae) return null;
-
-    // Check for flattener-level diagnostics
-    const hasDAEErrors = (d: ModelicaDAE): boolean =>
-      d.diagnostics.some((diag) => diag.severity === "error") || d.functions.some(hasDAEErrors);
-    if (hasDAEErrors(dae)) return null;
-
-    const out = new StringWriter();
-    dae.accept(new ModelicaDAEPrinter(out));
-    return out.toString();
+  flatten(name: string): string | null {
+    const arena = this.flattenArena(name);
+    if (!arena) return null;
+    return printArenaDAE(arena);
   }
 
   /**
    * Flatten a Modelica class using the arena-native pipeline.
    *
-   * This is the new canonical flattening API. It bypasses `ModelicaDAE` entirely,
+   * This is the new canonical flattening API. It bypasses the legacy object graph entirely,
    * using `ArenaQueryFlattener` → `ArenaDAEBuilder` directly.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.
@@ -451,72 +445,13 @@ export class Context extends BaseContext {
   }
 
   /**
-   * Flatten a Modelica class and return the textual DAE representation
-   * using the arena-native printer.
-   *
-   * Uses the legacy `flattenDAE()` pipeline (which populates `dae.arena`
-   * via dual-write) and then prints directly from the `ArenaDAEBuilder`.
-   * This gives us arena-native output for all models the legacy flattener
-   * handles, without needing the `ArenaQueryFlattener` to reach feature parity.
+   * Alias for flatten(), generating textual DAE output via the Arena printer.
    *
    * @param name - The fully qualified name of the Modelica class to flatten.
-   * @param options - Compiler options forwarded to flattenDAE.
    * @returns The flattened DAE text, or null if the class is not found.
    */
-  flattenText(name: string, options?: ModelicaCompilerOptions): string | null {
-    const dae = this.flattenDAE(name, options);
-    if (!dae) return null;
-    return printArenaDAE(dae.arena);
-  }
-
-  /**
-   * @deprecated Use `flattenArena()` instead. This method uses the legacy
-   * `ModelicaFlattener` → `ModelicaDAE` pipeline which is being phased out.
-   */
-  flattenDAE(name: string, options?: ModelicaCompilerOptions): ModelicaDAE | null {
-    const parts = name.split(".");
-    let instance: ModelicaClassInstance | undefined = this.classes.find((c) => c.name === parts[0]);
-    for (let i = 1; i < parts.length && instance; i++) {
-      const next = [...instance.declaredElements].find((e: any) => e.name === parts[i] && e.isClassInstance);
-      instance = next as ModelicaClassInstance | undefined;
-    }
-    if (!instance) return null;
-
-    // Pre-flattening semantic validation (mirrors linter rules for consistency)
-    this.#validateClassForFlattening(instance, name);
-
-    const dae = new ModelicaDAE(
-      name ?? instance.name ?? "DAE",
-      (instance.entry?.metadata?.description as string) ?? null,
-    );
-
-    if (
-      instance.classKind === "function" ||
-      instance.classKind === "operator function" ||
-      instance.classKind === "optimization"
-    ) {
-      dae.classKind = instance.classKind;
-    }
-    const flattener = new ModelicaFlattener(options, this);
-    flattener.rootClass = instance;
-    instance.accept(flattener, ["", dae]);
-    flattener.generateFlowBalanceEquations(dae);
-    flattener.foldDAEConstants(dae);
-
-    // In batch mode, trigger GC after flattening to release intermediate allocations
-    if (options?.batch) {
-      Context.gcBetweenPhases();
-    }
-
-    // Optimization classes use the equations unmodified, do not apply BLT sorting/solving.
-    if (dae.classKind !== "optimization") {
-      findAlgebraicLoops(dae);
-    }
-
-    // O(N) Arena-native alias elimination
-    eliminateArenaAliases(dae.arena);
-
-    return dae;
+  flattenText(name: string): string | null {
+    return this.flatten(name);
   }
 
   /**
@@ -524,206 +459,6 @@ export class Context extends BaseContext {
    * Each check here has a corresponding linter rule in linter.ts for IDE feedback.
    * @throws Error if the class is not valid for flattening.
    */
-  #validateClassForFlattening(instance: ModelicaClassInstance, name: string): void {
-    // §4.4.2: Partial classes may not be instantiated
-    if ((instance as any).isPartial) {
-      throw new Error(`Illegal to instantiate partial class ${name}.`);
-    }
-
-    if (instance.classKind === "function" || instance.classKind === "operator function") {
-      throw new Error(`Cannot instantiate ${name} due to class specialization function.`);
-    }
-
-    // Validate class hierarchy: check components for partial types, connect restrictions, etc.
-    this.#validateClassHierarchy(instance, name, new Set());
-  }
-
-  /**
-   * Recursively validates the class hierarchy for semantic errors.
-   */
-  #validateClassHierarchy(cls: ModelicaClassInstance, contextName: string, visited: Set<any>): void {
-    const clsId = (cls as any).id ?? cls;
-    if (visited.has(clsId)) return; // Avoid infinite loops
-    visited.add(clsId);
-
-    try {
-      // Check components for partial types
-      for (const element of cls.elements) {
-        if (!(element as any).isComponentInstance) continue;
-        const comp = element as any;
-        const classInst = comp.classInstance;
-        if (!classInst) continue;
-
-        // §4.4.2: Components may not have a partial type (unless replaceable or outer)
-        // NOTE: This check is only in the linter (not here in the flattener) because
-        // redeclaration may resolve partial types before flattening, and we don't have
-        // that resolution context here.
-
-        // §5.4: Outer components may not have modifiers
-        if (comp.isOuter && !comp.isInner) {
-          const mod = comp.modification;
-          if (mod?.modificationArguments?.length > 0 || mod?.modificationExpression) {
-            const modText =
-              mod.modificationArguments?.map((a: any) => a.name?.text ?? a.name ?? "?").join(", ") ?? "...";
-            throw new Error(`Modifier '${modText}' found on outer element ${comp.name ?? "?"}.`);
-          }
-        }
-
-        // §4.6: Components of model/block/package type may not have binding equations
-        // NOTE: This check is only in the linter (not here) because break modifiers
-        // and redeclarations may change the component type before flattening.
-
-        // §7.2.3: Protected elements may not be modified from outside the class
-        // NOTE: This check is only in the linter (not here) because we cannot
-        // distinguish internal vs external modification at this pre-flattening stage.
-      }
-
-      // Check equation sections for connect restrictions
-      const astNode = (cls as any).abstractSyntaxNode;
-      if (astNode?.sections) {
-        for (const section of astNode.sections) {
-          if (!section) continue;
-          const isEqSection = section.constructor?.name?.includes("EquationSection") || section.equations;
-          if (!isEqSection) continue;
-
-          // §9.1: Connect in initial equation sections
-          if (section.initial) {
-            this.#checkForConnectsInEquations(section.equations ?? [], "initial");
-          }
-
-          // §8.3.5: Connect in when equations
-          this.#checkForConnectsInWhen(section.equations ?? []);
-
-          // §8.3.5.3: Elsewhen must solve the same variables as the when clause
-          this.#checkElsewhenVariableMismatch(section.equations ?? []);
-        }
-      }
-    } catch (e) {
-      // Only rethrow our own validation errors, not property access errors
-      if (
-        e instanceof Error &&
-        (e.message.startsWith("Illegal to instantiate") ||
-          e.message.startsWith("Modifier '") ||
-          e.message.includes("connect may not") ||
-          e.message.includes("Connect equations are not") ||
-          e.message.includes("same variables must be solved"))
-      ) {
-        throw e;
-      }
-    }
-  }
-
-  /**
-   * Checks for connect equations inside when equations (recursive).
-   */
-  #checkForConnectsInWhen(eqs: any[]): void {
-    for (const eq of eqs) {
-      if (!eq) continue;
-      const isWhen = eq.constructor?.name?.includes("WhenEquation");
-      if (isWhen) {
-        this.#checkForConnectsInEquations(eq.equations ?? [], "when");
-        for (const elseWhen of (eq as any).elseWhenEquationClauses ?? []) {
-          this.#checkForConnectsInEquations(elseWhen.equations ?? [], "when");
-        }
-      }
-      // Recurse into for/if equations
-      if (eq.equations) {
-        this.#checkForConnectsInWhen(eq.equations);
-      }
-      if (eq.elseEquations) {
-        this.#checkForConnectsInWhen(eq.elseEquations);
-      }
-      for (const clause of eq.elseIfEquationClauses ?? []) {
-        this.#checkForConnectsInWhen(clause.equations ?? []);
-      }
-    }
-  }
-
-  /**
-   * Checks for connect equations in a flat list of equations.
-   */
-  #checkForConnectsInEquations(eqs: any[], context: "when" | "initial"): void {
-    for (const eq of eqs) {
-      if (!eq) continue;
-      const isConnect = eq.constructor?.name?.includes("ConnectEquation");
-      if (isConnect) {
-        const ref1 = eq.connector1?.text ?? "?";
-        const ref2 = eq.connector2?.text ?? "?";
-        if (context === "when") {
-          throw new Error(`connect may not be used inside when-equations (found connect(${ref1}, ${ref2})).`);
-        } else {
-          throw new Error("Connect equations are not allowed in initial equation sections.");
-        }
-      }
-      // Recurse
-      if (eq.equations) {
-        this.#checkForConnectsInEquations(eq.equations, context);
-      }
-      if (eq.elseEquations) {
-        this.#checkForConnectsInEquations(eq.elseEquations, context);
-      }
-      for (const clause of eq.elseIfEquationClauses ?? []) {
-        this.#checkForConnectsInEquations(clause.equations ?? [], context);
-      }
-      for (const clause of eq.elseWhenEquationClauses ?? []) {
-        this.#checkForConnectsInEquations(clause.equations ?? [], context);
-      }
-    }
-  }
-
-  /**
-   * Checks that when/elsewhen clauses assign the same variables.
-   */
-  #checkElsewhenVariableMismatch(eqs: any[]): void {
-    for (const eq of eqs) {
-      if (!eq) continue;
-      const isWhen = eq.constructor?.name?.includes("WhenEquation");
-      if (isWhen) {
-        const getAssigned = (equations: any[]): Set<string> => {
-          const vars = new Set<string>();
-          for (const e of equations ?? []) {
-            if (!e) continue;
-            const isSimple = e.constructor?.name?.includes("SimpleEquation");
-            if (isSimple && e.expression1) {
-              const lhs = e.expression1;
-              if (lhs.parts) {
-                vars.add(lhs.parts.map((p: any) => p.identifier?.text ?? "?").join("."));
-              }
-            }
-          }
-          return vars;
-        };
-        const whenVars = getAssigned(eq.equations);
-        for (const elseWhen of eq.elseWhenEquationClauses ?? []) {
-          const elseVars = getAssigned(elseWhen.equations);
-          let mismatch = false;
-          for (const v of whenVars) {
-            if (!elseVars.has(v)) {
-              mismatch = true;
-              break;
-            }
-          }
-          if (!mismatch) {
-            for (const v of elseVars) {
-              if (!whenVars.has(v)) {
-                mismatch = true;
-                break;
-              }
-            }
-          }
-          if (mismatch) {
-            throw new Error("The same variables must be solved in elsewhen clause as in the when clause.");
-          }
-        }
-      }
-      // Recurse
-      if (eq.equations) this.#checkElsewhenVariableMismatch(eq.equations);
-      if (eq.elseEquations) this.#checkElsewhenVariableMismatch(eq.elseEquations);
-      for (const clause of eq.elseIfEquationClauses ?? []) {
-        this.#checkElsewhenVariableMismatch(clause.equations ?? []);
-      }
-    }
-  }
 
   /**
    * Retrieves the current FileSystem instance used by the context.

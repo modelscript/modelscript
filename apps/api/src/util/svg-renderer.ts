@@ -107,7 +107,9 @@ function hasVisualContent(svg: string): boolean {
  */
 export async function processLibrary(
   libraryPath: string,
+  processedClassNames: Set<string>,
   onClass: (className: string, metadata: ClassMetadata, svgs: SvgResult) => Promise<void>,
+  onReady?: (context: Context) => Promise<void>,
 ): Promise<Context> {
   ensureSvgWindow();
   ensureParser();
@@ -135,7 +137,14 @@ export async function processLibrary(
     console.log(`[publish] Memory after GC: ${Math.round(memGC.heapUsed / 1024 / 1024)}MB heap`);
   }
 
-  const HEAP_LIMIT = 8 * 1024 * 1024 * 1024; // 8 GB — aggressive to leave headroom
+  // Fire onReady callback immediately after indexing, before the expensive SVG pass.
+  // This allows the caller to export salsa-index and lsp-bundle early.
+  if (onReady) {
+    await onReady(context);
+  }
+
+  // We use 5 GB as a conservative limit to ensure we hit the safety check before V8 crashes at 8 GB
+  const HEAP_LIMIT = 5 * 1024 * 1024 * 1024;
   let classesProcessed = 0;
 
   function isMemoryTight(): boolean {
@@ -155,99 +164,94 @@ export async function processLibrary(
 
     const className = element.compositeName;
     if (className) {
-      try {
-        const classKind = element.classKind ?? "class";
-        const memoryTight = isMemoryTight();
+      if (!processedClassNames.has(className)) {
+        try {
+          const classKind = element.classKind ?? "unknown";
+          const baseClasses = element.extendsClassInstances
+            .map((e) => e.classInstance?.compositeName)
+            .filter(Boolean) as string[];
 
-        // Extract extends (guarded — the getter can trigger heavy resolution)
-        const baseClasses: string[] = [];
-        if (!memoryTight) {
-          try {
-            for (const ext of element.extendsClassInstances) {
-              const baseName = ext.classInstance?.compositeName;
-              if (baseName) baseClasses.push(baseName);
-            }
-          } catch {
-            // Skip if extends resolution fails
+          const components: ComponentMetadata[] = [];
+          for (const comp of element.components) {
+            const compMeta = extractComponentMetadata(comp);
+            if (compMeta) components.push(compMeta);
           }
-        }
 
-        // Extract components (guarded — the getter can trigger massive allocations)
-        const components: ComponentMetadata[] = [];
-        if (!memoryTight) {
-          try {
-            let count = 0;
-            for (const comp of element.components) {
-              if (count >= 500) break;
-              const meta = extractComponentMetadata(comp);
-              if (meta) components.push(meta);
-              count++;
-            }
-          } catch {
-            // Skip if component resolution fails
-          }
-        }
+          const metadata: ClassMetadata = {
+            className,
+            classKind: classKind.toString(),
+            description: element.description ?? null,
+            documentation: element.annotation<{ info?: string }>("Documentation")?.info ?? null,
+            baseClasses,
+            components,
+          };
 
-        const metadata: ClassMetadata = {
-          className,
-          classKind: classKind.toString(),
-          description: element.description ?? null,
-          documentation: element.annotation<{ info?: string }>("Documentation")?.info ?? null,
-          baseClasses,
-          components,
-        };
+          const memoryTight = isMemoryTight();
+          // Render SVGs — skip when memory is tight, for packages, or for classes with many declared elements
+          // (declaredElements is a plain array, safe to check without triggering lazy resolution)
+          let iconSvg: string | null = null;
+          let diagramSvg: string | null = null;
+          const skipRendering = memoryTight || (element.declaredElements?.length ?? 0) > 200;
 
-        // Render SVGs — skip when memory is tight, for packages, or for classes with many declared elements
-        // (declaredElements is a plain array, safe to check without triggering lazy resolution)
-        let iconSvg: string | null = null;
-        let diagramSvg: string | null = null;
-        const skipRendering = memoryTight || (element.declaredElements?.length ?? 0) > 200;
-
-        if (!skipRendering) {
-          try {
-            const icon = renderIcon(element);
-            if (icon) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const svgStr: string = (xmlFormat as any)(icon.svg());
-              if (hasVisualContent(svgStr)) {
-                iconSvg = svgStr;
+          if (!skipRendering) {
+            try {
+              const icon = renderIcon(element);
+              if (icon) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const svgStr: string = (xmlFormat as any)(icon.svg());
+                if (hasVisualContent(svgStr)) {
+                  iconSvg = svgStr;
+                }
+                // Aggressive DOM cleanup to prevent leaks
+                icon.remove();
+                icon.clear();
               }
+            } catch {
+              // Skip classes that fail to render
             }
-          } catch {
-            // Skip classes that fail to render
-          }
 
-          try {
-            const diagram = renderDiagram(element);
-            if (diagram) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const svgStr: string = (xmlFormat as any)(diagram.svg());
-              if (hasVisualContent(svgStr)) {
-                diagramSvg = svgStr;
+            try {
+              const diagram = renderDiagram(element);
+              if (diagram) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const svgStr: string = (xmlFormat as any)(diagram.svg());
+                if (hasVisualContent(svgStr)) {
+                  diagramSvg = svgStr;
+                }
+                // Aggressive DOM cleanup to prevent leaks
+                diagram.remove();
+                diagram.clear();
               }
+            } catch {
+              // Skip classes that fail to render
             }
-          } catch {
-            // Skip classes that fail to render
+
+            // Clear global fake window body to ensure no detached nodes accumulate
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const win = (globalThis as any).window;
+            if (win && win.document && win.document.body) {
+              win.document.body.innerHTML = "";
+            }
           }
-        }
 
-        await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
-        classesProcessed++;
+          await onClass(className, metadata, { icon: iconSvg, diagram: diagramSvg });
+          classesProcessed++;
 
-        // Force GC periodically to reclaim intermediate objects
-        if (classesProcessed % 50 === 0) {
-          tryGC();
-        }
+          // Force GC periodically to reclaim intermediate objects
+          if (classesProcessed % 50 === 0) {
+            tryGC();
+          }
 
-        // Log memory usage for diagnostics
-        if (classesProcessed % 100 === 0) {
-          const mem = process.memoryUsage();
-          console.log(
-            `[publish] ${classesProcessed} classes — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${memoryTight ? " [MEMORY TIGHT]" : ""}`,
-          );
+          // Log memory usage for diagnostics
+          if (classesProcessed % 100 === 0) {
+            const mem = process.memoryUsage();
+            console.log(
+              `[publish] ${classesProcessed} classes — heap: ${Math.round(mem.heapUsed / 1024 / 1024)}MB / ${Math.round(mem.heapTotal / 1024 / 1024)}MB, rss: ${Math.round(mem.rss / 1024 / 1024)}MB${memoryTight ? " [MEMORY TIGHT - SKIPPING SVGS]" : ""}`,
+            );
+          }
+        } catch (err) {
+          console.warn(`[publish] Skipping class ${className}: ${err instanceof Error ? err.message : err}`);
         }
-      } catch (err) {
-        console.warn(`[publish] Skipping class ${className}: ${err instanceof Error ? err.message : err}`);
       }
 
       await new Promise<void>((resolve) => setImmediate(resolve));

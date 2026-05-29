@@ -14,7 +14,7 @@ const SearchHeader = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 16px;
+  padding: 16px;
   position: sticky;
   top: var(--dev-header-height, 0px);
   z-index: 10;
@@ -185,7 +185,7 @@ const ExplorePage: React.FC = () => {
 
   useEffect(() => {
     if (!query) return;
-    if (activeTab === "Packages") {
+    if (activeTab === "Artifacts") {
       async function fetchPackages() {
         setPackagesLoading(true);
         try {
@@ -334,7 +334,7 @@ const ExplorePage: React.FC = () => {
     (p) => p.artifact_view_id !== null && p.content && p.content.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const TABS = ["Top", "Latest", "People", "Artifacts", "Packages", "Repositories"];
+  const TABS = ["Top", "Latest", "People", "Media", "Artifacts", "Repositories"];
 
   if (topic) {
     return (
@@ -495,20 +495,20 @@ const ExplorePage: React.FC = () => {
               </>
             )}
 
-            {activeTab === "Artifacts" && (
+            {activeTab === "Media" && (
               <>
                 {artifactPosts.map((post) => (
                   <Post key={post.id} post={post} />
                 ))}
                 {artifactPosts.length === 0 && (
                   <Box p={6} textAlign="center" color="var(--color-fg-muted)">
-                    No posts with artifacts matching "{query}" found.
+                    No posts with media matching "{query}" found.
                   </Box>
                 )}
               </>
             )}
 
-            {activeTab === "Packages" && (
+            {activeTab === "Artifacts" && (
               <>
                 {packagesLoading ? (
                   <Box p={4} display="flex" justifyContent="center">
@@ -531,8 +531,8 @@ const ExplorePage: React.FC = () => {
                         >
                           <Box
                             sx={{
-                              width: 44,
-                              height: 44,
+                              width: 32,
+                              height: 32,
                               borderRadius: "8px",
                               backgroundColor: "var(--color-done-emphasis)",
                               display: "flex",
@@ -540,7 +540,7 @@ const ExplorePage: React.FC = () => {
                               justifyContent: "center",
                               color: "white",
                               fontWeight: "bold",
-                              fontSize: "20px",
+                              fontSize: "16px",
                               flexShrink: 0,
                             }}
                           >
@@ -784,72 +784,18 @@ const ExplorePage: React.FC = () => {
                         "&:hover": { backgroundColor: "var(--color-canvas-subtle)" },
                       }}
                     >
-                      <Text
-                        color="var(--color-fg-muted)"
-                        sx={{ fontSize: "12px", display: "block", marginBottom: "4px" }}
-                      >
+                      <div style={{ fontSize: "13px", color: "var(--color-text-muted)", marginBottom: "4px" }}>
                         {index + 1} · Trending
-                      </Text>
-                      <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-fg-default)" }}>
+                      </div>
+                      <div style={{ fontWeight: "bold", fontSize: "15px", color: "var(--color-text-primary)" }}>
                         {t.display_name}
-                      </Text>
+                      </div>
                     </Box>
                   </Link>
                 ))}
               </Box>
             </Box>
           )}
-
-          <Box p={3} borderBottom="1px solid var(--color-border-subtle)" bg="var(--color-canvas-default)">
-            <Heading
-              as="h3"
-              style={{ fontSize: "16px", fontWeight: 800, marginBottom: "12px", color: "var(--color-fg-default)" }}
-            >
-              Physics Simulation
-            </Heading>
-            <Box display="flex" gap="12px" flexWrap="wrap">
-              <Box
-                bg="var(--color-canvas-subtle)"
-                border="1px solid var(--color-border-default)"
-                borderRadius="8px"
-                p="16px"
-                flex="1"
-                minWidth="200px"
-                sx={{
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  "&:hover": { borderColor: "var(--color-accent-emphasis)" },
-                }}
-              >
-                <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", marginBottom: "4px" }}>
-                  Drone Chassis FEA
-                </Text>
-                <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px" }}>
-                  Quick start template for structural analysis on a drone chassis STEP file.
-                </Text>
-              </Box>
-              <Box
-                bg="var(--color-canvas-subtle)"
-                border="1px solid var(--color-border-default)"
-                borderRadius="8px"
-                p="16px"
-                flex="1"
-                minWidth="200px"
-                sx={{
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  "&:hover": { borderColor: "var(--color-accent-emphasis)" },
-                }}
-              >
-                <Text as="div" sx={{ fontWeight: "bold", fontSize: "15px", marginBottom: "4px" }}>
-                  Aerodynamic Drag CFD
-                </Text>
-                <Text color="var(--color-fg-muted)" sx={{ fontSize: "13px" }}>
-                  Quick start template for external aerodynamics around a 3D geometry.
-                </Text>
-              </Box>
-            </Box>
-          </Box>
 
           <Box p={3} borderBottom="1px solid var(--color-border-subtle)">
             <Heading as="h3" style={{ fontSize: "16px", fontWeight: 800, color: "var(--color-fg-default)" }}>

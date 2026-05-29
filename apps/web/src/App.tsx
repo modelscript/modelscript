@@ -21,8 +21,11 @@ import PostDetailPage from "./pages/PostDetailPage";
 import ProfilePage from "./pages/ProfilePage";
 import RenderArtifactPage from "./pages/RenderArtifactPage";
 import RepositoryListPage from "./pages/RepositoryListPage";
+import ScriptDetailPage from "./pages/ScriptDetailPage";
+import ScriptsListPage from "./pages/ScriptsListPage";
 import SettingsPage from "./pages/SettingsPage";
 import SignupPage from "./pages/SignupPage";
+import TemplateDetailPage from "./pages/TemplateDetailPage";
 import WorkspacePage from "./pages/WorkspacePage";
 import { ThemeContextProvider, useTheme } from "./theme";
 
@@ -43,6 +46,7 @@ function App() {
           minHeight: "100vh",
         }}
       >
+        <div id="portal-root" />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Navigate to={user ? "/home" : "/explore"} replace />} />
@@ -68,6 +72,11 @@ function App() {
               {/* Repositories */}
               <Route path="/repos" element={<RepositoryListPage />} />
               <Route path="/repos/:provider/:namespace/:project/*" element={<WorkspacePage />} />
+
+              {/* Scripts */}
+              <Route path="/scripts" element={<ScriptsListPage />} />
+              <Route path="/scripts/templates/:id" element={<TemplateDetailPage />} />
+              <Route path="/scripts/:id" element={<ScriptDetailPage />} />
 
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/settings/profile" element={<EditProfilePage />} />

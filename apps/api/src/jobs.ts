@@ -9,6 +9,7 @@ export interface JobInfo {
   error?: string;
   resultPath?: string;
   classesProcessed?: number;
+  logs?: string[];
 }
 
 type JobFn = () => Promise<void>;
@@ -74,19 +75,50 @@ export class JobQueue {
     }
   }
 
+  /** Append a log line to a running job. */
+  appendLog(key: string, chunk: string): void {
+    const current = this.#status.get(key);
+    if (current) {
+      const logs = current.logs ?? [];
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        if (line.trim()) {
+          logs.push(line);
+        }
+      }
+      // keep last 500 lines
+      if (logs.length > 500) {
+        logs.splice(0, logs.length - 500);
+      }
+      this.#status.set(key, { ...current, logs });
+    }
+  }
+
   async #runChildProcess(key: string, scriptPath: string, data: Record<string, unknown>): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       const isDev = process.env["NODE_ENV"] !== "production";
       const maxSpace = isDev ? "8192" : "16384";
 
       const child: ChildProcess = fork(scriptPath, {
-        stdio: ["pipe", "inherit", "inherit", "ipc"],
+        stdio: ["pipe", "pipe", "pipe", "ipc"],
         execArgv: [...process.execArgv, `--max-old-space-size=${maxSpace}`, "--expose-gc"],
         // Clear NODE_OPTIONS so the parent's --max-old-space-size=8192 doesn't override ours
         env: { ...process.env, NODE_OPTIONS: "" },
       });
 
       this.#runningChildProcess = child;
+
+      child.stdout?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => {
+        process.stdout.write(chunk); // Still print to console
+        this.appendLog(key, chunk);
+      });
+
+      child.stderr?.setEncoding("utf8");
+      child.stderr?.on("data", (chunk: string) => {
+        process.stderr.write(chunk); // Still print to console
+        this.appendLog(key, chunk);
+      });
 
       child.on("message", (msg: { type: string; classesProcessed?: number }) => {
         if (msg.type === "progress" && msg.classesProcessed !== undefined) {

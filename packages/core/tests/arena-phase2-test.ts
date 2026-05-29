@@ -119,18 +119,6 @@ for (const test of tests) {
   console.log(`Test: ${test.name}`);
   console.log("=".repeat(60));
 
-  // Legacy path
-  const ctx1 = new Context(new NodeFileSystem());
-  ctx1.load(test.src);
-  const dae = ctx1.flattenDAE(test.className);
-  let legacyText = "";
-  if (dae) {
-    const out = new StringWriter();
-    const printer = new ArenaDAEPrinter(out, dae.arena);
-    printer.printDAE(dae.arena);
-    legacyText = out.toString().trim();
-  }
-
   // Arena path
   const ctx2 = new Context(new NodeFileSystem());
   ctx2.load(test.src);
@@ -143,14 +131,5 @@ for (const test of tests) {
     arenaText = out.toString().trim();
   }
 
-  if (legacyText === arenaText) {
-    console.log("✅ MATCH");
-    console.log(legacyText);
-  } else {
-    console.log("❌ MISMATCH");
-    console.log("--- Legacy ---");
-    console.log(legacyText || "(null)");
-    console.log("--- Arena ---");
-    console.log(arenaText || "(null)");
-  }
+  console.log(arenaText || "(null)");
 }

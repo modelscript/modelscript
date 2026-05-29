@@ -8,12 +8,12 @@ import {
   LineIndex,
   TokenData,
 } from "@modelscript/compiler";
-import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
+import { createModelicaQueryEngine, MsimParser } from "@modelscript/modelica/factory";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { Language, Parser, Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 import { computeTreeEdit } from "../utils/astUtils";
-import { LoaderContext, loadDependencyFromRegistry } from "../vfs/library-loader";
+import { loadDependencyFromRegistry, LoaderContext, loadMSL, loadSysML2StandardLibrary } from "../vfs/library-loader";
 import { DocumentManager } from "./DocumentManager";
 import { WorkspaceManager } from "./WorkspaceManager";
 
@@ -244,6 +244,7 @@ export class ParserService {
       { name: "Modelica", version: "4.1.0" },
       { name: "SysML", version: "2026.3.0" },
     ],
+    useLocalMsl = false,
   ): Promise<void> {
     try {
       // Construct absolute URLs for WASM files using the extension URI.
@@ -282,6 +283,7 @@ export class ParserService {
       this.parser.setLanguage(Modelica);
       Context.registerParser(".mo", this.parser);
       Context.registerParser(".mos", this.parser);
+      Context.registerParser(".msim", new MsimParser() as any);
       this.parserReady = true;
       this.connection.console.info("Tree-sitter Modelica this.parser initialized");
 
@@ -378,20 +380,20 @@ export class ParserService {
           this.sharedContext!.getTreeNode(entry?.resourceId, start, end),
       });
       const loaderCtx: LoaderContext = {
-        connectionState: connection,
+        connectionState: this.connection,
         logger: {
           log: (msg) => this.connection.console.info(msg),
           warn: (msg) => this.connection.console.warn(msg),
           error: (msg, e) => this.connection.console.error(`${msg} ${e}`),
         },
-        sharedFs,
+        sharedFs: (globalThis as any).sharedFs,
         sharedContext: this.sharedContext,
         globalWorkspaceIndex: this.workspaceManager.globalWorkspaceIndex,
         sysml2WorkspaceIndex: this.workspaceManager.sysml2WorkspaceIndex,
         documentTrees: this.documentManager.documentTrees as any,
         sysml2Parser: this.sysml2Parser as any,
         cacheStore,
-        registryUrl,
+        registryUrl: typeof registryUrl !== "undefined" ? registryUrl : undefined,
         federatedEndpoints,
       };
       savedLoaderCtx = loaderCtx;
@@ -406,7 +408,13 @@ export class ParserService {
       // Load dependencies concurrently
       const loadPromises = projectDependencies.map(async (dep) => {
         try {
-          await loadDependencyFromRegistry(dep, loaderCtx);
+          if (useLocalMsl && dep.name === "Modelica" && dep.version === "4.1.0") {
+            await loadMSL(serverDistBase, loaderCtx);
+          } else if (useLocalMsl && dep.name === "SysML" && dep.version === "2026.3.0") {
+            await loadSysML2StandardLibrary(serverDistBase, loaderCtx);
+          } else {
+            await loadDependencyFromRegistry(dep, loaderCtx);
+          }
           if (validationService) validationService.markDependencyLoaded(dep.name, dep.version);
         } catch (err) {
           this.connection.console.warn(`[lsp] Failed to load ${dep.name}@${dep.version} from registry: ${err}`);

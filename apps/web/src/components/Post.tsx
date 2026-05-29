@@ -13,6 +13,7 @@ import {
   InfoIcon,
   KebabHorizontalIcon,
   LinkIcon,
+  MarkGithubIcon,
   MuteIcon,
   PaperclipIcon,
   PersonAddIcon,
@@ -99,6 +100,16 @@ const ProfileNameLink = styled(Link)`
   }
 `;
 
+const QuoteWrapper = styled.div`
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  &:hover {
+    background-color: var(--color-canvas-subtle);
+  }
+`;
+
 const ViewsLink = styled.span`
   cursor: pointer;
   &:hover {
@@ -165,7 +176,7 @@ const MenuButton = styled.button`
   text-align: left;
   cursor: pointer;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: bold;
   color: var(--color-fg-default);
   border-radius: 8px;
   display: flex;
@@ -174,7 +185,7 @@ const MenuButton = styled.button`
   transition: background-color 0.2s;
 
   &:hover {
-    background-color: var(--color-canvas-subtle);
+    background-color: var(--color-action-list-item-default-hover-bg, rgba(128, 128, 128, 0.15));
   }
 `;
 
@@ -257,6 +268,51 @@ const MarkdownContainer = styled.div`
   }
 `;
 
+const GitLabIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15H4.17L2.51 2.05C2.42 1.77 2.02 1.77 1.93 2.05L0.18 7.42C0.09 7.69 0.19 8.01 0.43 8.18L8 13.68L15.57 8.18C15.81 8.01 15.91 7.69 15.82 7.42Z"
+      fill="#FC6D26"
+    />
+    <path d="M8 13.68L4.17 7.15H11.83L8 13.68Z" fill="#E24329" />
+    <path
+      d="M8 13.68L11.83 7.15H15.57C15.81 8.01 15.91 7.69 15.82 7.42L14.07 2.05C13.98 1.77 13.58 1.77 13.49 2.05L11.83 7.15Z"
+      fill="#FCA326"
+    />
+    <path
+      d="M8 13.68L4.17 7.15H0.43C0.19 8.01 0.09 7.69 0.18 7.42L1.93 2.05C2.02 1.77 2.42 1.77 2.51 2.05L4.17 7.15Z"
+      fill="#FCA326"
+    />
+  </svg>
+);
+
+const TwitterXIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
+
+const ProviderButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  background: var(--color-canvas-default);
+  color: var(--color-fg-default);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+
+  &:hover {
+    background: var(--color-canvas-subtle);
+  }
+`;
+
 const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
   const navigate = useNavigate();
   return (
@@ -280,6 +336,7 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
     >
       <div
         style={{
+          position: "relative",
           backgroundColor: "var(--color-bg-primary)",
           borderRadius: "16px",
           padding: "32px",
@@ -287,56 +344,115 @@ const LoginPromptModal = ({ onClose }: { onClose: () => void }) => {
           maxWidth: "400px",
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
           boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Heading as="h2" style={{ marginBottom: "16px", textAlign: "center" }}>
-          Sign in to interact
-        </Heading>
-        <Text style={{ marginBottom: "24px", color: "var(--color-text-muted)", textAlign: "center" }}>
-          You need an account to like, repost, reply, bookmark, and view analytics.
-        </Text>
         <button
           onClick={(e) => {
             e.stopPropagation();
-            navigate("/login");
+            onClose();
           }}
           style={{
-            width: "100%",
-            padding: "12px",
-            backgroundColor: "var(--color-btn-primary-bg, #1d9bf0)",
-            color: "white",
+            position: "absolute",
+            top: "16px",
+            right: "16px",
+            background: "transparent",
             border: "none",
-            borderRadius: "9999px",
-            fontSize: "16px",
-            fontWeight: "bold",
-            cursor: "pointer",
-            marginBottom: "12px",
-          }}
-        >
-          Log in
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate("/signup");
-          }}
-          style={{
-            width: "100%",
-            padding: "12px",
-            backgroundColor: "transparent",
             color: "var(--color-fg-default)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "9999px",
-            fontSize: "16px",
-            fontWeight: "bold",
             cursor: "pointer",
+            padding: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "50%",
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--color-canvas-subtle)")}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
         >
-          Sign up
+          <XIcon size={16} />
         </button>
+
+        <Heading as="h2" style={{ fontSize: "24px", marginBottom: "8px", fontWeight: 800 }}>
+          New to ModelScript?
+        </Heading>
+        <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "14px", marginBottom: "24px", lineHeight: 1.4 }}>
+          Sign up now to get your own personalized timeline!
+        </Text>
+        <Box display="flex" flexDirection="column" gap={2}>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/github")}>
+            <MarkGithubIcon size={16} />
+            Sign up with GitHub
+          </ProviderButton>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/gitlab")}>
+            <GitLabIcon />
+            Sign up with GitLab
+          </ProviderButton>
+          <ProviderButton onClick={() => (window.location.href = "/api/v1/auth/login/twitter")}>
+            <TwitterXIcon />
+            Sign up with X
+          </ProviderButton>
+          <div style={{ display: "flex", alignItems: "center", margin: "4px 0", color: "#536471" }}>
+            <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
+            <span style={{ margin: "0 8px", fontSize: "13px", color: "#536471" }}>or</span>
+            <div style={{ flex: 1, borderBottom: "1px solid #536471", opacity: 0.5 }}></div>
+          </div>
+          <button
+            onClick={() => navigate("/signup")}
+            style={{
+              height: 40,
+              backgroundColor: "#1f1f1f",
+              color: "#fff",
+              border: "none",
+              borderRadius: 9999,
+              fontSize: 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+              width: "100%",
+            }}
+          >
+            Create account
+          </button>
+        </Box>
+        <Text as="p" color="var(--color-fg-muted)" style={{ fontSize: "12px", marginTop: "24px", lineHeight: 1.4 }}>
+          By signing up, you agree to the{" "}
+          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            Terms of Service
+          </a>{" "}
+          and{" "}
+          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            Privacy Policy
+          </a>
+          , including{" "}
+          <a href="#" style={{ color: "#1d9bf0", textDecoration: "none" }}>
+            Cookie Use
+          </a>
+          .
+        </Text>
+
+        <Box mt={4} pt={3} style={{ width: "100%", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <Text style={{ fontSize: "15px", fontWeight: "bold", color: "var(--color-fg-default)" }}>
+            Already have an account?
+          </Text>
+          <button
+            onClick={() => navigate("/login")}
+            style={{
+              height: 40,
+              backgroundColor: "transparent",
+              color: "#1d9bf0",
+              border: "1px solid var(--color-border)",
+              borderRadius: 9999,
+              fontSize: 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+              width: "100%",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(29, 155, 240, 0.1)")}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+          >
+            Sign in
+          </button>
+        </Box>
       </div>
     </div>
   );
@@ -463,9 +579,9 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
     }
   }, [showAnalyticsModal, displayPost.id, token]);
 
-  const impressions = displayPost.view_count || 0;
-  const detailExpands = Math.floor(impressions * 0.05);
-  const profileVisits = Math.floor(impressions * 0.02);
+  const impressions = analyticsData?.view_count ?? displayPost.view_count ?? 0;
+  const detailExpands = Math.ceil(impressions * 0.05);
+  const profileVisits = Math.ceil(impressions * 0.02);
   const engagements =
     (likeCount || 0) + (repostCount || 0) + (displayPost.reply_count || 0) + detailExpands + profileVisits;
 
@@ -585,36 +701,38 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
               </ProfileNameLink>
             </ProfileHoverCard>
             <Box display="flex" flexDirection="column" flex={1} style={{ minWidth: 0 }}>
-              <ProfileHoverCard username={displayPost.username}>
-                <ProfileNameLink
-                  to={`/${displayPost.username}`}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ minWidth: 0, overflow: "hidden" }}
-                >
-                  <Text
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "15px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
+              <div style={{ width: "fit-content", maxWidth: "100%", display: "flex" }}>
+                <ProfileHoverCard username={displayPost.username}>
+                  <ProfileNameLink
+                    to={`/${displayPost.username}`}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ minWidth: 0, overflow: "hidden", display: "flex", maxWidth: "100%" }}
                   >
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {displayPost.display_name || displayPost.username}
-                    </span>
-                    {displayPost.account_type === "rss" && (
-                      <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
-                    )}
-                    {displayPost.account_type === "bot" && (
-                      <HubotIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
-                    )}
-                  </Text>
-                </ProfileNameLink>
-              </ProfileHoverCard>
+                    <Text
+                      style={{
+                        fontWeight: "bold",
+                        fontSize: "15px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {displayPost.display_name || displayPost.username}
+                      </span>
+                      {displayPost.account_type === "rss" && (
+                        <RssIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                      )}
+                      {displayPost.account_type === "bot" && (
+                        <HubotIcon size={14} color="var(--color-fg-muted)" style={{ flexShrink: 0 }} />
+                      )}
+                    </Text>
+                  </ProfileNameLink>
+                </ProfileHoverCard>
+              </div>
               <Text
                 className="handle-text"
                 style={{
@@ -666,9 +784,19 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     flexDirection="column"
                   >
                     <MenuButton
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
                         e.preventDefault();
+                        if (token) {
+                          try {
+                            await fetch(`${API_BASE_URL}/users/${displayPost.username}/follow`, {
+                              method: "POST",
+                              headers: { Authorization: `Bearer ${token}` },
+                            });
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }
                         setShowPostMenu(false);
                       }}
                     >
@@ -730,7 +858,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             style={{
               wordBreak: "break-word",
               lineHeight: 1.5,
-              fontSize: "15px",
+              fontSize: "17px",
             }}
           >
             <RenderContent text={displayPost.content} />
@@ -757,7 +885,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
           )}
 
           {displayPost.artifact_view_id && (
-            <Box mb={3} style={{ marginTop: "10px" }}>
+            <Box>
               <ArtifactViewCard
                 artifactId={displayPost.artifact_view_id}
                 onPinCreated={(pin) => {
@@ -798,26 +926,30 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 <RenderContent text={displayPost.quote_post.content} />
               </Box>
               {displayPost.quote_post.artifact_view_id && (
-                <Box style={{ marginTop: "10px" }}>
+                <Box>
                   <ArtifactViewCard artifactId={displayPost.quote_post.artifact_view_id} />
                 </Box>
               )}
             </Box>
           )}
 
-          <Box style={{ color: "var(--color-fg-muted)" }} fontSize="15px" mb={2}>
-            <Text>
+          <Box display="flex" alignItems="center" fontSize="15px" mb={2} mt={3}>
+            <span className="handle-text">
               {new Date(displayPost.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            </Text>
-            <Text style={{ margin: "0 4px" }}>·</Text>
-            <Text>
+            </span>
+            <span className="handle-text" style={{ margin: "0 4px" }}>
+              ·
+            </span>
+            <span className="handle-text">
               {new Date(displayPost.created_at).toLocaleDateString([], {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
               })}
-            </Text>
-            <Text style={{ margin: "0 4px" }}>·</Text>
+            </span>
+            <span className="handle-text" style={{ margin: "0 4px" }}>
+              ·
+            </span>
             <ViewsLink
               onClick={(e) => {
                 e.stopPropagation();
@@ -828,11 +960,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 }
                 setShowAnalyticsModal(true);
               }}
+              style={{ color: "var(--color-fg-muted)" }}
             >
-              <Text style={{ fontWeight: "bold", color: "var(--color-text-primary)" }}>
+              <span style={{ fontWeight: "bold", color: "var(--color-fg-default)" }}>
                 {formatNumber(displayPost.view_count || 0)}
-              </Text>{" "}
-              Views
+              </span>{" "}
+              <span className="handle-text">Views</span>
             </ViewsLink>
           </Box>
 
@@ -1221,9 +1354,19 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                           flexDirection="column"
                         >
                           <MenuButton
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
                               e.preventDefault();
+                              if (token) {
+                                try {
+                                  await fetch(`${API_BASE_URL}/users/${displayPost.username}/follow`, {
+                                    method: "POST",
+                                    headers: { Authorization: `Bearer ${token}` },
+                                  });
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }
                               setShowPostMenu(false);
                             }}
                           >
@@ -1280,7 +1423,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     )}
                   </Box>
                 </Box>
-                <Box mt={1} style={{ fontSize: "15px", wordBreak: "break-word" }}>
+                <Box mt={0} style={{ fontSize: "15px", wordBreak: "break-word" }}>
                   <RenderContent text={displayPost.content} />
                 </Box>
 
@@ -1307,19 +1450,13 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                 )}
 
                 {displayPost.artifact_view_id && (
-                  <Box mb={3} style={{ marginTop: "10px" }}>
+                  <Box>
                     <ArtifactViewCard artifactId={displayPost.artifact_view_id} />
                   </Box>
                 )}
 
                 {displayPost.quote_post && (
-                  <Box
-                    mt={2}
-                    p={3}
-                    border="1px solid var(--color-border)"
-                    borderRadius="12px"
-                    sx={{ "&:hover": { backgroundColor: "var(--color-canvas-subtle)" } }}
-                  >
+                  <QuoteWrapper>
                     <Box display="flex" alignItems="center" gap={1} mb={1}>
                       <Avatar
                         $url={displayPost.quote_post.avatar_url}
@@ -1347,11 +1484,11 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       <RenderContent text={displayPost.quote_post.content} />
                     </Box>
                     {displayPost.quote_post.artifact_view_id && (
-                      <Box style={{ marginTop: "10px" }}>
+                      <Box>
                         <ArtifactViewCard artifactId={displayPost.quote_post.artifact_view_id} />
                       </Box>
                     )}
-                  </Box>
+                  </QuoteWrapper>
                 )}
 
                 <Box
@@ -1368,6 +1505,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
+                      if (!token) {
+                        setShowLoginModal(true);
+                        return;
+                      }
                       setShowReplyModal(true);
                     }}
                   >
@@ -1395,6 +1536,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
+                        if (!token) {
+                          setShowLoginModal(true);
+                          return;
+                        }
                         setShowRepostMenu(!showRepostMenu);
                       }}
                     >
@@ -1608,11 +1753,12 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
 
   const modals = (
     <>
+      {showLoginModal && <LoginPromptModal onClose={() => setShowLoginModal(false)} />}
       {showQuoteModal && (
         <ComposeModal
           quotePost={displayPost}
           onClose={() => setShowQuoteModal(false)}
-          onPostCreated={() => window.location.reload()}
+          onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
         />
       )}
       {showReplyModal && (
@@ -1623,7 +1769,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread }) => {
             setShowReplyModal(false);
             setPendingPin(undefined);
           }}
-          onPostCreated={() => window.location.reload()}
+          onPostCreated={(reply) => navigate(`/${reply.author?.username || reply.username}/status/${reply.id}`)}
         />
       )}
       {showAnalyticsModal && (

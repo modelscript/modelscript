@@ -57,13 +57,18 @@
         "icon": "$(go-to-file)"
       },
       {
-        "command": "modelscript.openCadViewer",
+        "command": "modelscript.exportShapeToStep",
         "title": "ModelScript: Open 3D Viewer",
         "icon": "$(play-circle)"
       },
       {
         "command": "modelscript.openStepViewer",
         "title": "ModelScript: Open STEP Viewer",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "modelscript.openGCodeViewer",
+        "title": "ModelScript: Open GCode Viewer",
         "icon": "$(play-circle)"
       },
       {
@@ -257,13 +262,23 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "modelscript.openSimulationView",
+        "title": "ModelScript: Open Simulation View",
+        "icon": "$(play)"
+      },
+      {
+        "command": "modelscript.migrateMsimToStudy",
+        "title": "ModelScript: Migrate .msim to Study",
+        "icon": "$(zap)"
+      },
+      {
         "command": "modelscript.createFeaSetup",
-        "title": "ModelScript: Create FEA Setup",
+        "title": "ModelScript: Create FEA Study",
         "icon": "$(beaker)"
       },
       {
         "command": "modelscript.createCfdSetup",
-        "title": "ModelScript: Create CFD Setup",
+        "title": "ModelScript: Create CFD Study",
         "icon": "$(beaker)"
       },
       {
@@ -303,8 +318,14 @@
           "modelscript.registryUrl": {
             "type": "string",
             "scope": "window",
-            "default": "http://127.0.0.1:3000/api/v1",
+            "default": "http://127.0.0.1:3000",
             "description": "ModelScript package registry URL. Use http://127.0.0.1:3000 for local development."
+          },
+          "modelscript.library.useLocalMsl": {
+            "type": "boolean",
+            "scope": "window",
+            "default": false,
+            "description": "If enabled, Modelica Standard Library is loaded from the local bundled zip. If disabled, it fetches from the remote registry."
           }
         }
       }
@@ -359,11 +380,27 @@
         "priority": "option"
       },
       {
-        "viewType": "modelscript.physicsSetupEditor",
-        "displayName": "Physics Simulation Setup",
+        "viewType": "modelscript.stepEditor",
+        "displayName": "3D CAD Viewer (STEP)",
         "selector": [
           {
-            "filenamePattern": "*.msim"
+            "filenamePattern": "*.step"
+          },
+          {
+            "filenamePattern": "*.stp"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "viewType": "modelscript.gcodeViewer",
+        "displayName": "GCode Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.gcode"
+          },
+          {
+            "filenamePattern": "*.nc"
           }
         ],
         "priority": "default"
@@ -634,6 +671,16 @@
           "light": "./images/modelica.png",
           "dark": "./images/modelica.png"
         }
+      },
+      {
+        "id": "gcode",
+        "aliases": [
+          "GCode"
+        ],
+        "extensions": [
+          ".gcode",
+          ".nc"
+        ]
       }
     ],
     "markdown.markdownItPlugins": true,
@@ -676,6 +723,11 @@
           "group": "navigation"
         },
         {
+          "command": "modelscript.exportShapeToStep",
+          "when": "(editorLangId == modelica && resourceScheme != 'fmu-view') || activeCustomEditorId == modelscript.diagram",
+          "group": "navigation"
+        },
+        {
           "command": "modelscript.runVerification",
           "when": "editorLangId == sysml && activeCustomEditorId != modelscript.diagram",
           "group": "navigation"
@@ -693,6 +745,11 @@
         {
           "command": "modelscript.openStepViewer",
           "when": "editorLangId == step",
+          "group": "navigation"
+        },
+        {
+          "command": "modelscript.openGCodeViewer",
+          "when": "editorLangId == gcode",
           "group": "navigation"
         },
         {
@@ -815,7 +872,115 @@
         "language": "modelica",
         "scopes": {
           "keyword": [
-            "keyword.other.modelica"
+            "keyword.control"
+          ],
+          "type": [
+            "entity.name.type"
+          ],
+          "class": [
+            "entity.name.type.class"
+          ],
+          "function": [
+            "entity.name.function"
+          ],
+          "variable": [
+            "variable.other.readwrite"
+          ],
+          "parameter": [
+            "variable.parameter"
+          ],
+          "string": [
+            "string"
+          ],
+          "number": [
+            "constant.numeric"
+          ]
+        }
+      },
+      {
+        "language": "sysml",
+        "scopes": {
+          "keyword": [
+            "keyword.control"
+          ],
+          "type": [
+            "entity.name.type"
+          ],
+          "class": [
+            "entity.name.type.class"
+          ],
+          "function": [
+            "entity.name.function"
+          ],
+          "variable": [
+            "variable.other.readwrite"
+          ],
+          "parameter": [
+            "variable.parameter"
+          ],
+          "string": [
+            "string"
+          ],
+          "number": [
+            "constant.numeric"
+          ]
+        }
+      },
+      {
+        "language": "step",
+        "scopes": {
+          "keyword": [
+            "keyword.control"
+          ],
+          "type": [
+            "entity.name.type"
+          ],
+          "class": [
+            "entity.name.type.class"
+          ],
+          "function": [
+            "entity.name.function"
+          ],
+          "variable": [
+            "variable.other.readwrite"
+          ],
+          "parameter": [
+            "variable.parameter"
+          ],
+          "string": [
+            "string"
+          ],
+          "number": [
+            "constant.numeric"
+          ]
+        }
+      },
+      {
+        "language": "owl2",
+        "scopes": {
+          "keyword": [
+            "keyword.control"
+          ],
+          "type": [
+            "entity.name.type"
+          ],
+          "class": [
+            "entity.name.type.class"
+          ],
+          "function": [
+            "entity.name.function"
+          ],
+          "variable": [
+            "variable.other.readwrite"
+          ],
+          "parameter": [
+            "variable.parameter"
+          ],
+          "string": [
+            "string"
+          ],
+          "number": [
+            "constant.numeric"
           ]
         }
       }

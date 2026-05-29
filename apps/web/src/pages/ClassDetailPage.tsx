@@ -28,15 +28,16 @@ const PageWrap = styled.div`
   transition:
     background-color 0.3s ease,
     color 0.3s ease;
+  flex: 1;
 `;
 
 const TreeSidebar = styled.div`
   width: 260px;
   flex-shrink: 0;
   border-right: 1px solid var(--color-border);
-  height: 100vh;
+  height: calc(100vh - var(--dev-header-height, 0px));
   position: sticky;
-  top: 0;
+  top: var(--dev-header-height, 0px);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -373,21 +374,13 @@ const ClassDetailPage: React.FC = () => {
               boxSizing: "border-box",
             }}
           >
-            <Box
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: "var(--gradient-icon-box)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                border: "1px solid var(--color-border-strong)",
-              }}
-            >
-              <InvertedSvg src={getIconUrl(name!, version!, name!)} alt="" width={24} height={24} />
-            </Box>
+            <InvertedSvg
+              src={getIconUrl(name!, version!, name!)}
+              alt=""
+              width={32}
+              height={32}
+              style={{ flexShrink: 0 }}
+            />
             <Box display="flex" flexDirection="column">
               <Text style={{ fontWeight: 600, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.2 }}>
                 {name}

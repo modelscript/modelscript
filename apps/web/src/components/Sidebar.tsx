@@ -11,6 +11,7 @@ import {
   RepoIcon,
   RssIcon,
   SearchIcon,
+  TerminalIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
 import React from "react";
@@ -28,7 +29,7 @@ const SidebarContainer = styled.header`
   top: var(--dev-header-height, 0px);
   height: calc(100vh - var(--dev-header-height, 0px));
   overflow-y: auto;
-  padding: 12px;
+  padding: 16px 12px 12px 12px;
   box-sizing: border-box;
 
   @media (max-width: 1280px) {
@@ -150,11 +151,15 @@ const NavPill = styled.div`
 `;
 
 const LogoPill = styled(NavPill)`
-  padding: 16px;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  justify-content: center;
   border-radius: 50%;
+  margin-left: 5px;
 
   @media (max-width: 1280px) {
-    padding: 0;
+    margin-left: 0;
   }
 `;
 
@@ -177,15 +182,15 @@ const SidebarAvatar = styled.div<{ $url?: string }>`
 
 const LogoutMenu = styled.div`
   position: absolute;
-  bottom: 80px;
-  left: 12px;
-  width: 250px;
-  background-color: var(--color-canvas-default);
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border-subtle);
   border-radius: 16px;
   box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
   padding: 12px 0;
-  z-index: 100;
+  z-index: 99999;
 
   @media (max-width: 1280px) {
     width: max-content;
@@ -213,6 +218,7 @@ const ProfileFooterContainer = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 12px;
+  margin: 12px 0;
   border-radius: 9999px;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -259,6 +265,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
   }
   navLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   navLinks.push({ to: "/repos", icon: RepoIcon, label: "Repositories" });
+  navLinks.push({ to: "/scripts", icon: TerminalIcon, label: "Scripts" });
 
   if (user) {
     navLinks.push({ to: `/${user.username}`, icon: PersonIcon, label: "Profile" });
@@ -267,7 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
 
   return (
     <SidebarContainer>
-      <NavItem to={user ? "/home" : "/explore"} style={{ marginBottom: "8px", marginTop: "4px" }}>
+      <NavItem to={user ? "/home" : "/explore"} style={{ marginBottom: "8px", marginTop: "0px" }}>
         <LogoPill>
           <div
             style={{
@@ -287,7 +294,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
         </LogoPill>
       </NavItem>
 
-      <Box display="flex" flexDirection="column" gap={1} flex={1} style={{ position: "relative", zIndex: 1 }}>
+      <Box
+        display="flex"
+        flexDirection="column"
+        gap={1}
+        flex={1}
+        style={{ position: "relative", zIndex: 1, marginTop: "4px" }}
+      >
         {navLinks.map((link) => (
           <NavItem key={link.to} to={link.to} $active={location.pathname.startsWith(link.to)}>
             <NavPill>
@@ -363,7 +376,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick }) => {
       </Box>
 
       {user && (
-        <Box className="profile-footer-container" style={{ position: "relative", zIndex: 9999 }}>
+        <Box className="profile-footer-container" position="relative" zIndex={99999}>
           {showLogoutMenu && (
             <LogoutMenu>
               <button
