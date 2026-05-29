@@ -670,7 +670,10 @@ export class ArenaDAEPrinter {
     }
 
     const shape = a.getVarShape(idx);
-    if (shape.length > 0) this.out.write("[" + shape.join(", ") + "]");
+    if (shape.length > 0) {
+      const shapeStr = shape.map((s) => (s <= 0 ? ":" : String(s))).join(", ");
+      this.out.write("[" + shapeStr + "]");
+    }
 
     let varName = a.getVarName(idx);
     if (varName.startsWith("\0")) {

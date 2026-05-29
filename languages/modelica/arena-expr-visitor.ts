@@ -1214,8 +1214,8 @@ export class ArenaExprVisitor {
       const elements: number[] = [];
       elements.push(this.castToRealExpr(firstElem));
       for (let i = 1; i < count; i++) {
-        const tupleExprId = firstElem + i;
-        const elemId = this.dae.getExprRight(tupleExprId);
+        const tupleExprId = exprId + i;
+        const elemId = this.dae.getExprLeft(tupleExprId);
         elements.push(this.castToRealExpr(elemId));
       }
       return this.dae.addArrayCtorExpr(elements);
@@ -1346,7 +1346,9 @@ export class ArenaExprVisitor {
     const argValues: ArenaValue[] = [];
     for (const argId of argIds) {
       const val = evaluateArenaExpression(this.dae, argId);
-      if (val === null) return undefined; // Non-constant argument
+      if (val === null) {
+        return undefined;
+      } // Non-constant argument
       argValues.push(val);
     }
 
@@ -1365,7 +1367,7 @@ export class ArenaExprVisitor {
     const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues);
     if (outVal === null) return undefined;
 
-    const resultExprId = this.addArenaValueAsExpr(outVal, outType, Array.isArray(outVal));
+    const resultExprId = this.addArenaValueAsExpr(outVal, outType, outputVars.length > 1);
     if (resultExprId === -1) return undefined;
 
     // We do NOT remove the function definition from the DAE because OpenModelica

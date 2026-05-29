@@ -165,6 +165,7 @@ import {
   foldArenaConstants,
   inferArenaExprVarType,
   isAssignableType,
+  UnaryOp,
   Variability,
   VarType,
   varTypeName,
@@ -457,8 +458,19 @@ export class ArenaQueryFlattener {
           // If we are scalarizing arrays, expand array equations element-wise
           let arrayDims: number[] | null = null;
           let varName: string | null = null;
-          if (this.options.arrayMode !== "preserve" && dae.getExprKind(lhsId) === ExprKind.Name) {
-            varName = dae.interner.resolve(dae.getExprData1(lhsId));
+          let coreLhsId = lhsId;
+          let wrapperFunc: string | null = null;
+
+          if (dae.getExprKind(lhsId) === ExprKind.Der) {
+            coreLhsId = dae.getExprData1(lhsId);
+            wrapperFunc = "der";
+          } else if (dae.getExprKind(lhsId) === ExprKind.Pre) {
+            coreLhsId = dae.getExprData1(lhsId);
+            wrapperFunc = "pre";
+          }
+
+          if (this.options.arrayMode !== "preserve" && dae.getExprKind(coreLhsId) === ExprKind.Name) {
+            varName = dae.interner.resolve(dae.getExprData1(coreLhsId));
             if (scopeId !== null) {
               let currentClassId = scopeId;
               const parts = varName.split(".");
@@ -487,7 +499,7 @@ export class ArenaQueryFlattener {
           }
 
           if (arrayDims) {
-            this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
+            this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor, wrapperFunc);
           } else {
             // Apply Integer→Real coercion when LHS is a Real-typed variable
             let coercedRhsId = rhsId;
@@ -959,7 +971,8 @@ export class ArenaQueryFlattener {
     const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
 
     if (arrayDims && arrayDims.length > 0) {
-      if (this.options.arrayMode === "preserve") {
+      const hasUnknownDim = arrayDims.some((d) => d <= 0);
+      if (this.options.arrayMode === "preserve" || hasUnknownDim) {
         // In preserve mode, emit a single variable with shape metadata
         this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
         const varIdx = dae.getVarIdxByName(fullName);
@@ -1225,9 +1238,14 @@ export class ArenaQueryFlattener {
     rhsId: number,
     shape: number[],
     visitor: ArenaExprVisitor,
+    wrapperFunc: string | null = null,
   ): void {
     if (this.options.arrayMode === "preserve") {
-      dae.addEquation(eqKind, dae.addNameExpr(lhsName), rhsId);
+      let elemLhsId = dae.addNameExpr(lhsName);
+      if (wrapperFunc === "der") elemLhsId = dae.addDerExpr(elemLhsId);
+      else if (wrapperFunc === "pre") elemLhsId = dae.addPreExpr(elemLhsId);
+      else if (wrapperFunc) elemLhsId = dae.addCallExpr(wrapperFunc, [elemLhsId]);
+      dae.addEquation(eqKind, elemLhsId, rhsId);
       return;
     }
     const indices = this.generateArrayIndices(shape);
@@ -1241,7 +1259,10 @@ export class ArenaQueryFlattener {
         elemRhsId = visitor.castToRealExpr(elemRhsId);
       }
 
-      const elemLhsId = dae.addNameExpr(elemVarName);
+      let elemLhsId = dae.addNameExpr(elemVarName);
+      if (wrapperFunc === "der") elemLhsId = dae.addDerExpr(elemLhsId);
+      else if (wrapperFunc === "pre") elemLhsId = dae.addPreExpr(elemLhsId);
+      else if (wrapperFunc) elemLhsId = dae.addCallExpr(wrapperFunc, [elemLhsId]);
       dae.addEquation(eqKind, elemLhsId, elemRhsId);
     }
   }
@@ -1303,6 +1324,10 @@ export class ArenaQueryFlattener {
         }
         if (outCount === 1 && outShape.length === 0) {
           returnsScalar = true;
+        } else {
+          console.error(
+            `[DEBUG VEC] ${funcName} returnsScalar=false (outCount=${outCount}, outShape=${JSON.stringify(outShape)})`,
+          );
         }
       } else {
         const scalarBuiltins = new Set([

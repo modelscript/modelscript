@@ -203,31 +203,57 @@ export function evaluateArenaExpression(
       );
       if (left === null || right === null) return null;
 
-      if (typeof left === "number" && typeof right === "number") {
-        switch (op) {
-          case BinOp.Add:
-            return left + right;
-          case BinOp.Sub:
-            return left - right;
-          case BinOp.Mul:
-            return left * right;
-          case BinOp.Div:
-            return left / right;
-          case BinOp.Pow:
-            return Math.pow(left, right);
-          case BinOp.Eq:
-            return left === right;
-          case BinOp.Neq:
-            return left !== right;
-          case BinOp.Lt:
-            return left < right;
-          case BinOp.Lte:
-            return left <= right;
-          case BinOp.Gt:
-            return left > right;
-          case BinOp.Gte:
-            return left >= right;
-        }
+      if (Array.isArray(left) || Array.isArray(right) || (typeof left === "number" && typeof right === "number")) {
+        const applyBinOp = (a: ArenaValue, b: ArenaValue, op: BinOp): ArenaValue | null => {
+          if (Array.isArray(a) && Array.isArray(b)) {
+            if (a.length !== b.length) return null;
+            const res = a.map((val, idx) => {
+              const bVal = b[idx];
+              if (bVal === undefined) return null;
+              return applyBinOp(val, bVal, op);
+            });
+            if (res.includes(null)) return null;
+            return res as ArenaValue;
+          } else if (Array.isArray(a)) {
+            const res = a.map((val) => applyBinOp(val, b, op));
+            if (res.includes(null)) return null;
+            return res as ArenaValue;
+          } else if (Array.isArray(b)) {
+            const res = b.map((val) => applyBinOp(a, val, op));
+            if (res.includes(null)) return null;
+            return res as ArenaValue;
+          }
+
+          if (typeof a === "number" && typeof b === "number") {
+            switch (op) {
+              case BinOp.Add:
+                return a + b;
+              case BinOp.Sub:
+                return a - b;
+              case BinOp.Mul:
+                return a * b;
+              case BinOp.Div:
+                return a / b;
+              case BinOp.Pow:
+                return Math.pow(a, b);
+              case BinOp.Eq:
+                return a === b;
+              case BinOp.Neq:
+                return a !== b;
+              case BinOp.Lt:
+                return a < b;
+              case BinOp.Lte:
+                return a <= b;
+              case BinOp.Gt:
+                return a > b;
+              case BinOp.Gte:
+                return a >= b;
+            }
+          }
+          return null;
+        };
+        const res = applyBinOp(left, right, op);
+        if (res !== null) return res;
       }
 
       if (typeof left === "boolean" && typeof right === "boolean") {
