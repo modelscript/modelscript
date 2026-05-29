@@ -1249,11 +1249,94 @@ export class ArenaQueryFlattener {
   /** Recursively resolve/subscript RHS element expression for array equation scalarization. */
   private getArrayElementExpr(dae: ArenaDAEBuilder, exprId: number, indices: number[]): number {
     const kind = dae.getExprKind(exprId);
+
+    if (
+      kind === ExprKind.IntLiteral ||
+      kind === ExprKind.RealLiteral ||
+      kind === ExprKind.BoolLiteral ||
+      kind === ExprKind.StringLiteral
+    ) {
+      return exprId;
+    }
+
     if (kind === ExprKind.Name) {
       const varName = dae.interner.resolve(dae.getExprData1(exprId));
       const elemVarName = `${varName}[${indices.join(",")}]`;
       if (dae.hasVar(elemVarName)) {
         return dae.addNameExpr(elemVarName);
+      }
+      if (dae.hasVar(varName)) {
+        const varIdx = dae.getVarIdxByName(varName);
+        if (dae.getVarShape(varIdx).length === 0) {
+          return exprId;
+        }
+      }
+    }
+
+    if (kind === ExprKind.Binary) {
+      const op = dae.getExprData1(exprId) as BinOp;
+      const left = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices);
+      const right = this.getArrayElementExpr(dae, dae.getExprRight(exprId), indices);
+      return dae.addBinaryExpr(op, left, right);
+    }
+
+    if (kind === ExprKind.Unary) {
+      const op = dae.getExprData1(exprId) as UnaryOp;
+      const operand = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices);
+      return dae.addUnaryExpr(op, operand);
+    }
+
+    if (kind === ExprKind.Call) {
+      const funcNameId = dae.getExprData1(exprId);
+      const funcName = dae.interner.resolve(funcNameId);
+
+      let returnsScalar = false;
+      const fnDae = dae.functions.get(funcNameId);
+      if (fnDae) {
+        let outCount = 0;
+        let outShape: number[] = [];
+        for (let i = 0; i < fnDae.varCount; i++) {
+          if (fnDae.getVarCausality(i) === 2 /* Output */) {
+            outCount++;
+            outShape = fnDae.getVarShape(i);
+          }
+        }
+        if (outCount === 1 && outShape.length === 0) {
+          returnsScalar = true;
+        }
+      } else {
+        const scalarBuiltins = new Set([
+          "sin",
+          "cos",
+          "tan",
+          "asin",
+          "acos",
+          "atan",
+          "atan2",
+          "sinh",
+          "cosh",
+          "tanh",
+          "exp",
+          "log",
+          "log10",
+          "sqrt",
+          "abs",
+          "sign",
+        ]);
+        if (scalarBuiltins.has(funcName)) {
+          returnsScalar = true;
+        }
+      }
+
+      if (returnsScalar) {
+        const numArgs = dae.getExprRight(exprId);
+        const firstArg = dae.getExprLeft(exprId);
+        const newArgs: number[] = [];
+        for (let i = 0; i < numArgs; i++) {
+          const argId = i === 0 ? firstArg : dae.getExprLeft(firstArg + i);
+          newArgs.push(this.getArrayElementExpr(dae, argId, indices));
+        }
+        return dae.addCallExpr(funcName, newArgs);
       }
     }
 
@@ -2561,7 +2644,7 @@ export class ArenaQueryFlattener {
         // ── Implicit Integer→Real coercion ──
         // When assigning Integer to Real, OMC inserts /*Real*/() cast
         let finalRhsId = rhsId;
-        if (targetType === VarType.Real && sourceType === VarType.Integer) {
+        if (targetType === VarType.Real && (sourceType === VarType.Integer || sourceType === null)) {
           finalRhsId = visitor.castToRealExpr(rhsId);
         }
         dae.addAssignmentStmt(lhsId, finalRhsId);
@@ -2574,8 +2657,13 @@ export class ArenaQueryFlattener {
         const indexName = firstIdx.identifier?.text ?? "";
         const indexNameId = dae.interner.intern(indexName);
         const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
-        const rangeExprId = firstIdx.expression ? visitor.visit(firstIdx.expression) : undefined;
+
+        let rangeExprId = firstIdx.expression ? visitor.visit(firstIdx.expression) : undefined;
         const bodyStmts = stmt.statements ?? [];
+
+        if (rangeExprId === undefined && indexName) {
+          rangeExprId = this.inferImplicitForRange(bodyStmts, indexName, dae, visitor);
+        }
 
         // Header first, then body (prefix layout)
         dae.addForStmt(indexNameId, rangeExprId ?? -1, bodyStmts.length);
@@ -2939,6 +3027,65 @@ export class ArenaQueryFlattener {
     // For now, return the text as-is (equation text will need
     // full CST-based processing for production use).
     return text;
+  }
+
+  private inferImplicitForRange(
+    body: any[],
+    indexName: string,
+    dae: ArenaDAEBuilder,
+    visitor: ArenaExprVisitor,
+  ): number | undefined {
+    let arrayName: string | undefined;
+    let arrayDim = 1;
+
+    const walk = (node: any) => {
+      if (!node || arrayName) return;
+
+      if (node instanceof ModelicaComponentReferenceSyntaxNode) {
+        for (const part of node.parts) {
+          if (part.arraySubscripts && part.arraySubscripts.subscripts) {
+            const subs = part.arraySubscripts.subscripts;
+            for (let d = 0; d < subs.length; d++) {
+              const sub = subs[d];
+              if (sub) {
+                const subId = visitor.visit(sub as any);
+                if (subId !== undefined && dae.getExprKind(subId) === ExprKind.Name) {
+                  const nameStr = dae.interner.resolve(dae.getExprData1(subId));
+                  if (nameStr === indexName) {
+                    arrayName = node.parts[0]?.identifier?.text;
+                    arrayDim = d + 1;
+                    return;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      for (const key of Object.keys(node)) {
+        const val = node[key];
+        if (Array.isArray(val)) {
+          for (const item of val) {
+            if (item && typeof item === "object") walk(item);
+          }
+        } else if (val && typeof val === "object") {
+          walk(val);
+        }
+      }
+    };
+
+    for (const item of body) walk(item);
+
+    if (arrayName) {
+      const arg1Id = dae.addNameExpr(arrayName);
+      const arg2Id = dae.addIntLiteral(arrayDim);
+      const sizeCallId = dae.addCallExpr("size", [arg1Id, arg2Id]);
+      const startId = dae.addIntLiteral(1);
+      return dae.addRangeExpr(startId, sizeCallId, -1);
+    }
+
+    return undefined;
   }
 
   private createExprVisitor(
