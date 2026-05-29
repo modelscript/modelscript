@@ -1358,7 +1358,7 @@ export class ArenaQueryFlattener {
         const firstArg = dae.getExprLeft(exprId);
         const newArgs: number[] = [];
         for (let i = 0; i < numArgs; i++) {
-          const argId = i === 0 ? firstArg : dae.getExprLeft(firstArg + i);
+          const argId = i === 0 ? firstArg : dae.getExprLeft(exprId + i);
           newArgs.push(this.getArrayElementExpr(dae, argId, indices));
         }
         return dae.addCallExpr(funcName, newArgs);
