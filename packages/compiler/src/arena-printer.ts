@@ -622,6 +622,8 @@ export class ArenaDAEPrinter {
     const a = this.arena;
     this.out.write(this.indent());
 
+    if (a.isVarProtected(idx)) this.out.write("protected ");
+
     const variability = a.getVarVariability(idx);
     const isFinal = a.isVarFinal(idx);
     if (isFinal) this.out.write("final ");
@@ -1018,21 +1020,10 @@ export class ArenaDAEPrinter {
     if (dae.description) this.out.write(' "' + dae.description + '"');
     this.out.write("\n");
 
-    // Variables — public first, then protected section
-    const protectedVars: number[] = [];
+    // Variables (order matches definition order, inline protected flags)
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.isVarRemoved(i)) continue;
-      if (dae.isVarProtected(i)) {
-        protectedVars.push(i);
-      } else {
-        this.printVar(i);
-      }
-    }
-    if (protectedVars.length > 0) {
-      this.out.write("protected\n");
-      for (const i of protectedVars) {
-        this.printVar(i);
-      }
+      this.printVar(i);
     }
 
     // Initial equations

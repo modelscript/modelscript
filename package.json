@@ -44,8 +44,8 @@
     "release": "nx release",
     "release:dry-run": "nx release --dry-run",
     "test": "nx run-many --target=test",
-    "test:modelica": "npx tsx packages/core/tests/testsuite-runner.ts OpenModelica/flattening/modelica",
-    "test:modelica:update": "npx tsx packages/core/tests/testsuite-runner.ts --update --omc OpenModelica/flattening/modelica",
+    "test:modelica": "npx tsx packages/core/tests/testsuite-runner.ts",
+    "test:modelica:update": "npx tsx packages/core/tests/testsuite-runner.ts --update --omc",
     "test:single": "npx tsx packages/core/tests/testsuite-runner.ts"
   },
   "lint-staged": {

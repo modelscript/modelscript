@@ -325,6 +325,11 @@ function printSummary(results: TestResult[], suiteLabel: string): void {
 
 // ── CTRF reporter ────────────────────────────────────────────────────────────
 
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 function generateCtrfReport(results: TestResult[], startTime: number, stopTime: number): CtrfReport {
   const passed = results.filter((r) => r.status === "passed").length;
   const failed = results.filter((r) => r.status === "failed").length;
@@ -355,7 +360,7 @@ function generateCtrfReport(results: TestResult[], startTime: number, stopTime: 
         retries: 0,
         flaky: false,
         suite: path.basename(path.dirname(r.file)),
-        ...(r.message ? { message: r.message } : {}),
+        ...(r.message ? { message: stripAnsi(r.message) } : {}),
         ...(r.keywords ? { keywords: r.keywords } : {}),
         ...(r.testStatus ? { testStatus: r.testStatus } : {}),
       })),
@@ -414,7 +419,8 @@ async function runWithConcurrency<T>(
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const testsuiteRoot = path.resolve(import.meta.dirname ?? __dirname, "../testsuite");
+  const baseTestsuiteRoot = path.resolve(import.meta.dirname ?? __dirname, "../testsuite");
+  const testsuiteRoot = path.resolve(baseTestsuiteRoot, "OpenModelica/flattening/modelica");
 
   // Parse arguments
   const rawArgs = process.argv.slice(2);
@@ -540,7 +546,7 @@ async function main(): Promise<void> {
 
   // Build task closures
   const tasks = allQueued.map(({ testCase }) => {
-    return () => runTestInWorker(testCase, testsuiteRoot, updateMode, omcMode);
+    return () => runTestInWorker(testCase, baseTestsuiteRoot, updateMode, omcMode);
   });
 
   // Run all tests in parallel with concurrency limit
