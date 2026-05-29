@@ -259,27 +259,38 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
       }
 
       // Recursive merge of nested modifications
-      if (arg.nestedArgs.length > 0 && existing.nestedArgs.length > 0) {
-        const mergedNested = mergeModArgs(
-          { args: arg.nestedArgs, bindingExpression: null },
-          { args: existing.nestedArgs, bindingExpression: null },
-        );
+      if (arg.nestedArgs.length > 0 || existing.nestedArgs.length > 0) {
+        let mergedNestedArgs = arg.nestedArgs;
+        if (!(arg.isRedeclaration && existing.isRedeclaration)) {
+          const mergedNested = mergeModArgs(
+            { args: arg.nestedArgs, bindingExpression: null },
+            { args: existing.nestedArgs, bindingExpression: null },
+          );
+          mergedNestedArgs = mergedNested.args;
+        }
         merged.set(arg.name, {
           ...arg,
-          nestedArgs: mergedNested.args,
+          nestedArgs: mergedNestedArgs,
           // Outer value overrides inner value
           value: arg.value ?? existing.value,
           // `each` from outer takes precedence
           each: arg.each || existing.each,
           // `final` is sticky from either side
           final: arg.final || existing.final,
+          isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
+          redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
         });
       } else {
-        // Simple override: outer replaces inner entirely
+        // Simple override: outer overrides inner
         merged.set(arg.name, {
           ...arg,
           // Preserve `final` from inner if set
           final: arg.final || existing.final,
+          isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
+          redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          value: arg.value ?? existing.value,
+          evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
         });
       }
     } else {

@@ -25,6 +25,7 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/compiler";
+import { parseModArgsFromCst } from "./language.js";
 import { type ModelicaModArgs, getModArg, isBroken, mergeModArgs, subModification } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,7 @@ interface ModificationFrame {
   mods: ModelicaModArgs;
   /** Scope where these mods were written (for CST byte-range evaluation) */
   evaluationScopeId: SymbolId | null;
+  evaluationScopePrefix?: string;
   /** Whether the parent component was declared `final`, propagating to all children */
   isFinal?: boolean;
 }
@@ -205,6 +207,7 @@ export interface FlattenOptions {
   arrayMode?: "scalarize" | "preserve";
   functionInlining?: "inline" | "preserve";
   canonicalizeEquations?: boolean;
+  eliminateAliases?: boolean;
 }
 
 // We remove FlatDAE and FlatVariable interfaces since we emit directly to ArenaDAEBuilder.
@@ -310,7 +313,9 @@ export class ArenaQueryFlattener {
     foldArenaConstants(dae, this.db, rootClassId);
 
     // O(N) Arena-native alias elimination
-    eliminateArenaAliases(dae);
+    if (this.options.eliminateAliases) {
+      eliminateArenaAliases(dae);
+    }
 
     // Group equations for perfect print/AST ordering parity with legacy
     dae.groupEquationsForParity();
@@ -362,7 +367,9 @@ export class ArenaQueryFlattener {
     this.expandConnections(dae);
 
     // O(N) Arena-native alias elimination
-    eliminateArenaAliases(dae);
+    if (this.options.eliminateAliases) {
+      eliminateArenaAliases(dae);
+    }
 
     return dae;
   }
@@ -692,7 +699,7 @@ export class ArenaQueryFlattener {
             const mergedMod = mergeModArgs(topMod, localMod);
             const childStack: ModificationStack =
               mergedMod && mergedMod.args.length > 0
-                ? [...modStack, { mods: mergedMod, evaluationScopeId: entry.parentId }]
+                ? [...modStack, { mods: mergedMod, evaluationScopeId: entry.parentId, evaluationScopePrefix: prefix }]
                 : modStack;
 
             // Recurse into the resolved base class
@@ -720,6 +727,84 @@ export class ArenaQueryFlattener {
     // Track which names we've already emitted (to filter duplicates from extends)
     const emittedNames = new Set<string>();
 
+    // Support `redeclare model extends X(x=y)` syntax (inline extends in LongClassSpecifier)
+    const selfCst = this.db.cstNode(classId) as any;
+    const specExt = selfCst?.childForFieldName?.("classSpecifier");
+    if (specExt?.type === "LongClassSpecifier") {
+      let hasExtends = false;
+      for (let i = 0; i < specExt.childCount; i++) {
+        if (specExt.child(i).type === "extends") {
+          hasExtends = true;
+          break;
+        }
+      }
+      if (hasExtends) {
+        const identNode = specExt.childForFieldName("identifier");
+        if (identNode?.text) {
+          const baseName = identNode.text;
+          console.error(`[LongClassSpecifier] Processing inline extends for classId=${classId}, baseName=${baseName}`);
+          const classEntry = this.db.symbol(classId);
+          if (classEntry?.parentId !== null) {
+            let resolvedBase: import("@modelscript/compiler").SymbolEntry | null = null;
+            const resolveName = this.db.query<any>("resolveName", classEntry.parentId);
+            if (resolveName) {
+              let resolved = resolveName(baseName, true);
+              if (resolved && resolved.id === classId) {
+                console.error(`[LongClassSpecifier] Cycle detected resolving ${baseName}, checking parent extends`);
+                // Cycle detected, look in parent's inherited classes
+                resolved = null;
+                for (const pChild of this.db.childrenOf(classEntry.parentId)) {
+                  if (pChild.kind === "Extends") {
+                    const pBase = this.db.query<any>("resolvedBaseClass", pChild.id);
+                    console.error(
+                      `[LongClassSpecifier] Found parent extends clause, resolved to base: ${pBase?.name} (id=${pBase?.id})`,
+                    );
+                    if (pBase) {
+                      const pExtResolver = this.db.query<any>("resolveName", pBase.id);
+                      if (pExtResolver) {
+                        const found = pExtResolver(baseName);
+                        console.error(
+                          `[LongClassSpecifier] Resolved ${baseName} inside ${pBase.name} -> ${found?.name} (id=${found?.id})`,
+                        );
+                        // We must ensure the found id is NOT the same as the current class id,
+                        // otherwise we'd cycle again.
+                        if (found && found.id !== classId) {
+                          resolvedBase = found;
+                          break;
+                        }
+                      }
+                    }
+                  }
+                }
+              } else {
+                resolvedBase = resolved;
+              }
+
+              if (resolvedBase && resolvedBase.kind !== "Reference") {
+                console.error(`[LongClassSpecifier] Recursing into base class ${resolvedBase.name}`);
+                // Parse the local modification on the LongClassSpecifier
+                let localMod: ModelicaModArgs | null = null;
+                const modNode = specExt.childForFieldName("classModification");
+                if (modNode) {
+                  localMod = parseModArgsFromCst(modNode, classId);
+                }
+
+                const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+                const mergedMod = mergeModArgs(topMod, localMod);
+
+                const childStack: ModificationStack =
+                  mergedMod && mergedMod.args.length > 0
+                    ? [...modStack, { mods: mergedMod, evaluationScopeId: classEntry.parentId }]
+                    : modStack;
+
+                this.flattenClassWithMods(resolvedBase.id, prefix, dae, childStack, new Set(visited));
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Process extends clauses FIRST — inherited elements come before local ones
     // in the final element order (matching OpenModelica behavior)
     for (const child of children) {
@@ -741,7 +826,7 @@ export class ArenaQueryFlattener {
         // Build child modification stack for the base class
         const childStack: ModificationStack =
           mergedMod && mergedMod.args.length > 0
-            ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId }]
+            ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId, evaluationScopePrefix: prefix }]
             : modStack;
 
         // Check if this extends clause is in a protected section
@@ -1153,7 +1238,7 @@ export class ArenaQueryFlattener {
 
       if (this.options.arrayMode === "preserve" || hasUnknownDim) {
         // In preserve mode, emit a single variable with shape metadata
-        this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
+        this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, modStack, isFinalFromOuterMod);
         const varIdx = dae.getVarIdxByName(fullName);
         if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
         return;
@@ -1173,7 +1258,7 @@ export class ArenaQueryFlattener {
     }
 
     if (isPredefined) {
-      this.emitVariable(fullName, primitiveTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
+      this.emitVariable(fullName, primitiveTypeName, entry, dae, effectiveMod, modStack, isFinalFromOuterMod);
       return;
     }
 
@@ -1209,11 +1294,24 @@ export class ArenaQueryFlattener {
     // If this component is declared `final`, propagate that to all children
     const componentIsFinal = this.db.query<boolean>("isFinal", entry.id) || isFinalFromOuterMod;
     const childStack: ModificationStack = effectiveMod
-      ? [...modStack, { mods: effectiveMod, evaluationScopeId: entry.parentId, isFinal: componentIsFinal || undefined }]
+      ? [
+          ...modStack,
+          {
+            mods: effectiveMod,
+            evaluationScopeId: entry.parentId,
+            isFinal: componentIsFinal || undefined,
+            evaluationScopePrefix: prefix,
+          },
+        ]
       : componentIsFinal
         ? [
             ...modStack,
-            { mods: { args: [], bindingExpression: null }, evaluationScopeId: entry.parentId, isFinal: true },
+            {
+              mods: { args: [], bindingExpression: null },
+              evaluationScopeId: entry.parentId,
+              isFinal: true,
+              evaluationScopePrefix: prefix,
+            },
           ]
         : modStack;
     // Push compound type onto hierarchy stack for outer/inner resolution
@@ -1266,7 +1364,22 @@ export class ArenaQueryFlattener {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const dotIdx = baseName.lastIndexOf(".");
           const parentPrefix = dotIdx >= 0 ? baseName.substring(0, dotIdx) : undefined;
-          const visitor = this.createExprVisitor(dae, undefined, parentPrefix, entry.parentId ?? entry.id);
+
+          let exprPrefix = parentPrefix;
+          let scopeId = entry.parentId ?? entry.id;
+          if (effectiveMod?.evaluationScopeId && effectiveMod.evaluationScopeId !== entry.parentId) {
+            scopeId = effectiveMod.evaluationScopeId;
+            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
+            if (frame && frame.evaluationScopePrefix !== undefined) {
+              exprPrefix = frame.evaluationScopePrefix;
+            } else if (scopeId === entry.parentId) {
+              exprPrefix = parentPrefix;
+            } else {
+              exprPrefix = undefined;
+            }
+          }
+
+          const visitor = this.createExprVisitor(dae, undefined, exprPrefix, scopeId);
           const exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
             arrayBindingVal = evaluateArenaExpression(dae, exprId);
@@ -1293,7 +1406,7 @@ export class ArenaQueryFlattener {
     for (const attr of attributesToSlice) {
       const attrMod = elementMod?.args.find((a) => a.name === attr);
       if (attrMod) {
-        const val = this.resolveModAttribute(effectiveMod, attr, typeName, dae, entry, parameters);
+        const val = this.resolveModAttribute(effectiveMod, attr, typeName, dae, entry, modStack, parameters);
         // Removing the require('fs') to clean up
         if (val !== undefined && Array.isArray(val)) {
           attrValArrays[attr] = { val, shape: getShape(val) };
@@ -1361,7 +1474,14 @@ export class ArenaQueryFlattener {
       }
 
       if (isPredefined || isPredefinedScalar(typeName) || classEntry?.metadata?.isPredefined) {
-        this.emitVariable(fullName, isPredefined ? primitiveTypeName : typeName, entry, dae, currentElementMod);
+        this.emitVariable(
+          fullName,
+          isPredefined ? primitiveTypeName : typeName,
+          entry,
+          dae,
+          currentElementMod,
+          modStack,
+        );
       } else {
         // Compound array element — recurse using flattenClassWithMods
         const childStack: ModificationStack = currentElementMod
@@ -1381,7 +1501,22 @@ export class ArenaQueryFlattener {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const dotIdx = baseName.lastIndexOf(".");
           const parentPrefix = dotIdx >= 0 ? baseName.substring(0, dotIdx) : undefined;
-          const visitor = this.createExprVisitor(dae, undefined, parentPrefix, entry.parentId ?? entry.id);
+
+          let exprPrefix = parentPrefix;
+          let scopeId = entry.parentId ?? entry.id;
+          if (effectiveMod?.evaluationScopeId && effectiveMod.evaluationScopeId !== entry.parentId) {
+            scopeId = effectiveMod.evaluationScopeId;
+            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
+            if (frame && frame.evaluationScopePrefix !== undefined) {
+              exprPrefix = frame.evaluationScopePrefix;
+            } else if (scopeId === entry.parentId) {
+              exprPrefix = parentPrefix;
+            } else {
+              exprPrefix = undefined;
+            }
+          }
+
+          const visitor = this.createExprVisitor(dae, undefined, exprPrefix, scopeId);
           const exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
             const nameExpr = dae.addNameExpr(baseName);
@@ -1595,6 +1730,7 @@ export class ArenaQueryFlattener {
     componentEntry: SymbolEntry,
     dae: ArenaDAEBuilder,
     effectiveMod: ModelicaModArgs | null = null,
+    modStack: ModificationStack = [],
     isFinalFromOuterMod: boolean = false,
   ): number {
     // Use the pre-computed effective modification from the caller.
@@ -1608,7 +1744,14 @@ export class ArenaQueryFlattener {
 
     // Resolve variability via the query system (reads from ComponentClause CST)
     let variability = Variability.Continuous;
-    const modVariability = this.resolveModAttribute(mod, "variability", typeName, dae, componentEntry) as string;
+    const modVariability = this.resolveModAttribute(
+      mod,
+      "variability",
+      typeName,
+      dae,
+      componentEntry,
+      modStack,
+    ) as string;
     const qVariability = this.db.query<string | null>("variability", componentEntry.id);
     const vStr = modVariability ?? qVariability ?? "continuous";
     if (vStr === "discrete") variability = Variability.Discrete;
@@ -1617,7 +1760,7 @@ export class ArenaQueryFlattener {
 
     // Resolve causality via the query system
     let causality = Causality.Local;
-    const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae, componentEntry) as string;
+    const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae, componentEntry, modStack) as string;
     const qCausality = this.db.query<string | null>("causality", componentEntry.id);
     const cStr = modCausality ?? qCausality ?? "local";
     if (cStr === "input") causality = Causality.Input;
@@ -1653,7 +1796,7 @@ export class ArenaQueryFlattener {
     // Resolve start value and set as attribute expression
     const hasExplicitStart = mod?.args.some((a) => a.name === "start") ?? false;
     const startVal = hasExplicitStart
-      ? (this.resolveModAttribute(mod, "start", typeName, dae, componentEntry) ?? 0.0)
+      ? (this.resolveModAttribute(mod, "start", typeName, dae, componentEntry, modStack) ?? 0.0)
       : 0.0;
     const initialValue =
       typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
@@ -1694,7 +1837,7 @@ export class ArenaQueryFlattener {
 
     // Set other scalar attributes
     const parseAttr = (attrName: string) => {
-      const val = this.resolveModAttribute(mod, attrName, typeName, dae, componentEntry);
+      const val = this.resolveModAttribute(mod, attrName, typeName, dae, componentEntry, modStack);
       if (val !== undefined && val !== null) {
         if (typeof val === "number") {
           const exprId = varType === VarType.Integer ? dae.addIntLiteral(Math.round(val)) : dae.addRealLiteral(val);
@@ -1742,12 +1885,22 @@ export class ArenaQueryFlattener {
           const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
           const dotIdx = name.lastIndexOf(".");
           const parentPrefix = dotIdx >= 0 ? name.substring(0, dotIdx) : undefined;
-          const visitor = this.createExprVisitor(
-            dae,
-            undefined,
-            parentPrefix,
-            componentEntry.parentId ?? componentEntry.id,
-          );
+
+          let exprPrefix = parentPrefix;
+          let scopeId = componentEntry.parentId ?? componentEntry.id;
+          if (mod.evaluationScopeId && mod.evaluationScopeId !== componentEntry.parentId) {
+            scopeId = mod.evaluationScopeId;
+            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
+            if (frame && frame.evaluationScopePrefix !== undefined) {
+              exprPrefix = frame.evaluationScopePrefix;
+            } else if (scopeId === componentEntry.parentId) {
+              exprPrefix = parentPrefix;
+            } else {
+              exprPrefix = undefined;
+            }
+          }
+
+          const visitor = this.createExprVisitor(dae, undefined, exprPrefix, scopeId);
           let exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
             if (varType === VarType.Real) {
@@ -1993,7 +2146,7 @@ export class ArenaQueryFlattener {
     const varShortName = name.split(".").pop() ?? name;
     const customSig = `${varShortName}<function>(${inputParts.join(", ")}) => ${outputType}`;
 
-    const varIdx = this.emitVariable(name, typeName, componentEntry, dae, effectiveMod);
+    const varIdx = this.emitVariable(name, typeName, componentEntry, dae, effectiveMod, []);
     if (varIdx >= 0) {
       dae.setVarCustomType(varIdx, customSig);
     }
@@ -2280,6 +2433,7 @@ export class ArenaQueryFlattener {
     typeName: string,
     dae: ArenaDAEBuilder,
     contextEntry?: SymbolEntry,
+    modStack: ModificationStack = [],
     parameters?: Map<string, any>,
   ): unknown {
     if (mod) {
@@ -2301,12 +2455,24 @@ export class ArenaQueryFlattener {
           const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], contextEntry);
           if (cstNode) {
             const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-            const visitor = this.createExprVisitor(
-              dae,
-              undefined,
-              undefined,
-              contextEntry?.parentId ?? contextEntry?.id,
-            );
+            let exprPrefix: string | undefined = undefined;
+            let scopeId = contextEntry?.parentId ?? contextEntry?.id;
+
+            const evalScope = arg.evaluationScopeId ?? mod.evaluationScopeId;
+            if (evalScope && evalScope !== contextEntry?.parentId) {
+              scopeId = evalScope;
+              const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
+              if (frame && frame.evaluationScopePrefix !== undefined) {
+                exprPrefix = frame.evaluationScopePrefix;
+              } else {
+                exprPrefix = undefined;
+              }
+            } else if (contextEntry) {
+              const dotIdx = contextEntry.name.lastIndexOf(".");
+              exprPrefix = dotIdx >= 0 ? contextEntry.name.substring(0, dotIdx) : undefined;
+            }
+
+            const visitor = this.createExprVisitor(dae, undefined, exprPrefix, scopeId);
             const exprId = visitor.visit(astNode);
             if (exprId !== undefined) {
               const res = evaluateArenaExpression(
@@ -3237,10 +3403,6 @@ export class ArenaQueryFlattener {
         for (const vIdx of group) {
           if (vIdx !== root) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            require("fs").appendFileSync(
-              "/tmp/debug_log.txt",
-              "expandConnections simple: " + dae.getVarName(vIdx) + " = " + dae.getVarName(root) + "\n",
-            );
             dae.addEquation(EqKind.Simple, vExpr, rootExpr);
           }
         }

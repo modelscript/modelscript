@@ -43,7 +43,7 @@ import {
 } from "@modelscript/compiler";
 import { isBroken, type ModelicaModArgs } from "./modification-args.js";
 
-function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
+export function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
   const args: any[] = [];
   if (!node) return { args, bindingExpression: null, evaluationScopeId: scopeId };
 
