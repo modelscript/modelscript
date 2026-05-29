@@ -18,5 +18,4 @@ end TopLevelInputs2;
 // equation
 //   x = {1.0, 2.0, 3.0};
 // end TopLevelInputs2;
-// [OpenModelica/flattening/modelica/scodeinst/TopLevelInputs2.mo:10:3-10:30:writable] Notification: Top-level input 'x' has a binding equation and will not be accessible as an input of the model.
 // endResult

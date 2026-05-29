@@ -16,3 +16,13 @@ algorithm
   '23' := sin('#');
 end '\"\'';
 
+
+// Result:
+// Error processing file: QuotedFunction.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/QuotedFunction.mo:12:1-17:11:writable] Error: Cannot instantiate '\"\'' due to class specialization function.
+//
+// Execution failed!
+// endResult

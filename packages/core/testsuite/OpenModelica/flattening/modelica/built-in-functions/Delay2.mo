@@ -12,6 +12,7 @@ model Delay
 equation
   y = 0;
   x = delay(y+1, 2.5);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:
@@ -20,6 +21,6 @@ end Delay;
 //   Integer y;
 // equation
 //   y = 0;
-//   x = delay(/*Real*/(y + 1), 2.5, 2.5);
+//   x = delay(/*Real*/(1 + y), 2.5, 2.5);
 // end Delay;
 // endResult

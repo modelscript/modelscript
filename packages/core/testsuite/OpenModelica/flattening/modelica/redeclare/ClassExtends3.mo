@@ -44,16 +44,32 @@ end B;
 
 model ClassExtends3
   Integer b = B.usePart(integer(time));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ClassExtends3;
 
 // Result:
-// Error processing file: ClassExtends3.mo
-// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:42:3-42:37:writable] Error: Variable b in package B is not constant.
-// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:46:3-46:39:writable] Error: Function B.usePart not found in scope ClassExtends3.
-// Error: Error occurred while flattening model ClassExtends3
+// function B.part
+//   input Integer a;
+//   output Integer b;
+// algorithm
+//   b := a;
+// end B.part;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function B.part2
+//   input Integer a;
+//   output Integer b;
+// algorithm
+//   b := a;
+// end B.part2;
 //
-// Execution failed!
+// function B.usePart
+//   input Integer a;
+//   output Integer b;
+// algorithm
+//   b := B.part2(B.part(a));
+// end B.usePart;
+//
+// class ClassExtends3
+//   Integer b = B.usePart(integer(time));
+// end ClassExtends3;
 // endResult

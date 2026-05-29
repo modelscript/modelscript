@@ -15,11 +15,10 @@ end AssignModel1;
 
 // Result:
 // Error processing file: AssignModel1.mo
-// [OpenModelica/flattening/modelica/scodeinst/AssignModel1.mo:13:3-13:11:writable] Error: Component 'a1' may not be assigned to due to class specialization 'model'.
-// Error: Error occurred while flattening model AssignModel1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/AssignModel1.mo:13:3-13:11:writable] Error: Component 'a1' may not be assigned to due to class specialization 'model'.
 //
 // Execution failed!
 // endResult

@@ -18,15 +18,10 @@ model ConnectArrayCond
   C c1[2] if false;
 equation
   connect(c1[1].c, c1[2].c);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectArrayCond;
 
 // Result:
-// Error processing file: ConnectArrayCond.mo
-// [OpenModelica/flattening/modelica/connectors/ConnectArrayCond.mo:20:3-20:28:writable] Error: Variable c1[1].c not found in scope ConnectArrayCond.
-// Error: Error occurred while flattening model ConnectArrayCond
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectArrayCond
+// end ConnectArrayCond;
 // endResult

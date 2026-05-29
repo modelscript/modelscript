@@ -13,11 +13,10 @@ end ForStatementNonVector;
 
 // Result:
 // Error processing file: ForStatementNonVector.mo
-// Error: Class ForStatementNonVector.mo not found in scope <top>.
-// Error: Error occurred while flattening model ForStatementNonVector.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ForStatementNonVector.mo:9:3-11:10:writable] Error: Type error in iteration range '1'. Expected array got Integer.
 //
 // Execution failed!
 // endResult

@@ -1065,6 +1065,7 @@ model BM21
 
 equation
   connect(sin1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-5.58,13.49},{-38.73,10.45}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM21;
 // function Modelica.Math.sin
 // input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg");
@@ -1095,16 +1096,33 @@ end BM21;
 // sin1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM21;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// function Modelica.Math.sin "sine"
+//   input Real u(quantity = "Angle", unit = "rad", displayUnit = "deg");
+//   output Real y;
+//
+//   external "C" y = sin(u);
+// end Modelica.Math.sin;
+//
+// class BM21
+//   parameter Integer sin1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer sin1.inPort.n = sin1.n "Dimension of signal vector";
+//   Real sin1.inPort.signal[1] "Real input signals";
+//   parameter Integer sin1.outPort.n = sin1.n "Dimension of signal vector";
+//   Real sin1.outPort.signal[1] "Real output signals";
+//   Real sin1.y[1] "Output signals";
+//   protected Real sin1.u[1] "Input signals";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   sin1.u = {sin1.inPort.signal[1]};
+//   sin1.y[1] = sin(sin1.u[1]);
+//   sin1.y[1] = sin1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   assert(sin1.inPort.n == constant1.outPort.n, "automatically generated from connect");
+//   constant1.outPort.signal[1] = sin1.inPort.signal[1];
+// end BM21;
 // endResult

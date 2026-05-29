@@ -13,11 +13,10 @@ end ReinitInvalid1;
 
 // Result:
 // Error processing file: ReinitInvalid1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid1.mo:10:5-10:19:writable] Error: The first argument to reinit must be a continuous time variable, but x is discrete.
-// Error: Error occurred while flattening model ReinitInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid1.mo:10:5-10:19:writable] Error: The first argument to reinit must be a continuous time variable, but x is discrete.
 //
 // Execution failed!
 // endResult

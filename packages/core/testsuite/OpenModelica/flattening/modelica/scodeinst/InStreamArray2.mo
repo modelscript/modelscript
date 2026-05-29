@@ -37,36 +37,34 @@ end A2;
 
 model InStreamArray2
   M[2] m(s={inStream(m[i].a1.c.s) + inStream(m[i].a2.c.s) for i in 1:2});
+  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end InStreamArray2;
 
 // Result:
 // class InStreamArray2
-//   Real m[1].a1.c.p;
-//   Real m[1].a1.c.f;
-//   Real m[1].a1.c.s;
-//   Real m[1].a2.c.p;
-//   Real m[1].a2.c.f;
-//   Real m[1].a2.c.s;
-//   Real m[1].s = m[1].a2.c.s + m[1].a1.c.s;
-//   Real m[2].a1.c.p;
-//   Real m[2].a1.c.f;
-//   Real m[2].a1.c.s;
-//   Real m[2].a2.c.p;
-//   Real m[2].a2.c.f;
-//   Real m[2].a2.c.s;
-//   Real m[2].s = m[2].a2.c.s + m[2].a1.c.s;
+//   Real[2] m.a1.c.p;
+//   Real[2] m.a1.c.f;
+//   Real[2] m.a1.c.s;
+//   Real[2] m.a2.c.p;
+//   Real[2] m.a2.c.f;
+//   Real[2] m.a2.c.s;
+//   Real[2] m.s = {m[1].a1.c.s + m[1].a2.c.s, m[2].a1.c.s + m[2].a2.c.s};
 // equation
-//   m[1].a1.c.p = m[1].a2.c.p;
 //   m[2].a1.c.p = m[2].a2.c.p;
+//   m[1].a1.c.p = m[1].a2.c.p;
 //   m[1].a2.c.f + m[1].a1.c.f = 0.0;
 //   m[2].a2.c.f + m[2].a1.c.f = 0.0;
-//   m[1].a1.c.p = sin(time);
-//   m[1].a1.c.s = cos(time);
-//   m[1].a2.c.f = sin(time);
-//   m[1].a2.c.s = cos(time);
-//   m[2].a1.c.p = sin(time);
-//   m[2].a1.c.s = cos(time);
-//   m[2].a2.c.f = sin(time);
-//   m[2].a2.c.s = cos(time);
+//   for $i4 in 1:2 loop
+//     m[$i4].a1.c.p = sin(time);
+//   end for;
+//   for $i3 in 1:2 loop
+//     m[$i3].a1.c.s = cos(time);
+//   end for;
+//   for $i2 in 1:2 loop
+//     m[$i2].a2.c.f = sin(time);
+//   end for;
+//   for $i1 in 1:2 loop
+//     m[$i1].a2.c.s = cos(time);
+//   end for;
 // end InStreamArray2;
 // endResult

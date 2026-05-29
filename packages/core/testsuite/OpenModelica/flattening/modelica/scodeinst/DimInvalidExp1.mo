@@ -10,11 +10,10 @@ end DimInvalidExp1;
 
 // Result:
 // Error processing file: DimInvalidExp1.mo
-// [OpenModelica/flattening/modelica/scodeinst/DimInvalidExp1.mo:8:3-8:12:writable] Error: Could not evaluate structural parameter (or constant): n which gives dimensions of array: x. Array dimensions must be known at compile time.
-// Error: Error occurred while flattening model DimInvalidExp1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/DimInvalidExp1.mo:8:3-8:12:writable] Error: Could not evaluate structural parameter (or constant): n which gives dimensions of array: x. Array dimensions must be known at compile time.
 //
 // Execution failed!
 // endResult

@@ -19,6 +19,7 @@ equation
     C[:,:,a] = {{cos(time),sin(time)},
                 {-sin(time),cos(time)}};
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayIndex2;
 
 // Result:

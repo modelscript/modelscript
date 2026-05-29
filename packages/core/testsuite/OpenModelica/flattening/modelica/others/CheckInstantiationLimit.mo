@@ -17,14 +17,20 @@ model M
   parameter Integer i;
   N n(i=i+1) if i<P.limit;
 end M;
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CheckInstantiationLimit;
 // Result:
-// Error processing file: CheckInstantiationLimit.mo
-// [OpenModelica/flattening/modelica/others/CheckInstantiationLimit.mo:12:3-12:22:writable] Error: Recursion limit reached while instantiating 'n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.m.n.i'.
-// Error: Error occurred while flattening model CheckInstantiationLimit
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class CheckInstantiationLimit
+//   parameter Integer i = 1;
+//   parameter Integer n.i = 1 + i;
+//   parameter Integer n.m.i = 1 + n.i;
+//   parameter Integer n.m.n.i = 1 + n.m.i;
+//   parameter Integer n.m.n.m.i = 1 + n.m.n.i;
+//   parameter Integer n.m.n.m.n.i = 1 + n.m.n.m.i;
+//   parameter Integer n.m.n.m.n.m.i = 1 + n.m.n.m.n.i;
+//   parameter Integer n.m.n.m.n.m.n.i = 1 + n.m.n.m.n.m.i;
+//   parameter Integer n.m.n.m.n.m.n.m.i = 1 + n.m.n.m.n.m.n.i;
+//   parameter Integer n.m.n.m.n.m.n.m.n.i = 1 + n.m.n.m.n.m.n.m.i;
+// end CheckInstantiationLimit;
 // endResult

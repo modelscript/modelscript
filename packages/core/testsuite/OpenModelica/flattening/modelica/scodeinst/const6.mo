@@ -13,11 +13,10 @@ end M;
 
 // Result:
 // Error processing file: const6.mo
-// [<interactive>:10:3-10:25:writable] Error: Component j of variability constant has binding 'x' of higher variability parameter.
-// Error: Error occurred while flattening model M
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/const6.mo:10:3-10:25:writable] Error: Component j of variability constant has binding 'x' of higher variability parameter.
 //
 // Execution failed!
 // endResult

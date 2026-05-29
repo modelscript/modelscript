@@ -18,11 +18,10 @@ end ExternalFunctionInvalidArg1;
 
 // Result:
 // Error processing file: ExternalFunctionInvalidArg1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidArg1.mo:7:1-11:6:writable] Error: Expression {1.0, 2.0, 3.0} cannot be an external argument. Only identifiers, scalar constants, and size-expressions are allowed.
-// Error: Error occurred while flattening model ExternalFunctionInvalidArg1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidArg1.mo:7:1-11:6:writable] Error: Expression {1.0, 2.0, 3.0} cannot be an external argument. Only identifiers, scalar constants, and size-expressions are allowed.
 //
 // Execution failed!
 // endResult

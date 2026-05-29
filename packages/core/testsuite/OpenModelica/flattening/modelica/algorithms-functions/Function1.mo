@@ -16,6 +16,7 @@ model Function1
 equation
   x = f(z);
   y = f(z);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function1;
 
 // Result:

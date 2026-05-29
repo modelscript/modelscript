@@ -16,31 +16,21 @@ model ExtObjError2
   function notConstructor
     output ExtObj eo = ExtObj(); // Invalid; non-constructors may not return external objects
   algorithm
+
   end notConstructor;
 
   ExtObj eo = notConstructor();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExtObjError2;
 
 // Result:
-// impure function ExtObjError2.ExtObj.constructor
-//   output ExtObjError2.ExtObj eo;
+// Error processing file: ExtObjError2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-//   external "C" eo = constructor();
-// end ExtObjError2.ExtObj.constructor;
+// [OpenModelica/flattening/modelica/others/ExtObjError2.mo:16:3-20:21:writable] Error: Function ExtObjError2.notConstructor returns an external object, but the only function allowed to return this object is ExtObjError2.ExtObj.constructor.
+// [OpenModelica/flattening/modelica/others/ExtObjError2.mo:22:3-22:31:writable] Error: Class notConstructor not found in scope ExtObjError2 (looking for a function or record).
+// Error: Error occurred while flattening model ExtObjError2
 //
-// impure function ExtObjError2.ExtObj.destructor
-//   input ExtObjError2.ExtObj eo;
-//
-//   external "C" destructor(eo);
-// end ExtObjError2.ExtObj.destructor;
-//
-// impure function ExtObjError2.notConstructor
-//   output ExtObjError2.ExtObj eo = ExtObjError2.ExtObj.constructor();
-// algorithm
-// end ExtObjError2.notConstructor;
-//
-// class ExtObjError2
-//   ExtObjError2.ExtObj eo = ExtObjError2.notConstructor();
-// end ExtObjError2;
-// [<interactive>:16:3-19:21:writable] Warning: Pure function 'ExtObjError2.notConstructor' contains a call to impure function 'ExtObjError2.ExtObj.constructor'.
+// Execution failed!
 // endResult

@@ -18,6 +18,7 @@ model FunctionCall
 equation
   x = 2;
   y = f(x);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionCall;
 
 // Result:
@@ -25,7 +26,7 @@ end FunctionCall;
 //   input Integer x;
 //   output Integer y;
 // algorithm
-//   y := x + 2;
+//   y := 2 + x;
 // end f;
 //
 // class FunctionCall

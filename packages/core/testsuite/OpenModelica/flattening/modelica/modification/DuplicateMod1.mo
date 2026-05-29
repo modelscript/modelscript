@@ -9,17 +9,17 @@ end A;
 
 model DuplicateMod1
   A a(x = 1, x = 2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DuplicateMod1;
 
 // Result:
 // Error processing file: DuplicateMod1.mo
-// [OpenModelica/flattening/modelica/modification/DuplicateMod1.mo:11:14-11:19:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/modification/DuplicateMod1.mo:11:7-11:12:writable] Error: Duplicate modification of element x on component a.
-// Error: Class DuplicateMod1.mo not found in scope <top>.
-// Error: Error occurred while flattening model DuplicateMod1.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/DuplicateMod1.mo:11:14-11:19:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/modification/DuplicateMod1.mo:11:7-11:12:writable] Error: Duplicate modification of element x on component a.
+// Error: Error occurred while flattening model DuplicateMod1
 //
 // Execution failed!
 // endResult

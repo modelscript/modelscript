@@ -21,6 +21,7 @@ end ClassExtends1;
 
 class ClassExtends2
   extends ClassExtends1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ClassExtends2;
 
 // Result:

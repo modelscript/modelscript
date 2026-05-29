@@ -108,7 +108,9 @@ and the accompanying <b>disclaimer</b>
     partial package Library "Icon for library"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={235,235,235}, fillPattern=FillPattern.Solid, extent={{-100,-100},{80,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{-100,50},{-80,70},{100,70},{80,50},{-100,50}}),Polygon(visible=true, fillColor={210,210,210}, fillPattern=FillPattern.Solid, points={{100,70},{100,-80},{80,-100},{80,50},{100,70}}),Text(visible=true, fillColor={0,0,255}, extent={{-85,-85},{65,35}}, textString="Library", fontName="Arial"),Text(visible=true, fillColor={255,0,0}, extent={{-120,73},{120,122}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
     end Library;
+
   end Icons;
+
 end Modelica;
 package M1_solutions "Solutions to exercises for training M1"
   extends Modelica.Icons.Library;
@@ -143,11 +145,15 @@ package M1_solutions "Solutions to exercises for training M1"
         Integer fac=faculty(n);
         Integer fac_rec=faculty_rec(n);
       end FacultyCall;
+
     end Faculty;
+
   end E03;
+
 end M1_solutions;
 model M1_solutions_E03_Faculty_FacultyCall
   extends M1_solutions.E03.Faculty.FacultyCall;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end M1_solutions_E03_Faculty_FacultyCall;
 // Result:
 // function M1_solutions.E03.Faculty.faculty
@@ -167,7 +173,7 @@ end M1_solutions_E03_Faculty_FacultyCall;
 //   output Integer k = 1;
 // algorithm
 //   assert(n >= 0, "n must be larger than 0");
-//   k := if n == 0 then 1 else n * M1_solutions.E03.Faculty.faculty_rec(n - 1);
+//   k := if n == 0 then 1 else n * M1_solutions.E03.Faculty.faculty_rec(-1 + n);
 // end M1_solutions.E03.Faculty.faculty_rec;
 //
 // class M1_solutions_E03_Faculty_FacultyCall

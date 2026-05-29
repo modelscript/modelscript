@@ -21,16 +21,16 @@ end Legal;
 
 model IllegalRedeclaredComponentName
   extends Legal(redeclare B B);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end IllegalRedeclaredComponentName;
 
 // Result:
 // Error processing file: ComponentNamesRedecl.mo
-// [<interactive>:10:3-10:9:writable] Warning: Components are deprecated in class.
-// [<interactive>:23:17-23:30:writable] Error: Expected B to be a class, but found component instead.
-// Error: Error occurred while flattening model IllegalRedeclaredComponentName
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/ComponentNamesRedecl.mo:23:17-23:30:writable] Error: Found a component with same name when looking for type B.
+// Error: Error occurred while flattening model IllegalRedeclaredComponentName
 //
 // Execution failed!
 // endResult

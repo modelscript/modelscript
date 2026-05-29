@@ -13,17 +13,17 @@ end B;
 
 model DuplicateMod3
   B b(a(x = 4), a(x = 6));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DuplicateMod3;
 
 // Result:
 // Error processing file: DuplicateMod3.mo
-// [OpenModelica/flattening/modelica/modification/DuplicateMod3.mo:15:9-15:14:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/modification/DuplicateMod3.mo:15:19-15:24:writable] Error: Duplicate modification of element a.x on component b.
-// Error: Class DuplicateMod3.mo not found in scope <top>.
-// Error: Error occurred while flattening model DuplicateMod3.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/DuplicateMod3.mo:15:9-15:14:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/modification/DuplicateMod3.mo:15:19-15:24:writable] Error: Duplicate modification of element a.x on component b.
+// Error: Error occurred while flattening model DuplicateMod3
 //
 // Execution failed!
 // endResult

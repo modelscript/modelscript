@@ -12,11 +12,10 @@ end BreakComponentInvalid1;
 
 // Result:
 // Error processing file: BreakComponentInvalid1.mo
-// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid1.mo:10:13-10:20:writable] Error: Modified element x not found in class A.
-// Error: Error occurred while flattening model BreakComponentInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid1.mo:10:13-10:20:writable] Error: Modified element x not found in class A.
 //
 // Execution failed!
 // endResult

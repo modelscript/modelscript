@@ -25,14 +25,13 @@ end FuncWrongType2;
 
 // Result:
 // Error processing file: FuncWrongType2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncWrongType2.mo:23:3-23:7:writable] Error: Type mismatch for positional argument 1 in F(in_a=b). The argument has type:
 //   B
 // expected type:
 //   A
-// Error: Error occurred while flattening model FuncWrongType2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

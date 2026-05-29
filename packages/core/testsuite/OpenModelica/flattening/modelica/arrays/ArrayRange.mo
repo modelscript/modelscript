@@ -9,6 +9,7 @@ model ArrayRange
   Integer intArray[7,1];
 equation
   intArray = [1:2:14];
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayRange;
 
 // Result:

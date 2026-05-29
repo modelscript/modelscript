@@ -16,11 +16,10 @@ end ConnectorRestriction2;
 
 // Result:
 // Error processing file: ConnectorRestriction2.mo
-// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction2.mo:10:3-10:9:writable] Error: Algorithm sections are not allowed in connector.
-// Error: Error occurred while flattening model ConnectorRestriction2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction2.mo:10:3-10:9:writable] Error: Algorithm sections are not allowed in connector.
 //
 // Execution failed!
 // endResult

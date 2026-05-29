@@ -13,15 +13,15 @@ package ImportSelf1
   end f;
 
   constant Real c = P.f();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ImportSelf1;
 
 // Result:
-// Error processing file: ImportSelf1.mo
-// [OpenModelica/flattening/modelica/packages/ImportSelf1.mo:8:1-17:16:writable] Error: Cannot instantiate ImportSelf1 due to class specialization package.
-// Error: Error occurred while flattening model ImportSelf1
+// function ImportSelf1.f
+//   output Real r = 2.0;
+// end ImportSelf1.f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ImportSelf1
+//   constant Real c = 2.0;
+// end ImportSelf1;
 // endResult

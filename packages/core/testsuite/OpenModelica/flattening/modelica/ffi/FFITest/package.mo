@@ -393,3 +393,13 @@ package FFITest
     end OpenModelica_regex;
   end ExternalC;
 end FFITest;
+
+// Result:
+// Error processing file: package.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/ffi/FFITest/package.mo:1:1-395:12:writable] Error: Cannot instantiate FFITest due to class specialization package.
+//
+// Execution failed!
+// endResult

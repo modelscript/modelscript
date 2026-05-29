@@ -23,24 +23,23 @@ model VectorizeBindings5
   parameter Integer N = 2;
   parameter Boolean initialEquation[N] = fill(true,N);
   Module module[N](initialEquation = initialEquation);
+  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end VectorizeBindings5;
 
 // Result:
 // class VectorizeBindings5
 //   final parameter Integer N = 2;
-//   final parameter Boolean initialEquation[1] = true;
-//   final parameter Boolean initialEquation[2] = true;
-//   final parameter Boolean module[1].initialEquation = true;
-//   final parameter Boolean module[1].f.initialEquation = true;
-//   Real module[1].f.pOut(start = 0.0);
-//   final parameter Boolean module[2].initialEquation = true;
-//   final parameter Boolean module[2].f.initialEquation = true;
-//   Real module[2].f.pOut(start = 0.0);
+//   final parameter Boolean[2] initialEquation = array(true for $f1 in 1:2);
+//   final parameter Boolean[2] module.initialEquation = {true, true};
+//   final parameter Boolean[2] module.f.initialEquation = {true, true};
+//   Real[2] module.f.pOut(start = array(0.0 for $f1 in 1:2));
 // initial equation
-//   module[1].f.pOut = 1.0;
-//   module[2].f.pOut = 1.0;
+//   for $i1 in 1:2 loop
+//     module[$i1].f.pOut = 1.0;
+//   end for;
 // equation
-//   der(module[1].f.pOut) = sin(time);
-//   der(module[2].f.pOut) = sin(time);
+//   for $i0 in 1:2 loop
+//     der(module[$i0].f.pOut) = sin(time);
+//   end for;
 // end VectorizeBindings5;
 // endResult

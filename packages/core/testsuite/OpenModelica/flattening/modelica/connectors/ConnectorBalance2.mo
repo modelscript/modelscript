@@ -17,5 +17,4 @@ end ConnectorBalance2;
 // equation
 //   ic = 0.0;
 // end ConnectorBalance2;
-// [OpenModelica/flattening/modelica/connectors/ConnectorBalance2.mo:11:3-11:22:writable] Warning: Connector ic is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
 // endResult

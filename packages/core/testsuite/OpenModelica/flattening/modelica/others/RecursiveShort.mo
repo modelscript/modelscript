@@ -17,15 +17,16 @@ model RecursiveShort
   end A;
 
   A a;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecursiveShort;
 
 // Result:
 // Error processing file: RecursiveShort.mo
-// [OpenModelica/flattening/modelica/others/RecursiveShort.mo:15:5-15:23:writable] Error: Base class Env.Env not found in scope A.
-// Error: Error occurred while flattening model RecursiveShort
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/RecursiveShort.mo:15:5-15:23:writable] Error: Recursive short class definition of Env in terms of Env.Env.
+// Error: Error occurred while flattening model RecursiveShort
 //
 // Execution failed!
 // endResult

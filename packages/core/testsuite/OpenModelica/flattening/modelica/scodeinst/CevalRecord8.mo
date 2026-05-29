@@ -27,11 +27,10 @@ end CevalRecord8;
 
 // Result:
 // Error processing file: CevalRecord8.mo
-// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2580:20-2580:78:writable] Error: Internal error NFCeval.evalBuiltinMax got invalid arguments (#EMPTY#)
-// Error: Error occurred while flattening model CevalRecord8
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [/var/lib/jenkins2/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.7~1-g2b913cc/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2580:20-2580:78:writable] Error: Internal error NFCeval.evalBuiltinMax got invalid arguments (#EMPTY#)
 //
 // Execution failed!
 // endResult

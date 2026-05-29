@@ -19,15 +19,16 @@ model FlowInvalid1
   C c1, c2;
 equation
   connect(c1, c2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FlowInvalid1;
 
 // Result:
 // Error processing file: FlowInvalid1.mo
-// [<interactive>:11:3-11:14:writable] Error: Prefix 'flow' on component 'y' not allowed in class specialization 'record'.
-// Error: Error occurred while flattening model FlowInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/FlowInvalid1.mo:15:3-15:11:writable] Error: Invalid type prefix 'flow' on variable c1.r.y, due to existing type prefix 'flow'.
+// Error: Error occurred while flattening model FlowInvalid1
 //
 // Execution failed!
 // endResult

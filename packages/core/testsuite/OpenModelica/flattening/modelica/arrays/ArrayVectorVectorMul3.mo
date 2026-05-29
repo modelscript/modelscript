@@ -9,6 +9,7 @@ model ArrayVectorVectorMul3
   Real x[15], y[15], z;
 equation
   z = x * y;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayVectorVectorMul3;
 
 // Result:

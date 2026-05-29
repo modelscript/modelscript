@@ -81,19 +81,17 @@ class GenMicroCircuit
 end GenMicroCircuit;
 
 class InductorMicroCircuit =
-  GenMicroCircuit(redeclare type CompType = Inductor) 
+  GenMicroCircuit(redeclare type CompType = Inductor) annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 
 
 
 // Result:
 // Error processing file: MicroCircuitInvalid.mo
-// [OpenModelica/flattening/modelica/extends/MicroCircuitInvalid.mo:98:0-98:0:writable] Error: Missing token: SEMICOLON
-// Error: Failed to load package MicroCircuitInvalid (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class MicroCircuitInvalid not found in scope <top>.
-// Error: Error occurred while flattening model MicroCircuitInvalid
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/extends/MicroCircuitInvalid.mo:84:29-84:53:writable] Error: Class specialization violation: .Inductor is a model, not a type.
+// Error: Error occurred while flattening model InductorMicroCircuit
 //
 // Execution failed!
 // endResult

@@ -10,6 +10,7 @@ model Abs1
   Real x,y;
 equation
   x=abs(x-y);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Abs1;
 
 // Result:

@@ -24,11 +24,10 @@ end B;
 
 // Result:
 // Error processing file: arrfunc.mo
-// [<interactive>:21:3-21:22:writable] Error: Function call a[1].f contains subscripts.
-// Error: Error occurred while flattening model B
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/arrfunc.mo:21:3-21:22:writable] Error: Function call a[1].f contains subscripts.
 //
 // Execution failed!
 // endResult

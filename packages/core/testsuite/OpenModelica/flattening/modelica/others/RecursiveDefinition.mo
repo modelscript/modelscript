@@ -12,17 +12,16 @@ class A
   end B;
 
   B b;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 // Result:
 // Error processing file: RecursiveDefinition.mo
-// [<interactive>:6:3-6:30:writable] Warning: Components are deprecated in class.
-// [<interactive>:7:3-7:38:writable] Warning: Components are deprecated in class.
-// [<interactive>:7:3-7:38:writable] Error: Function q not found in scope IfExpCombiTable1.
-// Error: Error occurred while flattening model A
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/RecursiveDefinition.mo:11:5-11:8:writable] Error: Declaration of element x causes recursive definition of class A.
+// Error: Error occurred while flattening model A
 //
 // Execution failed!
 // endResult

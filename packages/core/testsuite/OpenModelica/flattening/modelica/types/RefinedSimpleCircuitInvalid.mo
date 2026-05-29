@@ -93,11 +93,10 @@
 
 // Result:
 // Error processing file: RefinedSimpleCircuitInvalid.mo
-// [<interactive>:64:5-64:17:writable] Error: Variable i not found in scope Capacitor.
-// Error: Error occurred while flattening model RefinedSimpleCircuit
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/types/RefinedSimpleCircuitInvalid.mo:64:5-64:17:writable] Error: Variable i not found in scope Capacitor.
 //
 // Execution failed!
 // endResult

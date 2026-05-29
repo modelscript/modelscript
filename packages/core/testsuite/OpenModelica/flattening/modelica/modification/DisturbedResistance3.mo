@@ -19,18 +19,19 @@ end Resistor;
 model DisturbedResistance3
   Real R = 1.0 + 0.1*sin(time);
   extends Resistor;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DisturbedResistance3;
 
 // Result:
 // Error processing file: DisturbedResistance3.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/modification/DisturbedResistance3.mo:20:3-20:31:writable] Notification: From here:
 // [OpenModelica/flattening/modelica/modification/DisturbedResistance3.mo:14:3-14:25:writable] Error: Duplicate elements (due to inherited elements) not identical:
 //   first element is:  Real R = 1.0 + 0.1*sin(time)
-//   second element is: parameter Real R = 1.0
+//   second element is: parameter .Real R = 1.0
 // Error: Error occurred while flattening model DisturbedResistance3
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

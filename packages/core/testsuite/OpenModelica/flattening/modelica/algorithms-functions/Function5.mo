@@ -17,6 +17,7 @@ model Function5
   Real a,b;
 equation
   a = f(b);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function5;
 
 // Result:
@@ -24,7 +25,7 @@ end Function5;
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := x * 2.0;
+//   y := 2.0 * x;
 // end f;
 //
 // class Function5

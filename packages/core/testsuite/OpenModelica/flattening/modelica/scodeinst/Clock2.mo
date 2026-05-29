@@ -12,27 +12,12 @@ model Clock2
 end Clock2;
 
 // Result:
-// function R "Automatically generated record constructor for R"
-//   input Real[:] x;
-//   output R res;
-// end R;
+// Error processing file: Clock2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function f
-//   input Real x;
-//   output R r;
-// end f;
+// [/usr/lib/omc/NFModelicaBuiltin.mo:47:1-49:10:readonly] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/Clock2.mo:6:1-8:10:writable] Error: An element with name Clock is already declared in this scope.
 //
-// class DimUnknown14
-//   parameter Real y(fixed = false);
-//   parameter Real r.x[1](fixed = false);
-//   parameter Real r.x[2](fixed = false);
-//   parameter Real r.x[3](fixed = false);
-//   Real x[1];
-//   Real x[2];
-//   Real x[3];
-// initial equation
-//   r = f(y);
-// equation
-//   x = r.x;
-// end DimUnknown14;
+// Execution failed!
 // endResult

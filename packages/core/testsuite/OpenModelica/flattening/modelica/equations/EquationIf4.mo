@@ -19,6 +19,7 @@ equation
   else
     x = 4.0;
   end if;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EquationIf4;
 
 // Result:
@@ -36,7 +37,4 @@ end EquationIf4;
 //     x = 4.0;
 //   end if;
 // end EquationIf4;
-// [OpenModelica/flattening/modelica/equations/EquationIf4.mo:10:3-10:19:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/equations/EquationIf4.mo:11:3-11:9:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/equations/EquationIf4.mo:13:3-21:9:writable] Warning: Equation sections are deprecated in class.
 // endResult

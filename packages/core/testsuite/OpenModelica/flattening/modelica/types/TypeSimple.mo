@@ -11,6 +11,7 @@ model TypeSimple
   MyType mt;
 equation
   mt = 2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeSimple;
 
 // Result:
@@ -19,5 +20,4 @@ end TypeSimple;
 // equation
 //   mt = 2;
 // end TypeSimple;
-// Info: Class 'MyType' has no members
 // endResult

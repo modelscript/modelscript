@@ -11,11 +11,10 @@ end RecursiveExtends1;
 
 // Result:
 // Error processing file: RecursiveExtends1.mo
-// [OpenModelica/flattening/modelica/scodeinst/RecursiveExtends1.mo:9:3-9:28:writable] Error: extends RecursiveExtends1 causes an instantiation loop.
-// Error: Error occurred while flattening model RecursiveExtends1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RecursiveExtends1.mo:9:3-9:28:writable] Error: extends RecursiveExtends1 causes an instantiation loop.
 //
 // Execution failed!
 // endResult

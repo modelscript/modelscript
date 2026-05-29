@@ -14,6 +14,7 @@ model Test
   model Test
     extends A;
   end Test;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Test;
 
 // Result:

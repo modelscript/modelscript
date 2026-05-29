@@ -21,11 +21,10 @@ end Encapsulated1;
 
 // Result:
 // Error processing file: Encapsulated1.mo
-// [OpenModelica/flattening/modelica/scodeinst/Encapsulated1.mo:14:5-14:8:writable] Error: Class A not found in scope B.
-// Error: Error occurred while flattening model Encapsulated1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Encapsulated1.mo:14:5-14:8:writable] Error: Class A not found in scope B.
 //
 // Execution failed!
 // endResult

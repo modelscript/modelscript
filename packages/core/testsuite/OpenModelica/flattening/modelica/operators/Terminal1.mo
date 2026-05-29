@@ -9,6 +9,7 @@ class Terminal1
   Boolean t;
 equation
   t=terminal();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Terminal1;
 
 // Result:
@@ -17,6 +18,4 @@ end Terminal1;
 // equation
 //   t = terminal();
 // end Terminal1;
-// [OpenModelica/flattening/modelica/operators/Terminal1.mo:9:3-9:12:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/operators/Terminal1.mo:11:3-11:15:writable] Warning: Equation sections are deprecated in class.
 // endResult

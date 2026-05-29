@@ -16,6 +16,7 @@ equation
   connect(c1,c2);
   c1.e = 1;
   c2.f = time;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Connect1;
 
 // Result:
@@ -25,11 +26,11 @@ end Connect1;
 //   Real c2.f;
 //   Real c2.e;
 // equation
-//   c1.e = c2.e;
-//   -(c1.f + c2.f) = 0.0;
-//   c1.f = 0.0;
-//   c2.f = 0.0;
 //   c1.e = 1.0;
 //   c2.f = time;
+//   c1.f = 0.0;
+//   c2.f = 0.0;
+//   c1.e = c2.e;
+//   (-c1.f) + (-c2.f) = 0.0;
 // end Connect1;
 // endResult

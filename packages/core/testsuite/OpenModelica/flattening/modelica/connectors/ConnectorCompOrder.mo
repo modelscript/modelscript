@@ -22,6 +22,7 @@ model ConnectorCompOrder
   C2 c2;
 equation
   connect(c1, c2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectorCompOrder;
 
 // Result:
@@ -33,11 +34,11 @@ end ConnectorCompOrder;
 //   Real c2.f;
 //   Real c2.e;
 // equation
-//   c1.e = c2.e;
-//   -(c1.f + c2.f) = 0.0;
-//   c1.s = c2.s;
-//   c2.s = c1.s;
 //   c1.f = 0.0;
 //   c2.f = 0.0;
+//   c1.e = c2.e;
+//   (-c1.f) + (-c2.f) = 0.0;
+//   c1.s = c2.s;
+//   c2.s = c1.s;
 // end ConnectorCompOrder;
 // endResult

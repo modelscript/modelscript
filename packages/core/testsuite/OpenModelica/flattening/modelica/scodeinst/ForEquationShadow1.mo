@@ -22,6 +22,4 @@ end ForEquationShadow1;
 //   x = 2.0;
 //   x = 4.0;
 // end ForEquationShadow1;
-// [<interactive>:9:3-13:10:writable] Notification: From here:
-// [<interactive>:10:5-12:12:writable] Warning: An iterator named 'i' is already declared in this scope.
 // endResult

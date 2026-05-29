@@ -16,11 +16,10 @@ end ConnectorRestriction4;
 
 // Result:
 // Error processing file: ConnectorRestriction4.mo
-// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction4.mo:10:3-10:8:writable] Error: Equations are not allowed in connector.
-// Error: Error occurred while flattening model ConnectorRestriction4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction4.mo:10:3-10:8:writable] Error: Equations are not allowed in connector.
 //
 // Execution failed!
 // endResult

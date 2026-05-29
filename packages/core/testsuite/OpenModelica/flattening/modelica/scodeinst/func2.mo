@@ -19,11 +19,10 @@ end B;
 
 // Result:
 // Error processing file: func2.mo
-// [<interactive>:11:3-11:15:writable] Error: Type mismatch in binding x = B.a.f(), expected subtype of Real, got type ().
-// Error: Error occurred while flattening model B
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/func2.mo:11:3-11:15:writable] Error: Type mismatch in binding x = B.a.f(), expected subtype of Real, got type ().
 //
 // Execution failed!
 // endResult

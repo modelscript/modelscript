@@ -14,17 +14,12 @@ model NoScalarize2
 
   M m[2](each p = 2);
   Q q[3](m(each p = 2));
+  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize --noSimplify");
 end NoScalarize2;
 
 // Result:
 // class NoScalarize2
-//   Real m[1].p = 2.0;
-//   Real m[2].p = 2.0;
-//   Real q[1].m[1].p = 2.0;
-//   Real q[1].m[2].p = 2.0;
-//   Real q[2].m[1].p = 2.0;
-//   Real q[2].m[2].p = 2.0;
-//   Real q[3].m[1].p = 2.0;
-//   Real q[3].m[2].p = 2.0;
+//   Real[2] m.p = fill(2.0, 2);
+//   Real[3, 2] q.m.p = fill(2.0, 3, 2);
 // end NoScalarize2;
 // endResult

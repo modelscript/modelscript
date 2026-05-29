@@ -15,11 +15,10 @@ end ExternalObjectMissingStructor1;
 
 // Result:
 // Error processing file: ExternalObjectMissingStructor1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectMissingStructor1.mo:7:1-14:35:writable] Error: External object ExternalObjectMissingStructor1 is missing a destructor.
-// Error: Error occurred while flattening model ExternalObjectMissingStructor1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectMissingStructor1.mo:7:1-14:35:writable] Error: External object ExternalObjectMissingStructor1 is missing a destructor.
 //
 // Execution failed!
 // endResult

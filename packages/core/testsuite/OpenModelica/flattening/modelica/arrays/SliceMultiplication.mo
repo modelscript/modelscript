@@ -9,17 +9,18 @@ model M
   Real h[NVd+1];
 equation
   ones(NVd) = cos(th)*h[1:end-1];
+  annotation(__OpenModelica_commandLineOptions="+t -d=-newInst");
 end M;
 
 // Result:
 // class M
 //   parameter Real th = 0.0;
-//   final parameter Integer NVd = 2;
+//   parameter Integer NVd = 2;
 //   Real h[1];
 //   Real h[2];
 //   Real h[3];
 // equation
-//   1.0 = cos(th) * h[1];
-//   1.0 = cos(th) * h[2];
+//   1.0 = /*Real*/ h[1] * /*Real*/ cos(/*Real*/ th);
+//   1.0 = /*Real*/ h[2] * /*Real*/ cos(/*Real*/ th);
 // end M;
 // endResult

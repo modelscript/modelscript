@@ -20,4 +20,15 @@ package Ticket4365
       a := 2;
     end when;
   end Sub1;
+
 end Ticket4365;
+
+// Result:
+// Error processing file: Ticket4365.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/algorithms-functions/Ticket4365.mo:1:1-24:15:writable] Error: Cannot instantiate Ticket4365 due to class specialization package.
+//
+// Execution failed!
+// endResult

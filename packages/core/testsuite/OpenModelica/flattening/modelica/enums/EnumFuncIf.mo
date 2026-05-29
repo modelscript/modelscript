@@ -19,13 +19,13 @@ model EnumFuncIf
   Real y;
 equation
   x = if f(y) then zeros(size(E, 1)) else x / y;
+  annotation(__OpenModelica_commandLineOptions="--condenseArrays=false -d=-newInst");
 end EnumFuncIf;
 
 // Result:
 // function f
 //   input Real x;
 //   output Boolean out;
-// algorithm
 // end f;
 //
 // class EnumFuncIf
@@ -38,5 +38,4 @@ end EnumFuncIf;
 //   x[E.B] = if f(y) then 0.0 else x[E.B] / y;
 //   x[E.C] = if f(y) then 0.0 else x[E.C] / y;
 // end EnumFuncIf;
-// [<interactive>:11:3-11:21:writable] Warning: Output parameter out was not assigned a value
 // endResult

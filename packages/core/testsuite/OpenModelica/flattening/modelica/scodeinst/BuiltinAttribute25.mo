@@ -10,12 +10,11 @@ end BuiltinAttribute25;
 
 // Result:
 // Error processing file: BuiltinAttribute25.mo
-// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute25.mo:8:13-8:28:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute25.mo:8:3-8:29:writable] Error: Type mismatch in binding 'start = x_start', expected array dimensions [3], got [2].
-// Error: Error occurred while flattening model BuiltinAttribute25
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute25.mo:8:13-8:28:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/BuiltinAttribute25.mo:8:3-8:29:writable] Error: Type mismatch in binding 'start = x_start', expected array dimensions [3], got [2].
 //
 // Execution failed!
 // endResult

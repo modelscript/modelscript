@@ -15,11 +15,10 @@ end ClassExtendsMissing1;
 
 // Result:
 // Error processing file: ClassExtendsMissing1.mo
-// [<interactive>:9:13-11:8:writable] Error: Base class targeted by class extends B not found in the inherited classes.
-// Error: Error occurred while flattening model ClassExtendsMissing1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ClassExtendsMissing1.mo:9:13-11:8:writable] Error: Base class targeted by class extends B not found in the inherited classes.
 //
 // Execution failed!
 // endResult

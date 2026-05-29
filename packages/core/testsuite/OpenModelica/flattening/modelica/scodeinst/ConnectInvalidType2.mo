@@ -22,11 +22,10 @@ end ConnectInvalidType2;
 
 // Result:
 // Error processing file: ConnectInvalidType2.mo
-// [OpenModelica/flattening/modelica/scodeinst/ConnectInvalidType2.mo:20:3-20:18:writable] Error: The connectors in connect(c1, c2) are not type compatible.
-// Error: Error occurred while flattening model ConnectInvalidType2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ConnectInvalidType2.mo:20:3-20:18:writable] Error: The connectors in connect(c1, c2) are not type compatible.
 //
 // Execution failed!
 // endResult

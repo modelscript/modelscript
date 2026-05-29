@@ -44,5 +44,4 @@ end ClassExtends3;
 //   Real m2_b.x = 3.0;
 //   Real m2_b.y;
 // end ClassExtends3;
-// [OpenModelica/flattening/modelica/scodeinst/ClassExtends3.mo:24:3-26:9:writable] Warning: Missing redeclare prefix on class extends M1, treating like redeclare anyway.
 // endResult

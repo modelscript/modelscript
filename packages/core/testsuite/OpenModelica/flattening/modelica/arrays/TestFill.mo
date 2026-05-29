@@ -15,20 +15,21 @@ algorithm
   y := fill(1, 5);
   n := n + 2;
   y[1:n] := fill(2, n);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// class Array12
-//   parameter Real a[1,1] = 2.0;
-//   parameter Real a[1,2] = 1.0;
-//   parameter Real a[2,1] = 1.2;
-//   parameter Real a[2,2] = 2.3;
-//   parameter Real b[1] = 1.0;
-//   parameter Real b[2] = 2.4;
-//   parameter Real b[3] = 5.0;
-//   parameter Real c[1,1] = 1.0;
-//   parameter Real c[1,2] = 3.0;
-//   parameter Real c[2,1] = 4.0;
-//   parameter Real c[2,2] = 5.2;
-// end Array12;
+// class test
+//   Real y[1];
+//   Real y[2];
+//   Real y[3];
+//   Real y[4];
+//   Real y[5];
+//   Integer n;
+// algorithm
+//   n := 0;
+//   y := {1.0, 1.0, 1.0, 1.0, 1.0};
+//   n := 2 + n;
+//   y[1:n] := fill(2.0, n);
+// end test;
 // endResult

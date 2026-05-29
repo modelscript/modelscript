@@ -13,14 +13,18 @@ class OutputDeclRecord
   output OutputRecord orec;
 equation
   orec.r = 1.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end OutputDeclRecord;
 
 // Result:
+// function OutputRecord "Automatically generated record constructor for OutputRecord"
+//   input Real r;
+//   output OutputRecord res;
+// end OutputRecord;
+//
 // class OutputDeclRecord
-//   Real orec.r;
+//   output Real orec.r;
 // equation
 //   orec.r = 1.0;
 // end OutputDeclRecord;
-// [OpenModelica/flattening/modelica/declarations/OutputDeclRecord.mo:13:3-13:27:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/declarations/OutputDeclRecord.mo:15:3-15:15:writable] Warning: Equation sections are deprecated in class.
 // endResult

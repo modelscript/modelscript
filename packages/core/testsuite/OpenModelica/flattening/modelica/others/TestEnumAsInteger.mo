@@ -33,4 +33,15 @@ equation
   i[3] = 3;
   x = f(i[3]);
 end TestIntegerAsEnum;
+
+
 end TestNonStandardExtensions;
+// Result:
+// Error processing file: TestEnumAsInteger.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/TestEnumAsInteger.mo:1:1-38:30:writable] Error: Cannot instantiate TestNonStandardExtensions due to class specialization package.
+//
+// Execution failed!
+// endResult

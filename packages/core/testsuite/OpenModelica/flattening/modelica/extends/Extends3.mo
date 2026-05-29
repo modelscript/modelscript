@@ -20,18 +20,22 @@ block SS
   parameter Real B[2,1] = {{1},{2}};
 equation
   y = B*u;
+  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end SS;
 
 
 
 // Result:
-// Error processing file: Extends3.mo
-// [<interactive>:8:15-8:37:writable] Notification: From here:
-// [<interactive>:9:3-9:21:writable] Error: Class 'SignalType' in 'extends SignalType' is replaceable, the base class name must be transitively non-replaceable.
-// Error: Error occurred while flattening model SS
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class SS
+//   input Real u[1];
+//   output Real y[1];
+//   output Real y[2];
+//   parameter Integer nin = 1;
+//   parameter Integer nout = 2;
+//   parameter Real B[1,1] = 1.0;
+//   parameter Real B[2,1] = 2.0;
+// equation
+//   y[1] = B[1,1] * u[1];
+//   y[2] = B[2,1] * u[1];
+// end SS;
 // endResult

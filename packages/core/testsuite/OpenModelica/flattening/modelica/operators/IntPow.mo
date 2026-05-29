@@ -7,15 +7,16 @@
 
 model IntPow
   constant Integer i = 8 ^ 3;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end IntPow;
 
 // Result:
 // Error processing file: IntPow.mo
-// [OpenModelica/flattening/modelica/operators/IntPow.mo:9:3-9:29:writable] Error: Type mismatch in binding i = 8.0 ^ 3.0, expected subtype of Integer, got type Real.
-// Error: Error occurred while flattening model IntPow
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/operators/IntPow.mo:9:3-9:29:writable] Error: Type mismatch in binding i = 512.0, expected subtype of Integer, got type Real.
+// Error: Error occurred while flattening model IntPow
 //
 // Execution failed!
 // endResult

@@ -14,11 +14,10 @@ end WhenInvalidEquation1;
 
 // Result:
 // Error processing file: WhenInvalidEquation1.mo
-// [OpenModelica/flattening/modelica/scodeinst/WhenInvalidEquation1.mo:10:5-10:14:writable] Error: Invalid left-hand side of when-equation: x + y.
-// Error: Error occurred while flattening model WhenInvalidEquation1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/WhenInvalidEquation1.mo:10:5-10:14:writable] Error: Invalid left-hand side of when-equation: x + y.
 //
 // Execution failed!
 // endResult

@@ -26,14 +26,13 @@ end FuncOverloadNoMatch;
 
 // Result:
 // Error processing file: FuncOverloadNoMatch.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncOverloadNoMatch.mo:24:3-24:23:writable] Error: No matching function found for FuncOverloadNoMatch.OV(/*Boolean*/ true).
 // Candidates are:
 //   FuncOverloadNoMatch.F(Integer f1) => Integer
 //   FuncOverloadNoMatch.G(Real g1) => Integer
-// Error: Error occurred while flattening model FuncOverloadNoMatch
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

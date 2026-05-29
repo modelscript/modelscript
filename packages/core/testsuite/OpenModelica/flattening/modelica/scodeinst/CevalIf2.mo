@@ -49,12 +49,10 @@ end CevalIf2;
 
 // Result:
 // Error processing file: CevalIf2.mo
-// [OpenModelica/flattening/modelica/scodeinst/CevalIf2.mo:35:1-38:20:writable] Warning: Pure function 'GenericHeatPump' contains a call to impure function 'ExternalCombiTable2D.constructor'.
-// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:1806:9-1807:99:writable] Error: Internal error NFCeval.evalRelationGreater failed to evaluate ‘datHeaPum.mEva_flow_nominal > 0.0‘
-// Error: Error occurred while flattening model CevalIf2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [/var/lib/jenkins2/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.7~1-g2b913cc/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:1806:9-1807:99:writable] Error: Internal error NFCeval.evalRelationGreater failed to evaluate ‘datHeaPum.mEva_flow_nominal > 0.0‘
 //
 // Execution failed!
 // endResult

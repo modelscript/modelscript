@@ -242,6 +242,7 @@ leads to neglection of temperature transient cv*m*der(T).
           dp=pressureDrop + medium.rho*Modelica.Constants.g_n*h_g;
           Q_flow=Q_friction;
         end IsolatedPipe;
+
       end Components;
 
       package Interfaces "Connectors and partial models"
@@ -480,7 +481,9 @@ Mixing rule is applied.
             flowPort_a.H_flow=semiLinear(flowPort_a.m_flow, flowPort_a.h, h);
             flowPort_b.H_flow=semiLinear(flowPort_b.m_flow, flowPort_b.h, h);
           end TwoPort;
+
         end Partials;
+
       end Interfaces;
 
       package Media "Medium properties"
@@ -537,8 +540,11 @@ and the accompanying <b>disclaimer</b>
           parameter Modelica.SIunits.KinematicViscosity nue=1 "kinematic viscosity";
           annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
         end Medium;
+
       end Media;
+
     end FluidHeatFlow;
+
   end Thermal;
 
   package Math "Mathematical functions (e.g., sin, cos) and operations on matrices (e.g., norm, solve, eig, exp)"
@@ -595,6 +601,7 @@ and the accompanying <b>disclaimer</b>
 </html>"));
 
       external "C" y=asin(u) ;
+
     end asin;
 
     function exp "exponential, base e"
@@ -604,11 +611,13 @@ and the accompanying <b>disclaimer</b>
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-90,-80.3976},{68,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{90,-80.3976},{68,-72.3976},{68,-88.3976},{90,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, fillColor={192,192,192}, extent={{-86,2},{-14,50}}, textString="exp", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-100,-80.3976},{84,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{100,-80.3976},{84,-74.3976},{84,-86.3976},{100,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, extent={{-31,72},{-11,88}}, textString="20", fontName="Arial"),Text(visible=true, extent={{-92,-103},{-72,-83}}, textString="-3", fontName="Arial"),Text(visible=true, extent={{70,-103},{90,-83}}, textString="3", fontName="Arial"),Text(visible=true, extent={{-18,-73},{2,-53}}, textString="1", fontName="Arial"),Text(visible=true, fillColor={160,160,160}, extent={{96,-102},{116,-82}}, textString="u", fontName="Arial")}));
 
       external "C" y=exp(u) ;
+
     end exp;
 
     partial function baseIcon2 "Basic icon for mathematical function with y-axis in middle"
       annotation(Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{0,80},{-8,80}}, color={192,192,192}),Line(visible=true, points={{0,-80},{-8,-80}}, color={192,192,192}),Line(visible=true, points={{0,-90},{0,84}}, color={192,192,192}),Text(visible=true, fillColor={160,160,160}, extent={{5,90},{25,110}}, textString="y", fontName="Arial"),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,100},{-6,84},{6,84},{0,100}})}), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,100}}),Line(visible=true, points={{0,-80},{0,68}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,90},{-8,68},{8,68},{0,90}}),Text(visible=true, fillColor={0,0,255}, fillPattern=FillPattern.Solid, extent={{-150,110},{150,150}}, textString="%name", fontName="Arial")}));
     end baseIcon2;
+
   end Math;
 
   package SIunits "Type and unit definitions based on SI units according to ISO 31-1992"
@@ -755,6 +764,7 @@ still kept in Modelica.SIunits.</p>
       partial function ConversionIcon "Base icon for conversion functions"
         annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, lineColor={191,0,0}, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,100}}),Line(visible=true, points={{-90,0},{30,0}}, color={191,0,0}),Polygon(visible=true, lineColor={191,0,0}, fillColor={191,0,0}, fillPattern=FillPattern.Solid, points={{90,0},{30,20},{30,-20},{90,0}}),Text(visible=true, extent={{-115,105},{115,155}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
       end ConversionIcon;
+
     end Conversions;
 
     type Angle= Real(final quantity="Angle", final unit="rad", displayUnit="deg") annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
@@ -845,6 +855,7 @@ and the accompanying <b>disclaimer</b>
     partial record Record "Icon for a record"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={255,255,127}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,50}}),Text(visible=true, extent={{-127,55},{127,115}}, textString="%name", fontName="Arial"),Line(visible=true, points={{-100,-50},{100,-50}}),Line(visible=true, points={{-100,0},{100,0}}),Line(visible=true, points={{0,50},{0,-100}})}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
     end Record;
+
   end Icons;
 
   package Constants "Mathematical constants and constants of nature (e.g., pi, eps, R, sigma)"
@@ -927,25 +938,51 @@ and the accompanying <b>disclaimer</b>
 </ul>
 </html>"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-34,-38},{12,-38}}, thickness=0.5),Line(visible=true, points={{-20,-38},{-24,-48},{-28,-56},{-34,-64}}, thickness=0.5),Line(visible=true, points={{-2,-38},{2,-46},{8,-56},{14,-64}}, thickness=0.5)}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
   end Constants;
+
 end Modelica;
 package Toneco
   import Modelica.*;
   model PEXPipe
     extends Modelica.Thermal.FluidHeatFlow.Components.IsolatedPipe;
   end PEXPipe;
+
 end Toneco;
 model Toneco_PEXPipe
   extends Toneco.PEXPipe;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Toneco_PEXPipe;
 
 // Result:
+// function Modelica.Math.asin "inverse sine (-1 <= u <= 1)"
+//   input Real u;
+//   output Real y(quantity = "Angle", unit = "rad", displayUnit = "deg");
+//
+//   external "C" y = asin(u);
+// end Modelica.Math.asin;
+//
+// function Modelica.SIunits.Conversions.from_degC "Convert from °Celsius to Kelvin"
+//   input Real Celsius(quantity = "ThermodynamicTemperature", unit = "degC") "Celsius value";
+//   output Real Kelvin(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) "Kelvin value";
+// algorithm
+//   Kelvin := 273.15 + Celsius;
+// end Modelica.SIunits.Conversions.from_degC;
+//
+// function Modelica.Thermal.FluidHeatFlow.Media.Medium "Automatically generated record constructor for Modelica.Thermal.FluidHeatFlow.Media.Medium"
+//   input Real rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 1.0;
+//   input Real cp(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0;
+//   input Real cv(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0;
+//   input Real lamda(quantity = "ThermalConductivity", unit = "W/(m.K)") = 1.0;
+//   input Real nue(quantity = "KinematicViscosity", unit = "m2/s", min = 0.0) = 1.0;
+//   output Medium res;
+// end Modelica.Thermal.FluidHeatFlow.Media.Medium;
+//
 // class Toneco_PEXPipe
 //   parameter Real medium.rho(quantity = "Density", unit = "kg/m3", displayUnit = "g/cm3", min = 0.0) = 1.0 "density";
 //   parameter Real medium.cp(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0 "specific heat capacity at constant pressure";
 //   parameter Real medium.cv(quantity = "SpecificHeatCapacity", unit = "J/(kg.K)") = 1.0 "specific heat capacity at constant volume";
 //   parameter Real medium.lamda(quantity = "ThermalConductivity", unit = "W/(m.K)") = 1.0 "thermal conductivity";
 //   parameter Real medium.nue(quantity = "KinematicViscosity", unit = "m2/s", min = 0.0) = 1.0 "kinematic viscosity";
-//   final parameter Real m(quantity = "Mass", unit = "kg", min = 0.0) = 1.0 "mass of medium";
+//   parameter Real m(quantity = "Mass", unit = "kg", min = 0.0) = 1.0 "mass of medium";
 //   parameter Real T0(quantity = "ThermodynamicTemperature", unit = "K", displayUnit = "degC", min = 0.0) = 293.15 "initial temperature of medium";
 //   Real dp(quantity = "Pressure", unit = "Pa", displayUnit = "bar") = flowPort_a.p - flowPort_b.p "pressure drop a->b";
 //   Real V_flow(quantity = "VolumeFlowRate", unit = "m3/s") = flowPort_a.m_flow / medium.rho "Volume flow a->b";
@@ -986,28 +1023,28 @@ end Toneco_PEXPipe;
 //   parameter Real h_g(quantity = "Length", unit = "m") = 0.0 "geodetic height (heigth difference from flowPort_a to flowPort_b)";
 // initial algorithm
 //   assert(V_flowNominal > V_flowLaminar, "SimpleFriction: V_flowNominal has to be > V_flowLaminar!");
-//   k := dpLaminar / V_flowLaminar * V_flowNominal;
+//   k := dpLaminar * V_flowNominal / V_flowLaminar;
 //   assert(dpNominal >= k, "SimpleFriction: dpNominal has to be > dpLaminar*V_flowNominal/V_flowLaminar!");
 //   k := (dpNominal - k) / (V_flowNominal - V_flowLaminar) ^ 2.0;
 // equation
-//   flowPort_a.m_flow = 0.0;
-//   flowPort_a.H_flow = 0.0;
-//   flowPort_b.m_flow = 0.0;
-//   flowPort_b.H_flow = 0.0;
 //   VolumeFlow = V_flow;
-//   dp = pressureDrop + medium.rho * 9.80665 * h_g;
+//   dp = pressureDrop + 9.80665 * medium.rho * h_g;
 //   Q_flow = Q_friction;
-//   if VolumeFlow > V_flowLaminar then
-//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow + k * (VolumeFlow - V_flowLaminar) ^ 2.0;
-//   elseif VolumeFlow < (-V_flowLaminar) then
-//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow - k * (VolumeFlow + V_flowLaminar) ^ 2.0;
-//   else
-//     pressureDrop = dpLaminar / V_flowLaminar * VolumeFlow;
-//   end if;
-//   Q_friction = frictionLoss * VolumeFlow * pressureDrop;
 //   flowPort_a.m_flow + flowPort_b.m_flow = 0.0;
-//   flowPort_a.H_flow + flowPort_b.H_flow + Q_flow = medium.cv * der(T);
+//   flowPort_a.H_flow + flowPort_b.H_flow + Q_flow = m * medium.cv * der(T);
 //   flowPort_a.H_flow = semiLinear(flowPort_a.m_flow, flowPort_a.h, h);
 //   flowPort_b.H_flow = semiLinear(flowPort_b.m_flow, flowPort_b.h, h);
+//   if VolumeFlow > V_flowLaminar then
+//     pressureDrop = dpLaminar * VolumeFlow / V_flowLaminar + k * (VolumeFlow - V_flowLaminar) ^ 2.0;
+//   elseif VolumeFlow < (-V_flowLaminar) then
+//     pressureDrop = dpLaminar * VolumeFlow / V_flowLaminar - k * (VolumeFlow + V_flowLaminar) ^ 2.0;
+//   else
+//     pressureDrop = dpLaminar * VolumeFlow / V_flowLaminar;
+//   end if;
+//   Q_friction = frictionLoss * VolumeFlow * pressureDrop;
+//   flowPort_a.H_flow = 0.0;
+//   flowPort_a.m_flow = 0.0;
+//   flowPort_b.H_flow = 0.0;
+//   flowPort_b.m_flow = 0.0;
 // end Toneco_PEXPipe;
 // endResult

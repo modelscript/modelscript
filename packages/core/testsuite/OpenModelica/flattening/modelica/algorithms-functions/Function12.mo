@@ -15,6 +15,7 @@ package Modelica
   output Real y;
 
   external "C" y=atan2(u1,u2) ;
+
 end atan2;
 end Math;
 end Modelica;
@@ -30,6 +31,7 @@ equation
   when doSample then
     x=f(pre(x), u);
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BaseSampler;
 // Result:
 // class BaseSampler

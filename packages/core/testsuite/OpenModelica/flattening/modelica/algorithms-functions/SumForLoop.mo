@@ -15,11 +15,12 @@ algorithm
   for i in 1:n loop
     sum := sum + z[i];
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SumZ;
 
 // Result:
 // class SumZ
-//   final parameter Integer n = 5;
+//   parameter Integer n = 5;
 //   parameter Real z[1] = 10.0;
 //   parameter Real z[2] = 20.0;
 //   parameter Real z[3] = 30.0;
@@ -28,7 +29,7 @@ end SumZ;
 //   Real sum(start = 0.0);
 // algorithm
 //   sum := 0.0;
-//   for i in 1:5 loop
+//   for i in 1:n loop
 //     sum := sum + z[i];
 //   end for;
 // end SumZ;

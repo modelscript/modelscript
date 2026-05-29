@@ -13,12 +13,11 @@ end Final3;
 
 // Result:
 // Error processing file: Final3.mo
-// [OpenModelica/flattening/modelica/scodeinst/Final3.mo:11:7-11:14:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/Final3.mo:7:3-7:25:writable] Error: Trying to override final element x with modifier '= 1.0'.
-// Error: Error occurred while flattening model Final3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Final3.mo:11:7-11:14:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/Final3.mo:7:3-7:25:writable] Error: Trying to override final element x with modifier '= 1.0'.
 //
 // Execution failed!
 // endResult

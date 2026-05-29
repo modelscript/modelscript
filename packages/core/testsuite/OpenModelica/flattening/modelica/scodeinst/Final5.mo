@@ -17,12 +17,11 @@ end Final4;
 
 // Result:
 // Error processing file: Final5.mo
-// [<interactive>:15:9-15:16:writable] Notification: From here:
-// [<interactive>:11:13-11:20:writable] Error: Trying to override final element x with modifier '= 2.0'.
-// Error: Error occurred while flattening model Final4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Final5.mo:15:9-15:16:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/Final5.mo:11:13-11:20:writable] Error: Trying to override final element x with modifier '= 2.0'.
 //
 // Execution failed!
 // endResult

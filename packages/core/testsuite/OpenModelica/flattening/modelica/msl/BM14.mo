@@ -1068,6 +1068,7 @@ model BM14
 
 equation
   connect(log1.inPort,constant1.outPort) annotation(Line(visible=true,points={{-25.96,32.95},{-49.37,30.52}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM14;
 // function Modelica.Math.log
 // input Real u;
@@ -1098,16 +1099,33 @@ end BM14;
 // log1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM14;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// function Modelica.Math.log "natural (base e) logarithm (u shall be > 0)"
+//   input Real u;
+//   output Real y;
+//
+//   external "C" y = log(u);
+// end Modelica.Math.log;
+//
+// class BM14
+//   parameter Integer log1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer log1.inPort.n = log1.n "Dimension of signal vector";
+//   Real log1.inPort.signal[1] "Real input signals";
+//   parameter Integer log1.outPort.n = log1.n "Dimension of signal vector";
+//   Real log1.outPort.signal[1] "Real output signals";
+//   Real log1.y[1] "Output signals";
+//   protected Real log1.u[1] "Input signals";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   log1.u = {log1.inPort.signal[1]};
+//   log1.y[1] = log(log1.u[1]);
+//   log1.y[1] = log1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   assert(log1.inPort.n == constant1.outPort.n, "automatically generated from connect");
+//   constant1.outPort.signal[1] = log1.inPort.signal[1];
+// end BM14;
 // endResult

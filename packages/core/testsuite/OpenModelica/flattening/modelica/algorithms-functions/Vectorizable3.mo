@@ -17,6 +17,7 @@ model Vectorizable3
   Real x[2,2];
 equation
   x=foo([1,2;3,4]);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Vectorizable3;
 
 // function foo
@@ -31,7 +32,7 @@ end Vectorizable3;
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := x + 1.0;
+//   y := 1.0 + x;
 // end foo;
 //
 // class Vectorizable3
@@ -40,6 +41,9 @@ end Vectorizable3;
 //   Real x[2,1];
 //   Real x[2,2];
 // equation
-//   x = array(array(foo(/*Real*/({{1, 2}, {3, 4}}[$i0, $i1])) for $i1 in 1:2) for $i0 in 1:2);
+//   x[1,1] = 2.0;
+//   x[1,2] = 3.0;
+//   x[2,1] = 4.0;
+//   x[2,2] = 5.0;
 // end Vectorizable3;
 // endResult

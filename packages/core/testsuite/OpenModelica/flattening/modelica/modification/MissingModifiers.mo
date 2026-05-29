@@ -18,10 +18,12 @@ end C;
 model MissingModifiers
  parameter B.crazyT b;
  parameter C.crazyT c;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MissingModifiers;
 
 // Result:
-// class BreakComponentMod3
-//   Integer x = 1;
-// end BreakComponentMod3;
+// class MissingModifiers
+//   parameter Real b(start = 1.6);
+//   parameter Real c(start = 2.6);
+// end MissingModifiers;
 // endResult

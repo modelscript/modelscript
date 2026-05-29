@@ -22,16 +22,19 @@ model Protected1
   B a(y=18);
   B b(a=3);
   B c;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Protected1;
 
 // Result:
-// Error processing file: Protected1.mo
-// [OpenModelica/flattening/modelica/others/Protected1.mo:22:7-22:11:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/others/Protected1.mo:18:3-18:13:writable] Error: Protected element 'y' may not be modified, got 'y = 18'.
-// Error: Error occurred while flattening model Protected1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Protected1
+//   protected Real a.a = 1.0;
+//   Real a.x = 1.0;
+//   protected Real a.y = 18.0;
+//   protected Real b.a = 3.0;
+//   Real b.x = 1.0;
+//   protected Real b.y = 1.0;
+//   protected Real c.a = 1.0;
+//   Real c.x = 1.0;
+//   protected Real c.y = 1.0;
+// end Protected1;
 // endResult

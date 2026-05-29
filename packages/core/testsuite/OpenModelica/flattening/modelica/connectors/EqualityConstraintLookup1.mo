@@ -33,16 +33,10 @@ encapsulated package P
   equation
     connect(pin1, pin2);
   end M;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end P;
 
 // Result:
-// Error processing file: EqualityConstraintLookup1.mo
-// Error: Failed to load package EqualityConstraintLookup1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class EqualityConstraintLookup1 not found in scope <top>.
-// Error: Error occurred while flattening model EqualityConstraintLookup1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class P
+// end P;
 // endResult

@@ -13,6 +13,7 @@ algorithm
       rmatrix[i, j] := i * j;
     end for;
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ForNested;
 
 // Result:

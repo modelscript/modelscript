@@ -14,11 +14,10 @@ end ImplicitRangeInvalid1;
 
 // Result:
 // Error processing file: ImplicitRangeInvalid1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ImplicitRangeInvalid1.mo:10:3-12:10:writable] Error: Identifier i of implicit for iterator must be present as array subscript in the loop body.
-// Error: Error occurred while flattening model ImplicitRangeInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ImplicitRangeInvalid1.mo:10:3-12:10:writable] Error: Identifier i of implicit for iterator must be present as array subscript in the loop body.
 //
 // Execution failed!
 // endResult

@@ -7,6 +7,8 @@ equation
   assert(x>1,"message");
 
   x = 10;
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EncapsulatedAssert;
 // Result:
 // class EncapsulatedAssert

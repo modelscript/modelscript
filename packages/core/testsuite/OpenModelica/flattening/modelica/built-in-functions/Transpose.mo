@@ -13,6 +13,7 @@ model Transpose
 equation
   TM = transpose(M);
   TM1 = transpose(M1);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Transpose;
 
 // Result:

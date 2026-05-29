@@ -39,6 +39,7 @@ class Import1
   D d;
   E e;
   MyC myc;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Import1;
 
 
@@ -50,13 +51,10 @@ end Import1;
    Real myc.x=7; // A.B2.E via import MyC=A.B2.C;
 */
 // Result:
-// Error processing file: Import1.mo
-// [OpenModelica/flattening/modelica/packages/Import1.mo:29:5-29:21:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/packages/Import1.mo:40:3-40:6:writable] Error: Component 'e' has partial type 'E'.
-// Error: Error occurred while flattening model Import1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Import1
+//   Real c.x = 4.0;
+//   Real d.x = 5.0;
+//   Real e.x = 6.0;
+//   Real myc.x = 7.0;
+// end Import1;
 // endResult

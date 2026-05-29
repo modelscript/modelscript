@@ -345,15 +345,145 @@ equation
   connect(serialReceive.pkgOut, unpackInt.pkgIn);
   connect(unpackInt.y, integerToReal.u);
   annotation(experiment(StopTime = 15, Tolerance = 0.001, __Dymola_fixedstepsize = 0.001, __Dymola_Algorithm = "Euler"));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Ticket4062;
 
 // Result:
-// Error processing file: Ticket4062.mo
-// Error: Class Ticket4062.mo not found in scope <top>.
-// Error: Error occurred while flattening model Ticket4062.mo
+// function Modelica_DeviceDrivers.Blocks.Communication.Internal.DummyFunctions.readSerial
+//   input Modelica_DeviceDrivers.Communication.SerialPort sPort "Serial Port object";
+//   input Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//   input Real dummy;
+//   output Real dummy2;
+// algorithm
+//   Modelica_DeviceDrivers.Communication.SerialPort_.read(sPort, pkg);
+//   dummy2 := dummy;
+// end Modelica_DeviceDrivers.Blocks.Communication.Internal.DummyFunctions.readSerial;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function Modelica_DeviceDrivers.Blocks.Packaging.SerialPackager.Internal.DummyFunctions.integerBitUnpack "Unpack integer value encoded at bit level"
+//   input Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//   input Integer bitOffset "Bit offset from current packager position until first encoding bit";
+//   input Integer width "Number of bits that encode the integer value";
+//   input Real dummy;
+//   output Integer value "Decoded integer value";
+//   output Real dummy2;
+// algorithm
+//   value := Modelica_DeviceDrivers.Packaging.SerialPackager_.integerBitUnpack(pkg, bitOffset, width);
+//   dummy2 := dummy;
+// end Modelica_DeviceDrivers.Blocks.Packaging.SerialPackager.Internal.DummyFunctions.integerBitUnpack;
 //
-// Execution failed!
+// function Modelica_DeviceDrivers.Communication.SerialPort.constructor "Creates a SerialPort instance with a given listening port."
+//   input String deviceName "Serial port (/dev/ttyX or \\\\.\\COMX)";
+//   input Integer bufferSize = 16384 "Size of receive buffer";
+//   input Integer parity = 0 "0 - no parity, 1 - even, 2 - odd";
+//   input Integer receiver = 1 "0 - sender, 1 - receiver";
+//   input enumeration(B115200, B57600, B38400, B19200, B9600, B4800, B2400) baud;
+//   output Modelica_DeviceDrivers.Communication.SerialPort sPort;
+//
+//   external "C" sPort = MDD_serialPortConstructor(deviceName, bufferSize, parity, receiver, baud);
+// end Modelica_DeviceDrivers.Communication.SerialPort.constructor;
+//
+// function Modelica_DeviceDrivers.Communication.SerialPort.destructor
+//   input Modelica_DeviceDrivers.Communication.SerialPort sPort;
+//
+//   external "C" MDD_serialPortDestructor(sPort);
+// end Modelica_DeviceDrivers.Communication.SerialPort.destructor;
+//
+// function Modelica_DeviceDrivers.Communication.SerialPort_.read
+//   input Modelica_DeviceDrivers.Communication.SerialPort sPort;
+//   input Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//
+//   external "C" MDD_serialPortReadP(sPort, pkg);
+// end Modelica_DeviceDrivers.Communication.SerialPort_.read;
+//
+// function Modelica_DeviceDrivers.Packaging.SerialPackager.constructor "Claim the memory"
+//   input Integer bufferSize = 16384;
+//   output Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//
+//   external "C" pkg = MDD_SerialPackagerConstructor(bufferSize);
+// end Modelica_DeviceDrivers.Packaging.SerialPackager.constructor;
+//
+// function Modelica_DeviceDrivers.Packaging.SerialPackager.destructor "Free memory"
+//   input Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//
+//   external "C" MDD_SerialPackagerDestructor(pkg);
+// end Modelica_DeviceDrivers.Packaging.SerialPackager.destructor;
+//
+// function Modelica_DeviceDrivers.Packaging.SerialPackager_.integerBitUnpack "Unpack integer value encoded at bit level"
+//   input Modelica_DeviceDrivers.Packaging.SerialPackager pkg;
+//   input Integer bitOffset "Bit offset from current packager position until first encoding bit";
+//   input Integer width "Number of bits that encode the integer value";
+//   output Integer value "Decoded integer value";
+//
+//   external "C" value = MDD_SerialPackagerIntegerBitunpack2(pkg, bitOffset, width);
+// end Modelica_DeviceDrivers.Packaging.SerialPackager_.integerBitUnpack;
+//
+// function Modelica_DeviceDrivers.Packaging.alignAtByteBoundary "Returns the minimum number of bytes required to encode the specified number of bits"
+//   input Integer bitSize;
+//   output Integer nBytes;
+// algorithm
+//   nBytes := div(7 + bitSize, 8);
+// end Modelica_DeviceDrivers.Packaging.alignAtByteBoundary;
+//
+// class Ticket4062
+//   parameter Boolean serialReceive.enableExternalTrigger = false "true, enable external trigger input signal, otherwise use sample time settings below";
+//   parameter Real serialReceive.sampleTime(quantity = "Time", unit = "s") = 2.0 "Sample period of component";
+//   parameter Real serialReceive.startTime(quantity = "Time", unit = "s") = 0.1 "First sample time instant";
+//   protected Boolean serialReceive.internalTrigger;
+//   protected Boolean serialReceive.actTrigger;
+//   parameter Boolean serialReceive.autoBufferSize = true "true, buffer size is deduced automatically, otherwise set it manually";
+//   parameter Integer serialReceive.userBufferSize = 2 "Buffer size of message data in bytes (if not deduced automatically)";
+//   parameter String serialReceive.Serial_Port = "COM3" "Serial port to send data";
+//   parameter enumeration(B115200, B57600, B38400, B19200, B9600, B4800, B2400) serialReceive.baud = Modelica_DeviceDrivers.Utilities.Types.SerialBaudRate.B9600 "Serial port baud rate";
+//   parameter Integer serialReceive.parity = 0 "set parity (0 - no parity, 1 - even, 2 - odd)";
+//   Modelica_DeviceDrivers.Packaging.SerialPackager serialReceive.pkgOut.pkg = Modelica_DeviceDrivers.Packaging.SerialPackager.constructor(if serialReceive.autoBufferSize then serialReceive.bufferSize else serialReceive.userBufferSize);
+//   Boolean serialReceive.pkgOut.trigger;
+//   Real serialReceive.pkgOut.dummy(start = 0.0, fixed = true);
+//   Boolean serialReceive.pkgOut.backwardTrigger;
+//   Integer serialReceive.pkgOut.userPkgBitSize;
+//   Integer serialReceive.pkgOut.autoPkgBitSize;
+//   protected Integer serialReceive.bufferSize;
+//   protected Modelica_DeviceDrivers.Communication.SerialPort serialReceive.sPort = Modelica_DeviceDrivers.Communication.SerialPort.constructor(serialReceive.Serial_Port, if serialReceive.autoBufferSize then serialReceive.bufferSize else serialReceive.userBufferSize, serialReceive.parity, serialReceive.receiver, serialReceive.baud);
+//   protected parameter Integer serialReceive.receiver = 1 "Set to be a receiver port";
+//   protected Boolean serialReceive.conditionalInternalTrigger;
+//   parameter Integer unpackInt.nu(min = 0, max = 1) = 0 "Output connector size";
+//   Modelica_DeviceDrivers.Packaging.SerialPackager unpackInt.pkgIn.pkg;
+//   Boolean unpackInt.pkgIn.trigger;
+//   Real unpackInt.pkgIn.dummy;
+//   Boolean unpackInt.pkgIn.backwardTrigger;
+//   Integer unpackInt.pkgIn.userPkgBitSize;
+//   Integer unpackInt.pkgIn.autoPkgBitSize;
+//   parameter Integer unpackInt.bitOffset = 0 "Bit offset from current packager position until first encoding bit";
+//   parameter Integer unpackInt.width = 16 "Number of bits that encode the integer value";
+//   Integer unpackInt.y(min = 0, start = 0, fixed = true);
+//   protected Real unpackInt.dummy(start = 0.0, fixed = true);
+//   Integer integerToReal.u "Connector of Integer input signal";
+//   Real integerToReal.y "Connector of Real output signal";
+// equation
+//   when initial() then
+//     serialReceive.bufferSize = if serialReceive.autoBufferSize then Modelica_DeviceDrivers.Packaging.alignAtByteBoundary(serialReceive.pkgOut.autoPkgBitSize) else serialReceive.userBufferSize;
+//   end when;
+//   serialReceive.pkgOut.trigger = serialReceive.actTrigger "using inherited trigger";
+//   when serialReceive.pkgOut.trigger then
+//     serialReceive.pkgOut.dummy = Modelica_DeviceDrivers.Blocks.Communication.Internal.DummyFunctions.readSerial(serialReceive.sPort, serialReceive.pkgOut.pkg, time);
+//   end when;
+//   serialReceive.internalTrigger = sample(serialReceive.startTime, serialReceive.sampleTime);
+//   when initial() then
+//     unpackInt.pkgIn.autoPkgBitSize = if unpackInt.nu == 1 then unpackInt.pkgOut[1].autoPkgBitSize + unpackInt.bitOffset + unpackInt.width else unpackInt.bitOffset + unpackInt.width;
+//   end when;
+//   when unpackInt.pkgIn.trigger then
+//     (unpackInt.y, unpackInt.dummy) = Modelica_DeviceDrivers.Blocks.Packaging.SerialPackager.Internal.DummyFunctions.integerBitUnpack(unpackInt.pkgIn.pkg, unpackInt.bitOffset, unpackInt.width, unpackInt.pkgIn.dummy);
+//   end when;
+//   unpackInt.pkgIn.backwardTrigger = false;
+//   unpackInt.pkgIn.userPkgBitSize = -1;
+//   integerToReal.y = /*Real*/(integerToReal.u);
+//   serialReceive.actTrigger = serialReceive.conditionalInternalTrigger;
+//   serialReceive.actTrigger = serialReceive.internalTrigger;
+//   serialReceive.pkgOut.autoPkgBitSize = unpackInt.pkgIn.autoPkgBitSize;
+//   serialReceive.pkgOut.backwardTrigger = unpackInt.pkgIn.backwardTrigger;
+//   serialReceive.pkgOut.dummy = unpackInt.pkgIn.dummy;
+//   serialReceive.pkgOut.pkg = unpackInt.pkgIn.pkg;
+//   serialReceive.pkgOut.trigger = unpackInt.pkgIn.trigger;
+//   serialReceive.pkgOut.userPkgBitSize = unpackInt.pkgIn.userPkgBitSize;
+//   integerToReal.u = unpackInt.y;
+// end Ticket4062;
 // endResult

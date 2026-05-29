@@ -23,6 +23,7 @@ end f;
 
 model RecordSliceAssign
   Real y[:] = f(4);
+  annotation(__OpenModelica_commandLineOptions="-d=gen -d=-newInst");
 end RecordSliceAssign;
 
 // Result:
@@ -48,6 +49,6 @@ end RecordSliceAssign;
 //   Real y[3];
 //   Real y[4];
 // equation
-//   y = f(4);
+//   y = {1.0, 2.0, 3.0, 4.0};
 // end RecordSliceAssign;
 // endResult

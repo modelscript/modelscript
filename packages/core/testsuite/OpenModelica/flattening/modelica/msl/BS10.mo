@@ -947,6 +947,7 @@ model BS10
 
 equation
   connect(step1.outPort,der1.inPort) annotation(Line(visible=true,points={{-50.59,4.97},{-36.6,1.93}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS10;
 // class BS10
 // parameter Integer step1.nout(min = 1) = 1 "Number of outputs";
@@ -975,16 +976,31 @@ end BS10;
 // step1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS10;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BS10
+//   parameter Integer step1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer step1.outPort.n = step1.nout "Dimension of signal vector";
+//   Real step1.outPort.signal[1] "Real output signals";
+//   Real step1.y[1];
+//   parameter Real step1.offset[1] = 0.0 "offset of output signal";
+//   parameter Real step1.startTime[1](quantity = "Time", unit = "s") = 0.0 "output = offset for time < startTime";
+//   parameter Real step1.height[1] = 1.0 "Heights of steps";
+//   protected parameter Real step1.p_height[1] = step1.height[1];
+//   protected parameter Real step1.p_offset[1] = step1.offset[1];
+//   protected parameter Real step1.p_startTime[1](quantity = "Time", unit = "s") = step1.startTime[1];
+//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
+//   Real der1.inPort.signal[1] "Real input signals";
+//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
+//   Real der1.outPort.signal[1] "Real output signals";
+//   Real der1.y[1] "Output signals";
+//   protected Real der1.u[1] "Input signals";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   step1.outPort.signal[1] = step1.p_offset[1] + (if time < step1.p_startTime[1] then 0.0 else step1.p_height[1]);
+//   step1.y[1] = step1.outPort.signal[1];
+//   der1.u = {der1.inPort.signal[1]};
+//   der1.y[1] = der(der1.u[1]);
+//   der1.y[1] = der1.outPort.signal[1];
+//   assert(step1.outPort.n == der1.inPort.n, "automatically generated from connect");
+//   der1.inPort.signal[1] = step1.outPort.signal[1];
+// end BS10;
 // endResult

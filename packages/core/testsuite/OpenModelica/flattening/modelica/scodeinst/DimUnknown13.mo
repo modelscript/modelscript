@@ -10,11 +10,10 @@ end DimUnknown13;
 
 // Result:
 // Error processing file: DimUnknown13.mo
-// [OpenModelica/flattening/modelica/scodeinst/DimUnknown13.mo:8:3-8:34:writable] Error: Dimension 1 of c, ':', could not be evaluated due to a cyclic dependency.
-// Error: Error occurred while flattening model DimUnknown13
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/DimUnknown13.mo:8:3-8:34:writable] Error: Dimension 1 of c, ':', could not be evaluated due to a cyclic dependency.
 //
 // Execution failed!
 // endResult

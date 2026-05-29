@@ -38,21 +38,11 @@ equation
   b1.u = a2.u;
   b2.u = b1.y;
   b3.u = b2.y;
+  annotation(__OpenModelica_commandLineOptions="-d=mergeComponents,-nfScalarize");
 end MergeComponents7;
 
 // Result:
 // class MergeComponents7
-//   parameter Real b1.q = 3.0;
-//   Real b1.u;
-//   Real b1.y;
-//   parameter Real b1.aa.p = b1.q * 2.0;
-//   Real b1.aa.u;
-//   Real b1.aa.y;
-//   Real b1.aa.x;
-//   parameter Real b1.ab.p = b1.q * 3.0;
-//   Real b1.ab.u;
-//   Real b1.ab.y;
-//   Real b1.ab.x;
 //   parameter Real b2.q = 1.0;
 //   Real b2.u;
 //   Real b2.y;
@@ -64,17 +54,6 @@ end MergeComponents7;
 //   Real b2.ab.u;
 //   Real b2.ab.y;
 //   Real b2.ab.x;
-//   parameter Real b3.q = 4.0;
-//   Real b3.u;
-//   Real b3.y;
-//   parameter Real b3.aa.p = b3.q * 2.0;
-//   Real b3.aa.u;
-//   Real b3.aa.y;
-//   Real b3.aa.x;
-//   parameter Real b3.ab.p = b3.q * 3.0;
-//   Real b3.ab.u;
-//   Real b3.ab.y;
-//   Real b3.ab.x;
 //   parameter Real a1.p = 3.0;
 //   Real a1.u;
 //   Real a1.y;
@@ -83,14 +62,18 @@ end MergeComponents7;
 //   Real a2.u;
 //   Real a2.y;
 //   Real a2.x;
+//   parameter Real[2] $B1.q = {3.0, 4.0};
+//   Real[2] $B1.u;
+//   Real[2] $B1.y;
+//   parameter Real[2] $B1.aa.p = fill($B1.q * 2.0, 2);
+//   Real[2] $B1.aa.u;
+//   Real[2] $B1.aa.y;
+//   Real[2] $B1.aa.x;
+//   parameter Real[2] $B1.ab.p = fill($B1.q * 3.0, 2);
+//   Real[2] $B1.ab.u;
+//   Real[2] $B1.ab.y;
+//   Real[2] $B1.ab.x;
 // equation
-//   der(b1.aa.x) = b1.aa.u - b1.aa.p * b1.aa.x;
-//   b1.aa.y = 2.0 * b1.aa.p * b1.aa.x;
-//   der(b1.ab.x) = b1.ab.u - b1.ab.p * b1.ab.x;
-//   b1.ab.y = 2.0 * b1.ab.p * b1.ab.x;
-//   b1.aa.u = b1.u;
-//   b1.ab.u = b1.aa.y;
-//   b1.y = b1.ab.y;
 //   der(b2.aa.x) = b2.aa.u - b2.aa.p * b2.aa.x;
 //   b2.aa.y = 2.0 * b2.aa.p * b2.aa.x;
 //   der(b2.ab.x) = b2.ab.u - b2.ab.p * b2.ab.x;
@@ -98,21 +81,29 @@ end MergeComponents7;
 //   b2.aa.u = b2.u;
 //   b2.ab.u = b2.aa.y;
 //   b2.y = b2.ab.y;
-//   der(b3.aa.x) = b3.aa.u - b3.aa.p * b3.aa.x;
-//   b3.aa.y = 2.0 * b3.aa.p * b3.aa.x;
-//   der(b3.ab.x) = b3.ab.u - b3.ab.p * b3.ab.x;
-//   b3.ab.y = 2.0 * b3.ab.p * b3.ab.x;
-//   b3.aa.u = b3.u;
-//   b3.ab.u = b3.aa.y;
-//   b3.y = b3.ab.y;
 //   der(a1.x) = a1.u - a1.p * a1.x;
 //   a1.y = 2.0 * a1.p * a1.x;
 //   der(a2.x) = a2.u - a2.p * a2.x;
 //   a2.y = 2.0 * a2.p * a2.x;
+//   for $i3 in 1:2 loop
+//     der($B1[$i3].aa.x) = $B1[$i3].aa.u - $B1[$i3].aa.p * $B1[$i3].aa.x;
+//   end for;
+//   for $i2 in 1:2 loop
+//     $B1[$i2].aa.y = 2.0 * $B1[$i2].aa.p * $B1[$i2].aa.x;
+//   end for;
+//   for $i1 in 1:2 loop
+//     der($B1[$i1].ab.x) = $B1[$i1].ab.u - $B1[$i1].ab.p * $B1[$i1].ab.x;
+//   end for;
+//   for $i0 in 1:2 loop
+//     $B1[$i0].ab.y = 2.0 * $B1[$i0].ab.p * $B1[$i0].ab.x;
+//   end for;
+//   $B1.aa.u = $B1.u;
+//   $B1.ab.u = $B1.aa.y;
+//   $B1.y = $B1.ab.y;
 //   a1.u = 1.0;
 //   a2.u = a1.y;
-//   b1.u = a2.u;
-//   b2.u = b1.y;
-//   b3.u = b2.y;
+//   $B1[1].u = a2.u;
+//   b2.u = $B1[1].y;
+//   $B1[2].u = b2.y;
 // end MergeComponents7;
 // endResult

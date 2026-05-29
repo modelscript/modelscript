@@ -12,12 +12,11 @@ end ImportQualifiedInvalid1;
 
 // Result:
 // Error processing file: ImportQualifiedInvalid1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ImportQualifiedInvalid1.mo:9:3-9:13:writable] Error: Import P.M not found in scope <top>.
-// [OpenModelica/flattening/modelica/scodeinst/ImportQualifiedInvalid1.mo:10:3-10:6:writable] Error: Class M not found in scope ImportQualifiedInvalid1.
-// Error: Error occurred while flattening model ImportQualifiedInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ImportQualifiedInvalid1.mo:9:3-9:13:writable] Error: Import P.M not found in scope <top>.
+// [OpenModelica/flattening/modelica/scodeinst/ImportQualifiedInvalid1.mo:10:3-10:6:writable] Error: Class M not found in scope ImportQualifiedInvalid1.
 //
 // Execution failed!
 // endResult

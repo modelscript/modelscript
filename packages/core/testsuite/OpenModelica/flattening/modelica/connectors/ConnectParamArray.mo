@@ -13,15 +13,20 @@ model ConnectParamArray
   C c1, c2;
 equation
   connect(c1, c2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectParamArray;
 
 // Result:
-// Error processing file: ConnectParamArray.mo
-// [OpenModelica/flattening/modelica/connectors/ConnectParamArray.mo:9:3-9:22:writable] Error: Parameter c1.e has neither value nor start value, and is fixed during initialization (fixed=true).
-// Error: Error occurred while flattening model ConnectParamArray
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectParamArray
+//   parameter Real c1.e[1];
+//   parameter Real c1.e[2];
+//   parameter Real c1.e[3];
+//   parameter Real c2.e[1];
+//   parameter Real c2.e[2];
+//   parameter Real c2.e[3];
+// equation
+//   assert(c1.e[1] == c2.e[1], "automatically generated from connect");
+//   assert(c1.e[2] == c2.e[2], "automatically generated from connect");
+//   assert(c1.e[3] == c2.e[3], "automatically generated from connect");
+// end ConnectParamArray;
 // endResult

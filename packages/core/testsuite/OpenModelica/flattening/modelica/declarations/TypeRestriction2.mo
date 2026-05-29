@@ -15,11 +15,10 @@ end TypeRestriction2;
 
 // Result:
 // Error processing file: TypeRestriction2.mo
-// [OpenModelica/flattening/modelica/declarations/TypeRestriction2.mo:9:3-9:9:writable] Error: Algorithm sections are not allowed in type.
-// Error: Error occurred while flattening model TypeRestriction2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/TypeRestriction2.mo:9:3-9:9:writable] Error: Algorithm sections are not allowed in type.
 //
 // Execution failed!
 // endResult

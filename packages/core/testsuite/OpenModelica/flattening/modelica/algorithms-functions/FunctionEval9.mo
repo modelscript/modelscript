@@ -42,6 +42,7 @@ model FunctionEval9
 equation
   y = test3(x1+x2);
   z = test(y);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionEval9;
 
 
@@ -99,14 +100,24 @@ end FunctionEval9;
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := cos(x) + 4.0;
+//   y := 4.0 + cos(x);
 // end test;
+//
+// function test2
+//   input Real[3] a;
+//   output Real[4] b;
+// algorithm
+//   for i in 1:3 loop
+//     b[i] := 2.0 * a[i];
+//   end for;
+//   b[4] := 3.0;
+// end test2;
 //
 // function test3
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := x + 7.0;
+//   y := 7.0 + x;
 // end test3;
 //
 // class FunctionEval9

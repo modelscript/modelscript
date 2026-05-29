@@ -12,11 +12,10 @@ end M;
 
 // Result:
 // Error processing file: inst7.mo
-// [<interactive>:10:3-10:19:writable] Error: Variable start not found in scope x.
-// Error: Error occurred while flattening model M
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/inst7.mo:10:3-10:19:writable] Error: Variable start not found in scope x.
 //
 // Execution failed!
 // endResult

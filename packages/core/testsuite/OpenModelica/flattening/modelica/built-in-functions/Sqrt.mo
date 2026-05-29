@@ -9,6 +9,7 @@ model Sqrt
   Real r;
 equation
   r = sqrt(25);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Sqrt;
 
 // Result:

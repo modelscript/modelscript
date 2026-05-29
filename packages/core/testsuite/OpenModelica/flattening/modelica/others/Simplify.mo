@@ -14,6 +14,7 @@ model Simplify
   parameter Real f=7;
 equation
   der(x) = sin(time)/a/b/c/d/e/f;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Simplify;
 
 
@@ -27,6 +28,6 @@ end Simplify;
 //   parameter Real e = 6.0;
 //   parameter Real f = 7.0;
 // equation
-//   der(x) = sin(time) / a / b / c / d / e / f;
+//   der(x) = sin(time) / (e * c * a * b * d * f);
 // end Simplify;
 // endResult

@@ -14,9 +14,17 @@ end Prismatic;
 
 model ModifierProblem
   Prismatic p1(s(start=0.1));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ModifierProblem;
 
 // class ModifierProblem
 // Real p1.s(start = 0.1);
 // protected Real p1.length = p1.s;
 // end ModifierProblem;
+
+// Result:
+// class ModifierProblem
+//   Real p1.s(start = 0.1);
+//   protected Real p1.length = p1.s;
+// end ModifierProblem;
+// endResult

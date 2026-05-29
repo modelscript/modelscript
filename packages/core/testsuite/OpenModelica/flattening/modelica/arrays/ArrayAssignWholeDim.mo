@@ -17,15 +17,45 @@ model ArrayAssignWholeDim
   end GetA;
   constant Real X[:] = {1,2,3,4,5};
   constant Real A[:,4] = GetA(X);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayAssignWholeDim;
 
 // Result:
-// Error processing file: ArrayAssignWholeDim.mo
-// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFExpression.mo:2487:11-2487:118:writable] Error: Internal error NFExpression.toDAE got unknown expression '#EMPTY#'
-// Error: Error occurred while flattening model ArrayAssignWholeDim
+// function ArrayAssignWholeDim.GetA
+//   input Real[:] x;
+//   output Real[size(x, 1), 4] a;
+// algorithm
+//   a[:,1] := x;
+//   a[1,:] := {10.0, 20.0, 30.0, 40.0};
+//   a[size(x, 1),:] := {0.1, 0.2, 0.3, 0.4};
+//   a[{2, 3},2] := {x[2], x[3]};
+// end ArrayAssignWholeDim.GetA;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ArrayAssignWholeDim
+//   constant Real X[1] = 1.0;
+//   constant Real X[2] = 2.0;
+//   constant Real X[3] = 3.0;
+//   constant Real X[4] = 4.0;
+//   constant Real X[5] = 5.0;
+//   constant Real A[1,1] = 10.0;
+//   constant Real A[1,2] = 20.0;
+//   constant Real A[1,3] = 30.0;
+//   constant Real A[1,4] = 40.0;
+//   constant Real A[2,1] = 2.0;
+//   constant Real A[2,2] = 2.0;
+//   constant Real A[2,3] = 0.0;
+//   constant Real A[2,4] = 0.0;
+//   constant Real A[3,1] = 3.0;
+//   constant Real A[3,2] = 3.0;
+//   constant Real A[3,3] = 0.0;
+//   constant Real A[3,4] = 0.0;
+//   constant Real A[4,1] = 4.0;
+//   constant Real A[4,2] = 0.0;
+//   constant Real A[4,3] = 0.0;
+//   constant Real A[4,4] = 0.0;
+//   constant Real A[5,1] = 0.1;
+//   constant Real A[5,2] = 0.2;
+//   constant Real A[5,3] = 0.3;
+//   constant Real A[5,4] = 0.4;
+// end ArrayAssignWholeDim;
 // endResult

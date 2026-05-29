@@ -23,13 +23,11 @@ end m2;
 
 model m3
  extends m2(outBlock(T = 5.0));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end m3;
 
 // Result:
-// class RedeclareBaseClass1
-//   constant Real r.x = 4.0;
-//   Real x = 4.0;
-// end RedeclareBaseClass1;
-// [OpenModelica/flattening/modelica/redeclare/RedeclareBaseClass1.mo:30:3-30:24:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/RedeclareBaseClass1.mo:31:3-31:15:writable] Warning: Components are deprecated in class.
+// class m3
+//   parameter Real outBlock.T(min = -1e4, start = 1.0) = 5.0;
+// end m3;
 // endResult

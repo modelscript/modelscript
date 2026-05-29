@@ -13,6 +13,7 @@ equation
   end when;
   when terminal() then z = x - 2; // Equations to be activated at the end of the simulation
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Activate;
 
 // Result:
@@ -28,7 +29,4 @@ end Activate;
 //     z = 2.0;
 //   end when;
 // end Activate;
-// [<interactive>:9:3-9:22:writable] Warning: Components are deprecated in class.
-// [<interactive>:10:3-10:12:writable] Warning: Components are deprecated in class.
-// [<interactive>:12:3-13:11:writable] Warning: Equation sections are deprecated in class.
 // endResult

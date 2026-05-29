@@ -13,11 +13,10 @@ end RedeclareInvalidVariability1;
 
 // Result:
 // Error processing file: RedeclareInvalidVariability1.mo
-// [OpenModelica/flattening/modelica/scodeinst/RedeclareInvalidVariability1.mo:11:7-11:33:writable] Error: Invalid redeclaration 'parameter x', original element is declared 'constant'.
-// Error: Error occurred while flattening model RedeclareInvalidVariability1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareInvalidVariability1.mo:11:7-11:33:writable] Error: Invalid redeclaration 'parameter x', original element is declared 'constant'.
 //
 // Execution failed!
 // endResult

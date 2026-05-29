@@ -9,6 +9,7 @@ model SimplifyAbs
 equation
   a = abs(a-b)/abs(b);
   a = abs(a-b)*abs(b);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SimplifyAbs;
 
 // Result:
@@ -16,7 +17,7 @@ end SimplifyAbs;
 //   Real a;
 //   Real b;
 // equation
-//   a = abs(a - b) / abs(b);
-//   a = abs(a - b) * abs(b);
+//   a = abs((a - b) / b);
+//   a = abs((a - b) * b);
 // end SimplifyAbs;
 // endResult

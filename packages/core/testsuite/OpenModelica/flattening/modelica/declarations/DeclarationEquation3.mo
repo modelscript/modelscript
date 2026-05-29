@@ -7,6 +7,7 @@
 
 model DeclarationEquation3
   Real x[2,2] = [1,2; 3,4];
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DeclarationEquation3;
 
 // Result:

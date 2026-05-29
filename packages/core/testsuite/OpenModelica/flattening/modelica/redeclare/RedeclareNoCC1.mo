@@ -29,6 +29,7 @@ end E;
 
 model F
   extends E(redeclare replaceable C a(x = 4.0));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end F;
 
 // Result:

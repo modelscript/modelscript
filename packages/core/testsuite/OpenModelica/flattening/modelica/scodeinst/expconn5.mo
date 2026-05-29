@@ -1,0 +1,28 @@
+// name: expconn5.mo
+// keywords:
+// status: correct
+//
+// FAILREASON: Expandable connectors not handled yet.
+//
+
+expandable connector EC
+  Real ri;
+end EC;
+
+connector RealInput = input Real;
+
+model M
+  EC ec;
+  RealInput ri;
+equation
+  connect(ec.ri, ri);
+end M;
+
+// Result:
+// class M
+//   Real ec.ri;
+//   input Real ri;
+// equation
+//   ec.ri = ri;
+// end M;
+// endResult

@@ -13,6 +13,9 @@ end FuncBuiltinSmoothWrongType1;
 
 // Result:
 // Error processing file: FuncBuiltinSmoothWrongType1.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinSmoothWrongType1.mo:11:3-11:24:writable] Error: Type mismatch for positional argument 2 in smooth(=s). The argument has type:
 //   String
 // expected type:
@@ -20,10 +23,6 @@ end FuncBuiltinSmoothWrongType1;
 //   Real[:, ...]
 //   Real record
 //   Real record[:, ...]
-// Error: Error occurred while flattening model FuncBuiltinSmoothWrongType1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

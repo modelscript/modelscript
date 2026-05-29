@@ -11,6 +11,7 @@ model TypeDeclArray
   ArrayType at;
 equation
   at = {1,2,3};
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeDeclArray;
 
 // Result:
@@ -23,5 +24,4 @@ end TypeDeclArray;
 //   at[2] = 2.0;
 //   at[3] = 3.0;
 // end TypeDeclArray;
-// Info: Class 'ArrayType' has no members
 // endResult

@@ -15,7 +15,7 @@ end f;
 model A
   Real x;
 equation
-  (x) = f(time);
+  (x, ) = f(time);
 end A;
 
 model FunctionMultiOutput5
@@ -41,6 +41,6 @@ end FunctionMultiOutput5;
 // class FunctionMultiOutput5
 //   Real a.x;
 // equation
-//   a.x = f(time)[1];
+//   (a.x, _) = f(time);
 // end FunctionMultiOutput5;
 // endResult

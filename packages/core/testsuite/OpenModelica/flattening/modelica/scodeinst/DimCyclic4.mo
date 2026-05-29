@@ -11,11 +11,10 @@ end DimCyclic4;
 
 // Result:
 // Error processing file: DimCyclic4.mo
-// [OpenModelica/flattening/modelica/scodeinst/DimCyclic4.mo:9:3-9:44:writable] Error: Dimension 2 of x, 'i + 2', could not be evaluated due to a cyclic dependency.
-// Error: Error occurred while flattening model DimCyclic4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/DimCyclic4.mo:9:3-9:44:writable] Error: Dimension 2 of x, 'i + 2', could not be evaluated due to a cyclic dependency.
 //
 // Execution failed!
 // endResult

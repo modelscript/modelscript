@@ -30,15 +30,28 @@ model Cat1
     else fill(b/n, n);
   extends myPartialModel(final x = aDivisions,
                          final y = bDivisions);
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Cat1;
 
 // Result:
-// Error processing file: Cat1.mo
-// [OpenModelica/flattening/modelica/operators/Cat1.mo:23:3-23:19:writable] Error: Parameter a has neither value nor start value, and is fixed during initialization (fixed=true).
-// Error: Error occurred while flattening model Cat1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Cat1
+//   parameter Integer n(min = 1) = 2;
+//   parameter enumeration(divisionType1, divisionType2) myDivision = MyType.divisionType1;
+//   parameter Real x[1] = aDivisions[1];
+//   parameter Real x[2] = aDivisions[2];
+//   parameter Real y[1] = bDivisions[1];
+//   parameter Real y[2] = bDivisions[2];
+//   Real z[1];
+//   Real z[2];
+//   parameter Real a;
+//   parameter Real b;
+//   final parameter Real aDivisions[1] = a / /*Real*/(n);
+//   final parameter Real aDivisions[2] = a / /*Real*/(n);
+//   final parameter Real bDivisions[1] = if myDivision == MyType.divisionType1 then 0.5 * b / /*Real*/(-1 + n) else b / /*Real*/(n);
+//   final parameter Real bDivisions[2] = if myDivision == MyType.divisionType1 then 0.5 * b / /*Real*/(-1 + n) else b / /*Real*/(n);
+// equation
+//   z[1] = x[1] * y[1];
+//   z[2] = x[2] * y[2];
+// end Cat1;
 // endResult

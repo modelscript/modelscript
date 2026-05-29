@@ -18,6 +18,7 @@ model FunctionEval4
 equation
   y = f(x);
   x = 5;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionEval4;
 
 // function f
@@ -32,7 +33,7 @@ end FunctionEval4;
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := x + 4.0;
+//   y := 4.0 + x;
 // end f;
 //
 // class FunctionEval4

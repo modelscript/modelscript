@@ -34,11 +34,10 @@ end T;
 
 // Result:
 // Error processing file: OperatorOverloadError1.mo
-// [<interactive>:32:3-32:14:writable] Error: Cannot resolve type of expression c1 + i. The operands have types C, Integer in component <NO_COMPONENT>.
-// Error: Error occurred while flattening model T
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadError1.mo:32:3-32:14:writable] Error: Cannot resolve type of expression c1 + i. The operands have types C, Integer in component <NO_COMPONENT>.
 //
 // Execution failed!
 // endResult

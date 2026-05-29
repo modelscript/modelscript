@@ -16,6 +16,7 @@ algorithm
   elsewhen x <= 5 then
     close := false;
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenPriority;
 
 // Result:

@@ -13,15 +13,31 @@ model FuncBuiltinPromote
   Real r3[:, :] = promote(x, 2);
   Real r5[:, :] = promote(y, 2);
   Real r6[:, :, :] = promote(y, 3);
+  annotation(__OpenModelica_commandLineOptions="--std=experimental");
 end FuncBuiltinPromote;
 
 // Result:
-// Error processing file: FuncBuiltinPromote.mo
-// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinPromote.mo:12:3-12:29:writable] Error: promote is an experimental feature and requires the --std=experimental flag.
-// Error: Error occurred while flattening model FuncBuiltinPromote
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class FuncBuiltinPromote
+//   Real x;
+//   Real y[1,1];
+//   Real y[1,2];
+//   Real y[2,1];
+//   Real y[2,2];
+//   Real r1 = x;
+//   Real r2[1];
+//   Real r3[1,1];
+//   Real r5[1,1];
+//   Real r5[1,2];
+//   Real r5[2,1];
+//   Real r5[2,2];
+//   Real r6[1,1,1];
+//   Real r6[1,2,1];
+//   Real r6[2,1,1];
+//   Real r6[2,2,1];
+// equation
+//   r2 = {x};
+//   r3 = {{x}};
+//   r5 = y;
+//   r6 = {{{y[1,1]}, {y[1,2]}}, {{y[2,1]}, {y[2,2]}}};
+// end FuncBuiltinPromote;
 // endResult

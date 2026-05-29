@@ -22,10 +22,11 @@ end addmatrices;
   Real c[2,2];
 equation
   c = addmatrices(a,b);
+  annotation(__OpenModelica_commandLineOptions="-d=gen -d=-newInst");
 end ExternalFunction3;
 
 // Result:
-// impure function ExternalFunction3.addmatrices
+// function ExternalFunction3.addmatrices
 //   input Real[:, :] a;
 //   input Real[size(a, 1), size(a, 2)] b;
 //   output Real[size(a, 1), size(a, 2)] c;
@@ -49,5 +50,4 @@ end ExternalFunction3;
 // equation
 //   c = ExternalFunction3.addmatrices({{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}});
 // end ExternalFunction3;
-// [OpenModelica/flattening/modelica/external-functions/ExternalFunction3.mo:13:1-18:16:writable] Warning: An external declaration with a single output without explicit mapping is defined as having the output as the lhs, but language C does not support this for array variables. OpenModelica will put the output as an input (as is done when there is more than 1 output), but this is not according to the Modelica Specification. Use an explicit mapping instead of the implicit one to suppress this warning.
 // endResult

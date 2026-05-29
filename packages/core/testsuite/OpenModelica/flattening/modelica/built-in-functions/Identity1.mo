@@ -11,6 +11,7 @@ model Identity1
   Integer a2[n, n] = identity(n);
   Integer m = 3;
   Integer a3[3, 3] = identity(m);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Identity1;
 
 // Result:
@@ -19,7 +20,7 @@ end Identity1;
 //   Integer a1[1,2];
 //   Integer a1[2,1];
 //   Integer a1[2,2];
-//   final parameter Integer n = 3;
+//   parameter Integer n = 3;
 //   Integer a2[1,1];
 //   Integer a2[1,2];
 //   Integer a2[1,3];

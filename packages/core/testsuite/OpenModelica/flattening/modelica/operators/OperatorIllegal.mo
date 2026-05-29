@@ -1,0 +1,48 @@
+// name: OperatorIllegal
+// keywords: operator
+// status: incorrect
+//
+// extending from a record containing operator overloads should be illegal
+//
+
+operator record Rec
+  Real r;
+  operator '+'
+    function add
+      input Rec r1;
+      input Rec r2;
+      output Rec res;
+    algorithm
+      res := Rec(r = r1.r + r2.r);
+    end add;
+  end '+';
+end Rec;
+
+record MyRec
+  extends Rec; // ILLEGAL
+  Real k;
+end MyRec;
+
+model OperatorIllegal
+  MyRec mr;
+equation
+  mr.r = 1.0;
+  mr.k = 2.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+end OperatorIllegal;
+
+// Result:
+// function MyRec "Automatically generated record constructor for MyRec"
+//   input Real r;
+//   input Real k;
+//   output MyRec res;
+// end MyRec;
+//
+// class OperatorIllegal
+//   Real mr.r;
+//   Real mr.k;
+// equation
+//   mr.r = 1.0;
+//   mr.k = 2.0;
+// end OperatorIllegal;
+// endResult

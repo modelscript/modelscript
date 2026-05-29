@@ -14,11 +14,10 @@ end InnerOuterInvalidMod2;
 
 // Result:
 // Error processing file: InnerOuterInvalidMod2.mo
-// [OpenModelica/flattening/modelica/scodeinst/InnerOuterInvalidMod2.mo:12:7-12:14:writable] Error: Modifier '= 1.0' found on outer element x.
-// Error: Error occurred while flattening model InnerOuterInvalidMod2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterInvalidMod2.mo:12:7-12:14:writable] Error: Modifier '= 1.0' found on outer element x.
 //
 // Execution failed!
 // endResult

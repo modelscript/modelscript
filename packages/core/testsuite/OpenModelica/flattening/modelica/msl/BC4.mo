@@ -937,6 +937,7 @@ model BC4
 
 equation
   connect(constant1.outPort,integrator1.inPort) annotation(Line(visible=true,points={{-4.04,14.0},{13.25,16.62}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BC4;
 
 // class BC4
@@ -963,16 +964,28 @@ end BC4;
 // constant1.outPort.signal[1] = integrator1.inPort.signal[1];
 // end BC4;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BC4
+//   parameter Integer integrator1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer integrator1.inPort.n = integrator1.n "Dimension of signal vector";
+//   Real integrator1.inPort.signal[1] "Real input signals";
+//   parameter Integer integrator1.outPort.n = integrator1.n "Dimension of signal vector";
+//   Real integrator1.outPort.signal[1] "Real output signals";
+//   Real integrator1.y[1](start = integrator1.y0[1]) "Output signals";
+//   protected Real integrator1.u[1] "Input signals";
+//   parameter Real integrator1.k[1] = 1.0 "Integrator gains";
+//   parameter Real integrator1.y0[1] = 0.0 "Start values of integrators";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   integrator1.u = {integrator1.inPort.signal[1]};
+//   der(integrator1.y[1]) = integrator1.k[1] * integrator1.u[1];
+//   integrator1.y[1] = integrator1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   assert(constant1.outPort.n == integrator1.inPort.n, "automatically generated from connect");
+//   constant1.outPort.signal[1] = integrator1.inPort.signal[1];
+// end BC4;
 // endResult

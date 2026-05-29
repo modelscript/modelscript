@@ -16,6 +16,7 @@ end AllKindsOfWrong;
 
 model FaultNonPropagation
   Real x = 1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FaultNonPropagation;
 
 // Result:

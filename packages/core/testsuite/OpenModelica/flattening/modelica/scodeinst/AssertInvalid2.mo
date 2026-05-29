@@ -10,14 +10,13 @@ end AssertInvalid2;
 
 // Result:
 // Error processing file: AssertInvalid2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/AssertInvalid2.mo:8:3-8:19:writable] Error: Type mismatch for positional argument 2 in assert(message=1). The argument has type:
 //   Integer
 // expected type:
 //   String
-// Error: Error occurred while flattening model AssertInvalid2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

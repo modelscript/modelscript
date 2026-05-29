@@ -14,3 +14,13 @@ algorithm
 end Sumit;
 
 
+
+// Result:
+// Error processing file: func_explicit_typeconv.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/func_explicit_typeconv.mo:3:1-14:10:writable] Error: Cannot instantiate Sumit due to class specialization function.
+//
+// Execution failed!
+// endResult

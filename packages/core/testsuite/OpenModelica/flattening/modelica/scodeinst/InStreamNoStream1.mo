@@ -16,11 +16,10 @@ end InStreamNoStream1;
 
 // Result:
 // Error processing file: InStreamNoStream1.mo
-// [OpenModelica/flattening/modelica/scodeinst/InStreamNoStream1.mo:14:3-14:26:writable] Error: Operand 'c.f' to operator 'inStream' is not a stream variable.
-// Error: Error occurred while flattening model InStreamNoStream1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/InStreamNoStream1.mo:14:3-14:26:writable] Error: Operand 'c.f' to operator 'inStream' is not a stream variable.
 //
 // Execution failed!
 // endResult

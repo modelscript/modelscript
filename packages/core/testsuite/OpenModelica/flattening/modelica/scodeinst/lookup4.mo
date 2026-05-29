@@ -24,11 +24,10 @@ end M;
 
 // Result:
 // Error processing file: lookup4.mo
-// [<interactive>:22:3-22:21:writable] Error: Found component 'd' in composite name 'a.b.C.d.x', expected class.
-// Error: Error occurred while flattening model M
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/lookup4.mo:22:3-22:21:writable] Error: Found component 'd' in composite name 'a.b.C.d.x', expected class.
 //
 // Execution failed!
 // endResult

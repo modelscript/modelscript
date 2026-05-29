@@ -14,17 +14,14 @@ model MergeComponents6
   parameter A a2(x = 3, y = 4);
   A a3(x = 5, y = 6);
   parameter A a4(x = 7, y = 8);
+  annotation(__OpenModelica_commandLineOptions="-d=mergeComponents,-nfScalarize");
 end MergeComponents6;
 
 // Result:
 // class MergeComponents6
-//   Real a1.x = 1.0;
-//   Real a1.y = 2.0;
-//   parameter Real a2.x = 3.0;
-//   parameter Real a2.y = 4.0;
-//   Real a3.x = 5.0;
-//   Real a3.y = 6.0;
-//   parameter Real a4.x = 7.0;
-//   parameter Real a4.y = 8.0;
+//   parameter Real[2] $A1.x = {3.0, 7.0};
+//   parameter Real[2] $A1.y = {4.0, 8.0};
+//   Real[2] $A2.x = {1.0, 5.0};
+//   Real[2] $A2.y = {2.0, 6.0};
 // end MergeComponents6;
 // endResult

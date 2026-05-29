@@ -9,6 +9,7 @@ model BackSampleTest
 equation
   x = backSample(1.0, 2, 4);
   y = backSample(z, 3);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BackSampleTest;
 
 // Result:
@@ -20,7 +21,7 @@ end BackSampleTest;
 //   Boolean z[2];
 // equation
 //   x = backSample(1.0, 2, 4);
-//   y = backSample(z, 3, 1);
+//   y[1] = backSample(z[1], 3, 1);
+//   y[2] = backSample(z[2], 3, 1);
 // end BackSampleTest;
-// [/var/lib/jenkins/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.3~1-g7583224/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:2102:9-2103:55:writable] Error: Internal error NFCeval.evalBuiltinCall: unimplemented case for backSample
 // endResult

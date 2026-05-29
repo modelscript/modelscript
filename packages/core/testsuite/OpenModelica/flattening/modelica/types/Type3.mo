@@ -10,18 +10,17 @@ class Type3
   Real x[100];
 equation
   x[i/4] = 0.5;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Type3;
 
 // Result:
 // Error processing file: Type3.mo
-// [OpenModelica/flattening/modelica/types/Type3.mo:9:3-9:17:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/types/Type3.mo:10:3-10:14:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/types/Type3.mo:12:3-12:15:writable] Warning: Equation sections are deprecated in class.
-// [OpenModelica/flattening/modelica/types/Type3.mo:12:3-12:15:writable] Error: Subscript 'CAST(Real, i) / 4.0' has type Real, expected type Integer.
-// Error: Error occurred while flattening model Type3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/types/Type3.mo:12:3-12:15:writable] Error: Subscript i/4 of type Real is not a subtype of Integer, Boolean or enumeration.
+// [OpenModelica/flattening/modelica/types/Type3.mo:12:3-12:15:writable] Error: Variable x[i/4] not found in scope Type3.
+// Error: Error occurred while flattening model Type3
 //
 // Execution failed!
 // endResult

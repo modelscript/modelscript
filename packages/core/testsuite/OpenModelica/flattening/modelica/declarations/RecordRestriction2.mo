@@ -15,11 +15,10 @@ end RecordRestriction2;
 
 // Result:
 // Error processing file: RecordRestriction2.mo
-// [OpenModelica/flattening/modelica/declarations/RecordRestriction2.mo:9:3-9:8:writable] Error: Equations are not allowed in record.
-// Error: Error occurred while flattening model RecordRestriction2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/RecordRestriction2.mo:9:3-9:8:writable] Error: Equations are not allowed in record.
 //
 // Execution failed!
 // endResult

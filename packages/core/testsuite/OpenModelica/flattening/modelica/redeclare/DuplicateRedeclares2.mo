@@ -12,15 +12,17 @@ end M;
 model DuplicateRedeclares2
   extends N(redeclare replaceable Real r = 1.5,
             redeclare replaceable Real r = 2.0);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DuplicateRedeclares2;
 
 // Result:
 // Error processing file: DuplicateRedeclares2.mo
-// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares2.mo:13:3-14:48:writable] Error: Base class N not found in scope DuplicateRedeclares2.
-// Error: Error occurred while flattening model DuplicateRedeclares2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares2.mo:13:23-13:47:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares2.mo:14:23-14:47:writable] Error: r is already redeclared in this scope.
+// Error: Error occurred while flattening model DuplicateRedeclares2
 //
 // Execution failed!
 // endResult

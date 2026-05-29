@@ -13,11 +13,10 @@ end ReinitInvalid7;
 
 // Result:
 // Error processing file: ReinitInvalid7.mo
-// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid7.mo:10:5-10:19:writable] Error: Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).
-// Error: Error occurred while flattening model ReinitInvalid7
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid7.mo:10:5-10:19:writable] Error: Operator reinit may not be used in an algorithm section (use translation flag --allowNonStandardModelica=reinitInAlgorithms to ignore).
 //
 // Execution failed!
 // endResult

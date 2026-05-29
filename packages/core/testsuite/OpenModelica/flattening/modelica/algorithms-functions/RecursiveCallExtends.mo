@@ -20,13 +20,14 @@ end g;
 model RecursiveCallExtends
 equation
   g(time);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecursiveCallExtends;
 
 // Result:
 // function g
 //   input Real a;
 // algorithm
-//   g(a);
+//   return g(a);
 // end g;
 //
 // class RecursiveCallExtends

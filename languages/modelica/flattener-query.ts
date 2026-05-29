@@ -25,7 +25,7 @@
  */
 
 import type { QueryDB, SymbolEntry, SymbolId, TopologyGraph } from "@modelscript/compiler";
-import { type ModelicaModArgs, isBroken, mergeModArgs, subModification } from "./modification-args.js";
+import { type ModelicaModArgs, getModArg, isBroken, mergeModArgs, subModification } from "./modification-args.js";
 
 // ---------------------------------------------------------------------------
 // Modification Stack — replaces virtual symbol specialization
@@ -45,6 +45,8 @@ interface ModificationFrame {
   mods: ModelicaModArgs;
   /** Scope where these mods were written (for CST byte-range evaluation) */
   evaluationScopeId: SymbolId | null;
+  /** Whether the parent component was declared `final`, propagating to all children */
+  isFinal?: boolean;
 }
 
 /**
@@ -64,6 +66,21 @@ function lookupModInStack(stack: ModificationStack, name: string): ModelicaModAr
     if (sub) return sub;
   }
   return null;
+}
+
+/**
+ * Check if the modification arg targeting `name` in the mod stack has `final: true`.
+ * This is needed because `subModification()` extracts the nested args but drops
+ * the `final` flag from the enclosing `ModificationArg`.
+ */
+function isModFinalInStack(stack: ModificationStack, name: string): boolean {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    // If the frame itself is final (parent was final), all children are final
+    if (stack[i]!.isFinal) return true;
+    const arg = getModArg(stack[i]!.mods, name);
+    if (arg) return arg.final;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -472,7 +489,16 @@ export class ArenaQueryFlattener {
           if (arrayDims) {
             this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
           } else {
-            dae.addEquation(eqKind, lhsId, rhsId);
+            // Apply Integer→Real coercion when LHS is a Real-typed variable
+            let coercedRhsId = rhsId;
+            if (dae.getExprKind(lhsId) === ExprKind.Name) {
+              const lhsVarName = dae.interner.resolve(dae.getExprData1(lhsId));
+              const lhsVarIdx = dae.getVarIdxByName(lhsVarName);
+              if (lhsVarIdx >= 0 && dae.getVarType(lhsVarIdx) === VarType.Real) {
+                coercedRhsId = visitor.castToRealExpr(rhsId);
+              }
+            }
+            dae.addEquation(eqKind, lhsId, coercedRhsId);
           }
         }
       } else if (eq instanceof ModelicaForEquationSyntaxNode) {
@@ -792,6 +818,7 @@ export class ArenaQueryFlattener {
 
     // --- Compute effective modification from stack + inline CST ---
     const outerMod = lookupModInStack(modStack, entry.name);
+    const isFinalFromOuterMod = isModFinalInStack(modStack, entry.name);
     const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", entry.id);
     let effectiveMod = mergeModArgs(outerMod, inlineMod);
 
@@ -935,7 +962,7 @@ export class ArenaQueryFlattener {
     if (arrayDims && arrayDims.length > 0) {
       if (this.options.arrayMode === "preserve") {
         // In preserve mode, emit a single variable with shape metadata
-        this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
+        this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
         const varIdx = dae.getVarIdxByName(fullName);
         if (varIdx >= 0) dae.setVarShape(varIdx, arrayDims);
         return;
@@ -955,7 +982,7 @@ export class ArenaQueryFlattener {
     }
 
     if (isPredefined) {
-      this.emitVariable(fullName, primitiveTypeName, entry, dae, effectiveMod);
+      this.emitVariable(fullName, primitiveTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
       return;
     }
 
@@ -988,9 +1015,16 @@ export class ArenaQueryFlattener {
 
     // Recurse into the compound type using flattenClassWithMods.
     // Build child modification stack: push this component's effective mod
+    // If this component is declared `final`, propagate that to all children
+    const componentIsFinal = this.db.query<boolean>("isFinal", entry.id) || isFinalFromOuterMod;
     const childStack: ModificationStack = effectiveMod
-      ? [...modStack, { mods: effectiveMod, evaluationScopeId: entry.parentId }]
-      : modStack;
+      ? [...modStack, { mods: effectiveMod, evaluationScopeId: entry.parentId, isFinal: componentIsFinal || undefined }]
+      : componentIsFinal
+        ? [
+            ...modStack,
+            { mods: { args: [], bindingExpression: null }, evaluationScopeId: entry.parentId, isFinal: true },
+          ]
+        : modStack;
     // Push compound type onto hierarchy stack for outer/inner resolution
     this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
     this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
@@ -1263,6 +1297,7 @@ export class ArenaQueryFlattener {
     componentEntry: SymbolEntry,
     dae: ArenaDAEBuilder,
     effectiveMod: ModelicaModArgs | null = null,
+    isFinalFromOuterMod: boolean = false,
   ): number {
     // Use the pre-computed effective modification from the caller.
     // This replaces the old pattern of reading db.argsOf() from virtual symbol args.
@@ -1304,7 +1339,7 @@ export class ArenaQueryFlattener {
     }
 
     // Final flag (bit 4)
-    const isFinal = this.db.query<boolean>("isFinal", componentEntry.id);
+    const isFinal = this.db.query<boolean>("isFinal", componentEntry.id) || isFinalFromOuterMod;
 
     // Evaluate annotation: if annotation(Evaluate=true), promote parameter to final
     // Per Modelica §18.3, Evaluate=true tells the tool to substitute the parameter's value
@@ -1361,6 +1396,7 @@ export class ArenaQueryFlattener {
     parseAttr("unit");
     parseAttr("displayUnit");
     parseAttr("quantity");
+    parseAttr("fixed");
 
     // Set variable description string from CST description field
     const meta = componentEntry.metadata as Record<string, unknown>;

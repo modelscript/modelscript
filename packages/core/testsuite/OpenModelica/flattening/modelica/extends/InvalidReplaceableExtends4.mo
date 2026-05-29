@@ -20,12 +20,11 @@ end InvalidReplaceableExtends4;
 
 // Result:
 // Error processing file: InvalidReplaceableExtends4.mo
-// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends4.mo:10:15-14:8:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends4.mo:18:3-18:16:writable] Error: Class 'B' in 'extends A.<B>.C' is replaceable, the base class name must be transitively non-replaceable.
-// Error: Error occurred while flattening model InvalidReplaceableExtends4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends4.mo:10:15-14:8:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends4.mo:18:3-18:16:writable] Error: Class 'B' in 'extends A.<B>.C' is replaceable, the base class name must be transitively non-replaceable.
 //
 // Execution failed!
 // endResult

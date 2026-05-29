@@ -12,11 +12,10 @@ end EquationInvalidType1;
 
 // Result:
 // Error processing file: EquationInvalidType1.mo
-// [OpenModelica/flattening/modelica/scodeinst/EquationInvalidType1.mo:10:3-10:8:writable] Error: Type mismatch in equation x = s of type Real = String.
-// Error: Error occurred while flattening model EquationInvalidType1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/EquationInvalidType1.mo:10:3-10:8:writable] Error: Type mismatch in equation x = s of type Real = String.
 //
 // Execution failed!
 // endResult

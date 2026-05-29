@@ -20,4 +20,15 @@ package Ticket4157
 	  equation
 	    Complex(E.re - V.re, E.im - V.im) = if model_type then Complex(0, 0) else Complex(Z.re, Z.im);
 	  end if_complex_if_expression;
+
 end Ticket4157;
+
+// Result:
+// Error processing file: Ticket4157.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/equations/Ticket4157.mo:1:1-24:15:writable] Error: Cannot instantiate Ticket4157 due to class specialization package.
+//
+// Execution failed!
+// endResult

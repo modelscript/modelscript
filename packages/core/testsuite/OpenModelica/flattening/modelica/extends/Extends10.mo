@@ -23,11 +23,14 @@ algorithm
 end f;
 
 Real x = f(time);
+
 end A;
+
 end M;
 
 class Extends10
   extends M.A;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Extends10;
 
 // Result:
@@ -41,5 +44,4 @@ end Extends10;
 // class Extends10
 //   Real x = Extends10.f(time);
 // end Extends10;
-// [OpenModelica/flattening/modelica/extends/Extends10.mo:11:3-11:24:writable] Warning: Components are deprecated in class.
 // endResult

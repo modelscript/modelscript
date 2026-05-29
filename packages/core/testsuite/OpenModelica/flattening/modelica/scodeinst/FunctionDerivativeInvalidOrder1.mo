@@ -24,11 +24,10 @@ end FunctionDerivativeInvalidOrder1;
 
 // Result:
 // Error processing file: FunctionDerivativeInvalidOrder1.mo
-// [OpenModelica/flattening/modelica/scodeinst/FunctionDerivativeInvalidOrder1.mo:6:1-12:7:writable] Error: Type mismatch in binding order = z, expected subtype of Integer, got type Real.
-// Error: Error occurred while flattening model FunctionDerivativeInvalidOrder1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionDerivativeInvalidOrder1.mo:6:1-12:7:writable] Error: Type mismatch in binding order = z, expected subtype of Integer, got type Real.
 //
 // Execution failed!
 // endResult

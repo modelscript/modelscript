@@ -27,16 +27,15 @@ class DependsMutual
 equation
   a.x=x;
   x=time;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DependsMutual;
 
 // Result:
-// Error processing file: DependsMutual.mo
-// [OpenModelica/flattening/modelica/scoping/DependsMutual.mo:15:2-15:8:writable] Error: Variable x in package A is not constant.
-// [OpenModelica/flattening/modelica/scoping/DependsMutual.mo:26:3-26:8:writable] Error: Class A.C not found in scope DependsMutual.
-// Error: Error occurred while flattening model DependsMutual
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class DependsMutual
+//   Real x;
+//   Real a.x;
+// equation
+//   a.x = x;
+//   x = time;
+// end DependsMutual;
 // endResult

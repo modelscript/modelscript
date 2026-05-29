@@ -11,6 +11,7 @@ model ArrayDivision
   Integer intArray[3];
 equation
   intArray = intArray1 ./ intArray2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayDivision;
 
 // Result:

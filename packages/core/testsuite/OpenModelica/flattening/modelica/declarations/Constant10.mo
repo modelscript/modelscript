@@ -14,6 +14,7 @@ end A;
 
 model test
   Real x=A.y;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:

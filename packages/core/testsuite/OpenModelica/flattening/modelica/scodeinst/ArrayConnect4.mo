@@ -21,23 +21,20 @@ equation
   for i in 1:N-1 loop
     connect(m[i].port, m[i+1].port);
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize");
 end S;
 
 // Result:
 // class S
 //   final parameter Integer N = 3;
-//   Real m[1].port.v;
-//   Real m[1].port.i;
-//   Real m[2].port.v;
-//   Real m[2].port.i;
-//   Real m[3].port.v;
-//   Real m[3].port.i;
+//   Real[3] m.port.v;
+//   Real[3] m.port.i;
 // equation
 //   m[2].port.v = m[3].port.v;
 //   m[2].port.v = m[1].port.v;
 //   m[3].port.i + m[2].port.i + m[1].port.i = 0.0;
-//   m[1].port.v = 10.0 * m[1].port.i;
-//   m[2].port.v = 10.0 * m[2].port.i;
-//   m[3].port.v = 10.0 * m[3].port.i;
+//   for $i0 in 1:3 loop
+//     m[$i0].port.v = 10.0 * m[$i0].port.i;
+//   end for;
 // end S;
 // endResult

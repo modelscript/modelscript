@@ -19,5 +19,4 @@ end WhenInitial3;
 //     i = 1;
 //   end when;
 // end WhenInitial3;
-// [OpenModelica/flattening/modelica/scodeinst/WhenInitial3.mo:9:3-11:11:writable] Warning: initial() may only be used as a when condition (when initial() or when {..., initial(), ...}), but got condition 'not initial()'.
 // endResult

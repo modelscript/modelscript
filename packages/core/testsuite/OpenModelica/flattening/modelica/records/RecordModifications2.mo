@@ -36,15 +36,33 @@ model RecordModifications2
   DC_PermanentMagnet dcpm2(wNominal = wNominal, frictionParameters = frictionParameters);
   parameter Real wNominal = 2850;
   parameter FrictionParameters frictionParameters(PRef = 100);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecordModifications2;
 
 // Result:
-// Error processing file: RecordModifications2.mo
-// [OpenModelica/flattening/modelica/records/RecordModifications2.mo:16:3-16:22:writable] Error: Parameter frictionParameters.wRef has neither value nor start value, and is fixed during initialization (fixed=true).
-// Error: Error occurred while flattening model RecordModifications2
+// function FrictionParameters "Automatically generated record constructor for FrictionParameters"
+//   input Real PRef = 0.0;
+//   input Real wRef;
+//   output FrictionParameters res;
+// end FrictionParameters;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function FrictionParameters$frictionParameters "Automatically generated record constructor for FrictionParameters$frictionParameters"
+//   input Real PRef = 0.0;
+//   input Real wRef;
+//   output FrictionParameters$frictionParameters res;
+// end FrictionParameters$frictionParameters;
 //
-// Execution failed!
+// class RecordModifications2
+//   parameter Real dcpm2.frictionParameters.PRef = frictionParameters.PRef;
+//   parameter Real dcpm2.frictionParameters.wRef = frictionParameters.wRef;
+//   Real dcpm2.friction.tau;
+//   parameter Real dcpm2.friction.frictionParameters.PRef = dcpm2.frictionParameters.PRef;
+//   parameter Real dcpm2.friction.frictionParameters.wRef = dcpm2.frictionParameters.wRef;
+//   parameter Real dcpm2.wNominal = wNominal;
+//   parameter Real wNominal = 2850.0;
+//   parameter Real frictionParameters.PRef = 100.0;
+//   parameter Real frictionParameters.wRef;
+// equation
+//   dcpm2.friction.tau = 1.0;
+// end RecordModifications2;
 // endResult

@@ -1178,6 +1178,7 @@ model BS8
 
 equation
   connect(sawTooth1.outPort,der1.inPort) annotation(Line(visible=true,points={{-22.91,13.49},{-8.01,12.57}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS8;
 // class BS8
 // parameter Integer sawTooth1.nout(min = 1) = 1 "Number of outputs";
@@ -1212,16 +1213,37 @@ end BS8;
 // sawTooth1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS8;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BS8
+//   parameter Integer sawTooth1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer sawTooth1.outPort.n = sawTooth1.nout "Dimension of signal vector";
+//   Real sawTooth1.outPort.signal[1] "Real output signals";
+//   Real sawTooth1.y[1];
+//   parameter Real sawTooth1.amplitude[1] = 1.0 "Amplitudes of saw tooths";
+//   parameter Real sawTooth1.period[1](quantity = "Time", unit = "s", min = 1e-60) = 1.0 "Times for one period";
+//   parameter Real sawTooth1.offset[1] = 0.0 "Offsets of output signals";
+//   parameter Real sawTooth1.startTime[1](quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
+//   protected parameter Real sawTooth1.p_amplitude[1] = sawTooth1.amplitude[1];
+//   protected parameter Real sawTooth1.p_period[1](quantity = "Time", unit = "s") = sawTooth1.period[1];
+//   protected parameter Real sawTooth1.p_offset[1] = sawTooth1.offset[1];
+//   protected parameter Real sawTooth1.p_startTime[1](quantity = "Time", unit = "s") = sawTooth1.startTime[1];
+//   protected Real sawTooth1.T0[1](quantity = "Time", unit = "s", start = sawTooth1.p_startTime[1]) "Start time of current period";
+//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
+//   Real der1.inPort.signal[1] "Real input signals";
+//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
+//   Real der1.outPort.signal[1] "Real output signals";
+//   Real der1.y[1] "Output signals";
+//   protected Real der1.u[1] "Input signals";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   when sample(sawTooth1.p_startTime[1], sawTooth1.p_period[1]) then
+//     sawTooth1.T0[1] = time;
+//   end when;
+//   sawTooth1.outPort.signal[1] = sawTooth1.p_offset[1] + (if time < sawTooth1.p_startTime[1] then 0.0 else sawTooth1.p_amplitude[1] * (time - sawTooth1.T0[1]) / sawTooth1.p_period[1]);
+//   sawTooth1.y[1] = sawTooth1.outPort.signal[1];
+//   der1.u = {der1.inPort.signal[1]};
+//   der1.y[1] = der(der1.u[1]);
+//   der1.y[1] = der1.outPort.signal[1];
+//   assert(sawTooth1.outPort.n == der1.inPort.n, "automatically generated from connect");
+//   der1.inPort.signal[1] = sawTooth1.outPort.signal[1];
+// end BS8;
 // endResult

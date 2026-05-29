@@ -21,12 +21,11 @@ end FunctionSections3;
 
 // Result:
 // Error processing file: FunctionSections4.mo
-// [<interactive>:14:3-14:17:writable] Notification: From here:
-// [<interactive>:13:1-16:6:writable] Error: Function f has more than one algorithm section or external declaration.
-// Error: Error occurred while flattening model FunctionSections3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionSections4.mo:14:3-14:17:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/FunctionSections4.mo:13:1-16:6:writable] Error: Function f has more than one algorithm section or external declaration.
 //
 // Execution failed!
 // endResult

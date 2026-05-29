@@ -18,11 +18,10 @@ end DimUnknown4;
 
 // Result:
 // Error processing file: DimUnknown4.mo
-// [OpenModelica/flattening/modelica/scodeinst/DimUnknown4.mo:8:3-8:15:writable] Error: Dimension 1 of 'x' could not be deduced from the component's binding equation '3.0'.
-// Error: Error occurred while flattening model DimUnknown4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/DimUnknown4.mo:8:3-8:15:writable] Error: Dimension 1 of 'x' could not be deduced from the component's binding equation '3.0'.
 //
 // Execution failed!
 // endResult

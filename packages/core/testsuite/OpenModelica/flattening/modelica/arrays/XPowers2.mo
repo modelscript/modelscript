@@ -16,6 +16,7 @@ equation
     for i in 1:n-1 loop
   xpowers[i + 1] = xpowers[i]*x;
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Xpowers2;
 
 // Result:
@@ -27,7 +28,7 @@ end Xpowers2;
 //   Real xpowers[4];
 //   Real xpowers[5];
 //   parameter Integer i = 1;
-//   final parameter Integer n = 5;
+//   parameter Integer n = 5;
 // equation
 //   xpowers[1] = 1.0;
 //   xpowers[2] = xpowers[1] * x;

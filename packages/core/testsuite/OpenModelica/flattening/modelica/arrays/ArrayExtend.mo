@@ -16,6 +16,7 @@ model TestModels = TestModel[3];
 model ArrayExtend
   extends TestModels;
   Real illegalReal;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayExtend;
 
 // Result:

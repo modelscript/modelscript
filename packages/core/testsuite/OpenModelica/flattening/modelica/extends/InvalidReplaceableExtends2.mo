@@ -15,12 +15,11 @@ end InvalidReplaceableExtends2;
 
 // Result:
 // Error processing file: InvalidReplaceableExtends2.mo
-// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends2.mo:9:15-11:8:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends2.mo:13:3-13:12:writable] Error: Class 'M' in 'extends M' is replaceable, the base class name must be transitively non-replaceable.
-// Error: Error occurred while flattening model InvalidReplaceableExtends2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends2.mo:9:15-11:8:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/extends/InvalidReplaceableExtends2.mo:13:3-13:12:writable] Error: Class 'M' in 'extends M' is replaceable, the base class name must be transitively non-replaceable.
 //
 // Execution failed!
 // endResult

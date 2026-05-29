@@ -9,6 +9,7 @@ model Sinh
   Real r;
 equation
   r = sinh(45);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Sinh;
 
 // Result:

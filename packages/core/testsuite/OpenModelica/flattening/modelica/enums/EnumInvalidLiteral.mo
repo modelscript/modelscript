@@ -10,16 +10,17 @@ model EnumInvalidLiteral
   type enum2 = enumeration(quantity, two);
   enum e;
   enum2 e2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumInvalidLiteral;
 
 
 // Result:
 // Error processing file: EnumInvalidLiteral.mo
-// [OpenModelica/flattening/modelica/enums/EnumInvalidLiteral.mo:9:3-9:38:writable] Error: An element with name start is already declared in this scope.
-// Error: Error occurred while flattening model EnumInvalidLiteral
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/enums/EnumInvalidLiteral.mo:9:3-9:38:writable] Error: Invalid use of reserved attribute name start as enumeration literal.
+// Error: Error occurred while flattening model EnumInvalidLiteral
 //
 // Execution failed!
 // endResult

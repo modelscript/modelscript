@@ -10,6 +10,7 @@ equation
   x = superSample(1.0);
   z = superSample({1,2});
   y = superSample(z, 2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SuperSampleTest;
 
 // Result:
@@ -22,6 +23,6 @@ end SuperSampleTest;
 // equation
 //   x = superSample(1.0, 0);
 //   z = /*Real[2]*/(superSample({1, 2}, 0));
-//   y = superSample(z, 2);
+//   y = superSample({z[1], z[2]}, 2);
 // end SuperSampleTest;
 // endResult

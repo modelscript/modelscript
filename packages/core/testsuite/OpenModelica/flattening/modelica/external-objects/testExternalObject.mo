@@ -9,6 +9,7 @@ package ExtObjectTest
   model Ex
     package ExtPackage1 = ExtPackage;
     ExtPackage1.ExtObj mapping = ExtPackage1.ExtObj();
+    annotation(__OpenModelica_commandLineOptions="-d=-newInst");
   end Ex;
 
   package ExtPackage
@@ -28,12 +29,10 @@ end ExtObjectTest;
 
 // Result:
 // Error processing file: testExternalObject.mo
-// Error: Failed to load package testExternalObject (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class testExternalObject not found in scope <top>.
-// Error: Error occurred while flattening model testExternalObject
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/external-objects/testExternalObject.mo:8:1-28:18:writable] Error: Cannot instantiate ExtObjectTest due to class specialization package.
 //
 // Execution failed!
 // endResult

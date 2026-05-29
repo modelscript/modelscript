@@ -8,6 +8,7 @@ model VectorDimension
   Real x[2];
 equation
 x = vector([1;3]);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end VectorDimension;
 
 // Result:

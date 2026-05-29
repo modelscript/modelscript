@@ -12,12 +12,11 @@ end DuplicateElements3;
 
 // Result:
 // Error processing file: DuplicateElements3.mo
-// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements3.mo:9:3-9:16:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements3.mo:10:3-10:18:writable] Error: An element with name x is already declared in this scope.
-// Error: Error occurred while flattening model DuplicateElements3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements3.mo:9:3-9:16:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/DuplicateElements3.mo:10:3-10:18:writable] Error: An element with name x is already declared in this scope.
 //
 // Execution failed!
 // endResult

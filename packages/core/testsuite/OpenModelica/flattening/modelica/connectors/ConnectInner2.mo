@@ -26,17 +26,32 @@ model ConnectInner2
   A a;
 equation
   global.e=10;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectInner2;
 
 
 // Result:
-// Error processing file: ConnectInner2.mo
-// [OpenModelica/flattening/modelica/connectors/ConnectInner2.mo:24:3-24:11:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/connectors/ConnectInner2.mo:13:3-13:17:writable] Error: An inner declaration for outer element 'global' could not be found, and could not be automatically generated due to an existing declaration of that name.
-// Error: Error occurred while flattening model ConnectInner2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectInner2
+//   Real global.e;
+//   Real global.f;
+//   Real b.a.global.e;
+//   Real b.a.global.f;
+//   Real b.a.my.e;
+//   Real b.a.my.f;
+//   Real a.global.e;
+//   Real a.global.f;
+//   Real a.my.e;
+//   Real a.my.f;
+// equation
+//   b.a.my.f = 10.0 + b.a.my.e;
+//   a.my.f = 10.0 + a.my.e;
+//   global.e = 10.0;
+//   global.f = 0.0;
+//   b.a.my.f = 0.0;
+//   a.my.f = 0.0;
+//   a.global.e = a.my.e;
+//   (-a.my.f) + (-a.global.f) = 0.0;
+//   b.a.global.e = b.a.my.e;
+//   (-b.a.my.f) + (-b.a.global.f) = 0.0;
+// end ConnectInner2;
 // endResult

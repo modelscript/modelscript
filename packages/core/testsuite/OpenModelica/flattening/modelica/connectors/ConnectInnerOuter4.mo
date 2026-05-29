@@ -29,15 +29,26 @@ model Top
   A a1,a2;
 equation
   connect(world.subWorld.pin, topPin);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Top;
 
 // Result:
-// Error processing file: ConnectInnerOuter4.mo
-// [<interactive>:31:3-31:38:writable] Error: world.subWorld.pin is not a valid form for a connector, connectors must be either c1.c2...cn or m.c (where c is a connector and m is a non-connector).
-// Error: Error occurred while flattening model Top
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Top
+//   Real world.subWorld.pin.i;
+//   Real world.subWorld.pin.v;
+//   Real topPin.i;
+//   Real topPin.v;
+//   Real a1.aPin.i;
+//   Real a1.aPin.v;
+//   Real a2.aPin.i;
+//   Real a2.aPin.v;
+// equation
+//   world.subWorld.pin.i + (-topPin.i) + (-a1.aPin.i) + (-a2.aPin.i) = 0.0;
+//   topPin.i = 0.0;
+//   a1.aPin.i = 0.0;
+//   a2.aPin.i = 0.0;
+//   a1.aPin.v = a2.aPin.v;
+//   a1.aPin.v = topPin.v;
+//   a1.aPin.v = world.subWorld.pin.v;
+// end Top;
 // endResult

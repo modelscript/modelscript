@@ -15,6 +15,7 @@ equation
   y = size(B, 1);
   z = size(B, 2);
   x2 = size(B);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConstantSize;
 
 // Result:

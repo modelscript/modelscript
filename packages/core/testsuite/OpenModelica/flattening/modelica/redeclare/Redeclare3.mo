@@ -22,6 +22,7 @@ end C;
 
 class Redeclare3
   C c(redeclare class Q = B(y=1));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Redeclare3;
 
 
@@ -36,8 +37,4 @@ end Redeclare3;
 // equation
 //   c.x.y = c.x.x;
 // end Redeclare3;
-// [OpenModelica/flattening/modelica/redeclare/Redeclare3.mo:13:3-13:11:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/Redeclare3.mo:15:3-15:8:writable] Warning: Equation sections are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/Redeclare3.mo:20:3-20:6:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/Redeclare3.mo:24:3-24:34:writable] Warning: Components are deprecated in class.
 // endResult

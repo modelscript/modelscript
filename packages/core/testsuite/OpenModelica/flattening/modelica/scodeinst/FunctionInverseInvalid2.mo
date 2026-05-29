@@ -26,11 +26,10 @@ end FunctionInverseInvalid2;
 
 // Result:
 // Error processing file: FunctionInverseInvalid2.mo
-// [OpenModelica/flattening/modelica/scodeinst/FunctionInverseInvalid2.mo:12:14-12:38:writable] Error: 'z' is not an input of function 'f'.
-// Error: Error occurred while flattening model FunctionInverseInvalid2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionInverseInvalid2.mo:12:14-12:38:writable] Error: 'z' is not an input of function 'f'.
 //
 // Execution failed!
 // endResult

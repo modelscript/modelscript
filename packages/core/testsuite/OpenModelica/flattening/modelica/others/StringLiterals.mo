@@ -10,6 +10,7 @@ model StringLiterals
 ";
 equation
   str = "test";
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end StringLiterals;
 
 // Result:

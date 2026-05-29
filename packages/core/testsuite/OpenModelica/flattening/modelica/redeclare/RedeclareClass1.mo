@@ -23,6 +23,7 @@ model RedeclareClass1
   P2.M m2;
 equation
   m2.r = 1.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RedeclareClass1;
 
 // Result:

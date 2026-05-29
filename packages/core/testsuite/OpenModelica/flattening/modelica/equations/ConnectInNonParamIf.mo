@@ -21,15 +21,16 @@ equation
     connect(c1, c2);
     connect(c2, c3);
   end if;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectInNonParamIf;
 
 // Result:
 // Error processing file: ConnectInNonParamIf.mo
-// [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:18:5-18:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
-// Error: Error occurred while flattening model ConnectInNonParamIf
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/equations/ConnectInNonParamIf.mo:18:5-18:20:writable] Error: connect may not be used inside if-equations with non-parametric conditions (found connect(c1, c2)).
+// Error: Error occurred while flattening model ConnectInNonParamIf
 //
 // Execution failed!
 // endResult

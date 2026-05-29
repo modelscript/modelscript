@@ -16,11 +16,10 @@ end ConnectorRestriction5;
 
 // Result:
 // Error processing file: ConnectorRestriction5.mo
-// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction5.mo:10:3-10:25:writable] Error: Protected sections are not allowed in connector.
-// Error: Error occurred while flattening model ConnectorRestriction5
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/ConnectorRestriction5.mo:10:3-10:25:writable] Error: Protected sections are not allowed in connector.
 //
 // Execution failed!
 // endResult

@@ -17,15 +17,16 @@ algorithm
       end when;
     end if;
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenNested;
 
 // Result:
 // Error processing file: WhenNested.mo
-// [OpenModelica/flattening/modelica/algorithms-functions/WhenNested.mo:15:7-17:15:writable] Error: Nested when statements are not allowed.
-// Error: Error occurred while flattening model WhenNested
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/algorithms-functions/WhenNested.mo:13:3-19:11:writable] Error: Nested when statements are not allowed.
+// Error: Error occurred while flattening model WhenNested
 //
 // Execution failed!
 // endResult

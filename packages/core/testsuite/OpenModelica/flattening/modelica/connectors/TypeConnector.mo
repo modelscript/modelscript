@@ -7,6 +7,7 @@ model TypeConnector
   end T;
   connector C = output T;
   C c;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeConnector;
 
 // Result:

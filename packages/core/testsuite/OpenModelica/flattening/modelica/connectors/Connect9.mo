@@ -18,6 +18,7 @@ class Connect9
   C2 c2;
 equation
   connect(c1,c2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Connect9;
 
 // Result:
@@ -27,7 +28,4 @@ end Connect9;
 // equation
 //   c1.x = c2.x;
 // end Connect9;
-// [OpenModelica/flattening/modelica/connectors/Connect9.mo:17:3-17:8:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/Connect9.mo:18:3-18:8:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/Connect9.mo:20:3-20:17:writable] Warning: Equation sections are deprecated in class.
 // endResult

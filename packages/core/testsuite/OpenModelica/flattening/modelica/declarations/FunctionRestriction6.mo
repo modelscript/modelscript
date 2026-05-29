@@ -18,11 +18,10 @@ end FunctionRestriction6;
 
 // Result:
 // Error processing file: FunctionRestriction6.mo
-// [OpenModelica/flattening/modelica/declarations/FunctionRestriction6.mo:10:3-10:15:writable] Error: Invalid prefix outer on formal parameter z.
-// Error: Error occurred while flattening model FunctionRestriction6
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/FunctionRestriction6.mo:10:3-10:15:writable] Error: Invalid prefix outer on formal parameter z.
 //
 // Execution failed!
 // endResult

@@ -26,6 +26,8 @@ algorithm
 
 equation
   der(x) = 2*x;
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenStat3;
 
 
@@ -47,10 +49,4 @@ end WhenStat3;
 //     y3 := 2.0 * x + pre(y1) + y2;
 //   end when;
 // end WhenStat3;
-// [<interactive>:9:3-9:20:writable] Warning: Components are deprecated in class.
-// [<interactive>:10:3-10:10:writable] Warning: Components are deprecated in class.
-// [<interactive>:11:3-11:10:writable] Warning: Components are deprecated in class.
-// [<interactive>:12:3-12:10:writable] Warning: Components are deprecated in class.
-// [<interactive>:28:3-28:15:writable] Warning: Equation sections are deprecated in class.
-// [<interactive>:15:3-17:11:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

@@ -24,12 +24,11 @@ end ExternalFunctionInvalidSection1;
 
 // Result:
 // Error processing file: ExternalFunctionInvalidSection1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidSection1.mo:14:3-14:12:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidSection1.mo:13:1-17:7:writable] Error: Function f2 has more than one algorithm section or external declaration.
-// Error: Error occurred while flattening model ExternalFunctionInvalidSection1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidSection1.mo:14:3-14:12:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ExternalFunctionInvalidSection1.mo:13:1-17:7:writable] Error: Function f2 has more than one algorithm section or external declaration.
 //
 // Execution failed!
 // endResult

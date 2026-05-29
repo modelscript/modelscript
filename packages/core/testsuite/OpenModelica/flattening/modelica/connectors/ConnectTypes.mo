@@ -25,6 +25,7 @@ equation
   connect(c, a.c);
   c.e={time};
   c.d=4;
+  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end ConnectTypes;
 
 // Result
@@ -33,24 +34,20 @@ end ConnectTypes;
 //   Real a.c.e[1];
 //   Integer a.c.d;
 //   parameter Integer a.c.p = 4;
-//   final parameter Integer a.c.n = 1;
+//   parameter Integer a.c.n = 1;
 //   constant Real a.c.c = 2.0;
 //   Real c.e[1];
 //   Integer c.d;
 //   parameter Integer c.p = 4;
-//   final parameter Integer c.n = 1;
+//   parameter Integer c.n = 1;
 //   constant Real c.c = 2.0;
 // equation
-//   c.d = a.c.d;
-//   c.e[1] = a.c.e[1];
-//   assert(c.p == a.c.p, "Connected constants/parameters must be equal");
+//   assert(true, "automatically generated from connect");
+//   assert(c.n == a.c.n, "automatically generated from connect");
+//   assert(c.p == a.c.p, "automatically generated from connect");
 //   c.e[1] = time;
 //   c.d = 4;
+//   a.c.d = c.d;
+//   a.c.e[1] = c.e[1];
 // end ConnectTypes;
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:18:3-18:14:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:22:3-22:14:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:23:3-23:19:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:25:3-25:18:writable] Warning: Equation sections are deprecated in class.
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:18:3-18:14:writable] Warning: Connector c is not balanced: The number of potential variables (2) is not equal to the number of flow variables (0).
-// [OpenModelica/flattening/modelica/connectors/ConnectTypes.mo:23:3-23:19:writable] Warning: Connector c is not balanced: The number of potential variables (2) is not equal to the number of flow variables (0).
 // endResult

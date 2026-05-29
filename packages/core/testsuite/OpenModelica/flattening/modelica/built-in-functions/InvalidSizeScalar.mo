@@ -8,15 +8,16 @@
 model InvalidSizeScalar
   Real r;
   Real s = size(r);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InvalidSizeScalar;
 
 // Result:
 // Error processing file: InvalidSizeScalar.mo
-// [OpenModelica/flattening/modelica/built-in-functions/InvalidSizeScalar.mo:10:3-10:19:writable] Error: Type mismatch in binding 's = size(r)', expected array dimensions [], got [0].
-// Error: Error occurred while flattening model InvalidSizeScalar
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/built-in-functions/InvalidSizeScalar.mo:10:3-10:19:writable] Error: The first argument of size(r) must be an array expression.
+// Error: Error occurred while flattening model InvalidSizeScalar
 //
 // Execution failed!
 // endResult

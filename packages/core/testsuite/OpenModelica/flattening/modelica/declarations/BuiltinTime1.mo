@@ -7,6 +7,7 @@
 
 model BuiltinTime1
   Real x = time;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BuiltinTime1;
 
 // Result:

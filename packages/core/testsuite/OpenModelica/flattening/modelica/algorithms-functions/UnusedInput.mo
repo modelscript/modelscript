@@ -18,10 +18,12 @@ model UnusedInput
 
   Real x = sinxx(time);
   Real y = sinxy(time);
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end UnusedInput;
 
 // Result:
-// impure function UnusedInput.sinxx
+// function UnusedInput.sinxx
 //   input Real x;
 //   output Real y;
 //

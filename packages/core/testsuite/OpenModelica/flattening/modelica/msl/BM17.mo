@@ -972,6 +972,7 @@ model BM17
 equation
   connect(max1.inPort2,constant2.outPort) annotation(Line(visible=true,points={{-42.99,25.35},{-74.92,13.49}}));
   connect(max1.inPort1,constant1.outPort) annotation(Line(visible=true,points={{-42.99,37.21},{-72.79,41.16}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM17;
 // class BM17
 // parameter Integer max1.n = 1 "Dimension of input and output vectors.";
@@ -1007,16 +1008,39 @@ end BM17;
 // max1.inPort2.signal[1] = constant2.outPort.signal[1];
 // end BM17;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BM17
+//   parameter Integer max1.n = 1 "Dimension of input and output vectors.";
+//   parameter Integer max1.inPort1.n = max1.n "Dimension of signal vector";
+//   Real max1.inPort1.signal[1] "Real input signals";
+//   parameter Integer max1.inPort2.n = max1.n "Dimension of signal vector";
+//   Real max1.inPort2.signal[1] "Real input signals";
+//   parameter Integer max1.outPort.n = max1.n "Dimension of signal vector";
+//   Real max1.outPort.signal[1] "Real output signals";
+//   Real max1.y[1] "Output signals";
+//   protected Real max1.u1[1] "Input signals 1";
+//   protected Real max1.u2[1] "Input signals 2";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+//   parameter Integer constant2.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant2.outPort.n = constant2.nout "Dimension of signal vector";
+//   Real constant2.outPort.signal[1] "Real output signals";
+//   Real constant2.y[1];
+//   parameter Real constant2.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   max1.u1 = {max1.inPort1.signal[1]};
+//   max1.u2 = {max1.inPort2.signal[1]};
+//   max1.y[1] = max(max1.u1[1], max1.u2[1]);
+//   max1.y[1] = max1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   constant2.outPort.signal[1] = constant2.k[1];
+//   constant2.y[1] = constant2.outPort.signal[1];
+//   assert(max1.inPort2.n == constant2.outPort.n, "automatically generated from connect");
+//   assert(max1.inPort1.n == constant1.outPort.n, "automatically generated from connect");
+//   constant2.outPort.signal[1] = max1.inPort2.signal[1];
+//   constant1.outPort.signal[1] = max1.inPort1.signal[1];
+// end BM17;
 // endResult

@@ -6,3 +6,9 @@ class GroupImport
   import B.{c,e=d};
   Real r = c+e;
 end GroupImport;
+
+// Result:
+// class GroupImport
+//   Real r = 3.0;
+// end GroupImport;
+// endResult

@@ -24,6 +24,7 @@ model OperatorOverloadConstructorHideDefault
   C c;
 equation
   c = C(1.0);
+  annotation(__OpenModelica_commandLineOptions="-d=-nfEvalConstArgFuncs");
 end OperatorOverloadConstructorHideDefault;
 
 
@@ -43,6 +44,6 @@ end OperatorOverloadConstructorHideDefault;
 // class OperatorOverloadConstructorHideDefault
 //   Real c.r;
 // equation
-//   c = C(1.0);
+//   c = C.'constructor'.fromReal(1.0);
 // end OperatorOverloadConstructorHideDefault;
 // endResult

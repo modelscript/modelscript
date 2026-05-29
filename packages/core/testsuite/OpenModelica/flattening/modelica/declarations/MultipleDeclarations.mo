@@ -22,13 +22,19 @@ end B2;
 model test
   B b(n=1);
   B2 b2(n=1); // Error n in B2 and A is not identical
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// class test
-//   final parameter Integer b.n(min = 1) = 1;
-//   Real b.x[1];
-//   final parameter Integer b2.n(min = 1) = 1;
-//   Real b2.x[1];
-// end test;
+// Error processing file: MultipleDeclarations.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/MultipleDeclarations.mo:19:2-19:28:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/declarations/MultipleDeclarations.mo:8:2-8:28:writable] Error: Duplicate elements (due to inherited elements) not identical:
+//   first element is:  parameter Integer n(min = 3)
+//   second element is: parameter .Integer n(min = 1)
+// Error: Error occurred while flattening model test
+//
+// Execution failed!
 // endResult

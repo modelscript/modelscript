@@ -9,11 +9,10 @@ end BindingInvalidType4;
 
 // Result:
 // Error processing file: BindingInvalidType4.mo
-// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType4.mo:7:3-7:16:writable] Error: Non-array modification '1' for array component 'x', possibly due to missing 'each'.
-// Error: Error occurred while flattening model BindingInvalidType4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType4.mo:7:3-7:16:writable] Error: Non-array modification '1' for array component 'x', possibly due to missing 'each'.
 //
 // Execution failed!
 // endResult

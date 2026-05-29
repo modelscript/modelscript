@@ -11,11 +11,10 @@ end ReductionInvalidTypeMax;
 
 // Result:
 // Error processing file: ReductionInvalidTypeMax.mo
-// [OpenModelica/flattening/modelica/scodeinst/ReductionInvalidTypeMax.mo:9:3-9:36:writable] Error: Invalid expression '"test"' of type String in max reduction, expected scalar enumeration, Boolean, Integer, or Real.
-// Error: Error occurred while flattening model ReductionInvalidTypeMax
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ReductionInvalidTypeMax.mo:9:3-9:36:writable] Error: Invalid expression '"test"' of type String in max reduction, expected scalar enumeration, Boolean, Integer, or Real.
 //
 // Execution failed!
 // endResult

@@ -17,11 +17,10 @@ end Ex;
 
 class Foo
   replaceable type T = enumeration(:);
+  annotation(__OpenModelica_commandLineOptions="-i=Ex -d=-newInst");
 end Foo;
 
 // Result:
-// class Ex
-//   parameter enumeration(One, Two) f1 = Foo1.T.Two;
-//   parameter enumeration(One) f2 = T.One;
-// end Ex;
+// class Foo
+// end Foo;
 // endResult

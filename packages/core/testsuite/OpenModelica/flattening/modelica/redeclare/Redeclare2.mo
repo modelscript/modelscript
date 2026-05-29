@@ -19,6 +19,7 @@ end B;
 class Redeclare2
   replaceable class Q = A;
   Q x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Redeclare2;
 
 // Result:
@@ -27,7 +28,4 @@ end Redeclare2;
 // equation
 //   x.x = 1.0;
 // end Redeclare2;
-// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:8:3-8:9:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:10:3-10:10:writable] Warning: Equation sections are deprecated in class.
-// [OpenModelica/flattening/modelica/redeclare/Redeclare2.mo:21:3-21:6:writable] Warning: Components are deprecated in class.
 // endResult

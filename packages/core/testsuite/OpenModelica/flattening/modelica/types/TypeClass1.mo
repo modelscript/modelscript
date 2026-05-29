@@ -15,12 +15,13 @@ model TypeClass1
   LegalType lt;
 equation
   lt = 1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TypeClass1;
 
 // Result:
 // class TypeClass1
+//   Integer lt;
 // equation
 //   lt = 1;
 // end TypeClass1;
-// Info: Class 'LegalType' has no members
 // endResult

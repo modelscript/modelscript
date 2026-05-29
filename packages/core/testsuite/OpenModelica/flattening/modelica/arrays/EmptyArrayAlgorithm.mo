@@ -13,16 +13,13 @@ equation
   r1 = fill(1.0, N);
 algorithm
   r2 := r1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EmptyArrayAlgorithm;
 
 
 // Result:
-// class ArraySizeFromFunc
-//   final parameter Integer n = 5;
-//   parameter Real x[1] = 1.0;
-//   parameter Real x[2] = 1.0;
-//   parameter Real x[3] = 1.0;
-//   parameter Real x[4] = 1.0;
-//   parameter Real x[5] = 1.0;
-// end ArraySizeFromFunc;
+// class EmptyArrayAlgorithm
+//   parameter Integer N = 0;
+// algorithm
+// end EmptyArrayAlgorithm;
 // endResult

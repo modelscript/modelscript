@@ -17,15 +17,26 @@ block EnumConnectArray
   TBlock Block2;
 equation
   connect(Block2.In, Block1.Out);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumConnectArray;
 
 // Result:
-// Error processing file: EnumConnectArray.mo
-// [OpenModelica/flattening/modelica/enums/EnumConnectArray.mo:19:3-19:33:writable] Error: Block2.In is not a valid connector.
-// Error: Error occurred while flattening model EnumConnectArray
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class EnumConnectArray
+//   Real Block1.In[TComponents.AA];
+//   Real Block1.In[TComponents.BB];
+//   Real Block1.In[TComponents.CC];
+//   Real Block1.Out[TComponents.AA];
+//   Real Block1.Out[TComponents.BB];
+//   Real Block1.Out[TComponents.CC];
+//   Real Block2.In[TComponents.AA];
+//   Real Block2.In[TComponents.BB];
+//   Real Block2.In[TComponents.CC];
+//   Real Block2.Out[TComponents.AA];
+//   Real Block2.Out[TComponents.BB];
+//   Real Block2.Out[TComponents.CC];
+// equation
+//   Block1.Out[TComponents.AA] = Block2.In[TComponents.AA];
+//   Block1.Out[TComponents.BB] = Block2.In[TComponents.BB];
+//   Block1.Out[TComponents.CC] = Block2.In[TComponents.CC];
+// end EnumConnectArray;
 // endResult

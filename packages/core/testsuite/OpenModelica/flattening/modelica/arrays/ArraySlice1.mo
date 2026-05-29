@@ -11,6 +11,7 @@ equation
   a[{1,3}] = a[{2,4}];
   a[1]=time;
   a[4]=1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArraySlice1;
 
 // Result:
@@ -25,6 +26,4 @@ end ArraySlice1;
 //   a[1] = time;
 //   a[4] = 1.0;
 // end ArraySlice1;
-// [OpenModelica/flattening/modelica/arrays/ArraySlice1.mo:9:3-9:12:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/ArraySlice1.mo:11:3-11:22:writable] Warning: Equation sections are deprecated in class.
 // endResult

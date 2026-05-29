@@ -19,12 +19,11 @@ end PackageRestriction3;
 
 // Result:
 // Error processing file: PackageRestriction3.mo
-// [OpenModelica/flattening/modelica/declarations/PackageRestriction3.mo:13:3-13:7:writable] Error: Algorithm sections are not allowed in package.
-// [OpenModelica/flattening/modelica/declarations/PackageRestriction3.mo:17:3-17:15:writable] Error: Variable P.x not found in scope PackageRestriction3.
-// Error: Error occurred while flattening model PackageRestriction3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/PackageRestriction3.mo:13:3-13:7:writable] Error: Algorithm sections are not allowed in package.
+// [OpenModelica/flattening/modelica/declarations/PackageRestriction3.mo:17:3-17:15:writable] Error: Variable P.x not found in scope PackageRestriction3.
 //
 // Execution failed!
 // endResult

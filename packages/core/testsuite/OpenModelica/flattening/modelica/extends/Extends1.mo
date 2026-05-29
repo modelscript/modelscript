@@ -15,6 +15,7 @@ end B;
 
 model Extends1
   B x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Extends1;
 
 // Result:
@@ -22,5 +23,4 @@ end Extends1;
 //   Real x.a = 2.0;
 //   Real x.b = 2.0;
 // end Extends1;
-// [OpenModelica/flattening/modelica/extends/Extends1.mo:13:3-13:15:writable] Warning: Components are deprecated in class.
 // endResult

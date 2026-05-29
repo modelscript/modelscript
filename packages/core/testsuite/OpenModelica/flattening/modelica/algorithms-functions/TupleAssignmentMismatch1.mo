@@ -18,16 +18,17 @@ model TupleAssignmentMismatch1
   Real x, y, z;
 algorithm
   (x, y, z) := f();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TupleAssignmentMismatch1;
 
 
 // Result:
 // Error processing file: TupleAssignmentMismatch1.mo
-// [OpenModelica/flattening/modelica/algorithms-functions/TupleAssignmentMismatch1.mo:20:3-20:19:writable] Error: Type mismatch in assignment in (x, y, z) := TupleAssignmentMismatch1.f() of (Real, Real, Real) := (Real, Real)
-// Error: Error occurred while flattening model TupleAssignmentMismatch1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/algorithms-functions/TupleAssignmentMismatch1.mo:20:3-20:19:writable] Error: Type mismatch in assignment in (x, y, z) := f() of (Real, Real, Real) := (Real, Real)
+// Error: Error occurred while flattening model TupleAssignmentMismatch1
 //
 // Execution failed!
 // endResult

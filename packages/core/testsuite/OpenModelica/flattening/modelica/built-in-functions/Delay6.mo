@@ -12,6 +12,7 @@ model Delay
 equation
   x = sin(time);
   y = delay(x, a, b);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:

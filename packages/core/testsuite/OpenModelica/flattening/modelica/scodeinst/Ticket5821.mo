@@ -976,7 +976,7 @@ package Modelica  "Modelica Standard Library - Version 3.2.3"
       numbers in row-wise order (therefore a matrix row can span several
       lines in the file and need not start at the beginning of a line).
       Numbers have to be given according to C syntax (such as 2.3, -2, +2.e4).
-      Number separators are spaces, tab (\\t), comma (), or semicolon (;).
+      Number separators are spaces, tab (\\t), comma (,), or semicolon (;).
       Several matrices may be defined one after another. Line comments start
       with the hash symbol (#) and can appear everywhere.
       Text files should either be ASCII or UTF-8 encoded, where UTF-8 encoded strings are only allowed in line comments and an optional UTF-8 BOM at the start of the text file is ignored.
@@ -2138,11 +2138,12 @@ end YD;
 model Test_total
   extends YD.Test;
  annotation(experiment(StopTime = 2.5));
+  annotation(__OpenModelica_commandLineOptions="--std=3.2");
 end Test_total;
 
 
 // Result:
-// impure function Modelica.Blocks.Tables.Internal.getNextTimeEvent "Return next time event value of 1-dim. table where first column is time"
+// function Modelica.Blocks.Tables.Internal.getNextTimeEvent "Return next time event value of 1-dim. table where first column is time"
 //   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
 //   input Real timeIn;
 //   output Real nextTimeEvent "Next time event in table";
@@ -2150,21 +2151,21 @@ end Test_total;
 //   external "C" nextTimeEvent = ModelicaStandardTables_CombiTimeTable_nextTimeEvent(tableID, timeIn);
 // end Modelica.Blocks.Tables.Internal.getNextTimeEvent;
 //
-// impure function Modelica.Blocks.Tables.Internal.getTimeTableTmax "Return maximum abscissa value of 1-dim. table where first column is time"
+// function Modelica.Blocks.Tables.Internal.getTimeTableTmax "Return maximum abscissa value of 1-dim. table where first column is time"
 //   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
 //   output Real timeMax "Maximum abscissa value in table";
 //
 //   external "C" timeMax = ModelicaStandardTables_CombiTimeTable_maximumTime(tableID);
 // end Modelica.Blocks.Tables.Internal.getTimeTableTmax;
 //
-// impure function Modelica.Blocks.Tables.Internal.getTimeTableTmin "Return minimum abscissa value of 1-dim. table where first column is time"
+// function Modelica.Blocks.Tables.Internal.getTimeTableTmin "Return minimum abscissa value of 1-dim. table where first column is time"
 //   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
 //   output Real timeMin "Minimum abscissa value in table";
 //
 //   external "C" timeMin = ModelicaStandardTables_CombiTimeTable_minimumTime(tableID);
 // end Modelica.Blocks.Tables.Internal.getTimeTableTmin;
 //
-// impure function Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer "Interpolate 1-dim. table where first column is time (but do not provide a derivative function)"
+// function Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer "Interpolate 1-dim. table where first column is time (but do not provide a derivative function)"
 //   input Modelica.Blocks.Types.ExternalCombiTimeTable tableID;
 //   input Integer icol;
 //   input Real timeIn;
@@ -2175,7 +2176,7 @@ end Test_total;
 //   external "C" y = ModelicaStandardTables_CombiTimeTable_getValue(tableID, icol, timeIn, nextTimeEvent, pre_nextTimeEvent);
 // end Modelica.Blocks.Tables.Internal.getTimeTableValueNoDer;
 //
-// impure function Modelica.Blocks.Types.ExternalCombiTimeTable.constructor "Initialize 1-dim. table where first column is time"
+// function Modelica.Blocks.Types.ExternalCombiTimeTable.constructor "Initialize 1-dim. table where first column is time"
 //   input String tableName "Table name";
 //   input String fileName "File name";
 //   input Real[:, :] table;
@@ -2191,7 +2192,7 @@ end Test_total;
 //   external "C" externalCombiTimeTable = ModelicaStandardTables_CombiTimeTable_init2(fileName, tableName, table, size(table, 1), size(table, 2), startTime, columns, size(columns, 1), smoothness, extrapolation, shiftTime, timeEvents, verboseRead);
 // end Modelica.Blocks.Types.ExternalCombiTimeTable.constructor;
 //
-// impure function Modelica.Blocks.Types.ExternalCombiTimeTable.destructor "Terminate 1-dim. table where first column is time"
+// function Modelica.Blocks.Types.ExternalCombiTimeTable.destructor "Terminate 1-dim. table where first column is time"
 //   input Modelica.Blocks.Types.ExternalCombiTimeTable externalCombiTimeTable;
 //
 //   external "C" ModelicaStandardTables_CombiTimeTable_close(externalCombiTimeTable);
@@ -2624,17 +2625,4 @@ end Test_total;
 //   logicalDelayStateGraph.T4.outPort.node = logicalDelayStateGraph.T4.inPort.node;
 //   assert(logicalDelayStateGraph.T4.waitTime > 1e-13, "Either set delayTransition = false, or set waitTime (= " + String(logicalDelayStateGraph.T4.waitTime, 6, 0, true) + ") > " + String(1e-13, 6, 0, true));
 // end Test_total;
-// [<interactive>:1507:7-1541:18:writable] Warning: Pure function 'Modelica.Utilities.Strings.isEmpty' contains a call to impure function 'Modelica.Utilities.Strings.Advanced.skipWhiteSpace'.
-// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y1D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
-// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y1D0.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y1D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y0D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
-// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D0.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D0.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:38:7-38:47:writable] Warning: The second argument 'logicalDelayStateGraph.Y0D1.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:42:7-48:9:writable] Warning: Usage of non-standard operator (not specified in the Modelica specification): Connections.uniqueRoot. Functionality might be partially supported but is not guaranteed.
-// [<interactive>:42:7-48:9:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D1.node' of Connections.uniqueRoot must have the form A.R, where A is a connector and R an over-determined type/record.
-// [<interactive>:59:7-59:48:writable] Warning: The first argument 'logicalDelayStateGraph.Y0D1.node' of Connections.branch must have the form A.R, where A is a connector and R an over-determined type/record.
 // endResult

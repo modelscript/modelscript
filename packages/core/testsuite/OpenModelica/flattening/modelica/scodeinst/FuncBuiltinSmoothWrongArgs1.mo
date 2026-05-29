@@ -13,13 +13,12 @@ end FuncBuiltinSmoothWrongArgs1;
 
 // Result:
 // Error processing file: FuncBuiltinSmoothWrongArgs1.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinSmoothWrongArgs1.mo:11:3-11:27:writable] Error: No matching function found for smooth(k, x, x).
 // Candidates are:
 //   smooth(Integer, Any) => Any
-// Error: Error occurred while flattening model FuncBuiltinSmoothWrongArgs1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

@@ -11,6 +11,7 @@ model EnumTest
    Integer a;
 equation
    a = Integer(ABC.b);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumTest;
 
 

@@ -13,10 +13,17 @@ model DuplicateRedeclares1
   extends M(redeclare replaceable Real r = 1.5);
 
   redeclare replaceable Real r = 2.5;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DuplicateRedeclares1;
 
 // Result:
-// class DuplicateRedeclares1
-//   Real r = 2.5;
-// end DuplicateRedeclares1;
+// Error processing file: DuplicateRedeclares1.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares1.mo:13:23-13:47:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/redeclare/DuplicateRedeclares1.mo:15:3-15:37:writable] Error: r is already redeclared in this scope.
+// Error: Error occurred while flattening model DuplicateRedeclares1
+//
+// Execution failed!
 // endResult

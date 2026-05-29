@@ -19,13 +19,12 @@ end PartialLookup2;
 
 // Result:
 // Error processing file: PartialLookup2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/PartialLookup2.mo:9:3-11:9:writable] Notification: From here:
 // [OpenModelica/flattening/modelica/scodeinst/PartialLookup2.mo:17:3-17:6:writable] Error: component a contains the definition of a partial class PP.
 // Please redeclare it to any package compatible with A.PP.
-// Error: Error occurred while flattening model PartialLookup2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

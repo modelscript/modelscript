@@ -19,6 +19,7 @@ end C;
 
 class D
   extends C(redeclare B a(y = 2.0));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end D;
 
 // Result:
@@ -26,6 +27,4 @@ end D;
 //   parameter Real a.x = 1.0;
 //   parameter Real a.y = 2.0;
 // end D;
-// [<interactive>:9:3-9:19:writable] Warning: Components are deprecated in class.
-// [<interactive>:13:3-13:29:writable] Warning: Components are deprecated in class.
 // endResult

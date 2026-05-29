@@ -962,6 +962,7 @@ model BC10
 
 equation
   connect(constant1.outPort,stateSpace1.inPort) annotation(Line(visible=true,points={{-45.11,23.22},{-31.43,24.13}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BC10;
 
 // class BC10
@@ -1000,16 +1001,40 @@ end BC10;
 // constant1.outPort.signal[1] = stateSpace1.inPort.signal[1];
 // end BC10;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BC10
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 2.0 "Constant output values";
+//   parameter Integer stateSpace1.nin = 1 "Number of inputs";
+//   parameter Integer stateSpace1.nout = 1 "Number of outputs";
+//   parameter Integer stateSpace1.inPort.n = stateSpace1.nin "Dimension of signal vector";
+//   Real stateSpace1.inPort.signal[1] "Real input signals";
+//   parameter Integer stateSpace1.outPort.n = stateSpace1.nout "Dimension of signal vector";
+//   Real stateSpace1.outPort.signal[1] "Real output signals";
+//   Real stateSpace1.y[1] "Output signals";
+//   protected Real stateSpace1.u[1] "Input signals";
+//   parameter Real stateSpace1.A[1,1] = 1.0 "Matrix A of state space model";
+//   parameter Real stateSpace1.A[1,2] = 0.0 "Matrix A of state space model";
+//   parameter Real stateSpace1.A[2,1] = 0.0 "Matrix A of state space model";
+//   parameter Real stateSpace1.A[2,2] = 1.0 "Matrix A of state space model";
+//   parameter Real stateSpace1.B[1,1] = 1.0 "Matrix B of state space model";
+//   parameter Real stateSpace1.B[2,1] = 1.0 "Matrix B of state space model";
+//   parameter Real stateSpace1.C[1,1] = 1.0 "Matrix C of state space model";
+//   parameter Real stateSpace1.C[1,2] = 1.0 "Matrix C of state space model";
+//   parameter Real stateSpace1.D[1,1] = 0.0 "Matrix D of state space model";
+//   Real stateSpace1.x[1] "State vector";
+//   Real stateSpace1.x[2] "State vector";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   stateSpace1.u = {stateSpace1.inPort.signal[1]};
+//   der(stateSpace1.x[1]) = stateSpace1.A[1,1] * stateSpace1.x[1] + stateSpace1.A[1,2] * stateSpace1.x[2] + stateSpace1.B[1,1] * stateSpace1.u[1];
+//   der(stateSpace1.x[2]) = stateSpace1.A[2,1] * stateSpace1.x[1] + stateSpace1.A[2,2] * stateSpace1.x[2] + stateSpace1.B[2,1] * stateSpace1.u[1];
+//   stateSpace1.y[1] = stateSpace1.C[1,1] * stateSpace1.x[1] + stateSpace1.C[1,2] * stateSpace1.x[2] + stateSpace1.D[1,1] * stateSpace1.u[1];
+//   stateSpace1.y[1] = stateSpace1.outPort.signal[1];
+//   assert(constant1.outPort.n == stateSpace1.inPort.n, "automatically generated from connect");
+//   constant1.outPort.signal[1] = stateSpace1.inPort.signal[1];
+// end BC10;
 // endResult

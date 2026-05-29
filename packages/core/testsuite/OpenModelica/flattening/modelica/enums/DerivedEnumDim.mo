@@ -11,6 +11,7 @@ type A = Real[E];
 
 model DerivedEnumDim
   A a;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DerivedEnumDim;
 
 // Result:

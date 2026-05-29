@@ -17,11 +17,10 @@ end AssignInput1;
 
 // Result:
 // Error processing file: AssignInput1.mo
-// [OpenModelica/flattening/modelica/scodeinst/AssignInput1.mo:10:3-10:13:writable] Error: Trying to assign to input component x.
-// Error: Error occurred while flattening model AssignInput1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/AssignInput1.mo:10:3-10:13:writable] Error: Trying to assign to input component x.
 //
 // Execution failed!
 // endResult

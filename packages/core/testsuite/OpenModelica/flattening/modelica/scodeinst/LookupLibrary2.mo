@@ -7,13 +7,15 @@
 
 model LookupLibrary2
   Modelica.Units.SI.Angle angle;
+  annotation(__OpenModelica_commandLineOptions="--loadMissingLibraries=false");
 end LookupLibrary2;
 
 // Result:
-// class LookupLibrary2
-//   Real angle(quantity = "Angle", unit = "rad", displayUnit = "deg");
-// end LookupLibrary2;
-// Notification: Automatically loaded package Complex 4.1.0 due to uses annotation from Modelica.
-// Notification: Automatically loaded package ModelicaServices 4.1.0 due to uses annotation from Modelica.
-// Notification: Automatically loaded package Modelica 4.1.0 due to usage.
+// Error processing file: LookupLibrary2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/LookupLibrary2.mo:9:3-9:32:writable] Error: Class Modelica.Units.SI.Angle not found in scope LookupLibrary2.
+//
+// Execution failed!
 // endResult

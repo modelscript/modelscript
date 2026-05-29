@@ -7,17 +7,16 @@
 
 model Identity3
   Integer a[2, 2] = identity(2, 2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Identity3;
 
 // Result:
 // Error processing file: Identity3.mo
-// [OpenModelica/flattening/modelica/built-in-functions/Identity3.mo:9:3-9:35:writable] Error: No matching function found for identity(/*Integer*/ 2, /*Integer*/ 2).
-// Candidates are:
-//   identity(Integer arraySize) => Integer[arraySize, arraySize]
-// Error: Error occurred while flattening model Identity3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/built-in-functions/Identity3.mo:9:3-9:35:writable] Error: Wrong number of arguments to identity.
+// Error: Error occurred while flattening model Identity3
 //
 // Execution failed!
 // endResult

@@ -938,6 +938,7 @@ model BS1
 
 equation
   connect(clock1.outPort,der1.inPort) annotation(Line(visible=true,points={{-34.47,24.13},{-13.18,23.22}}));
+  annotation(__OpenModelica_commandLineOptions="+std=1.x -d=-newInst");
 end BS1;
 
 // class BS1
@@ -965,16 +966,29 @@ end BS1;
 // clock1.outPort.signal[1] = der1.inPort.signal[1];
 // end BS1;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BS1
+//   parameter Integer clock1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer clock1.outPort.n = clock1.nout "Dimension of signal vector";
+//   Real clock1.outPort.signal[1] "Real output signals";
+//   Real clock1.y[1];
+//   parameter Real clock1.offset[1] = 0.0 "Offsets of output signals";
+//   parameter Real clock1.startTime[1](quantity = "Time", unit = "s") = 0.0 "Output = offset for time < startTime";
+//   protected parameter Real clock1.p_offset[1] = clock1.offset[1];
+//   protected parameter Real clock1.p_startTime[1](quantity = "Time", unit = "s") = clock1.startTime[1];
+//   parameter Integer der1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer der1.inPort.n = der1.n "Dimension of signal vector";
+//   Real der1.inPort.signal[1] "Real input signals";
+//   parameter Integer der1.outPort.n = der1.n "Dimension of signal vector";
+//   Real der1.outPort.signal[1] "Real output signals";
+//   Real der1.y[1] "Output signals";
+//   protected Real der1.u[1] "Input signals";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   clock1.outPort.signal[1] = clock1.p_offset[1] + (if time < clock1.p_startTime[1] then 0.0 else time - clock1.p_startTime[1]);
+//   clock1.y[1] = clock1.outPort.signal[1];
+//   der1.u = {der1.inPort.signal[1]};
+//   der1.y[1] = der(der1.u[1]);
+//   der1.y[1] = der1.outPort.signal[1];
+//   assert(clock1.outPort.n == der1.inPort.n, "automatically generated from connect");
+//   clock1.outPort.signal[1] = der1.inPort.signal[1];
+// end BS1;
 // endResult

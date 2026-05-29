@@ -13,10 +13,11 @@ end foo;
 
 model test
   Real x=foo(time);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
-// impure function foo
+// function foo
 //   input Real x;
 //   output Real foo;
 //

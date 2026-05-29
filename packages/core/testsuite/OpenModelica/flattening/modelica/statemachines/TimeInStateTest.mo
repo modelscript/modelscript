@@ -6,6 +6,7 @@ model TimeInStateTest
   output Real t;
 equation
   t = timeInState();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TimeInStateTest;
 
 // Result:

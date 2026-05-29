@@ -12,16 +12,17 @@ end A;
 
 model B
   A a(x = 15, y = 30);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
 // Error processing file: FinalMod1.mo
-// [<interactive>:14:15-14:21:writable] Notification: From here:
-// [<interactive>:10:3-10:20:writable] Error: Trying to override final element y with modifier '= 30'.
-// Error: Error occurred while flattening model B
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/FinalMod1.mo:10:3-10:20:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/modification/FinalMod1.mo:14:15-14:21:writable] Error: Trying to override final element y with modifier ' = 30'.
+// Error: Error occurred while flattening model B
 //
 // Execution failed!
 // endResult

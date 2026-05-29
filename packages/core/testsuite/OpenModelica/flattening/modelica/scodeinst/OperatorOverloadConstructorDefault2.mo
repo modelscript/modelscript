@@ -27,13 +27,12 @@ end OperatorOverloadConstructorDefault2;
 
 // Result:
 // Error processing file: OperatorOverloadConstructorDefault2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadConstructorDefault2.mo:24:3-24:18:writable] Error: No matching function found for C(/*Real*/ 1.0, /*Real*/ 2.0).
 // Candidates are:
 //   C.'constructor'(Real r) => C
-// Error: Error occurred while flattening model OperatorOverloadConstructorDefault2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

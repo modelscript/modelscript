@@ -16,18 +16,15 @@ end AssertTest;
 
 class AssertTestInst
   AssertTest assertTest(lowlimit = -2, highlimit = 6, x = 5);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AssertTestInst;
 
 // Result:
-// class AssertTest
-//   parameter Real lowlimit = -5.0;
-//   parameter Real highlimit = 5.0;
-//   parameter Real x = 7.0;
+// class AssertTestInst
+//   parameter Real assertTest.lowlimit = -2.0;
+//   parameter Real assertTest.highlimit = 6.0;
+//   parameter Real assertTest.x = 5.0;
 // equation
-//   assert(x >= lowlimit and x <= highlimit, "Variable x out of limit");
-// end AssertTest;
-// [OpenModelica/flattening/modelica/asserts/AssertTest.mo:10:3-10:33:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/asserts/AssertTest.mo:11:3-11:34:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/asserts/AssertTest.mo:12:3-12:23:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/asserts/AssertTest.mo:14:3-14:70:writable] Warning: Equation sections are deprecated in class.
+//   assert(assertTest.x >= assertTest.lowlimit and assertTest.x <= assertTest.highlimit, "Variable x out of limit");
+// end AssertTestInst;
 // endResult

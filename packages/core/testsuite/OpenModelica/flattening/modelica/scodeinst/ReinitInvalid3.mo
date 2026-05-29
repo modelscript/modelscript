@@ -13,11 +13,10 @@ end ReinitInvalid3;
 
 // Result:
 // Error processing file: ReinitInvalid3.mo
-// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid3.mo:10:5-10:19:writable] Error: The first argument to reinit must be a continuous time variable, but x is constant.
-// Error: Error occurred while flattening model ReinitInvalid3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid3.mo:10:5-10:19:writable] Error: The first argument to reinit must be a continuous time variable, but x is constant.
 //
 // Execution failed!
 // endResult

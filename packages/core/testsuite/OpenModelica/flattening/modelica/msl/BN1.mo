@@ -941,6 +941,7 @@ model BN1
 
 equation
   connect(constant1.outPort,deadZone1.inPort) annotation(Line(visible=true,points={{-26.56,35.08},{-8.62,32.65}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BN1;
 
 // class BN1
@@ -967,16 +968,28 @@ end BN1;
 // constant1.outPort.signal[1] = deadZone1.inPort.signal[1];
 // end BN1;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BN1
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+//   parameter Integer deadZone1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer deadZone1.inPort.n = deadZone1.n "Dimension of signal vector";
+//   Real deadZone1.inPort.signal[1] "Real input signals";
+//   parameter Integer deadZone1.outPort.n = deadZone1.n "Dimension of signal vector";
+//   Real deadZone1.outPort.signal[1] "Real output signals";
+//   Real deadZone1.y[1] "Output signals";
+//   protected Real deadZone1.u[1] "Input signals";
+//   parameter Real deadZone1.uMax[1] = 1.0 "Upper limits of dead zones";
+//   parameter Real deadZone1.uMin[1](max = deadZone1.uMax[1]) = -deadZone1.uMax[1] "Lower limits of dead zones";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   deadZone1.u = {deadZone1.inPort.signal[1]};
+//   deadZone1.y[1] = if deadZone1.u[1] > deadZone1.uMax[1] then deadZone1.u[1] - deadZone1.uMax[1] else if deadZone1.u[1] < deadZone1.uMin[1] then deadZone1.u[1] - deadZone1.uMin[1] else 0.0;
+//   deadZone1.y[1] = deadZone1.outPort.signal[1];
+//   assert(constant1.outPort.n == deadZone1.inPort.n, "automatically generated from connect");
+//   constant1.outPort.signal[1] = deadZone1.inPort.signal[1];
+// end BN1;
 // endResult

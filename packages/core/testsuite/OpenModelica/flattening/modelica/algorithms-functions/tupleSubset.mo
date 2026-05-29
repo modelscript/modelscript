@@ -24,6 +24,7 @@ equation
  xvar = der(xvar);
  (x,z) = fooTuple(xvar);
  y = fooTuple(der(xvar));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end mo;
 // Result:
 // function fooTuple
@@ -32,9 +33,9 @@ end mo;
 //   output Real y2;
 //   output Real y3;
 // algorithm
-//   y := x * 2.0;
-//   y2 := y * 2.0;
-//   y3 := y2 * 2.0;
+//   y := 2.0 * x;
+//   y2 := 2.0 * y;
+//   y3 := 2.0 * y2;
 // end fooTuple;
 //
 // class mo
@@ -44,7 +45,7 @@ end mo;
 //   Real xvar(start = 100.0);
 // equation
 //   xvar = der(xvar);
-//   (x, z) = fooTuple(xvar);
-//   y = fooTuple(der(xvar))[1];
+//   (x, z, _) = fooTuple(xvar);
+//   (y, _, _) = fooTuple(der(xvar));
 // end mo;
 // endResult

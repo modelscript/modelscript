@@ -12,15 +12,15 @@ model FunctionPartialDerivative3
   function df = der(f, x);
 
   Real y = df(0);
+  annotation(__OpenModelica_commandLineOptions="--newBackend");
 end FunctionPartialDerivative3;
 
 // Result:
 // Error processing file: FunctionPartialDerivative3.mo
-// [OpenModelica/flattening/modelica/scodeinst/FunctionPartialDerivative3.mo:12:3-12:26:writable] Error: 'x' in partial derivative of 'FunctionPartialDerivative3.f' is not a scalar Real input parameter of the function.
-// Error: Error occurred while flattening model FunctionPartialDerivative3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionPartialDerivative3.mo:12:3-12:26:writable] Error: 'x' in partial derivative of 'FunctionPartialDerivative3.f' is not a scalar Real input parameter of the function.
 //
 // Execution failed!
 // endResult

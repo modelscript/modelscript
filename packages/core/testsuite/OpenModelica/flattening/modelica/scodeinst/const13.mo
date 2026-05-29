@@ -21,11 +21,10 @@ end C;
 
 // Result:
 // Error processing file: const13.mo
-// [<interactive>:19:3-19:17:writable] Error: Found component 'y' in composite name 'a.B.y', expected class.
-// Error: Error occurred while flattening model C
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/const13.mo:19:3-19:17:writable] Error: Found component 'y' in composite name 'a.B.y', expected class.
 //
 // Execution failed!
 // endResult

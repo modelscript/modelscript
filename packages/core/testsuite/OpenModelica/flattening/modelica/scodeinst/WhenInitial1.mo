@@ -11,11 +11,10 @@ end WhenInitial1;
 
 // Result:
 // Error processing file: WhenInitial1.mo
-// [OpenModelica/flattening/modelica/scodeinst/WhenInitial1.mo:8:3-9:11:writable] Error: when-clause is not allowed in initial section.
-// Error: Error occurred while flattening model WhenInitial1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/WhenInitial1.mo:8:3-9:11:writable] Error: when-clause is not allowed in initial section.
 //
 // Execution failed!
 // endResult

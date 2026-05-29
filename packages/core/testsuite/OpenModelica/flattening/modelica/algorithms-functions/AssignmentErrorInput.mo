@@ -10,15 +10,16 @@ end Func;
 model AssignmentErrorInput
 equation
   Func(2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AssignmentErrorInput;
 
 // Result:
 // Error processing file: AssignmentErrorInput.mo
-// [OpenModelica/flattening/modelica/algorithms-functions/AssignmentErrorInput.mo:7:3-7:11:writable] Error: Trying to assign to input component x.
-// Error: Error occurred while flattening model AssignmentErrorInput
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/algorithms-functions/AssignmentErrorInput.mo:7:3-7:11:writable] Error: Trying to assign to input component x.
+// Error: Error occurred while flattening model AssignmentErrorInput
 //
 // Execution failed!
 // endResult

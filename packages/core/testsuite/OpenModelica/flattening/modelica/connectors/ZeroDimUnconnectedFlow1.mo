@@ -13,6 +13,7 @@ end C;
 
 model ZeroDimUnconnectedFlow1
   C c[0];
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ZeroDimUnconnectedFlow1;
 
 // Result:

@@ -18,27 +18,15 @@ end power;
 model FunctionRecordArg7
   parameter flowParametersInternal pCur1(n = 3, V_flow = ones(3));
   parameter Real powEu_internal[:] = power(pressure = pCur1);
+  annotation(__OpenModelica_commandLineOptions="-d=evaluateAllParameters");
 end FunctionRecordArg7;
 
 // Result:
-// function flowParametersInternal "Automatically generated record constructor for flowParametersInternal"
-//   input Integer n;
-//   input Real[n] V_flow;
-//   output flowParametersInternal res;
-// end flowParametersInternal;
+// Error processing file: FunctionRecordArg7.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
-// function power
-//   input flowParametersInternal pressure;
-//   output Real[11] power;
-// algorithm
-//   power := array(pressure.V_flow[pressure.n] * /*Real*/(i) for i in 0:10);
-// end power;
+// [/var/lib/jenkins2/ws/LINUX_BUILDS/tmp.build/openmodelica-1.26.7~1-g2b913cc/OMCompiler/Compiler/NFFrontEnd/NFCeval.mo:1140:9-1140:67:writable] Error: Internal error NFCeval.evalBinaryMul failed to evaluate ‘({1.0, 1.0, 1.0})[pressure.n] * 0.0‘
 //
-// class FunctionRecordArg7
-//   final parameter Integer pCur1.n = 3;
-//   parameter Real pCur1.V_flow[1] = 1.0;
-//   parameter Real pCur1.V_flow[2] = 1.0;
-//   parameter Real pCur1.V_flow[3] = 1.0;
-//   parameter Real[11] powEu_internal = power(pCur1);
-// end FunctionRecordArg7;
+// Execution failed!
 // endResult

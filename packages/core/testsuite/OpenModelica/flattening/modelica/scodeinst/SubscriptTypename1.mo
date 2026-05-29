@@ -13,11 +13,10 @@ end SubscriptTypename1;
 
 // Result:
 // Error processing file: SubscriptTypename1.mo
-// [OpenModelica/flattening/modelica/scodeinst/SubscriptTypename1.mo:9:3-11:10:writable] Error: Wrong number of subscripts in Boolean[1] (1 subscripts for 0 dimensions).
-// Error: Error occurred while flattening model SubscriptTypename1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/SubscriptTypename1.mo:9:3-11:10:writable] Error: Wrong number of subscripts in Boolean[1] (1 subscripts for 0 dimensions).
 //
 // Execution failed!
 // endResult

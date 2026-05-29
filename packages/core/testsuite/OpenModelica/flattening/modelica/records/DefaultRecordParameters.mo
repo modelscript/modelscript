@@ -29,16 +29,36 @@ package BodyModel
   record Extended2
     extends BodyModel.BodyGeometry(volume=6.0);
   end Extended2;
+
 end BodyModel;
 
 model DefaultRecordParameters
   BodyModel.Body body1(data=BodyModel.Extended());
   BodyModel.Body body2(data=BodyModel.Extended(length=3,volume=5));
   BodyModel.Body body3(data=BodyModel.Extended2());
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end DefaultRecordParameters;
 
 
 // Result:
+// function BodyModel.BodyGeometry "Automatically generated record constructor for BodyModel.BodyGeometry"
+//   input Real length = 5.0;
+//   input Real volume = 10.0;
+//   output BodyGeometry res;
+// end BodyModel.BodyGeometry;
+//
+// function BodyModel.Extended "Automatically generated record constructor for BodyModel.Extended"
+//   input Real length = 0.09;
+//   input Real volume = 2.1;
+//   output Extended res;
+// end BodyModel.Extended;
+//
+// function BodyModel.Extended2 "Automatically generated record constructor for BodyModel.Extended2"
+//   input Real length = 5.0;
+//   input Real volume = 6.0;
+//   output Extended2 res;
+// end BodyModel.Extended2;
+//
 // class DefaultRecordParameters
 //   parameter Real body1.data.length = 0.09;
 //   parameter Real body1.data.volume = 2.1;

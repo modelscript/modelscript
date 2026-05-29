@@ -11,10 +11,11 @@ end m;
 
 model RedeclareVisibility
   extends m(replaceable Real x = 2.0);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RedeclareVisibility;
 
 // Result:
 // class RedeclareVisibility
-//   protected Real x = 2.0;
+//   Real x = 2.0;
 // end RedeclareVisibility;
 // endResult

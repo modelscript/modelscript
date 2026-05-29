@@ -17,5 +17,4 @@ end InnerOuterMissing6;
 // class InnerOuterMissing6
 //   Real x;
 // end InnerOuterMissing6;
-// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing6.mo:7:3-7:15:writable] Warning: An inner declaration for outer component x could not be found and was automatically generated.
 // endResult

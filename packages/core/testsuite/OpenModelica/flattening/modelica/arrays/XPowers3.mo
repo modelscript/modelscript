@@ -13,6 +13,7 @@ model Xpowers3
 equation
   xpowers[1]=1;
   xpowers[2:n+1] = xpowers[1:n]*x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Xpowers3;
 
 
@@ -25,7 +26,7 @@ end Xpowers3;
 //   Real xpowers[4];
 //   Real xpowers[5];
 //   Real xpowers[6];
-//   final parameter Integer n = 5;
+//   parameter Integer n = 5;
 // equation
 //   xpowers[1] = 1.0;
 //   xpowers[2] = xpowers[1] * x;

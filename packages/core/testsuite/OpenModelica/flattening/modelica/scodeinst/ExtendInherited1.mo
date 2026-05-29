@@ -17,12 +17,11 @@ end ExtendInherited1;
 
 // Result:
 // Error processing file: ExtendInherited1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExtendInherited1.mo:15:3-15:12:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/ExtendInherited1.mo:9:3-11:8:writable] Error: Found other base class for extends A after instantiating extends.
-// Error: Error occurred while flattening model ExtendInherited1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExtendInherited1.mo:15:3-15:12:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ExtendInherited1.mo:9:3-11:8:writable] Error: Found other base class for extends A after instantiating extends.
 //
 // Execution failed!
 // endResult

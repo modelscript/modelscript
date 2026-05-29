@@ -77,3 +77,13 @@ package TestPackageInheritance
     end Test_f_wrong;
   end Test;
 end TestPackageInheritance;
+
+// Result:
+// Error processing file: TestPackageInheritance.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/redeclare/TestPackageInheritance.mo:1:1-79:27:writable] Error: Cannot instantiate TestPackageInheritance due to class specialization package.
+//
+// Execution failed!
+// endResult

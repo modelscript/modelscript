@@ -10,11 +10,10 @@ end CevalAcos2;
 
 // Result:
 // Error processing file: CevalAcos2.mo
-// [OpenModelica/flattening/modelica/scodeinst/CevalAcos2.mo:8:3-8:31:writable] Error: Argument 1.3 of acos is out of range (-1 <= x <= 1)
-// Error: Error occurred while flattening model CevalAcos2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/CevalAcos2.mo:8:3-8:31:writable] Error: Argument 1.3 of acos is out of range (-1 <= x <= 1)
 //
 // Execution failed!
 // endResult

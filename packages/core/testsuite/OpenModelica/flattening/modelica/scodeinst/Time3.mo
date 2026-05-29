@@ -15,11 +15,10 @@ end Time3;
 
 // Result:
 // Error processing file: Time3.mo
-// [OpenModelica/flattening/modelica/scodeinst/Time3.mo:9:3-9:12:writable] Error: time is not allowed in a function.
-// Error: Error occurred while flattening model Time3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Time3.mo:9:3-9:12:writable] Error: time is not allowed in a function.
 //
 // Execution failed!
 // endResult

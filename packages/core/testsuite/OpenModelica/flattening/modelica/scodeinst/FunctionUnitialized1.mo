@@ -30,6 +30,4 @@ end FunctionUnitialized1;
 // class FunctionUnitialized1
 //   Real y = FunctionUnitialized1.f(time);
 // end FunctionUnitialized1;
-// [OpenModelica/flattening/modelica/scodeinst/FunctionUnitialized1.mo:15:6-15:20:writable] Warning: z was used before it was defined (given a value). Additional such uses may exist for the variable, but some messages were suppressed.
-// [OpenModelica/flattening/modelica/scodeinst/FunctionUnitialized1.mo:15:6-15:20:writable] Warning: y was used before it was defined (given a value). Additional such uses may exist for the variable, but some messages were suppressed.
 // endResult

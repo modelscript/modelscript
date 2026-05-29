@@ -31,6 +31,7 @@ model FunctionEval8
 equation
   y = test3(x1+x2);
   z = test(y);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionEval8;
 
 
@@ -67,14 +68,14 @@ end FunctionEval8;
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := cos(x) + 4.0;
+//   y := 4.0 + cos(x);
 // end test;
 //
 // function test3
 //   input Real x;
 //   output Real y;
 // algorithm
-//   y := x + 7.0;
+//   y := 7.0 + x;
 // end test3;
 //
 // class FunctionEval8

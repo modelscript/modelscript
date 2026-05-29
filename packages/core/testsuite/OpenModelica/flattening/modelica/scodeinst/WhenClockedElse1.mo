@@ -17,11 +17,10 @@ end WhenClockedElse1;
 
 // Result:
 // Error processing file: WhenClockedElse1.mo
-// [OpenModelica/flattening/modelica/scodeinst/WhenClockedElse1.mo:9:3-15:11:writable] Error: Clocked when equation can not contain elsewhen part.
-// Error: Error occurred while flattening model WhenClockedElse1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/WhenClockedElse1.mo:9:3-15:11:writable] Error: Clocked when equation can not contain elsewhen part.
 //
 // Execution failed!
 // endResult

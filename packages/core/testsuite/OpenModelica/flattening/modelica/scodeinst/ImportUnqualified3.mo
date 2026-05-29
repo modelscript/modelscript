@@ -10,6 +10,7 @@ package A
       y := x;
     end f;
   end B;
+  
 end A;
 
 model ImportUnqualified3

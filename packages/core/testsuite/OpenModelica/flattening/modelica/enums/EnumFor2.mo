@@ -17,6 +17,7 @@ equation
   for i in E loop
     c1.e[i] = c2.e[i];
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EnumFor2;
 
 // Result:

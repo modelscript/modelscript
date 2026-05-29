@@ -61,16 +61,19 @@ model ComplexTest
   Complex c2[3, 3] = {{c1, c1, c1}, {c1, c1, c1}, {c1, c1, c1}};
   Complex c3[3, 1] = {{c1}, {c1}, {c1}};
   Complex c4[3, 1] = c2 * c3;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ComplexTest;
 
 // Result:
 // Error processing file: MatrixMultiplicationRecordTypes.mo
-// Error: Failed to load package MatrixMultiplicationRecordTypes (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class MatrixMultiplicationRecordTypes not found in scope <top>.
-// Error: Error occurred while flattening model MatrixMultiplicationRecordTypes
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/records/MatrixMultiplicationRecordTypes.mo:63:3-63:29:writable] Error: Type mismatch in modifier of component c4, declared type Complex[3,1], got modifier {{Complex.'+'(Complex.'*'.multiply(c2[1,3], c3[3,1]), Complex.'+'(Complex.'*'.multiply(c2[1,2], c3[2,1]), Complex.'*'.multiply(c2[1,1], c3[1,1])))}, {Complex.'+'(Complex.'*'.multiply(c2[2,3], c3[3,1]), Complex.'+'(Complex.'*'.multiply(c2[2,2], c3[2,1]), Complex.'*'.multiply(c2[2,1], c3[1,1])))}, {Complex.'+'(Complex.'*'.multiply(c2[3,3], c3[3,1]), Complex.'+'(Complex.'*'.multiply(c2[3,2], c3[2,1]), Complex.'*'.multiply(c2[3,1], c3[1,1])))}} of type record Complex
+//   Real re;
+//   Real im;
+// end Complex;[3, 1].
+// Error: Error occurred while flattening model ComplexTest
 //
 // Execution failed!
 // endResult

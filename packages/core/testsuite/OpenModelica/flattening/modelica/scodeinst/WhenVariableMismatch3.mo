@@ -19,11 +19,10 @@ end WhenVariableMismatch3;
 
 // Result:
 // Error processing file: WhenVariableMismatch3.mo
-// [OpenModelica/flattening/modelica/scodeinst/WhenVariableMismatch3.mo:10:5-14:11:writable] Error: The branches of an if-equation inside a when-equation must have the same set of component references on the left-hand side.
-// Error: Error occurred while flattening model WhenVariableMismatch3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/WhenVariableMismatch3.mo:10:5-14:11:writable] Error: The branches of an if-equation inside a when-equation must have the same set of component references on the left-hand side.
 //
 // Execution failed!
 // endResult

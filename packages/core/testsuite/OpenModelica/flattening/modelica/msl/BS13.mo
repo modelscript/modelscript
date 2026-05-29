@@ -959,6 +959,7 @@ model BS13
 
 equation
   connect(integerToReal1.inPort,integerConstant1.outPort) annotation(Line(visible=true,points={{-35.38,24.43},{-57.89,25.35}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS13;
 
 // class BS13
@@ -980,16 +981,22 @@ end BS13;
 // integerToReal1.inPort.signal[1] = integerConstant1.outPort.signal[1];
 // end BS13;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BS13
+//   parameter Integer integerToReal1.n = 1 "Number of input signals (= number of output signals)";
+//   parameter Integer integerToReal1.outPort.n = integerToReal1.n "Dimension of signal vector";
+//   Real integerToReal1.outPort.signal[1] "Real output signals";
+//   parameter Integer integerToReal1.inPort.n = integerToReal1.n "Dimension of signal vector";
+//   Integer integerToReal1.inPort.signal[1] "Integer input signals";
+//   parameter Integer integerConstant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer integerConstant1.outPort.n = integerConstant1.nout "Dimension of signal vector";
+//   Integer integerConstant1.outPort.signal[1] "Integer output signals";
+//   Integer integerConstant1.y[1];
+//   parameter Integer integerConstant1.k[1] = 1 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   integerToReal1.outPort.signal[1] = /*Real*/(integerToReal1.inPort.signal[1]);
+//   integerConstant1.outPort.signal[1] = integerConstant1.k[1];
+//   integerConstant1.y[1] = integerConstant1.outPort.signal[1];
+//   assert(integerToReal1.inPort.n == integerConstant1.outPort.n, "automatically generated from connect");
+//   integerConstant1.outPort.signal[1] = integerToReal1.inPort.signal[1];
+// end BS13;
 // endResult

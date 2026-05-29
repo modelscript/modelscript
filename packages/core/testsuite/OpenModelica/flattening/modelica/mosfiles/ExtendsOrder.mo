@@ -33,3 +33,11 @@ end TB2;
 model Order2
   TB2.BP2_1 m;
 end Order2;
+
+// Result:
+// class Order2
+//   final parameter Integer m.nXi = 2;
+//   Real m.Xi[1](start = 1.0);
+//   Real m.Xi[2](start = 2.0);
+// end Order2;
+// endResult

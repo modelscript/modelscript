@@ -96,6 +96,7 @@ and the accompanying <b>disclaimer</b>
 </html>"));
 
       external "C" y=sin(u) ;
+
     end sin;
 
     function asin "inverse sine (-1 <= u <= 1)"
@@ -107,6 +108,7 @@ and the accompanying <b>disclaimer</b>
 </html>"));
 
       external "C" y=asin(u) ;
+
     end asin;
 
     function exp "exponential, base e"
@@ -116,6 +118,7 @@ and the accompanying <b>disclaimer</b>
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-90,-80.3976},{68,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{90,-80.3976},{68,-72.3976},{68,-88.3976},{90,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, fillColor={192,192,192}, extent={{-86,2},{-14,50}}, textString="exp", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-100,-80.3976},{84,-80.3976}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{100,-80.3976},{84,-74.3976},{84,-86.3976},{100,-80.3976}}),Line(visible=true, points={{-80,-80},{-31,-77.9},{-6.03,-74},{10.9,-68.4},{23.7,-61},{34.2,-51.6},{43,-40.3},{50.3,-27.8},{56.7,-13.5},{62.3,2.23},{67.1,18.6},{72,38.2},{76,57.6},{80,80}}, smooth=Smooth.Bezier),Text(visible=true, extent={{-31,72},{-11,88}}, textString="20", fontName="Arial"),Text(visible=true, extent={{-92,-103},{-72,-83}}, textString="-3", fontName="Arial"),Text(visible=true, extent={{70,-103},{90,-83}}, textString="3", fontName="Arial"),Text(visible=true, extent={{-18,-73},{2,-53}}, textString="1", fontName="Arial"),Text(visible=true, fillColor={160,160,160}, extent={{96,-102},{116,-82}}, textString="u", fontName="Arial")}));
 
       external "C" y=exp(u) ;
+
     end exp;
 
     partial function baseIcon1 "Basic icon for mathematical function with y-axis on left side"
@@ -125,6 +128,7 @@ and the accompanying <b>disclaimer</b>
     partial function baseIcon2 "Basic icon for mathematical function with y-axis in middle"
       annotation(Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{0,80},{-8,80}}, color={192,192,192}),Line(visible=true, points={{0,-80},{-8,-80}}, color={192,192,192}),Line(visible=true, points={{0,-90},{0,84}}, color={192,192,192}),Text(visible=true, fillColor={160,160,160}, extent={{5,90},{25,110}}, textString="y", fontName="Arial"),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,100},{-6,84},{6,84},{0,100}})}), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{100,100}}),Line(visible=true, points={{0,-80},{0,68}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{0,90},{-8,68},{8,68},{0,90}}),Text(visible=true, fillColor={0,0,255}, fillPattern=FillPattern.Solid, extent={{-150,110},{150,150}}, textString="%name", fontName="Arial")}));
     end baseIcon2;
+
   end Math;
 
   package Electrical "Library for electrical models (analog, digital, machines, multi-phase)"
@@ -227,6 +231,7 @@ Modelica in file \"Modelica/package.mo\".</i><br>
 </ul>
 </html>"), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-80,-90},{-80,84}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{-80,100},{-86,84},{-74,84},{-80,100}}),Line(visible=true, points={{-99,-40},{85,-40}}, color={192,192,192}),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{101,-40},{85,-34},{85,-46},{101,-40}}),Line(visible=true, points={{-40,0},{-31.6,34.2},{-26.1,53.1},{-21.3,66.4},{-17.1,74.6},{-12.9,79.1},{-8.64,79.8},{-4.42,76.6},{-0.2,69.7},{4.02,59.4},{8.84,44.1},{14.9,21.2},{27.5,-30.8},{33,-50.2},{37.8,-64.2},{42,-73.1},{46.2,-78.4},{50.5,-80},{54.7,-77.6},{58.9,-71.5},{63.1,-61.9},{67.9,-47.2},{74,-24.8},{80,0}}, thickness=0.5, smooth=Smooth.Bezier),Line(visible=true, points={{-40.5,-2.22e-16},{-79.5,-2.22e-16}}, thickness=0.5),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-106,-29},{-60,-11}}, textString="offset", fontName="Arial"),Line(visible=true, points={{-41,-2},{-41,-40}}, color={192,192,192}, pattern=LinePattern.Dot),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-60,-61},{-14,-43}}, textString="startTime", fontName="Arial"),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{84,-72},{108,-52}}, textString="time", fontName="Arial"),Line(visible=true, points={{-9,79},{43,79}}, color={192,192,192}, pattern=LinePattern.Dot),Line(visible=true, points={{-42,-1},{50,0}}, color={192,192,192}, pattern=LinePattern.Dot),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{33,80},{30,67},{37,67},{33,80}}),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{37,39},{83,57}}, textString="V", fontName="Arial"),Polygon(visible=true, lineColor={192,192,192}, fillColor={192,192,192}, fillPattern=FillPattern.Solid, points={{33,1},{30,14},{36,14},{33,1},{33,1}}),Line(visible=true, points={{33,79},{33,0}}, color={192,192,192}),Text(visible=true, lineColor={0,0,255}, fillColor={160,160,160}, extent={{-70,82.5},{-5,108.5}}, textString="v = p.v - n.v", fontName="Arial")}), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-66,0},{-56.2,29.9},{-49.8,46.5},{-44.2,58.1},{-39.3,65.2},{-34.3,69.2},{-29.4,69.8},{-24.5,67},{-19.6,61},{-14.6,52},{-9,38.6},{-1.98,18.6},{12.79,-26.9},{19.1,-44},{24.8,-56.2},{29.7,-64},{34.6,-68.6},{39.5,-70},{44.5,-67.9},{49.4,-62.5},{54.3,-54.1},{59.9,-41.3},{67,-21.7},{74,0}}, color={192,192,192}, smooth=Smooth.Bezier)}));
         end SineVoltage;
+
       end Sources;
 
       package Interfaces "Connectors and partial models for Analog electrical components"
@@ -399,6 +404,7 @@ This current is provided explicitly as current i.
         equation
           v=signalSource.y;
         end VoltageSource;
+
       end Interfaces;
 
       package Ideal "Ideal electrical elements such as switches, diode, transformer, operational amplifier"
@@ -463,6 +469,7 @@ where <i>n</i> is a real number called the turns ratio.
           v1=n*v2;
           i2=-n*i1;
         end IdealTransformer;
+
       end Ideal;
 
       package Basic "Basic electrical components such as resistor, capacitor, transformer"
@@ -556,7 +563,9 @@ The Inductance <i>L</i> is allowed to be positive, zero, or negative.
         equation
           L*der(i)=v;
         end Inductor;
+
       end Basic;
+
     end Analog;
 
     package MultiPhase "Library for electrical components with 2, 3 or more phases"
@@ -687,6 +696,7 @@ Contains m inductors (Modelica.Electrical.Analog.Basic.Inductor)
           connect(inductor.n,plug_n.pin) annotation(Line(visible=true, origin={55,0}, points={{-45,0},{45,0}}, color={0,0,255}));
           connect(inductor.p,plug_p.pin) annotation(Line(visible=true, origin={-55,0}, points={{45,0},{-45,0}}, color={0,0,255}));
         end Inductor;
+
       end Basic;
 
       package Examples "Multiphase test examples"
@@ -765,6 +775,7 @@ Simulate for 1 second (2 periods) and compare voltages and currents of source, t
           connect(StarS1.plug_p,SineVoltage1.plug_n) annotation(Line(visible=true, points={{-90,-52.5},{-90,20},{-90,20}}, color={0,0,255}));
           connect(RL1.plug_n,StarL1.plug_p) annotation(Line(visible=true, points={{90,20},{90,-52.5}}, color={0,0,255}));
         end TransformerYY;
+
       end Examples;
 
       package Ideal "Multiphase components with idealized behaviour"
@@ -818,6 +829,7 @@ Contains m ideal transformers (Modelica.Electrical.Analog.Ideal.IdealTransformer
           connect(plug_p2.pin,idealTransformer.p2) annotation(Line(visible=true, points={{100,100},{10,100},{10,5}}, color={0,0,255}));
           connect(plug_p1.pin,idealTransformer.p1) annotation(Line(visible=true, points={{-100,100},{-10,100},{-10,5}}, color={0,0,255}));
         end IdealTransformer;
+
       end Ideal;
 
       package Interfaces "Interfaces for electrical multiphase models"
@@ -938,6 +950,7 @@ Superclass of elements which have <b>four</b> electrical plugs.
           i1=plug_p1.pin.i;
           i2=plug_p2.pin.i;
         end FourPlug;
+
       end Interfaces;
 
       package Sources "Multiphase voltage and current sources"
@@ -999,8 +1012,11 @@ with a default phase shift of -(j-1)/m * 2*pi for j in 1:m.
           connect(sineVoltage.n,plug_n.pin) annotation(Line(visible=true, points={{10,0},{100,0}}, color={0,0,255}));
           connect(sineVoltage.p,plug_p.pin) annotation(Line(visible=true, points={{-10,0},{-100,0}}, color={0,0,255}));
         end SineVoltage;
+
       end Sources;
+
     end MultiPhase;
+
   end Electrical;
 
   package Blocks "Library for basic input/output control blocks (continuous, discrete, logical, table blocks)"
@@ -1149,6 +1165,7 @@ usually requires a trimming calculation.
       equation
         y=offset + (if time < startTime then 0 else amplitude*Modelica.Math.sin(2*pi*freqHz*(time - startTime) + phase));
       end Sine;
+
     end Sources;
 
     package Interfaces "Connectors and partial models for input/output blocks"
@@ -1234,7 +1251,9 @@ generated signal.
 </p>
 </html>"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
       end SignalSource;
+
     end Interfaces;
+
   end Blocks;
 
   package SIunits "Type and unit definitions based on SI units according to ISO 31-1992"
@@ -1368,6 +1387,7 @@ still kept in Modelica.SIunits.</p>
 </HTML>
 "), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Text(visible=true, extent={{-66,-67},{52,-13}}, textString="[rev/min]", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
       end NonSIunits;
+
     end Conversions;
 
     type Angle= Real(final quantity="Angle", final unit="rad", displayUnit="deg") annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
@@ -1450,6 +1470,7 @@ and the accompanying <b>disclaimer</b>
     partial model Example "Icon for an example model"
       annotation(Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Rectangle(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, extent={{-100,-100},{80,50}}),Polygon(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, points={{-100,50},{-80,70},{100,70},{80,50},{-100,50}}),Polygon(visible=true, fillColor={255,255,255}, fillPattern=FillPattern.Solid, points={{100,70},{100,-80},{80,-100},{80,50},{100,70}}),Text(visible=true, fillColor={0,0,255}, fillPattern=FillPattern.Solid, extent={{-85,-85},{65,35}}, textString="Example", fontName="Arial"),Text(visible=true, fillColor={255,0,0}, extent={{-120,73},{120,132}}, textString="%name", fontName="Arial")}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
     end Example;
+
   end Icons;
 
   package Constants "Mathematical constants and constants of nature (e.g., pi, eps, R, sigma)"
@@ -1532,7 +1553,19 @@ and the accompanying <b>disclaimer</b>
 </ul>
 </html>"), Icon(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10}), graphics={Line(visible=true, points={{-34,-38},{12,-38}}, thickness=0.5),Line(visible=true, points={{-20,-38},{-24,-48},{-28,-56},{-34,-64}}, thickness=0.5),Line(visible=true, points={{-2,-38},{2,-46},{8,-56},{14,-64}}, thickness=0.5)}), Diagram(coordinateSystem(extent={{-100,100},{100,-100}}, preserveAspectRatio=true, initialScale=0.1, grid={10,10})));
   end Constants;
+
 end Modelica;
 model Modelica_Electrical_MultiPhase_Examples_TransformerYY
   extends Modelica.Electrical.MultiPhase.Examples.TransformerYY;
 end Modelica_Electrical_MultiPhase_Examples_TransformerYY;
+
+// Result:
+// Error processing file: TransformerYYTotal.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/TransformerYYTotal.mo:1206:21-1206:284:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/mosfiles/TransformerYYTotal.mo:1207:9-1207:27:writable] Error: Class 'SignalType' in 'extends SignalType' is replaceable, the base class name must be transitively non-replaceable.
+//
+// Execution failed!
+// endResult

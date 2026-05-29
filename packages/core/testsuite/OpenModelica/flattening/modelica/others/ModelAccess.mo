@@ -17,6 +17,7 @@ model ModelAccess
 equation
   i1 = om.i1;
   i2 = om.i2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ModelAccess;
 
 // Result:

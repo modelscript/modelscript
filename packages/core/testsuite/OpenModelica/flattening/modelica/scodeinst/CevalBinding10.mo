@@ -15,12 +15,11 @@ end CevalBinding10;
 
 // Result:
 // Error processing file: CevalBinding10.mo
-// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:6:1-10:12:writable] Error: External function 'ext_fun' could not be found in any of the given shared libraries:
-// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:13:3-13:58:writable] Error: Failed to evaluate function: ext_fun.
-// Error: Error occurred while flattening model CevalBinding10
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:6:1-10:12:writable] Error: External function 'ext_fun' could not be found in any of the given shared libraries:
+// [OpenModelica/flattening/modelica/scodeinst/CevalBinding10.mo:13:3-13:58:writable] Error: Failed to evaluate function: ext_fun.
 //
 // Execution failed!
 // endResult

@@ -10,6 +10,7 @@ end SimpleConnector;
 
 model ConnectorSimple
   SimpleConnector sc;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectorSimple;
 
 // Result:

@@ -16,10 +16,11 @@ model AddReal1
   Real c;
 equation
   c = addReal1_(a, b);
+  annotation(__OpenModelica_commandLineOptions="+d=nogen -d=-newInst");
 end AddReal1;
 
 // Result:
-// impure function addReal1_
+// function addReal1_
 //   input Real x;
 //   input Real y;
 //   output Real res;

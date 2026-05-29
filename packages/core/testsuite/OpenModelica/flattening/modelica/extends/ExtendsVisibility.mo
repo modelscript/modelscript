@@ -15,6 +15,7 @@ end B;
 
 model ExtendsVisibility
   protected extends B;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExtendsVisibility;
 
 // Result:

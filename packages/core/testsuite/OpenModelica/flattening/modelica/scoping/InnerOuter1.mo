@@ -13,13 +13,11 @@ end A;
 class B
   inner Real T0=100;
   A a1, a2; // B.T0, B.a1.T0 and B.a2.T0 is the same variable
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
 // class B
 //   Real T0 = 100.0;
 // end B;
-// [<interactive>:10:3-10:16:writable] Warning: Components are deprecated in class.
-// [<interactive>:14:3-14:20:writable] Warning: Components are deprecated in class.
-// [<interactive>:15:3-15:11:writable] Warning: Components are deprecated in class.
 // endResult

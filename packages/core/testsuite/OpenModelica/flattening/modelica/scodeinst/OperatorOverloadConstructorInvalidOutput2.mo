@@ -25,11 +25,10 @@ end OperatorOverloadConstructorInvalidOutput2;
 
 // Result:
 // Error processing file: OperatorOverloadConstructorInvalidOutput2.mo
-// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadConstructorInvalidOutput2.mo:7:1-17:6:writable] Error: Operator C.'constructor' must have exactly one output.
-// Error: Error occurred while flattening model OperatorOverloadConstructorInvalidOutput2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadConstructorInvalidOutput2.mo:7:1-17:6:writable] Error: Operator C.'constructor' must have exactly one output.
 //
 // Execution failed!
 // endResult

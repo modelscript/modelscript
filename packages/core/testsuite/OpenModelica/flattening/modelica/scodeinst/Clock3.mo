@@ -13,11 +13,10 @@ end Clock3;
 
 // Result:
 // Error processing file: Clock3.mo
-// [OpenModelica/flattening/modelica/scodeinst/Clock3.mo:11:3-11:20:writable] Error: Component 'c' may not have a binding equation due to class specialization 'model'.
-// Error: Error occurred while flattening model Clock3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Clock3.mo:11:3-11:20:writable] Error: Component 'c' may not have a binding equation due to class specialization 'model'.
 //
 // Execution failed!
 // endResult

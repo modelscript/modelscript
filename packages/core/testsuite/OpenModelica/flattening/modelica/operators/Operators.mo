@@ -38,6 +38,7 @@ equation
   i1 = 4711;
   i2 = f(i1);
   i3 = if b then 36 else 37;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Operators;
 
 // Result:
@@ -45,7 +46,7 @@ end Operators;
 //   input Integer inInt;
 //   output Integer outInt;
 // algorithm
-//   outInt := inInt + 1138;
+//   outInt := 1138 + inInt;
 // end f;
 //
 // class Operators

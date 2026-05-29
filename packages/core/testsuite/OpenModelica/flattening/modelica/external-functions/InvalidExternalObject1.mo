@@ -23,6 +23,7 @@ class InvalidExternalObject1
   function otherFunc end otherFunc;
 
   Real x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InvalidExternalObject1;
 
 // function f
@@ -34,11 +35,11 @@ end InvalidExternalObject1;
 //
 // Result:
 // Error processing file: InvalidExternalObject1.mo
-// [OpenModelica/flattening/modelica/external-functions/InvalidExternalObject1.mo:25:3-25:9:writable] Error: External object InvalidExternalObject1 contains invalid element 'x'.
-// Error: Error occurred while flattening model InvalidExternalObject1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/external-functions/InvalidExternalObject1.mo:9:1-27:27:writable] Error: Invalid external object InvalidExternalObject1, contains invalid elements: extends A, otherFunc, x.
+// Error: Error occurred while flattening model InvalidExternalObject1
 //
 // Execution failed!
 // endResult

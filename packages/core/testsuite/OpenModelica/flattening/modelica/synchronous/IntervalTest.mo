@@ -8,15 +8,19 @@ model IntervalTest
 equation
   x = previous(x);
   y = interval(u);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end IntervalTest;
 
 // Result:
-// Error processing file: IntervalTest.mo
-// [OpenModelica/flattening/modelica/synchronous/IntervalTest.mo:10:3-10:18:writable] Error: Type mismatch in equation y = interval(u) of type Real[2] = Real.
-// Error: Error occurred while flattening model IntervalTest
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class IntervalTest
+//   Real y[1];
+//   Real y[2];
+//   Real u[1];
+//   Real u[2];
+//   Integer x(start = 0);
+// equation
+//   x = previous(x);
+//   y[1] = interval(u[1]);
+//   y[2] = interval(u[2]);
+// end IntervalTest;
 // endResult

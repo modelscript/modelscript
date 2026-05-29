@@ -11,17 +11,17 @@ model ExternalAlgorithm
   end b;
 algorithm
    b();
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExternalAlgorithm;
 
 // Result:
-// impure function ExternalAlgorithm.b
+// Error processing file: ErrorExternalAlgorithm.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
 //
+// [OpenModelica/flattening/modelica/algorithms-functions/ErrorExternalAlgorithm.mo:8:3-11:8:writable] Error: Element is not allowed in function context: algorithm
+// [OpenModelica/flattening/modelica/algorithms-functions/ErrorExternalAlgorithm.mo:13:4-13:7:writable] Error: Class b not found in scope ExternalAlgorithm (looking for a function or record).
+// Error: Error occurred while flattening model ExternalAlgorithm
 //
-//   external "C" sin();
-// end ExternalAlgorithm.b;
-//
-// class ExternalAlgorithm
-// algorithm
-//   ExternalAlgorithm.b();
-// end ExternalAlgorithm;
+// Execution failed!
 // endResult

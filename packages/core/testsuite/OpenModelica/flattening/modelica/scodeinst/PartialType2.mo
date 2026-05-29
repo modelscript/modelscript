@@ -15,12 +15,11 @@ end PartialType2;
 
 // Result:
 // Error processing file: PartialType2.mo
-// [OpenModelica/flattening/modelica/scodeinst/PartialType2.mo:10:1-10:12:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/PartialType2.mo:13:3-13:6:writable] Error: Component 'b' has partial type 'B'.
-// Error: Error occurred while flattening model PartialType2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/PartialType2.mo:10:1-10:12:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/PartialType2.mo:13:3-13:6:writable] Error: Component 'b' has partial type 'B'.
 //
 // Execution failed!
 // endResult

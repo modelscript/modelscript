@@ -31,5 +31,4 @@ end IfConnect4;
 //   c1.f = 0.0;
 //   c2.f = 0.0;
 // end IfConnect4;
-// [OpenModelica/flattening/modelica/scodeinst/IfConnect4.mo:13:3-13:36:writable] Warning: Parameter b has no value, and is fixed during initialization (fixed=true), using available start value (start=true) as default value.
 // endResult

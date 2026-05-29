@@ -14,12 +14,11 @@ end Visibility3;
 
 // Result:
 // Error processing file: Visibility3.mo
-// [OpenModelica/flattening/modelica/scodeinst/Visibility3.mo:7:13-7:19:writable] Error: Illegal access of protected element x.
-// [OpenModelica/flattening/modelica/scodeinst/Visibility3.mo:11:3-11:15:writable] Error: Variable a.x not found in scope Visibility3.
-// Error: Error occurred while flattening model Visibility3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Visibility3.mo:7:13-7:19:writable] Error: Illegal access of protected element x.
+// [OpenModelica/flattening/modelica/scodeinst/Visibility3.mo:11:3-11:15:writable] Error: Variable a.x not found in scope Visibility3.
 //
 // Execution failed!
 // endResult

@@ -18,6 +18,7 @@ algorithm
   if z > 10 then
     y := 500;
   end if;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CondAssign;
 
 

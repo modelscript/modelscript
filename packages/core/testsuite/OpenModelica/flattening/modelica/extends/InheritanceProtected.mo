@@ -11,16 +11,11 @@ end A;
 
 class B
   protected extends A;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
-// Error processing file: InheritanceProtected.mo
-// Error: Failed to load package InheritanceProtected (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InheritanceProtected not found in scope <top>.
-// Error: Error occurred while flattening model InheritanceProtected
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   protected parameter Real a;
+// end B;
 // endResult

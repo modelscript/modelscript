@@ -13,11 +13,10 @@ end BreakComponentInvalid4;
 
 // Result:
 // Error processing file: BreakComponentInvalid4.mo
-// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid4.mo:7:16-7:27:writable] Error: Invalid use of break on non-component 'start'.
-// Error: Error occurred while flattening model BreakComponentInvalid4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/BreakComponentInvalid4.mo:7:16-7:27:writable] Error: Invalid use of break on non-component 'start'.
 //
 // Execution failed!
 // endResult

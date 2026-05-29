@@ -12,14 +12,13 @@ end SizeInvalidArgs1;
 
 // Result:
 // Error processing file: SizeInvalidArgs1.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/SizeInvalidArgs1.mo:10:3-10:28:writable] Error: No matching function found for size(x, 1, 2).
 // Candidates are:
 //   size(Any[:, ...]) => Integer[:]
 //   size(Any[:, ...], Integer) => Integer
-// Error: Error occurred while flattening model SizeInvalidArgs1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

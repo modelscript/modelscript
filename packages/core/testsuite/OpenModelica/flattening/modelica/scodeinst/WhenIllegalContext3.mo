@@ -15,11 +15,10 @@ end WhenIllegalContext3;
 
 // Result:
 // Error processing file: WhenIllegalContext3.mo
-// [OpenModelica/flattening/modelica/scodeinst/WhenIllegalContext3.mo:10:5-12:13:writable] Error: A when-statement may not be used inside a function or a while, if, or for-clause.
-// Error: Error occurred while flattening model WhenIllegalContext3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/WhenIllegalContext3.mo:10:5-12:13:writable] Error: A when-statement may not be used inside a function or a while, if, or for-clause.
 //
 // Execution failed!
 // endResult

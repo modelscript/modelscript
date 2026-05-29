@@ -43,6 +43,7 @@ equation
   b = false >= true;
   b = true >= false;
   b = true >= true;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConstantLogicalRelations;
 
 // Result:

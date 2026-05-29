@@ -20,11 +20,10 @@ end A;
 
 // Result:
 // Error processing file: inst4.mo
-// [<interactive>:12:1-15:11:writable] Error: A class extending from builtin type Real may not have other elements.
-// Error: Error occurred while flattening model A
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/inst4.mo:12:1-15:11:writable] Error: A class extending from builtin type Real may not have other elements.
 //
 // Execution failed!
 // endResult

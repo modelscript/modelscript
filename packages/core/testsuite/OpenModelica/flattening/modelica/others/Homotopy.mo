@@ -11,3 +11,10 @@ model HomotopyTest
   parameter Real p = homotopy(a + 1, a);
 end HomotopyTest;
 
+
+// Result:
+// class HomotopyTest
+//   parameter Real a = 20.0;
+//   parameter Real p = homotopy(a + 1.0, a);
+// end HomotopyTest;
+// endResult

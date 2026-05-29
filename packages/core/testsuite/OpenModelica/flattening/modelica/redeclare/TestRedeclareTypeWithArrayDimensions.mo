@@ -19,10 +19,12 @@ package RedeclareTypeWithArrayDimensions
     parameter Real x[:,2] = [0, 1];
     foo bletch(u=x, redeclare type paramType = Real[size(x,1),2]);
   end bar;
+
 end RedeclareTypeWithArrayDimensions;
 
 model TestRedeclareTypeWithArrayDimensions
   extends RedeclareTypeWithArrayDimensions.bar;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end TestRedeclareTypeWithArrayDimensions;
 
 // Result:
@@ -34,7 +36,8 @@ end TestRedeclareTypeWithArrayDimensions;
 //   Real bletch.y[1,1];
 //   Real bletch.y[1,2];
 // equation
-//   bletch.u = x;
-//   bletch.y = array(array(sin(bletch.u[$i0,$i1]) for $i1 in 1:2) for $i0 in 1:1);
+//   bletch.u = {{x[1,1], x[1,2]}};
+//   bletch.y[1,1] = sin(bletch.u[1,1]);
+//   bletch.y[1,2] = sin(bletch.u[1,2]);
 // end TestRedeclareTypeWithArrayDimensions;
 // endResult

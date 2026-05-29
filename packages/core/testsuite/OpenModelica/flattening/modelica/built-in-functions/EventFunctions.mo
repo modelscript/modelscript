@@ -12,6 +12,7 @@ model EventFunctions
   Real r4 = ceil(4.5);
   Real r5 = floor(4.5);
   Real r6 = integer(4.5);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EventFunctions;
 
 // Result:

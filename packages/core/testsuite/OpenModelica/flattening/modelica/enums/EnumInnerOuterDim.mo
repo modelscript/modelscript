@@ -16,15 +16,16 @@ end Model1;
 block Model2
   inner parameter Real[E] p1;
   Model1 m1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Model2;
 
 // Result:
-// Error processing file: EnumInnerOuterDim.mo
-// [<interactive>:17:3-17:29:writable] Error: Parameter p1 has neither value nor start value, and is fixed during initialization (fixed=true).
-// Error: Error occurred while flattening model Model2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Model2
+//   parameter Real p1[E.A];
+//   parameter Real p1[E.B];
+//   parameter Real p1[E.C];
+//   parameter Real m1.p2[E.A] = p1[E.A];
+//   parameter Real m1.p2[E.B] = p1[E.B];
+//   parameter Real m1.p2[E.C] = p1[E.C];
+// end Model2;
 // endResult

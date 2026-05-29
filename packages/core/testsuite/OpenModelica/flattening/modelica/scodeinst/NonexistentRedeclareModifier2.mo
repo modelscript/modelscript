@@ -12,11 +12,10 @@ end NonexistentRedeclareModifier2;
 
 // Result:
 // Error processing file: NonexistentRedeclareModifier2.mo
-// [OpenModelica/flattening/modelica/scodeinst/NonexistentRedeclareModifier2.mo:10:13-10:29:writable] Error: Modified element x not found in class M.
-// Error: Error occurred while flattening model NonexistentRedeclareModifier2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/NonexistentRedeclareModifier2.mo:10:13-10:29:writable] Error: Modified element x not found in class M.
 //
 // Execution failed!
 // endResult

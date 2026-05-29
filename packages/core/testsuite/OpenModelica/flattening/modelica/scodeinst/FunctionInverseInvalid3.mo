@@ -28,11 +28,10 @@ end FunctionInverseInvalid3;
 
 // Result:
 // Error processing file: FunctionInverseInvalid3.mo
-// [OpenModelica/flattening/modelica/scodeinst/FunctionInverseInvalid3.mo:14:14-14:43:writable] Error: Invalid inverse annotation for 'f', only functions with exactly one output may have an inverse.
-// Error: Error occurred while flattening model FunctionInverseInvalid3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FunctionInverseInvalid3.mo:14:14-14:43:writable] Error: Invalid inverse annotation for 'f', only functions with exactly one output may have an inverse.
 //
 // Execution failed!
 // endResult

@@ -12,11 +12,10 @@ end SizeInvalidType3;
 
 // Result:
 // Error processing file: SizeInvalidType3.mo
-// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidType3.mo:10:3-10:28:writable] Error: The first argument of size must be an array expression.
-// Error: Error occurred while flattening model SizeInvalidType3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidType3.mo:10:3-10:28:writable] Error: The first argument of size must be an array expression.
 //
 // Execution failed!
 // endResult

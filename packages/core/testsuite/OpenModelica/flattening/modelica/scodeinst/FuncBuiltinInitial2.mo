@@ -11,11 +11,10 @@ end FuncBuiltinInitial2;
 
 // Result:
 // Error processing file: FuncBuiltinInitial2.mo
-// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinInitial2.mo:9:3-9:34:writable] Error: Component b of variability parameter has binding 'initial()' of higher variability discrete.
-// Error: Error occurred while flattening model FuncBuiltinInitial2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinInitial2.mo:9:3-9:34:writable] Error: Component b of variability parameter has binding 'initial()' of higher variability discrete.
 //
 // Execution failed!
 // endResult

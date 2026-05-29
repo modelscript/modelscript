@@ -7,18 +7,16 @@
 
 model Identity2
   Integer a[2, 2] = identity(2.0);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Identity2;
 
 // Result:
 // Error processing file: Identity2.mo
-// [OpenModelica/flattening/modelica/built-in-functions/Identity2.mo:9:3-9:34:writable] Error: Type mismatch for positional argument 1 in identity(arraySize=2.0). The argument has type:
-//   Real
-// expected type:
-//   Integer
-// Error: Error occurred while flattening model Identity2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/built-in-functions/Identity2.mo:9:3-9:34:writable] Error: First argument to identity in component <NO COMPONENT> must be Integer expression.
+// Error: Error occurred while flattening model Identity2
 //
 // Execution failed!
 // endResult

@@ -20,12 +20,10 @@ end Extends4;
 
 // Result:
 // Error processing file: Extends4.mo
-// [OpenModelica/flattening/modelica/scodeinst/Extends4.mo:10:3-10:6:writable] Error: Class C not found in scope A.
-// Error: Class Extends4.mo not found in scope <top>.
-// Error: Error occurred while flattening model Extends4.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Extends4.mo:10:3-10:6:writable] Error: Class C not found in scope A.
 //
 // Execution failed!
 // endResult

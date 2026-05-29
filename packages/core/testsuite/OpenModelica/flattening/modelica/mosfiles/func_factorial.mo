@@ -12,3 +12,13 @@ algorithm
 end Factorial;
 
 
+
+// Result:
+// Error processing file: func_factorial.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/func_factorial.mo:3:1-12:14:writable] Error: Cannot instantiate Factorial due to class specialization function.
+//
+// Execution failed!
+// endResult

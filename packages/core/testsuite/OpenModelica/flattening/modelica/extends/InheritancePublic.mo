@@ -11,16 +11,11 @@ end A;
 
 class B
   public extends A;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
-// Error processing file: InheritancePublic.mo
-// Error: Failed to load package InheritancePublic (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InheritancePublic not found in scope <top>.
-// Error: Error occurred while flattening model InheritancePublic
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class B
+//   parameter Real a;
+// end B;
 // endResult

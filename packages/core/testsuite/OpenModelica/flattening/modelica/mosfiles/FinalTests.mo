@@ -48,3 +48,14 @@ model test4
    type Distance = Real(final unit="m");
    parameter Distance di(unit="mm")=0.125;
 end test4;
+
+// Result:
+// Error processing file: FinalTests.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/FinalTests.mo:49:26-49:35:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/mosfiles/FinalTests.mo:48:31-48:39:writable] Error: Trying to override final element unit with modifier '= "mm"'.
+//
+// Execution failed!
+// endResult

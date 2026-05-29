@@ -13,6 +13,7 @@ model ModelSimple
   TestModel tm;
 equation
   tm.i = 1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ModelSimple;
 
 // Result:

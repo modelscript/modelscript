@@ -9,11 +9,10 @@ end InnerOuterMissing1;
 
 // Result:
 // Error processing file: InnerOuterMissing1.mo
-// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing1.mo:7:3-7:15:writable] Error: The model can't be instantiated due to top-level outer element 'x', it may only be used as part of a simulation model.
-// Error: Error occurred while flattening model InnerOuterMissing1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing1.mo:7:3-7:15:writable] Error: The model can't be instantiated due to top-level outer element 'x', it may only be used as part of a simulation model.
 //
 // Execution failed!
 // endResult

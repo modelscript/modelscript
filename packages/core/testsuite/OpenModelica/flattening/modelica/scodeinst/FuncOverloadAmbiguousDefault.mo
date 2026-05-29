@@ -27,14 +27,13 @@ end FuncOverloadAmbiguousDefault;
 
 // Result:
 // Error processing file: FuncOverloadAmbiguousDefault.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncOverloadAmbiguousDefault.mo:25:3-25:20:writable] Error: Ambiguous matching functions found for FuncOverloadAmbiguousDefault.OV(/*Integer*/ 1).
 // Candidates are:
 //   FuncOverloadAmbiguousDefault.G(Integer g1, Integer g2 = 1) => Integer
 //   FuncOverloadAmbiguousDefault.F(Integer f1) => Integer
-// Error: Error occurred while flattening model FuncOverloadAmbiguousDefault
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

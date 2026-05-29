@@ -9,6 +9,7 @@ type Voltage = Real(unit="V");
 
 model Type5
   Voltage v;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Type5;
 
 // Result:

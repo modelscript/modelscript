@@ -11,4 +11,15 @@ algorithm
     o := o + 1;
   end for;
 end testRangeLoop;
+
 end ZeroRange;
+
+// Result:
+// Error processing file: ZeroRange.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/ZeroRange.mo:1:1-15:14:writable] Error: Cannot instantiate ZeroRange due to class specialization package.
+//
+// Execution failed!
+// endResult

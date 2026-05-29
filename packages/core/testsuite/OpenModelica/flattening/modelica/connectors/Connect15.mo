@@ -18,6 +18,7 @@ model Connect15
   A t1,t2;
 equation
 connect(t1.p[1],t2.p[2]);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Connect15;
 
 // Result:
@@ -31,9 +32,9 @@ end Connect15;
 //   Real t2.p[2].i;
 //   Real t2.p[2].v;
 // equation
-//   t1.p[1].v = t2.p[2].v;
-//   t2.p[2].i + t1.p[1].i = 0.0;
 //   t1.p[2].i = 0.0;
+//   t1.p[1].i + t2.p[2].i = 0.0;
 //   t2.p[1].i = 0.0;
+//   t1.p[1].v = t2.p[2].v;
 // end Connect15;
 // endResult

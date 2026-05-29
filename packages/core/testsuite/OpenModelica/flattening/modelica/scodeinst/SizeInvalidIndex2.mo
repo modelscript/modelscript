@@ -12,11 +12,10 @@ end SizeInvalidIndex2;
 
 // Result:
 // Error processing file: SizeInvalidIndex2.mo
-// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidIndex2.mo:10:3-10:26:writable] Error: Invalid index -1 in call to size of x, valid index interval is [1,2].
-// Error: Error occurred while flattening model SizeInvalidIndex2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/SizeInvalidIndex2.mo:10:3-10:26:writable] Error: Invalid index -1 in call to size of x, valid index interval is [1,2].
 //
 // Execution failed!
 // endResult

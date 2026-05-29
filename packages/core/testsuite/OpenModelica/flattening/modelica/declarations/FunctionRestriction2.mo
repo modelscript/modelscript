@@ -16,11 +16,10 @@ end FunctionRestriction2;
 
 // Result:
 // Error processing file: FunctionRestriction2.mo
-// [OpenModelica/flattening/modelica/declarations/FunctionRestriction2.mo:10:3-10:9:writable] Error: Initial algorithm sections are not allowed in function.
-// Error: Error occurred while flattening model FunctionRestriction2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/declarations/FunctionRestriction2.mo:10:3-10:9:writable] Error: Initial algorithm sections are not allowed in function.
 //
 // Execution failed!
 // endResult

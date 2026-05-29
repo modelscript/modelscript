@@ -6,3 +6,10 @@ end BaseProperties;
 model BP
   extends BaseProperties(a = b);
 end BP;
+
+// Result:
+// class BP
+//   parameter Integer a = b;
+//   parameter Integer b = 1;
+// end BP;
+// endResult

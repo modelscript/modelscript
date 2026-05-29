@@ -20,6 +20,7 @@ end A;
 
 model Constant8
  extends A.B.test;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Constant8;
 
 // Result:

@@ -2261,3 +2261,13 @@ package Modelica
     type FaradayConstant = Real(final quantity = "FaradayConstant", final unit = "C/mol");
   end SIunits;
 end Modelica;
+
+// Result:
+// Error processing file: ThermoPower.Examples.BraytonCycle.ClosedLoopSimulator.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/ThermoPower.Examples.BraytonCycle.ClosedLoopSimulator.mo:877:1-2263:13:writable] Error: Cannot instantiate Modelica due to class specialization package.
+//
+// Execution failed!
+// endResult

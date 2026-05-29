@@ -20,14 +20,15 @@ end C;
 class ModifyConstant4
   B b;
   C c;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ModifyConstant4;
 // Result:
 // Error processing file: ModifyConstant4.mo
-// [OpenModelica/flattening/modelica/modification/ModifyConstant4.mo:13:7-13:16:writable] Error: Modified element A not found in class A.
-// Error: Error occurred while flattening model ModifyConstant4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/modification/ModifyConstant4.mo:13:3-13:17:writable] Error: Variable b.a: In modifier (A(c = 2.0), class or component c), class or component A not found in <A$b$a>.
+// Error: Error occurred while flattening model ModifyConstant4
 //
 // Execution failed!
 // endResult

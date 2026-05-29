@@ -12,11 +12,10 @@ end ArrayBoundsAlg1;
 
 // Result:
 // Error processing file: ArrayBoundsAlg1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ArrayBoundsAlg1.mo:10:3-10:12:writable] Error: Subscript '3' for dimension 1 (size = 2) of x is out of bounds.
-// Error: Error occurred while flattening model ArrayBoundsAlg1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ArrayBoundsAlg1.mo:10:3-10:12:writable] Error: Subscript '3' for dimension 1 (size = 2) of x is out of bounds.
 //
 // Execution failed!
 // endResult

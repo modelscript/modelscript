@@ -11,11 +11,10 @@ end AssertInvalid4;
 
 // Result:
 // Error processing file: AssertInvalid4.mo
-// [OpenModelica/flattening/modelica/scodeinst/AssertInvalid4.mo:9:3-9:37:writable] Error: Function argument level=level in call to assert has variability discrete which is not a parameter expression.
-// Error: Error occurred while flattening model AssertInvalid4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/AssertInvalid4.mo:9:3-9:37:writable] Error: Function argument level=level in call to assert has variability discrete which is not a parameter expression.
 //
 // Execution failed!
 // endResult

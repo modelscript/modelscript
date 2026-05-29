@@ -23,11 +23,10 @@ end FuncClassParam;
 
 // Result:
 // Error processing file: FuncClassParam.mo
-// [OpenModelica/flattening/modelica/scodeinst/FuncClassParam.mo:13:3-13:12:writable] Error: Invalid type A for function component a.
-// Error: Error occurred while flattening model FuncClassParam
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FuncClassParam.mo:13:3-13:12:writable] Error: Invalid type A for function component a.
 //
 // Execution failed!
 // endResult

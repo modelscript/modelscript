@@ -9,11 +9,10 @@ end BindingInvalidType2;
 
 // Result:
 // Error processing file: BindingInvalidType2.mo
-// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType2.mo:7:3-7:21:writable] Error: Type mismatch in binding 'x = {1, 2, 3}', expected array dimensions [], got [3].
-// Error: Error occurred while flattening model BindingInvalidType2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType2.mo:7:3-7:21:writable] Error: Type mismatch in binding 'x = {1, 2, 3}', expected array dimensions [], got [3].
 //
 // Execution failed!
 // endResult

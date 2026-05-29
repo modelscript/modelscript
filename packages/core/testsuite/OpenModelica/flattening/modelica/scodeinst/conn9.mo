@@ -23,5 +23,4 @@ end A;
 //   c.f = 0.0;
 //   c.s = 0.0;
 // end A;
-// [<interactive>:13:3-13:11:writable] Warning: Connector c is not balanced: The number of potential variables (0) is not equal to the number of flow variables (3).
 // endResult

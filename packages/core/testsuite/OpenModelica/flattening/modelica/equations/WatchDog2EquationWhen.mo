@@ -48,6 +48,7 @@ equation
     connect(turnOn.dOutput,watchdog.dOn);
     connect(turnOff.dOutput,watchdog.dOff);
     connect(deadlineEmitter.dOutput, watchdog.dDeadline);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WatchDogSystem2;
 
 
@@ -66,9 +67,6 @@ end WatchDogSystem2;
 //   Real watchdog.internalTime1;
 //   Real watchdog.internalTime2;
 // equation
-//   turnOn.dOutput.signal = watchdog.dOn.signal;
-//   turnOff.dOutput.signal = watchdog.dOff.signal;
-//   deadlineEmitter.dOutput.signal = watchdog.dDeadline.signal;
 //   turnOn.dOutput.signal = time > turnOn.eventTime;
 //   turnOff.dOutput.signal = time > turnOff.eventTime;
 //   deadlineEmitter.dOutput.signal = time > deadlineEmitter.eventTime;
@@ -81,10 +79,8 @@ end WatchDogSystem2;
 //   when change(watchdog.dDeadline.signal) and time > watchdog.internalTime1 and watchdog.internalTime1 > watchdog.internalTime2 then
 //     watchdog.dAlarm.signal = true;
 //   end when;
+//   turnOn.dOutput.signal = watchdog.dOn.signal;
+//   turnOff.dOutput.signal = watchdog.dOff.signal;
+//   deadlineEmitter.dOutput.signal = watchdog.dDeadline.signal;
 // end WatchDogSystem2;
-// [<interactive>:15:3-15:20:writable] Warning: Connector dOutput is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
-// [<interactive>:21:4-21:17:writable] Warning: Connector dOn is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
-// [<interactive>:22:4-22:18:writable] Warning: Connector dOff is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
-// [<interactive>:23:4-23:23:writable] Warning: Connector dDeadline is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
-// [<interactive>:24:4-24:20:writable] Warning: Connector dAlarm is not balanced: The number of potential variables (1) is not equal to the number of flow variables (0).
 // endResult

@@ -21,6 +21,7 @@ class A
   T3 b3;
   T4 b4;
   T5 b5;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 // Result:
 // class A
@@ -31,10 +32,4 @@ end A;
 //   String b4(quantity = "name");
 //   Boolean b5(quantity = "foo");
 // end A;
-// [<interactive>:18:3-18:23:writable] Warning: Components are deprecated in class.
-// [<interactive>:19:3-19:6:writable] Warning: Components are deprecated in class.
-// [<interactive>:20:3-20:8:writable] Warning: Components are deprecated in class.
-// [<interactive>:21:3-21:8:writable] Warning: Components are deprecated in class.
-// [<interactive>:22:3-22:8:writable] Warning: Components are deprecated in class.
-// [<interactive>:23:3-23:8:writable] Warning: Components are deprecated in class.
 // endResult

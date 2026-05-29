@@ -14,15 +14,15 @@ class ParameterDeclConnector
   parameter ParameterConnector pc;
 equation
   pc.r = 1.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ParameterDeclConnector;
 
 // Result:
-// Error processing file: ParameterDeclConnector.mo
-// [OpenModelica/flattening/modelica/declarations/ParameterDeclConnector.mo:14:3-14:34:writable] Error: Invalid variability parameter on connector 'pc'.
-// Error: Error occurred while flattening model ParameterDeclConnector
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ParameterDeclConnector
+//   parameter Real pc.r;
+//   parameter Real pc.f;
+// equation
+//   pc.r = 1.0;
+//   pc.f = 0.0;
+// end ParameterDeclConnector;
 // endResult

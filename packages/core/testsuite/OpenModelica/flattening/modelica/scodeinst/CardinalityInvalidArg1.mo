@@ -19,11 +19,10 @@ end CardinalityInvalidArg1;
 
 // Result:
 // Error processing file: CardinalityInvalidArg1.mo
-// [OpenModelica/flattening/modelica/scodeinst/CardinalityInvalidArg1.mo:16:3-17:9:writable] Error: Expected C to be a component, but found class instead.
-// Error: Error occurred while flattening model CardinalityInvalidArg1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/CardinalityInvalidArg1.mo:16:3-17:9:writable] Error: Expected C to be a component, but found class instead.
 //
 // Execution failed!
 // endResult

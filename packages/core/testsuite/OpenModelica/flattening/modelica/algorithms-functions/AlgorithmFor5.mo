@@ -11,6 +11,7 @@ algorithm
   for i loop
     a[i] := i;
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AlgorithmFor5;
 
 // Result:
@@ -24,6 +25,4 @@ end AlgorithmFor5;
 //     a[i] := /*Real*/(i);
 //   end for;
 // end AlgorithmFor5;
-// [OpenModelica/flattening/modelica/algorithms-functions/AlgorithmFor5.mo:9:3-9:12:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/algorithms-functions/AlgorithmFor5.mo:11:3-13:10:writable] Warning: Algorithm sections are deprecated in class.
 // endResult

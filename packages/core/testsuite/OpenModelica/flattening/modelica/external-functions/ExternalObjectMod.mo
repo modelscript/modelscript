@@ -24,15 +24,16 @@ end ExtObj;
 
 model ExternalObjectMod
   ExtObj eo(param = "test");
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ExternalObjectMod;
 
 // Result:
 // Error processing file: ExternalObjectMod.mo
-// [OpenModelica/flattening/modelica/external-functions/ExternalObjectMod.mo:26:13-26:27:writable] Error: Modified element param not found in class ExtObj.
-// Error: Error occurred while flattening model ExternalObjectMod
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/external-functions/ExternalObjectMod.mo:26:13-26:27:writable] Error: Modified element param not found in class ExtObj$eo.
+// Error: Error occurred while flattening model ExternalObjectMod
 //
 // Execution failed!
 // endResult

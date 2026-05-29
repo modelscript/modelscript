@@ -24,11 +24,10 @@ end M;
 
 // Result:
 // Error processing file: lookup3.mo
-// [<interactive>:22:3-22:17:writable] Error: Class name 'a.B.C' was found via a component (only component and function call names may be accessed in this way).
-// Error: Error occurred while flattening model M
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/lookup3.mo:22:3-22:17:writable] Error: Class name 'a.B.C' was found via a component (only component and function call names may be accessed in this way).
 //
 // Execution failed!
 // endResult

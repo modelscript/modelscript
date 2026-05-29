@@ -11,10 +11,17 @@ end m;
 
 model FinalRedeclareModifier
   extends m(replaceable Real x = 2.0);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FinalRedeclareModifier;
 
 // Result:
-// class FinalRedeclareModifier
-//   Real x = 2.0;
-// end FinalRedeclareModifier;
+// Error processing file: FinalRedeclareModifier.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/redeclare/FinalRedeclareModifier.mo:13:3-13:38:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/redeclare/FinalRedeclareModifier.mo:9:3-9:27:writable] Error: Redeclaration of final component x is not allowed.
+// Error: Error occurred while flattening model FinalRedeclareModifier
+//
+// Execution failed!
 // endResult

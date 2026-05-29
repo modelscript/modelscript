@@ -26,16 +26,31 @@ equation
   r1 = Rec(r = 2.0);
   r2 = Rec(r = 3.0);
   r3 = r1 + r2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end OperatorComplex;
 
 // Result:
-// Error processing file: OperatorComponents.mo
-// Error: Failed to load package OperatorComponents (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class OperatorComponents not found in scope <top>.
-// Error: Error occurred while flattening model OperatorComponents
+// function Rec "Automatically generated record constructor for Rec"
+//   input Real r;
+//   output Rec res;
+// end Rec;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function Rec.'+'.add
+//   input Rec r1;
+//   input Rec r2;
+//   output Rec res;
+//   protected Real factor = 3.0;
+// algorithm
+//   res := Rec(r1.r + r2.r + factor);
+// end Rec.'+'.add;
 //
-// Execution failed!
+// class OperatorComplex
+//   Real r1.r;
+//   Real r2.r;
+//   Real r3.r;
+// equation
+//   r1.r = 2.0;
+//   r2.r = 3.0;
+//   r3 = Rec.'+'.add(r1, r2);
+// end OperatorComplex;
 // endResult

@@ -16,31 +16,21 @@ equation
       b[i].x[j] = b[i].x[j - 1] + b[i].p;
     end for;
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-nfScalarize,combineSubscripts -f");
 end CombineSubscripts3;
 
 // Result:
-// class CombineSubscripts3
-//   Real b[1].x[1];
-//   Real b[1].x[2];
-//   Real b[1].x[3];
-//   Real b[1].x[4];
-//   Real b[1].p;
-//   Real b[2].x[1];
-//   Real b[2].x[2];
-//   Real b[2].x[3];
-//   Real b[2].x[4];
-//   Real b[2].p;
-//   Real b[3].x[1];
-//   Real b[3].x[2];
-//   Real b[3].x[3];
-//   Real b[3].x[4];
-//   Real b[3].p;
-// equation
-//   b[1].x[2] = b[1].x[1] + b[1].p;
-//   b[1].x[3] = b[1].x[2] + b[1].p;
-//   b[2].x[2] = b[2].x[1] + b[2].p;
-//   b[2].x[3] = b[2].x[2] + b[2].p;
-//   b[3].x[2] = b[3].x[1] + b[3].p;
-//   b[3].x[3] = b[3].x[2] + b[3].p;
-// end CombineSubscripts3;
+// //! base 0.1.0
+// package 'CombineSubscripts3'
+//   model 'CombineSubscripts3'
+//     Real[3, 4] 'b'.'x';
+//     Real[3] 'b'.'p';
+//   equation
+//     for 'i' in 1:3 loop
+//       for 'j' in 2:3 loop
+//         'b'.'x'['i','j'] = 'b'.'x'['i','j' - 1] + 'b'.'p'['i'];
+//       end for;
+//     end for;
+//   end 'CombineSubscripts3';
+// end 'CombineSubscripts3';
 // endResult

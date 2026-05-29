@@ -7,6 +7,7 @@
 
 model RealAdd
   constant Real r = 4711.2 + 1138.3;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RealAdd;
 
 // Result:

@@ -10,6 +10,7 @@ end Modification12;
 
 class Modification13
   Modification12 a(x={1.0,2.0,4.0});
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Modification13;
 
 
@@ -21,6 +22,4 @@ end Modification13;
 // equation
 //   a.x = {1.0, 2.0, 4.0};
 // end Modification13;
-// [OpenModelica/flattening/modelica/modification/Modification13.mo:8:3-8:50:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/modification/Modification13.mo:12:3-12:36:writable] Warning: Components are deprecated in class.
 // endResult

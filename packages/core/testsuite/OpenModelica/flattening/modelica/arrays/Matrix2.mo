@@ -11,11 +11,12 @@ model Matrix2
   Real b[M, 1];
 equation
   b = matrix(a);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Matrix2;
 
 // Result:
 // class Matrix2
-//   final parameter Integer M = 5;
+//   parameter Integer M = 5;
 //   parameter Real a[1] = 0.0;
 //   parameter Real a[2] = 0.0;
 //   parameter Real a[3] = 0.0;

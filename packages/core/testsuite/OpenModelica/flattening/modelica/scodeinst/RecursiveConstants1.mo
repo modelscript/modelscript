@@ -10,11 +10,10 @@ end RecursiveConstants1;
 
 // Result:
 // Error processing file: RecursiveConstants1.mo
-// [OpenModelica/flattening/modelica/scodeinst/RecursiveConstants1.mo:8:3-8:22:writable] Error: Variable 'y' has a cyclic dependency and has variability constant.
-// Error: Error occurred while flattening model RecursiveConstants1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RecursiveConstants1.mo:8:3-8:22:writable] Error: Variable 'y' has a cyclic dependency and has variability constant.
 //
 // Execution failed!
 // endResult

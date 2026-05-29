@@ -24,11 +24,10 @@ end MissingRedeclare1;
 
 // Result:
 // Error processing file: MissingRedeclare1.mo
-// [OpenModelica/flattening/modelica/scodeinst/MissingRedeclare1.mo:22:7-22:12:writable] Error: Missing redeclare keyword on attempted redeclaration of class B.
-// Error: Error occurred while flattening model MissingRedeclare1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/MissingRedeclare1.mo:22:7-22:12:writable] Error: Missing redeclare keyword on attempted redeclaration of class B.
 //
 // Execution failed!
 // endResult

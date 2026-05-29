@@ -10,6 +10,7 @@ model Symmetric
                  4,5,6;
                  7,8,9];
   Real B[:,:] = symmetric(A);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Symmetric;
 
 // Result:

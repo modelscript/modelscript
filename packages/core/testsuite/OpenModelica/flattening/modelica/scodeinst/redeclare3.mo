@@ -19,11 +19,10 @@ end B;
 
 // Result:
 // Error processing file: redeclare3.mo
-// [<interactive>:16:20-16:43:writable] Error: time is not allowed in a function.
-// Error: Error occurred while flattening model B
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/redeclare3.mo:16:20-16:43:writable] Error: time is not allowed in a function.
 //
 // Execution failed!
 // endResult

@@ -8,13 +8,14 @@ model EvaluateAllParams
   Real x;
 equation
   x = time * p;
+  annotation(__OpenModelica_commandLineOptions="-d=evaluateAllParameters");
 end EvaluateAllParams;
 
 // Result:
 // class EvaluateAllParams
-//   parameter Real p = 10.0;
+//   final parameter Real p = 10.0;
 //   Real x;
 // equation
-//   x = time * p;
+//   x = time * 10.0;
 // end EvaluateAllParams;
 // endResult

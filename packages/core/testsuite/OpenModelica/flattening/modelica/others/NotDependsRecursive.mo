@@ -9,6 +9,7 @@ model NotDependsRecursive
   type NotDependsRecursive = Real;
   Real head;
   NotDependsRecursive tail;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end NotDependsRecursive;
 // Result:
 // class NotDependsRecursive

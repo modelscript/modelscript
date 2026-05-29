@@ -992,6 +992,7 @@ model BM3
 equation
   connect(constant2.outPort,add1.inPort2) annotation(Line(visible=true,points={{-35.38,-6.59},{5.98,9.23}}));
   connect(constant1.outPort,add1.inPort1) annotation(Line(visible=true,points={{-31.13,29.6},{4.15,22.31}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM3;
 
 // class BM3
@@ -1030,16 +1031,41 @@ end BM3;
 // constant2.outPort.signal[1] = add1.inPort2.signal[1];
 // end BM3;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BM3
+//   parameter Integer add1.n = 1 "Dimension of input and output vectors.";
+//   parameter Integer add1.inPort1.n = add1.n "Dimension of signal vector";
+//   Real add1.inPort1.signal[1] "Real input signals";
+//   parameter Integer add1.inPort2.n = add1.n "Dimension of signal vector";
+//   Real add1.inPort2.signal[1] "Real input signals";
+//   parameter Integer add1.outPort.n = add1.n "Dimension of signal vector";
+//   Real add1.outPort.signal[1] "Real output signals";
+//   Real add1.y[1] "Output signals";
+//   protected Real add1.u1[1] "Input signals 1";
+//   protected Real add1.u2[1] "Input signals 2";
+//   parameter Real add1.k1 = 1.0 "Gain of upper input";
+//   parameter Real add1.k2 = 1.0 "Gain of lower input";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+//   parameter Integer constant2.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant2.outPort.n = constant2.nout "Dimension of signal vector";
+//   Real constant2.outPort.signal[1] "Real output signals";
+//   Real constant2.y[1];
+//   parameter Real constant2.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   add1.u1 = {add1.inPort1.signal[1]};
+//   add1.u2 = {add1.inPort2.signal[1]};
+//   add1.y[1] = add1.u1[1] * add1.k1 + add1.u2[1] * add1.k2;
+//   add1.y[1] = add1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   constant2.outPort.signal[1] = constant2.k[1];
+//   constant2.y[1] = constant2.outPort.signal[1];
+//   assert(constant2.outPort.n == add1.inPort2.n, "automatically generated from connect");
+//   assert(constant1.outPort.n == add1.inPort1.n, "automatically generated from connect");
+//   add1.inPort2.signal[1] = constant2.outPort.signal[1];
+//   add1.inPort1.signal[1] = constant1.outPort.signal[1];
+// end BM3;
 // endResult

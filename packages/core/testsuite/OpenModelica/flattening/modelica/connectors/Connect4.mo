@@ -15,6 +15,7 @@ model Connect4
 equation
   connect(c1,c2);
   c1.i=integer(time*10);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Connect4;
 
 // Result:
@@ -24,10 +25,10 @@ end Connect4;
 //   Integer c2.i;
 //   Real c2.f;
 // equation
-//   c1.i = c2.i;
-//   -(c1.f + c2.f) = 0.0;
+//   c1.i = integer(10.0 * time);
 //   c1.f = 0.0;
 //   c2.f = 0.0;
-//   c1.i = integer(time * 10.0);
+//   (-c1.f) + (-c2.f) = 0.0;
+//   c1.i = c2.i;
 // end Connect4;
 // endResult

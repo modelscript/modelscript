@@ -13,11 +13,10 @@ end SubscriptEnum1;
 
 // Result:
 // Error processing file: SubscriptEnum1.mo
-// [OpenModelica/flattening/modelica/scodeinst/SubscriptEnum1.mo:11:3-11:15:writable] Error: Wrong number of subscripts in E.one[1] (1 subscripts for 0 dimensions).
-// Error: Error occurred while flattening model SubscriptEnum1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/SubscriptEnum1.mo:11:3-11:15:writable] Error: Wrong number of subscripts in E.one[1] (1 subscripts for 0 dimensions).
 //
 // Execution failed!
 // endResult

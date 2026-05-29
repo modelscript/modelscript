@@ -17,11 +17,10 @@ end Break2;
 
 // Result:
 // Error processing file: Break2.mo
-// [OpenModelica/flattening/modelica/scodeinst/Break2.mo:11:3-11:8:writable] Error: 'break' may only be used in a while- or for-loop.
-// Error: Error occurred while flattening model Break2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/Break2.mo:11:3-11:8:writable] Error: 'break' may only be used in a while- or for-loop.
 //
 // Execution failed!
 // endResult

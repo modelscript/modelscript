@@ -9,6 +9,7 @@ model Log
   Real r;
 equation
   r = log(45);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Log;
 
 // Result:

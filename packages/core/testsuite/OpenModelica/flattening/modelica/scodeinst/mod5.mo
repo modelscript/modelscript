@@ -14,11 +14,10 @@ end B;
 
 // Result:
 // Error processing file: mod5.mo
-// [<interactive>:12:7-12:14:writable] Error: Modified element y not found in class A.
-// Error: Error occurred while flattening model B
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/mod5.mo:12:7-12:14:writable] Error: Modified element y not found in class A.
 //
 // Execution failed!
 // endResult

@@ -8,15 +8,16 @@
 model CyclicBindingConst
   constant Real p = 2*q;
   constant Real q = 2*p;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end CyclicBindingConst;
 
 // Result:
 // Error processing file: CyclicBindingConst.mo
-// [OpenModelica/flattening/modelica/others/CyclicBindingConst.mo:10:3-10:24:writable] Error: Variable 'q' has a cyclic dependency and has variability constant.
-// Error: Error occurred while flattening model CyclicBindingConst
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// Error: Cyclically dependent constants or parameters found in scope CyclicBindingConst: {q,p} (ignore with -d=ignoreCycles).
+// Error: Error occurred while flattening model CyclicBindingConst
 //
 // Execution failed!
 // endResult

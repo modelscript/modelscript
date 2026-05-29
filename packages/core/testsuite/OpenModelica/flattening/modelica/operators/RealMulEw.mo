@@ -15,9 +15,18 @@ end f;
 
 model RealMulEw
   Real x[:] = f({1, 2, 3}, {4, 5, 6});
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RealMulEw;
 
 // Result:
+// function f
+//   input Real[:] r1;
+//   input Real[size(r1, 1)] r2;
+//   output Real[size(r1, 1)] o;
+// algorithm
+//   o := r1 .* r2;
+// end f;
+//
 // class RealMulEw
 //   Real x[1];
 //   Real x[2];

@@ -7,6 +7,7 @@
 model Import7
   import sinx = sin;
   constant Real x = sinx(0);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Import7;
 
 // Result:

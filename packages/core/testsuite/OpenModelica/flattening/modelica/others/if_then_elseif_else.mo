@@ -13,6 +13,8 @@ equation
   out3 = (if time < 1 then time else if time < 2 then time^2 else time^3);
   out4 = (if time < 1 then time elseif time < 2 then time^2 elseif time < 3 then time^3 elseif
              time < 4 then time^4 else time^5);
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ifThenElseIfElse;
 // Result:
 // class ifThenElseIfElse

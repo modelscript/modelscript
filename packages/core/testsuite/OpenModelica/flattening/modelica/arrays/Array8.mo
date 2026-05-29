@@ -9,6 +9,7 @@ model Array8
   Real x[2], y[2];
 equation
   x[:] = y;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Array8;
 
 // Result:

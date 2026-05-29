@@ -19,11 +19,10 @@ end PartialLookup3;
 
 // Result:
 // Error processing file: PartialLookup3.mo
-// [OpenModelica/flattening/modelica/scodeinst/PartialLookup3.mo:17:3-17:17:writable] Error: P2 is partial, name lookup is not allowed in partial classes.
-// Error: Error occurred while flattening model PartialLookup3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/PartialLookup3.mo:17:3-17:17:writable] Error: P2 is partial, name lookup is not allowed in partial classes.
 //
 // Execution failed!
 // endResult

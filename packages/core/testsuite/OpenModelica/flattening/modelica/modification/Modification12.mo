@@ -6,6 +6,7 @@
 
 class Modification12
   Real x[:] (min = fill(1,size(x,1))) = {1.0};
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Modification12;
 
 // Result:
@@ -14,5 +15,4 @@ end Modification12;
 // equation
 //   x = {1.0};
 // end Modification12;
-// [OpenModelica/flattening/modelica/modification/Modification12.mo:8:3-8:46:writable] Warning: Components are deprecated in class.
 // endResult

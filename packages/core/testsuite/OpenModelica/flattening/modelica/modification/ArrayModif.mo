@@ -26,6 +26,8 @@ model ArrayModif
   end B;
 
   B b;
+
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayModif;
 
 // Result:

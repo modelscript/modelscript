@@ -11,6 +11,7 @@ model Delay
 equation
   x = 0;
   y = delay(x, 2.5);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Delay;
 
 // Result:

@@ -16,6 +16,7 @@ model ConnectTheSameConnector
 equation
  connect(c1, c2);
  connect(c1, c1) "bummer!";
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectTheSameConnector;
 
 
@@ -27,9 +28,9 @@ end ConnectTheSameConnector;
 //   Real c2.i;
 //   Real c2.u;
 // equation
-//   c1.u = c2.u "bummer!";
-//   -(c1.i + c2.i) = 0.0 "bummer!";
 //   c1.i = 0.0;
 //   c2.i = 0.0;
+//   (-c1.i) + (-c2.i) = 0.0;
+//   c1.u = c2.u;
 // end ConnectTheSameConnector;
 // endResult

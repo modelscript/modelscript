@@ -18,13 +18,13 @@ end ConnectInitial;
 
 // Result:
 // Error processing file: ConnectInitial.mo
-// [OpenModelica/flattening/modelica/scodeinst/ConnectInitial.mo:16:3-16:18:writable] Error: Connect equations are not allowed in initial equation sections.
-// Error: Failed to load package ConnectInitial (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class ConnectInitial not found in scope <top>.
-// Error: Error occurred while flattening model ConnectInitial
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+// Failed to parse file: OpenModelica/flattening/modelica/scodeinst/ConnectInitial.mo!
+//
+// Failed to parse file: OpenModelica/flattening/modelica/scodeinst/ConnectInitial.mo!
+//
+// [OpenModelica/flattening/modelica/scodeinst/ConnectInitial.mo:16:3-16:18:writable] Error: Connect equations are not allowed in initial equation sections.
 //
 // Execution failed!
 // endResult

@@ -30,20 +30,24 @@ model m
   package P2 = P(C=a);
   constant Integer a = n.i;
   parameter Real b[P2.C] = P2.f({1,2});
+
 end m;
+
 end PackageParameter;
 
 model PackageParameterModel
  extends PackageParameter.m;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end PackageParameterModel;
 
 // Result:
 // Error processing file: PackageParameter.mo
-// [OpenModelica/flattening/modelica/packages/PackageParameter.mo:9:1-36:21:writable] Error: Cannot instantiate PackageParameter due to class specialization package.
-// Error: Error occurred while flattening model PackageParameter
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// Error: Variable n.i in package PackageParameterModel.n is not constant.
+// [OpenModelica/flattening/modelica/packages/PackageParameter.mo:31:3-31:27:writable] Error: Variable n.i not found in scope PackageParameterModel.
+// Error: Error occurred while flattening model PackageParameterModel
 //
 // Execution failed!
 // endResult

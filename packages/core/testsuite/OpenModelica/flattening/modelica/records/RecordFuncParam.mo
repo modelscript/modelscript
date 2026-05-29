@@ -23,6 +23,7 @@ equation
   r.x = time;
   r.y = r.x * 2;
   y = f(r);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecordFuncParam;
 
 // Result:
@@ -43,8 +44,7 @@ end RecordFuncParam;
 //   output Real y;
 // equation
 //   r.x = time;
-//   r.y = r.x * 2.0;
+//   r.y = 2.0 * r.x;
 //   y = f(r);
 // end RecordFuncParam;
-// [OpenModelica/flattening/modelica/records/RecordFuncParam.mo:16:3-16:16:writable] Warning: Output parameter y was not assigned a value
 // endResult

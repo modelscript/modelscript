@@ -12,11 +12,10 @@ end EndInvalid1;
 
 // Result:
 // Error processing file: EndInvalid1.mo
-// [OpenModelica/flattening/modelica/scodeinst/EndInvalid1.mo:10:3-10:10:writable] Error: 'end' can not be used outside array subscripts.
-// Error: Error occurred while flattening model EndInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/EndInvalid1.mo:10:3-10:10:writable] Error: 'end' can not be used outside array subscripts.
 //
 // Execution failed!
 // endResult

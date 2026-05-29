@@ -461,6 +461,7 @@ of package Modelica.Blocks inherit directly or indirectly
 from this block.
 </p>
 </html>"));
+
         end BlockIcon;
 
         partial block SISO
@@ -945,6 +946,7 @@ package QHP
 This icon is designed for a <b>signal bus</b> connector.
 </p>
 </html>"));
+
       end SignalBusBlue;
 
       connector RealOutput_ =output Real "'output Real' as connector"
@@ -994,6 +996,7 @@ Note, this connector is \"empty\". When using it, the actual content is
 constructed by the signals connected to this bus.
 </p>
 </html>"));
+
         end BusConnector;
     end Interfaces;
 
@@ -1273,3 +1276,44 @@ model QHP_Electrolytes_test_BusOMC
     Tolerance=0.0001,
     Algorithm="dassl"));
 end QHP_Electrolytes_test_BusOMC;
+
+// Result:
+// class QHP_Electrolytes_test_BusOMC
+//   Real busSources.busConnector.MyOmolarity "virtual variable in expandable connector";
+//   Real busSources.busConnector.MyConstant "virtual variable in expandable connector";
+//   Real busConsumeGroup.busConnector.MyOmolarity "virtual variable in expandable connector";
+//   Real busConsumeGroup.busConnector.MyConstant "virtual variable in expandable connector";
+//   Real busConsumeGroup2_1.busConnector.MyOmolarity "virtual variable in expandable connector";
+//   Real busConsumeGroup2_1.busConnector.MyConstant "virtual variable in expandable connector";
+//   parameter Real busSources.osmolarityConstant.k(quantity = "Osmolarity", unit = "mOsm", start = 1.0) = 3.0 "Constant output value";
+//   Real busSources.osmolarityConstant.y(quantity = "Osmolarity", unit = "mOsm") "Connector of Real output signal";
+//   parameter Real busSources.MyConstant.k(start = 1.0) = 7.0 "Constant output value";
+//   Real busSources.MyConstant.y "Connector of Real output signal";
+//   parameter Real busConsumeGroup.integrator.k = 1.0 "Integrator gain";
+//   final parameter enumeration(NoInit, SteadyState, InitialState, InitialOutput) busConsumeGroup.integrator.initType = Modelica.Blocks.Types.Init.InitialState "Type of initialization (1: no init, 2: steady state, 3,4: initial output)";
+//   parameter Real busConsumeGroup.integrator.y_start = 0.0 "Initial or guess value of output (= state)";
+//   Real busConsumeGroup.integrator.u "Connector of Real input signal";
+//   Real busConsumeGroup.integrator.y(start = busConsumeGroup.integrator.y_start) "Connector of Real output signal";
+//   parameter Real busConsumeGroup2_1.integrator.k = 1.0 "Integrator gain";
+//   final parameter enumeration(NoInit, SteadyState, InitialState, InitialOutput) busConsumeGroup2_1.integrator.initType = Modelica.Blocks.Types.Init.InitialState "Type of initialization (1: no init, 2: steady state, 3,4: initial output)";
+//   parameter Real busConsumeGroup2_1.integrator.y_start = 0.0 "Initial or guess value of output (= state)";
+//   Real busConsumeGroup2_1.integrator.u "Connector of Real input signal";
+//   Real busConsumeGroup2_1.integrator.y(start = busConsumeGroup2_1.integrator.y_start) "Connector of Real output signal";
+// initial equation
+//   busConsumeGroup.integrator.y = busConsumeGroup.integrator.y_start;
+//   busConsumeGroup2_1.integrator.y = busConsumeGroup2_1.integrator.y_start;
+// equation
+//   busSources.osmolarityConstant.y = busSources.busConnector.MyOmolarity;
+//   busSources.MyConstant.y = busSources.busConnector.MyConstant;
+//   busConsumeGroup.busConnector.MyOmolarity = busConsumeGroup.integrator.u;
+//   busConsumeGroup2_1.busConnector.MyConstant = busConsumeGroup2_1.integrator.u;
+//   busSources.busConnector.MyConstant = busConsumeGroup2_1.busConnector.MyConstant;
+//   busSources.busConnector.MyConstant = busConsumeGroup.busConnector.MyConstant;
+//   busSources.busConnector.MyOmolarity = busConsumeGroup2_1.busConnector.MyOmolarity;
+//   busSources.busConnector.MyOmolarity = busConsumeGroup.busConnector.MyOmolarity;
+//   busSources.osmolarityConstant.y = busSources.osmolarityConstant.k;
+//   busSources.MyConstant.y = busSources.MyConstant.k;
+//   der(busConsumeGroup.integrator.y) = busConsumeGroup.integrator.k * busConsumeGroup.integrator.u;
+//   der(busConsumeGroup2_1.integrator.y) = busConsumeGroup2_1.integrator.k * busConsumeGroup2_1.integrator.u;
+// end QHP_Electrolytes_test_BusOMC;
+// endResult

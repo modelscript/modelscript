@@ -22,16 +22,26 @@ initial algorithm
   (a, x) := f(2);
 equation
   x = 1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Ticket4276b;
 
 
 // Result:
-// Error processing file: Ticket4276b.mo
-// Error: Class Ticket4276b.mo not found in scope <top>.
-// Error: Error occurred while flattening model Ticket4276b.mo
+// impure function Ticket4276b.f
+//   input Real t;
+//   output Real a;
+//   output Real b;
+// algorithm
+//   a := t;
+//   b := t;
+// end Ticket4276b.f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Ticket4276b
+//   parameter Real a(fixed = false);
+//   Real x;
+// initial algorithm
+//   (a, x) := Ticket4276b.f(2.0);
+// equation
+//   x = 1.0;
+// end Ticket4276b;
 // endResult

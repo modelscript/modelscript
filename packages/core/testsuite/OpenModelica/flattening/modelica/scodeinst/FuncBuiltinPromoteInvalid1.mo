@@ -8,15 +8,15 @@
 model FuncBuiltinPromoteInvalid1
   Real y[2, 2];
   Real r[:] = promote(y, 1);
+  annotation(__OpenModelica_commandLineOptions="--std=experimental");
 end FuncBuiltinPromoteInvalid1;
 
 // Result:
 // Error processing file: FuncBuiltinPromoteInvalid1.mo
-// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinPromoteInvalid1.mo:10:3-10:28:writable] Error: promote is an experimental feature and requires the --std=experimental flag.
-// Error: Error occurred while flattening model FuncBuiltinPromoteInvalid1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinPromoteInvalid1.mo:10:3-10:28:writable] Error: The second argument '1' of promote may not be smaller than the number of dimensions (2) of the first argument.
 //
 // Execution failed!
 // endResult

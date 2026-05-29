@@ -11,11 +11,10 @@ end ExternalNonFunction1;
 
 // Result:
 // Error processing file: ExternalNonFunction1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalNonFunction1.mo:8:1-10:25:writable] Error: Class specialization violation: ExternalNonFunction1 is a model, which may not contain an external declaration.
-// Error: Error occurred while flattening model ExternalNonFunction1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalNonFunction1.mo:8:1-10:25:writable] Error: Class specialization violation: ExternalNonFunction1 is a model, which may not contain an external declaration.
 //
 // Execution failed!
 // endResult

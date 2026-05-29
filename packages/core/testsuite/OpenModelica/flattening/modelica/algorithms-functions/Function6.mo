@@ -19,6 +19,7 @@ model Function6
   Integer z;
 equation
   x = f(z);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function6;
 
 // Result:

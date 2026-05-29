@@ -607,7 +607,7 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): number |
   }
 
   // Name — sometimes dimension expressions are just names
-  if (type === "Name") {
+  if (type === "Name" || type === "IDENT") {
     return evaluateDimNameRef(db, self, node.text);
   }
 

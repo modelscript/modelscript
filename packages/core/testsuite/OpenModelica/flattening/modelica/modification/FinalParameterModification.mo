@@ -11,6 +11,7 @@ model FinalParameterModification
   Real x(start = 1);
 equation
   der(x) = -p[1] * x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FinalParameterModification;
 
 // Result:
@@ -20,6 +21,6 @@ end FinalParameterModification;
 //   final parameter Real p[3](unit = "1", fixed = false);
 //   Real x(start = 1.0);
 // equation
-//   der(x) = -p[1] * x;
+//   der(x) = (-p[1]) * x;
 // end FinalParameterModification;
 // endResult

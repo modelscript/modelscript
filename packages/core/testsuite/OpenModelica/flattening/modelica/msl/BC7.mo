@@ -975,6 +975,7 @@ model BC7
 
 equation
   connect(constant1.outPort,PI1.inPort) annotation(Line(visible=true,points={{-33.25,14.7},{-14.09,15.62}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BC7;
 
 // class BC7
@@ -1005,16 +1006,32 @@ end BC7;
 // constant1.outPort.signal[1] = PI1.inPort.signal[1];
 // end BC7;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BC7
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
+//   parameter Integer PI1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer PI1.inPort.n = PI1.n "Dimension of signal vector";
+//   Real PI1.inPort.signal[1] "Real input signals";
+//   parameter Integer PI1.outPort.n = PI1.n "Dimension of signal vector";
+//   Real PI1.outPort.signal[1] "Real output signals";
+//   Real PI1.y[1] "Output signals";
+//   protected Real PI1.u[1] "Input signals";
+//   parameter Real PI1.k[1] = 1.0 "Gain";
+//   parameter Real PI1.T[1](quantity = "Time", unit = "s") = 1.0 "Time Constant (T>0 required)";
+//   Real PI1.x[1] "State of block";
+//   protected parameter Real PI1.p_k[1] = PI1.k[1];
+//   protected parameter Real PI1.p_T[1] = PI1.T[1];
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   PI1.u = {PI1.inPort.signal[1]};
+//   der(PI1.x[1]) = PI1.u[1] / PI1.p_T[1];
+//   PI1.y[1] = PI1.p_k[1] * (PI1.x[1] + PI1.u[1]);
+//   PI1.y[1] = PI1.outPort.signal[1];
+//   assert(constant1.outPort.n == PI1.inPort.n, "automatically generated from connect");
+//   PI1.inPort.signal[1] = constant1.outPort.signal[1];
+// end BC7;
 // endResult

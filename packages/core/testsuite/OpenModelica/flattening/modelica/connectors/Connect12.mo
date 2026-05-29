@@ -29,16 +29,23 @@ equation
       x-y=0;
    connect(x,x2);
    connect(v,v2);
+  annotation(__OpenModelica_commandLineOptions="+std=2.x -d=-newInst");
 end test;
 
 // Result:
-// Error processing file: Connect12.mo
-// Error: Failed to load package Connect12 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Connect12 not found in scope <top>.
-// Error: Error occurred while flattening model Connect12
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class test
+//   input Real x;
+//   output Real x2;
+//   input Real v = {1.0, 2.4};
+//   output Real v2;
+//   Real y;
+//   Real w[1];
+//   Real w[2];
+// equation
+//   v = {1.0, 2.4};
+//   x - y = 0.0;
+//   x = x2;
+//   v[1] = v2[1];
+//   v[2] = v2[2];
+// end test;
 // endResult

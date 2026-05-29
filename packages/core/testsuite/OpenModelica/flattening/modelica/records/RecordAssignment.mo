@@ -14,6 +14,7 @@ model RecordAssignment
 equation
   tr1.i = 1;
   tr2 = tr1;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RecordAssignment;
 
 // Result:
@@ -27,6 +28,6 @@ end RecordAssignment;
 //   Integer tr2.i;
 // equation
 //   tr1.i = 1;
-//   tr2 = tr1;
+//   tr2.i = tr1.i;
 // end RecordAssignment;
 // endResult

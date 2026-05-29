@@ -10,6 +10,7 @@ model And
   constant Boolean b2 = true and false;
   constant Boolean b3 = false and true;
   constant Boolean b4 = false and false;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end And;
 
 // Result:

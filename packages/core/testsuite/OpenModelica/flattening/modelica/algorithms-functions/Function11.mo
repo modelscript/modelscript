@@ -20,6 +20,7 @@ model test
 equation
 x=y;
 b = equal(x,y);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end test;
 
 // Result:
@@ -42,6 +43,6 @@ end test;
 //   y = {1.0, 2.0};
 //   x[1] = y[1];
 //   x[2] = y[2];
-//   b = equal(x, y, 1e-6);
+//   b = equal({x[1], x[2]}, {y[1], y[2]}, 1e-6);
 // end test;
 // endResult

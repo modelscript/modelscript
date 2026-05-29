@@ -9,6 +9,9 @@ end MaxInvalidArg1;
 
 // Result:
 // Error processing file: MaxInvalidArg1.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/MaxInvalidArg1.mo:7:3-7:33:writable] Error: No matching function found for max("str1", "str2").
 // Candidates are:
 //   max(Real, Real) => Real
@@ -19,10 +22,6 @@ end MaxInvalidArg1;
 //   max(Integer[:, ...]) => Integer
 //   max(Boolean[:, ...]) => Boolean
 //   max(enumeration(:)[:, ...]) => enumeration(:)
-// Error: Error occurred while flattening model MaxInvalidArg1
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

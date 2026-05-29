@@ -966,6 +966,7 @@ model BS15
 
 equation
   connect(booleanConstant1.outPort,booleanChange1.inPort) annotation(Line(visible=true,points={{-26.87,25.35},{-12.27,25.35}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BS15;
 // class BS15
 // parameter Integer booleanConstant1.nout(min = 1) = 1 "Number of Boolean outputs";
@@ -987,16 +988,24 @@ end BS15;
 // booleanConstant1.outPort.signal[1] = booleanChange1.inPort.signal[1];
 // end BS15;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BS15
+//   parameter Integer booleanConstant1.nout(min = 1) = 1 "Number of Boolean outputs";
+//   parameter Integer booleanConstant1.outPort.n = booleanConstant1.nout "Dimension of signal vector";
+//   Boolean booleanConstant1.outPort.signal[1] "Boolean output signals";
+//   parameter Boolean booleanConstant1.k[1] = true "Constant output values";
+//   parameter Integer booleanChange1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer booleanChange1.inPort.n = booleanChange1.n "Dimension of signal vector";
+//   Boolean booleanChange1.inPort.signal[1] "Boolean input signals";
+//   parameter Integer booleanChange1.outPort.n = booleanChange1.n "Dimension of signal vector";
+//   Boolean booleanChange1.outPort.signal[1] "Boolean output signals";
+//   Boolean booleanChange1.y[1] "Output signals";
+//   protected Boolean booleanChange1.u[1] "Input signals";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   booleanConstant1.outPort.signal[1] = booleanConstant1.k[1];
+//   booleanChange1.u = {booleanChange1.inPort.signal[1]};
+//   booleanChange1.y[1] = change(booleanChange1.u[1]);
+//   booleanChange1.y[1] = booleanChange1.outPort.signal[1];
+//   assert(booleanConstant1.outPort.n == booleanChange1.inPort.n, "automatically generated from connect");
+//   booleanChange1.inPort.signal[1] = booleanConstant1.outPort.signal[1];
+// end BS15;
 // endResult

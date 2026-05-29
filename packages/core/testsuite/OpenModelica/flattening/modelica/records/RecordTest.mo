@@ -181,4 +181,15 @@ function TestWithoutParameters
 algorithm
   out2 := WithParameters();
 end TestWithoutParameters;
+
 end RecordTest;
+
+// Result:
+// Error processing file: RecordTest.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/records/RecordTest.mo:1:1-185:15:writable] Error: Cannot instantiate RecordTest due to class specialization package.
+//
+// Execution failed!
+// endResult

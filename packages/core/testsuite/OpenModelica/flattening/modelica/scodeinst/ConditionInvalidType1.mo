@@ -9,11 +9,10 @@ end ConditionInvalidType1;
 
 // Result:
 // Error processing file: ConditionInvalidType1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ConditionInvalidType1.mo:7:3-7:19:writable] Error: Type error in conditional '"true"'. Expected Boolean, got String.
-// Error: Error occurred while flattening model ConditionInvalidType1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ConditionInvalidType1.mo:7:3-7:19:writable] Error: Type error in conditional '"true"'. Expected Boolean, got String.
 //
 // Execution failed!
 // endResult

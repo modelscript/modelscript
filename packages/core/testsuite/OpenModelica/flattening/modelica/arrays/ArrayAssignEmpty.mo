@@ -11,24 +11,16 @@ model ArrayAssignEmpty
   Real r[0];
 algorithm
   r := f(time);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayAssignEmpty;
 
 // Result:
-// class Xpowers3
-//   parameter Real x = 10.0;
-//   Real xpowers[1];
-//   Real xpowers[2];
-//   Real xpowers[3];
-//   Real xpowers[4];
-//   Real xpowers[5];
-//   Real xpowers[6];
-//   final parameter Integer n = 5;
-// equation
-//   xpowers[1] = 1.0;
-//   xpowers[2] = xpowers[1] * x;
-//   xpowers[3] = xpowers[2] * x;
-//   xpowers[4] = xpowers[3] * x;
-//   xpowers[5] = xpowers[4] * x;
-//   xpowers[6] = xpowers[5] * x;
-// end Xpowers3;
+// function ArrayAssignEmpty.f
+//   input Real r;
+//   output Real[0] o;
+// end ArrayAssignEmpty.f;
+//
+// class ArrayAssignEmpty
+// algorithm
+// end ArrayAssignEmpty;
 // endResult

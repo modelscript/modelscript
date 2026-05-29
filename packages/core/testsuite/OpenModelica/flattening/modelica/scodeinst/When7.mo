@@ -16,11 +16,10 @@ end When7;
 
 // Result:
 // Error processing file: When7.mo
-// [OpenModelica/flattening/modelica/scodeinst/When7.mo:10:3-14:11:writable] Error: The same variables must be solved in elsewhen clause as in the when clause.
-// Error: Error occurred while flattening model When7
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/When7.mo:10:3-14:11:writable] Error: The same variables must be solved in elsewhen clause as in the when clause.
 //
 // Execution failed!
 // endResult

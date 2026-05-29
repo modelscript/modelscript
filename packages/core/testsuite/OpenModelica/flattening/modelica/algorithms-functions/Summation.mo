@@ -18,6 +18,7 @@ algorithm
     end if;
     n := n - 1;
   end while;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Summation;
 
 
@@ -39,7 +40,7 @@ end Summation;
 //     if a[n] > 0.0 then
 //       sum := sum + a[n];
 //     end if;
-//     n := n - 1;
+//     n := -1 + n;
 //   end while;
 // end Summation;
 // endResult

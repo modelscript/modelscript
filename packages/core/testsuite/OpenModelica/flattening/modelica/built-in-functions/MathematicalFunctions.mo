@@ -19,6 +19,7 @@ model MathematicalFunctions
   Real r11 = exp(5);
   Real r12 = log(5);
   Real r13 = log10(5);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MathematicalFunctions;
 
 // Results:
@@ -40,6 +41,7 @@ end MathematicalFunctions;
 //   Real r13 = 0.6989700043360189;
 // end MathematicalFunctions;
 // endResult
+
 // Result:
 // class MathematicalFunctions
 //   Real r1 = 0.8509035245341184;
@@ -56,3 +58,4 @@ end MathematicalFunctions;
 //   Real r12 = 1.6094379124341003;
 //   Real r13 = 0.6989700043360189;
 // end MathematicalFunctions;
+// endResult

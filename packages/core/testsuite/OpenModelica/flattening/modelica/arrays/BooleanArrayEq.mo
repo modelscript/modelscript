@@ -9,6 +9,7 @@ model BooleanArrayEq
   Boolean arr[Boolean];
 equation
   arr = {true, true};
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BooleanArrayEq;
 
 // Result:

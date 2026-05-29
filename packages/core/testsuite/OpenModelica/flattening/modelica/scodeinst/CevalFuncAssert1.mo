@@ -20,5 +20,4 @@ end CevalFuncAssert1;
 // class CevalFuncAssert1
 //   constant Real x = 10.0;
 // end CevalFuncAssert1;
-// [OpenModelica/flattening/modelica/scodeinst/CevalFuncAssert1.mo:11:3-11:66:writable] Warning: assert triggered: f got n larger than 2
 // endResult

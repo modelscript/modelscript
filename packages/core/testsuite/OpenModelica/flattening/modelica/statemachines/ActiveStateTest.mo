@@ -10,6 +10,7 @@ model ActiveStateTest
   Boolean isActive;
 equation
   isActive = activeState(aState);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ActiveStateTest;
 
 // Result:

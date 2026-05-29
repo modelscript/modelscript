@@ -22,16 +22,30 @@ equation
   r1.r = 1.0;
   r2.r = 2.0;
   r3 = r1 + r2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end OperatorIllegal;
 
 // Result:
-// Error processing file: OperatorFunction1.mo
-// Error: Failed to load package OperatorFunction1 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class OperatorFunction1 not found in scope <top>.
-// Error: Error occurred while flattening model OperatorFunction1
+// function Rec "Automatically generated record constructor for Rec"
+//   input Real r;
+//   output Rec res;
+// end Rec;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
+// function Rec.'+'
+//   input Rec r1;
+//   input Rec r2;
+//   output Rec res;
+// algorithm
+//   res := Rec(r1.r + r2.r);
+// end Rec.'+';
 //
-// Execution failed!
+// class OperatorIllegal
+//   Real r1.r;
+//   Real r2.r;
+//   Real r3.r;
+// equation
+//   r1.r = 1.0;
+//   r2.r = 2.0;
+//   r3 = Rec.'+'(r1, r2);
+// end OperatorIllegal;
 // endResult

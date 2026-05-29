@@ -20,3 +20,13 @@ algorithm
     end while;
   end for;
 end BubbleSort;
+
+// Result:
+// Error processing file: func_bubble.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/func_bubble.mo:3:1-22:15:writable] Error: Cannot instantiate BubbleSort due to class specialization function.
+//
+// Execution failed!
+// endResult

@@ -17,3 +17,25 @@ equation
   der('\'') = -4;
   der('stupid,name') = 5;
 end QuotedIdentifier;
+
+// Result:
+// class QuotedIdentifier
+//   Real 'a"b'(start = 1.0, fixed = true);
+//   Real 'c d'(start = 1.0, fixed = true);
+//   Real 'e"f g'(start = 1.0, fixed = true);
+//   Real 'h\'i //j'(start = 1.0, fixed = true);
+//   Real '\\\\\''(start = 1.0, fixed = true);
+//   Real '*/ no code injection'(start = 1.0, fixed = true);
+//   Real '\''(start = 1.0, fixed = true);
+//   Real 'stupid,name'(start = 1.0, fixed = true);
+// equation
+//   der('a"b') = 1.0;
+//   der('c d') = -1.0;
+//   der('e"f g') = 2.0;
+//   der('h\'i //j') = -2.0;
+//   der('\\\\\'') = 3.0;
+//   der('*/ no code injection') = 4.0;
+//   der('\'') = -4.0;
+//   der('stupid,name') = 5.0;
+// end QuotedIdentifier;
+// endResult

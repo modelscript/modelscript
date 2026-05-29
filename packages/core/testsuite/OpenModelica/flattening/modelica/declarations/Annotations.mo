@@ -19,21 +19,22 @@ class c
 equation
   x = f(time);
   annotation(key = value);
+  annotation(__OpenModelica_commandLineOptions="+showAnnotations -d=-newInst");
 end c;
 
 // Result:
 // function f "Some comment"
 //   input Real x "comment";
-//   output Real y;
+//   output Real y annotation(key = value);
 // algorithm
 //   y := x;
+//   annotation(key = value);
 // end f;
 //
 // class c
-//   Real x "x";
+//   Real x "x" annotation(key = value);
 // equation
 //   x = f(time);
+//   annotation(key = value, __OpenModelica_commandLineOptions = "+showAnnotations -d=-newInst");
 // end c;
-// [<interactive>:18:3-18:37:writable] Warning: Components are deprecated in class.
-// [<interactive>:20:3-20:14:writable] Warning: Equation sections are deprecated in class.
 // endResult

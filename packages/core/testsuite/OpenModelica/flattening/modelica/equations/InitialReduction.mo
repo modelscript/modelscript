@@ -10,11 +10,12 @@ equation
   for i loop
     der(T[i]) = 1;
   end for;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InitialReduction;
 
 // Result:
 // class InitialReduction
-//   final parameter Integer n = 10;
+//   parameter Integer n = 10;
 //   Real T[1];
 //   Real T[2];
 //   Real T[3];
@@ -26,7 +27,16 @@ end InitialReduction;
 //   Real T[9];
 //   Real T[10];
 // initial equation
-//   T = array(200.0 + 100.0 * /*Real*/(i - 1) / 9.0 for i in 1:10);
+//   T[1] = 200.0;
+//   T[2] = 211.11111111111111;
+//   T[3] = 222.22222222222223;
+//   T[4] = 233.33333333333331;
+//   T[5] = 244.44444444444446;
+//   T[6] = 255.55555555555554;
+//   T[7] = 266.66666666666663;
+//   T[8] = 277.77777777777777;
+//   T[9] = 288.8888888888889;
+//   T[10] = 300.0;
 // equation
 //   der(T[1]) = 1.0;
 //   der(T[2]) = 1.0;

@@ -27,11 +27,10 @@ end ExternalObjectStructorCall1;
 
 // Result:
 // Error processing file: ExternalObjectStructorCall1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectStructorCall1.mo:25:3-25:38:writable] Error: Function ExtObj.constructor not found in scope ExternalObjectStructorCall1.
-// Error: Error occurred while flattening model ExternalObjectStructorCall1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectStructorCall1.mo:25:3-25:38:writable] Error: Function ExtObj.constructor not found in scope ExternalObjectStructorCall1.
 //
 // Execution failed!
 // endResult

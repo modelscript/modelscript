@@ -9,11 +9,10 @@ end A;
 
 // Result:
 // Error processing file: ceval5.mo
-// [<interactive>:6:3-6:26:writable] Error: Type mismatch in binding m = n, expected subtype of Integer, got type Real.
-// Error: Error occurred while flattening model A
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ceval5.mo:6:3-6:26:writable] Error: Type mismatch in binding m = n, expected subtype of Integer, got type Real.
 //
 // Execution failed!
 // endResult

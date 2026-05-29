@@ -11,6 +11,7 @@ equation
    reinit(x,zeros(3));
  end when;
 der(x)={-x[1],x[2],1};
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ReinitArray;
 
 // Result:
@@ -20,7 +21,9 @@ end ReinitArray;
 //   Real x[3](start = 3.3);
 // equation
 //   when time > 0.1 then
-//     reinit(x, {0.0, 0.0, 0.0});
+//     reinit(x[1], 0.0);
+//     reinit(x[2], 0.0);
+//     reinit(x[3], 0.0);
 //   end when;
 //   der(x[1]) = -x[1];
 //   der(x[2]) = x[2];

@@ -9,3 +9,9 @@ model ZeroDims
   ZeroDim c[n](length = {0.0 for i in 1:n});
 end ZeroDims;
 
+
+// Result:
+// class ZeroDims
+//   final parameter Integer n = 0;
+// end ZeroDims;
+// endResult

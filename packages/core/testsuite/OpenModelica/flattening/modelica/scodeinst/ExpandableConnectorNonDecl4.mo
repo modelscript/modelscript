@@ -17,11 +17,10 @@ end ExpandableConnectorNonDecl4;
 
 // Result:
 // Error processing file: ExpandableConnectorNonDecl4.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExpandableConnectorNonDecl4.mo:15:3-15:21:writable] Error: Variable EC.ri not found in scope ExpandableConnectorNonDecl4.
-// Error: Error occurred while flattening model ExpandableConnectorNonDecl4
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExpandableConnectorNonDecl4.mo:15:3-15:21:writable] Error: Variable EC.ri not found in scope ExpandableConnectorNonDecl4.
 //
 // Execution failed!
 // endResult

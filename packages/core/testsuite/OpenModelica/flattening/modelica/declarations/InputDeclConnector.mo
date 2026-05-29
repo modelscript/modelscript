@@ -14,6 +14,7 @@ class InputDeclConnector
   input InputConnector ic;
 equation
   ic.r = 1.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end InputDeclConnector;
 
 // Result:
@@ -21,10 +22,7 @@ end InputDeclConnector;
 //   input Real ic.r;
 //   input Real ic.f;
 // equation
-//   ic.f = 0.0;
 //   ic.r = 1.0;
+//   ic.f = 0.0;
 // end InputDeclConnector;
-// [OpenModelica/flattening/modelica/declarations/InputDeclConnector.mo:14:3-14:26:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/declarations/InputDeclConnector.mo:16:3-16:13:writable] Warning: Equation sections are deprecated in class.
-// [OpenModelica/flattening/modelica/declarations/InputDeclConnector.mo:14:3-14:26:writable] Warning: Connector ic is not balanced: The number of potential variables (0) is not equal to the number of flow variables (1).
 // endResult

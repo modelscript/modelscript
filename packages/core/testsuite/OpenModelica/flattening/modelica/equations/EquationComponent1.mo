@@ -13,6 +13,7 @@ class EquationComponent1
   R a,b;
 equation
   a = b;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EquationComponent1;
 
 // Result:
@@ -28,8 +29,7 @@ end EquationComponent1;
 //   Real b.x;
 //   Real b.y;
 // equation
-//   a = b;
+//   a.x = b.x;
+//   a.y = b.y;
 // end EquationComponent1;
-// [OpenModelica/flattening/modelica/equations/EquationComponent1.mo:13:3-13:8:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/equations/EquationComponent1.mo:15:3-15:8:writable] Warning: Equation sections are deprecated in class.
 // endResult

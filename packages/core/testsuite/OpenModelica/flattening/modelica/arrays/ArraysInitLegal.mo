@@ -10,6 +10,7 @@ class ArraysInit
    // Array variable
   Real A4[2, 2](start = {{1, 0}, {0, 1}});
    // Array with explicit start value
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArraysInit;
 
 // Result:
@@ -23,6 +24,4 @@ end ArraysInit;
 //   Real A4[2,1](start = 0.0);
 //   Real A4[2,2](start = 1.0);
 // end ArraysInit;
-// [<interactive>:9:3-9:16:writable] Warning: Components are deprecated in class.
-// [<interactive>:11:3-11:42:writable] Warning: Components are deprecated in class.
 // endResult

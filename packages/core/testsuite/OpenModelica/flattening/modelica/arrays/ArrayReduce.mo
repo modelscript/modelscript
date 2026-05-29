@@ -11,6 +11,7 @@ equation
   maximum = max([1, 2, 3; 4, 5, 6]);      // Gives the value 6
   summ    = sum({{1, 2, 3}, {4, 5, 6}});  // Gives the value 21
   prod    = product({3.14, 2, 2});        // Gives the value 12.56
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayReduce;
 
 // Result:
@@ -25,6 +26,4 @@ end ArrayReduce;
 //   summ = 21.0;
 //   prod = 12.56;
 // end ArrayReduce;
-// [OpenModelica/flattening/modelica/arrays/ArrayReduce.mo:8:3-8:36:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/ArrayReduce.mo:10:3-10:28:writable] Warning: Equation sections are deprecated in class.
 // endResult

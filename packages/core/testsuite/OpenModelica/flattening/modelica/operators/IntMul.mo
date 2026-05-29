@@ -7,6 +7,7 @@
 
 model IntMul
   constant Integer i = 4711 * 1138;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end IntMul;
 
 // Result:

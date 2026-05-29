@@ -61,3 +61,9 @@ model Dependency
   Real x = B.u;
   // U u(redeclare package Medium = RefAir);
 end Dependency;
+
+// Result:
+// class Dependency
+//   Real x = 11.0;
+// end Dependency;
+// endResult

@@ -15,11 +15,10 @@ end ReinitInvalid8;
 
 // Result:
 // Error processing file: ReinitInvalid8.mo
-// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid8.mo:11:7-11:21:writable] Error: Assignment to iterator 'i'.
-// Error: Error occurred while flattening model ReinitInvalid8
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ReinitInvalid8.mo:11:7-11:21:writable] Error: Assignment to iterator 'i'.
 //
 // Execution failed!
 // endResult

@@ -15,11 +15,12 @@ model ArrayReduce2
   Real y;
 equation
   y = sum(a[:].k);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayReduce2;
 
 // Result:
 // class ArrayReduce2
-//   final parameter Integer n = 3;
+//   parameter Integer n = 3;
 //   parameter Real a[1].k = 1.0;
 //   parameter Real a[2].k = 1.0;
 //   parameter Real a[3].k = 1.0;

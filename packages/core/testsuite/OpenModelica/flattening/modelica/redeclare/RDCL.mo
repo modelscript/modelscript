@@ -24,21 +24,24 @@ package B
     replaceable Base cm(pD = diam);
     Real x = cm.f_b.phi;
   end WA;
+
 end B;
 
 model RDCL
   B.WA w(redeclare B.BaseImpl cm);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end RDCL;
 
 
 // Result:
-// Error processing file: RDCL.mo
-// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:42:3-42:37:writable] Error: Variable b in package B is not constant.
-// [OpenModelica/flattening/modelica/redeclare/ClassExtends3.mo:46:3-46:39:writable] Error: Function B.usePart not found in scope ClassExtends3.
-// Error: Error occurred while flattening model RDCL.mo [BUG: #2346]
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class RDCL
+//   parameter Real w.diam = 1.0;
+//   parameter Real w.cm.pD = w.diam;
+//   Real w.cm.y;
+//   Real w.cm.f_b.phi;
+//   Real w.cm.f_b.tau;
+//   Real w.x = w.cm.f_b.phi;
+// equation
+//   w.cm.f_b.tau = 0.0;
+// end RDCL;
 // endResult

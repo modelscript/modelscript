@@ -18,3 +18,16 @@ model PDEModelicaTest
 
   PDE2 pde2;
 end PDEModelicaTest;
+
+// Result:
+// Error processing file: PDEModelicaTest.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+// Failed to parse file: OpenModelica/flattening/modelica/others/PDEModelicaTest.mo!
+//
+// Failed to parse file: OpenModelica/flattening/modelica/others/PDEModelicaTest.mo!
+//
+// [OpenModelica/flattening/modelica/others/PDEModelicaTest.mo:5:16-5:16:writable] Error: Missing token: SEMICOLON
+//
+// Execution failed!
+// endResult

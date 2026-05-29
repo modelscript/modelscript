@@ -10,6 +10,7 @@ equation
   when time>0.5 then
     x=time;
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Discrete1;
 
 // Result:
@@ -20,6 +21,4 @@ end Discrete1;
 //     x = time;
 //   end when;
 // end Discrete1;
-// [OpenModelica/flattening/modelica/declarations/Discrete1.mo:8:3-8:18:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/declarations/Discrete1.mo:10:3-12:11:writable] Warning: Equation sections are deprecated in class.
 // endResult

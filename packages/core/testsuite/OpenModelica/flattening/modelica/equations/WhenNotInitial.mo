@@ -6,6 +6,7 @@ equation
   when not initial() then
     r=1;
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenNotInitial;
 
 // Result:
@@ -16,5 +17,4 @@ end WhenNotInitial;
 //     r = 1.0;
 //   end when;
 // end WhenNotInitial;
-// [OpenModelica/flattening/modelica/equations/WhenNotInitial.mo:6:3-8:11:writable] Warning: initial() may only be used as a when condition (when initial() or when {..., initial(), ...}), but got condition 'not initial()'.
 // endResult

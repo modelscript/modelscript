@@ -887,3 +887,16 @@ model TestPackage_TestModel
   extends TestPackage.TestModel;
   annotation(__Wolfram(totalModelMain = true, totalModelId = "{cbefb7cf-3381-4147-b9f1-e599d11e1678}"));
 end TestPackage_TestModel;
+// Result:
+// Error processing file: TestModelTotal.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// Notification: Automatically loaded package Complex 4.1.0 due to uses annotation from Modelica.
+// Notification: Automatically loaded package ModelicaServices 4.1.0 due to uses annotation from Modelica.
+// Notification: Modelica requested package Complex of version 3.2.1. Complex 4.1.0 is used instead which states that it is fully compatible without conversion script needed.
+// Notification: Modelica requested package ModelicaServices of version 3.2.1. ModelicaServices 4.1.0 is used instead which states that it is fully compatible without conversion script needed.
+// [OpenModelica/flattening/modelica/expandable/TestModelTotal.mo:843:5-843:179:writable] Error: Cannot connect expandable connector inputToBus.chassisBus with non-expandable connector inputToBus.controlBus.chassis.
+//
+// Execution failed!
+// endResult

@@ -11,11 +11,13 @@ end RangeTypeError2;
 
 // Result:
 // Error processing file: RangeTypeError2.mo
-// Error: Class RangeTypeError2.mo not found in scope <top>.
-// Error: Error occurred while flattening model RangeTypeError2.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RangeTypeError2.mo:9:3-9:24:writable] Error: Type mismatch in range: '1' of type
+//   Integer
+// is not type compatible with 'E.one' of type
+//   enumeration E(one, two, three)
 //
 // Execution failed!
 // endResult

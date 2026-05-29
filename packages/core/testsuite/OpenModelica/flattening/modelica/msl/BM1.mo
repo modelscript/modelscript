@@ -973,6 +973,7 @@ model BM1
 
 equation
   connect(abs1.inPort,constant1.outPort) annotation(Line(visible=true,points={{11.45,39.94},{-1.32,38.12}}));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM1;
 
 
@@ -998,16 +999,26 @@ end BM1;
 // abs1.inPort.signal[1] = constant1.outPort.signal[1];
 // end BM1;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BM1
+//   parameter Integer abs1.n = 1 "Number of inputs (= number of outputs)";
+//   parameter Integer abs1.inPort.n = abs1.n "Dimension of signal vector";
+//   Real abs1.inPort.signal[1] "Real input signals";
+//   parameter Integer abs1.outPort.n = abs1.n "Dimension of signal vector";
+//   Real abs1.outPort.signal[1] "Real output signals";
+//   Real abs1.y[1] "Output signals";
+//   protected Real abs1.u[1] "Input signals";
+//   parameter Integer constant1.nout(min = 1) = 1 "Number of outputs";
+//   parameter Integer constant1.outPort.n = constant1.nout "Dimension of signal vector";
+//   Real constant1.outPort.signal[1] "Real output signals";
+//   Real constant1.y[1];
+//   parameter Real constant1.k[1] = 1.0 "Constant output values";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   abs1.u = {abs1.inPort.signal[1]};
+//   abs1.y[1] = abs(abs1.u[1]);
+//   abs1.y[1] = abs1.outPort.signal[1];
+//   constant1.outPort.signal[1] = constant1.k[1];
+//   constant1.y[1] = constant1.outPort.signal[1];
+//   assert(abs1.inPort.n == constant1.outPort.n, "automatically generated from connect");
+//   abs1.inPort.signal[1] = constant1.outPort.signal[1];
+// end BM1;
 // endResult

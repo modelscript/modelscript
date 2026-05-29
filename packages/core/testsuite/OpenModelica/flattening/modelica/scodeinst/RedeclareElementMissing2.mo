@@ -11,11 +11,10 @@ end RedeclareElementMissing2;
 
 // Result:
 // Error processing file: RedeclareElementMissing2.mo
-// [OpenModelica/flattening/modelica/scodeinst/RedeclareElementMissing2.mo:7:13-9:8:writable] Error: Illegal redeclare of element A, no inherited element with that name exists.
-// Error: Error occurred while flattening model RedeclareElementMissing2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RedeclareElementMissing2.mo:7:13-9:8:writable] Error: Illegal redeclare of element A, no inherited element with that name exists.
 //
 // Execution failed!
 // endResult

@@ -17,12 +17,11 @@ end ExtendReplaceable3;
 
 // Result:
 // Error processing file: ExtendReplaceable3.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExtendReplaceable3.mo:8:17-12:10:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/ExtendReplaceable3.mo:15:3-15:16:writable] Error: Class 'B' in 'extends A.<B>.C' is replaceable, the base class name must be transitively non-replaceable.
-// Error: Error occurred while flattening model ExtendReplaceable3
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExtendReplaceable3.mo:8:17-12:10:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/ExtendReplaceable3.mo:15:3-15:16:writable] Error: Class 'B' in 'extends A.<B>.C' is replaceable, the base class name must be transitively non-replaceable.
 //
 // Execution failed!
 // endResult

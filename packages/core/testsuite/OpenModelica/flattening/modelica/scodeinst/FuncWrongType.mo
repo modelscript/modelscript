@@ -16,14 +16,13 @@ end FuncWrongType;
 
 // Result:
 // Error processing file: FuncWrongType.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/FuncWrongType.mo:14:3-14:19:writable] Error: Type mismatch for positional argument 1 in f(x=true). The argument has type:
 //   Boolean
 // expected type:
 //   Real
-// Error: Error occurred while flattening model FuncWrongType
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

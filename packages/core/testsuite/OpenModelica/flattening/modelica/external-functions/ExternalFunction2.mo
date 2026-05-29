@@ -19,10 +19,11 @@ model ExternalFunction2
   Real y[size(x,1)];
 equation
   y = ext_f(x);
+  annotation(__OpenModelica_commandLineOptions="-d=gen -d=-newInst");
 end ExternalFunction2;
 
 // Result:
-// impure function ext_f
+// function ext_f
 //   input Real[:] x;
 //   output Real[size(x, 1)] y;
 //

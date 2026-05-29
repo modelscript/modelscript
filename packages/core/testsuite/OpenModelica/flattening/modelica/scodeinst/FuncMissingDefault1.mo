@@ -17,11 +17,10 @@ end M;
 
 // Result:
 // Error processing file: FuncMissingDefault1.mo
-// [<interactive>:15:3-15:18:writable] Error: Function parameter y was not given by the function call, and does not have a default value.
-// Error: Error occurred while flattening model M
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FuncMissingDefault1.mo:15:3-15:18:writable] Error: Function parameter y was not given by the function call, and does not have a default value.
 //
 // Execution failed!
 // endResult

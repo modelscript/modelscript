@@ -44,6 +44,7 @@ equation
   else if (time < thrustEndTime) then force2
   else 0;
   apollo.gravity = moon.g*moon.mass/(apollo.altitude + moon.radius)^2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end MoonLanding;
 
 // Result:
@@ -66,17 +67,10 @@ end MoonLanding;
 //   parameter Real moon.radius = 1.738e6;
 // equation
 //   (apollo.thrust - apollo.mass * apollo.gravity) / apollo.mass = apollo.acceleration;
-//   der(apollo.mass) = -apollo.massLossRate * abs(apollo.thrust);
+//   der(apollo.mass) = (-apollo.massLossRate) * abs(apollo.thrust);
 //   der(apollo.altitude) = apollo.velocity;
 //   der(apollo.velocity) = apollo.acceleration;
 //   apollo.thrust = if time < thrustDecreaseTime then force1 else if time < thrustEndTime then force2 else 0.0;
 //   apollo.gravity = 6.672e-11 * moon.mass / (apollo.altitude + moon.radius) ^ 2.0;
 // end MoonLanding;
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:22:3-22:31:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:23:3-23:31:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:24:3-24:20:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:25:3-25:14:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:26:3-26:15:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:27:3-27:41:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/extends/MoonLanding.mo:29:3-29:48:writable] Warning: Equation sections are deprecated in class.
 // endResult

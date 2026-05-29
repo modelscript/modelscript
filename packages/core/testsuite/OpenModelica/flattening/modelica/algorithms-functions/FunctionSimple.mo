@@ -17,6 +17,7 @@ model FunctionSimple
 equation
   x = 1;
   y = TestFunction(x);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FunctionSimple;
 
 // Result:

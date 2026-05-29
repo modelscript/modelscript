@@ -11,11 +11,10 @@ end FuncBuiltinVectorWrongType1;
 
 // Result:
 // Error processing file: FuncBuiltinVectorWrongType1.mo
-// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinVectorWrongType1.mo:9:3-9:47:writable] Error: Invalid dimensions Integer[3, 2] in vector({{1, 2}, {2, 2}, {3, 2}}), no more than one dimension may have size > 1.
-// Error: Error occurred while flattening model FuncBuiltinVectorWrongType1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/FuncBuiltinVectorWrongType1.mo:9:3-9:47:writable] Error: Invalid dimensions Integer[3, 2] in vector({{1, 2}, {2, 2}, {3, 2}}), no more than one dimension may have size > 1.
 //
 // Execution failed!
 // endResult

@@ -24,11 +24,10 @@ end ExternalObjectReplaceable1;
 
 // Result:
 // Error processing file: ExternalObjectReplaceable1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectReplaceable1.mo:10:15-13:18:writable] Error: 'constructor' may not be replaceable.
-// Error: Error occurred while flattening model ExternalObjectReplaceable1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExternalObjectReplaceable1.mo:10:15-13:18:writable] Error: 'constructor' may not be replaceable.
 //
 // Execution failed!
 // endResult

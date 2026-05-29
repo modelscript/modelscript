@@ -1,0 +1,18 @@
+// status: correct
+// cflags: -d=-newInst
+
+GC_set_max_heap_size(1024*1024*300 /* 300 MB */);
+loadModel(Modelica, {"3.2.3"});getErrorString();
+simulate(Modelica.Mechanics.MultiBody.Examples.Elementary.DoublePendulum);getErrorString();
+
+// Result:
+// GC Warning: Out of Memory! Heap size: 299 MiB. Returning NULL!
+// true
+// true
+// ""
+//
+// "Warning: Out of memory! Faking a stack overflow.
+// Error: Stack overflow occurred while evaluating simulate(Modelica.Mechanics.MultiBody.Examples.Elementary.DoublePendulum):
+// [bt] [Symbols are not generated when running the test suite]
+// "
+// endResult

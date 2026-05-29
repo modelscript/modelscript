@@ -15,15 +15,15 @@ model BlockIllegal
 equation
   tb1.i = 1;
   connect(tb1.i,tb2.i);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BlockIllegal;
 
 // Result:
-// Error processing file: BlockIllegal.mo
-// [OpenModelica/flattening/modelica/blocks/BlockIllegal.mo:17:3-17:23:writable] Error: tb1.i is not a valid connector.
-// Error: Error occurred while flattening model BlockIllegal
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class BlockIllegal
+//   Integer tb1.i;
+//   Integer tb2.i;
+// equation
+//   tb1.i = 1;
+//   tb1.i = tb2.i;
+// end BlockIllegal;
 // endResult

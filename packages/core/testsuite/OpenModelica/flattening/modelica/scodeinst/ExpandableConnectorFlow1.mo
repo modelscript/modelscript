@@ -15,11 +15,10 @@ end ExpandableConnectorFlow1;
 
 // Result:
 // Error processing file: ExpandableConnectorFlow1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ExpandableConnectorFlow1.mo:9:3-9:14:writable] Error: Prefix 'flow' on component 'f' not allowed in class specialization 'expandable connector'.
-// Error: Error occurred while flattening model ExpandableConnectorFlow1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ExpandableConnectorFlow1.mo:9:3-9:14:writable] Error: Prefix 'flow' on component 'f' not allowed in class specialization 'expandable connector'.
 //
 // Execution failed!
 // endResult

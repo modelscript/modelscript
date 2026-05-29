@@ -15,13 +15,21 @@ model LogCall1
   Real res;
 equation
   res = mylog(100);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end LogCall1;
 
 
 // Result:
+// function mylog "Natural logarithm"
+//   input Real x;
+//   output Real y;
+//
+//   external "C" y = log(x);
+// end mylog;
+//
 // class LogCall1
 //   Real res;
 // equation
-//   res = log(100.0);
+//   res = 4.605170185988092;
 // end LogCall1;
 // endResult

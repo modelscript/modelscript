@@ -12,6 +12,7 @@ model ConnectTwoSources
   RealInput ri1, ri2;
 equation
   connect(ri1, ri2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ConnectTwoSources;
 
 // Result:

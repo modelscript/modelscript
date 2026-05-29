@@ -18,15 +18,16 @@ end S1;
 model MergeComponents9
   extends S1;
   Real x = m1.x;
+  annotation(__OpenModelica_commandLineOptions="-d=mergeComponents");
 end MergeComponents9;
 
 // Result:
 // class MergeComponents9
-//   Real m1.x;
-//   Real m2.x;
-//   Real x = m1.x;
+//   Real $M1[1].x;
+//   Real $M1[2].x;
+//   Real x = $M1[1].x;
 // equation
-//   m1.x = 2.0 * time;
-//   m2.x = 2.0 * time;
+//   $M1[1].x = 2.0 * time;
+//   $M1[2].x = 2.0 * time;
 // end MergeComponents9;
 // endResult

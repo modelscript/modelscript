@@ -9,6 +9,7 @@ model Tanh
   Real r;
 equation
   r = tanh(45);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Tanh;
 
 // Result:

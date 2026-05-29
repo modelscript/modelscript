@@ -44,16 +44,14 @@ end B;
 
 model Import4
   extends B.A.F;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Import4;
 
 // Result:
-// Error processing file: Import4.mo
-// [OpenModelica/flattening/modelica/packages/Import4.mo:25:5-25:21:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/packages/Import4.mo:39:5-39:8:writable] Error: Component 'e' has partial type 'E'.
-// Error: Error occurred while flattening model Import4
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Import4
+//   Real c.x = 1.0;
+//   Real d.x = 5.0;
+//   Real e.x = 6.0;
+//   Real myc.x = 7.0;
+// end Import4;
 // endResult

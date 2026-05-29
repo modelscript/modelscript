@@ -7,6 +7,7 @@
 
 class SimplifyRangeInClass
   Real r[2] = sin(1:2);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end SimplifyRangeInClass;
 
 // Result:
@@ -14,7 +15,6 @@ end SimplifyRangeInClass;
 //   Real r[1];
 //   Real r[2];
 // equation
-//   r = array(sin((1.0:2.0)[$i0]) for $i0 in 1:2);
+//   r = {0.8414709848078965, 0.9092974268256817};
 // end SimplifyRangeInClass;
-// [<interactive>:9:3-9:23:writable] Warning: Components are deprecated in class.
 // endResult

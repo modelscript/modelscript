@@ -13,6 +13,7 @@ class EquationComponent4
   R a,b,c;
 equation
   (if true then a else b) = if true then b else c;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end EquationComponent4;
 // Result:
 // function EquationComponent4.R "Automatically generated record constructor for EquationComponent4.R"
@@ -29,8 +30,7 @@ end EquationComponent4;
 //   Real c.x;
 //   Real c.y;
 // equation
-//   a = b;
+//   a.x = b.x;
+//   a.y = b.y;
 // end EquationComponent4;
-// [OpenModelica/flattening/modelica/equations/EquationComponent4.mo:13:3-13:10:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/equations/EquationComponent4.mo:15:3-15:50:writable] Warning: Equation sections are deprecated in class.
 // endResult

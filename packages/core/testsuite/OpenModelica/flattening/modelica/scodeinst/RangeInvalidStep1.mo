@@ -12,11 +12,10 @@ end RangeInvalidStep1;
 
 // Result:
 // Error processing file: RangeInvalidStep1.mo
-// Error: Class RangeInvalidStep1.mo not found in scope <top>.
-// Error: Error occurred while flattening model RangeInvalidStep1.mo
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/RangeInvalidStep1.mo:10:3-10:22:writable] Error: Step size 0 in range is too small.
 //
 // Execution failed!
 // endResult

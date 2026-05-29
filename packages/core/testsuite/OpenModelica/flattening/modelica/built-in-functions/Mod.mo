@@ -9,6 +9,7 @@ model Mod
   Real r;
 equation
   r = mod(8, 3);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Mod;
 
 // Result:

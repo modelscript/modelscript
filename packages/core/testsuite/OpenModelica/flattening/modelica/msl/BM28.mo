@@ -761,6 +761,7 @@ end Modelica;
 model BM28
   Modelica.Blocks.Math.TwoOutputs twoOutputs1 annotation(Placement(visible=true,
         transformation(                                                                        x=-14.712,y=14.1932,scale=0.1)));
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BM28;
 
 // class BM28
@@ -773,16 +774,13 @@ end BM28;
 //   twoOutputs1.OutPort1.signal[1] = twoOutputs1.OutPort2.signal[1];
 // end BM28;
 // Result:
-// class SampleTest
-//   Clock c;
-//   Boolean cb = sample(0.1, 0.1);
-//   Real x1;
-//   Real x2;
-//   Real y;
+// class BM28
+//   parameter Integer twoOutputs1.n = 1 "number of input signals";
+//   parameter Integer twoOutputs1.OutPort1.n = twoOutputs1.n "Dimension of signal vector";
+//   Real twoOutputs1.OutPort1.signal[1] "Real output signals";
+//   parameter Integer twoOutputs1.OutPort2.n = twoOutputs1.n "Dimension of signal vector";
+//   Real twoOutputs1.OutPort2.signal[1] "Real output signals";
 // equation
-//   c = Clock(0.1);
-//   x1 = sample(1.0, Clock());
-//   x2 = sample(1.1, c);
-//   y = x1 + x2;
-// end SampleTest;
+//   twoOutputs1.OutPort1.signal[1] = twoOutputs1.OutPort2.signal[1];
+// end BM28;
 // endResult

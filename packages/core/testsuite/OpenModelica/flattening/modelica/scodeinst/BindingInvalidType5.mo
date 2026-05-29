@@ -9,11 +9,10 @@ end BindingInvalidType5;
 
 // Result:
 // Error processing file: BindingInvalidType5.mo
-// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType5.mo:7:3-7:30:writable] Error: Type mismatch in binding x = {"1", "2", "3"}, expected subtype of Real[3], got type String[3].
-// Error: Error occurred while flattening model BindingInvalidType5
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/BindingInvalidType5.mo:7:3-7:30:writable] Error: Type mismatch in binding x = {"1", "2", "3"}, expected subtype of Real[3], got type String[3].
 //
 // Execution failed!
 // endResult

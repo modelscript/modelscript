@@ -19,12 +19,10 @@
 
 // Result:
 // Error processing file: IconsRecursiveTest.mo
-// Error: Failed to load package RecursiveSelfReference (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class RecursiveSelfReference not found in scope <top>.
-// Error: Error occurred while flattening model RecursiveSelfReference
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/others/IconsRecursiveTest.mo:10:3-18:18:writable] Error: Cannot instantiate BaseClasses due to class specialization package.
 //
 // Execution failed!
 // endResult

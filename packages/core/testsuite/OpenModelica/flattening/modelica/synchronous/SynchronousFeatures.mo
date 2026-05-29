@@ -117,3 +117,13 @@ package SynchronousFeatures "Fundamentals of Synchronous Control in Modelica,  H
     end when;
   end VaryingClock;
 end SynchronousFeatures;
+
+// Result:
+// Error processing file: SynchronousFeatures.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/synchronous/SynchronousFeatures.mo:1:1-119:24:writable] Error: Cannot instantiate SynchronousFeatures due to class specialization package.
+//
+// Execution failed!
+// endResult

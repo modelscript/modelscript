@@ -12,6 +12,7 @@ equation
   x1=y./t;
   x2=t./y;
   v=t./u;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end ArrayEWOps4;
 
 // Result:
@@ -54,7 +55,4 @@ end ArrayEWOps4;
 //   x2[2,2] = t / y[2,2];
 //   v = t / u;
 // end ArrayEWOps4;
-// [OpenModelica/flattening/modelica/arrays/ArrayEWOps4.mo:8:3-8:24:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/ArrayEWOps4.mo:9:3-9:13:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/ArrayEWOps4.mo:11:3-11:9:writable] Warning: Equation sections are deprecated in class.
 // endResult

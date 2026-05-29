@@ -17,10 +17,11 @@ end A;
 
 model Import6
   extends A.C;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Import6;
 
 // Result:
 // class Import6
-//   Real x = time * 2.0;
+//   Real x = 2.0 * time;
 // end Import6;
 // endResult

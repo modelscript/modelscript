@@ -9,6 +9,7 @@ model Tan
   Real r;
 equation
   r = tan(45);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Tan;
 
 // Result:

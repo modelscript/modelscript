@@ -12,11 +12,10 @@ end TupleInvalid2;
 
 // Result:
 // Error processing file: TupleInvalid2.mo
-// [OpenModelica/flattening/modelica/scodeinst/TupleInvalid2.mo:10:3-10:18:writable] Error: Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side. Got the following expression: (1, 2).
-// Error: Error occurred while flattening model TupleInvalid2
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/TupleInvalid2.mo:10:3-10:18:writable] Error: Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side. Got the following expression: (1, 2).
 //
 // Execution failed!
 // endResult

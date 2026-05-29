@@ -13,16 +13,15 @@ package P
   model InnerOuterMissing9
     outer Real x;
   end InnerOuterMissing9;
+  annotation(__OpenModelica_commandLineOptions="-i=P.InnerOuterMissing9");
 end P;
 
 // Result:
 // Error processing file: InnerOuterMissing9.mo
-// Error: Failed to load package InnerOuterMissing9 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class InnerOuterMissing9 not found in scope <top>.
-// Error: Error occurred while flattening model InnerOuterMissing9
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing9.mo:10:1-17:6:writable] Error: Cannot instantiate P due to class specialization package.
 //
 // Execution failed!
 // endResult

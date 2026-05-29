@@ -45,3 +45,13 @@ package Modelica
     end Interfaces;
   end Media;
 end Modelica;
+
+// Result:
+// Error processing file: vaporizing.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/mosfiles/vaporizing.mo:1:1-47:13:writable] Error: Cannot instantiate Modelica due to class specialization package.
+//
+// Execution failed!
+// endResult

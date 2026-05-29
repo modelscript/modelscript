@@ -18,6 +18,7 @@ model AssignmentFunction
 algorithm
   x := 2;
   y := F(x);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end AssignmentFunction;
 
 // Result:
@@ -25,7 +26,7 @@ end AssignmentFunction;
 //   input Real inReal;
 //   output Real outReal;
 // algorithm
-//   outReal := inReal + 2.0;
+//   outReal := 2.0 + inReal;
 // end F;
 //
 // class AssignmentFunction

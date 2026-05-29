@@ -7,6 +7,7 @@
 
 class Constant5
   Real x[integer(2.5)];
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Constant5;
 
 // Result:
@@ -14,5 +15,4 @@ end Constant5;
 //   Real x[1];
 //   Real x[2];
 // end Constant5;
-// [OpenModelica/flattening/modelica/declarations/Constant5.mo:9:3-9:23:writable] Warning: Components are deprecated in class.
 // endResult

@@ -15,6 +15,7 @@ equation
   when sample(0, 2) then
     2*x + y = 7;                // Error: not valid Modelica code
   end when;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end WhenNotValid;
 
 // class WhenNotValid
@@ -28,11 +29,11 @@ end WhenNotValid;
 // end WhenNotValid;
 // Result:
 // Error processing file: WhenNotValid.mo
-// [OpenModelica/flattening/modelica/equations/WhenNotValid.mo:16:5-16:16:writable] Error: Invalid left-hand side of when-equation: 2 * x + y.
-// Error: Error occurred while flattening model WhenNotValid
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/equations/WhenNotValid.mo:16:5-16:16:writable] Error: Invalid left-hand side of when-equation: 2.0 * x + y.
+// Error: Error occurred while flattening model WhenNotValid
 //
 // Execution failed!
 // endResult

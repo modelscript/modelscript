@@ -20,6 +20,7 @@ equation
   // Lower left block
   Q[4:6, 4:6] = P;
   // Lower right block
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end BlockMatrix;
 
 // Result:
@@ -108,7 +109,4 @@ end BlockMatrix;
 //   Q[6,5] = P[3,2];
 //   Q[6,6] = P[3,3];
 // end BlockMatrix;
-// [OpenModelica/flattening/modelica/arrays/BlockMatrix.mo:9:3-9:43:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/BlockMatrix.mo:11:3-11:15:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/arrays/BlockMatrix.mo:15:3-15:18:writable] Warning: Equation sections are deprecated in class.
 // endResult

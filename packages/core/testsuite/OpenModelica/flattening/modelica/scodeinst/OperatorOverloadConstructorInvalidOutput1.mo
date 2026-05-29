@@ -23,11 +23,10 @@ end OperatorOverloadConstructorInvalidOutput1;
 
 // Result:
 // Error processing file: OperatorOverloadConstructorInvalidOutput1.mo
-// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadConstructorInvalidOutput1.mo:7:1-15:6:writable] Error: Output 'x' in operator C.'constructor' must be of type C, got type Real.
-// Error: Error occurred while flattening model OperatorOverloadConstructorInvalidOutput1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/OperatorOverloadConstructorInvalidOutput1.mo:7:1-15:6:writable] Error: Output 'x' in operator C.'constructor' must be of type C, got type Real.
 //
 // Execution failed!
 // endResult

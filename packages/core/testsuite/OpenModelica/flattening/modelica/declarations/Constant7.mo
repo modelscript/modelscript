@@ -15,10 +15,12 @@ package A
       parameter Real C;
     end B2;
   end B;
+
 end A;
 
 model Constant7
   A.test t;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Constant7;
 // Result:
 // class Constant7

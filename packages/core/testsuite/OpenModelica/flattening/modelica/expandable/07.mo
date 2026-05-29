@@ -23,3 +23,21 @@
   model Test07
     Extract_Abs_Max_TSP_Bus b(nu=2);
   end Test07;
+// Result:
+// class Test07
+//   final parameter Integer b.nu(min = 0) = 2;
+//   Real b.sensor_TSP_bus_in[1].torque;
+//   Real b.sensor_TSP_bus_in[1].speed;
+//   Real b.sensor_TSP_bus_in[2].torque;
+//   Real b.sensor_TSP_bus_in[2].speed;
+//   protected Real b.yi_torque[1];
+//   protected Real b.yi_torque[2];
+//   protected Real b.yi_speed[1];
+//   protected Real b.yi_speed[2];
+// equation
+//   b.yi_torque[1] = b.sensor_TSP_bus_in[1].torque;
+//   b.yi_speed[1] = b.sensor_TSP_bus_in[1].speed;
+//   b.yi_torque[2] = b.sensor_TSP_bus_in[2].torque;
+//   b.yi_speed[2] = b.sensor_TSP_bus_in[2].speed;
+// end Test07;
+// endResult

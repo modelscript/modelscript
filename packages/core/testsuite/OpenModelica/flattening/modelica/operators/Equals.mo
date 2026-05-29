@@ -8,6 +8,7 @@
 model Equals
   constant Boolean b1 = 5 == 5;
   constant Boolean b2 = 5 == 7;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Equals;
 
 // Result:

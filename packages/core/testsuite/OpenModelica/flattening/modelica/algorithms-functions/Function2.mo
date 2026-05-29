@@ -19,15 +19,22 @@ model Function2
   Real x, z;
 equation
   x = f(z);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function2;
 
 // Result:
-// Error processing file: Function2.mo
-// [OpenModelica/flattening/modelica/algorithms-functions/Function2.mo:13:3-13:15:writable] Error: Invalid public variable toomuch, function variables that are not input/output must be protected.
-// Error: Error occurred while flattening model Function2
+// function f
+//   input Real x;
+//   output Real r;
+//   Real toomuch;
+// algorithm
+//   r := 2.0 * x;
+// end f;
 //
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class Function2
+//   Real x;
+//   Real z;
+// equation
+//   x = f(z);
+// end Function2;
 // endResult

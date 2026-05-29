@@ -18,12 +18,11 @@ end C;
 
 // Result:
 // Error processing file: mod11.mo
-// [<interactive>:16:7-16:12:writable] Notification: From here:
-// [<interactive>:12:19-12:20:writable] Error: Trying to override final element x with modifier '= 3'.
-// Error: Error occurred while flattening model C
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/mod11.mo:16:7-16:12:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/mod11.mo:12:19-12:20:writable] Error: Trying to override final element x with modifier '= 3'.
 //
 // Execution failed!
 // endResult

@@ -9,11 +9,10 @@ end InstanceRestriction1;
 
 // Result:
 // Error processing file: InstanceRestriction1.mo
-// [OpenModelica/flattening/modelica/scodeinst/InstanceRestriction1.mo:6:1-8:25:writable] Error: Cannot instantiate InstanceRestriction1 due to class specialization package.
-// Error: Error occurred while flattening model InstanceRestriction1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/InstanceRestriction1.mo:6:1-8:25:writable] Error: Cannot instantiate InstanceRestriction1 due to class specialization package.
 //
 // Execution failed!
 // endResult

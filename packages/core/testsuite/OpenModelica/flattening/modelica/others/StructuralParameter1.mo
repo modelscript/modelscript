@@ -14,12 +14,13 @@ model StructuralParam
    Real x[m],y[m];
 equation
 x=y;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end StructuralParam;
 
 // Result:
 // class StructuralParam
-//   final parameter Integer m = 1;
-//   final parameter Integer n = 1;
+//   parameter Integer m = n;
+//   parameter Integer n = 1;
 //   Real x[1];
 //   Real y[1];
 // equation

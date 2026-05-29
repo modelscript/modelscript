@@ -18,11 +18,10 @@ end ConnectArraysInvalidSubscript1;
 
 // Result:
 // Error processing file: ConnectArraysInvalidSubscript1.mo
-// [OpenModelica/flattening/modelica/scodeinst/ConnectArraysInvalidSubscript1.mo:16:3-16:24:writable] Error: Connector 'c1[n]' has non-parameter subscript 'n'.
-// Error: Error occurred while flattening model ConnectArraysInvalidSubscript1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/ConnectArraysInvalidSubscript1.mo:16:3-16:24:writable] Error: Connector 'c1[n]' has non-parameter subscript 'n'.
 //
 // Execution failed!
 // endResult

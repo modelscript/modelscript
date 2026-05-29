@@ -35,8 +35,14 @@ model ClassExtends2
 end ClassExtends2;
 
 // Result:
-// class CevalProduct1
-//   constant Real r1 = 40320.0;
-//   constant Integer i1 = 40320;
-// end CevalProduct1;
+// class ClassExtends2
+//   Real m1_a.x;
+//   Real m1_a.y;
+//   Real m2_a.x;
+//   Real m2_a.y;
+//   Real m1_b.x;
+//   Real m1_b.y;
+//   Real m2_b.x;
+//   Real m2_b.y;
+// end ClassExtends2;
 // endResult

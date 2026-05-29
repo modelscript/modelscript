@@ -9,6 +9,9 @@ end MinInvalidArg2;
 
 // Result:
 // Error processing file: MinInvalidArg2.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
 // [OpenModelica/flattening/modelica/scodeinst/MinInvalidArg2.mo:7:3-7:35:writable] Error: No matching function found for min({"str1", "str2"}).
 // Candidates are:
 //   min(Real, Real) => Real
@@ -19,10 +22,6 @@ end MinInvalidArg2;
 //   min(Integer[:, ...]) => Integer
 //   min(Boolean[:, ...]) => Boolean
 //   min(enumeration(:)[:, ...]) => enumeration(:)
-// Error: Error occurred while flattening model MinInvalidArg2
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
 //
 // Execution failed!
 // endResult

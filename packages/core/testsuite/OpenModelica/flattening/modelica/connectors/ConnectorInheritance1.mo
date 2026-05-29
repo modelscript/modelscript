@@ -7,17 +7,13 @@
 
 record A
   Real x;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end A;
 
 connector ConnectorInheritance1 = A;
 
 // Result:
-// Error processing file: ConnectorInheritance1.mo
-// Error: Class ConnectorInheritance1.mo not found in scope <top>.
-// Error: Error occurred while flattening model ConnectorInheritance1.mo
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class ConnectorInheritance1
+//   Real x;
+// end ConnectorInheritance1;
 // endResult

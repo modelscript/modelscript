@@ -26,10 +26,27 @@ class B
 equation
   u2 = p;  // Legal, since AccessDemo is inherited
   u3 = q;    // Legal, since u3 is public
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end B;
 
 // Result:
-// class ExtendsModWithImport
-//   parameter Real m.param = 1.0;
-// end ExtendsModWithImport;
+// class B
+//   parameter Real a = 2.0;
+//   Real x;
+//   Real z;
+//   parameter Real y;
+//   protected parameter Real w;
+//   protected parameter Real u;
+//   protected Real u2;
+//   Real u3;
+//   Real p;
+//   Real q;
+// equation
+//   u2 = p;
+//   u3 = q;
+//   x = 2.0;
+//   z = 5.0;
+//   u2 = 5.0;
+//   u3 = 8.0;
+// end B;
 // endResult

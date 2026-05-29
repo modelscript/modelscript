@@ -11,6 +11,7 @@ class Integer2Real
 equation
   n = 5;
   a = n / 2;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Integer2Real;
 
 // Result:
@@ -19,9 +20,6 @@ end Integer2Real;
 //   Real a;
 // equation
 //   n = 5;
-//   a = /*Real*/(n) / 2.0;
+//   a = 0.5 * /*Real*/(n);
 // end Integer2Real;
-// [OpenModelica/flattening/modelica/built-in-functions/Integer2Real.mo:9:3-9:12:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/built-in-functions/Integer2Real.mo:10:3-10:9:writable] Warning: Components are deprecated in class.
-// [OpenModelica/flattening/modelica/built-in-functions/Integer2Real.mo:12:3-12:8:writable] Warning: Equation sections are deprecated in class.
 // endResult

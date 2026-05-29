@@ -15,11 +15,10 @@ end AssignPackage1;
 
 // Result:
 // Error processing file: AssignPackage1.mo
-// [OpenModelica/flattening/modelica/scodeinst/AssignPackage1.mo:13:3-13:11:writable] Error: Component 'p1' may not be assigned to due to class specialization 'package'.
-// Error: Error occurred while flattening model AssignPackage1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/AssignPackage1.mo:13:3-13:11:writable] Error: Component 'p1' may not be assigned to due to class specialization 'package'.
 //
 // Execution failed!
 // endResult

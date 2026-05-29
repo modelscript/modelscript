@@ -14,11 +14,10 @@ end PartialFunction1;
 
 // Result:
 // Error processing file: PartialFunction1.mo
-// [OpenModelica/flattening/modelica/scodeinst/PartialFunction1.mo:12:3-12:19:writable] Error: Called function 'f' is partial.
-// Error: Error occurred while flattening model PartialFunction1
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/PartialFunction1.mo:12:3-12:19:writable] Error: Called function 'f' is partial.
 //
 // Execution failed!
 // endResult

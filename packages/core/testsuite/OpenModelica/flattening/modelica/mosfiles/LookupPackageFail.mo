@@ -16,16 +16,10 @@ package P
 
   package P
   end P;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end P;
 
 // Result:
-// Error processing file: LookupPackageFail.mo
-// Error: Failed to load package Lookup11 (default) using MODELICAPATH /home/omar/.openmodelica/libraries/.
-// Error: Class Lookup11 not found in scope <top>.
-// Error: Error occurred while flattening model Lookup11
-//
-// # Error encountered! Exiting...
-// # Please check the error message and the flags.
-//
-// Execution failed!
+// class P
+// end P;
 // endResult

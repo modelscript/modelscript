@@ -13,12 +13,11 @@ end PackageConstant7;
 
 // Result:
 // Error processing file: PackageConstant7.mo
-// [OpenModelica/flattening/modelica/scodeinst/PackageConstant7.mo:8:5-8:11:writable] Notification: From here:
-// [OpenModelica/flattening/modelica/scodeinst/PackageConstant7.mo:11:3-11:15:writable] Error: Class R does not satisfy the requirements for a package. Lookup is therefore restricted to encapsulated elements, but x is not encapsulated.
-// Error: Error occurred while flattening model PackageConstant7
-//
 // # Error encountered! Exiting...
 // # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/scodeinst/PackageConstant7.mo:8:5-8:11:writable] Notification: From here:
+// [OpenModelica/flattening/modelica/scodeinst/PackageConstant7.mo:11:3-11:15:writable] Error: Class R does not satisfy the requirements for a package. Lookup is therefore restricted to encapsulated elements, but x is not encapsulated.
 //
 // Execution failed!
 // endResult

@@ -54,3 +54,13 @@ package ConnectorTest
     connect(Bcon,Au.ain);
   end Test;
 end ConnectorTest;
+
+// Result:
+// Error processing file: ConnectorTest.mo
+// # Error encountered! Exiting...
+// # Please check the error message and the flags.
+//
+// [OpenModelica/flattening/modelica/expandable/ConnectorTest.mo:1:1-56:18:writable] Error: Cannot instantiate ConnectorTest due to class specialization package.
+//
+// Execution failed!
+// endResult

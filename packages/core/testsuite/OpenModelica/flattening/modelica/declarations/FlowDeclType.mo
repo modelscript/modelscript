@@ -7,12 +7,11 @@
 
 class FlowDeclType
   flow Real rFlow = 1.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end FlowDeclType;
 
 // Result:
 // class FlowDeclType
 //   Real rFlow = 1.0;
 // end FlowDeclType;
-// [OpenModelica/flattening/modelica/declarations/FlowDeclType.mo:9:3-9:24:writable] Warning: Prefix 'flow' used outside connector declaration.
-// [OpenModelica/flattening/modelica/declarations/FlowDeclType.mo:9:3-9:24:writable] Warning: Components are deprecated in class.
 // endResult

@@ -20,5 +20,4 @@ end InnerOuterMissing5;
 // class InnerOuterMissing5
 //   Real b.m.x = 1.0;
 // end InnerOuterMissing5;
-// [OpenModelica/flattening/modelica/scodeinst/InnerOuterMissing5.mo:11:9-11:20:writable] Warning: An inner declaration for outer class M could not be found and was automatically generated.
 // endResult

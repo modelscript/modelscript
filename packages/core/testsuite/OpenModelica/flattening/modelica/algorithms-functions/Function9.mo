@@ -18,6 +18,7 @@ model Function9
   Real x, z;
 equation
   x = f(z);
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Function9;
 
 // Result:

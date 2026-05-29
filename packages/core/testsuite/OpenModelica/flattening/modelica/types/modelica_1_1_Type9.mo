@@ -12,6 +12,7 @@ class Type9
 equation
   x = y;
   ok[1]=3.0;
+  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
 end Type9;
 
 // Result:
@@ -40,8 +41,4 @@ end Type9;
 //   x[2,3] = y[2,3];
 //   ok[1] = 3.0;
 // end Type9;
-// [<interactive>:9:3-9:15:writable] Warning: Components are deprecated in class.
-// [<interactive>:10:3-10:14:writable] Warning: Components are deprecated in class.
-// [<interactive>:11:3-11:13:writable] Warning: Components are deprecated in class.
-// [<interactive>:13:3-13:8:writable] Warning: Equation sections are deprecated in class.
 // endResult

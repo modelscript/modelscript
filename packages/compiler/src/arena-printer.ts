@@ -622,12 +622,9 @@ export class ArenaDAEPrinter {
     const a = this.arena;
     this.out.write(this.indent());
 
-    if (a.isVarProtected(idx)) this.out.write("protected ");
-
     const variability = a.getVarVariability(idx);
     const isFinal = a.isVarFinal(idx);
-    if (isFinal && (variability === Variability.Parameter || variability === Variability.Constant))
-      this.out.write("final ");
+    if (isFinal) this.out.write("final ");
 
     const type = a.getVarType(idx);
     if (
@@ -671,19 +668,45 @@ export class ArenaDAEPrinter {
     }
     this.out.write(" " + varName);
 
-    // Attributes
+    // Attributes — emit in OMC canonical order for consistent output
     const attrs = a.getVarAttrExprIds(idx);
     if (attrs && attrs.size > 0) {
-      this.out.write("(");
-      let i = 0;
-      for (const [key, exprId] of attrs) {
-        if (key === "unbounded") continue;
-        if (i > 0) this.out.write(", ");
-        this.out.write(key + " = ");
-        this.printExpr(exprId);
-        i++;
+      // OMC attribute ordering: quantity, unit, displayUnit, min, max, start, fixed, nominal, stateSelect, then others
+      const ORDER: string[] = [
+        "quantity",
+        "unit",
+        "displayUnit",
+        "min",
+        "max",
+        "start",
+        "fixed",
+        "nominal",
+        "stateSelect",
+      ];
+      const sortedKeys = [...attrs.keys()]
+        .filter((k) => k !== "unbounded")
+        .sort((a, b) => {
+          const ai = ORDER.indexOf(a);
+          const bi = ORDER.indexOf(b);
+          if (ai >= 0 && bi >= 0) return ai - bi;
+          if (ai >= 0) return -1;
+          if (bi >= 0) return 1;
+          return a.localeCompare(b);
+        });
+      if (sortedKeys.length > 0) {
+        this.out.write("(");
+        let first = true;
+        for (const key of sortedKeys) {
+          if (!first) this.out.write(", ");
+          first = false;
+          this.out.write(key + " = ");
+          const exprId = attrs.get(key);
+          if (exprId !== undefined) {
+            this.printExpr(exprId);
+          }
+        }
+        this.out.write(")");
       }
-      if (i > 0) this.out.write(")");
     }
 
     // Expression (binding)
@@ -995,10 +1018,21 @@ export class ArenaDAEPrinter {
     if (dae.description) this.out.write(' "' + dae.description + '"');
     this.out.write("\n");
 
-    // Variables
+    // Variables — public first, then protected section
+    const protectedVars: number[] = [];
     for (let i = 0; i < dae.varCount; i++) {
       if (dae.isVarRemoved(i)) continue;
-      this.printVar(i);
+      if (dae.isVarProtected(i)) {
+        protectedVars.push(i);
+      } else {
+        this.printVar(i);
+      }
+    }
+    if (protectedVars.length > 0) {
+      this.out.write("protected\n");
+      for (const i of protectedVars) {
+        this.printVar(i);
+      }
     }
 
     // Initial equations

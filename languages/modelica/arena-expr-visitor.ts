@@ -5,6 +5,7 @@ import {
   evaluateArenaExpression,
   evaluateArenaFunctionCall,
   ExprKind,
+  inferArenaExprVarType,
   UnaryOp,
   VarType,
   type ArenaValue,
@@ -1259,12 +1260,35 @@ export class ArenaExprVisitor {
       // Unknown variable (not yet in DAE) — assume Real, don't wrap
       return exprId;
     }
-    // Call — check if it's already a /*Real*/ cast; otherwise return as-is
-    // (function calls return their declared type; wrapping blindly is wrong)
+    // Call — check if it's already a /*Real*/ cast; otherwise check for Integer-returning calls
     if (kind === ExprKind.Call) {
+      const funcNameId = this.dae.getExprData1(exprId);
+      const funcName = this.dae.interner.resolve(funcNameId);
+      if (funcName === "/*Real*/") return exprId; // already cast
+      // For type-preserving built-ins (abs, sign, etc.), check argument type
+      if (funcName === "abs" || funcName === "sign") {
+        const argId = this.dae.getExprLeft(exprId);
+        if (argId >= 0) {
+          const argType = inferArenaExprVarType(this.dae, argId);
+          if (argType === VarType.Integer) {
+            return this.dae.addCallExpr("/*Real*/", [exprId]);
+          }
+        }
+      }
       return exprId;
     }
-    // Der, Pre, IfElse, Range, Subscript, Comprehension, etc. —
+    // Pre — check if the argument is Integer-typed
+    if (kind === ExprKind.Pre) {
+      const argId = this.dae.getExprData1(exprId);
+      if (argId >= 0) {
+        const argType = inferArenaExprVarType(this.dae, argId);
+        if (argType === VarType.Integer) {
+          return this.dae.addCallExpr("/*Real*/", [exprId]);
+        }
+      }
+      return exprId;
+    }
+    // Der, IfElse, Range, Subscript, Comprehension, etc. —
     // these are already typed by their context; don't wrap.
     return exprId;
   }
