@@ -34,7 +34,7 @@ import type { SpecializationArgs } from "@modelscript/compiler";
  */
 export type ModificationValue =
   | { readonly kind: "expression"; readonly cstBytes: readonly [number, number]; readonly text?: string }
-  | { readonly kind: "break" }
+  | { readonly kind: "break"; readonly target?: string }
   | { readonly kind: "literal"; readonly value: number | string | boolean };
 
 /**

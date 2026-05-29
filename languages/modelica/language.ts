@@ -116,6 +116,25 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         }
       }
       return;
+    } else if (n.type === "InheritanceModification") {
+      const connectEq = n.childForFieldName("connectClause");
+      if (connectEq) {
+        const source = connectEq.childForFieldName("componentReference1");
+        const target = connectEq.childForFieldName("componentReference2");
+        if (source && target) {
+          const canonEq = `connect(${source.text},${target.text})`;
+          args.push({
+            name: "break_connect:" + canonEq,
+            each: false,
+            final: false,
+            isRedeclaration: false,
+            nestedArgs: [],
+            value: { kind: "break", target: canonEq },
+            evaluationScopeId: scopeId,
+          });
+        }
+      }
+      return;
     }
     if (n.type === "ModificationExpression") return;
     for (const child of n.children) walk(child);
@@ -3775,20 +3794,37 @@ export default language({
 
           variability: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
-            return current?.childForFieldName("variability")?.text ?? null;
+            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+              current = current.parent;
+            return (
+              current?.childForFieldName("typePrefix")?.childForFieldName("variability")?.text ??
+              current?.childForFieldName("variability")?.text ??
+              null
+            );
           },
 
           causality: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
-            return current?.childForFieldName("causality")?.text ?? null;
+            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+              current = current.parent;
+            return (
+              current?.childForFieldName("typePrefix")?.childForFieldName("causality")?.text ??
+              current?.childForFieldName("causality")?.text ??
+              null
+            );
           },
 
           flowPrefix: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ComponentClause") current = current.parent;
-            return current?.childForFieldName("flow")?.text ?? null;
+            while (current && current.type !== "ComponentClause" && current.type !== "ComponentClause1")
+              current = current.parent;
+            return (
+              current
+                ?.childForFieldName("typePrefix")
+                ?.children.find((c: any) => c.type === "flow" || c.type === "stream")?.text ??
+              current?.childForFieldName("flow")?.text ??
+              null
+            );
           },
 
           isFinal: (db: QueryDB, self: SymbolEntry) => {

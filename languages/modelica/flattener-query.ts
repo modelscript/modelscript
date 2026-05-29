@@ -252,6 +252,8 @@ export class ArenaQueryFlattener {
   private functionNameMap = new Map<string, string>();
   /** Whether the current inheritance path comes from a `protected extends` clause. */
   private inheritedProtected = false;
+  /** Set of connection texts (e.g. "prefix:connect(c1,c2)") that have been broken by modifications. */
+  private brokenConnections = new Set<string>();
 
   constructor(private db: QueryDB) {}
 
@@ -277,6 +279,7 @@ export class ArenaQueryFlattener {
     this.collectExtendsAncestors(rootClassId, this.rootExtendsAncestors);
 
     const dae = new ArenaDAEBuilder(undefined, className, "");
+    this.brokenConnections.clear();
 
     // Pre-pass: count connector cardinality for cardinality() built-in
     this.connectorCardinality.clear();
@@ -496,8 +499,8 @@ export class ArenaQueryFlattener {
     for (const eq of sectionNode.equations) {
       if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
         const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
-        const lhsId = eq.expression1 ? visitor.visit(eq.expression1) : undefined;
-        const rhsId = eq.expression2 ? visitor.visit(eq.expression2) : undefined;
+        const lhsId = eq.expression1 ? visitor.visit(eq.expression1, true) : undefined;
+        const rhsId = eq.expression2 ? visitor.visit(eq.expression2, false) : undefined;
         if (lhsId !== undefined && rhsId !== undefined) {
           // If we are scalarizing arrays, expand array equations element-wise
           let arrayDims: number[] | null = null;
@@ -564,6 +567,25 @@ export class ArenaQueryFlattener {
       } else if (eq instanceof ModelicaWhenEquationSyntaxNode) {
         this.flattenWhenEquationAst(eq, prefix, dae, new Map(), scopeId);
       } else if (eq instanceof ModelicaConnectEquationSyntaxNode) {
+        // Check if this connection was broken
+        const eqStart = eq.sourceRange?.startIndex;
+        const eqEnd = eq.sourceRange?.endIndex;
+        let eqText = "";
+        if (eqStart !== undefined && eqEnd !== undefined) {
+          const scopeEntry = scopeId ? this.db.symbol(scopeId) : undefined;
+          eqText = this.db.cstText(eqStart, eqEnd, scopeEntry) ?? "";
+        }
+
+        if (eqText) {
+          const canonEq = this.canonicalizeConnect(eqText);
+          console.error(
+            `[DEBUG SECTIONS CONNECT] scope=${scopeId ? this.db.symbol(scopeId)?.name : "null"}, eqText='${eqText}', canonEq='${canonEq}', hasBroken=${this.brokenConnections.has(prefix + ":" + canonEq)}`,
+          );
+          if (this.brokenConnections.has(prefix + ":" + canonEq)) {
+            continue; // Skip this broken connect
+          }
+        }
+
         const lhs = eq.componentReference1;
         const rhs = eq.componentReference2;
         if (lhs && rhs) {
@@ -610,11 +632,12 @@ export class ArenaQueryFlattener {
   }
 
   private serializeRef(ref: ModelicaComponentReferenceSyntaxNode): string | undefined {
-    let path = "";
-    for (const part of ref.parts) {
+    let path = ref.global ? "." : "";
+    for (let i = 0; i < ref.parts.length; i++) {
+      const part = ref.parts[i];
       const ident = part.identifier?.text;
       if (!ident) return undefined;
-      if (path.length > 0) path += ".";
+      if (path.length > 0 && path !== ".") path += ".";
       path += ident;
       if (part.arraySubscripts && part.arraySubscripts.subscripts.length > 0) {
         for (const sub of part.arraySubscripts.subscripts) {
@@ -835,6 +858,10 @@ export class ArenaQueryFlattener {
             ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId, evaluationScopePrefix: prefix }]
             : modStack;
 
+        console.error(
+          `[DEBUG childStack] localMod=${JSON.stringify(localMod)}, mergedMod=${JSON.stringify(mergedMod)}, childStack_length=${childStack.length}`,
+        );
+
         // Check if this extends clause is in a protected section
         const extendsIsProtected = this.isEntryInProtectedSection(child);
 
@@ -863,6 +890,36 @@ export class ArenaQueryFlattener {
         this.flattenComponent(child, prefix, dae, modStack);
         emittedNames.add(child.name);
       } else if (child.kind === "ConnectEquation") {
+        // Check if this connection is broken by a modification
+        let isBrokenConnect = false;
+        const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+        console.error(
+          `[DEBUG CONNECT] Visiting ConnectEquation in class ${this.db.symbol(classId)?.name}. topMod=${!!topMod}, topModArgs=${topMod?.args?.length}`,
+        );
+        if (topMod) {
+          const connectArgs = topMod.args.filter(
+            (a) => a.name.startsWith("break_connect:") && a.value?.kind === "break",
+          );
+          for (const connectArg of connectArgs) {
+            if (connectArg.value?.kind === "break" && (connectArg.value as any).target) {
+              const cst = this.db.cstNode(child.id) as any;
+              const childText = cst?.text;
+              const targetText = (connectArg.value as any).target;
+              if (childText && targetText) {
+                const canonChild = this.canonicalizeConnect(childText);
+                const canonTarget = this.canonicalizeConnect(targetText);
+                console.error(`[DEBUG break connect] canonChild='${canonChild}', canonTarget='${canonTarget}'`);
+                if (canonChild === canonTarget) {
+                  isBrokenConnect = true;
+                  this.brokenConnections.add(prefix + ":" + canonChild);
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (isBrokenConnect) continue;
+
         this.recordConnection(child, prefix, dae);
       } else if (child.kind === "Extends") {
         // Already handled above
@@ -2775,8 +2832,8 @@ export class ArenaQueryFlattener {
     // Check node type for dispatch
     if (eqNode instanceof ModelicaSimpleEquationSyntaxNode) {
       const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId);
-      const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1) : undefined;
-      const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2) : undefined;
+      const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1, true) : undefined;
+      const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2, false) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
         dae.addEquation(EqKind.Simple, lhsId, rhsId);
       }
@@ -2798,8 +2855,8 @@ export class ArenaQueryFlattener {
       const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId);
       const n = eqNode as any;
       if (n.expression1 && n.expression2) {
-        const lhsId = visitor.visit(n.expression1);
-        const rhsId = visitor.visit(n.expression2);
+        const lhsId = visitor.visit(n.expression1, true);
+        const rhsId = visitor.visit(n.expression2, false);
         if (lhsId !== undefined && rhsId !== undefined) {
           dae.addEquation(EqKind.Simple, lhsId, rhsId);
         }
@@ -3201,8 +3258,11 @@ export class ArenaQueryFlattener {
       // Build a function call expression from functionReference + arguments
       const funcRef = stmt.functionReference;
       if (funcRef) {
-        const funcName = this.serializeRef(funcRef);
+        let funcName = this.serializeRef(funcRef);
         if (funcName) {
+          this.collectFunctionDefinition(funcName, dae, scopeId);
+          funcName = this.functionNameMap.get(funcName) ?? funcName;
+
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {
             for (const arg of stmt.functionCallArguments.arguments) {
@@ -3219,8 +3279,11 @@ export class ArenaQueryFlattener {
       const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
       const funcRef = stmt.functionReference;
       if (funcRef) {
-        const funcName = this.serializeRef(funcRef);
+        let funcName = this.serializeRef(funcRef);
         if (funcName) {
+          this.collectFunctionDefinition(funcName, dae, scopeId);
+          funcName = this.functionNameMap.get(funcName) ?? funcName;
+
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {
             for (const arg of stmt.functionCallArguments.arguments) {
@@ -3242,6 +3305,53 @@ export class ArenaQueryFlattener {
               }
             }
           }
+
+          // Type checking
+          const funcNameId = dae.interner.intern(funcName);
+          const funcDae = dae.functions.get(funcNameId);
+          console.error(`[Worker] Complex assignment to ${funcName}, funcDae: ${!!funcDae}`);
+          if (funcDae) {
+            let outputCount = 0;
+            const outputTypes: string[] = [];
+            for (let i = 0; i < funcDae.varCount; i++) {
+              if (funcDae.getVarCausality(i) === 2 /* Causality.Output */) {
+                outputCount++;
+                const vType = funcDae.getVarType(i);
+                outputTypes.push(vType === 1 ? "Integer" : vType === 2 ? "Boolean" : vType === 3 ? "String" : "Real");
+              }
+            }
+            console.error(`[Worker] outputCount: ${outputCount}, targets.length: ${targets.length}`);
+            if (outputCount !== targets.length) {
+              const stmtStart = stmt.sourceRange?.startIndex;
+              const stmtEnd = stmt.sourceRange?.endIndex;
+              const scopeEntry = scopeId ? this.db.symbol(scopeId) : undefined;
+              const stmtText =
+                stmtStart !== undefined && stmtEnd !== undefined
+                  ? (this.db.cstText(stmtStart, stmtEnd, scopeEntry)?.replace(/\s+/g, " ")?.replace(/;$/, "") ??
+                    "(...) := f()")
+                  : "(...) := f()";
+
+              const targetTypes = targets.map(() => "Real").join(", ");
+              const sourceTypes = outputTypes.join(", ");
+              const msg = `Type mismatch in assignment in ${stmtText} of (${targetTypes}) := (${sourceTypes})`;
+
+              const startPos = stmt.sourceRange
+                ? { row: stmt.sourceRange.startRow, column: stmt.sourceRange.startCol }
+                : { row: 0, column: 0 };
+              const endPos = stmt.sourceRange
+                ? { row: stmt.sourceRange.endRow, column: stmt.sourceRange.endCol }
+                : { row: 0, column: 0 };
+
+              dae.diagnostics.push({
+                code: 5006, // ASSIGNMENT_TYPE_MISMATCH
+                rule: "assignment-type-mismatch",
+                severity: "error",
+                message: msg,
+                range: { startPosition: startPos, endPosition: endPos },
+              });
+            }
+          }
+
           if (targets.length > 0) {
             dae.addComplexAssignmentStmt(targets, callExprId);
           }
@@ -3330,8 +3440,6 @@ export class ArenaQueryFlattener {
       }
     }
 
-    if (connectPairs.length === 0) return;
-
     // 2. Resolve structural connections to variable index pairs
     for (let i = 0; i < dae.varCount; i++) {
       const varName = dae.getVarName(i);
@@ -3394,9 +3502,14 @@ export class ArenaQueryFlattener {
       if (group.length <= 1) {
         if (isFlow) {
           // Unconnected flow variable: emit flow = 0
+          console.error(`[DEBUG UNCONNECTED] Emitting flow = 0 for ${dae.getVarName(group[0]!)}`);
           const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
           const zeroExpr = dae.addRealLiteral(0.0);
           dae.addEquation(EqKind.Simple, vExpr, zeroExpr);
+        } else {
+          console.error(
+            `[DEBUG UNCONNECTED] ${dae.getVarName(group[0]!)} is NOT flow (isFlow=${isFlow}, prefix=${dae.getVarFlowPrefix(root)})`,
+          );
         }
         continue;
       }
@@ -3445,6 +3558,20 @@ export class ArenaQueryFlattener {
     // For now, return the text as-is (equation text will need
     // full CST-based processing for production use).
     return text;
+  }
+
+  private canonicalizeConnect(text: string): string {
+    let clean = text.replace(/\s+/g, "").replace(/;$/, "");
+    if (clean.startsWith("connect(") && clean.endsWith(")")) {
+      const inner = clean.substring(8, clean.length - 1);
+      const parts = inner.split(",");
+      if (parts.length === 2) {
+        // Sort the arguments alphabetically to ensure symmetry
+        parts.sort();
+        return `connect(${parts[0]},${parts[1]})`;
+      }
+    }
+    return clean;
   }
 
   private inferImplicitForRange(
@@ -3516,7 +3643,7 @@ export class ArenaQueryFlattener {
       dae,
       loopVars,
       (funcName) => {
-        this.collectFunctionDefinition(funcName, dae);
+        this.collectFunctionDefinition(funcName, dae, scopeId);
         return this.functionNameMap.get(funcName);
       },
       this.connectorCardinality,
@@ -3655,8 +3782,9 @@ export class ArenaQueryFlattener {
   }
 
   private collectingFunctions = new Set<string>();
+  private collectedQualifiedFunctions = new Set<string>();
 
-  private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder): void {
+  private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder, scopeId?: SymbolId): void {
     if (
       !funcName.includes(".") &&
       [
@@ -3736,16 +3864,30 @@ export class ArenaQueryFlattener {
     this.collectingFunctions.add(funcName);
 
     try {
-      // Resolve the function name globally (or via fully qualified path).
+      // Resolve the function name within the current scope
       let resolvedId: number | null = null;
 
-      // Attempt to resolve globally
-      const resolvedEntries = this.db.byName(funcName);
-      if (resolvedEntries.length > 0) {
-        resolvedId = resolvedEntries[0].id;
+      if (scopeId) {
+        resolvedId = this.resolveTypeNameInScope(funcName, scopeId);
+      }
+
+      if (!resolvedId) {
+        // Fallback to global resolution
+        const resolvedEntries = this.db.byName(funcName);
+        if (resolvedEntries.length > 0) {
+          resolvedId = resolvedEntries[0].id;
+        }
       }
 
       if (!resolvedId) return; // Unresolved function
+
+      // Compute the fully-qualified function name for OMC parity
+      const qualifiedName = this.getQualifiedFunctionName(funcName, resolvedId);
+      if (this.collectedQualifiedFunctions.has(qualifiedName)) {
+        this.functionNameMap.set(funcName, qualifiedName);
+        return;
+      }
+      this.collectedQualifiedFunctions.add(qualifiedName);
 
       const funcEntry = this.db.symbol(resolvedId);
       if (funcEntry?.kind !== "Class") return;
@@ -3756,8 +3898,6 @@ export class ArenaQueryFlattener {
         return;
       }
 
-      // Compute the fully-qualified function name for OMC parity
-      const qualifiedName = this.getQualifiedFunctionName(funcName, resolvedId);
       this.functionNameMap.set(funcName, qualifiedName);
 
       // Check if already collected under the qualified name
@@ -3819,8 +3959,8 @@ export class ArenaQueryFlattener {
             const argNames: string[] = [];
             for (const expr of call.arguments?.expressions ?? []) {
               // External function arguments are typically simple identifiers
-              const exprAny = expr as any;
-              argNames.push(exprAny.concreteSyntaxNode?.text ?? exprAny.text ?? "");
+              const range = expr.sourceRange;
+              argNames.push(range ? (this.db.cstText(range.startIndex, range.endIndex, funcEntry) ?? "") : "");
             }
             const returnVar = call.output?.parts?.map((p) => p.identifier?.text ?? "").join(".") ?? "";
             if (returnVar) {

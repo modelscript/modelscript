@@ -246,6 +246,10 @@ function runTestInWorker(
       clearTimeout(timer);
       const duration = Date.now() - start;
 
+      if (stderr) {
+        console.log(`[STDERR from ${testCase.file}]`, stderr);
+      }
+
       // Try to parse the JSON result from stdout
       try {
         const lines = stdout.trim().split("\n");

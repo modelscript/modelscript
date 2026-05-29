@@ -68,7 +68,16 @@ export function executeArenaCEvalStatements(
       case StmtKind.Assignment: {
         const targetExprId = data1;
         const sourceExprId = left;
-        const value = evaluateArenaExpression(arena, sourceExprId, env);
+        const value = evaluateArenaExpression(
+          arena,
+          sourceExprId,
+          env,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          functionLookup,
+        );
         if (value === null) break;
 
         const targetKind = arena.getExprKind(targetExprId);
@@ -85,7 +94,16 @@ export function executeArenaCEvalStatements(
             const firstIdx = arena.getExprLeft(currentExprId);
             const idxIds = getSequenceElements(arena, currentExprId, idxCount, firstIdx);
             for (const id of idxIds) {
-              const val = evaluateArenaExpression(arena, id, env);
+              const val = evaluateArenaExpression(
+                arena,
+                id,
+                env,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                functionLookup,
+              );
               if (typeof val !== "number") {
                 ok = false;
                 break;
@@ -117,7 +135,16 @@ export function executeArenaCEvalStatements(
         const indexName = arena.interner.resolve(indexNameId);
         if (!indexName) break;
 
-        const rangeVal = evaluateArenaExpression(arena, rangeExprId, env);
+        const rangeVal = evaluateArenaExpression(
+          arena,
+          rangeExprId,
+          env,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          functionLookup,
+        );
         if (!Array.isArray(rangeVal)) break;
 
         const previousValue = env.get(indexName);
@@ -152,7 +179,16 @@ export function executeArenaCEvalStatements(
         let iterCount = 0;
         while (true) {
           if (++iterCount > MAX_WHILE_ITERATIONS) break;
-          const condVal = evaluateArenaExpression(arena, condExprId, env);
+          const condVal = evaluateArenaExpression(
+            arena,
+            condExprId,
+            env,
+            undefined,
+            undefined,
+            undefined,
+            false,
+            functionLookup,
+          );
           if (condVal !== true) break;
           try {
             executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup);
@@ -172,7 +208,16 @@ export function executeArenaCEvalStatements(
         const blockStartIdx = i + 1;
         nextIdx = blockStartIdx + thenStmtCount;
 
-        const condVal = evaluateArenaExpression(arena, condExprId, env);
+        const condVal = evaluateArenaExpression(
+          arena,
+          condExprId,
+          env,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          functionLookup,
+        );
         let executed = false;
 
         if (condVal === true) {
@@ -196,7 +241,16 @@ export function executeArenaCEvalStatements(
               executed = true;
             } else {
               // else if block
-              const elseIfCondVal = evaluateArenaExpression(arena, branchCondExprId, env);
+              const elseIfCondVal = evaluateArenaExpression(
+                arena,
+                branchCondExprId,
+                env,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                functionLookup,
+              );
               if (elseIfCondVal === true) {
                 executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup);
                 executed = true;
@@ -215,7 +269,16 @@ export function executeArenaCEvalStatements(
         const blockStartIdx = i + 1;
         nextIdx = blockStartIdx + bodyStmtCount;
 
-        const condVal = evaluateArenaExpression(arena, condExprId, env);
+        const condVal = evaluateArenaExpression(
+          arena,
+          condExprId,
+          env,
+          undefined,
+          undefined,
+          undefined,
+          false,
+          functionLookup,
+        );
         let executed = false;
 
         if (condVal === true) {
@@ -231,7 +294,16 @@ export function executeArenaCEvalStatements(
           nextIdx += 1 + branchStmtCount;
 
           if (!executed) {
-            const elseWhenCondVal = evaluateArenaExpression(arena, branchCondExprId, env);
+            const elseWhenCondVal = evaluateArenaExpression(
+              arena,
+              branchCondExprId,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            );
             if (elseWhenCondVal === true) {
               executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup);
               executed = true;
@@ -256,12 +328,30 @@ export function executeArenaCEvalStatements(
 
           const argValues: ArenaValue[] = [];
           if (numArgs > 0) {
-            const firstArgVal = evaluateArenaExpression(arena, firstArg, env);
+            const firstArgVal = evaluateArenaExpression(
+              arena,
+              firstArg,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            );
             if (firstArgVal !== null) argValues.push(firstArgVal);
             for (let a = 1; a < numArgs; a++) {
               const tupleExprId = firstArg + a;
               const argExprId = arena.getExprLeft(tupleExprId);
-              const val = evaluateArenaExpression(arena, argExprId, env);
+              const val = evaluateArenaExpression(
+                arena,
+                argExprId,
+                env,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                functionLookup,
+              );
               if (val !== null) argValues.push(val);
             }
           }
@@ -280,7 +370,16 @@ export function executeArenaCEvalStatements(
         if (numTargets === 1) {
           const targetBlockIdx = i + 1;
           const targetExprId = arena.getStmtData1(targetBlockIdx);
-          const value = evaluateArenaExpression(arena, sourceExprId, env);
+          const value = evaluateArenaExpression(
+            arena,
+            sourceExprId,
+            env,
+            undefined,
+            undefined,
+            undefined,
+            false,
+            functionLookup,
+          );
           if (value !== null && arena.getExprKind(targetExprId) === ExprKind.Name) {
             const name = arena.interner.resolve(arena.getExprData1(targetExprId));
             if (name) env.set(name, value);
@@ -292,12 +391,30 @@ export function executeArenaCEvalStatements(
 
           const argValues: ArenaValue[] = [];
           if (numArgs > 0) {
-            const firstArgVal = evaluateArenaExpression(arena, firstArg, env);
+            const firstArgVal = evaluateArenaExpression(
+              arena,
+              firstArg,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            );
             if (firstArgVal !== null) argValues.push(firstArgVal);
             for (let a = 1; a < numArgs; a++) {
               const tupleExprId = firstArg + a;
               const argExprId = arena.getExprLeft(tupleExprId);
-              const val = evaluateArenaExpression(arena, argExprId, env);
+              const val = evaluateArenaExpression(
+                arena,
+                argExprId,
+                env,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                functionLookup,
+              );
               if (val !== null) argValues.push(val);
             }
           }
@@ -349,6 +466,13 @@ export function evaluateArenaFunctionCall(
   try {
     const env = new Map<string, ArenaValue>();
 
+    const functionLookup = (fid: number, args: ArenaValue[]) => {
+      const funcName = funcArena.interner.resolve(fid);
+      if (!funcName) return null;
+      const rootFid = dae.interner.intern(funcName);
+      return evaluateArenaFunctionCall(dae, rootFid, args);
+    };
+
     const outputs: string[] = [];
     let argIndex = 0;
 
@@ -364,18 +488,54 @@ export function evaluateArenaFunctionCall(
         if (val !== undefined) {
           env.set(name, val);
         } else if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(name, evaluateArenaExpression(funcArena, startExprId, env) ?? 0);
+          env.set(
+            name,
+            evaluateArenaExpression(
+              funcArena,
+              startExprId,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            ) ?? 0,
+          );
         }
         argIndex++;
       } else if (causality === 2 /* Output */) {
         outputs.push(name);
         if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(name, evaluateArenaExpression(funcArena, startExprId, env) ?? 0);
+          env.set(
+            name,
+            evaluateArenaExpression(
+              funcArena,
+              startExprId,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            ) ?? 0,
+          );
         }
       } else {
         // Local/protected variable
         if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(name, evaluateArenaExpression(funcArena, startExprId, env) ?? 0);
+          env.set(
+            name,
+            evaluateArenaExpression(
+              funcArena,
+              startExprId,
+              env,
+              undefined,
+              undefined,
+              undefined,
+              false,
+              functionLookup,
+            ) ?? 0,
+          );
         }
       }
     }
@@ -383,9 +543,7 @@ export function evaluateArenaFunctionCall(
     // Execute algorithms
     for (const section of funcArena.algorithmSections) {
       try {
-        executeArenaCEvalStatements(funcArena, section.start, section.count, env, (fid, args) => {
-          return evaluateArenaFunctionCall(dae, fid, args);
-        });
+        executeArenaCEvalStatements(funcArena, section.start, section.count, env, functionLookup);
       } catch (e) {
         if (e === ArenaCEvalReturnSignal) break;
         throw e;

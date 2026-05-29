@@ -844,7 +844,10 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     }
 
     console.error(error);
-    return makeResult("failed", formatMismatch(expected, reformatActual, "Output mismatch (Exception)"));
+    return makeResult(
+      "failed",
+      `Output mismatch (Exception)\n\n--- Expected ---\n${expected}\n--- Actual ---\n${String(error instanceof Error ? error.stack : error)}`,
+    );
   }
 }
 

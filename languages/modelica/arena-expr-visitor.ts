@@ -143,7 +143,7 @@ export class ArenaExprVisitor {
     return `${this.namePrefix}.${path}`;
   }
 
-  public visit(node: unknown): number | undefined {
+  public visit(node: unknown, allowTuple = false): number | undefined {
     if (!node) return undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const n = node as any;
@@ -185,7 +185,7 @@ export class ArenaExprVisitor {
     } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
       return this.visitIfElseExpression(n);
     } else if (n instanceof ModelicaOutputExpressionListSyntaxNode) {
-      return this.visitOutputExpressionList(n);
+      return this.visitOutputExpressionList(n, allowTuple);
     } else if (n instanceof ModelicaRangeExpressionSyntaxNode) {
       return this.visitRangeExpression(n);
     } else if (n instanceof ModelicaArrayConstructorSyntaxNode) {
@@ -199,13 +199,13 @@ export class ArenaExprVisitor {
 
     // Fallback: if it's an unrecognized node, drill down into common children.
     if (n.expression) {
-      return this.visit(n.expression);
+      return this.visit(n.expression, allowTuple);
     }
     if (n.term) {
-      return this.visit(n.term);
+      return this.visit(n.term, allowTuple);
     }
     if (n.factor) {
-      return this.visit(n.factor);
+      return this.visit(n.factor, allowTuple);
     }
 
     // Fallback for raw CST nodes that don't have AST wrapper classes.
@@ -225,10 +225,51 @@ export class ArenaExprVisitor {
     return undefined;
   }
 
-  private visitOutputExpressionList(node: ModelicaOutputExpressionListSyntaxNode): number | undefined {
+  private visitOutputExpressionList(
+    node: ModelicaOutputExpressionListSyntaxNode,
+    allowTuple: boolean,
+  ): number | undefined {
     if (node.outputs.length === 1) {
-      return this.visit(node.outputs[0]);
+      return this.visit(node.outputs[0], allowTuple);
     }
+
+    if (!allowTuple) {
+      const stmtStart =
+        node.sourceRange?.startIndex ??
+        (node.outputs.length > 0 ? node.outputs[0]?.sourceRange?.startIndex : undefined);
+      const stmtEnd =
+        node.sourceRange?.endIndex ??
+        (node.outputs.length > 0 ? node.outputs[node.outputs.length - 1]?.sourceRange?.endIndex : undefined);
+      const scopeEntry = this.scopeId ? this.db?.symbol(this.scopeId) : undefined;
+      let text = "";
+      if (stmtStart !== undefined && stmtEnd !== undefined && this.db) {
+        text = this.db.cstText(stmtStart, stmtEnd, scopeEntry)?.replace(/\\s+/g, " ") ?? "";
+        if (text) {
+          text = `(${text})`;
+        }
+      }
+      const msg = `Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.${text ? ` Got the following expression: ${text}.` : ""}`;
+      const firstOutputRange = node.outputs[0]?.sourceRange;
+      const startPos = node.sourceRange
+        ? { row: node.sourceRange.startRow, column: node.sourceRange.startCol }
+        : firstOutputRange
+          ? { row: firstOutputRange.startRow, column: firstOutputRange.startCol }
+          : { row: 0, column: 0 };
+      const lastOutputRange = node.outputs[node.outputs.length - 1]?.sourceRange;
+      const endPos = node.sourceRange
+        ? { row: node.sourceRange.endRow, column: node.sourceRange.endCol }
+        : lastOutputRange
+          ? { row: lastOutputRange.endRow, column: lastOutputRange.endCol }
+          : { row: 0, column: 0 };
+      this.dae.diagnostics.push({
+        code: 4014, // TUPLE_EXPRESSION_CONTEXT
+        rule: "tuple-expression-context",
+        severity: "error",
+        message: msg,
+        range: { startPosition: startPos, endPosition: endPos },
+      });
+    }
+
     const elementIds: number[] = [];
     for (const output of node.outputs) {
       if (output) {

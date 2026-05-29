@@ -1,4 +1,3 @@
-import { evaluateArenaFunctionCall } from "./arena-ceval.js";
 import { evaluateArrayBuiltin } from "./arena-eval-builtins.js";
 import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
 import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
@@ -47,6 +46,7 @@ export function evaluateArenaExpression(
   scopeId?: SymbolId,
   visitedVars = new Set<number>(),
   onlyConstants = false,
+  functionLookup?: (funcNameId: number, args: ArenaValue[]) => ArenaValue | null,
 ): ArenaValue | null {
   if (exprId < 0) return null;
 
@@ -124,7 +124,16 @@ export function evaluateArenaExpression(
             if (visitedVars.has(vIdx)) return null;
             visitedVars.add(vIdx);
             try {
-              return evaluateArenaExpression(dae, bindingExprId, parameters, db, scopeId, visitedVars, onlyConstants);
+              return evaluateArenaExpression(
+                dae,
+                bindingExprId,
+                parameters,
+                db,
+                scopeId,
+                visitedVars,
+                onlyConstants,
+                functionLookup,
+              );
             } finally {
               visitedVars.delete(vIdx);
             }
@@ -191,6 +200,7 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
       );
       const right = evaluateArenaExpression(
         dae,
@@ -200,6 +210,7 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
       );
       if (left === null || right === null) return null;
 
@@ -280,11 +291,30 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
       );
       if (typeof cond === "boolean") {
         return cond
-          ? evaluateArenaExpression(dae, dae.getExprLeft(exprId), parameters, db, scopeId, visitedVars, onlyConstants)
-          : evaluateArenaExpression(dae, dae.getExprRight(exprId), parameters, db, scopeId, visitedVars, onlyConstants);
+          ? evaluateArenaExpression(
+              dae,
+              dae.getExprLeft(exprId),
+              parameters,
+              db,
+              scopeId,
+              visitedVars,
+              onlyConstants,
+              functionLookup,
+            )
+          : evaluateArenaExpression(
+              dae,
+              dae.getExprRight(exprId),
+              parameters,
+              db,
+              scopeId,
+              visitedVars,
+              onlyConstants,
+              functionLookup,
+            );
       }
       return null;
     }
@@ -297,7 +327,7 @@ export function evaluateArenaExpression(
       const argIds = getSequenceElements(dae, exprId, argCount, firstArg);
 
       const args = argIds.map((id) =>
-        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants),
+        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants, functionLookup),
       );
       if (args.some((a) => a === null)) return null;
 
@@ -344,9 +374,11 @@ export function evaluateArenaExpression(
       if (arrayResult !== undefined) return arrayResult;
 
       // Fallback: User-defined compile-time function execution
-      const funcNameId = dae.getExprData1(exprId);
-      const userFuncResult = evaluateArenaFunctionCall(dae, funcNameId, args as ArenaValue[]);
-      if (userFuncResult !== null) return userFuncResult;
+      if (functionLookup) {
+        const funcNameId = dae.getExprData1(exprId);
+        const userFuncResult = functionLookup(funcNameId, args as ArenaValue[]);
+        if (userFuncResult !== null) return userFuncResult;
+      }
 
       return null;
     }

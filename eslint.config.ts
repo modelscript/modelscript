@@ -28,6 +28,7 @@ export default defineConfig([
             "apps/api/scripts/check_db.ts",
             "apps/api/scripts/seed-social-db.ts",
             "packages/examples/drone-chassis/cad/drone.mcad.ts",
+            "packages/compiler/incremental-bench.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

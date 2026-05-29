@@ -1295,6 +1295,32 @@
     }
   },
   {
+    "type": "ConnectClause",
+    "named": true,
+    "fields": {
+      "componentReference1": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      },
+      "componentReference2": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ComponentReference",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ConnectEquation",
     "named": true,
     "fields": {
@@ -3552,12 +3578,12 @@
     "type": "InheritanceModification",
     "named": true,
     "fields": {
-      "connectEquation": {
+      "connectClause": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "ConnectEquation",
+            "type": "ConnectClause",
             "named": true
           }
         ]

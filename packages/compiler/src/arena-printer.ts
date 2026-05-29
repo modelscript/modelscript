@@ -407,17 +407,38 @@ export class ArenaDAEPrinter {
           };
           collect(id);
 
-          // Sort operands by rank
-          operands.sort((idA, idB) => {
-            const rankA = this.getExprRank(idA);
-            const rankB = this.getExprRank(idB);
-            if (rankA !== rankB) return rankA - rankB;
-            const strA = this.getExprStringFallback(idA);
-            const strB = this.getExprStringFallback(idB);
-            if (strA < strB) return -1;
-            if (strA > strB) return 1;
-            return 0;
-          });
+          // Check if it's a string concatenation to avoid sorting
+          let isStringConcat = false;
+          if (op === BinOp.Add) {
+            for (const id of operands) {
+              const kind = a.getExprKind(id);
+              if (kind === ExprKind.StringLiteral) {
+                isStringConcat = true;
+                break;
+              }
+              if (kind === ExprKind.Call) {
+                const nameId = a.getExprData1(id);
+                if (a.interner.resolve(nameId) === "String") {
+                  isStringConcat = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!isStringConcat) {
+            // Sort operands by rank
+            operands.sort((idA, idB) => {
+              const rankA = this.getExprRank(idA);
+              const rankB = this.getExprRank(idB);
+              if (rankA !== rankB) return rankA - rankB;
+              const strA = this.getExprStringFallback(idA);
+              const strB = this.getExprStringFallback(idB);
+              if (strA < strB) return -1;
+              if (strA > strB) return 1;
+              return 0;
+            });
+          }
 
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) {
