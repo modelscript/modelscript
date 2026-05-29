@@ -1095,6 +1095,9 @@ export class ArenaDAEPrinter {
   }
 
   printFunction(fn: ArenaDAEBuilder): void {
+    const oldArena = this.arena;
+    this.arena = fn;
+
     if (fn.isImpure) this.out.write("impure ");
     this.out.write(fn.classKind + " " + fn.name);
     if (fn.description) this.out.write(' "' + fn.description + '"');
@@ -1130,6 +1133,8 @@ export class ArenaDAEPrinter {
       this.out.write("\n\n");
       this.printFunction(nested);
     }
+
+    this.arena = oldArena;
   }
 }
 

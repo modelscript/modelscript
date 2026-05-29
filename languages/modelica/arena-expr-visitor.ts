@@ -1299,7 +1299,7 @@ export class ArenaExprVisitor {
   /**
    * Helper to serialize an ArenaValue back to an ExprId in the DAE.
    */
-  private addArenaValueAsExpr(value: ArenaValue, preferredType?: VarType): number {
+  private addArenaValueAsExpr(value: ArenaValue, preferredType?: VarType, isTuple = false): number {
     if (typeof value === "number") {
       if (preferredType === VarType.Integer) {
         return this.dae.addIntLiteral(value);
@@ -1315,8 +1315,8 @@ export class ArenaExprVisitor {
       return this.dae.addStringLiteral(value);
     }
     if (Array.isArray(value)) {
-      const ids = value.map((v) => this.addArenaValueAsExpr(v, preferredType));
-      return this.dae.addArrayCtorExpr(ids);
+      const ids = value.map((v) => this.addArenaValueAsExpr(v, preferredType, false));
+      return isTuple ? this.dae.addTupleExpr(ids) : this.dae.addArrayCtorExpr(ids);
     }
     return -1;
   }
@@ -1359,12 +1359,11 @@ export class ArenaExprVisitor {
     const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues);
     if (outVal === null) return undefined;
 
-    const resultExprId = this.addArenaValueAsExpr(outVal, outType);
+    const resultExprId = this.addArenaValueAsExpr(outVal, outType, Array.isArray(outVal));
     if (resultExprId === -1) return undefined;
 
-    // Remove the function definition from the DAE since it was fully inlined
-    // (matches OMC behavior — inlined functions don't appear in output)
-    this.dae.functions.delete(funcNameId);
+    // We do NOT remove the function definition from the DAE because OpenModelica
+    // continues to print inlined functions in the final flattened model output.
 
     return resultExprId;
   }

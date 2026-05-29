@@ -1008,7 +1008,7 @@ export class ArenaQueryFlattener {
     }
 
     // --- Function / Partial Function types ---
-    if (classMeta?.classKind === "function" || classMeta?.classKind === "operator function") {
+    if (typeof classMeta?.classPrefixes === "string" && classMeta.classPrefixes.includes("function")) {
       this.emitFunctionVariable(fullName, resolvedTypeName, entry, dae, effectiveMod);
       return;
     }
@@ -1843,7 +1843,10 @@ export class ArenaQueryFlattener {
     if (!rootClassEntry) return;
 
     const rootMeta = rootClassEntry.metadata as Record<string, unknown>;
-    if (rootMeta?.classKind !== "expandable connector" && !rootMeta?.isExpandable) {
+    if (
+      !(typeof rootMeta?.classPrefixes === "string" && rootMeta.classPrefixes.includes("expandable connector")) &&
+      !rootMeta?.isExpandable
+    ) {
       return;
     }
 
@@ -3087,7 +3090,7 @@ export class ArenaQueryFlattener {
 
       // Verify it's actually a function
       const meta = funcEntry.metadata as any;
-      if (meta?.classKind !== "function" && meta?.classKind !== "operator function") {
+      if (!(typeof meta?.classPrefixes === "string" && meta.classPrefixes.includes("function"))) {
         return;
       }
 
