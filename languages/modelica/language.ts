@@ -1970,13 +1970,13 @@ export default language({
                   // Narrow to the nested when-statement/equation node
                   if (typeof node.startIndex === "number") {
                     results.push(
-                      error(`Nested when-statements are not allowed`, {
+                      error(`Nested when statements are not allowed.`, {
                         startByte: node.startIndex,
                         endByte: node.endIndex,
                       }),
                     );
                   } else {
-                    results.push(error(`Nested when-statements are not allowed`, { field: "classSpecifier" }));
+                    results.push(error(`Nested when statements are not allowed.`, { field: "classSpecifier" }));
                   }
                 } else {
                   inWhen = true;
