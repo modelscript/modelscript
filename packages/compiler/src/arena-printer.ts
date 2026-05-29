@@ -1066,7 +1066,8 @@ export class ArenaDAEPrinter {
       if (sec.count > 0) {
         this.out.write("algorithm\n");
         let idx = sec.start;
-        for (let i = 0; i < sec.count; i++) idx = this.printStmt(idx);
+        const end = sec.start + sec.count;
+        while (idx < end) idx = this.printStmt(idx);
       }
     }
 
@@ -1122,7 +1123,8 @@ export class ArenaDAEPrinter {
       if (sec.count > 0) {
         this.out.write("algorithm\n");
         let idx = sec.start;
-        for (let i = 0; i < sec.count; i++) idx = this.printStmt(idx);
+        const end = sec.start + sec.count;
+        while (idx < end) idx = this.printStmt(idx);
       }
     }
 

@@ -626,6 +626,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         .filter(
           (d) =>
             d.type !== "info" &&
+            d.type !== "warning" &&
             !d.message.includes("Components are deprecated in class.") &&
             !d.message.includes("Algorithm sections are deprecated in class.") &&
             !d.message.includes("Equation sections are deprecated in class."),

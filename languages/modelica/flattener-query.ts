@@ -594,11 +594,10 @@ export class ArenaQueryFlattener {
       this.flattenStatement(stmt, dae, prefix, scopeId);
     }
 
-    // Use top-level statement count (not total slot count including nested bodies)
     if (isInitial) {
-      dae.addInitialAlgorithmSection(stmtStartIdx, stmtNodes.length);
+      dae.addInitialAlgorithmSection(stmtStartIdx, dae.stmtCount - stmtStartIdx);
     } else {
-      dae.addAlgorithmSection(stmtStartIdx, stmtNodes.length);
+      dae.addAlgorithmSection(stmtStartIdx, dae.stmtCount - stmtStartIdx);
     }
   }
 
@@ -2497,12 +2496,11 @@ export class ArenaQueryFlattener {
       this.flattenStatement(stmt, dae, prefix, entry.parentId ?? entry.id);
     }
 
-    // Use top-level statement count (not total slot count including nested bodies)
     if (stmtNodes.length > 0) {
       if (isInitial) {
-        dae.addInitialAlgorithmSection(stmtStartIdx, stmtNodes.length);
+        dae.addInitialAlgorithmSection(stmtStartIdx, dae.stmtCount - stmtStartIdx);
       } else {
-        dae.addAlgorithmSection(stmtStartIdx, stmtNodes.length);
+        dae.addAlgorithmSection(stmtStartIdx, dae.stmtCount - stmtStartIdx);
       }
     }
   }
@@ -2597,39 +2595,72 @@ export class ArenaQueryFlattener {
       }
     } else if (stmt instanceof ModelicaIfStatementSyntaxNode) {
       const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
-      const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
 
-      // Pre-count body statements for the then-branch
+      // Collect all branches: then, elseifs, else
+      const branches: { condId: number; stmts: any[]; isTrue: boolean; isFalse: boolean }[] = [];
+
+      // 1. Then branch
+      const thenCondId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
       const thenStmts = stmt.statements ?? [];
+      let thenTrue = false;
+      let thenFalse = false;
+      if (thenCondId !== undefined) {
+        const condVal = evaluateArenaExpression(dae, thenCondId, undefined, this.db, scopeId);
+        if (condVal === true) thenTrue = true;
+        if (condVal === false) thenFalse = true;
+      }
+      branches.push({ condId: thenCondId ?? -1, stmts: thenStmts, isTrue: thenTrue, isFalse: thenFalse });
 
-      // Pre-count elseif + else branches
-      const elseIfClauses = stmt.elseIfStatementClauses ?? [];
+      // 2. ElseIf branches
+      for (const clause of stmt.elseIfStatementClauses ?? []) {
+        const eifCondId = clause.condition ? visitor.visit(clause.condition) : undefined;
+        let eifTrue = false;
+        let eifFalse = false;
+        if (eifCondId !== undefined) {
+          const condVal = evaluateArenaExpression(dae, eifCondId, undefined, this.db, scopeId);
+          if (condVal === true) eifTrue = true;
+          if (condVal === false) eifFalse = true;
+        }
+        branches.push({ condId: eifCondId ?? -1, stmts: clause.statements ?? [], isTrue: eifTrue, isFalse: eifFalse });
+      }
+
+      // 3. Else branch
       const elseStmts = stmt.elseStatements ?? [];
-      const branchCount = elseIfClauses.length + (elseStmts.length > 0 ? 1 : 0);
+      if (elseStmts.length > 0) {
+        branches.push({ condId: -1, stmts: elseStmts, isTrue: true, isFalse: false }); // else is always taken if reached
+      }
 
-      // Emit header FIRST (printer expects prefix layout: header → body → branches)
-      dae.addIfStmt(condId ?? -1, thenStmts.length, branchCount);
+      // Filter branches
+      const finalBranches: { condId: number; stmts: any[] }[] = [];
+      for (let i = 0; i < branches.length; i++) {
+        const b = branches[i];
+        if (b.isFalse) continue;
+        if (b.isTrue) {
+          if (finalBranches.length === 0) {
+            for (const inner of b.stmts) {
+              this.flattenStatement(inner, dae, prefix, scopeId);
+            }
+            return;
+          } else {
+            finalBranches.push({ condId: -1, stmts: b.stmts });
+            break;
+          }
+        }
+        finalBranches.push({ condId: b.condId, stmts: b.stmts });
+      }
 
-      // Then-branch body
-      for (const inner of thenStmts) {
+      if (finalBranches.length === 0) return;
+
+      const mainBranch = finalBranches[0];
+      const otherBranches = finalBranches.slice(1);
+
+      dae.addIfStmt(mainBranch.condId, mainBranch.stmts.length, otherBranches.length);
+      for (const inner of mainBranch.stmts) {
         this.flattenStatement(inner, dae, prefix, scopeId);
       }
-
-      // ElseIf branches: Block header → body for each
-      for (const clause of elseIfClauses) {
-        const eifVisitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
-        const eifCondId = clause.condition ? eifVisitor.visit(clause.condition) : -1;
-        const clauseStmts = clause.statements ?? [];
-        dae.addBlockStmt(eifCondId ?? -1, clauseStmts.length);
-        for (const inner of clauseStmts) {
-          this.flattenStatement(inner, dae, prefix, scopeId);
-        }
-      }
-
-      // Else branch: Block(-1, count) → body
-      if (elseStmts.length > 0) {
-        dae.addBlockStmt(-1, elseStmts.length);
-        for (const inner of elseStmts) {
+      for (const branch of otherBranches) {
+        dae.addBlockStmt(branch.condId, branch.stmts.length);
+        for (const inner of branch.stmts) {
           this.flattenStatement(inner, dae, prefix, scopeId);
         }
       }
