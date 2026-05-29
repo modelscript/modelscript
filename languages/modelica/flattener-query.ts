@@ -247,6 +247,8 @@ export class ArenaQueryFlattener {
   private rootExtendsAncestors = new Set<SymbolId>();
   /** Map from short/unqualified function name → fully qualified name (for OMC parity). */
   private functionNameMap = new Map<string, string>();
+  /** Whether the current inheritance path comes from a `protected extends` clause. */
+  private inheritedProtected = false;
 
   constructor(private db: QueryDB) {}
 
@@ -394,6 +396,26 @@ export class ArenaQueryFlattener {
   ): void {
     if (visited.has(classId)) return;
     visited.add(classId);
+
+    // Resolve ShortClassSpecifier aliases (e.g., model D = A(x=1);)
+    const cst = this.db.cstNode(classId) as any;
+    const spec = cst?.childForFieldName?.("classSpecifier");
+    if (spec?.type === "ShortClassSpecifier") {
+      const typeSpec = spec.childForFieldName?.("typeSpecifier");
+      const typeName = typeSpec?.text;
+      const entry = this.db.symbol(classId);
+      if (typeName && entry && entry.parentId !== null) {
+        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>("resolveName", entry.parentId);
+        if (parentResolver) {
+          const resolved = parentResolver(typeName);
+          if (resolved && resolved.id !== classId) {
+            // Recurse into the resolved base class
+            this.flattenClassSectionsRecursive(resolved.id, prefix, dae, visited, isRoot);
+            return; // ShortClassSpecifier has no own sections or children
+          }
+        }
+      }
+    }
 
     // Root class: own sections first, then inherited
     // Inherited classes: parents first (depth-first), then own
@@ -653,6 +675,37 @@ export class ArenaQueryFlattener {
     if (visited.has(classId)) return;
     visited.add(classId);
 
+    // Resolve ShortClassSpecifier aliases (e.g., model D = A(x=1);)
+    const cst = this.db.cstNode(classId) as any;
+    const spec = cst?.childForFieldName?.("classSpecifier");
+    if (spec?.type === "ShortClassSpecifier") {
+      const typeSpec = spec.childForFieldName?.("typeSpecifier");
+      const typeName = typeSpec?.text;
+      const entry = this.db.symbol(classId);
+      if (typeName && entry && entry.parentId !== null) {
+        const parentResolver = this.db.query<(n: string) => { id: SymbolId } | null>("resolveName", entry.parentId);
+        if (parentResolver) {
+          const resolved = parentResolver(typeName);
+          if (resolved && resolved.id !== classId) {
+            const localMod = this.db.query<ModelicaModArgs | null>("effectiveModification", classId);
+            const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+            const mergedMod = mergeModArgs(topMod, localMod);
+            const childStack: ModificationStack =
+              mergedMod && mergedMod.args.length > 0
+                ? [...modStack, { mods: mergedMod, evaluationScopeId: entry.parentId }]
+                : modStack;
+
+            // Recurse into the resolved base class
+            this.flattenClassWithMods(resolved.id, prefix, dae, childStack, visited);
+
+            // Pop from visited to match original semantics
+            visited.delete(classId);
+            return;
+          }
+        }
+      }
+    }
+
     const children = this.db.childrenOf(classId);
 
     // Pre-scan for body-level redeclares (names that shadow inherited elements)
@@ -691,8 +744,14 @@ export class ArenaQueryFlattener {
             ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId }]
             : modStack;
 
-        // Recurse into the base class
+        // Check if this extends clause is in a protected section
+        const extendsIsProtected = this.isEntryInProtectedSection(child);
+
+        // Recurse into the base class, propagating protected visibility
+        const prevInheritedProtected = this.inheritedProtected;
+        if (extendsIsProtected) this.inheritedProtected = true;
         this.flattenClassWithMods(baseEntry.id, prefix, dae, childStack, new Set(visited));
+        this.inheritedProtected = prevInheritedProtected;
       }
     }
 
@@ -785,6 +844,39 @@ export class ArenaQueryFlattener {
     }
   }
 
+  private getInheritedTypeMod(
+    scopeId: SymbolId,
+    typeName: string,
+  ): import("./modification-args.js").ModelicaModArgs | null {
+    let mergedTypeMod: import("./modification-args.js").ModelicaModArgs | null = null;
+    let currentClassId: SymbolId | null = scopeId;
+    const visited = new Set<SymbolId>();
+
+    while (currentClassId && !visited.has(currentClassId)) {
+      visited.add(currentClassId);
+      const children = this.db.childrenOf(currentClassId);
+      // We process extends clauses to build the modification stack for this type
+      const extendsClause = children.find((c) => c.kind === "Extends");
+      if (extendsClause) {
+        const extendsMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+          "extendsModificationParsed",
+          extendsClause.id,
+        );
+        const typeMod = subModification(extendsMod, typeName);
+        if (typeMod) {
+          mergedTypeMod = mergeModArgs(mergedTypeMod, typeMod);
+        }
+        const baseClass = this.db.query<SymbolEntry | null>("resolvedBaseClass", extendsClause.id);
+        if (baseClass) {
+          currentClassId = baseClass.id;
+          continue;
+        }
+      }
+      break;
+    }
+    return mergedTypeMod;
+  }
+
   private resolveTypeNameInScope(typeName: string, scopeId: SymbolId | null): SymbolId | null {
     if (!typeName) return null;
 
@@ -839,11 +931,51 @@ export class ArenaQueryFlattener {
   ): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
 
+    // Deduplicate diamond inheritance: if component already emitted by a previous
+    // extends clause, skip it. Modelica semantics state that the lexically first
+    // extends clause modifications take precedence, which matches our evaluation order.
+    if (dae.getVarIdxByName(fullName) >= 0 || dae.hasArrayElements(fullName)) {
+      return;
+    }
+
     // --- Compute effective modification from stack + inline CST ---
     const outerMod = lookupModInStack(modStack, entry.name);
     const isFinalFromOuterMod = isModFinalInStack(modStack, entry.name);
-    const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", entry.id);
+    const inlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+      "effectiveModification",
+      entry.id,
+    );
     let effectiveMod = mergeModArgs(outerMod, inlineMod);
+
+    // If the component's type is a local/inherited class that was modified in the stack or via extends,
+    // those modifications apply to the component instance.
+    const typeName = this.db.query<string | null>("typeSpecifier", entry.id);
+    if (typeName && !typeName.includes(".")) {
+      const typeOuterMod = lookupModInStack(modStack, typeName);
+      let typeInlineMod: import("./modification-args.js").ModelicaModArgs | null = null;
+      let typeExtendsMod: import("./modification-args.js").ModelicaModArgs | null = null;
+
+      if (entry.parentId !== null) {
+        const resolveName = this.db.query<any>("resolveSimpleName", entry.parentId);
+        if (resolveName) {
+          const typeEntry = resolveName(typeName);
+          if (typeEntry) {
+            typeInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+              "effectiveModification",
+              typeEntry.id,
+            );
+          }
+        }
+        typeExtendsMod = this.getInheritedTypeMod(entry.parentId, typeName);
+      }
+
+      if (typeOuterMod || typeExtendsMod || typeInlineMod) {
+        let mergedTypeMod = mergeModArgs(typeOuterMod, typeExtendsMod);
+        mergedTypeMod = mergeModArgs(mergedTypeMod, typeInlineMod);
+        // Component modifications override type modifications
+        effectiveMod = mergeModArgs(effectiveMod, mergedTypeMod);
+      }
+    }
 
     // --- Outer/inner resolution ---
     // If the component is declared `outer` (and NOT also `inner`),
@@ -884,6 +1016,10 @@ export class ArenaQueryFlattener {
         classInstanceId = redeclaredClassId;
       }
     }
+
+    console.error(`[Flattener] Component: ${fullName}`);
+    console.error(`[Flattener] effectiveMod:`, JSON.stringify(effectiveMod));
+    console.error(`[Flattener] classInstanceId: ${classInstanceId}`);
 
     if (classInstanceId === null) {
       const resolvedType = this.db.query<SymbolEntry | null>("resolvedType", entry.id);
@@ -980,10 +1116,41 @@ export class ArenaQueryFlattener {
     }
 
     // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
-    const arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
+    let arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
 
     if (arrayDims && arrayDims.length > 0) {
-      const hasUnknownDim = arrayDims.some((d) => d <= 0);
+      let hasUnknownDim = arrayDims.some((d) => d <= 0);
+
+      if (hasUnknownDim && effectiveMod?.bindingExpression && dae.classKind !== "function") {
+        const binding = effectiveMod.bindingExpression;
+        let inferredDims: number[] | undefined;
+        if (binding.kind === "literal" && Array.isArray(binding.value)) {
+          inferredDims = [binding.value.length];
+        } else if (binding.kind === "expression" && binding.cstBytes) {
+          const cstNode = this.db.cstNodeRange(binding.cstBytes[0], binding.cstBytes[1], entry);
+          if (cstNode) {
+            const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+            const visitor = this.createExprVisitor(
+              dae,
+              undefined,
+              undefined,
+              effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id,
+            );
+            const exprId = visitor.visit(astNode ?? cstNode);
+            if (exprId !== undefined) {
+              const evalResult = evaluateArenaExpression(dae, exprId);
+              if (Array.isArray(evalResult)) {
+                inferredDims = [evalResult.length];
+              }
+            }
+          }
+        }
+        if (inferredDims && inferredDims.length > 0) {
+          arrayDims = inferredDims;
+          hasUnknownDim = arrayDims.some((d) => d <= 0);
+        }
+      }
+
       if (this.options.arrayMode === "preserve" || hasUnknownDim) {
         // In preserve mode, emit a single variable with shape metadata
         this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, isFinalFromOuterMod);
@@ -1091,7 +1258,7 @@ export class ArenaQueryFlattener {
       : null;
 
     let arrayBindingVal: any = undefined;
-    if (arrayBinding && isParam) {
+    if (arrayBinding) {
       if (arrayBinding.kind === "expression") {
         const bytes = arrayBinding.cstBytes;
         const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], entry);
@@ -1110,56 +1277,68 @@ export class ArenaQueryFlattener {
       }
     }
 
-    let startValArray: any = undefined;
-    const startMod = elementMod?.args.find((a) => a.name === "start");
-    if (startMod) {
-      startValArray = this.resolveModAttribute(effectiveMod, "start", typeName, dae, entry);
-      console.error("startValArray:", JSON.stringify(startValArray));
-    }
-
     const getShape = (a: any): number[] => {
       if (!Array.isArray(a)) return [];
       return [a.length, ...getShape(a[0])];
     };
-    const arrShape = getShape(startValArray);
     const bindingShape = getShape(arrayBindingVal);
-    console.error("arrShape:", arrShape, "bindingShape:", bindingShape);
+
+    const parameters = new Map<string, any>();
+    if (arrayBindingVal !== undefined) {
+      parameters.set(entry.name, arrayBindingVal);
+    }
+
+    const attributesToSlice = ["start", "min", "max", "nominal"];
+    const attrValArrays: Record<string, { val: any; shape: number[] }> = {};
+    for (const attr of attributesToSlice) {
+      const attrMod = elementMod?.args.find((a) => a.name === attr);
+      if (attrMod) {
+        const val = this.resolveModAttribute(effectiveMod, attr, typeName, dae, entry, parameters);
+        // Removing the require('fs') to clean up
+        if (val !== undefined && Array.isArray(val)) {
+          attrValArrays[attr] = { val, shape: getShape(val) };
+        }
+      }
+    }
 
     for (const idx of indices) {
       const indexStr = idx.map(String).join(",");
       const fullName = `${baseName}[${indexStr}]`;
 
       let currentElementMod = elementMod;
-      if (startValArray !== undefined && Array.isArray(startValArray)) {
-        if (arrShape.length <= idx.length) {
-          const relevantIdx = idx.slice(idx.length - arrShape.length);
-          let current = startValArray;
-          for (let d = 0; d < relevantIdx.length; d++) {
-            const i = relevantIdx[d]! - 1;
-            if (!Array.isArray(current) || i < 0 || i >= current.length) {
-              current = undefined;
-              break;
+
+      for (const attr of attributesToSlice) {
+        const attrData = attrValArrays[attr];
+        if (attrData) {
+          const arrShape = attrData.shape;
+          const valArray = attrData.val;
+          if (arrShape.length <= idx.length) {
+            const relevantIdx = idx.slice(idx.length - arrShape.length);
+            let current = valArray;
+            for (let d = 0; d < relevantIdx.length; d++) {
+              const i = relevantIdx[d]! - 1;
+              if (!Array.isArray(current) || i < 0 || i >= current.length) {
+                current = undefined;
+                break;
+              }
+              current = current[i];
             }
-            current = current[i];
-          }
-          if ((current !== undefined && typeof current === "number") || typeof current === "boolean") {
-            const numVal = typeof current === "boolean" ? (current ? 1.0 : 0.0) : current;
-            if (currentElementMod) {
-              currentElementMod = {
-                ...currentElementMod,
-                args: currentElementMod.args.map((a) =>
-                  a.name === "start" ? { ...a, value: { kind: "literal", value: numVal } } : a,
-                ),
-              };
-              if (idx.join(",") === "1,1,1,1") {
-                console.error("idx 1,1,1,1 currentElementMod:", JSON.stringify(currentElementMod));
+            if ((current !== undefined && typeof current === "number") || typeof current === "boolean") {
+              const numVal = typeof current === "boolean" ? (current ? 1.0 : 0.0) : current;
+              if (currentElementMod) {
+                currentElementMod = {
+                  ...currentElementMod,
+                  args: currentElementMod.args.map((a) =>
+                    a.name === attr ? { ...a, value: { kind: "literal", value: numVal } } : a,
+                  ),
+                };
               }
             }
           }
         }
       }
 
-      if (arrayBindingVal !== undefined && Array.isArray(arrayBindingVal)) {
+      if (isParam && arrayBindingVal !== undefined && Array.isArray(arrayBindingVal)) {
         if (bindingShape.length <= idx.length) {
           const relevantIdx = idx.slice(idx.length - bindingShape.length);
           let current = arrayBindingVal;
@@ -1452,7 +1631,10 @@ export class ArenaQueryFlattener {
     }
 
     // Protected flag (bit 0)
-    const isProtected = this.db.query<boolean>("isProtected", componentEntry.id);
+    // A variable is protected if:
+    // 1. It's directly declared in a protected section (isProtected query), OR
+    // 2. It was inherited through a `protected extends` clause (inheritedProtected)
+    const isProtected = this.inheritedProtected || this.db.query<boolean>("isProtected", componentEntry.id);
     if (isProtected) {
       flags |= 1;
     }
@@ -1479,6 +1661,23 @@ export class ArenaQueryFlattener {
     const varIdx = dae.addVariable(name, varType, variability, causality, initialValue, flags);
     if (qFlowPrefix === "stream") {
       dae.setVarFlowPrefix(varIdx, "stream");
+    }
+
+    // Resolve description string
+    let description = "";
+    const cst = this.db.cstNode(componentEntry.id) as any;
+    if (cst) {
+      const descNode = cst.childForFieldName("description");
+      if (descNode) {
+        const strNode =
+          descNode.childForFieldName("descriptionString") || descNode.children.find((c: any) => c.type === "STRING");
+        if (strNode) {
+          description = strNode.text.replace(/^"|"$/g, "");
+        }
+      }
+    }
+    if (description) {
+      dae.setVarDescription(varIdx, description);
     }
 
     // Set start value as an attribute expression for the printer
@@ -2081,6 +2280,7 @@ export class ArenaQueryFlattener {
     typeName: string,
     dae: ArenaDAEBuilder,
     contextEntry?: SymbolEntry,
+    parameters?: Map<string, any>,
   ): unknown {
     if (mod) {
       const arg = mod.args.find((a) => a.name === attrName);
@@ -2109,7 +2309,13 @@ export class ArenaQueryFlattener {
             );
             const exprId = visitor.visit(astNode);
             if (exprId !== undefined) {
-              const res = evaluateArenaExpression(dae, exprId);
+              const res = evaluateArenaExpression(
+                dae,
+                exprId,
+                parameters ?? new Map<string, any>(),
+                this.db,
+                contextEntry?.parentId ?? contextEntry?.id,
+              );
               return res;
             }
           }
@@ -3031,6 +3237,10 @@ export class ArenaQueryFlattener {
         for (const vIdx of group) {
           if (vIdx !== root) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
+            require("fs").appendFileSync(
+              "/tmp/debug_log.txt",
+              "expandConnections simple: " + dae.getVarName(vIdx) + " = " + dae.getVarName(root) + "\n",
+            );
             dae.addEquation(EqKind.Simple, vExpr, rootExpr);
           }
         }
@@ -3208,6 +3418,20 @@ export class ArenaQueryFlattener {
         }
       }
     }
+  }
+
+  /**
+   * Check if a symbol entry is in a `protected` ElementSection by walking the CST.
+   * Works for both Component and Extends entries.
+   */
+  private isEntryInProtectedSection(entry: SymbolEntry): boolean {
+    let current = this.db.cstNode(entry.id) as any;
+    while (current && current.type !== "ElementSection") {
+      // Stop at class definition boundaries — don't walk into a parent class
+      if (current.type === "LongClassSpecifier" || current.type === "ShortClassSpecifier") return false;
+      current = current.parent;
+    }
+    return current ? current.childForFieldName("visibility")?.text === "protected" : false;
   }
 
   /**

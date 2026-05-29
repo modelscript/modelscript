@@ -868,7 +868,8 @@ export class ArenaExprVisitor {
     if (funcName === "fill") {
       const argIds = getArgExprs();
       if (argIds.length >= 2) {
-        return this.expandFill(argIds);
+        const expanded = this.expandFill(argIds);
+        if (expanded !== undefined) return expanded;
       }
     }
 
@@ -876,7 +877,8 @@ export class ArenaExprVisitor {
     if (funcName === "zeros") {
       const argIds = getArgExprs();
       if (argIds.length >= 1) {
-        return this.expandFillValue(argIds, 0);
+        const expanded = this.expandFillValue(argIds, 0);
+        if (expanded !== undefined) return expanded;
       }
     }
 
@@ -884,7 +886,8 @@ export class ArenaExprVisitor {
     if (funcName === "ones") {
       const argIds = getArgExprs();
       if (argIds.length >= 1) {
-        return this.expandFillValue(argIds, 1);
+        const expanded = this.expandFillValue(argIds, 1);
+        if (expanded !== undefined) return expanded;
       }
     }
 
@@ -894,7 +897,8 @@ export class ArenaExprVisitor {
       if (argIds.length >= 1) {
         const argId = argIds[0];
         if (argId !== undefined) {
-          return this.expandIdentity(argId);
+          const expanded = this.expandIdentity(argId);
+          if (expanded !== undefined) return expanded;
         }
       }
     }

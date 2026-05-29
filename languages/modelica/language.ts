@@ -2666,15 +2666,38 @@ export default language({
               if (node.text === "true" || node.text === "false") return "Boolean";
               if (node.type === "ComponentReference") {
                 const refName = node.text.split(".")[0].split("[")[0].trim();
+                let typeName: string | null = null;
                 if (resolve) {
                   const resolved = resolve(refName);
                   if (resolved?.kind === "Component") {
-                    return ((resolved.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
+                    typeName = ((resolved.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
                   }
                 }
-                const globals = db.byName(refName);
-                if (globals.length > 0 && globals[0].kind === "Component") {
-                  return ((globals[0].metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
+                if (!typeName) {
+                  const globals = db.byName(refName);
+                  if (globals.length > 0 && globals[0].kind === "Component") {
+                    typeName = ((globals[0].metadata as Record<string, unknown>)?.typeSpecifier as string) ?? null;
+                  }
+                }
+                if (typeName) {
+                  let currentName = typeName;
+                  let iters = 0;
+                  while (currentName && !["Real", "Integer", "Boolean", "String"].includes(currentName) && iters < 20) {
+                    const typeGlobals = db.byName(currentName);
+                    if (typeGlobals.length > 0) {
+                      const classCst = db.cstNode(typeGlobals[0].id) as any;
+                      const spec = classCst?.childForFieldName?.("classSpecifier");
+                      if (spec?.type === "ShortClassSpecifier") {
+                        currentName = spec.childForFieldName?.("typeSpecifier")?.text ?? currentName;
+                      } else {
+                        break;
+                      }
+                    } else {
+                      break;
+                    }
+                    iters++;
+                  }
+                  return currentName;
                 }
               }
               return null;
@@ -3818,7 +3841,11 @@ export default language({
 
           isProtected: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
-            while (current && current.type !== "ElementSection") current = current.parent;
+            while (current && current.type !== "ElementSection") {
+              // Stop at class definition boundaries — don't walk into a parent class
+              if (current.type === "LongClassSpecifier" || current.type === "ShortClassSpecifier") return false;
+              current = current.parent;
+            }
             return current ? current.childForFieldName("visibility")?.text === "protected" : false;
           },
 
@@ -3860,8 +3887,12 @@ export default language({
             if (!typeName) return null;
 
             let typeEntry: SymbolEntry | null = null;
-            if (self.parentId !== null) {
-              const parentEntry = db.symbol(self.parentId);
+            const scopeId =
+              specArgs?.data?.evaluationScopeId !== undefined && specArgs.data.evaluationScopeId !== null
+                ? specArgs.data.evaluationScopeId
+                : self.parentId;
+            if (scopeId !== null) {
+              const parentEntry = db.symbol(scopeId);
               if (parentEntry && (parentEntry.kind === "Class" || parentEntry.kind === "Package")) {
                 // Use resolveName for qualified (dotted) names, resolveSimpleName for simple names
                 if (typeName.includes(".")) {
@@ -4078,8 +4109,11 @@ export default language({
                   } finally {
                     evaluatingDimensionsStack.pop();
                   }
-                  if (value === null) return null; // Could not resolve
-                  shape.push(value);
+                  if (value === null) {
+                    shape.push(-1);
+                  } else {
+                    shape.push(value);
+                  }
                 }
               }
               return shape;
