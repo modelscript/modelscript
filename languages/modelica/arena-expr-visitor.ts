@@ -6,8 +6,10 @@ import {
   evaluateArenaFunctionCall,
   ExprKind,
   inferArenaExprVarType,
+  isAssignableType,
   UnaryOp,
   VarType,
+  varTypeName,
   type ArenaValue,
   type QueryDB,
   type SymbolId,
@@ -127,7 +129,7 @@ export class ArenaExprVisitor {
     loopVars?: Map<string, number>,
     private onFunctionCall?: (funcName: string) => string | undefined,
     private cardinalityMap?: Map<string, number>,
-    private resolveFunctionInputs?: (funcName: string) => string[],
+    private resolveFunctionInputs?: (funcName: string) => { name: string; type: VarType | null }[],
     private namePrefix?: string,
     private db?: QueryDB,
     private scopeId?: SymbolId,
@@ -139,6 +141,7 @@ export class ArenaExprVisitor {
 
   /** Apply the name prefix to a path, unless it's a built-in or already qualified. */
   private prefixName(path: string): string {
+    console.error(`[DEBUG PREFIX] path=${path} namePrefix=${this.namePrefix}`);
     if (!this.namePrefix || BUILTIN_NAMES.has(path) || this.localIterators.has(path)) return path;
     return `${this.namePrefix}.${path}`;
   }
@@ -171,7 +174,7 @@ export class ArenaExprVisitor {
           return this.dae.addIntLiteral(this.loopVars.get(text) as number);
         }
         const pref = this.prefixName(text);
-        return this.dae.addNameExpr(pref);
+        return this.resolveNameExpr(pref);
       }
       return undefined;
     } else if (n instanceof ModelicaBinaryExpressionSyntaxNode) {
@@ -468,7 +471,23 @@ export class ArenaExprVisitor {
     }
 
     // Emit a Name expression
-    return this.dae.addNameExpr(this.prefixName(path));
+    const fullName = this.prefixName(path);
+    return this.resolveNameExpr(fullName);
+  }
+
+  private resolveNameExpr(fullName: string): number {
+    if (this.dae.getVarIdxByName(fullName) < 0 && this.dae.hasArrayElements(fullName)) {
+      const elements = this.dae.getArrayElementIndices(fullName);
+      if (elements.length > 0) {
+        const elementExprs: number[] = [];
+        for (const idx of elements) {
+          const elName = this.dae.getVarName(idx);
+          elementExprs.push(this.dae.addNameExpr(elName));
+        }
+        return this.dae.addArrayCtorExpr(elementExprs);
+      }
+    }
+    return this.dae.addNameExpr(fullName);
   }
 
   private visitBinaryExpression(node: ModelicaBinaryExpressionSyntaxNode): number | undefined {
@@ -487,7 +506,10 @@ export class ArenaExprVisitor {
     // Coerce operands if one is Real-typed and the other is not
     const leftReal = this.isRealTypedExpr(leftId);
     const rightReal = this.isRealTypedExpr(rightId);
-    if (leftReal && !rightReal) {
+    if (op === ModelicaBinaryOperator.DIVISION || op === ModelicaBinaryOperator.ELEMENTWISE_DIVISION) {
+      if (!leftReal) leftId = this.castToRealExpr(leftId);
+      if (!rightReal) rightId = this.castToRealExpr(rightId);
+    } else if (leftReal && !rightReal) {
       rightId = this.castToRealExpr(rightId);
     } else if (rightReal && !leftReal) {
       leftId = this.castToRealExpr(leftId);
@@ -948,6 +970,65 @@ export class ArenaExprVisitor {
     const argIds = getArgExprs();
     const namedArgs = getNamedArgs();
 
+    if (this.resolveFunctionInputs) {
+      const inputs = this.resolveFunctionInputs(funcName);
+
+      // Coerce and type-check positional args
+      for (let i = 0; i < argIds.length && i < inputs.length; i++) {
+        const expectedType = inputs[i]?.type;
+        const argId = argIds[i];
+        if (expectedType !== undefined && expectedType !== null && argId !== undefined) {
+          const providedType = inferArenaExprVarType(this.dae, argId);
+          let finalType = providedType;
+          if (expectedType === VarType.Real && (providedType === VarType.Integer || providedType === null)) {
+            argIds[i] = this.castToRealExpr(argId);
+            finalType = VarType.Real;
+          }
+          if (finalType !== null && !isAssignableType(expectedType, finalType)) {
+            const range = node.sourceRange;
+            const nodeText = (node as unknown as { cstNode?: { text: string } }).cstNode?.text ?? `${funcName}(...)`;
+            this.dae.diagnostics.push({
+              code: 3006,
+              rule: "function-arg-type-mismatch",
+              severity: "error",
+              message: `Type mismatch for positional argument ${i + 1} in ${nodeText}. The argument has type:\n  ${varTypeName(finalType)}\nexpected type:\n  ${varTypeName(expectedType)}`,
+              range: range ? { startByte: range.startIndex, endByte: range.endIndex } : null,
+            });
+          }
+        }
+      }
+
+      // Coerce and type-check named args
+      for (const namedArg of namedArgs) {
+        if (!namedArg) continue;
+        const inputDef = inputs.find((inp) => inp.name === namedArg.name);
+        if (inputDef && inputDef.type !== undefined && inputDef.type !== null) {
+          const expectedType = inputDef.type;
+          const providedType = inferArenaExprVarType(this.dae, namedArg.exprId);
+          let finalType = providedType;
+          if (expectedType === VarType.Real && (providedType === VarType.Integer || providedType === null)) {
+            namedArg.exprId = this.castToRealExpr(namedArg.exprId);
+            finalType = VarType.Real;
+          }
+          // Note: for named arguments, we use arg name instead of position. OMC error message format might differ, but we'll adapt.
+          if (finalType !== null && !isAssignableType(expectedType, finalType)) {
+            const range = node.sourceRange;
+            const nodeText = (node as unknown as { cstNode?: { text: string } }).cstNode?.text ?? `${funcName}(...)`;
+            // Best effort: find positional index for OMC parity (since OMC often says "positional argument N" even for named)
+            const argIdx = inputs.findIndex((inp) => inp.name === namedArg.name);
+            const positionString = argIdx >= 0 ? `${argIdx + 1}` : `named ${namedArg.name}`;
+            this.dae.diagnostics.push({
+              code: 3006,
+              rule: "function-arg-type-mismatch",
+              severity: "error",
+              message: `Type mismatch for positional argument ${positionString} in ${nodeText}. The argument has type:\n  ${varTypeName(finalType)}\nexpected type:\n  ${varTypeName(expectedType)}`,
+              range: range ? { startByte: range.startIndex, endByte: range.endIndex } : null,
+            });
+          }
+        }
+      }
+    }
+
     // Attempt compile-time constant folding for built-in functions
     const folded = this.tryFoldBuiltinCall(funcName, argIds);
     if (folded !== undefined) return folded;
@@ -1160,10 +1241,18 @@ export class ArenaExprVisitor {
     // Resolve input parameters of the target function to correctly order the bound arguments
     let argIds: number[] = [];
     if (this.resolveFunctionInputs) {
-      const inputNames = this.resolveFunctionInputs(funcName);
-      for (const inputName of inputNames) {
+      const inputs = this.resolveFunctionInputs(funcName);
+      for (const inputDef of inputs) {
+        const inputName = inputDef.name;
         const exprId = boundArgs.get(inputName);
         if (exprId !== undefined) {
+          if (inputDef.type === VarType.Real) {
+            const providedType = inferArenaExprVarType(this.dae, exprId);
+            if (providedType === VarType.Integer || providedType === null) {
+              argIds.push(this.castToRealExpr(exprId));
+              continue;
+            }
+          }
           argIds.push(exprId);
         }
       }
@@ -1192,6 +1281,12 @@ export class ArenaExprVisitor {
         const varIdx = this.dae.getVarIdxByName(name);
         if (varIdx >= 0) {
           return this.dae.getVarType(varIdx) === VarType.Real;
+        }
+        // Handle array element names like x[1]
+        const match = name.match(/^([^[\]]+)\[[\d,]+\]$/);
+        if (match && match[1]) {
+          const baseIdx = this.dae.getVarIdxByName(match[1]);
+          if (baseIdx >= 0) return this.dae.getVarType(baseIdx) === VarType.Real;
         }
       }
     }
@@ -1244,105 +1339,20 @@ export class ArenaExprVisitor {
       const val = this.dae.getExprData1(exprId);
       return this.dae.addRealLiteral(val);
     }
-    // RealLiteral, BoolLiteral, StringLiteral, EnumLiteral — already correct type
-    if (
-      kind === ExprKind.RealLiteral ||
-      kind === ExprKind.BoolLiteral ||
-      kind === ExprKind.StringLiteral ||
-      kind === ExprKind.EnumLiteral
-    ) {
-      return exprId;
-    }
-    // ArrayCtor — recursively cast each element
-    if (kind === ExprKind.ArrayCtor) {
-      const count = this.dae.getExprData1(exprId);
-      if (count === 0) return exprId;
-      const firstElem = this.dae.getExprLeft(exprId);
-      const elements: number[] = [];
-      elements.push(this.castToRealExpr(firstElem));
-      for (let i = 1; i < count; i++) {
-        const tupleExprId = exprId + i;
-        const elemId = this.dae.getExprLeft(tupleExprId);
-        elements.push(this.castToRealExpr(elemId));
-      }
-      return this.dae.addArrayCtorExpr(elements);
-    }
-    // Unary — recursively cast operand
-    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
-      const operand = this.dae.getExprLeft(exprId);
-      const casted = this.castToRealExpr(operand);
-      if (casted !== operand) {
-        if (kind === ExprKind.Negate) {
-          return this.dae.addUnaryExpr(UnaryOp.Negate, casted);
-        }
-        return this.dae.addUnaryExpr(this.dae.getExprData1(exprId), casted);
-      }
-      return exprId;
-    }
-    // Binary — recursively cast both operands
-    if (kind === ExprKind.Binary) {
-      const op = this.dae.getExprData1(exprId);
-      const op1 = this.dae.getExprLeft(exprId);
-      const op2 = this.dae.getExprRight(exprId);
-      const casted1 = this.castToRealExpr(op1);
-      const casted2 = this.castToRealExpr(op2);
-      if (casted1 !== op1 || casted2 !== op2) {
-        return this.dae.addBinaryExpr(op, casted1, casted2);
-      }
-      return exprId;
-    }
-    // Name — check if it's a known Integer variable; if so, wrap it.
-    // Otherwise assume it's already Real (or unknown, which is safe to leave as-is).
-    if (kind === ExprKind.Name) {
-      const nameId = this.dae.getExprData1(exprId);
-      const name = this.dae.interner.resolve(nameId);
-      if (name) {
-        // Built-in "time" is always Real
-        if (name === "time") return exprId;
-        const varIdx = this.dae.getVarIdxByName(name);
-        if (varIdx >= 0) {
-          const varType = this.dae.getVarType(varIdx);
-          if (varType === VarType.Integer) {
-            // Provably Integer — wrap with cast
-            return this.dae.addCallExpr("/*Real*/", [exprId]);
-          }
-          // Real or other type — no cast needed
-          return exprId;
-        }
-      }
-      // Unknown variable (not yet in DAE) — assume Real, don't wrap
-      return exprId;
-    }
-    // Call — check if it's already a /*Real*/ cast; otherwise check for Integer-returning calls
+    if (kind === ExprKind.RealLiteral) return exprId;
+
+    // Call — check if it's already a /*Real*/ cast
     if (kind === ExprKind.Call) {
       const funcNameId = this.dae.getExprData1(exprId);
       const funcName = this.dae.interner.resolve(funcNameId);
       if (funcName === "/*Real*/") return exprId; // already cast
-      // For type-preserving built-ins (abs, sign, etc.), check argument type
-      if (funcName === "abs" || funcName === "sign") {
-        const argId = this.dae.getExprLeft(exprId);
-        if (argId >= 0) {
-          const argType = inferArenaExprVarType(this.dae, argId);
-          if (argType === VarType.Integer) {
-            return this.dae.addCallExpr("/*Real*/", [exprId]);
-          }
-        }
-      }
-      return exprId;
     }
-    // Pre — check if the argument is Integer-typed
-    if (kind === ExprKind.Pre) {
-      const argId = this.dae.getExprData1(exprId);
-      if (argId >= 0) {
-        const argType = inferArenaExprVarType(this.dae, argId);
-        if (argType === VarType.Integer) {
-          return this.dae.addCallExpr("/*Real*/", [exprId]);
-        }
-      }
-      return exprId;
+
+    const varType = inferArenaExprVarType(this.dae, exprId);
+    if (varType === VarType.Integer || varType === null) {
+      return this.dae.addCallExpr("/*Real*/", [exprId]);
     }
-    // Der, IfElse, Range, Subscript, Comprehension, etc. —
-    // these are already typed by their context; don't wrap.
+
     return exprId;
   }
   // -------------------------------------------------------------------------
@@ -1381,19 +1391,22 @@ export class ArenaExprVisitor {
    * Returns a literal expression ID if inlining succeeds, undefined otherwise.
    */
   private tryInlineFunctionCall(funcName: string, argIds: number[]): number | undefined {
+    console.error(`[DEBUG INLINE TRY] funcName=${funcName}`);
+
     // Look up the function sub-DAE
     const funcNameId = this.dae.interner.intern(funcName);
     const fnDae = this.dae.functions.get(funcNameId);
     if (!fnDae) return undefined;
 
-    // Skip functions with external declarations (can't inline C/Fortran code)
-    if (fnDae.externalDecl) return undefined;
+    // Check if it's a built-in math function (we can evaluate these even if they are external)
+    // For other external functions, evaluateArenaFunctionCall will return null because their body is empty
 
     // Evaluate all arguments to constant values
     const argValues: ArenaValue[] = [];
     for (const argId of argIds) {
       const val = evaluateArenaExpression(this.dae, argId);
       if (val === null) {
+        console.error(`[DEBUG INLINE SKIP] argument evaluation failed for funcName=${funcName}, argId=${argId}`);
         return undefined;
       } // Non-constant argument
       argValues.push(val);
@@ -1412,9 +1425,18 @@ export class ArenaExprVisitor {
 
     // Evaluate function using the new evaluateArenaFunctionCall
     const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues);
-    if (outVal === null) return undefined;
+    if (outVal === null) {
+      console.error(
+        `[DEBUG INLINE FAIL] evaluateArenaFunctionCall returned null for funcName=${funcName}, argValues=${JSON.stringify(argValues)}`,
+      );
+      return undefined;
+    }
 
-    const resultExprId = this.addArenaValueAsExpr(outVal, outType, outputVars.length > 1);
+    // If the function returns multiple outputs, evaluateArenaFunctionCall returns an array of them.
+    // In Modelica, when a multi-output function is called in an expression, only the first result is returned.
+    const finalVal = outputVars.length > 1 && Array.isArray(outVal) ? outVal[0] : outVal;
+
+    const resultExprId = this.addArenaValueAsExpr(finalVal as ArenaValue, outType, false);
     if (resultExprId === -1) return undefined;
 
     // We do NOT remove the function definition from the DAE because OpenModelica

@@ -1,4 +1,4 @@
-import { evaluateArrayBuiltin } from "./arena-eval-builtins.js";
+import { evaluateArrayBuiltin, evaluateBuiltinMathFunction } from "./arena-eval-builtins.js";
 import { ArenaDAEBuilder, BinOp, ExprKind, UnaryOp, Variability } from "./dae-arena.js";
 import type { QueryDB, SymbolEntry, SymbolId } from "./runtime.js";
 
@@ -76,6 +76,27 @@ export function evaluateArenaExpression(
       const paramVal = parameters.get(name);
       if (paramVal !== undefined) return paramVal;
 
+      // Handle array subscripting where the name is e.g. "x[1]" and "x" is in parameters
+      const match = name.match(/^([^[\]]+)\[([\d,]+)\]$/);
+      if (match && match[1] && match[2]) {
+        const root = match[1];
+        const indices = match[2].split(",").map(Number);
+        const rootVal = parameters.get(root);
+        if (rootVal !== undefined && Array.isArray(rootVal)) {
+          let current: ArenaValue = rootVal;
+          let ok = true;
+          for (const idx of indices) {
+            if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+              current = current[idx - 1] as ArenaValue;
+            } else {
+              ok = false;
+              break;
+            }
+          }
+          if (ok) return current;
+        }
+      }
+
       // Dotted member access: "a.b.c" → look up "a" in parameters and traverse fields
       const dotIdx = name.indexOf(".");
       if (dotIdx > 0) {
@@ -112,6 +133,53 @@ export function evaluateArenaExpression(
       }
 
       const vIdx = dae.getVarIdxByName(name);
+      console.error(
+        `[DEBUG ARENA EVAL NAME] name=${name} vIdx=${vIdx} hasArray=${dae.hasArrayElements(name)} varib=${vIdx >= 0 ? dae.getVarVariability(vIdx) : "N/A"}`,
+      );
+      if (vIdx < 0 && dae.hasArrayElements(name)) {
+        const elements = dae.getArrayElementIndices(name);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result: any[] = [];
+        for (const idx of elements) {
+          if (dae.isVarFixed(idx)) {
+            result.push(dae.getVarStartValue(idx));
+          } else {
+            const variability = dae.getVarVariability(idx);
+            if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
+              const bindingExprId = dae.getVarExpression(idx);
+              if (typeof bindingExprId === "number" && bindingExprId >= 0) {
+                if (!visitedVars.has(idx)) {
+                  visitedVars.add(idx);
+                  try {
+                    result.push(
+                      evaluateArenaExpression(
+                        dae,
+                        bindingExprId,
+                        parameters,
+                        db,
+                        scopeId,
+                        visitedVars,
+                        onlyConstants,
+                        functionLookup,
+                      ),
+                    );
+                  } finally {
+                    visitedVars.delete(idx);
+                  }
+                } else {
+                  result.push(null);
+                }
+              } else {
+                result.push(dae.getVarStartValue(idx));
+              }
+            } else {
+              result.push(null);
+            }
+          }
+        }
+        return result;
+      }
+
       if (vIdx >= 0) {
         if (dae.isVarFixed(vIdx)) {
           return dae.getVarStartValue(vIdx);
@@ -160,6 +228,9 @@ export function evaluateArenaExpression(
               const mod = db.query<any | null>("effectiveModification", resolved.id);
               if (mod && mod.bindingExpression) {
                 const val = db.evaluate(mod.bindingExpression, resolved.parentId);
+                console.error(
+                  `[DEBUG EVAL NAME] name=${name} val=${JSON.stringify(val)} binding=${JSON.stringify(mod.bindingExpression)}`,
+                );
                 if (val !== null && val !== undefined) {
                   return val as ArenaValue;
                 }
@@ -326,35 +397,100 @@ export function evaluateArenaExpression(
       const firstArg = dae.getExprLeft(exprId);
       const argIds = getSequenceElements(dae, exprId, argCount, firstArg);
 
+      // Special case for 'size' and 'ndims': we only need the shape of the array, not its value.
+      // If the argument is a variable name, we can inspect the DAE for its array dimensions.
+      if ((funcName === "size" || funcName === "ndims") && argCount >= 1) {
+        const firstArgId = argIds[0];
+        console.error(
+          `[DEBUG ARENA EVAL CALL] firstArgId=${firstArgId} kind=${firstArgId !== undefined ? dae.getExprKind(firstArgId) : -1}`,
+        );
+        if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Name) {
+          const varName = dae.interner.resolve(dae.getExprData1(firstArgId));
+          console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
+          if (varName) {
+            let shape: number[] | null = null;
+            const varIdx = dae.getVarIdxByName(varName);
+            console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
+            if (varIdx >= 0) {
+              const varShape = dae.getVarShape(varIdx);
+              console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
+              if (varShape && varShape.length > 0) shape = varShape;
+            } else if (dae.hasArrayElements(varName)) {
+              const elements = dae.getArrayElementIndices(varName);
+              console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
+              if (elements.length > 0) {
+                const lastIdx = elements[elements.length - 1];
+                if (lastIdx !== undefined) {
+                  const lastElemName = dae.getVarName(lastIdx);
+                  const match = lastElemName.match(/\[([\d,]+)\]$/);
+                  if (match && match[1]) {
+                    shape = match[1].split(",").map(Number);
+                  }
+                }
+              }
+            }
+            if (shape && shape.length > 0) {
+              if (funcName === "ndims") return shape.length;
+              if (funcName === "size") {
+                if (argCount === 1) return shape;
+                const dimArgId = argIds[1];
+                if (dimArgId !== undefined) {
+                  const dim = evaluateArenaExpression(
+                    dae,
+                    dimArgId,
+                    parameters,
+                    db,
+                    scopeId,
+                    visitedVars,
+                    onlyConstants,
+                    functionLookup,
+                  );
+                  if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
+                    return shape[dim - 1] ?? null;
+                  }
+                }
+              }
+            }
+          }
+        } else if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.ArrayCtor) {
+          const elementsCount = dae.getExprData1(firstArgId);
+          const shape = [elementsCount];
+          const firstElementId = dae.getExprLeft(firstArgId);
+          if (firstElementId >= 0 && dae.getExprKind(firstElementId) === ExprKind.ArrayCtor) {
+            shape.push(dae.getExprData1(firstElementId));
+          }
+          console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
+          if (funcName === "ndims") return shape.length;
+          if (funcName === "size") {
+            if (argCount === 1) return shape;
+            const dimArgId = argIds[1];
+            if (dimArgId !== undefined) {
+              const dim = evaluateArenaExpression(
+                dae,
+                dimArgId,
+                parameters,
+                db,
+                scopeId,
+                visitedVars,
+                onlyConstants,
+                functionLookup,
+              );
+              console.error(`[DEBUG SIZE] dim=${dim}`);
+              if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
+                return shape[dim - 1] ?? null;
+              }
+            }
+          }
+        }
+      }
+
       const args = argIds.map((id) =>
         evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants, functionLookup),
       );
       if (args.some((a) => a === null)) return null;
 
-      if (funcName === "sin" && typeof args[0] === "number") return Math.sin(args[0]);
-      if (funcName === "cos" && typeof args[0] === "number") return Math.cos(args[0]);
-      if (funcName === "tan" && typeof args[0] === "number") return Math.tan(args[0]);
-      if (funcName === "asin" && typeof args[0] === "number") return Math.asin(args[0]);
-      if (funcName === "acos" && typeof args[0] === "number") return Math.acos(args[0]);
-      if (funcName === "atan" && typeof args[0] === "number") return Math.atan(args[0]);
-      if (funcName === "atan2" && typeof args[0] === "number" && typeof args[1] === "number")
-        return Math.atan2(args[0], args[1]);
-      if (funcName === "sinh" && typeof args[0] === "number") return Math.sinh(args[0]);
-      if (funcName === "cosh" && typeof args[0] === "number") return Math.cosh(args[0]);
-      if (funcName === "tanh" && typeof args[0] === "number") return Math.tanh(args[0]);
-      if (funcName === "exp" && typeof args[0] === "number") return Math.exp(args[0]);
-      if (funcName === "log" && typeof args[0] === "number") return Math.log(args[0]);
-      if (funcName === "log10" && typeof args[0] === "number") return Math.log10(args[0]);
-      if (funcName === "abs" && typeof args[0] === "number") return Math.abs(args[0]);
-      if (funcName === "sqrt" && typeof args[0] === "number") return Math.sqrt(args[0]);
-      if (funcName === "sign" && typeof args[0] === "number") return Math.sign(args[0]);
-      if (funcName === "floor" && typeof args[0] === "number") return Math.floor(args[0]);
-      if (funcName === "ceil" && typeof args[0] === "number") return Math.ceil(args[0]);
-      if (funcName === "integer" && typeof args[0] === "number") return Math.floor(args[0]);
-      if (funcName === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
-        const b = args[1];
-        return b !== 0 ? args[0] - Math.floor(args[0] / b) * b : null;
-      }
+      const mathRes = evaluateBuiltinMathFunction(funcName, args as ArenaValue[]);
+      if (mathRes !== undefined) return mathRes;
       if (funcName === "rem" && typeof args[0] === "number" && typeof args[1] === "number") {
         const b = args[1];
         return b !== 0 ? args[0] - Math.trunc(args[0] / b) * b : null;
@@ -364,8 +500,13 @@ export function evaluateArenaExpression(
       }
       if (funcName === "String") return String(args[0]);
       if (funcName === "noEvent" && args.length === 1) return args[0];
-      if (funcName === "Real" && typeof args[0] === "number") return args[0];
-      if (funcName === "Integer" && typeof args[0] === "number") return Math.floor(args[0]);
+      if (funcName === "Real" && args.length === 1) return args[0];
+      if (funcName === "Integer" && args.length === 1) {
+        if (typeof args[0] === "number") return Math.floor(args[0]);
+        // For array, technically we should floor recursively, but for simplicity we return as is
+        // since JS numbers are the same.
+        return args[0];
+      }
       if (funcName === "homotopy" && args.length >= 1) return args[0];
       if (funcName === "smooth" && args.length >= 2) return args[1];
 
@@ -377,7 +518,21 @@ export function evaluateArenaExpression(
       if (functionLookup) {
         const funcNameId = dae.getExprData1(exprId);
         const userFuncResult = functionLookup(funcNameId, args as ArenaValue[]);
-        if (userFuncResult !== null) return userFuncResult;
+        if (userFuncResult !== null) {
+          // If the function returns multiple outputs, evaluateArenaFunctionCall returns an array of them.
+          // In Modelica, when a multi-output function is called in an expression, only the first result is returned.
+          const fnDae = dae.functions.get(funcNameId);
+          if (fnDae && Array.isArray(userFuncResult)) {
+            let outCount = 0;
+            for (let i = 0; i < fnDae.varCount; i++) {
+              if (fnDae.getVarCausality(i) === 2 /* Output */) outCount++;
+            }
+            if (outCount > 1 && userFuncResult.length > 0) {
+              return userFuncResult[0] as ArenaValue;
+            }
+          }
+          return userFuncResult;
+        }
       }
 
       return null;
@@ -396,7 +551,7 @@ export function evaluateArenaExpression(
       const firstElem = dae.getExprLeft(exprId);
       const elemIds = getSequenceElements(dae, exprId, count, firstElem);
       const elements = elemIds.map((id) =>
-        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants),
+        evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants, functionLookup),
       );
       if (elements.some((e) => e === null)) return null;
       return elements as ArenaValue[];
@@ -411,6 +566,7 @@ export function evaluateArenaExpression(
         scopeId,
         visitedVars,
         onlyConstants,
+        functionLookup,
       );
       const stepId = dae.getExprLeft(exprId);
       const step =
@@ -492,5 +648,6 @@ export function evaluateArenaExpression(
     }
   }
 
+  console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
   return null;
 }

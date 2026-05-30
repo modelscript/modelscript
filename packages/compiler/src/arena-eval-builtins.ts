@@ -4,6 +4,34 @@ import type { ArenaValue } from "./arena-eval.js";
 // Array helpers
 // ─────────────────────────────────────────────────────────────────────
 
+export function evaluateBuiltinMathFunction(funcName: string, args: ArenaValue[]): ArenaValue | null | undefined {
+  if (funcName === "sin" && typeof args[0] === "number") return Math.sin(args[0]);
+  if (funcName === "cos" && typeof args[0] === "number") return Math.cos(args[0]);
+  if (funcName === "tan" && typeof args[0] === "number") return Math.tan(args[0]);
+  if (funcName === "asin" && typeof args[0] === "number") return Math.asin(args[0]);
+  if (funcName === "acos" && typeof args[0] === "number") return Math.acos(args[0]);
+  if (funcName === "atan" && typeof args[0] === "number") return Math.atan(args[0]);
+  if (funcName === "atan2" && typeof args[0] === "number" && typeof args[1] === "number")
+    return Math.atan2(args[0], args[1]);
+  if (funcName === "sinh" && typeof args[0] === "number") return Math.sinh(args[0]);
+  if (funcName === "cosh" && typeof args[0] === "number") return Math.cosh(args[0]);
+  if (funcName === "tanh" && typeof args[0] === "number") return Math.tanh(args[0]);
+  if (funcName === "exp" && typeof args[0] === "number") return Math.exp(args[0]);
+  if (funcName === "log" && typeof args[0] === "number") return Math.log(args[0]);
+  if (funcName === "log10" && typeof args[0] === "number") return Math.log10(args[0]);
+  if (funcName === "abs" && typeof args[0] === "number") return Math.abs(args[0]);
+  if (funcName === "sqrt" && typeof args[0] === "number") return Math.sqrt(args[0]);
+  if (funcName === "sign" && typeof args[0] === "number") return Math.sign(args[0]);
+  if (funcName === "floor" && typeof args[0] === "number") return Math.floor(args[0]);
+  if (funcName === "ceil" && typeof args[0] === "number") return Math.ceil(args[0]);
+  if (funcName === "integer" && typeof args[0] === "number") return Math.floor(args[0]);
+  if (funcName === "mod" && typeof args[0] === "number" && typeof args[1] === "number") {
+    const b = args[1];
+    return b !== 0 ? args[0] - Math.floor(args[0] / b) * b : null;
+  }
+  return undefined;
+}
+
 /** Flatten a nested ArenaValue array into a 1D list of leaf values. */
 export function flattenArenaArray(val: ArenaValue): ArenaValue[] {
   if (!Array.isArray(val)) return [val];

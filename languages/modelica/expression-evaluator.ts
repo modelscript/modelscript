@@ -88,8 +88,8 @@ function evaluateModValue(value: ModificationValue, scope: SymbolEntry | null, d
     case "break":
       return undefined;
     case "expression": {
-      const text = db.cstText(value.cstBytes[0], value.cstBytes[1]);
-      if (text !== null) {
+      const text = value.text ?? db.cstText(value.cstBytes[0], value.cstBytes[1], scope ?? undefined);
+      if (text !== null && text !== undefined) {
         return evaluateExprText(text, scope, db);
       }
       return null;
@@ -276,6 +276,32 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
       case "atan2":
         return Math.atan2(args[0], args[1]);
     }
+  }
+
+  // Array functions
+  if (name === "size" && args.length >= 1) {
+    const arrayArg = args[0];
+    let dims: number[] | null = null;
+    if (Array.isArray(arrayArg)) {
+      dims = [arrayArg.length];
+    } else if (arrayArg && typeof arrayArg === "object" && "id" in arrayArg) {
+      const entry = arrayArg as SymbolEntry;
+      dims = db.query<number[] | null>("resolvedArrayDimensions", entry.id);
+      console.error(`[DEBUG EVAL SIZE] entry=${entry.name} dims=${dims}`);
+    }
+
+    if (dims && dims.length > 0) {
+      if (args.length === 1) {
+        return dims;
+      } else if (args.length === 2 && typeof args[1] === "number") {
+        const dimIndex = args[1] - 1; // 1-based index
+        if (dimIndex >= 0 && dimIndex < dims.length) {
+          console.error(`[DEBUG EVAL SIZE RETURN] returning ${dims[dimIndex]}`);
+          return dims[dimIndex];
+        }
+      }
+    }
+    console.error(`[DEBUG EVAL SIZE FAIL] name=${name} arrayArg=${JSON.stringify(arrayArg)}`);
   }
 
   return null;

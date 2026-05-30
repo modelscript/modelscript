@@ -258,6 +258,14 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
         continue;
       }
 
+      // If the inner modification is a `break`, it means the element is
+      // explicitly removed from inheritance. Any outer modifications
+      // targeting this name are meant for a locally declared element with
+      // the same name, not this inherited one. Preserve the break.
+      if (existing.value?.kind === "break") {
+        continue;
+      }
+
       // Recursive merge of nested modifications
       if (arg.nestedArgs.length > 0 || existing.nestedArgs.length > 0) {
         let mergedNestedArgs = arg.nestedArgs;

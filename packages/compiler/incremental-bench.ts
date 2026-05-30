@@ -7,57 +7,6 @@ import { QueryEngine } from "./src/query-engine.js";
 import { ScopeResolver } from "./src/resolver.js";
 import { SymbolIndexer } from "./src/symbol-indexer.js";
 
-// Helper for lazy node wrapping (copied from playground.ts)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function lazyWrapNode(node: any): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let _children: any[] | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const _childCache = new Map<number, any>();
-  return {
-    get type() {
-      return node.type;
-    },
-    get text() {
-      return node.text;
-    },
-    get startByte() {
-      return node.startIndex;
-    },
-    get endByte() {
-      return node.endIndex;
-    },
-    get hasChanges() {
-      return node.hasChanges;
-    },
-    get childCount() {
-      return node.childCount;
-    },
-    child(i: number) {
-      if (i < 0 || i >= node.childCount) return null;
-      let cached = _childCache.get(i);
-      if (!cached) {
-        cached = lazyWrapNode(node.child(i));
-        _childCache.set(i, cached);
-      }
-      return cached;
-    },
-    childForFieldName(name: string) {
-      const child = node.childForFieldName(name);
-      return child ? lazyWrapNode(child) : null;
-    },
-    get children() {
-      if (!_children) {
-        _children = [];
-        for (let i = 0; i < node.childCount; i++) {
-          _children.push(this.child(i));
-        }
-      }
-      return _children;
-    },
-  };
-}
-
 async function runBenchmark() {
   const langPath = "/home/omar/git/modelscript/languages/modelica/language.ts";
   const mod = await import(`file://${langPath}`);
@@ -97,7 +46,8 @@ async function runBenchmark() {
     // 1. Cold Start
     const t0 = performance.now();
     const tree0 = tsParser.parse(initialText);
-    const cst0 = lazyWrapNode(tree0.rootNode);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cst0 = tree0.rootNode as any;
     const index0 = indexer.index(cst0);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const resolver0 = new ScopeResolver(index0, refHooks, indexerHooks);
@@ -122,7 +72,8 @@ async function runBenchmark() {
 
     const tReparseStart = performance.now();
     const tree1 = tsParser.parse(modifiedText, tree0);
-    const cst1 = lazyWrapNode(tree1.rootNode);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cst1 = tree1.rootNode as any;
     const tReparse = performance.now() - tReparseStart;
 
     const tScopeStart = performance.now();
@@ -147,6 +98,10 @@ async function runBenchmark() {
     console.log(`Incremental Scope   : ${tScope.toFixed(2)} ms`);
     console.log(`Incremental Symbolic: ${tSym.toFixed(2)} ms`);
     console.log(`Incremental Linting : ${tLint.toFixed(2)} ms`);
+
+    // Free tree-sitter WASM memory
+    tree0.delete();
+    tree1.delete();
   }
 }
 

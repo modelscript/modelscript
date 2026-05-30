@@ -36,8 +36,10 @@ function updateNestedArray(arr: ArenaValue, indices: ArenaValue[], value: ArenaV
   while (currentArr.length <= arrayIndex) {
     currentArr.push(indices.length > 1 ? [] : 0);
   }
-  const element = currentArr[arrayIndex];
-  if (element !== undefined) {
+  if (indices.length === 1) {
+    currentArr[arrayIndex] = value;
+  } else {
+    const element = currentArr[arrayIndex] ?? [];
     currentArr[arrayIndex] = updateNestedArray(element, indices.slice(1), value);
   }
   return currentArr;
@@ -93,6 +95,7 @@ export function executeArenaCEvalStatements(
             const idxCount = arena.getExprRight(currentExprId);
             const firstIdx = arena.getExprLeft(currentExprId);
             const idxIds = getSequenceElements(arena, currentExprId, idxCount, firstIdx);
+            const currentSubscripts: number[] = [];
             for (const id of idxIds) {
               const val = evaluateArenaExpression(
                 arena,
@@ -108,11 +111,13 @@ export function executeArenaCEvalStatements(
                 ok = false;
                 break;
               }
-              subscripts.unshift(val);
+              currentSubscripts.push(val);
             }
+            subscripts.unshift(...currentSubscripts);
             if (!ok) break;
             currentExprId = arena.getExprData1(currentExprId);
           }
+          console.error(`[DEBUG BUBBLESORT] ok=${ok} finalExprKind=${arena.getExprKind(currentExprId)}`);
           if (!ok) break;
           if (arena.getExprKind(currentExprId) === ExprKind.Name) {
             const baseName = arena.interner.resolve(arena.getExprData1(currentExprId));
@@ -120,7 +125,13 @@ export function executeArenaCEvalStatements(
               const currentArr = env.get(baseName) ?? [];
               const updatedArr = updateNestedArray(currentArr, subscripts, value);
               env.set(baseName, updatedArr);
+              if (baseName === "y")
+                console.error(
+                  `[DEBUG BUBBLESORT] Updated y[${subscripts.join(",")}] = ${value} -> ${JSON.stringify(updatedArr)}`,
+                );
             }
+          } else {
+            console.error(`[DEBUG BUBBLESORT] Subscript base is not Name! kind=${arena.getExprKind(currentExprId)}`);
           }
         }
         break;

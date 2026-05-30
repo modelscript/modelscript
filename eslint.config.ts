@@ -29,6 +29,9 @@ export default defineConfig([
             "apps/api/scripts/seed-social-db.ts",
             "packages/examples/drone-chassis/cad/drone.mcad.ts",
             "packages/compiler/incremental-bench.ts",
+            "packages/compiler/bench-50k.ts",
+            "packages/compiler/bench_direct.ts",
+            "packages/compiler/bench_stages.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,
@@ -36,10 +39,12 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.ts"],
+    files: ["scripts/**/*.ts", "packages/compiler/bench*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "off",
     },
   },
   {

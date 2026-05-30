@@ -134,6 +134,18 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           });
         }
       }
+      const identifier = n.childForFieldName("identifier");
+      if (identifier) {
+        args.push({
+          name: identifier.text,
+          each: false,
+          final: false,
+          isRedeclaration: false,
+          nestedArgs: [],
+          value: { kind: "break" },
+          evaluationScopeId: scopeId,
+        });
+      }
       return;
     }
     if (n.type === "ModificationExpression") return;
@@ -745,11 +757,16 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
     resolved = subResolver(parts[i]!);
   }
 
-  if (!resolved) return null;
+  if (!resolved) {
+    console.error(`[DEBUG LANG SIZE CALL FAIL] refName=${refName} NOT RESOLVED!`);
+    return null;
+  }
 
   activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: dimIndex - 1 });
   try {
-    return getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
+    const res = getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
+    console.error(`[DEBUG LANG SIZE CALL] refName=${refName} dimIndex=${dimIndex} res=${res}`);
+    return res;
   } finally {
     activeDimQueriesStack.pop();
   }
@@ -2087,15 +2104,36 @@ export default language({
                       // Narrow to the assignment target node
                       if (typeof targetNode.startIndex === "number") {
                         results.push(
-                          error(`Cannot assign to constant '${targetNode.text}'`, {
+                          error(`Trying to assign to constant component ${targetNode.text}.`, {
                             startByte: targetNode.startIndex,
                             endByte: targetNode.endIndex,
                           }),
                         );
                       } else {
                         results.push(
-                          error(`Cannot assign to constant '${targetNode.text}'`, { field: "classSpecifier" }),
+                          error(`Trying to assign to constant component ${targetNode.text}.`, {
+                            field: "classSpecifier",
+                          }),
                         );
+                      }
+                    } else if (meta?.causality === "input") {
+                      // Assignment to inputs is only forbidden in functions
+                      const classPrefixes = cst?.childForFieldName("classPrefixes")?.text || "";
+                      if (classPrefixes.includes("function")) {
+                        if (typeof targetNode.startIndex === "number") {
+                          results.push(
+                            error(`Trying to assign to input component ${targetNode.text}.`, {
+                              startByte: targetNode.startIndex,
+                              endByte: targetNode.endIndex,
+                            }),
+                          );
+                        } else {
+                          results.push(
+                            error(`Trying to assign to input component ${targetNode.text}.`, {
+                              field: "classSpecifier",
+                            }),
+                          );
+                        }
                       }
                     }
                   }
@@ -2376,7 +2414,63 @@ export default language({
             return results.length > 0 ? results : null;
           },
           functionArgVariability: () => null,
-          functionDefaultArgCycle: () => null,
+          functionDefaultArgCycle: (db: QueryDB, self: SymbolEntry) => {
+            // self is a Class of kind Function
+            const inputs = db.query<SymbolEntry[] | null>("inputParameters", self.id);
+            if (!inputs || inputs.length === 0) return null;
+
+            // Build dependency graph
+            const dependsOn = new Map<SymbolId, Set<SymbolId>>();
+            for (const input of inputs) {
+              const mod = db.query<any | null>("effectiveModification", input.id);
+              if (mod && mod.bindingExpression) {
+                const deps = new Set<SymbolId>();
+                const ast = mod.bindingExpression;
+                if (ast && typeof ast.text === "string") {
+                  const words = ast.text.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+                  for (const word of words) {
+                    const resolve = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", self.id);
+                    if (resolve) {
+                      const ref = resolve(word);
+                      if (ref && inputs.some((i) => i.id === ref.id)) {
+                        deps.add(ref.id);
+                      }
+                    }
+                  }
+                }
+                dependsOn.set(input.id, deps);
+              }
+            }
+            // Find cycle using DFS
+            for (const input of inputs) {
+              const visited = new Set<SymbolId>();
+              const path = new Set<SymbolId>();
+              const dfs = (id: SymbolId): boolean => {
+                if (path.has(id)) return true; // Cycle
+                if (visited.has(id)) return false;
+                visited.add(id);
+                path.add(id);
+                const deps = dependsOn.get(id);
+                if (deps) {
+                  for (const dep of deps) {
+                    if (dfs(dep)) return true;
+                  }
+                }
+                path.delete(id);
+                return false;
+              };
+              if (dfs(input.id)) {
+                return {
+                  severity: "error",
+                  message: `The default value of ${input.name} causes a cyclic dependency.`,
+                  code: 4009,
+                  startByte: input.startByte,
+                  endByte: input.endByte,
+                } as any;
+              }
+            }
+            return null;
+          },
           /**
            * Warn when a function has input variables that are never referenced
            * in its algorithm body. Helps catch unused parameter bugs.
@@ -4132,6 +4226,15 @@ export default language({
                 if (dim.kind === "literal") {
                   shape.push(dim.value);
                 } else if (dim.kind === "flexible") {
+                  // Try to infer from binding expression
+                  const mod = db.query<any | null>("effectiveModification", self.id);
+                  if (mod?.bindingExpression) {
+                    const val = db.evaluate(mod.bindingExpression, self.parentId);
+                    if (Array.isArray(val)) {
+                      shape.push(val.length);
+                      continue;
+                    }
+                  }
                   shape.push(0); // Inferred from binding later
                 } else if (dim.kind === "expression") {
                   evaluatingDimensionsStack.push({
@@ -4519,7 +4622,8 @@ export default language({
             const literalTypes: Record<string, string> = {
               UNSIGNED_INTEGER: "Integer",
               UNSIGNED_REAL: "Real",
-              BOOLEAN: "Boolean",
+              TRUE: "Boolean",
+              FALSE: "Boolean",
               STRING: "String",
             };
 
@@ -4587,9 +4691,12 @@ export default language({
             }
 
             if (exprType && !isSubtypeOf(exprType, declaredType)) {
-              return error(`Type mismatch in binding: expected subtype of ${declaredType}, got type ${exprType}`, {
-                field: "declaration.modification",
-              });
+              return error(
+                `Type mismatch in modifier of component .${self.name}, expected type ${declaredType}, got modifier =${expr.text} of type ${exprType}.`,
+                {
+                  field: "declaration.modification",
+                },
+              );
             }
 
             return null;
@@ -5015,6 +5122,24 @@ export default language({
                   );
                 }
 
+                // Check variability mismatch
+                if (actualArgEntries[i]) {
+                  const paramVar = db.query<string | null>("variability", inputs[i].id) || "continuous";
+                  const argVar = db.query<string | null>("variability", actualArgEntries[i]!.id) || "continuous";
+                  console.error(
+                    `[DEBUG VAR] funcName=${funcName} param=${inputs[i].name} paramVar=${paramVar} argVar=${argVar}`,
+                  );
+                  if (paramVar === "constant" && argVar !== "constant") {
+                    const argNodes = callArgs.children.filter(
+                      (c) => c.type === "FunctionArgument" || c.type === "NamedArgument",
+                    );
+                    const argText = argNodes[i]?.text.trim() ?? "?";
+                    return error(
+                      `Function argument ${inputs[i].name}=${argText} in call to ${funcName} has variability ${argVar} which is not a constant expression.`,
+                      { field: "declaration.modification" },
+                    );
+                  }
+                }
                 // Check for array/scalar dimension mismatch (vectorization)
                 if (actualArgEntries[i]) {
                   const argEntry = actualArgEntries[i]!;

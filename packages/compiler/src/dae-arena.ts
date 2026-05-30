@@ -415,6 +415,8 @@ export class ArenaDAEBuilder {
 
   /** Array dimensions per variable: varIndex → dimensions array. */
   private shapesMap = new Map<number, number[]>();
+  /** Symbolic array dimension expressions per variable: varIndex → ExprId array. */
+  private shapesExprsMap = new Map<number, number[]>();
   /** Alias targets: varIndex → target variable name StringId. */
   private aliasMap = new Map<number, StringId>();
 
@@ -626,6 +628,16 @@ export class ArenaDAEBuilder {
 
   getVarShape(idx: number): number[] {
     return this.shapesMap.get(idx) ?? [];
+  }
+
+  setVarShapeExprs(idx: number, exprIds: number[]): void {
+    if (exprIds.length > 0) {
+      this.shapesExprsMap.set(idx, exprIds);
+    }
+  }
+
+  getVarShapeExprs(idx: number): number[] | undefined {
+    return this.shapesExprsMap.get(idx);
   }
 
   /** Mark a variable as an alias of another. */
@@ -1589,6 +1601,15 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
       const name = dae.interner.resolve(dae.getExprData1(exprId));
       const idx = dae.getVarIdxByName(name);
       if (idx >= 0) return dae.getVarType(idx);
+      // Fallback for arrays: if name is an array base, check its first element
+      let arrIdx = dae.getVarIdxByName(name + "[1]");
+      if (arrIdx >= 0) return dae.getVarType(arrIdx);
+      arrIdx = dae.getVarIdxByName(name + "[1,1]");
+      if (arrIdx >= 0) return dae.getVarType(arrIdx);
+      arrIdx = dae.getVarIdxByName(name + "[1,1,1]");
+      if (arrIdx >= 0) return dae.getVarType(arrIdx);
+      arrIdx = dae.getVarIdxByName(name + "[1,1,1,1]");
+      if (arrIdx >= 0) return dae.getVarType(arrIdx);
       // Built-in "time" is Real
       if (name === "time") return VarType.Real;
       return null;
@@ -1613,6 +1634,7 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
         return VarType.Boolean;
       }
       // Arithmetic: promote Integer + Real → Real
+      if (op === BinOp.Div || op === BinOp.ElemDiv) return VarType.Real;
       const lhsType = inferArenaExprVarType(dae, dae.getExprLeft(exprId));
       const rhsType = inferArenaExprVarType(dae, dae.getExprRight(exprId));
       if (lhsType === VarType.Real || rhsType === VarType.Real) return VarType.Real;
@@ -1695,7 +1717,15 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
       if (funcName === "size" || funcName === "ndims" || funcName === "cardinality") return VarType.Integer;
       // String conversion functions
       if (funcName === "String") return VarType.String;
-      // Default: assume Real for unknown functions
+      // User-defined functions
+      const fnDae = dae.functions.get(dae.getExprData1(exprId));
+      if (fnDae) {
+        for (let i = 0; i < fnDae.varCount; i++) {
+          if (fnDae.getVarCausality(i) === 2 /* Output */) {
+            return fnDae.getVarType(i);
+          }
+        }
+      }
       return null;
     }
 

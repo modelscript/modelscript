@@ -674,8 +674,11 @@ export class ArenaDAEPrinter {
     else if (variability === Variability.Constant) this.out.write("constant ");
 
     const causality = a.getVarCausality(idx);
-    if (causality === 1) this.out.write("input ");
-    else if (causality === 2) this.out.write("output ");
+    const isNested = a.getVarName(idx).includes(".");
+    if (!isNested) {
+      if (causality === 1) this.out.write("input ");
+      else if (causality === 2) this.out.write("output ");
+    }
 
     const customType = a.getVarCustomType(idx);
     if (type === VarType.Real) this.out.write(customType ?? "Real");
@@ -691,7 +694,18 @@ export class ArenaDAEPrinter {
     }
 
     const shape = a.getVarShape(idx);
-    if (shape.length > 0) {
+    const shapeExprs = a.getVarShapeExprs(idx);
+    if (shapeExprs && shapeExprs.length > 0) {
+      this.out.write("[");
+      for (let i = 0; i < shapeExprs.length; i++) {
+        if (i > 0) this.out.write(", ");
+        const exprId = shapeExprs[i];
+        if (exprId !== undefined) {
+          this.printExpr(exprId);
+        }
+      }
+      this.out.write("]");
+    } else if (shape.length > 0) {
       const shapeStr = shape.map((s) => (s <= 0 ? ":" : String(s))).join(", ");
       this.out.write("[" + shapeStr + "]");
     }
