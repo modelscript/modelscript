@@ -37,13 +37,11 @@ end BreakConnect4;
 //   Real c2[3].e;
 //   Real c2[3].f;
 // equation
-//   c1[3].e = c2[3].e;
-//   -(c1[3].f + c2[3].f) = 0.0;
 //   c1[1].f = 0.0;
 //   c1[2].f = 0.0;
-//   c1[3].f = 0.0;
+//   c1[3].e = c2[3].e;
+//   c1[3].f + c2[3].f = 0.0;
 //   c2[1].f = 0.0;
 //   c2[2].f = 0.0;
-//   c2[3].f = 0.0;
 // end BreakConnect4;
 // endResult
