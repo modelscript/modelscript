@@ -1,5 +1,12 @@
 /* eslint-disable */
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
+
+interface IndexContext {
+  symbols: IdTrieMap<SymbolEntry>;
+  byName: StringTrieMap<SymbolId[]>;
+  childrenOf: IdTrieMap<SymbolId[]>;
+}
 
 /**
  * A generic, incremental symbol indexer that walks a Tree-Sitter CST
@@ -32,15 +39,17 @@ export class SymbolIndexer {
    *                   We use a minimal interface to avoid a hard dependency on tree-sitter.
    */
   index(rootNode: CSTNode, idGenerator?: () => SymbolId): SymbolIndex {
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const ctx: IndexContext = {
+      symbols: new IdTrieMap(),
+      byName: new StringTrieMap(),
+      childrenOf: new IdTrieMap(),
+    };
 
     this.nextId = 1;
     this.idGenerator = idGenerator || (() => this.nextId++);
-    this.walkNode(rootNode, null, symbols, byName, childrenOf, new Map());
+    this.walkNode(rootNode, null, ctx, new Map());
 
-    return { symbols, byName, childrenOf };
+    return ctx;
   }
 
   /**
@@ -62,18 +71,16 @@ export class SymbolIndexer {
     totalDelta: number = 0,
     idGenerator?: () => SymbolId,
   ): { index: SymbolIndex; changedIds: Set<SymbolId> } {
-    // Build a lookup from stable key → old entry for reuse.
-    // We must compute sibling ordinals per parent to disambiguate entries
-    // with the same ruleName+name (e.g., multiple ConnectEquation entries
-    // sharing the same componentReference1).
     const oldByStableKey = new Map<string, SymbolEntry>();
     const ordinalCounters = new Map<string, number>();
-    for (const [parentId, childIds] of oldIndex.childrenOf) {
+    for (const parentId of oldIndex.childrenOf.keys()) {
+      const childIds = oldIndex.childrenOf.get(parentId);
+      if (!childIds) continue;
       ordinalCounters.clear();
       for (const childId of childIds) {
         const entry = oldIndex.symbols.get(childId);
         if (!entry) continue;
-        const baseKey = `${parentId ?? "root"}:${entry.ruleName}:${entry.name}`;
+        const baseKey = `${parentId === 0 ? "root" : parentId}:${entry.ruleName}:${entry.name}`;
         const ordinal = ordinalCounters.get(baseKey) ?? 0;
         ordinalCounters.set(baseKey, ordinal + 1);
         const key = this.stableKey(entry.ruleName, entry.name, entry.parentId, ordinal);
@@ -81,11 +88,12 @@ export class SymbolIndexer {
       }
     }
 
-    const newSymbols = new Map<SymbolId, SymbolEntry>();
-    const newByName = new Map<string, SymbolId[]>();
-    const newChildrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const ctx: IndexContext = {
+      symbols: Object.assign(new IdTrieMap<SymbolEntry>(), { trie: (oldIndex.symbols as any).trie }),
+      byName: Object.assign(new StringTrieMap<SymbolId[]>(), { trie: (oldIndex.byName as any).trie }),
+      childrenOf: Object.assign(new IdTrieMap<SymbolId[]>(), { trie: (oldIndex.childrenOf as any).trie }),
+    };
 
-    // Start nextId above max old ID to prevent collisions with reused IDs
     let maxOldId = 0;
     for (const id of oldIndex.symbols.keys()) {
       if (id > maxOldId) maxOldId = id;
@@ -96,9 +104,7 @@ export class SymbolIndexer {
     this.walkNodeIncremental(
       rootNode,
       null,
-      newSymbols,
-      newByName,
-      newChildrenOf,
+      ctx,
       oldByStableKey,
       oldIndex,
       editRanges,
@@ -108,65 +114,32 @@ export class SymbolIndexer {
       totalDelta,
     );
 
-    const newIndex: SymbolIndex = { symbols: newSymbols, byName: newByName, childrenOf: newChildrenOf };
-
-    // Post-walk cleanup: deduplicate and validate childrenOf/byName arrays.
-    // During incremental walks, the same symbol ID can be pushed multiple
-    // times (stableKey collisions across sibling scopes), and old entries
-    // from bulk-copy may overlap with re-indexed entries from the walk zone.
-    for (const [key, ids] of newChildrenOf) {
-      // Filter to only IDs that exist in symbols, then deduplicate
-      const valid = ids.filter((id) => newSymbols.has(id));
-      const deduped = valid.length > new Set(valid).size ? [...new Set(valid)] : valid;
-      if (deduped.length === 0) {
-        newChildrenOf.delete(key);
-      } else {
-        newChildrenOf.set(key, deduped);
-      }
-    }
-    for (const [key, ids] of newByName) {
-      const valid = ids.filter((id) => newSymbols.has(id));
-      const deduped = valid.length > new Set(valid).size ? [...new Set(valid)] : valid;
-      if (deduped.length === 0) {
-        newByName.delete(key);
-      } else {
-        newByName.set(key, deduped);
-      }
-    }
-
-    // Compute changed IDs
     const changedIds = new Set<SymbolId>();
-
     const invalidateParent = (parentId: SymbolId | null) => {
       if (parentId !== null) changedIds.add(parentId);
     };
 
-    // New or modified symbols
-    for (const [id, entry] of newSymbols) {
+    for (const [id, entry] of ctx.symbols.entries()) {
       const oldEntry = oldIndex.symbols.get(id);
       if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
         changedIds.add(id);
-
         if (!oldEntry) {
-          // New symbol: parent's childrenOf changed
           invalidateParent(entry.parentId);
         } else if (oldEntry.parentId !== entry.parentId) {
-          // Reparented symbol: both old and new parents' childrenOf changed
           invalidateParent(oldEntry.parentId);
           invalidateParent(entry.parentId);
         }
       }
     }
 
-    // Deleted symbols
     for (const [id, oldEntry] of oldIndex.symbols.entries()) {
-      if (!newSymbols.has(id)) {
+      if (!ctx.symbols.has(id)) {
         changedIds.add(id);
         invalidateParent(oldEntry.parentId);
       }
     }
 
-    return { index: newIndex, changedIds };
+    return { index: ctx, changedIds };
   }
 
   // -------------------------------------------------------------------------
@@ -176,14 +149,11 @@ export class SymbolIndexer {
   private walkNode(
     node: CSTNode,
     parentId: SymbolId | null,
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    ctx: IndexContext,
     siblingCounts: Map<string, number>,
     fieldName: string | null = null,
   ): void {
     const hook = this.hooksByRule.get(node.type);
-
     let currentParentId = parentId;
 
     if (hook) {
@@ -207,32 +177,23 @@ export class SymbolIndexer {
         fieldName,
       };
 
-      symbols.set(id, entry);
+      ctx.symbols.set(id, entry);
 
-      const existing = byName.get(name);
-      if (existing) {
-        existing.push(id);
-      } else {
-        byName.set(name, [id]);
-      }
+      const existing = ctx.byName.get(name);
+      ctx.byName.set(name, existing ? [...existing, id] : [id]);
 
-      // Track parent→child relationship
-      const siblings = childrenOf.get(parentId);
-      if (siblings) {
-        siblings.push(id);
-      } else {
-        childrenOf.set(parentId, [id]);
-      }
+      const pId = parentId ?? 0;
+      const siblings = ctx.childrenOf.get(pId);
+      ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
 
       currentParentId = id;
     }
 
     const children = node.children || [];
-
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
       const childFieldName = node.fieldNameForChild && children.length < 100 ? node.fieldNameForChild(i) : null;
-      this.walkNode(child, currentParentId, symbols, byName, childrenOf, siblingCounts, childFieldName);
+      this.walkNode(child, currentParentId, ctx, siblingCounts, childFieldName);
     }
   }
 
@@ -243,9 +204,7 @@ export class SymbolIndexer {
   private walkNodeIncremental(
     node: CSTNode,
     parentId: SymbolId | null,
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    ctx: IndexContext,
     oldByStableKey: Map<string, SymbolEntry>,
     oldIndex: SymbolIndex,
     editRanges: Array<{ startByte: number; endByte: number }>,
@@ -254,22 +213,15 @@ export class SymbolIndexer {
     oldParentId: SymbolId | null = parentId,
     totalDelta: number = 0,
   ): void {
-    // FAST PATH: skip entirely unchanged subtrees that have no hooks
     const hasChanges = typeof node.hasChanges === "function" ? node.hasChanges() : node.hasChanges;
     const unchanged = hasChanges === false && !this.nodeOverlapsEdits(node, editRanges);
     const hook = this.hooksByRule.get(node.type);
 
     if (unchanged && !hook) {
-      // Leaf/terminal node with no changes and no hook — nothing to index here.
-      // But if this node has children, we must still walk them because they
-      // may contain hook descendants (e.g. PackageMember wrapping RequirementDefinition).
       const childCount = node.childCount ?? node.children?.length ?? 0;
-      if (childCount === 0) {
-        return;
-      }
-      // Fall through to walk children — the hook-node unchanged path (below)
-      // will handle efficient reuse for any hooked descendants.
+      if (childCount === 0) return;
     }
+
     let currentParentId = parentId;
     let currentOldParentId = oldParentId;
 
@@ -277,34 +229,20 @@ export class SymbolIndexer {
       const nameNode = this.resolveFieldPath(node, hook.namePath);
       const name = nameNode ? this.getNodeText(nameNode) : "<anonymous>";
 
-      // Compute sibling ordinal for this entry under its parent
       const siblingBaseKey = `${parentId ?? "root"}:${hook.ruleName}:${name}`;
       const siblingOrdinal = siblingCounts.get(siblingBaseKey) ?? 0;
       siblingCounts.set(siblingBaseKey, siblingOrdinal + 1);
 
-      // Try to reuse old entry if unchanged
       const sKey = this.stableKey(hook.ruleName, name, parentId, siblingOrdinal);
       let oldEntry = oldByStableKey.get(sKey);
       let matchedKey = sKey;
 
-      if (name === "v_11" || name === "v_12") {
-        console.log(`v_11/v_12 encountered! siblingOrdinal=${siblingOrdinal}, oldEntry=${!!oldEntry}`);
-        if (!oldEntry) {
-          console.log(
-            `Expected to find it in oldByStableKey. Keys in oldByStableKey matching v_11/v_12:`,
-            Array.from(oldByStableKey.keys()).filter((k) => k.includes("v_11") || k.includes("v_12")),
-          );
-        }
-      }
       if (!oldEntry && oldParentId !== parentId) {
         const altKey = this.stableKey(hook.ruleName, name, oldParentId, siblingOrdinal);
         oldEntry = oldByStableKey.get(altKey);
         matchedKey = altKey;
       }
 
-      // Consume the matched entry so it can't be reused by another node
-      // with the same ruleName+name (e.g. multiple Reference:Real entries
-      // under different component_clause wrappers).
       if (oldEntry) {
         oldByStableKey.delete(matchedKey);
       }
@@ -312,9 +250,7 @@ export class SymbolIndexer {
       const overlaps = this.nodeOverlapsEdits(node, editRanges);
       const id = oldEntry ? oldEntry.id : this.idGenerator();
 
-      // For unchanged hook nodes, reuse old metadata to avoid expensive extraction
       const metadata = oldEntry && !overlaps ? oldEntry.metadata : this.extractMetadata(node, hook);
-
       const fieldRanges = oldEntry && !overlaps ? oldEntry.fieldRanges : this.extractFieldRanges(node, hook);
 
       const entry: SymbolEntry = {
@@ -333,31 +269,27 @@ export class SymbolIndexer {
         fieldName,
       };
 
-      symbols.set(id, entry);
-
-      const existing = byName.get(name);
-      if (existing) {
-        existing.push(id);
-      } else {
-        byName.set(name, [id]);
+      if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
+        ctx.symbols.set(id, entry);
       }
 
-      // Track parent→child relationship
-      const siblings = childrenOf.get(parentId);
-      if (siblings) {
-        siblings.push(id);
-      } else {
-        childrenOf.set(parentId, [id]);
+      if (!oldEntry) {
+        const existing = ctx.byName.get(name);
+        ctx.byName.set(name, existing ? [...existing, id] : [id]);
+
+        const pId = parentId ?? 0;
+        const siblings = ctx.childrenOf.get(pId);
+        ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
       }
 
       currentParentId = id;
       currentOldParentId = oldEntry?.id ?? id;
 
       if (unchanged) {
-        // Look up children using the old entry's ID in the old index
-        // (since the old index has children mapped under the old parent ID)
         const byteDelta = oldEntry ? nodeStartByte(node) - oldEntry.startByte : totalDelta;
-        this.reuseSubtreeFromIndex(id, currentOldParentId, oldIndex, symbols, byName, childrenOf, byteDelta);
+        if (byteDelta !== 0) {
+          this.shiftSubtree(id, oldIndex, ctx, byteDelta);
+        }
         return;
       }
     }
@@ -365,49 +297,32 @@ export class SymbolIndexer {
     const children = node.children || [];
     const childCount = node.childCount ?? children.length;
 
-    {
-      for (let i = 0; i < childCount; i++) {
-        const child = children[i];
-        if (!child) continue;
-        const childFieldName = node.fieldNameForChild && childCount < 100 ? node.fieldNameForChild(i) : null;
-
-        this.walkNodeIncremental(
-          child,
-          currentParentId,
-          symbols,
-          byName,
-          childrenOf,
-          oldByStableKey,
-          oldIndex,
-          editRanges,
-          siblingCounts,
-          childFieldName,
-          currentOldParentId,
-          totalDelta,
-        );
-      }
+    if (childCount > 0) {
+      this.walkChildrenBinarySearch(
+        node,
+        currentParentId,
+        childCount,
+        ctx,
+        oldByStableKey,
+        oldIndex,
+        editRanges,
+        currentOldParentId,
+        totalDelta,
+      );
     }
   }
 
-  /**
-   * Binary search children to find the edit zone, then:
-   * - Bulk-copy old entries for children outside the edit zone (no tree access)
-   * - Walk only children inside the edit zone normally
-   */
   private walkChildrenBinarySearch(
     parent: CSTNode,
     parentId: SymbolId | null,
     childCount: number,
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    ctx: IndexContext,
     oldByStableKey: Map<string, SymbolEntry>,
     oldIndex: SymbolIndex,
     editRanges: Array<{ startByte: number; endByte: number }>,
     oldParentId: SymbolId | null,
     totalDelta: number = 0,
   ): void {
-    // Compute combined edit bounds
     let editStartByte = Infinity,
       editEndByte = 0;
     for (const r of editRanges) {
@@ -415,7 +330,6 @@ export class SymbolIndexer {
       editEndByte = Math.max(editEndByte, r.endByte);
     }
 
-    // Binary search for first child whose endByte >= editStartByte
     let lo = 0,
       hi = childCount;
     const children = parent.children || [];
@@ -425,9 +339,8 @@ export class SymbolIndexer {
       if (c && nodeEndByte(c) < editStartByte) lo = mid + 1;
       else hi = mid;
     }
-    const firstAffected = Math.max(0, lo - 1); // 1 before for safety margin
+    const firstAffected = Math.max(0, lo - 1);
 
-    // Binary search for last child whose startByte <= editEndByte
     lo = firstAffected;
     hi = childCount;
     while (lo < hi) {
@@ -436,156 +349,108 @@ export class SymbolIndexer {
       if (c && nodeStartByte(c) <= editEndByte) lo = mid + 1;
       else hi = mid;
     }
-    const lastAffected = Math.min(childCount - 1, lo); // 1 after for safety
+    const lastAffected = Math.min(childCount - 1, lo);
 
-    // Compute the ACTUAL byte range that the edit zone walk will cover.
-    // Any old entry whose byte range falls within this zone must NOT be
-    // bulk-copied — the edit zone walk will re-index them from the tree.
     const walkZoneStartByte =
       firstAffected < childCount && children[firstAffected] ? nodeStartByte(children[firstAffected]!) : Infinity;
     const walkZoneEndByte =
       lastAffected < childCount && children[lastAffected] ? nodeEndByte(children[lastAffected]!) : 0;
 
-    const oldChildIds = oldIndex.childrenOf.get(oldParentId) ?? [];
+    const oldChildIds = oldIndex.childrenOf.get(oldParentId ?? 0) ?? [];
 
-    // BEFORE edit zone: bulk-copy old entries that end strictly before the walk zone
     for (const oldId of oldChildIds) {
       const entry = oldIndex.symbols.get(oldId);
       if (!entry) continue;
-      if (entry.endByte <= walkZoneStartByte) {
-        this.copyEntryToNewIndex(entry, parentId, symbols, byName, childrenOf, 0);
-        this.reuseSubtreeFromIndex(entry.id, entry.id, oldIndex, symbols, byName, childrenOf, 0);
+      if (entry.endByte > walkZoneStartByte && entry.startByte < walkZoneEndByte) {
+        this.deleteSubtree(oldId, oldIndex, ctx);
       }
     }
 
-    // EDIT ZONE: walk normally (only the affected children)
     const siblingCounts = new Map<string, number>();
     for (let i = firstAffected; i <= lastAffected && i < childCount; i++) {
       const child = children[i];
       if (!child) continue;
+      const childFieldName = parent.fieldNameForChild && childCount < 100 ? parent.fieldNameForChild(i) : null;
       this.walkNodeIncremental(
         child,
         parentId,
-        symbols,
-        byName,
-        childrenOf,
+        ctx,
         oldByStableKey,
         oldIndex,
         editRanges,
         siblingCounts,
-        null,
+        childFieldName,
         oldParentId,
         totalDelta,
       );
     }
 
-    // AFTER edit zone: bulk-copy old entries that start at or after the walk zone end
-    for (const oldId of oldChildIds) {
-      const entry = oldIndex.symbols.get(oldId);
-      if (!entry) continue;
-      if (entry.endByte <= walkZoneStartByte) continue; // already copied above
-      if (entry.startByte < walkZoneEndByte) continue; // inside walk zone — already re-indexed
-      if (symbols.has(entry.id)) continue; // already processed (safety check)
-      this.copyEntryToNewIndex(entry, parentId, symbols, byName, childrenOf, totalDelta);
-      this.reuseSubtreeFromIndex(entry.id, entry.id, oldIndex, symbols, byName, childrenOf, totalDelta);
-    }
-  }
-
-  private copyEntryToNewIndex(
-    oldEntry: SymbolEntry,
-    newParentId: SymbolId | null,
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
-    byteDelta: number,
-  ): void {
-    const entry = { ...oldEntry, parentId: newParentId };
-    if (byteDelta !== 0) {
-      entry.startByte += byteDelta;
-      entry.endByte += byteDelta;
-      if (entry.fieldRanges) {
-        entry.fieldRanges = { ...entry.fieldRanges };
-        for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
-          const range = rangeVal as { startByte: number; endByte: number };
-          entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
+    if (totalDelta !== 0) {
+      for (const oldId of oldChildIds) {
+        const entry = oldIndex.symbols.get(oldId);
+        if (!entry) continue;
+        if (entry.startByte >= walkZoneEndByte) {
+          this.shiftSubtree(oldId, oldIndex, ctx, totalDelta);
         }
       }
     }
-    symbols.set(entry.id, entry);
-    const existing = byName.get(entry.name);
-    if (existing) {
-      existing.push(entry.id);
-    } else {
-      byName.set(entry.name, [entry.id]);
+  }
+
+  private deleteSubtree(id: SymbolId, oldIndex: SymbolIndex, ctx: IndexContext) {
+    const entry = oldIndex.symbols.get(id);
+    if (!entry) return;
+
+    ctx.symbols.delete(id);
+
+    const names = ctx.byName.get(entry.name);
+    if (names) {
+      const filtered = names.filter((x) => x !== id);
+      if (filtered.length > 0) ctx.byName.set(entry.name, filtered);
+      else ctx.byName.delete(entry.name);
     }
-    const siblings = childrenOf.get(entry.parentId);
+
+    const pId = entry.parentId ?? 0;
+    const siblings = ctx.childrenOf.get(pId);
     if (siblings) {
-      siblings.push(entry.id);
-    } else {
-      childrenOf.set(entry.parentId, [entry.id]);
+      const filtered = siblings.filter((x) => x !== id);
+      if (filtered.length > 0) ctx.childrenOf.set(pId, filtered);
+      else ctx.childrenOf.delete(pId);
+    }
+
+    const children = oldIndex.childrenOf.get(id);
+    if (children) {
+      for (const childId of children) {
+        this.deleteSubtree(childId, oldIndex, ctx);
+      }
     }
   }
 
-  /**
-   * Reuse all entries under a parent from the OLD index, without touching the CST.
-   * Uses childrenOf for O(symbols) instead of O(CST nodes).
-   */
-  private reuseSubtreeFromIndex(
-    newParentId: SymbolId | null,
-    oldParentId: SymbolId | null,
-    oldIndex: SymbolIndex,
-    newSymbols: Map<SymbolId, SymbolEntry>,
-    newByName: Map<string, SymbolId[]>,
-    newChildrenOf: Map<SymbolId | null, SymbolId[]>,
-    byteDelta: number = 0,
-  ): void {
-    const childIds = oldIndex.childrenOf.get(oldParentId);
-    if (!childIds) return;
+  private shiftSubtree(id: SymbolId, oldIndex: SymbolIndex, ctx: IndexContext, byteDelta: number) {
+    if (byteDelta === 0) return;
+    const oldEntry = ctx.symbols.get(id);
+    if (!oldEntry) return;
 
-    for (const oldId of childIds) {
-      const oldEntry = oldIndex.symbols.get(oldId);
-      if (!oldEntry) continue;
-
-      // Remap parentId if parent's ID changed, and shift coordinates if needed
-      const entry = {
-        ...oldEntry,
-        parentId: newParentId !== oldParentId ? newParentId : oldEntry.parentId,
-      };
-
-      if (byteDelta !== 0) {
-        entry.startByte += byteDelta;
-        entry.endByte += byteDelta;
-        if (entry.fieldRanges) {
-          entry.fieldRanges = { ...entry.fieldRanges };
-          for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
-            const range = rangeVal as { startByte: number; endByte: number };
-            entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
-          }
-        }
+    const entry = { ...oldEntry };
+    entry.startByte += byteDelta;
+    entry.endByte += byteDelta;
+    if (entry.fieldRanges) {
+      entry.fieldRanges = { ...entry.fieldRanges };
+      for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
+        const range = rangeVal as { startByte: number; endByte: number };
+        entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
       }
+    }
 
-      newSymbols.set(entry.id, entry);
+    ctx.symbols.set(id, entry);
 
-      const existing = newByName.get(entry.name);
-      if (existing) {
-        existing.push(entry.id);
-      } else {
-        newByName.set(entry.name, [entry.id]);
+    const children = oldIndex.childrenOf.get(id);
+    if (children) {
+      for (const childId of children) {
+        this.shiftSubtree(childId, oldIndex, ctx, byteDelta);
       }
-
-      const siblings = newChildrenOf.get(newParentId);
-      if (siblings) {
-        siblings.push(entry.id);
-      } else {
-        newChildrenOf.set(newParentId, [entry.id]);
-      }
-
-      // Recurse for nested children — old IDs are stable within the subtree
-      this.reuseSubtreeFromIndex(entry.id, oldId, oldIndex, newSymbols, newByName, newChildrenOf, byteDelta);
     }
   }
 
-  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 

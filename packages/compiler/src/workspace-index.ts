@@ -1,3 +1,4 @@
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 /* eslint-disable */
 import type { IndexerHook, SymbolEntry, SymbolId, SymbolIndex } from "./runtime.js";
 import { SymbolIndexer, type CSTNode } from "./symbol-indexer.js";
@@ -83,7 +84,7 @@ export class WorkspaceIndex {
     const offset = globalIdCounter;
     let localMaxId = 0;
 
-    const symbols = new Map<SymbolId, SymbolEntry>();
+    const symbols = new IdTrieMap<SymbolEntry>();
     for (const [localId, entry] of index.symbols) {
       if (localId > localMaxId) localMaxId = localId;
       const globalId = localId >= 0 ? localId + offset : localId;
@@ -95,7 +96,7 @@ export class WorkspaceIndex {
       symbols.set(globalId, entry);
     }
 
-    const byName = new Map<string, SymbolId[]>();
+    const byName = new StringTrieMap<SymbolId[]>();
     for (const [name, ids] of index.byName) {
       byName.set(
         name,
@@ -103,11 +104,11 @@ export class WorkspaceIndex {
       );
     }
 
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
     for (const [parentId, ids] of index.childrenOf) {
       const newParentId = parentId !== null ? (parentId >= 0 ? parentId + offset : parentId) : null;
       childrenOf.set(
-        newParentId,
+        newParentId ?? 0,
         ids.map((id: number) => (id >= 0 ? id + offset : id)),
       );
     }
@@ -311,8 +312,8 @@ export class WorkspaceIndex {
   toUnified(): SymbolIndex {
     if (this.unifiedCache) return this.unifiedCache;
 
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<SymbolId[]>();
 
     console.info(`[WorkspaceIndex] toUnified() started. Processing ${this.files.size} files...`);
     let processed = 0;
@@ -329,7 +330,7 @@ export class WorkspaceIndex {
       for (const [name, ids] of fileIndex.byName) {
         const existing = byName.get(name);
         if (existing) {
-          existing.push(...ids);
+          byName.set(name, [...existing, ...ids]);
         } else {
           byName.set(name, [...ids]);
         }
@@ -337,16 +338,16 @@ export class WorkspaceIndex {
     }
 
     // Merge childrenOf maps
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
     for (const uri of this.files.keys()) {
       const fileIndex = this.getFileIndex(uri);
       if (!fileIndex) continue;
       for (const [parentId, childIds] of fileIndex.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
-          existing.push(...childIds);
+          childrenOf.set(parentId ?? 0, [...existing, ...childIds]);
         } else {
-          childrenOf.set(parentId, [...childIds]);
+          childrenOf.set(parentId ?? 0, [...childIds]);
         }
       }
     }
@@ -359,8 +360,8 @@ export class WorkspaceIndex {
   async toUnifiedAsync(): Promise<SymbolIndex> {
     if (this.unifiedCache) return this.unifiedCache;
 
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<SymbolId[]>();
 
     let count = 0;
     for (const uri of this.files.keys()) {
@@ -380,23 +381,23 @@ export class WorkspaceIndex {
       for (const [name, ids] of fileIndex.byName) {
         const existing = byName.get(name);
         if (existing) {
-          existing.push(...ids);
+          byName.set(name, [...existing, ...ids]);
         } else {
           byName.set(name, [...ids]);
         }
       }
     }
 
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
     for (const uri of this.files.keys()) {
       const fileIndex = this.getFileIndex(uri);
       if (!fileIndex) continue;
       for (const [parentId, childIds] of fileIndex.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
-          existing.push(...childIds);
+          childrenOf.set(parentId ?? 0, [...existing, ...childIds]);
         } else {
-          childrenOf.set(parentId, [...childIds]);
+          childrenOf.set(parentId ?? 0, [...childIds]);
         }
       }
     }
@@ -422,7 +423,7 @@ export class WorkspaceIndex {
     if (this.partialCache && this.dirtyUris.size > 0) {
       const t0 = performance.now();
       const { symbols, byName, childrenOf } = this.partialCache;
-      const symbolsByResource = this.partialCache.symbolsByResource ?? new Map<string, SymbolId[]>();
+      const symbolsByResource = this.partialCache.symbolsByResource ?? new StringTrieMap<SymbolId[]>();
 
       const toRemoveSet = new Set<SymbolId>();
       const namesToFilter = new Set<string>();
@@ -447,7 +448,7 @@ export class WorkspaceIndex {
           parentsToFilter.add(entry.parentId);
           symbols.delete(id);
         }
-        childrenOf.delete(id);
+        childrenOf.delete(id ?? 0);
       }
 
       const t2 = performance.now();
@@ -466,11 +467,11 @@ export class WorkspaceIndex {
 
       // Bulk filter childrenOf arrays
       for (const parentId of parentsToFilter) {
-        const parentChildren = childrenOf.get(parentId);
+        const parentChildren = childrenOf.get(parentId ?? 0);
         if (parentChildren) {
           const filtered = parentChildren.filter((id) => !toRemoveSet.has(id));
-          if (filtered.length === 0) childrenOf.delete(parentId);
-          else childrenOf.set(parentId, filtered);
+          if (filtered.length === 0) childrenOf.delete(parentId ?? 0);
+          else childrenOf.set(parentId ?? 0, filtered);
         }
       }
 
@@ -486,15 +487,15 @@ export class WorkspaceIndex {
         }
         for (const [name, ids] of file.index.byName) {
           const existing = byName.get(name);
-          if (existing) existing.push(...ids);
+          if (existing) byName.set(name, [...existing, ...ids]);
           else byName.set(name, [...ids]);
         }
         for (const [parentId, ids] of file.index.childrenOf) {
-          const existing = childrenOf.get(parentId);
+          const existing = childrenOf.get(parentId ?? 0);
           if (existing) {
-            existing.push(...ids);
+            childrenOf.set(parentId ?? 0, [...existing, ...ids]);
           } else {
-            childrenOf.set(parentId, [...ids]);
+            childrenOf.set(parentId ?? 0, [...ids]);
           }
         }
 
@@ -530,9 +531,9 @@ export class WorkspaceIndex {
     // No cache at all — full rebuild
     if (this.partialCache) return this.partialCache;
 
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
 
     for (const [_uri, file] of this.files) {
       if (!file.index) continue; // Skip unindexed files — no parsing triggered
@@ -543,16 +544,16 @@ export class WorkspaceIndex {
 
       for (const [name, ids] of file.index.byName) {
         const existing = byName.get(name);
-        if (existing) existing.push(...ids);
+        if (existing) byName.set(name, [...existing, ...ids]);
         else byName.set(name, [...ids]);
       }
 
       for (const [parentId, ids] of file.index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
-          existing.push(...ids);
+          childrenOf.set(parentId ?? 0, [...existing, ...ids]);
         } else {
-          childrenOf.set(parentId, [...ids]);
+          childrenOf.set(parentId ?? 0, [...ids]);
         }
       }
     }
@@ -562,7 +563,7 @@ export class WorkspaceIndex {
     this.dirtyUris.clear();
 
     // Build symbolsByResource for per-file iteration
-    const symbolsByResource = new Map<string, SymbolId[]>();
+    const symbolsByResource = new StringTrieMap<SymbolId[]>();
     for (const [id, entry] of symbols) {
       if (entry.resourceId) {
         const ids = symbolsByResource.get(entry.resourceId);
@@ -702,7 +703,7 @@ export class WorkspaceIndex {
             const offset = globalIdCounter;
             let localMaxId = 0;
 
-            const symbols = new Map<SymbolId, SymbolEntry>();
+            const symbols = new IdTrieMap<SymbolEntry>();
             for (const [localId, entry] of res.symbols) {
               if (localId > localMaxId) localMaxId = localId;
               const globalId = localId + offset;
@@ -714,7 +715,7 @@ export class WorkspaceIndex {
               symbols.set(globalId, entry);
             }
 
-            const byName = new Map<string, SymbolId[]>();
+            const byName = new StringTrieMap<SymbolId[]>();
             for (const [name, ids] of res.byName) {
               byName.set(
                 name,
@@ -722,7 +723,7 @@ export class WorkspaceIndex {
               );
             }
 
-            const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+            const childrenOf = new IdTrieMap<SymbolId[]>();
             for (const [parentId, ids] of res.childrenOf) {
               const newParentId = parentId !== null ? parentId + offset : null;
               childrenOf.set(
@@ -759,9 +760,9 @@ export class WorkspaceIndex {
   }
 
   private stitchParentFQNs(
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    symbols: IdTrieMap<SymbolEntry>,
+    byName: StringTrieMap<SymbolId[]>,
+    childrenOf: IdTrieMap<SymbolId[]>,
   ) {
     const sortedUris = [...this.files.entries()]
       .filter(([_, file]) => !!file.parentFQN)
@@ -779,9 +780,9 @@ export class WorkspaceIndex {
    * This is the fast path used during incremental updates.
    */
   private stitchParentFQNsForUris(
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    symbols: IdTrieMap<SymbolEntry>,
+    byName: StringTrieMap<SymbolId[]>,
+    childrenOf: IdTrieMap<SymbolId[]>,
     uris: Set<string>,
   ) {
     // Sort dirty URIs by parentFQN length (shorter = higher in hierarchy = must be stitched first)
@@ -807,32 +808,32 @@ export class WorkspaceIndex {
   private stitchSingleFile(
     uri: string,
     file: { parentFQN?: string; index: SymbolIndex | null },
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-    childrenOf: Map<SymbolId | null, SymbolId[]>,
+    symbols: IdTrieMap<SymbolEntry>,
+    byName: StringTrieMap<SymbolId[]>,
+    childrenOf: IdTrieMap<SymbolId[]>,
   ) {
     if (!file.parentFQN || !file.index) return;
 
     // Un-stitch previous stitching for this URI if it was already stitched
     // (handles re-indexing of a dirty file)
     if (this.stitchedUris.has(uri)) {
-      const rootChildIds = file.index.childrenOf.get(null);
+      const rootChildIds = file.index.childrenOf.get(0);
       if (rootChildIds) {
         for (const id of rootChildIds) {
           const entry = symbols.get(id);
           if (entry && entry.parentId !== null) {
             // Remove from old parent's children
-            const oldChildren = childrenOf.get(entry.parentId);
+            const oldChildren = childrenOf.get(entry.parentId ?? 0);
             if (oldChildren) {
               const idx = oldChildren.indexOf(id);
               if (idx !== -1) oldChildren.splice(idx, 1);
             }
             entry.parentId = null;
             // Re-add to root children
-            let rootChildren = childrenOf.get(null);
+            let rootChildren = childrenOf.get(0);
             if (!rootChildren) {
               rootChildren = [];
-              childrenOf.set(null, rootChildren);
+              childrenOf.set(0, rootChildren);
             }
             if (!rootChildren.includes(id)) rootChildren.push(id);
           }
@@ -842,21 +843,21 @@ export class WorkspaceIndex {
 
     const parentId = this.resolveFQN(file.parentFQN, symbols, byName);
     if (parentId !== null) {
-      const rootChildIds = file.index.childrenOf.get(null);
+      const rootChildIds = file.index.childrenOf.get(0);
       if (rootChildIds) {
         for (const id of rootChildIds) {
           const entry = symbols.get(id);
           if (entry) {
             entry.parentId = parentId;
 
-            let children = childrenOf.get(parentId);
+            let children = childrenOf.get(parentId ?? 0);
             if (!children) {
               children = [];
-              childrenOf.set(parentId, children);
+              childrenOf.set(parentId ?? 0, children);
             }
             children.push(id);
 
-            let rootChildren = childrenOf.get(null);
+            let rootChildren = childrenOf.get(0);
             if (rootChildren) {
               const idx = rootChildren.indexOf(id);
               if (idx !== -1) rootChildren.splice(idx, 1);
@@ -868,11 +869,7 @@ export class WorkspaceIndex {
     this.stitchedUris.add(uri);
   }
 
-  private resolveFQN(
-    fqn: string,
-    symbols: Map<SymbolId, SymbolEntry>,
-    byName: Map<string, SymbolId[]>,
-  ): SymbolId | null {
+  private resolveFQN(fqn: string, symbols: IdTrieMap<SymbolEntry>, byName: StringTrieMap<SymbolId[]>): SymbolId | null {
     if (!fqn) return null;
     const parts = fqn.split(".");
     const lastName = parts[parts.length - 1];
@@ -963,9 +960,9 @@ export class WorkspaceIndex {
   private toTreeSkeleton(): SymbolIndex {
     if (this.skeletonCache) return this.skeletonCache;
 
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
 
     let nextId: SymbolId = 1;
     // FQN → SymbolId for parent resolution
@@ -991,9 +988,9 @@ export class WorkspaceIndex {
           else byName.set(name, [...ids]);
         }
         for (const [parentId, ids] of file.index.childrenOf) {
-          const existing = childrenOf.get(parentId);
+          const existing = childrenOf.get(parentId ?? 0);
           if (existing) existing.push(...ids);
-          else childrenOf.set(parentId, [...ids]);
+          else childrenOf.set(parentId ?? 0, [...ids]);
         }
         continue;
       }
@@ -1064,9 +1061,9 @@ export class WorkspaceIndex {
       if (existing) existing.push(negativeId);
       else byName.set(name, [negativeId]);
 
-      const siblings = childrenOf.get(entry.parentId);
+      const siblings = childrenOf.get(entry.parentId ?? 0);
       if (siblings) siblings.push(negativeId);
-      else childrenOf.set(entry.parentId, [negativeId]);
+      else childrenOf.set(entry.parentId ?? 0, [negativeId]);
     }
 
     // Third pass: stitch parsed files that have parentFQNs so they aren't incorrectly left at the root
@@ -1078,20 +1075,20 @@ export class WorkspaceIndex {
         if (!candidates || candidates.length === 0) continue;
         const parentId = candidates[0]; // Simple resolution for skeleton
 
-        const rootChildIds = file.index.childrenOf.get(null);
+        const rootChildIds = file.index.childrenOf.get(0);
         if (rootChildIds) {
           for (const id of rootChildIds) {
             const entry = symbols.get(id);
             if (entry) {
               entry.parentId = parentId;
-              let children = childrenOf.get(parentId);
+              let children = childrenOf.get(parentId ?? 0);
               if (!children) {
                 children = [];
-                childrenOf.set(parentId, children);
+                childrenOf.set(parentId ?? 0, children);
               }
               if (!children.includes(id)) children.push(id);
 
-              const rootChildren = childrenOf.get(null);
+              const rootChildren = childrenOf.get(0);
               if (rootChildren) {
                 const idx = rootChildren.indexOf(id);
                 if (idx !== -1) rootChildren.splice(idx, 1);
@@ -1111,9 +1108,9 @@ export class WorkspaceIndex {
    * Useful for combining a global workspace index with a local one.
    */
   static mergePartialIndexes(...indexes: SymbolIndex[]): SymbolIndex {
-    const symbols = new Map<SymbolId, SymbolEntry>();
-    const byName = new Map<string, SymbolId[]>();
-    const childrenOf = new Map<SymbolId | null, SymbolId[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<SymbolId[]>();
+    const childrenOf = new IdTrieMap<SymbolId[]>();
 
     for (const index of indexes) {
       if (!index) continue;
@@ -1125,18 +1122,18 @@ export class WorkspaceIndex {
       for (const [name, ids] of index.byName) {
         const existing = byName.get(name);
         if (existing) {
-          existing.push(...ids);
+          byName.set(name, [...existing, ...ids]);
         } else {
           byName.set(name, [...ids]);
         }
       }
 
       for (const [parentId, ids] of index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
-          existing.push(...ids);
+          childrenOf.set(parentId ?? 0, [...existing, ...ids]);
         } else {
-          childrenOf.set(parentId, [...ids]);
+          childrenOf.set(parentId ?? 0, [...ids]);
         }
       }
     }
@@ -1174,8 +1171,7 @@ function postProcessCsvIndex(index: SymbolIndex, uri: string, rootNodeText: stri
   }
   const numRows = data.length;
 
-  const childrenIds = index.childrenOf.get(rootEntry.id) || [];
-  index.childrenOf.set(rootEntry.id, childrenIds);
+  let childrenIds = index.childrenOf.get(rootEntry.id ?? 0) || [];
 
   const addVirtualSymbol = (name: string, typeSpecifier: string, csvValue: any, arrayDimensions?: number[]) => {
     const newId = globalIdCounter++;
@@ -1213,12 +1209,14 @@ function postProcessCsvIndex(index: SymbolIndex, uri: string, rootNodeText: stri
     addVirtualSymbol(colName, "Real", colData, [numRows]);
   }
 
+  index.childrenOf.set(rootEntry.id ?? 0, childrenIds);
+
   // Rebuild byName
-  index.byName.clear();
+  index.byName = new StringTrieMap<number[]>();
   for (const entry of index.symbols.values()) {
     const existing = index.byName.get(entry.name);
     if (existing) {
-      existing.push(entry.id);
+      index.byName.set(entry.name, [...existing, entry.id]);
     } else {
       index.byName.set(entry.name, [entry.id]);
     }
