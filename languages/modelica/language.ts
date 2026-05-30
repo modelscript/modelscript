@@ -43,6 +43,173 @@ import {
 } from "@modelscript/compiler";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modification-args.js";
 
+function cyrb53(str: string, seed = 0): string {
+  let h1 = 0xdeadbeef ^ seed,
+    h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString();
+}
+
+export function checkModifierNotFound(
+  db: QueryDB,
+  self: SymbolEntry,
+  mod: any,
+  typeClassId: SymbolId,
+  typeEntry: SymbolEntry,
+  overrideClassName?: string,
+) {
+  if (!typeClassId || !typeEntry || !mod || !mod.args || mod.args.length === 0) return null;
+
+  const declaredNames = new Set<string>();
+  const isBuiltin = typeEntry.metadata?.isPredefined;
+  if (isBuiltin || typeEntry.metadata?.classPrefixes === "enumeration") {
+    for (const k of Object.keys(typeEntry.metadata || {})) {
+      if (
+        k !== "classKind" &&
+        k !== "isPredefined" &&
+        k !== "description" &&
+        k !== "isEnumeration" &&
+        k !== "literals" &&
+        k !== "classPrefixes"
+      ) {
+        declaredNames.add(k);
+      }
+    }
+    if (typeEntry.metadata?.classPrefixes === "enumeration") {
+      declaredNames.add("min");
+      declaredNames.add("max");
+      declaredNames.add("start");
+      declaredNames.add("fixed");
+    }
+    if (typeEntry.name === "StateSelect") declaredNames.add("default");
+  } else {
+    const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
+    for (const eid of elements) {
+      const child = db.symbol(eid);
+      if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
+    }
+  }
+
+  const results = [];
+  for (const arg of mod.args) {
+    if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
+      require("fs").appendFileSync(
+        "/tmp/modifier.log",
+        `DEBUG checkModifierNotFound: name ${arg.name} not in declaredNames: ${Array.from(declaredNames)}\n`,
+      );
+      let msg: string;
+      if (!arg.isRedeclaration && overrideClassName) {
+        // value modifier on a short class
+        let modText = arg.name;
+        if (arg.bindingExpression) {
+          modText += " = " + arg.bindingExpression;
+        }
+        msg = `In modifier (${modText}), class or component ${arg.name} not found in <${overrideClassName}>.`;
+      } else {
+        // Use the base type name
+        msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+      }
+
+      if (arg.nameRange) {
+        results.push(
+          error(msg, {
+            startByte: arg.nameRange[0],
+            endByte: arg.nameRange[1],
+          }),
+        );
+      } else {
+        results.push(
+          error(msg, {
+            field: "declaration.modification",
+          }),
+        );
+      }
+    } else if (arg.isRedeclaration && arg.name && arg.redeclaredTypeSpecifier && declaredNames.has(arg.name)) {
+      // Find the original element to check if it's a function replacement
+      const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
+      let originalId: SymbolId | null = null;
+      for (const eid of elements) {
+        const child = db.symbol(eid);
+        if (child && child.name === arg.name) {
+          originalId = eid;
+          break;
+        }
+      }
+
+      if (originalId) {
+        const originalEntry = db.symbol(originalId);
+        // Check if both are functions
+        if (originalEntry && (originalEntry.metadata?.classPrefixes as string)?.includes("function")) {
+          const resolve = db.query<any>("resolveName", self.id);
+          let redeclaredEntry: SymbolEntry | null = null;
+          if (resolve) redeclaredEntry = resolve(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
+
+          // If not found from self.id, try parentId
+          if (!redeclaredEntry && self.parentId) {
+            const resolveParent = db.query<any>("resolveName", self.parentId);
+            if (resolveParent) redeclaredEntry = resolveParent(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
+          }
+
+          if (redeclaredEntry && (redeclaredEntry.metadata?.classPrefixes as string)?.includes("function")) {
+            const origElements = db.query<SymbolId[]>("instantiate", originalId) || [];
+            const newElements = db.query<SymbolId[]>("instantiate", redeclaredEntry.id) || [];
+
+            const getInputs = (eids: SymbolId[]) => {
+              const inputs: string[] = [];
+              for (const eid of eids) {
+                const child = db.symbol(eid);
+                if (child && child.kind === "Component") {
+                  const causality = db.query<string>("causality", eid);
+                  if (causality === "input") inputs.push(child.name!);
+                }
+              }
+              return inputs;
+            };
+
+            const origInputs = getInputs(origElements);
+            const newInputs = getInputs(newElements);
+
+            let mismatch = origInputs.length !== newInputs.length;
+            if (!mismatch) {
+              for (let i = 0; i < origInputs.length; i++) {
+                if (origInputs[i] !== newInputs[i]) {
+                  mismatch = true;
+                  break;
+                }
+              }
+            }
+
+            if (mismatch) {
+              const msg = `Function arguments must be identical, including their names. Expected (${origInputs.join(", ")}), got (${newInputs.join(", ")}).`;
+              if (arg.nameRange) {
+                results.push(
+                  error(msg, {
+                    startByte: arg.nameRange[0],
+                    endByte: arg.nameRange[1],
+                  }),
+                );
+              } else {
+                results.push(
+                  error(msg, {
+                    field: "declaration.modification",
+                  }),
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return results.length > 0 ? results : null;
+}
+
 export function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
   const args: any[] = [];
   if (!node) return { args, bindingExpression: null, evaluationScopeId: scopeId };
@@ -89,7 +256,34 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         evaluationScopeId: scopeId,
       });
       return;
-    } else if (n.type === "ElementRedeclaration") {
+    } else if (n.type === "ElementRedeclaration" || n.type === "ElementReplaceable") {
+      const extractSubscripts = (arraySubNode: any): any[] | undefined => {
+        if (!arraySubNode) return undefined;
+        const subs: any[] = [];
+        for (const child of arraySubNode.children) {
+          if (child.type !== "Subscript") continue;
+          const flexChild = child.childForFieldName("flexible");
+          if (flexChild) {
+            subs.push({ kind: "flexible" });
+            continue;
+          }
+          const exprChild = child.childForFieldName("expression");
+          if (exprChild) {
+            if (exprChild.type === "UNSIGNED_INTEGER") {
+              subs.push({ kind: "literal", value: parseInt(exprChild.text, 10) });
+            } else {
+              subs.push({
+                kind: "expression",
+                cstBytes: [exprChild.startIndex ?? exprChild.startByte, exprChild.endIndex ?? exprChild.endByte],
+                text: exprChild.text,
+              });
+            }
+            continue;
+          }
+        }
+        return subs.length > 0 ? subs : undefined;
+      };
+
       const clause = n.childForFieldName("componentClause");
       if (clause) {
         const typeSpec = clause.childForFieldName("typeSpecifier");
@@ -110,6 +304,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           final: false,
           isRedeclaration: true,
           redeclaredTypeSpecifier: typeName,
+          redeclaredArrayDimensionsRaw: extractSubscripts(decl1?.childForFieldName("arraySubscripts")),
           nestedArgs: nested.args,
           value: nested.bindingExpression,
           evaluationScopeId: scopeId,
@@ -133,6 +328,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               final: false,
               isRedeclaration: true,
               redeclaredTypeSpecifier: typeName,
+              redeclaredArrayDimensionsRaw: extractSubscripts(shortClass.childForFieldName("arraySubscripts")),
               nestedArgs: nested.args,
               value: nested.bindingExpression,
               evaluationScopeId: scopeId,
@@ -1702,10 +1898,19 @@ export default language({
                   // eliminating the need for virtual specialized base class entries.
                   const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id);
 
-                  // Inline inherited elements, filtering redeclared names
+                  // Extract broken names from the extends clause modification
+                  const extendsModParsed = db.query<any[]>("extendsModificationParsed", child.id) || [];
+                  const brokenNames = new Set<string>();
+                  for (const arg of extendsModParsed) {
+                    if (arg.isBreak && !arg.name.startsWith("break_connect:")) {
+                      brokenNames.add(arg.name);
+                    }
+                  }
+
+                  // Inline inherited elements, filtering redeclared names and broken names
                   for (const eid of baseElements) {
                     const entry = db.symbol(eid);
-                    if (entry && !redeclaredNames.has(entry.name)) {
+                    if (entry && !redeclaredNames.has(entry.name) && !brokenNames.has(entry.name)) {
                       elements.push(eid);
                     }
                   }
@@ -1764,6 +1969,31 @@ export default language({
           },
         },
         lints: {
+          /** Error if a short class modifies an unknown element in its base class. */
+          modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            const modNode = cst?.childForFieldName("classSpecifier")?.childForFieldName("classModification");
+            const mod = parseModArgsFromCst(modNode, self.parentId);
+            if (!mod) return null;
+            const spec = cst?.childForFieldName("classSpecifier");
+            if (spec?.type === "ShortClassSpecifier") {
+              const typeName = spec.childForFieldName("typeSpecifier")?.text;
+              if (typeName) {
+                const resolve = db.query<any>("resolveName", self.parentId || self.id);
+                let baseEntry: SymbolEntry | null = null;
+                if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
+                if (!baseEntry && self.parentId) {
+                  const resSimple = db.query<any>("resolveSimpleName", self.parentId);
+                  if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+                }
+                if (!baseEntry) baseEntry = db.byName(typeName.split(".").pop()!)[0] ?? null;
+                if (baseEntry) {
+                  return checkModifierNotFound(db, self, mod, baseEntry.id, baseEntry, self.name);
+                }
+              }
+            }
+            return null;
+          },
           /** Warn if class name starts with lowercase letter. */
           classNamingConvention: (db: QueryDB, self: SymbolEntry) => {
             if (self.name && /^[a-z]/.test(self.name)) {
@@ -2229,15 +2459,67 @@ export default language({
                 child.type === "EquationSection" ||
                 child.type === "ForEquation"
               ) {
-                walk(child);
+                const hash = cyrb53(child.text);
+                const chunkRes = db.queryWith<any[]>("chunked__forIteratorNot1D", self.id, {
+                  hash,
+                  start: child.startIndex,
+                  end: child.endIndex,
+                });
+                if (chunkRes) results.push(...chunkRes);
               }
             }
             return results.length > 0 ? results : null;
           },
+
+          chunked__forIteratorNot1D: (db: QueryDB, self: SymbolEntry, args?: any) => {
+            if (!args) return null;
+            const node = db.cstNodeRange(args.start, args.end, self) as any;
+            if (!node) return null;
+
+            const results: any[] = [];
+            const resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", self.id);
+            if (!resolve) return null;
+
+            const walk = (n: any) => {
+              if (n.type === "ForEquation" || n.type === "ForStatement") {
+                const forIndices = n.childForFieldName("iterators");
+                if (forIndices && forIndices.type === "ForIndices") {
+                  for (const iterator of forIndices.children) {
+                    if (iterator.type === "ForIndex") {
+                      const expr = iterator.childForFieldName("expression");
+                      if (expr) {
+                        const errorNode = expr;
+                        if (
+                          errorNode.type !== "RangeExpression" &&
+                          errorNode.type !== "BinaryExpression" &&
+                          errorNode.type !== "CallExpression" &&
+                          errorNode.type !== "ComponentReference"
+                        ) {
+                          results.push(
+                            error(
+                              `Iterator has invalid type, expected a 1D array expression.`,
+                              typeof errorNode.startIndex === "number"
+                                ? { startByte: errorNode.startIndex, endByte: errorNode.endIndex }
+                                : { field: "classSpecifier" },
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              for (const child of n.children) walk(child);
+            };
+
+            walk(node);
+            return results.length > 0 ? results : null;
+          },
           /** Type mismatch checks for equations, assignments, and if-branches */
-          classBodyTypeChecks: (db: QueryDB, self: SymbolEntry) => {
-            const cst = db.cstNode(self.id) as any;
-            if (!cst) return null;
+          chunked__classBodyTypeChecks: (db: QueryDB, self: SymbolEntry, args?: any) => {
+            if (!args) return null;
+            const node = db.cstNodeRange(args.start, args.end, self) as any;
+            if (!node) return null;
 
             const resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", self.id);
             if (!resolve) return null;
@@ -2338,8 +2620,29 @@ export default language({
               for (const child of node.children) walk(child);
             };
 
+            walk(node);
+            return results.length > 0 ? results : null;
+          },
+
+          classBodyTypeChecks: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const results: any[] = [];
             for (const child of cst.childForFieldName("classSpecifier")?.children || []) {
-              if (child.type === "AlgorithmSection" || child.type === "EquationSection") walk(child);
+              if (
+                child.type === "AlgorithmSection" ||
+                child.type === "EquationSection" ||
+                child.type === "ForEquation"
+              ) {
+                const hash = cyrb53(child.text);
+                const chunkRes = db.queryWith<any[]>("chunked__classBodyTypeChecks", self.id, {
+                  hash,
+                  start: child.startIndex,
+                  end: child.endIndex,
+                });
+                if (chunkRes) results.push(...chunkRes);
+              }
             }
             return results.length > 0 ? results : null;
           },
@@ -3613,6 +3916,21 @@ export default language({
           },
         },
         lints: {
+          /** Error if an extends clause modifies an unknown element. */
+          modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
+            require("fs").appendFileSync("/tmp/modifier2.log", `HOOK CALLED on ${self.name}\n`);
+            const mod = db.query<any>("effectiveModification", self.id);
+            if (!mod) return null;
+            const baseClassNode = db.query<any>("resolvedBaseClass", self.id);
+            if (!baseClassNode || !baseClassNode.id) return null;
+            const baseEntry = db.symbol(baseClassNode.id);
+            require("fs").appendFileSync(
+              "/tmp/modifier2.log",
+              `DEBUG modifierNotFound on extends: ${baseEntry?.name} mod args: ${mod?.args?.map((a: any) => a.name)}\n`,
+            );
+            if (baseEntry) return checkModifierNotFound(db, self, mod, baseEntry.id, baseEntry, undefined);
+            return null;
+          },
           /**
            * Detect extends cycles (A extends B extends A).
            */
@@ -4387,60 +4705,9 @@ export default language({
             if (!typeClassId) return null;
             const typeEntry = db.symbol(typeClassId);
             if (!typeEntry) return null;
-
             const mod = db.query<any | null>("effectiveModification", self.id);
-            if (!mod || !mod.args || mod.args.length === 0) return null;
-
-            const declaredNames = new Set<string>();
-            const isBuiltin = typeEntry.metadata?.isPredefined;
-            if (isBuiltin || typeEntry.metadata?.classPrefixes === "enumeration") {
-              for (const k of Object.keys(typeEntry.metadata || {})) {
-                if (
-                  k !== "classKind" &&
-                  k !== "isPredefined" &&
-                  k !== "description" &&
-                  k !== "isEnumeration" &&
-                  k !== "literals" &&
-                  k !== "classPrefixes"
-                ) {
-                  declaredNames.add(k);
-                }
-              }
-              if (typeEntry.metadata?.classPrefixes === "enumeration") {
-                declaredNames.add("min");
-                declaredNames.add("max");
-                declaredNames.add("start");
-                declaredNames.add("fixed");
-              }
-              if (typeEntry.name === "StateSelect") declaredNames.add("default");
-            } else {
-              const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
-              for (const eid of elements) {
-                const child = db.symbol(eid);
-                if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
-              }
-            }
-
-            const results = [];
-            for (const arg of mod.args) {
-              if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
-                if (arg.nameRange) {
-                  results.push(
-                    error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
-                      startByte: arg.nameRange[0],
-                      endByte: arg.nameRange[1],
-                    }),
-                  );
-                } else {
-                  results.push(
-                    error(`Modifier '${arg.name}' not found in type '${typeEntry.name}'`, {
-                      field: "declaration.modification",
-                    }),
-                  );
-                }
-              }
-            }
-            return results.length > 0 ? results : null;
+            require("fs").appendFileSync("/tmp/modifier2.log", `HOOK CALLED on Component ${self.name} mod: ${mod}\n`);
+            return checkModifierNotFound(db, self, mod, typeClassId, typeEntry, undefined);
           },
           /** Error if duplicate element names exist in classModification. */
           duplicateModification: (db: QueryDB, self: SymbolEntry) => {
@@ -4622,33 +4889,28 @@ export default language({
            * e.g. `Integer y = 1.5;` (Real literal assigned to Integer).
            */
           bindingTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
-            console.log("EXECUTING HOOK: lint__bindingTypeMismatch on", self.name);
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
             const declaredType = db.query<string | null>("typeSpecifier", self.id);
             if (!declaredType) {
-              console.log("bailing at declaredType");
               return null;
             }
 
             // Only check scalar built-in types for now
             const builtinScalars = new Set(["Real", "Integer", "Boolean", "String"]);
             if (!builtinScalars.has(declaredType)) {
-              console.log("bailing at builtinScalars");
               return null;
             }
 
             // Skip array types (handled by arrayElementTypeMismatch)
             const dims = db.query<Array<{ kind: string }> | null>("arrayDimensions", self.id);
             if (dims && dims.length > 0) {
-              console.log("bailing at dims");
               return null;
             }
 
             // Get the CST binding expression
             const cst = db.cstNode(self.id) as CSTNode | null;
             if (!cst) {
-              console.log("BINDING TYPE MISMATCH bailing out because cst is null!");
               return null;
             }
             let decl = cst;
@@ -4658,22 +4920,18 @@ export default language({
               decl = cst.childForFieldName("componentDeclaration")?.childForFieldName("declaration")!;
             }
             if (!decl) {
-              console.log("bailing at decl");
               return null;
             }
             const mod = decl.childForFieldName("modification");
             if (!mod) {
-              console.log("bailing at mod");
               return null;
             }
             const modExpr = mod.childForFieldName("modificationExpression");
             if (!modExpr) {
-              console.log("bailing at modExpr");
               return null;
             }
             const expr = modExpr.childForFieldName("expression");
             if (!expr) {
-              console.log("bailing at expr");
               return null;
             }
 
@@ -4683,6 +4941,7 @@ export default language({
               UNSIGNED_REAL: "Real",
               TRUE: "Boolean",
               FALSE: "Boolean",
+              BOOLEAN: "Boolean",
               STRING: "String",
             };
 
@@ -4750,12 +5009,19 @@ export default language({
             }
 
             if (exprType && !isSubtypeOf(exprType, declaredType)) {
-              return error(
-                `Type mismatch in binding ${self.name} = ${expr.text}, expected subtype of ${declaredType}, got type ${exprType}.`,
-                {
-                  field: "declaration.modification",
-                },
-              );
+              let errorNode: any = cst;
+              while (errorNode && errorNode.type !== "ComponentClause") {
+                errorNode = errorNode.parent;
+              }
+              const startByte = errorNode ? errorNode.startIndex : cst.startIndex;
+              const endByte = errorNode ? errorNode.endIndex : cst.endIndex;
+
+              return {
+                message: `Type mismatch in modifier of component .${self.name}, expected type ${declaredType}, got modifier =${expr.text} of type ${exprType}.`,
+                severity: "error",
+                startByte,
+                endByte,
+              };
             }
 
             return null;

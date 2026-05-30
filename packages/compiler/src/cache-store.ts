@@ -6,14 +6,14 @@ import type { Memo, QueryCacheStore } from "./runtime.js";
  * storage (IndexedDB / SQLite) is provided.
  */
 export class MemoryQueryCacheStore implements QueryCacheStore {
-  private store = new Map<string, Memo>();
+  private store = new Map<number, Memo>();
 
-  async getMemo(key: string): Promise<Memo | undefined> {
+  async getMemo(key: number): Promise<Memo | undefined> {
     return this.store.get(key);
   }
 
-  async getMemos(keys: string[]): Promise<Map<string, Memo>> {
-    const result = new Map<string, Memo>();
+  async getMemos(keys: number[]): Promise<Map<number, Memo>> {
+    const result = new Map<number, Memo>();
     for (const key of keys) {
       const memo = this.store.get(key);
       if (memo !== undefined) {
@@ -23,17 +23,17 @@ export class MemoryQueryCacheStore implements QueryCacheStore {
     return result;
   }
 
-  async setMemo(key: string, memo: Memo): Promise<void> {
+  async setMemo(key: number, memo: Memo): Promise<void> {
     this.store.set(key, memo);
   }
 
-  async setMemos(memos: Map<string, Memo>): Promise<void> {
+  async setMemos(memos: Map<number, Memo>): Promise<void> {
     for (const [key, memo] of memos) {
       this.store.set(key, memo);
     }
   }
 
-  async deleteMemo(key: string): Promise<void> {
+  async deleteMemo(key: number): Promise<void> {
     this.store.delete(key);
   }
 

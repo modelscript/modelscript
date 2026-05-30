@@ -45,8 +45,8 @@ class DependencyTracker {
     this.dependencies.push({ kind: "input", symbolId });
   }
 
-  recordQuery(queryName: string, symbolId: SymbolId): void {
-    this.dependencies.push({ kind: "query", queryName, symbolId });
+  recordQuery(queryName: string, symbolId: SymbolId, argsHash?: string): void {
+    this.dependencies.push({ kind: "query", queryName, symbolId, argsHash });
   }
 
   recordByName(name: string): void {
@@ -125,16 +125,42 @@ export class QueryEngine {
   /** Monotonic revision counter. Bumped on every `invalidate()` call. */
   private currentRevision: Revision = 0;
 
-  /** Memoized query results keyed by "queryName:symbolId" or "queryName:symbolId:argsHash".
+  /** Memoized query results keyed by composite integer.
    * Maintained as an LRU cache. Oldest items are at the front of the Map iteration.
    */
-  private memos = new Map<string, Memo>();
+  private memos = new Map<number, Memo>();
+
+  private static nextQueryId = 1;
+  private static queryIds = new Map<string, number>();
+
+  private getQueryId(queryName: string): number {
+    let id = QueryEngine.queryIds.get(queryName);
+    if (id === undefined) {
+      id = QueryEngine.nextQueryId++;
+      QueryEngine.queryIds.set(queryName, id);
+    }
+    return id;
+  }
+
+  private static nextArgsId = 1;
+  private static argsIds = new Map<string, number>();
+
+  private getArgsId(argsHash?: string): number {
+    if (!argsHash) return 0;
+    let id = QueryEngine.argsIds.get(argsHash);
+    if (id === undefined) {
+      id = QueryEngine.nextArgsId++;
+      QueryEngine.argsIds.set(argsHash, id);
+    }
+    return id;
+  }
 
   /** The external cache store for saving evicted memos (e.g. SQLite, IndexedDB). */
   private cacheStore?: QueryCacheStore | undefined;
-
-  /** Maximum number of memos to keep in memory before evicting. */
   private maxMemos: number;
+
+  private inputReverseDependencies = new Map<SymbolId, Set<number>>();
+  private byNameReverseDependencies = new Map<string, Set<number>>();
 
   /** Tracks when each input (symbol entry) was last modified. */
   private inputRevisions = new Map<SymbolId, Revision>();
@@ -154,7 +180,7 @@ export class QueryEngine {
   private activeTracker: DependencyTracker | null = null;
 
   /** Cycle detection: ordered list of queries currently being executed. */
-  private executionStack: Array<{ key: string; queryName: string; symbolId: SymbolId }> = [];
+  private executionStack: Array<{ key: number; queryName: string; symbolId: SymbolId }> = [];
 
   /** Query function hooks keyed by grammar rule name. */
   private hooksByRule: Map<string, QueryHooks>;
@@ -251,7 +277,7 @@ export class QueryEngine {
   async preflight(symbols: SymbolId[], queryNames: string[]): Promise<void> {
     if (!this.cacheStore) return;
 
-    const keysToFetch: string[] = [];
+    const keysToFetch: number[] = [];
     for (const symbolId of symbols) {
       for (const queryName of queryNames) {
         const key = this.memoKey(queryName, symbolId);
@@ -275,7 +301,7 @@ export class QueryEngine {
    * Dump all currently cached memos in memory.
    * Useful for serialization and federated caching.
    */
-  dumpMemos(): Map<string, Memo> {
+  dumpMemos(): Map<number, Memo> {
     return new Map(this.memos);
   }
 
@@ -304,6 +330,48 @@ export class QueryEngine {
         this.specializationBases.delete(virtualId);
         this.specializeCache.delete(cacheKey);
         this.inputRevisions.delete(virtualId);
+        changedSymbolIds.add(virtualId);
+      }
+    }
+
+    // Push-based dirty bit propagation
+    const dirtyMemos = new Set<number>();
+    const stack: number[] = [];
+
+    // Names that might have changed (for byName reverse dependencies)
+    // We invalidate all memos that looked up a name that belongs to any changed symbol
+    for (const id of changedSymbolIds) {
+      const entry = this.index.symbols.get(id);
+      if (entry && entry.name) {
+        const rev = this.byNameReverseDependencies.get(entry.name);
+        if (rev) for (const k of rev) stack.push(k);
+      }
+
+      const rev = this.inputReverseDependencies.get(id);
+      if (rev) for (const k of rev) stack.push(k);
+    }
+
+    while (stack.length > 0) {
+      const key = stack.pop()!;
+      if (dirtyMemos.has(key)) continue;
+      dirtyMemos.add(key);
+
+      const memo = this.memos.get(key);
+      if (memo) {
+        memo.verified_at = -1; // Force re-evaluation
+        if (memo.reverseDependencies) {
+          for (const revDep of memo.reverseDependencies) {
+            stack.push(revDep);
+          }
+        }
+      }
+    }
+
+    // Drop dirty memos from lint cache so runAllLintsAsync picks them up
+    for (const key of dirtyMemos) {
+      const symbolId = this.symbolIdFromKey(key);
+      for (const cache of this.lintCache.values()) {
+        cache.delete(symbolId);
       }
     }
 
@@ -532,13 +600,12 @@ export class QueryEngine {
 
     for (const [id, entry] of allSymbolPairs) {
       if (resourceId && entry.resourceId !== resourceId) continue;
-      const symbolRev = this.inputRevisions.get(id);
-      if (symbolRev !== undefined && symbolRev <= lastRevision && perSymbolCache.has(id)) {
-        // Unchanged — will reuse cache
-        validCachedIds.add(id);
-      } else {
-        // Changed or new — needs re-linting
+      if (!perSymbolCache.has(id)) {
+        // Missing from cache (either new, or dropped by dirty bit propagation)
         symbolsToRelint.push([id, entry]);
+      } else {
+        // Safe to reuse
+        validCachedIds.add(id);
       }
     }
 
@@ -727,7 +794,8 @@ export class QueryEngine {
       },
 
       queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
-        return engine.fetch(queryName, id) as T;
+        const argsHash = JSON.stringify(args, Object.keys(args).sort());
+        return engine.fetch(queryName, id, argsHash, args) as T;
       },
 
       specialize<T = unknown>(baseId: SymbolId, args: SpecializationArgs<T>): SymbolId {
@@ -803,12 +871,12 @@ export class QueryEngine {
    * 3. Re-execute: run the user's query lambda, record new dependencies.
    * 4. Backdate: if result is the same as before, don't bump `changed_at`.
    */
-  private fetch(queryName: string, symbolId: SymbolId): unknown {
-    const key = this.memoKey(queryName, symbolId);
+  private fetch(queryName: string, symbolId: SymbolId, argsHash?: string, args?: Record<string, unknown>): unknown {
+    const key = this.memoKey(queryName, symbolId, argsHash);
 
     // Record this query as a dependency of the currently executing query
     if (this.activeTracker) {
-      this.activeTracker.recordQuery(queryName, symbolId);
+      this.activeTracker.recordQuery(queryName, symbolId, argsHash);
     }
 
     const memo = this.memos.get(key);
@@ -827,7 +895,35 @@ export class QueryEngine {
     }
 
     // Must re-execute
-    const { value, dependencies, byNameLookups } = this.execute(queryName, symbolId);
+    const { value, dependencies, byNameLookups } = this.execute(queryName, symbolId, argsHash, args);
+
+    // Helper to wire reverse dependencies
+    const wireReverseDeps = () => {
+      for (const dep of dependencies) {
+        if (dep.kind === "input") {
+          let rev = this.inputReverseDependencies.get(dep.symbolId);
+          if (!rev) {
+            rev = new Set();
+            this.inputReverseDependencies.set(dep.symbolId, rev);
+          }
+          rev.add(key);
+        } else if (dep.kind === "query") {
+          const depKey = this.memoKey(dep.queryName, dep.symbolId, dep.argsHash);
+          let depMemo = this.memos.get(depKey);
+          if (depMemo) {
+            if (!depMemo.reverseDependencies) depMemo.reverseDependencies = new Set();
+            depMemo.reverseDependencies.add(key);
+          }
+        } else if (dep.kind === "byName") {
+          let rev = this.byNameReverseDependencies.get(dep.name);
+          if (!rev) {
+            rev = new Set();
+            this.byNameReverseDependencies.set(dep.name, rev);
+          }
+          rev.add(key);
+        }
+      }
+    };
 
     // Backdating: if the result is the same, don't bump changed_at
     if (memo && shallowEqual(memo.value, value)) {
@@ -835,6 +931,7 @@ export class QueryEngine {
       memo.verified_at = this.currentRevision;
       memo.dependencies = dependencies;
       if (byNameLookups.size > 0) memo.byNameLookups = byNameLookups;
+      wireReverseDeps();
       // *** changed_at stays the same — this is the backdating magic ***
       return value;
     }
@@ -848,6 +945,7 @@ export class QueryEngine {
     };
     if (byNameLookups.size > 0) newMemo.byNameLookups = byNameLookups;
     this.memos.set(key, newMemo);
+    wireReverseDeps();
     this.evictIfNeeded();
     return value;
   }
@@ -864,8 +962,8 @@ export class QueryEngine {
     if (this.memos.size <= this.maxMemos) return;
 
     const numToEvict = Math.ceil(this.maxMemos * 0.1);
-    const keysToEvict: string[] = [];
-    const serializableMemos = new Map<string, Memo>();
+    const keysToEvict: number[] = [];
+    const serializableMemos = new Map<number, Memo>();
 
     let count = 0;
     // Map iteration yields entries in insertion order (oldest first)
@@ -990,6 +1088,8 @@ export class QueryEngine {
   private execute(
     queryName: string,
     symbolId: SymbolId,
+    argsHash?: string,
+    args?: Record<string, unknown>,
   ): { value: unknown; dependencies: DependencyKey[]; byNameLookups: Set<string> } {
     const entry = this.resolveEntry(symbolId);
     if (!entry) {
@@ -1008,7 +1108,7 @@ export class QueryEngine {
     const { queryFn, recoveryFn } = this.resolveHook(queryName, entry.ruleName);
 
     // Cycle detection
-    const key = this.memoKey(queryName, symbolId);
+    const key = this.memoKey(queryName, symbolId, argsHash);
     const cycleIdx = this.executionStack.findIndex((f) => f.key === key);
 
     if (cycleIdx !== -1) {
@@ -1028,7 +1128,7 @@ export class QueryEngine {
       }
 
       // No recovery available — throw
-      const stackDesc = this.executionStack.map((f) => f.key).join(" → ");
+      const stackDesc = this.executionStack.map((f) => `${f.queryName}:${f.symbolId}`).join(" → ");
       throw new Error(
         `Cycle detected: query "${queryName}" for symbol ${symbolId} ` +
           `is already being computed. Stack: [${stackDesc}]\n` +
@@ -1044,7 +1144,7 @@ export class QueryEngine {
     this.executionStack.push({ key, queryName, symbolId });
 
     try {
-      const value = queryFn(this.createTrackedDB(), entry);
+      const value = queryFn(this.createTrackedDB(), entry, args);
       return { value, dependencies: tracker.dependencies, byNameLookups: tracker.byNameLookups };
     } finally {
       this.activeTracker = previousTracker;
@@ -1205,7 +1305,7 @@ export class QueryEngine {
         }
 
         // Execute (same as regular fetch but with compound key)
-        return engine.fetch(queryName, id) as T;
+        return engine.fetch(queryName, id, argsHash, args) as T;
       },
 
       specialize<T = unknown>(baseId: SymbolId, args: SpecializationArgs<T>): SymbolId {
@@ -1274,13 +1374,16 @@ export class QueryEngine {
   // Helpers
   // =========================================================================
 
-  private memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): string {
-    return argsHash ? `${queryName}:${symbolId}:${argsHash}` : `${queryName}:${symbolId}`;
+  private memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
+    const queryId = this.getQueryId(queryName);
+    const argsId = this.getArgsId(argsHash);
+    const positiveSymbolId = symbolId >= 0 ? symbolId * 2 : -symbolId * 2 - 1;
+    return positiveSymbolId + queryId * 10000000 + argsId * 10000000000;
   }
 
-  private symbolIdFromKey(key: string): SymbolId {
-    const parts = key.split(":");
-    return Number(parts[1]);
+  private symbolIdFromKey(key: number): SymbolId {
+    const positiveSymbolId = key % 10000000;
+    return positiveSymbolId % 2 === 0 ? positiveSymbolId / 2 : -(positiveSymbolId + 1) / 2;
   }
 
   /**

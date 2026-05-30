@@ -233,7 +233,7 @@ export interface QueryDB {
  * A user-defined query function.
  * Receives the QueryDB facade and the symbol entry being queried.
  */
-export type QueryFn = (db: QueryDB, self: SymbolEntry) => unknown;
+export type QueryFn = (db: QueryDB, self: SymbolEntry, args?: any) => unknown;
 
 /**
  * Information about a detected query cycle, passed to recovery functions.
@@ -315,6 +315,8 @@ export interface Memo {
   changed_at: Revision;
   /** The set of dependencies read during the last execution. */
   dependencies: DependencyKey[];
+  /** The set of cache keys for memos that depend on this one. Used for push-based invalidation. */
+  reverseDependencies?: Set<number>;
   /**
    * Names looked up via byName() during the last execution.
    * Used to selectively invalidate memos when new symbols appear,
@@ -336,27 +338,27 @@ export interface QueryCacheStore {
    * Retrieve a memoized query result from the cache.
    * Returns undefined if not found.
    */
-  getMemo(key: string): Promise<Memo | undefined>;
+  getMemo(key: number): Promise<Memo | undefined>;
 
   /**
    * Batch retrieve memoized query results from the cache.
    */
-  getMemos(keys: string[]): Promise<Map<string, Memo>>;
+  getMemos(keys: number[]): Promise<Map<number, Memo>>;
 
   /**
    * Store a memoized query result in the cache.
    */
-  setMemo(key: string, memo: Memo): Promise<void>;
+  setMemo(key: number, memo: Memo): Promise<void>;
 
   /**
    * Store multiple memoized query results in the cache.
    */
-  setMemos(memos: Map<string, Memo>): Promise<void>;
+  setMemos(memos: Map<number, Memo>): Promise<void>;
 
   /**
    * Remove a memoized query result from the cache.
    */
-  deleteMemo(key: string): Promise<void>;
+  deleteMemo(key: number): Promise<void>;
 
   /**
    * Remove all memos from the cache.

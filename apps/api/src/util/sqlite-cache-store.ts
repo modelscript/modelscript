@@ -23,7 +23,7 @@ export class SQLiteQueryCacheStore implements QueryCacheStore {
     `);
   }
 
-  async getMemo(key: string): Promise<Memo | undefined> {
+  async getMemo(key: number): Promise<Memo | undefined> {
     const row = this.db.prepare(`SELECT data FROM memos WHERE key = ?`).get(key) as { data: string } | undefined;
     if (!row) return undefined;
     try {
@@ -33,8 +33,8 @@ export class SQLiteQueryCacheStore implements QueryCacheStore {
     }
   }
 
-  async getMemos(keys: string[]): Promise<Map<string, Memo>> {
-    const result = new Map<string, Memo>();
+  async getMemos(keys: number[]): Promise<Map<number, Memo>> {
+    const result = new Map<number, Memo>();
     if (keys.length === 0) return result;
 
     // SQLite has a limit on parameters (usually 999 or 32766), so batching might be needed for very large requests.
@@ -45,7 +45,7 @@ export class SQLiteQueryCacheStore implements QueryCacheStore {
       const chunk = keys.slice(i, i + CHUNK_SIZE);
       const placeholders = chunk.map(() => "?").join(",");
       const rows = this.db.prepare(`SELECT key, data FROM memos WHERE key IN (${placeholders})`).all(...chunk) as {
-        key: string;
+        key: number;
         data: string;
       }[];
 
@@ -61,13 +61,13 @@ export class SQLiteQueryCacheStore implements QueryCacheStore {
     return result;
   }
 
-  async setMemo(key: string, memo: Memo): Promise<void> {
+  async setMemo(key: number, memo: Memo): Promise<void> {
     this.db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`).run(key, JSON.stringify(memo));
   }
 
-  async setMemos(memos: Map<string, Memo>): Promise<void> {
+  async setMemos(memos: Map<number, Memo>): Promise<void> {
     const insert = this.db.prepare(`INSERT OR REPLACE INTO memos (key, data) VALUES (?, ?)`);
-    const transaction = this.db.transaction((memosMap: Map<string, Memo>) => {
+    const transaction = this.db.transaction((memosMap: Map<number, Memo>) => {
       for (const [key, memo] of memosMap.entries()) {
         insert.run(key, JSON.stringify(memo));
       }
@@ -75,7 +75,7 @@ export class SQLiteQueryCacheStore implements QueryCacheStore {
     transaction(memos);
   }
 
-  async deleteMemo(key: string): Promise<void> {
+  async deleteMemo(key: number): Promise<void> {
     this.db.prepare(`DELETE FROM memos WHERE key = ?`).run(key);
   }
 

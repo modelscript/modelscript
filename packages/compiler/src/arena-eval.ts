@@ -391,6 +391,23 @@ export function evaluateArenaExpression(
       const firstArg = dae.getExprLeft(exprId);
       const argIds = getSequenceElements(dae, exprId, argCount, firstArg);
 
+      // Special case for /*Real*/ / /*Integer*/ which are internal AST markers
+      if ((funcName === "/*Real*/" || funcName === "/*Integer*/") && argCount === 1) {
+        const firstArgId = argIds[0];
+        if (firstArgId !== undefined) {
+          return evaluateArenaExpression(
+            dae,
+            firstArgId,
+            parameters,
+            db,
+            scopeId,
+            visitedVars,
+            onlyConstants,
+            functionLookup,
+          );
+        }
+      }
+
       // Special case for 'size' and 'ndims': we only need the shape of the array, not its value.
       // If the argument is a variable name, we can inspect the DAE for its array dimensions.
       if ((funcName === "size" || funcName === "ndims") && argCount >= 1) {
@@ -398,18 +415,18 @@ export function evaluateArenaExpression(
         // debug
         if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Name) {
           const varName = dae.interner.resolve(dae.getExprData1(firstArgId));
-          // console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
+          console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
           if (varName) {
             let shape: number[] | null = null;
             const varIdx = dae.getVarIdxByName(varName);
-            // console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
+            console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
             if (varIdx >= 0) {
               const varShape = dae.getVarShape(varIdx);
-              // console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
+              console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
               if (varShape && varShape.length > 0) shape = varShape;
             } else if (dae.hasArrayElements(varName)) {
               const elements = dae.getArrayElementIndices(varName);
-              // console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
+              console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
               if (elements.length > 0) {
                 const lastIdx = elements[elements.length - 1];
                 if (lastIdx !== undefined) {
@@ -417,6 +434,7 @@ export function evaluateArenaExpression(
                   const match = lastElemName.match(/\[([\d,]+)\]$/);
                   if (match && match[1]) {
                     shape = match[1].split(",").map(Number);
+                    console.error(`[DEBUG SHAPE] lastElemName=${lastElemName} shape=${shape.join(",")}`);
                   }
                 }
               }
@@ -451,7 +469,7 @@ export function evaluateArenaExpression(
           if (firstElementId >= 0 && dae.getExprKind(firstElementId) === ExprKind.ArrayCtor) {
             shape.push(dae.getExprData1(firstElementId));
           }
-          // console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
+          console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
           if (funcName === "ndims") return shape.length;
           if (funcName === "size") {
             if (argCount === 1) return shape;
@@ -467,7 +485,7 @@ export function evaluateArenaExpression(
                 onlyConstants,
                 functionLookup,
               );
-              // console.error(`[DEBUG SIZE] dim=${dim}`);
+              console.error(`[DEBUG SIZE] dim=${dim}`);
               if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                 return shape[dim - 1] ?? null;
               }
@@ -534,6 +552,19 @@ export function evaluateArenaExpression(
       // Cannot statically evaluate a derivative
       return null;
 
+    case ExprKind.Cast: {
+      const childExprId = dae.getExprLeft(exprId);
+      return evaluateArenaExpression(
+        dae,
+        childExprId,
+        parameters,
+        db,
+        scopeId,
+        visitedVars,
+        onlyConstants,
+        functionLookup,
+      );
+    }
     case ExprKind.Pre:
       // Cannot statically evaluate a previous value
       return null;
@@ -588,7 +619,10 @@ export function evaluateArenaExpression(
     case ExprKind.Subscript: {
       const baseId = dae.getExprData1(exprId);
       const base = evaluateArenaExpression(dae, baseId, parameters, db, scopeId, visitedVars, onlyConstants);
-      if (!Array.isArray(base)) return null;
+      if (!Array.isArray(base)) {
+        console.error(`[DEBUG SUBSCRIPT FAIL 1] baseId=${baseId} base=${JSON.stringify(base)}`);
+        return null;
+      }
 
       const idxCount = dae.getExprRight(exprId);
       const firstIdx = dae.getExprLeft(exprId);
@@ -596,10 +630,16 @@ export function evaluateArenaExpression(
 
       let current: ArenaValue = base;
       for (const id of idxIds) {
-        if (!Array.isArray(current)) return null;
+        if (!Array.isArray(current)) {
+          console.error(`[DEBUG SUBSCRIPT FAIL 2] current=${JSON.stringify(current)}`);
+          return null;
+        }
         const idx = evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants);
         // Modelica arrays are 1-indexed
-        if (typeof idx !== "number" || idx < 1 || idx > current.length) return null;
+        if (typeof idx !== "number" || idx < 1 || idx > current.length) {
+          console.error(`[DEBUG SUBSCRIPT FAIL 3] idx=${idx} current.length=${current.length}`);
+          return null;
+        }
         current = current[idx - 1] as ArenaValue;
       }
       return current;
@@ -640,6 +680,6 @@ export function evaluateArenaExpression(
     }
   }
 
-  // console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
+  console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
   return null;
 }

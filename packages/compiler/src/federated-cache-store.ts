@@ -19,7 +19,7 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
     private endpointProvider: FederatedEndpointProvider,
   ) {}
 
-  async getMemo(key: string): Promise<Memo | undefined> {
+  async getMemo(key: number): Promise<Memo | undefined> {
     const local = await this.localStore.getMemo(key);
     if (local) return local;
 
@@ -33,7 +33,7 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
     return undefined;
   }
 
-  async getMemos(keys: string[]): Promise<Map<string, Memo>> {
+  async getMemos(keys: number[]): Promise<Map<number, Memo>> {
     const localMemos = await this.localStore.getMemos(keys);
     const missingKeys = keys.filter((key) => !localMemos.has(key));
 
@@ -48,7 +48,7 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
       await this.localStore.setMemos(remoteMemos);
     }
 
-    const result = new Map<string, Memo>(localMemos);
+    const result = new Map<number, Memo>(localMemos);
     for (const [key, memo] of remoteMemos) {
       result.set(key, memo);
     }
@@ -56,17 +56,17 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
     return result;
   }
 
-  async setMemo(key: string, memo: Memo): Promise<void> {
+  async setMemo(key: number, memo: Memo): Promise<void> {
     // Only write to local store
     await this.localStore.setMemo(key, memo);
   }
 
-  async setMemos(memos: Map<string, Memo>): Promise<void> {
+  async setMemos(memos: Map<number, Memo>): Promise<void> {
     // Only write to local store
     await this.localStore.setMemos(memos);
   }
 
-  async deleteMemo(key: string): Promise<void> {
+  async deleteMemo(key: number): Promise<void> {
     await this.localStore.deleteMemo(key);
   }
 
@@ -77,8 +77,8 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
   /**
    * Helper to fetch missing keys from federated endpoints.
    */
-  private async fetchFromFederated(keys: string[]): Promise<Map<string, Memo>> {
-    const result = new Map<string, Memo>();
+  private async fetchFromFederated(keys: number[]): Promise<Map<number, Memo>> {
+    const result = new Map<number, Memo>();
     const endpoints = this.endpointProvider.getEndpoints();
 
     if (endpoints.length === 0 || keys.length === 0) return result;
@@ -99,7 +99,7 @@ export class FederatedQueryCacheStore implements QueryCacheStore {
           const data = (await response.json()) as { memos: Record<string, Memo> };
           if (data && data.memos) {
             for (const [k, v] of Object.entries(data.memos)) {
-              result.set(k, v);
+              result.set(Number(k), v);
             }
           }
         }

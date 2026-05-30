@@ -42,7 +42,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     return this.dbPromise;
   }
 
-  async getMemo(key: string): Promise<Memo | undefined> {
+  async getMemo(key: number): Promise<Memo | undefined> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readonly");
@@ -54,9 +54,9 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     });
   }
 
-  async getMemos(keys: string[]): Promise<Map<string, Memo>> {
+  async getMemos(keys: number[]): Promise<Map<number, Memo>> {
     const db = await this.getDB();
-    const result = new Map<string, Memo>();
+    const result = new Map<number, Memo>();
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readonly");
@@ -84,7 +84,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     });
   }
 
-  async setMemo(key: string, memo: Memo): Promise<void> {
+  async setMemo(key: number, memo: Memo): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readwrite");
@@ -96,7 +96,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     });
   }
 
-  async setMemos(memos: Map<string, Memo>): Promise<void> {
+  async setMemos(memos: Map<number, Memo>): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readwrite");
@@ -111,7 +111,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     });
   }
 
-  async deleteMemo(key: string): Promise<void> {
+  async deleteMemo(key: number): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readwrite");
