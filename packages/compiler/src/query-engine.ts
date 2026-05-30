@@ -1,3 +1,4 @@
+import { IdTrieMap } from "./utils/radix-trie.js";
 /* eslint-disable */
 export interface LintResult {
   message: string;
@@ -161,7 +162,7 @@ export class QueryEngine {
   // ---- Virtual entry infrastructure (specialization) ----
 
   /** Virtual (specialized) symbol entries. Negative IDs. */
-  private virtualEntries = new Map<SymbolId, SymbolEntry>();
+  private virtualEntries = new IdTrieMap<SymbolEntry>();
 
   /** Specialization args for virtual entries. */
   private specializationArgs = new Map<SymbolId, SpecializationArgs>();
@@ -449,8 +450,8 @@ export class QueryEngine {
       const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceSymbolIds) return diagnostics;
       symbolsToCheck = resourceSymbolIds
-        .map((id) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
-        .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
+        .map((id: SymbolId) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
+        .filter((pair: any): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
     } else {
       symbolsToCheck = this.index.symbols;
     }
@@ -501,8 +502,8 @@ export class QueryEngine {
       const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceSymbolIds) return diagnostics;
       allSymbolPairs = resourceSymbolIds
-        .map((id) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
-        .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
+        .map((id: SymbolId) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
+        .filter((pair: any): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
     } else {
       allSymbolPairs = Array.from(this.index.symbols);
     }
@@ -665,7 +666,7 @@ export class QueryEngine {
       childrenOf(id: SymbolId): SymbolEntry[] {
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId);
+        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -682,7 +683,7 @@ export class QueryEngine {
       childrenOfField(id: SymbolId, fieldName: string): SymbolEntry[] {
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId);
+        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -712,7 +713,7 @@ export class QueryEngine {
       byName(name: string): SymbolEntry[] {
         const ids = engine.index.byName.get(name);
         if (!ids) return [];
-        return ids.map((id) => engine.resolveEntry(id)).filter(Boolean) as SymbolEntry[];
+        return ids.map((id: SymbolId) => engine.resolveEntry(id)).filter(Boolean) as SymbolEntry[];
       },
 
       allEntries(): SymbolEntry[] {
@@ -1114,7 +1115,7 @@ export class QueryEngine {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId);
+        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);
@@ -1132,7 +1133,7 @@ export class QueryEngine {
         tracker?.recordInput(id);
         const results: SymbolEntry[] = [];
         const lookupId = engine.specializationBases.get(id) ?? id;
-        const childIds = engine.index.childrenOf.get(lookupId);
+        const childIds = engine.index.childrenOf.get(lookupId ?? 0);
         if (childIds) {
           for (const cid of childIds) {
             const entry = engine.resolveEntry(cid);

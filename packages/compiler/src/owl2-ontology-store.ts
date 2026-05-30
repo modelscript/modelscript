@@ -1,3 +1,4 @@
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
@@ -278,9 +279,9 @@ export class OWL2OntologyStore {
    * avoid collisions with real CST-derived symbol IDs.
    */
   toSyntheticSymbolEntries(): SymbolIndex {
-    const symbols = new Map<number, SymbolEntry>();
-    const byName = new Map<string, number[]>();
-    const childrenOf = new Map<number | null, number[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<number[]>();
+    const childrenOf = new IdTrieMap<number[]>();
 
     // Start synthetic IDs at a large negative offset to avoid collisions
     let nextId = -1_000_000;

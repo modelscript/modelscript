@@ -1,3 +1,4 @@
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
@@ -104,11 +105,11 @@ export class SymbolArena {
   // ── Index structures (mirrors SymbolIndex) ──
 
   /** Name string → SymbolId[] for fast byName lookups. */
-  private byNameIndex = new Map<string, SymbolId[]>();
+  private byNameIndex = new StringTrieMap<SymbolId[]>();
   /** Parent SymbolId → child SymbolId[] for fast childrenOf lookups. */
-  private childrenOfIndex = new Map<SymbolId | null, SymbolId[]>();
+  private childrenOfIndex = new IdTrieMap<SymbolId[]>();
   /** Resource URI → SymbolId[] for fast per-file iteration. */
-  private symbolsByResourceIndex = new Map<string, SymbolId[]>();
+  private symbolsByResourceIndex = new StringTrieMap<SymbolId[]>();
 
   constructor(interner?: StringInterner, initialCapacity = DEFAULT_CAPACITY) {
     this.interner = interner ?? new StringInterner();
@@ -187,11 +188,11 @@ export class SymbolArena {
     }
 
     const parent = entry.parentId ?? null;
-    const siblings = this.childrenOfIndex.get(parent);
+    const siblings = this.childrenOfIndex.get(parent ?? 0);
     if (siblings) {
       siblings.push(id);
     } else {
-      this.childrenOfIndex.set(parent, [id]);
+      this.childrenOfIndex.set(parent ?? 0, [id]);
     }
 
     if (entry.resourceId) {
@@ -227,7 +228,7 @@ export class SymbolArena {
    * read directly from the arena — no copying occurs.
    */
   toSymbolIndex(): SymbolIndex {
-    const symbols = new Map<SymbolId, SymbolEntry>();
+    const symbols = new IdTrieMap<SymbolEntry>();
 
     // Create Flyweight views for all allocated slots
     for (let id = 0; id < this._length; id++) {
@@ -323,7 +324,7 @@ export class SymbolArena {
   }
 
   getChildrenOf(parentId: SymbolId | null): SymbolId[] {
-    return this.childrenOfIndex.get(parentId) ?? [];
+    return this.childrenOfIndex.get(parentId ?? 0) ?? [];
   }
 
   // ─────────────────────────────────────────────────────────────────────────

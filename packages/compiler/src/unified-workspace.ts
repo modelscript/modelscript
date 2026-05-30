@@ -2,6 +2,7 @@ import { AdapterRegistry } from "./adapter-registry.js";
 import type { OWL2AxiomDelta } from "./owl2-axioms.js";
 import { OWL2OntologyStore } from "./owl2-ontology-store.js";
 import type { SymbolEntry, SymbolIndex } from "./runtime.js";
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 
 export interface IWorkspaceIndex {
   version: number;
@@ -27,7 +28,7 @@ export class UnifiedWorkspace {
   /** Version numbers of each workspace at the time the cache was built. */
   private partialCacheVersions = new Map<string, number>();
   /** Symbol IDs belonging to each language in the partial cache — for incremental patching. */
-  private partialCacheSymbolsByLang = new Map<string, number[]>();
+  private partialCacheSymbolsByLang = new StringTrieMap<number[]>();
 
   constructor() {
     this.adapterRegistry = new AdapterRegistry();
@@ -69,9 +70,9 @@ export class UnifiedWorkspace {
    * This forces parsing of all files in all workspaces.
    */
   toUnified(): SymbolIndex {
-    const symbols = new Map<number, SymbolEntry>();
-    const byName = new Map<string, number[]>();
-    const childrenOf = new Map<number | null, number[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<number[]>();
+    const childrenOf = new IdTrieMap<number[]>();
 
     for (const [language, workspace] of this.indices.entries()) {
       const index = workspace.toUnified();
@@ -89,13 +90,13 @@ export class UnifiedWorkspace {
       }
 
       for (const [parentId, ids] of index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
           for (const cid of ids) {
             if (!existing.includes(cid)) existing.push(cid);
           }
         } else {
-          childrenOf.set(parentId, [...ids]);
+          childrenOf.set(parentId ?? 0, [...ids]);
         }
       }
     }
@@ -111,9 +112,9 @@ export class UnifiedWorkspace {
    * Merges all registered language workspace indices asynchronously into a single unified SymbolIndex.
    */
   async toUnifiedAsync(): Promise<SymbolIndex> {
-    const symbols = new Map<number, SymbolEntry>();
-    const byName = new Map<string, number[]>();
-    const childrenOf = new Map<number | null, number[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<number[]>();
+    const childrenOf = new IdTrieMap<number[]>();
 
     for (const [language, workspace] of this.indices.entries()) {
       const index = await workspace.toUnifiedAsync();
@@ -130,13 +131,13 @@ export class UnifiedWorkspace {
       }
 
       for (const [parentId, ids] of index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
           for (const cid of ids) {
             if (!existing.includes(cid)) existing.push(cid);
           }
         } else {
-          childrenOf.set(parentId, [...ids]);
+          childrenOf.set(parentId ?? 0, [...ids]);
         }
       }
     }
@@ -173,7 +174,7 @@ export class UnifiedWorkspace {
     }
 
     if (!baseIndex.symbolsByResource) {
-      baseIndex.symbolsByResource = new Map<string, number[]>();
+      baseIndex.symbolsByResource = new StringTrieMap<number[]>();
     }
 
     if (baseChanged) {
@@ -214,13 +215,13 @@ export class UnifiedWorkspace {
         if (nameIds.length === 0) baseIndex.byName.delete(entry.name);
       }
 
-      const parentChildren = baseIndex.childrenOf.get(entry.parentId);
+      const parentChildren = baseIndex.childrenOf.get(entry.parentId ?? 0);
       if (parentChildren) {
         const idx = parentChildren.indexOf(id);
         if (idx !== -1) parentChildren.splice(idx, 1);
-        if (parentChildren.length === 0) baseIndex.childrenOf.delete(entry.parentId);
+        if (parentChildren.length === 0) baseIndex.childrenOf.delete(entry.parentId ?? 0);
       }
-      baseIndex.childrenOf.delete(id);
+      baseIndex.childrenOf.delete(id ?? 0);
 
       if (entry.resourceId && baseIndex.symbolsByResource) {
         const resourceIds = baseIndex.symbolsByResource.get(entry.resourceId);
@@ -253,11 +254,11 @@ export class UnifiedWorkspace {
       }
     }
     for (const [parentId, ids] of index.childrenOf) {
-      const existing = baseIndex.childrenOf.get(parentId);
+      const existing = baseIndex.childrenOf.get(parentId ?? 0);
       if (existing) {
         for (const i of ids) if (!existing.includes(i)) existing.push(i);
       } else {
-        baseIndex.childrenOf.set(parentId, [...ids]);
+        baseIndex.childrenOf.set(parentId ?? 0, [...ids]);
       }
     }
     if (index.symbolsByResource && baseIndex.symbolsByResource) {
@@ -276,9 +277,9 @@ export class UnifiedWorkspace {
    * Builds a combined lightweight skeleton index without parsing any files.
    */
   toTreeIndex(): SymbolIndex {
-    const symbols = new Map<number, SymbolEntry>();
-    const byName = new Map<string, number[]>();
-    const childrenOf = new Map<number | null, number[]>();
+    const symbols = new IdTrieMap<SymbolEntry>();
+    const byName = new StringTrieMap<number[]>();
+    const childrenOf = new IdTrieMap<number[]>();
 
     for (const [language, workspace] of this.indices.entries()) {
       const index = workspace.toTreeIndex();
@@ -295,13 +296,13 @@ export class UnifiedWorkspace {
       }
 
       for (const [parentId, ids] of index.childrenOf) {
-        const existing = childrenOf.get(parentId);
+        const existing = childrenOf.get(parentId ?? 0);
         if (existing) {
           for (const cid of ids) {
             if (!existing.includes(cid)) existing.push(cid);
           }
         } else {
-          childrenOf.set(parentId, [...ids]);
+          childrenOf.set(parentId ?? 0, [...ids]);
         }
       }
     }
@@ -348,9 +349,9 @@ export class UnifiedWorkspace {
    * can find via `db.byName("mo:Motor")`.
    */
   private mergeOWL2Synthetics(
-    symbols: Map<number, SymbolEntry>,
-    byName: Map<string, number[]>,
-    childrenOf: Map<number | null, number[]>,
+    symbols: IdTrieMap<SymbolEntry>,
+    byName: StringTrieMap<number[]>,
+    childrenOf: IdTrieMap<number[]>,
   ): void {
     if (this.owl2Store.size === 0) return;
 
@@ -378,13 +379,13 @@ export class UnifiedWorkspace {
     }
 
     for (const [parentId, ids] of synthetics.childrenOf) {
-      const existing = childrenOf.get(parentId);
+      const existing = childrenOf.get(parentId ?? 0);
       if (existing) {
         for (const cid of ids) {
           if (!existing.includes(cid)) existing.push(cid);
         }
       } else {
-        childrenOf.set(parentId, [...ids]);
+        childrenOf.set(parentId ?? 0, [...ids]);
       }
     }
   }

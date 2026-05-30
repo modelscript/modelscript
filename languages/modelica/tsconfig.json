@@ -12,6 +12,6 @@
     "isolatedModules": true,
     "moduleResolution": "nodenext"
   },
-  "include": ["*.ts", "src-gen/**/*.ts", "diagram/**/*.ts"],
+  "include": ["*.ts", "src-gen/**/*.ts", "diagram/**/*.ts", "ast/**/*.ts"],
   "exclude": ["dist"]
 }

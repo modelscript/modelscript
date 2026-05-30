@@ -1560,7 +1560,7 @@ function main(): void {
   console.log(`  ${concreteCount} concrete nodes (${terminalCount} terminals)`);
   console.log(`  ${hiddenCount} hidden rules → union types`);
 
-  const code = `// grammar-hash: ${grammarHash}\n` + generateCode(grammar, nodes);
+  const code = `/* eslint-disable */\n// grammar-hash: ${grammarHash}\n` + generateCode(grammar, nodes);
 
   fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
   fs.writeFileSync(OUTPUT_PATH, code, "utf-8");

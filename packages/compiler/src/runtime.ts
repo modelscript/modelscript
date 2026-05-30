@@ -1,3 +1,4 @@
+import { IdTrieMap, StringTrieMap } from "./utils/radix-trie.js";
 /* eslint-disable */
 export type SymbolKind = string;
 
@@ -65,13 +66,13 @@ export interface SymbolEntry {
 /** The full symbol index for a single file. */
 export interface SymbolIndex {
   /** All symbols keyed by their unique ID. */
-  symbols: Map<SymbolId, SymbolEntry>;
+  symbols: IdTrieMap<SymbolEntry>;
   /** Name → symbol IDs mapping for fast name lookups (supports overloading). */
-  byName: Map<string, SymbolId[]>;
-  /** Parent ID → direct child IDs for O(1) subtree reuse. */
-  childrenOf: Map<SymbolId | null, SymbolId[]>;
+  byName: StringTrieMap<SymbolId[]>;
+  /** Parent ID → direct child IDs for O(1) subtree reuse. (null parent mapped to 0) */
+  childrenOf: IdTrieMap<SymbolId[]>;
   /** Resource URI → symbol IDs for fast per-file iteration. Optional — populated by workspace-level indices. */
-  symbolsByResource?: Map<string, SymbolId[]>;
+  symbolsByResource?: StringTrieMap<SymbolId[]>;
 }
 
 // ---------------------------------------------------------------------------

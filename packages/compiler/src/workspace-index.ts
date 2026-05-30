@@ -301,7 +301,7 @@ export class WorkspaceIndex {
     const unified = this.toUnified();
     const ids = unified.byName.get(name);
     if (!ids) return [];
-    return ids.map((id) => unified.symbols.get(id)!).filter(Boolean);
+    return ids.map((id: SymbolId) => unified.symbols.get(id)!).filter(Boolean);
   }
 
   /**
@@ -457,7 +457,7 @@ export class WorkspaceIndex {
       for (const name of namesToFilter) {
         const nameIds = byName.get(name);
         if (nameIds) {
-          const filtered = nameIds.filter((id) => !toRemoveSet.has(id));
+          const filtered = nameIds.filter((id: SymbolId) => !toRemoveSet.has(id));
           if (filtered.length === 0) byName.delete(name);
           else byName.set(name, filtered);
         }
@@ -469,7 +469,7 @@ export class WorkspaceIndex {
       for (const parentId of parentsToFilter) {
         const parentChildren = childrenOf.get(parentId ?? 0);
         if (parentChildren) {
-          const filtered = parentChildren.filter((id) => !toRemoveSet.has(id));
+          const filtered = parentChildren.filter((id: SymbolId) => !toRemoveSet.has(id));
           if (filtered.length === 0) childrenOf.delete(parentId ?? 0);
           else childrenOf.set(parentId ?? 0, filtered);
         }
@@ -1143,7 +1143,7 @@ export class WorkspaceIndex {
 }
 
 function postProcessCsvIndex(index: SymbolIndex, uri: string, rootNodeText: string): void {
-  const rootEntry = Array.from(index.symbols.values()).find((e) => e.parentId === null);
+  const rootEntry = Array.from(index.symbols.values() as Iterable<SymbolEntry>).find((e) => e.parentId === null);
   if (!rootEntry) return;
 
   const filename = uri.split(/[/\\]/).pop() || "";

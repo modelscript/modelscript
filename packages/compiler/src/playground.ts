@@ -148,8 +148,8 @@ function indexToAstJson(index: SymbolIndex): Record<string, unknown>[] {
   const childrenOf = new Map<number | null, Record<string, unknown>[]>();
   for (const entry of index.symbols.values()) {
     const parent = entry.parentId;
-    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
-    childrenOf.get(parent)!.push({
+    if (!childrenOf.has(parent)) childrenOf.set(parent ?? 0, []);
+    childrenOf.get(parent ?? 0)!.push({
       id: entry.id,
       kind: entry.kind,
       name: entry.name,
@@ -159,12 +159,12 @@ function indexToAstJson(index: SymbolIndex): Record<string, unknown>[] {
   }
   function attachChildren(nodes: Record<string, unknown>[]) {
     for (const node of nodes) {
-      const kids = childrenOf.get(node.id as number) ?? [];
+      const kids = childrenOf.get((node.id as number) ?? 0) ?? [];
       node.children = kids;
       attachChildren(kids);
     }
   }
-  const topLevel = childrenOf.get(null) ?? [];
+  const topLevel = childrenOf.get(0) ?? [];
   attachChildren(topLevel);
   return topLevel;
 }

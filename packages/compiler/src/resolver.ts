@@ -267,7 +267,7 @@ export class ScopeResolver {
     if (resourceId && this.index.symbolsByResource) {
       const resourceIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceIds) return diagnostics;
-      entriesToCheck = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
+      entriesToCheck = resourceIds.map((id: SymbolId) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
     } else {
       entriesToCheck = this.index.symbols.values();
     }
@@ -313,7 +313,7 @@ export class ScopeResolver {
       // reachable via an implicit import and suppress the diagnostic.
       const globalIds = this.index.byName.get(name);
       if (globalIds && globalIds.length > 0) {
-        const hasDeclaration = globalIds.some((id) => {
+        const hasDeclaration = globalIds.some((id: SymbolId) => {
           const sym = this.index.symbols.get(id);
           return sym && !this.refHooksByRule.has(sym.ruleName);
         });
@@ -353,7 +353,7 @@ export class ScopeResolver {
     if (resourceId && this.index.symbolsByResource) {
       const resourceIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceIds) return diagnostics;
-      allEntries = resourceIds.map((id) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
+      allEntries = resourceIds.map((id: SymbolId) => this.index.symbols.get(id)).filter(Boolean) as SymbolEntry[];
     } else {
       allEntries = Array.from(this.index.symbols.values());
     }
@@ -773,7 +773,7 @@ export class ScopeResolver {
    */
   private exportedChildren(scopeId: SymbolId): SymbolEntry[] {
     const results: SymbolEntry[] = [];
-    const childIds = this.index.childrenOf.get(scopeId);
+    const childIds = this.index.childrenOf.get(scopeId ?? 0);
     if (!childIds) return results;
     for (const childId of childIds) {
       const entry = this.index.symbols.get(childId);
@@ -861,7 +861,7 @@ export class ScopeResolver {
     if (results) return results;
 
     results = [];
-    const childIds = this.index.childrenOf.get(scopeId);
+    const childIds = this.index.childrenOf.get(scopeId ?? 0);
     if (childIds) {
       for (const childId of childIds) {
         const entry = this.index.symbols.get(childId);
