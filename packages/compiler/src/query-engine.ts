@@ -1304,8 +1304,6 @@ function symbolEntryEqual(a: SymbolEntry, b: SymbolEntry): boolean {
     a.ruleName === b.ruleName &&
     a.namePath === b.namePath &&
     a.parentId === b.parentId &&
-    a.startByte === b.startByte &&
-    a.endByte === b.endByte &&
     arraysEqual(a.exports, b.exports) &&
     arraysEqual(a.inherits, b.inherits) &&
     JSON.stringify(a.metadata) === JSON.stringify(b.metadata)

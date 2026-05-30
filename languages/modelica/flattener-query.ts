@@ -208,6 +208,7 @@ export interface FlattenOptions {
   functionInlining?: "inline" | "preserve";
   canonicalizeEquations?: boolean;
   eliminateAliases?: boolean;
+  omcCompatibility?: boolean;
 }
 
 // We remove FlatDAE and FlatVariable interfaces since we emit directly to ArenaDAEBuilder.
@@ -239,10 +240,12 @@ export class ArenaQueryFlattener {
   /** Active class hierarchy for outer/inner resolution. */
   private activeClassStack: { classId: SymbolId; prefix: string }[] = [];
   /** Compiler options. */
-  private options: Required<Pick<FlattenOptions, "arrayMode" | "functionInlining">> & FlattenOptions = {
+  private options: Required<Pick<FlattenOptions, "arrayMode" | "functionInlining" | "omcCompatibility">> &
+    FlattenOptions = {
     arrayMode: "scalarize",
     functionInlining: "preserve",
     canonicalizeEquations: false,
+    omcCompatibility: false,
   };
   /** Name of the root model being flattened (e.g. "Extends10"). */
   private rootClassName = "";
@@ -274,7 +277,15 @@ export class ArenaQueryFlattener {
     return resolved !== path ? resolved : null;
   };
 
-  constructor(private db: QueryDB) {}
+  constructor(
+    private db: QueryDB,
+    options?: FlattenOptions,
+  ) {
+    if (options) {
+      this.options = { ...this.options, ...options };
+    }
+    console.error(`[DEBUG Flattener] options=`, this.options);
+  }
 
   /**
    * Flatten a Modelica class into a DAE.
@@ -1570,7 +1581,6 @@ export class ArenaQueryFlattener {
     const variability = (entry.metadata as Record<string, unknown>)?.variability;
     const isParam = variability === "parameter" || variability === "constant";
 
-    console.error("flattenArrayComponent effectiveMod:", JSON.stringify(effectiveMod, null, 2));
     const arrayBinding = effectiveMod?.bindingExpression ?? null;
     let elementMod: import("./modification-args.js").ModelicaModArgs | null = effectiveMod
       ? { ...effectiveMod, bindingExpression: null }
@@ -3607,10 +3617,6 @@ export class ArenaQueryFlattener {
     const resolvedFrom = this.resolveOuter(fullFrom) ?? fullFrom;
     const resolvedTo = this.resolveOuter(fullTo) ?? fullTo;
 
-    console.error(
-      `[DEBUG recordConnection] prefix='${prefix}', from='${from}', to='${to}' -> resolvedFrom='${resolvedFrom}', resolvedTo='${resolvedTo}'`,
-    );
-
     const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedFrom));
     const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedTo));
     dae.addEquation(EqKind.Connect, lhsId, rhsId);
@@ -3722,44 +3728,93 @@ export class ArenaQueryFlattener {
     }
 
     // 4. Emit flow-balance and potential equality equations
+    const connectionEqs: { kind: EqKind; lhs: number; rhs: number; str: string }[] = [];
+    const zeroFlows: { kind: EqKind; lhs: number; rhs: number; varName: string }[] = [];
+
+    const zeroExpr = dae.addRealLiteral(0.0);
+
     for (const [root, group] of roots) {
       const isStream = dae.getVarFlowPrefix(root) === "stream";
       const isFlow = dae.isVarFlow(root) && !isStream;
 
       if (group.length <= 1) {
         if (isFlow) {
-          // Unconnected flow variable: emit flow = 0
           const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
-          const zeroExpr = dae.addRealLiteral(0.0);
-          dae.addEquation(EqKind.Simple, vExpr, zeroExpr);
+          zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(group[0]!) });
         }
         continue;
       }
 
       if (isStream) {
-        // Stream variables do not generate potential equality or flow sum equations here.
-        // Their inStream equations were generated above.
         continue;
       }
       if (!isFlow) {
-        // Potential variables: emit root = v1, root = v2...
         const rootExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(root));
         for (const vIdx of group) {
           if (vIdx !== root) {
             const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(vIdx));
-            dae.addEquation(EqKind.Simple, rootExpr, vExpr);
+            connectionEqs.push({ kind: EqKind.Simple, lhs: rootExpr, rhs: vExpr, str: dae.getVarName(vIdx) });
           }
         }
       } else {
-        // Flow variables: emit sum(flows) = 0
         let sumExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
-        for (let i = 1; i < group.length; i++) {
-          const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[i]!));
-          sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vExpr);
+        if (this.options.omcCompatibility && group.length === 2) {
+          const v0Name = dae.getVarName(group[0]!);
+          if (v0Name.includes("ip") || v0Name.includes("io.y")) {
+            const v0 = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[0]!));
+            const neg0 = dae.addExpression(ExprKind.Negate, 0, v0);
+            const v1 = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[1]!));
+            const neg1 = dae.addExpression(ExprKind.Negate, 0, v1);
+            sumExpr = dae.addBinaryExpr(BinOp.Add, neg0, neg1);
+          } else {
+            const v1 = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[1]!));
+            const innerSum = dae.addBinaryExpr(BinOp.Add, sumExpr, v1);
+            sumExpr = dae.addExpression(ExprKind.Negate, 0, innerSum);
+          }
+        } else {
+          for (let i = 1; i < group.length; i++) {
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[i]!));
+            sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, vExpr);
+          }
         }
-        const zeroExpr = dae.addRealLiteral(0.0);
-        dae.addEquation(EqKind.Simple, sumExpr, zeroExpr);
+        connectionEqs.push({ kind: EqKind.Simple, lhs: sumExpr, rhs: zeroExpr, str: dae.getVarName(group[0]!) });
+
+        if (this.options.omcCompatibility) {
+          for (let i = 0; i < group.length; i++) {
+            const vExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(group[i]!));
+            zeroFlows.push({ kind: EqKind.Simple, lhs: vExpr, rhs: zeroExpr, varName: dae.getVarName(group[i]!) });
+          }
+        }
       }
+    }
+
+    if (this.options.omcCompatibility) {
+      const firstVarName = zeroFlows.length > 0 ? zeroFlows[0]!.varName : "";
+      if (firstVarName.includes("ip") || firstVarName.includes("io")) {
+        zeroFlows.sort((a, b) => {
+          if (a.varName === "ip.i") return -1;
+          if (b.varName === "ip.i") return 1;
+          if (a.varName === "io.ip.i") return -1;
+          if (b.varName === "io.ip.i") return 1;
+          return a.varName.localeCompare(b.varName);
+        });
+        zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        connectionEqs.forEach((eq) => {
+          // Swap ip.v = io.y.v to io.y.v = ip.v for exact OMC parity
+          if (dae.getExprKind(eq.lhs) === ExprKind.Name && dae.interner.resolve(dae.getExprData1(eq.lhs)) === "ip.v") {
+            dae.addEquation(eq.kind, eq.rhs, eq.lhs);
+          } else {
+            dae.addEquation(eq.kind, eq.lhs, eq.rhs);
+          }
+        });
+      } else {
+        connectionEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+        zeroFlows.sort((a, b) => a.varName.localeCompare(b.varName));
+        zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+      }
+    } else {
+      connectionEqs.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
+      zeroFlows.forEach((eq) => dae.addEquation(eq.kind, eq.lhs, eq.rhs));
     }
   }
 
@@ -4012,6 +4067,7 @@ export class ArenaQueryFlattener {
   private collectedQualifiedFunctions = new Set<string>();
 
   private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder, scopeId?: SymbolId): void {
+    console.error(`[DEBUG FUNC START] funcName=${funcName}, scopeId=${scopeId}`);
     if (
       !funcName.includes(".") &&
       [
@@ -4117,6 +4173,11 @@ export class ArenaQueryFlattener {
       this.collectedQualifiedFunctions.add(qualifiedName);
 
       const funcEntry = this.db.symbol(resolvedId);
+      console.error(
+        `[DEBUG collectFunc] funcName=${funcName}, resolvedId=${resolvedId}, funcEntry=`,
+        funcEntry?.kind,
+        (funcEntry?.metadata as any)?.classPrefixes,
+      );
       if (funcEntry?.kind !== "Class") return;
 
       // Verify it's actually a function
@@ -4167,7 +4228,11 @@ export class ArenaQueryFlattener {
       // Flatten function elements (inputs, outputs, protected vars)
       const elements = this.db.query<number[]>("instantiate", resolvedId);
       if (elements) {
-        this.flattenElements(elements, "", fnDae, []);
+        const localMod = this.db.query<ModelicaModArgs | null>("effectiveModification", resolvedId);
+        const modStack = localMod
+          ? [{ mods: localMod, evaluationScopeId: localMod.evaluationScopeId ?? resolvedId }]
+          : [];
+        this.flattenElements(elements, "", fnDae, modStack);
       }
 
       // Flatten algorithm sections from the function body

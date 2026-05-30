@@ -4622,32 +4622,60 @@ export default language({
            * e.g. `Integer y = 1.5;` (Real literal assigned to Integer).
            */
           bindingTypeMismatch: (db: QueryDB, self: SymbolEntry) => {
+            console.log("EXECUTING HOOK: lint__bindingTypeMismatch on", self.name);
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
             const declaredType = db.query<string | null>("typeSpecifier", self.id);
-            if (!declaredType) return null;
+            if (!declaredType) {
+              console.log("bailing at declaredType");
+              return null;
+            }
 
             // Only check scalar built-in types for now
             const builtinScalars = new Set(["Real", "Integer", "Boolean", "String"]);
-            if (!builtinScalars.has(declaredType)) return null;
+            if (!builtinScalars.has(declaredType)) {
+              console.log("bailing at builtinScalars");
+              return null;
+            }
 
             // Skip array types (handled by arrayElementTypeMismatch)
             const dims = db.query<Array<{ kind: string }> | null>("arrayDimensions", self.id);
-            if (dims && dims.length > 0) return null;
+            if (dims && dims.length > 0) {
+              console.log("bailing at dims");
+              return null;
+            }
 
             // Get the CST binding expression
             const cst = db.cstNode(self.id) as CSTNode | null;
-            if (!cst) return null;
-            const compDecl = cst.childForFieldName("componentDeclaration");
-            if (!compDecl) return null;
-            const decl = compDecl.childForFieldName("declaration");
-            if (!decl) return null;
+            if (!cst) {
+              console.log("BINDING TYPE MISMATCH bailing out because cst is null!");
+              return null;
+            }
+            let decl = cst;
+            if (cst.type === "ComponentDeclaration") {
+              decl = cst.childForFieldName("declaration")!;
+            } else if (cst.type !== "Declaration") {
+              decl = cst.childForFieldName("componentDeclaration")?.childForFieldName("declaration")!;
+            }
+            if (!decl) {
+              console.log("bailing at decl");
+              return null;
+            }
             const mod = decl.childForFieldName("modification");
-            if (!mod) return null;
+            if (!mod) {
+              console.log("bailing at mod");
+              return null;
+            }
             const modExpr = mod.childForFieldName("modificationExpression");
-            if (!modExpr) return null;
+            if (!modExpr) {
+              console.log("bailing at modExpr");
+              return null;
+            }
             const expr = modExpr.childForFieldName("expression");
-            if (!expr) return null;
+            if (!expr) {
+              console.log("bailing at expr");
+              return null;
+            }
 
             // Map CST literal types to Modelica types
             const literalTypes: Record<string, string> = {
@@ -4682,7 +4710,7 @@ export default language({
               if (self.parentId !== null) {
                 const parent = db.symbol(self.parentId);
                 if (parent && (parent.kind === "Class" || parent.kind === "Package")) {
-                  const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", parent.id);
+                  const resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", parent.id);
                   if (resolve) refEntry = resolve(refName);
                 }
               }
@@ -4723,7 +4751,7 @@ export default language({
 
             if (exprType && !isSubtypeOf(exprType, declaredType)) {
               return error(
-                `Type mismatch in modifier of component .${self.name}, expected type ${declaredType}, got modifier =${expr.text} of type ${exprType}.`,
+                `Type mismatch in binding ${self.name} = ${expr.text}, expected subtype of ${declaredType}, got type ${exprType}.`,
                 {
                   field: "declaration.modification",
                 },

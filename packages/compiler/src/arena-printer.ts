@@ -254,6 +254,7 @@ export class ArenaDAEPrinter {
           }
           // Dedicated Negate node: same logic
           if (ck === ExprKind.Negate) {
+            if (op === BinOp.Add) return true;
             return isRhs && op === BinOp.Sub;
           }
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;

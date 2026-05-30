@@ -17,7 +17,7 @@ import {
   createModelicaWorkspaceIndex,
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
-import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
+import { ArenaQueryFlattener, type FlattenOptions } from "@modelscript/modelica/flattener-query";
 import { ModelicaPoParser, ModelicaTranslation } from "@modelscript/modelica/po";
 import { ModelicaClassInstance, type ModelicaElement } from "@modelscript/modelica/semantic-model";
 import { MODELSCRIPT_CAS_PACKAGE } from "@modelscript/symbolics";
@@ -370,7 +370,7 @@ export class Context extends BaseContext {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns An `ArenaDAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
-  flattenArena(name: string, classId?: any, uri?: string): ArenaDAEBuilder | null {
+  flattenArena(name: string, classId?: any, uri?: string, options?: FlattenOptions): ArenaDAEBuilder | null {
     let symbolIds: any[] | undefined = undefined;
 
     if (classId !== undefined) {
@@ -440,7 +440,7 @@ export class Context extends BaseContext {
     if (firstId === undefined) return null;
 
     const queryDB = this.#queryEngine.toQueryDB();
-    const flattener = new ArenaQueryFlattener(queryDB);
+    const flattener = new ArenaQueryFlattener(queryDB, options);
     return flattener.flatten(firstId);
   }
 

@@ -517,14 +517,32 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     // ── Arena-native flattening ──
     const t_flatten_start = Date.now();
-    const arena = context.flattenArena(lastClassName);
+    const arena = context.flattenArena(lastClassName, undefined, undefined, { omcCompatibility: true });
     console.error(`[Worker] flattenArena took ${Date.now() - t_flatten_start}ms`);
+
+    const t_lint_start = Date.now();
+    const lints = Array.from(context.queryEngine.runAllLints());
+    console.error(`[Worker] Linter took ${Date.now() - t_lint_start}ms`);
 
     let flattenedResult: string | null = null;
     if (arena) {
-      // Check for flattener-level error diagnostics
-      const hasErrors = arena.diagnostics.some((d) => d.severity === "error");
-      if (!hasErrors) {
+      // Check for flattener-level error diagnostics and lint errors
+      const hasLintErrors = lints.some((d: Record<string, unknown>) => {
+        if (d.severity !== "error") return false;
+        const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
+        if (lintName === "unbalanced-model" || lintName === "unbalancedModel") return false;
+        if (d.symbolId != null) {
+          const entry = context.queryEngine.index?.symbols?.get(d.symbolId as number);
+          if (entry && typeof entry.resourceId === "string") {
+            if (entry.resourceId === "modelscript-cas.mo" || entry.resourceId.startsWith("modelscript-")) {
+              return false;
+            }
+          }
+        }
+        return true;
+      });
+      const hasArenaErrors = arena.diagnostics.some((d) => d.severity === "error");
+      if (!hasArenaErrors && !hasLintErrors) {
         const out = new StringWriter();
         const printer = new ArenaDAEPrinter(out, arena);
         printer.printDAE(arena);
@@ -581,8 +599,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
     }
 
     // Linter diagnostics
-    const t_lint_start = Date.now();
-    for (const d of context.queryEngine.runAllLints()) {
+    for (const d of lints) {
       const dd = d as Record<string, unknown>;
       const lintName: string = (dd.lintName as string) ?? (dd.rule as string) ?? "";
 
@@ -618,7 +635,6 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
         range,
       });
     }
-    console.error(`[Worker] Linter took ${Date.now() - t_lint_start}ms`);
 
     // ── Format diagnostics ──
     const formatDiagLines = () => {

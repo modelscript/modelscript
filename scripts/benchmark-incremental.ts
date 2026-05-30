@@ -22,6 +22,56 @@ const parser = new Parser();
 parser.setLanguage(Modelica);
 Context.registerParser(".mo", parser);
 
+function indexToPoint(text: string, index: number) {
+  let row = 0;
+  let lastNewline = -1;
+  for (let i = 0; i < index; i++) {
+    if (text[i] === "\n") {
+      row++;
+      lastNewline = i;
+    }
+  }
+  return { row, column: index - lastNewline - 1 };
+}
+
+function computeTreeEdit(oldText: string, newText: string) {
+  const minLen = Math.min(oldText.length, newText.length);
+  let prefixLen = 0;
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+    prefixLen++;
+  }
+  let oldSuffix = oldText.length;
+  let newSuffix = newText.length;
+  while (oldSuffix > prefixLen && newSuffix > prefixLen && oldText[oldSuffix - 1] === newText[newSuffix - 1]) {
+    oldSuffix--;
+    newSuffix--;
+  }
+  return {
+    startIndex: prefixLen,
+    oldEndIndex: oldSuffix,
+    newEndIndex: newSuffix,
+    startPosition: indexToPoint(oldText, prefixLen),
+    oldEndPosition: indexToPoint(oldText, oldSuffix),
+    newEndPosition: indexToPoint(newText, newSuffix),
+  };
+}
+
+function loadIncremental(ctx: Context, parser: any, oldText: string, newText: string, uri: string) {
+  const oldTree = (ctx as any)._trees.get(uri);
+  const edit = computeTreeEdit(oldText, newText);
+  oldTree.edit(edit);
+  const newTree = parser.parse(newText, oldTree);
+  (ctx as any)._trees.set(uri, newTree);
+  ctx.workspaceIndex.markDirty(uri, () => newTree.rootNode as any, [
+    {
+      startByte: edit.startIndex,
+      endByte: edit.newEndIndex,
+    },
+  ]);
+  const unified = ctx.workspaceIndex.toUnified();
+  ctx.queryEngine.updateIndex(unified);
+}
+
 function generateHeatConduction1D(n: number): string {
   let code = `model HeatConduction1D_${n}\n`;
   code += `  parameter Integer N = ${n};\n`;
@@ -48,11 +98,13 @@ function generateHeatConduction1D(n: number): string {
 }
 
 async function run() {
-  const Ns = [100, 1000, 5000]; // Limiting to 5000 to keep it interactive and prevent V8 limits
+  const Ns = [10, 100, 1000, 10000, 100000];
   const results = {
     n_equations: Ns,
     cold_start: [] as number[],
     incremental_lexical: [] as number[],
+    incremental_modifier: [] as number[],
+    incremental_equation: [] as number[],
     incremental_structural: [] as number[],
   };
 
@@ -65,26 +117,45 @@ async function run() {
     const ctx = new Context(new NodeFileSystem());
     const t0 = performance.now();
     ctx.load(sourceCode, "benchmark.mo");
-    ctx.flattenArena(className);
+    ctx.queryEngine.runAllLints("benchmark.mo");
     const coldStartTime = performance.now() - t0;
     results.cold_start.push(Math.round(coldStartTime));
     originalLog(`  Cold Start: ${Math.round(coldStartTime)} ms`);
 
-    // Lexical Mutation (change parameter L from 1.0 to 2.0)
-    const mutatedLexical = sourceCode.replace("parameter Real L = 1.0;", "parameter Real L = 2.0;");
+    // Lexical Mutation (rename parameter L to L_new)
+    let mutatedLexical = sourceCode.replace("parameter Real L = 1.0;", "parameter Real L_new = 1.0;");
+    mutatedLexical = mutatedLexical.replace(/ L /g, " L_new ");
     const t1 = performance.now();
-    ctx.load(mutatedLexical, "benchmark.mo");
-    ctx.flattenArena(className);
+    loadIncremental(ctx, parser, sourceCode, mutatedLexical, "benchmark.mo");
+    ctx.queryEngine.runAllLints("benchmark.mo");
     const lexicalTime = performance.now() - t1;
     results.incremental_lexical.push(Math.round(lexicalTime));
     originalLog(`  Lexical Mutation: ${Math.round(lexicalTime)} ms`);
 
-    // Structural Mutation (add cross-coupling algebraic loop: T[1] = T[N])
-    const mutatedStructural = mutatedLexical.replace("equation\n", "equation\n  T[1] = T[N]; // structural loop\n");
+    // Modifier Mutation (change start=zeros(N) to start=ones(N))
+    const mutatedModifier = mutatedLexical.replace("start=zeros(N)", "start=ones(N)");
     const t2 = performance.now();
-    ctx.load(mutatedStructural, "benchmark.mo");
-    ctx.flattenArena(className);
-    const structuralTime = performance.now() - t2;
+    loadIncremental(ctx, parser, mutatedLexical, mutatedModifier, "benchmark.mo");
+    ctx.queryEngine.runAllLints("benchmark.mo");
+    const modifierTime = performance.now() - t2;
+    results.incremental_modifier.push(Math.round(modifierTime));
+    originalLog(`  Modifier Mutation: ${Math.round(modifierTime)} ms`);
+
+    // Equation Mutation (change 100.0 to 200.0 in the first equation)
+    const mutatedEquation = mutatedModifier.replace("100.0 - 2.0*T[1]", "200.0 - 2.0*T[1]");
+    const t3 = performance.now();
+    loadIncremental(ctx, parser, mutatedModifier, mutatedEquation, "benchmark.mo");
+    ctx.queryEngine.runAllLints("benchmark.mo");
+    const equationTime = performance.now() - t3;
+    results.incremental_equation.push(Math.round(equationTime));
+    originalLog(`  Equation Mutation: ${Math.round(equationTime)} ms`);
+
+    // Structural Mutation (add cross-coupling algebraic loop: T[1] = T[N])
+    const mutatedStructural = mutatedEquation.replace("equation\n", "equation\n  T[1] = T[N]; // structural loop\n");
+    const t4 = performance.now();
+    loadIncremental(ctx, parser, mutatedEquation, mutatedStructural, "benchmark.mo");
+    ctx.queryEngine.runAllLints("benchmark.mo");
+    const structuralTime = performance.now() - t4;
     results.incremental_structural.push(Math.round(structuralTime));
     originalLog(`  Structural Mutation: ${Math.round(structuralTime)} ms`);
 

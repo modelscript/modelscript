@@ -1631,10 +1631,10 @@
           "members": [
             {
               "type": "FIELD",
-              "name": "connectClause",
+              "name": "connectEquation",
               "content": {
                 "type": "SYMBOL",
-                "name": "ConnectClause"
+                "name": "ConnectEquation"
               }
             },
             {
@@ -4062,43 +4062,6 @@
               "name": "_Statement"
             }
           }
-        }
-      ]
-    },
-    "ConnectClause": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "connect"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "componentReference1",
-          "content": {
-            "type": "SYMBOL",
-            "name": "ComponentReference"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ","
-        },
-        {
-          "type": "FIELD",
-          "name": "componentReference2",
-          "content": {
-            "type": "SYMBOL",
-            "name": "ComponentReference"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
         }
       ]
     },
