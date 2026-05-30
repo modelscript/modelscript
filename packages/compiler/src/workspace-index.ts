@@ -430,12 +430,12 @@ export class WorkspaceIndex {
       const parentsToFilter = new Set<SymbolId | null>();
 
       for (const dirtyUri of this.dirtyUris) {
-        // 1. Remove old entries for this file from the cache
-        const oldResourceIds = symbolsByResource.get(dirtyUri);
-        if (oldResourceIds) {
-          for (const id of oldResourceIds) toRemoveSet.add(id);
+        const changedIds = this.lastChangedIds.get(dirtyUri);
+        if (changedIds) {
+          for (const id of changedIds) {
+            toRemoveSet.add(id);
+          }
         }
-        symbolsByResource.delete(dirtyUri);
       }
 
       const t1 = performance.now();
@@ -478,34 +478,51 @@ export class WorkspaceIndex {
       const t4 = performance.now();
 
       for (const dirtyUri of this.dirtyUris) {
-        // 2. Merge new entries for this file
         const file = this.files.get(dirtyUri);
         if (!file || !file.index) continue;
 
-        for (const [id, entry] of file.index.symbols) {
+        const changedIds = this.lastChangedIds.get(dirtyUri);
+        if (!changedIds) continue;
+
+        // 2. Merge new entries for this file (ONLY the changed ones)
+        for (const id of changedIds) {
+          const entry = file.index.symbols.get(id);
+          if (!entry) continue; // Was deleted
+
           symbols.set(id, entry);
-        }
-        for (const [name, ids] of file.index.byName) {
-          const existing = byName.get(name);
-          if (existing) byName.set(name, [...existing, ...ids]);
-          else byName.set(name, [...ids]);
-        }
-        for (const [parentId, ids] of file.index.childrenOf) {
-          const existing = childrenOf.get(parentId ?? 0);
-          if (existing) {
-            childrenOf.set(parentId ?? 0, [...existing, ...ids]);
+
+          const name = entry.name;
+          const existingNameIds = byName.get(name);
+          if (existingNameIds) {
+            if (!existingNameIds.includes(id)) byName.set(name, [...existingNameIds, id]);
           } else {
-            childrenOf.set(parentId ?? 0, [...ids]);
+            byName.set(name, [id]);
+          }
+
+          const parentId = entry.parentId ?? 0;
+          const existingParentIds = childrenOf.get(parentId);
+          if (existingParentIds) {
+            if (!existingParentIds.includes(id)) childrenOf.set(parentId, [...existingParentIds, id]);
+          } else {
+            childrenOf.set(parentId, [id]);
           }
         }
 
-        // Update symbolsByResource
-        const newResourceIds: SymbolId[] = [];
-        for (const id of file.index.symbols.keys()) {
-          newResourceIds.push(id);
+        // Update symbolsByResource (remove the old deleted ids and add new ones)
+        const oldResourceIds = symbolsByResource.get(dirtyUri);
+        const resourceIdsSet = new Set(oldResourceIds || []);
+        for (const id of toRemoveSet) {
+          resourceIdsSet.delete(id);
         }
-        if (newResourceIds.length > 0) {
-          symbolsByResource.set(dirtyUri, newResourceIds);
+        for (const id of changedIds) {
+          if (file.index.symbols.has(id)) {
+            resourceIdsSet.add(id);
+          }
+        }
+        if (resourceIdsSet.size > 0) {
+          symbolsByResource.set(dirtyUri, Array.from(resourceIdsSet));
+        } else {
+          symbolsByResource.delete(dirtyUri);
         }
       }
 
