@@ -73,6 +73,8 @@ export interface SymbolIndex {
   childrenOf: IdTrieMap<SymbolId[]>;
   /** Resource URI → symbol IDs for fast per-file iteration. Optional — populated by workspace-level indices. */
   symbolsByResource?: StringTrieMap<SymbolId[]>;
+  /** Optional tracking of which IDs changed in the most recent update */
+  lastChangedIds?: Set<SymbolId>;
 }
 
 // ---------------------------------------------------------------------------

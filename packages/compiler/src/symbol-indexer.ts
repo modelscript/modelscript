@@ -121,7 +121,12 @@ export class SymbolIndexer {
 
     for (const [id, entry] of ctx.symbols.entries()) {
       const oldEntry = oldIndex.symbols.get(id);
-      if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
+      if (
+        !oldEntry ||
+        !this.entryEqual(oldEntry, entry) ||
+        oldEntry.startByte !== entry.startByte ||
+        oldEntry.endByte !== entry.endByte
+      ) {
         changedIds.add(id);
         if (!oldEntry) {
           invalidateParent(entry.parentId);
@@ -271,14 +276,20 @@ export class SymbolIndexer {
 
       if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
         ctx.symbols.set(id, entry);
+      } else if (oldEntry.startByte !== entry.startByte || oldEntry.endByte !== entry.endByte) {
+        ctx.symbols.set(id, entry);
+      } else {
+        ctx.symbols.set(id, oldEntry); // Structural sharing
       }
 
-      if (!oldEntry) {
-        const existing = ctx.byName.get(name);
+      const existing = ctx.byName.get(name);
+      if (!existing || !existing.includes(id)) {
         ctx.byName.set(name, existing ? [...existing, id] : [id]);
+      }
 
-        const pId = parentId ?? 0;
-        const siblings = ctx.childrenOf.get(pId);
+      const pId = parentId ?? 0;
+      const siblings = ctx.childrenOf.get(pId);
+      if (!siblings || !siblings.includes(id)) {
         ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
       }
 
@@ -426,23 +437,48 @@ export class SymbolIndexer {
   }
 
   private shiftSubtree(id: SymbolId, oldIndex: SymbolIndex, ctx: IndexContext, byteDelta: number) {
-    if (byteDelta === 0) return;
-    const oldEntry = ctx.symbols.get(id);
+    const oldEntry = oldIndex.symbols.get(id);
     if (!oldEntry) return;
 
-    const entry = { ...oldEntry };
-    entry.startByte += byteDelta;
-    entry.endByte += byteDelta;
-    if (entry.fieldRanges) {
-      entry.fieldRanges = { ...entry.fieldRanges };
-      for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
-        const range = rangeVal as { startByte: number; endByte: number };
-        entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
+    if (byteDelta === 0) {
+      ctx.symbols.set(id, oldEntry); // Structural sharing for the whole subtree
+
+      const name = oldEntry.name;
+      const existingNameIds = ctx.byName.get(name);
+      if (!existingNameIds || !existingNameIds.includes(id)) {
+        ctx.byName.set(name, existingNameIds ? [...existingNameIds, id] : [id]);
+      }
+
+      const pId = oldEntry.parentId ?? 0;
+      const siblings = ctx.childrenOf.get(pId);
+      if (!siblings || !siblings.includes(id)) {
+        ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
+      }
+    } else {
+      const entry = { ...oldEntry };
+      entry.startByte += byteDelta;
+      entry.endByte += byteDelta;
+      if (entry.fieldRanges) {
+        entry.fieldRanges = { ...entry.fieldRanges };
+        for (const [key, rangeVal] of Object.entries(entry.fieldRanges)) {
+          const range = rangeVal as { startByte: number; endByte: number };
+          entry.fieldRanges[key] = { startByte: range.startByte + byteDelta, endByte: range.endByte + byteDelta };
+        }
+      }
+      ctx.symbols.set(id, entry);
+
+      const name = entry.name;
+      const existingNameIds = ctx.byName.get(name);
+      if (!existingNameIds || !existingNameIds.includes(id)) {
+        ctx.byName.set(name, existingNameIds ? [...existingNameIds, id] : [id]);
+      }
+
+      const pId = entry.parentId ?? 0;
+      const siblings = ctx.childrenOf.get(pId);
+      if (!siblings || !siblings.includes(id)) {
+        ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
       }
     }
-
-    ctx.symbols.set(id, entry);
-
     const children = oldIndex.childrenOf.get(id);
     if (children) {
       for (const childId of children) {

@@ -424,6 +424,22 @@ app.get("/", (_req, res) => {
       <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14M8 8h8M8 16h8" stroke-linecap="round"/><path d="M19 12a3 3 0 11-6 0M16 8a3 3 0 11-6 0M16 16a3 3 0 11-6 0" stroke-linecap="round"/></svg></div>
       <span class="tpl-name">Drone CFD</span>
     </a>
+    <a href="/vscode/workbench/#memfs:simulation-verification" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 12l2 2 4-4M5 12a7 7 0 1114 0 7 7 0 01-14 0z"/></svg></div>
+      <span class="tpl-name">Simulation Verification</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:multi-fidelity-binding" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <span class="tpl-name">Multi-Fidelity Binding</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:data-driven-calibration" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18M7 14l4-4 4 4 6-6"/></svg></div>
+      <span class="tpl-name">Data-Driven Calibration</span>
+    </a>
+    <a href="/vscode/workbench/#memfs:hardware-ci" class="tpl-card">
+      <div class="tpl-icon"><svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <span class="tpl-name">Hardware CI</span>
+    </a>
   </div>
 </div>
 <script>

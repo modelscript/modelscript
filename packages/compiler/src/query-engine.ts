@@ -321,6 +321,12 @@ export class QueryEngine {
    * Bumps the revision and records input changes for new/modified symbols.
    */
   updateIndex(newIndex: SymbolIndex): void {
+    if (newIndex.lastChangedIds) {
+      this.index = newIndex;
+      this.invalidate(newIndex.lastChangedIds);
+      return;
+    }
+
     this.currentRevision++;
 
     let hasNewSymbols = false;

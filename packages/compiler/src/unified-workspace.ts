@@ -194,6 +194,10 @@ export class UnifiedWorkspace {
       }
     }
 
+    if (changedOtherLangs.length > 0) {
+      baseIndex.lastChangedIds = undefined;
+    }
+
     this.mergeOWL2Synthetics(baseIndex.symbols, baseIndex.byName, baseIndex.childrenOf);
     this.partialCache = baseIndex;
     return baseIndex;
