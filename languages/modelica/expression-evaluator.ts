@@ -287,7 +287,7 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
     } else if (arrayArg && typeof arrayArg === "object" && "id" in arrayArg) {
       const entry = arrayArg as SymbolEntry;
       dims = db.query<number[] | null>("resolvedArrayDimensions", entry.id);
-      console.error(`[DEBUG EVAL SIZE] entry=${entry.name} dims=${dims}`);
+      // console.error(`[DEBUG EVAL SIZE] entry=${entry.name} dims=${dims}`);
     }
 
     if (dims && dims.length > 0) {
@@ -296,12 +296,12 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
       } else if (args.length === 2 && typeof args[1] === "number") {
         const dimIndex = args[1] - 1; // 1-based index
         if (dimIndex >= 0 && dimIndex < dims.length) {
-          console.error(`[DEBUG EVAL SIZE RETURN] returning ${dims[dimIndex]}`);
+          // console.error(`[DEBUG EVAL SIZE RETURN] returning ${dims[dimIndex]}`);
           return dims[dimIndex];
         }
       }
     }
-    console.error(`[DEBUG EVAL SIZE FAIL] name=${name} arrayArg=${JSON.stringify(arrayArg)}`);
+    // console.error(`[DEBUG EVAL SIZE FAIL] name=${name} arrayArg=${JSON.stringify(arrayArg)}`);
   }
 
   return null;

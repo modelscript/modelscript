@@ -134,6 +134,7 @@ export class ArenaExprVisitor {
     private db?: QueryDB,
     private scopeId?: SymbolId,
     localIterators?: Set<string>,
+    private resolveOuter?: (path: string) => string | null,
   ) {
     this.loopVars = loopVars ?? new Map();
     this.localIterators = localIterators ?? new Set();
@@ -141,9 +142,13 @@ export class ArenaExprVisitor {
 
   /** Apply the name prefix to a path, unless it's a built-in or already qualified. */
   private prefixName(path: string): string {
-    console.error(`[DEBUG PREFIX] path=${path} namePrefix=${this.namePrefix}`);
-    if (!this.namePrefix || BUILTIN_NAMES.has(path) || this.localIterators.has(path)) return path;
-    return `${this.namePrefix}.${path}`;
+    if (BUILTIN_NAMES.has(path) || this.localIterators.has(path)) return path;
+    const fullPath = this.namePrefix ? `${this.namePrefix}.${path}` : path;
+    if (this.resolveOuter) {
+      const resolved = this.resolveOuter(fullPath);
+      if (resolved !== null) return resolved;
+    }
+    return fullPath;
   }
 
   public visit(node: unknown, allowTuple = false): number | undefined {
@@ -1349,7 +1354,7 @@ export class ArenaExprVisitor {
     }
 
     const varType = inferArenaExprVarType(this.dae, exprId);
-    if (varType === VarType.Integer || varType === null) {
+    if (varType === VarType.Integer) {
       return this.dae.addCallExpr("/*Real*/", [exprId]);
     }
 
@@ -1391,8 +1396,6 @@ export class ArenaExprVisitor {
    * Returns a literal expression ID if inlining succeeds, undefined otherwise.
    */
   private tryInlineFunctionCall(funcName: string, argIds: number[]): number | undefined {
-    console.error(`[DEBUG INLINE TRY] funcName=${funcName}`);
-
     // Look up the function sub-DAE
     const funcNameId = this.dae.interner.intern(funcName);
     const fnDae = this.dae.functions.get(funcNameId);
@@ -1424,11 +1427,8 @@ export class ArenaExprVisitor {
     const outType = outVar ? fnDae.getVarType(outVar.idx) : undefined;
 
     // Evaluate function using the new evaluateArenaFunctionCall
-    const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues);
+    const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues, this.db, this.scopeId);
     if (outVal === null) {
-      console.error(
-        `[DEBUG INLINE FAIL] evaluateArenaFunctionCall returned null for funcName=${funcName}, argValues=${JSON.stringify(argValues)}`,
-      );
       return undefined;
     }
 

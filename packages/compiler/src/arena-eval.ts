@@ -133,9 +133,6 @@ export function evaluateArenaExpression(
       }
 
       const vIdx = dae.getVarIdxByName(name);
-      console.error(
-        `[DEBUG ARENA EVAL NAME] name=${name} vIdx=${vIdx} hasArray=${dae.hasArrayElements(name)} varib=${vIdx >= 0 ? dae.getVarVariability(vIdx) : "N/A"}`,
-      );
       if (vIdx < 0 && dae.hasArrayElements(name)) {
         const elements = dae.getArrayElementIndices(name);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -228,9 +225,6 @@ export function evaluateArenaExpression(
               const mod = db.query<any | null>("effectiveModification", resolved.id);
               if (mod && mod.bindingExpression) {
                 const val = db.evaluate(mod.bindingExpression, resolved.parentId);
-                console.error(
-                  `[DEBUG EVAL NAME] name=${name} val=${JSON.stringify(val)} binding=${JSON.stringify(mod.bindingExpression)}`,
-                );
                 if (val !== null && val !== undefined) {
                   return val as ArenaValue;
                 }
@@ -401,23 +395,21 @@ export function evaluateArenaExpression(
       // If the argument is a variable name, we can inspect the DAE for its array dimensions.
       if ((funcName === "size" || funcName === "ndims") && argCount >= 1) {
         const firstArgId = argIds[0];
-        console.error(
-          `[DEBUG ARENA EVAL CALL] firstArgId=${firstArgId} kind=${firstArgId !== undefined ? dae.getExprKind(firstArgId) : -1}`,
-        );
+        // debug
         if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Name) {
           const varName = dae.interner.resolve(dae.getExprData1(firstArgId));
-          console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
+          // console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
           if (varName) {
             let shape: number[] | null = null;
             const varIdx = dae.getVarIdxByName(varName);
-            console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
+            // console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
             if (varIdx >= 0) {
               const varShape = dae.getVarShape(varIdx);
-              console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
+              // console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
               if (varShape && varShape.length > 0) shape = varShape;
             } else if (dae.hasArrayElements(varName)) {
               const elements = dae.getArrayElementIndices(varName);
-              console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
+              // console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
               if (elements.length > 0) {
                 const lastIdx = elements[elements.length - 1];
                 if (lastIdx !== undefined) {
@@ -459,7 +451,7 @@ export function evaluateArenaExpression(
           if (firstElementId >= 0 && dae.getExprKind(firstElementId) === ExprKind.ArrayCtor) {
             shape.push(dae.getExprData1(firstElementId));
           }
-          console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
+          // console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
           if (funcName === "ndims") return shape.length;
           if (funcName === "size") {
             if (argCount === 1) return shape;
@@ -475,7 +467,7 @@ export function evaluateArenaExpression(
                 onlyConstants,
                 functionLookup,
               );
-              console.error(`[DEBUG SIZE] dim=${dim}`);
+              // console.error(`[DEBUG SIZE] dim=${dim}`);
               if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                 return shape[dim - 1] ?? null;
               }
@@ -648,6 +640,6 @@ export function evaluateArenaExpression(
     }
   }
 
-  console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
+  // console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
   return null;
 }

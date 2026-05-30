@@ -22,6 +22,7 @@ export default defineConfig([
             "scripts/generate-ast.ts",
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",
+            "scripts/benchmark-incremental.ts",
             "apps/docs/docs/.vitepress/config.ts",
             "apps/docs/docs/.vitepress/theme/index.ts",
             "languages/example/src/language.ts",

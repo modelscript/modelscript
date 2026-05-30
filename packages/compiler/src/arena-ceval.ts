@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { evaluateArenaExpression, type ArenaValue } from "./arena-eval.js";
-import { ArenaDAEBuilder, ExprKind, StmtKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, ExprKind, StmtKind, VarType } from "./dae-arena.js";
+import type { QueryDB, SymbolId } from "./index.js";
 
 const MAX_WHILE_ITERATIONS = 10_000;
 const MAX_FOR_ITERATIONS = 100_000;
@@ -54,6 +55,8 @@ export function executeArenaCEvalStatements(
   stmtCount: number,
   env: Map<string, ArenaValue>,
   functionLookup?: (funcNameId: number, args: ArenaValue[]) => ArenaValue | null,
+  db?: QueryDB,
+  scopeId?: SymbolId,
 ): void {
   let i = startStmtIdx;
   const endIdx = startStmtIdx + stmtCount;
@@ -70,16 +73,7 @@ export function executeArenaCEvalStatements(
       case StmtKind.Assignment: {
         const targetExprId = data1;
         const sourceExprId = left;
-        const value = evaluateArenaExpression(
-          arena,
-          sourceExprId,
-          env,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          functionLookup,
-        );
+        const value = evaluateArenaExpression(arena, sourceExprId, env, db, scopeId, undefined, false, functionLookup);
         if (value === null) break;
 
         const targetKind = arena.getExprKind(targetExprId);
@@ -97,16 +91,7 @@ export function executeArenaCEvalStatements(
             const idxIds = getSequenceElements(arena, currentExprId, idxCount, firstIdx);
             const currentSubscripts: number[] = [];
             for (const id of idxIds) {
-              const val = evaluateArenaExpression(
-                arena,
-                id,
-                env,
-                undefined,
-                undefined,
-                undefined,
-                false,
-                functionLookup,
-              );
+              const val = evaluateArenaExpression(arena, id, env, db, scopeId, undefined, false, functionLookup);
               if (typeof val !== "number") {
                 ok = false;
                 break;
@@ -117,7 +102,7 @@ export function executeArenaCEvalStatements(
             if (!ok) break;
             currentExprId = arena.getExprData1(currentExprId);
           }
-          console.error(`[DEBUG BUBBLESORT] ok=${ok} finalExprKind=${arena.getExprKind(currentExprId)}`);
+          // console.error(`[DEBUG BUBBLESORT] ok=${ok} finalExprKind=${arena.getExprKind(currentExprId)}`);
           if (!ok) break;
           if (arena.getExprKind(currentExprId) === ExprKind.Name) {
             const baseName = arena.interner.resolve(arena.getExprData1(currentExprId));
@@ -125,13 +110,12 @@ export function executeArenaCEvalStatements(
               const currentArr = env.get(baseName) ?? [];
               const updatedArr = updateNestedArray(currentArr, subscripts, value);
               env.set(baseName, updatedArr);
-              if (baseName === "y")
-                console.error(
-                  `[DEBUG BUBBLESORT] Updated y[${subscripts.join(",")}] = ${value} -> ${JSON.stringify(updatedArr)}`,
-                );
+              if (baseName === "y") {
+                // debug
+              }
             }
           } else {
-            console.error(`[DEBUG BUBBLESORT] Subscript base is not Name! kind=${arena.getExprKind(currentExprId)}`);
+            // console.error(`[DEBUG BUBBLESORT] Subscript base is not Name! kind=${arena.getExprKind(currentExprId)}`);
           }
         }
         break;
@@ -150,8 +134,8 @@ export function executeArenaCEvalStatements(
           arena,
           rangeExprId,
           env,
-          undefined,
-          undefined,
+          db,
+          scopeId,
           undefined,
           false,
           functionLookup,
@@ -166,7 +150,7 @@ export function executeArenaCEvalStatements(
             if (++iterCount > MAX_FOR_ITERATIONS) break;
             env.set(indexName, v);
             try {
-              executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup);
+              executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup, db, scopeId);
             } catch (e) {
               if (e === ArenaCEvalBreakSignal) break;
               throw e;
@@ -194,15 +178,15 @@ export function executeArenaCEvalStatements(
             arena,
             condExprId,
             env,
-            undefined,
-            undefined,
+            db,
+            scopeId,
             undefined,
             false,
             functionLookup,
           );
           if (condVal !== true) break;
           try {
-            executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup);
+            executeArenaCEvalStatements(arena, i + 1, bodyStmtCount, env, functionLookup, db, scopeId);
           } catch (e) {
             if (e === ArenaCEvalBreakSignal) break;
             throw e;
@@ -219,20 +203,11 @@ export function executeArenaCEvalStatements(
         const blockStartIdx = i + 1;
         nextIdx = blockStartIdx + thenStmtCount;
 
-        const condVal = evaluateArenaExpression(
-          arena,
-          condExprId,
-          env,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          functionLookup,
-        );
+        const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
         let executed = false;
 
         if (condVal === true) {
-          executeArenaCEvalStatements(arena, blockStartIdx, thenStmtCount, env, functionLookup);
+          executeArenaCEvalStatements(arena, blockStartIdx, thenStmtCount, env, functionLookup, db, scopeId);
           executed = true;
         }
 
@@ -248,7 +223,7 @@ export function executeArenaCEvalStatements(
           if (!executed && branchKind === StmtKind.Block) {
             if (branchCondExprId === -1) {
               // else block
-              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup);
+              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup, db, scopeId);
               executed = true;
             } else {
               // else if block
@@ -256,14 +231,22 @@ export function executeArenaCEvalStatements(
                 arena,
                 branchCondExprId,
                 env,
-                undefined,
-                undefined,
+                db,
+                scopeId,
                 undefined,
                 false,
                 functionLookup,
               );
               if (elseIfCondVal === true) {
-                executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup);
+                executeArenaCEvalStatements(
+                  arena,
+                  branchStmtIdx + 1,
+                  branchStmtCount,
+                  env,
+                  functionLookup,
+                  db,
+                  scopeId,
+                );
                 executed = true;
               }
             }
@@ -280,20 +263,11 @@ export function executeArenaCEvalStatements(
         const blockStartIdx = i + 1;
         nextIdx = blockStartIdx + bodyStmtCount;
 
-        const condVal = evaluateArenaExpression(
-          arena,
-          condExprId,
-          env,
-          undefined,
-          undefined,
-          undefined,
-          false,
-          functionLookup,
-        );
+        const condVal = evaluateArenaExpression(arena, condExprId, env, db, scopeId, undefined, false, functionLookup);
         let executed = false;
 
         if (condVal === true) {
-          executeArenaCEvalStatements(arena, blockStartIdx, bodyStmtCount, env, functionLookup);
+          executeArenaCEvalStatements(arena, blockStartIdx, bodyStmtCount, env, functionLookup, db, scopeId);
           executed = true;
         }
 
@@ -309,14 +283,14 @@ export function executeArenaCEvalStatements(
               arena,
               branchCondExprId,
               env,
-              undefined,
-              undefined,
+              db,
+              scopeId,
               undefined,
               false,
               functionLookup,
             );
             if (elseWhenCondVal === true) {
-              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup);
+              executeArenaCEvalStatements(arena, branchStmtIdx + 1, branchStmtCount, env, functionLookup, db, scopeId);
               executed = true;
             }
           }
@@ -343,8 +317,8 @@ export function executeArenaCEvalStatements(
               arena,
               firstArg,
               env,
-              undefined,
-              undefined,
+              db,
+              scopeId,
               undefined,
               false,
               functionLookup,
@@ -353,16 +327,7 @@ export function executeArenaCEvalStatements(
             for (let a = 1; a < numArgs; a++) {
               const tupleExprId = firstArg + a;
               const argExprId = arena.getExprLeft(tupleExprId);
-              const val = evaluateArenaExpression(
-                arena,
-                argExprId,
-                env,
-                undefined,
-                undefined,
-                undefined,
-                false,
-                functionLookup,
-              );
+              const val = evaluateArenaExpression(arena, argExprId, env, db, scopeId, undefined, false, functionLookup);
               if (val !== null) argValues.push(val);
             }
           }
@@ -385,8 +350,8 @@ export function executeArenaCEvalStatements(
             arena,
             sourceExprId,
             env,
-            undefined,
-            undefined,
+            db,
+            scopeId,
             undefined,
             false,
             functionLookup,
@@ -406,8 +371,8 @@ export function executeArenaCEvalStatements(
               arena,
               firstArg,
               env,
-              undefined,
-              undefined,
+              db,
+              scopeId,
               undefined,
               false,
               functionLookup,
@@ -416,16 +381,7 @@ export function executeArenaCEvalStatements(
             for (let a = 1; a < numArgs; a++) {
               const tupleExprId = firstArg + a;
               const argExprId = arena.getExprLeft(tupleExprId);
-              const val = evaluateArenaExpression(
-                arena,
-                argExprId,
-                env,
-                undefined,
-                undefined,
-                undefined,
-                false,
-                functionLookup,
-              );
+              const val = evaluateArenaExpression(arena, argExprId, env, db, scopeId, undefined, false, functionLookup);
               if (val !== null) argValues.push(val);
             }
           }
@@ -465,6 +421,8 @@ export function evaluateArenaFunctionCall(
   dae: ArenaDAEBuilder,
   funcNameId: number,
   argValues: ArenaValue[],
+  db?: QueryDB,
+  scopeId?: SymbolId,
 ): ArenaValue | null {
   const funcArena = dae.functions.get(funcNameId);
   if (!funcArena) return null;
@@ -481,7 +439,7 @@ export function evaluateArenaFunctionCall(
       const funcName = funcArena.interner.resolve(fid);
       if (!funcName) return null;
       const rootFid = dae.interner.intern(funcName);
-      return evaluateArenaFunctionCall(dae, rootFid, args);
+      return evaluateArenaFunctionCall(dae, rootFid, args, db, scopeId);
     };
 
     const outputs: string[] = [];
@@ -494,6 +452,11 @@ export function evaluateArenaFunctionCall(
       const name = funcArena.getVarName(i);
       const startExprId = funcArena.getVarExpression(i) as number | undefined;
 
+      let defaultVal: ArenaValue = 0;
+      const type = funcArena.getVarType(i);
+      if (type === VarType.Boolean) defaultVal = false;
+      else if (type === VarType.String) defaultVal = "";
+
       if (causality === 1 /* Input */) {
         const val = argValues[argIndex];
         if (val !== undefined) {
@@ -501,52 +464,23 @@ export function evaluateArenaFunctionCall(
         } else if (typeof startExprId === "number" && startExprId !== -1) {
           env.set(
             name,
-            evaluateArenaExpression(
-              funcArena,
-              startExprId,
-              env,
-              undefined,
-              undefined,
-              undefined,
-              false,
-              functionLookup,
-            ) ?? 0,
+            evaluateArenaExpression(funcArena, startExprId, env, db, scopeId, undefined, false, functionLookup) ??
+              defaultVal,
           );
+        } else {
+          env.set(name, defaultVal);
         }
         argIndex++;
-      } else if (causality === 2 /* Output */) {
-        outputs.push(name);
-        if (typeof startExprId === "number" && startExprId !== -1) {
-          env.set(
-            name,
-            evaluateArenaExpression(
-              funcArena,
-              startExprId,
-              env,
-              undefined,
-              undefined,
-              undefined,
-              false,
-              functionLookup,
-            ) ?? 0,
-          );
-        }
       } else {
-        // Local/protected variable
+        if (causality === 2 /* Output */) outputs.push(name);
         if (typeof startExprId === "number" && startExprId !== -1) {
           env.set(
             name,
-            evaluateArenaExpression(
-              funcArena,
-              startExprId,
-              env,
-              undefined,
-              undefined,
-              undefined,
-              false,
-              functionLookup,
-            ) ?? 0,
+            evaluateArenaExpression(funcArena, startExprId, env, db, scopeId, undefined, false, functionLookup) ??
+              defaultVal,
           );
+        } else {
+          env.set(name, defaultVal);
         }
       }
     }
@@ -554,7 +488,7 @@ export function evaluateArenaFunctionCall(
     // Execute algorithms
     for (const section of funcArena.algorithmSections) {
       try {
-        executeArenaCEvalStatements(funcArena, section.start, section.count, env, functionLookup);
+        executeArenaCEvalStatements(funcArena, section.start, section.count, env, functionLookup, db, scopeId);
       } catch (e) {
         if (e === ArenaCEvalReturnSignal) break;
         throw e;

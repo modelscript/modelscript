@@ -203,7 +203,7 @@ export enum StmtKind {
   If = 3,
   /** When statement: data1 = condition ExprId, left = body stmt count, right = elsewhen block count. */
   When = 4,
-  /** Return: no data fields used. */
+  /** Return statement. */
   Return = 5,
   /** Break: no data fields used. */
   Break = 6,
@@ -434,6 +434,11 @@ export class ArenaDAEBuilder {
   private varStartAttrs = new Map<number, unknown>();
   /** Whether each variable has `fixed=true` (for consistent initialization). */
   private varFixedFlags = new Set<number>();
+
+  /** Collected annotations to be emitted at the end of the equation section. */
+  equationAnnotations: string[] = [];
+  /** Collected annotations to be emitted at the end of the algorithm section. */
+  algorithmAnnotations: string[] = [];
 
   // ── O(1) Secondary Indices (Wave 0) ──
 

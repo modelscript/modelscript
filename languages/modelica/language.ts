@@ -41,7 +41,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/compiler";
-import { isBroken, type ModelicaModArgs } from "./modification-args.js";
+import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modification-args.js";
 
 export function parseModArgsFromCst(node: any, scopeId: number | null = null): any {
   const args: any[] = [];
@@ -59,14 +59,33 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       const nameRange = nameNode ? ([nameNode.startIndex, nameNode.endIndex] as const) : undefined;
       const nested = parseModArgsFromCst(modNode, scopeId);
 
+      const parts = name.split(".");
+      let currentNested = nested;
+      for (let i = parts.length - 1; i > 0; i--) {
+        currentNested = {
+          args: [
+            {
+              name: parts[i],
+              each: false,
+              final: false,
+              isRedeclaration: false,
+              nestedArgs: currentNested.args,
+              value: currentNested.bindingExpression,
+              evaluationScopeId: scopeId,
+            },
+          ],
+          bindingExpression: null,
+        };
+      }
+
       args.push({
-        name,
+        name: parts[0],
         nameRange,
         each: !!eachNode,
         final: !!finalNode,
         isRedeclaration: false,
-        nestedArgs: nested.args,
-        value: nested.bindingExpression,
+        nestedArgs: currentNested.args,
+        value: currentNested.bindingExpression,
         evaluationScopeId: scopeId,
       });
       return;
@@ -96,23 +115,29 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           evaluationScopeId: scopeId,
         });
       } else {
-        const shortClass = n.childForFieldName("shortClassDefinition");
-        if (shortClass) {
-          const ident = shortClass.childForFieldName("identifier");
-          const typeSpec = shortClass.childForFieldName("typeSpecifier");
-          const name = ident ? ident.text : "";
-          const typeName = typeSpec ? typeSpec.text : "";
+        const classDef = n.childForFieldName("classDefinition");
+        if (classDef) {
+          const shortClass = classDef.childForFieldName("classSpecifier");
+          if (shortClass) {
+            const ident = shortClass.childForFieldName("identifier");
+            const typeSpec = shortClass.childForFieldName("typeSpecifier");
+            const name = ident ? ident.text : "";
+            const typeName = typeSpec ? typeSpec.text : "";
 
-          args.push({
-            name,
-            each: false,
-            final: false,
-            isRedeclaration: true,
-            redeclaredTypeSpecifier: typeName,
-            nestedArgs: [],
-            value: null,
-            evaluationScopeId: scopeId,
-          });
+            const modNode = shortClass.childForFieldName("classModification");
+            const nested = parseModArgsFromCst(modNode, scopeId);
+
+            args.push({
+              name,
+              each: false,
+              final: false,
+              isRedeclaration: true,
+              redeclaredTypeSpecifier: typeName,
+              nestedArgs: nested.args,
+              value: nested.bindingExpression,
+              evaluationScopeId: scopeId,
+            });
+          }
         }
       }
       return;
@@ -159,7 +184,12 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
     if (expr) bindingExpression = { kind: "expression", cstBytes: [expr.startIndex, expr.endIndex], text: expr.text };
   }
 
-  return { args, bindingExpression, evaluationScopeId: scopeId };
+  let finalMod: ModelicaModArgs = { args: [], bindingExpression, evaluationScopeId: scopeId };
+  for (const arg of args) {
+    finalMod = mergeModArgs({ args: [arg], bindingExpression: null, evaluationScopeId: scopeId }, finalMod);
+  }
+
+  return finalMod;
 }
 
 const BUILTIN_MODELICA_NAMES = new Set([
@@ -3752,6 +3782,7 @@ export default language({
           attributes: {
             modification: self.declaration.modification,
             description: self.description,
+            conditionAttribute: self.conditionAttribute.condition,
             typeSpecifier: (self as any).parent.typeSpecifier,
             causality: (self as any).parent.causality,
             variability: (self as any).parent.variability,
@@ -3960,7 +3991,7 @@ export default language({
           isInner: (db: QueryDB, self: SymbolEntry) => {
             let current = db.cstNode(self.id) as any;
             while (current && current.type !== "ComponentClause") current = current.parent;
-            return !!current?.childForFieldName("inner");
+            return current?.text.match(/\binner\b/) !== null;
           },
 
           isReplaceable: (db: QueryDB, self: SymbolEntry) => {

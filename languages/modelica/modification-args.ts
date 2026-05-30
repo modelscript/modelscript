@@ -310,7 +310,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
   return {
     args: [...merged.values()],
     bindingExpression: outer.bindingExpression ?? inner.bindingExpression,
-    isRedeclaration: outer.isRedeclaration ?? inner.isRedeclaration,
+    isRedeclaration: outer.isRedeclaration || inner.isRedeclaration,
     redeclaredTypeSpecifier: outer.redeclaredTypeSpecifier ?? inner.redeclaredTypeSpecifier,
     evaluationScopeId: outer.evaluationScopeId ?? inner.evaluationScopeId,
   };

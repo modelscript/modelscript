@@ -255,6 +255,25 @@ export class ArenaQueryFlattener {
   /** Set of connection texts (e.g. "prefix:connect(c1,c2)") that have been broken by modifications. */
   private brokenConnections = new Set<string>();
 
+  /** Map from fully-qualified outer component path -> fully-qualified inner component path. */
+  private outerAliasMap = new Map<string, string>();
+
+  private resolveOuter = (path: string): string | null => {
+    let resolved = path;
+    if (this.outerAliasMap.has(resolved)) {
+      resolved = this.outerAliasMap.get(resolved)!;
+    } else {
+      for (const [alias, real] of this.outerAliasMap.entries()) {
+        if (resolved.startsWith(alias + ".")) {
+          const newResolved = real + resolved.substring(alias.length);
+          resolved = newResolved;
+          break;
+        }
+      }
+    }
+    return resolved !== path ? resolved : null;
+  };
+
   constructor(private db: QueryDB) {}
 
   /**
@@ -648,8 +667,10 @@ export class ArenaQueryFlattener {
           const lhsRef = this.serializeRef(lhs);
           const rhsRef = this.serializeRef(rhs);
           if (lhsRef && rhsRef) {
-            const lhsName = prefix ? `${prefix}.${lhsRef}` : lhsRef;
-            const rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
+            let lhsName = prefix ? `${prefix}.${lhsRef}` : lhsRef;
+            let rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
+            lhsName = this.resolveOuter(lhsName) ?? lhsName;
+            rhsName = this.resolveOuter(rhsName) ?? rhsName;
             const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhsName));
             const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhsName));
             dae.addEquation(EqKind.Connect, lhsId, rhsId);
@@ -1194,10 +1215,11 @@ export class ArenaQueryFlattener {
     // skip emitting it — the matching `inner` in an enclosing scope provides the variable.
     const isOuter = this.db.query<boolean>("isOuter", entry.id);
     const isInner = this.db.query<boolean>("isInner", entry.id);
-    if (isOuter && !isInner) {
+    if (isOuter) {
       // Search the active class hierarchy for a matching `inner` component
       let hasInner = false;
-      for (let i = this.activeClassStack.length - 1; i >= 0; i--) {
+      let foundInnerPrefix = "";
+      for (let i = this.activeClassStack.length - 2; i >= 0; i--) {
         const ancestor = this.activeClassStack[i]!;
         const ancestorChildren = this.db.childrenOf(ancestor.classId);
         for (const child of ancestorChildren) {
@@ -1205,13 +1227,19 @@ export class ArenaQueryFlattener {
             const childIsInner = this.db.query<boolean>("isInner", child.id);
             if (childIsInner) {
               hasInner = true;
+              foundInnerPrefix = ancestor.prefix;
               break;
             }
           }
         }
         if (hasInner) break;
       }
-      if (hasInner) return; // Skip — the `inner` declaration provides this variable
+
+      if (hasInner) {
+        const resolvedPath = foundInnerPrefix ? `${foundInnerPrefix}.${entry.name}` : entry.name;
+        this.outerAliasMap.set(fullName, resolvedPath);
+        if (!isInner) return; // Skip
+      }
     }
 
     // Resolve the type specifier using the classInstance query.
@@ -3573,11 +3601,18 @@ export class ArenaQueryFlattener {
 
     if (!from || !to) return;
 
-    const fullFrom = prefix ? `${prefix}.${from}` : from;
-    const fullTo = prefix ? `${prefix}.${to}` : to;
+    let fullFrom = prefix ? `${prefix}.${from}` : from;
+    let fullTo = prefix ? `${prefix}.${to}` : to;
 
-    const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(fullFrom));
-    const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(fullTo));
+    const resolvedFrom = this.resolveOuter(fullFrom) ?? fullFrom;
+    const resolvedTo = this.resolveOuter(fullTo) ?? fullTo;
+
+    console.error(
+      `[DEBUG recordConnection] prefix='${prefix}', from='${from}', to='${to}' -> resolvedFrom='${resolvedFrom}', resolvedTo='${resolvedTo}'`,
+    );
+
+    const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedFrom));
+    const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(resolvedTo));
     dae.addEquation(EqKind.Connect, lhsId, rhsId);
   }
 
@@ -3841,6 +3876,8 @@ export class ArenaQueryFlattener {
       namePrefix,
       this.db,
       scopeId,
+      undefined,
+      this.resolveOuter,
     );
   }
 

@@ -112,7 +112,7 @@ export class Context extends BaseContext {
         if (!entry || !entry.resourceId) return null;
         const tree = this.#trees.get(entry.resourceId);
         if (!tree) return null;
-        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte));
       },
     };
 

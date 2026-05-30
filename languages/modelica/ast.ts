@@ -44,6 +44,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
     startIndex: number;
     endIndex: number;
   } | null;
+  nodeText?: string;
 
   constructor(
     parent: ModelicaSyntaxNode | null,
@@ -68,6 +69,7 @@ export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
         startIndex: concreteSyntaxNode.startIndex,
         endIndex: concreteSyntaxNode.endIndex,
       };
+      this.nodeText = concreteSyntaxNode.text;
     } else {
       this.sourceRange = null;
     }

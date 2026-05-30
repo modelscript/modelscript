@@ -89,6 +89,8 @@ export class ArenaDAEPrinter {
       case ExprKind.EnumLiteral:
         return 10;
       case ExprKind.Name:
+      case ExprKind.Call:
+      case ExprKind.Der:
         return 20;
       case ExprKind.Binary:
       case ExprKind.Unary:
@@ -115,6 +117,8 @@ export class ArenaDAEPrinter {
         return a.getExprData1(id) !== 0 ? "true" : "false";
       case ExprKind.StringLiteral:
         return a.interner.resolve(a.getExprData1(id)) ?? "";
+      case ExprKind.Der:
+        return `der(${this.getExprStringFallback(a.getExprData1(id))})`;
       default:
         return "";
     }
@@ -772,7 +776,7 @@ export class ArenaDAEPrinter {
     if (desc) this.out.write(' "' + desc + '"');
 
     const cad = a.getVarCadAnnotation(idx);
-    if (cad) this.out.write(" annotation(" + cad + ")");
+    if (cad) this.out.write(" annotation" + cad);
 
     this.out.write(";\n");
   }
@@ -1115,6 +1119,13 @@ export class ArenaDAEPrinter {
       }
     }
 
+    if (dae.equationAnnotations.length > 0) {
+      if (!hasEq) {
+        this.out.write("equation\n");
+      }
+      this.out.write(this.indent() + "annotation(" + dae.equationAnnotations.join(", ") + ");\n");
+    }
+
     // Algorithms
     for (const sec of dae.algorithmSections) {
       if (sec.count > 0) {
@@ -1123,6 +1134,13 @@ export class ArenaDAEPrinter {
         const end = sec.start + sec.count;
         while (idx < end) idx = this.printStmt(idx);
       }
+    }
+
+    if (dae.algorithmAnnotations.length > 0) {
+      if (dae.algorithmSections.length === 0) {
+        this.out.write("algorithm\n");
+      }
+      this.out.write(this.indent() + "annotation(" + dae.algorithmAnnotations.join(", ") + ");\n");
     }
 
     this.out.write("end " + dae.name + ";\n");
@@ -1180,6 +1198,20 @@ export class ArenaDAEPrinter {
         const end = sec.start + sec.count;
         while (idx < end) idx = this.printStmt(idx);
       }
+    }
+
+    if (fn.equationAnnotations.length > 0) {
+      if (!hasEq) {
+        this.out.write("equation\n");
+      }
+      this.out.write(this.indent() + "annotation(" + fn.equationAnnotations.join(", ") + ");\n");
+    }
+
+    if (fn.algorithmAnnotations.length > 0) {
+      if (fn.algorithmSections.length === 0) {
+        this.out.write("algorithm\n");
+      }
+      this.out.write(this.indent() + "annotation(" + fn.algorithmAnnotations.join(", ") + ");\n");
     }
 
     if (fn.externalDecl) this.out.write("\n  " + fn.externalDecl + "\n");
