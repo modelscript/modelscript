@@ -629,22 +629,13 @@ export class QueryEngine {
 
     for (const id of cacheDirtySet) {
       const entry = this.index.symbols.get(id);
-      if (!entry) continue;
-      if (resourceId && entry.resourceId !== resourceId) continue;
-
-      symbolsToRelint.push([id, entry]);
-    }
-
-    // Clear dirty bits for the symbols we are about to process
-    for (const id of cacheDirtySet) {
-      const entry = this.index.symbols.get(id);
       if (!entry) {
         cacheDirtySet.delete(id);
         continue;
       }
-      if (!resourceId || entry.resourceId === resourceId) {
-        cacheDirtySet.delete(id);
-      }
+      if (resourceId && entry.resourceId !== resourceId) continue;
+
+      symbolsToRelint.push([id, entry]);
     }
 
     // ── Viewport prioritization ───────────────────────────────────────────
@@ -712,6 +703,9 @@ export class QueryEngine {
       perSymbolCache.set(id, symbolDiags);
       diagnostics.push(...symbolDiags);
 
+      // Successfully linted, remove from dirty set
+      cacheDirtySet.delete(id);
+
       chunkCount++;
       if (yieldFn && chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         cpuTime += performance.now() - lastTime;
@@ -722,6 +716,12 @@ export class QueryEngine {
         lastYieldStart = performance.now();
 
         if (isStale) {
+          // Merge cached results for symbols we DID NOT process yet so they aren't lost
+          // from the display entirely while the user keeps typing.
+          for (const id of validCachedIds) {
+            const cached = perSymbolCache.get(id);
+            if (cached && cached.length > 0) diagnostics.push(...cached);
+          }
           return diagnostics;
         }
       }

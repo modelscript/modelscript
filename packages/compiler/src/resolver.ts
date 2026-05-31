@@ -54,6 +54,12 @@ export class ScopeResolver {
     >
   >();
 
+  /**
+   * Per-resource set of symbol IDs that need to be re-resolved.
+   * This retains its state if an incremental resolution run is aborted.
+   */
+  private dirtyRefSymbols = new Map<string, Set<SymbolId>>();
+
   /** Set of symbol IDs that changed since the last resolution.
    * Updated externally via `setChangedIds()`.
    */
@@ -74,6 +80,11 @@ export class ScopeResolver {
    */
   setChangedIds(ids: Set<SymbolId> | null): void {
     this.changedIds = ids;
+    if (ids && ids.size > 0) {
+      for (const dirtySet of this.dirtyRefSymbols.values()) {
+        for (const id of ids) dirtySet.add(id);
+      }
+    }
   }
 
   /**
@@ -361,9 +372,14 @@ export class ScopeResolver {
     // ── Incremental caching ───────────────────────────────────────────────
     const cacheKey = resourceId ?? "__all__";
     let perSymbolCache = this.refCache.get(cacheKey);
-    if (!perSymbolCache) {
+    let dirtySet = this.dirtyRefSymbols.get(cacheKey);
+
+    if (!perSymbolCache || !dirtySet) {
       perSymbolCache = new Map();
       this.refCache.set(cacheKey, perSymbolCache);
+
+      dirtySet = new Set(allEntries.map((e) => e.id));
+      this.dirtyRefSymbols.set(cacheKey, dirtySet);
     }
 
     // Determine which entries need re-resolution vs cached
@@ -382,19 +398,17 @@ export class ScopeResolver {
       if (this.implicitNames.has(name)) continue;
 
       // Check if this entry is affected by changes and needs re-resolution
-      if (this.changedIds && perSymbolCache.has(entry.id)) {
-        // Only re-resolve if this entry or its parent is in the changed set
-        const needsResolve =
-          this.changedIds.has(entry.id) || (entry.parentId !== null && this.changedIds.has(entry.parentId));
-        if (!needsResolve) {
-          cachedEntryIds.add(entry.id);
-          const cached = perSymbolCache.get(entry.id);
-          if (cached) {
-            cached.startByte = entry.startByte;
-            cached.endByte = entry.endByte;
-          }
-          continue;
+      // It needs resolution if it is in the dirty set, OR if its parent is in the dirty set.
+      const needsResolve = dirtySet.has(entry.id) || (entry.parentId !== null && dirtySet.has(entry.parentId));
+
+      if (!needsResolve && perSymbolCache.has(entry.id)) {
+        cachedEntryIds.add(entry.id);
+        const cached = perSymbolCache.get(entry.id);
+        if (cached) {
+          cached.startByte = entry.startByte;
+          cached.endByte = entry.endByte;
         }
+        continue;
       }
 
       entriesToResolve.push(entry);
@@ -410,7 +424,15 @@ export class ScopeResolver {
       if (yieldFn && ++chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         const isStale = await yieldFn();
         lastYieldStart = performance.now();
-        if (isStale) return diagnostics;
+        if (isStale) {
+          // Merge cached results for symbols we DID NOT process yet so they aren't lost
+          // from the display entirely while the user keeps typing.
+          for (const id of cachedEntryIds) {
+            const cached = perSymbolCache.get(id);
+            if (cached) diagnostics.push(cached);
+          }
+          return diagnostics;
+        }
       }
 
       const hook = this.refHooksByRule.get(entry.ruleName)!;
@@ -423,16 +445,19 @@ export class ScopeResolver {
 
       if (lenientResolved.length > 0) {
         perSymbolCache.set(entry.id, null);
+        dirtySet.delete(entry.id);
         continue;
       }
 
       if (this.resolveViaMemberType(name, entry.parentId)) {
         perSymbolCache.set(entry.id, null);
+        dirtySet.delete(entry.id);
         continue;
       }
 
       if (this.resolveViaFeatureChain(name, entry)) {
         perSymbolCache.set(entry.id, null);
+        dirtySet.delete(entry.id);
         continue;
       }
 
@@ -447,6 +472,9 @@ export class ScopeResolver {
       };
       perSymbolCache.set(entry.id, diag);
       diagnostics.push(diag);
+
+      // Successfully processed, remove from dirty set
+      dirtySet.delete(entry.id);
     }
 
     // Merge cached results from unchanged entries
