@@ -2241,6 +2241,7 @@ export default language({
           },
           /** Nested when-statements are not allowed */
           nestedWhen: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
@@ -2279,6 +2280,7 @@ export default language({
           },
           /** Detect literal division by zero */
           divisionByZero: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
 
@@ -2326,6 +2328,7 @@ export default language({
           },
           /** Assignment to constant Variables */
           assignmentToConstant: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
 
@@ -2616,6 +2619,7 @@ export default language({
           },
 
           classBodyTypeChecks: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
 
@@ -2643,6 +2647,7 @@ export default language({
           },
           /** Tuple expressions can only be used in assignments/equations */
           tupleExpressionContext: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
 
@@ -2804,6 +2809,7 @@ export default language({
            * in its algorithm body. Helps catch unused parameter bugs.
            */
           unusedInputVariable: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const meta = self.metadata as Record<string, unknown>;
             const prefix = meta?.classPrefixes as string | undefined;
             if (prefix !== "function") return null;
@@ -2952,6 +2958,7 @@ export default language({
            * cannot be resolved in the enclosing scope.
            */
           nameNotFound: (db: QueryDB, self: SymbolEntry) => {
+            if (db.childrenOf(self.id).length > 1000) return null;
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
@@ -4781,6 +4788,7 @@ export default language({
            * e.g. `F x;` where F doesn't exist in scope.
            */
           unresolvedTypeSpecifier: (db: QueryDB, self: SymbolEntry) => {
+            if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
             const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
@@ -4819,6 +4827,7 @@ export default language({
            * e.g. `class A  A a; end A;` — A contains itself.
            */
           recursiveDefinition: (db: QueryDB, self: SymbolEntry) => {
+            if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
             const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
@@ -4847,6 +4856,7 @@ export default language({
            * e.g. `X x = 1;` where X is a record with members.
            */
           typeMismatch: (db: QueryDB, self: SymbolEntry) => {
+            if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
             const typeName = db.query<string | null>("typeSpecifier", self.id);
             if (!typeName) return null;
 
@@ -5027,6 +5037,7 @@ export default language({
            * e.g. `Real[2] x = {1,2,3};` — declared size 2 but 3 elements.
            */
           arrayShapeMismatch: (db: QueryDB, self: SymbolEntry) => {
+            if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
             // Get declared dimensions via query
@@ -5181,6 +5192,7 @@ export default language({
            * e.g. `constant Real x = y;` where y doesn't exist in scope.
            */
           unresolvedReference: (db: QueryDB, self: SymbolEntry) => {
+            if (self.parentId !== null && db.childrenOf(self.parentId).length > 1000) return null;
             type CSTNode = import("@modelscript/compiler/symbol-indexer").CSTNode;
 
             // Get the CST node
@@ -6196,7 +6208,7 @@ export default language({
     ComponentReference: ($) =>
       ref({
         syntax: seq(optional(field("global", ".")), commaSep1(field("part", $.ComponentReferencePart), ".")),
-        name: (self) => self.part,
+        name: () => "$self" as any,
         targetKinds: ["Component", "Class"],
         resolve: "qualified",
       }),
@@ -6213,6 +6225,7 @@ export default language({
         model: {
           name: "FunctionCall",
         },
+        symbol: (self) => ({ kind: "FunctionCall" }),
         i18n: {
           extract: (db, self) => {
             const funcRef = self.childForFieldName("functionReference");

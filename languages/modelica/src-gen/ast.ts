@@ -809,7 +809,7 @@ export class ConnectEquation extends SemanticNode {
 }
 
 export class FunctionCall extends SemanticNode {
-  readonly kind = "Unknown";
+  readonly kind = "FunctionCall";
 
   // --- CST Fields ---
   /** Field: functionReference */
@@ -862,6 +862,8 @@ export function wrapEntry(entry: SymbolEntry, db: QueryDB): SemanticNode {
       return new ComponentDeclaration(entry, db);
     case "ConnectEquation":
       return new ConnectEquation(entry, db);
+    case "FunctionCall":
+      return new FunctionCall(entry, db);
     default:
       return new GenericNode(entry, db);
   }

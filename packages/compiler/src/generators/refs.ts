@@ -60,7 +60,11 @@ function collectRefNodes(node: any, ruleName: string, hooks: RefHookInfo[]): voi
     if (opts.name) {
       const self = createSelfProxy();
       const accessor = opts.name(self);
-      namePath = extractScopePath(accessor);
+      if (typeof accessor === "string" && accessor === "$self") {
+        namePath = "$self";
+      } else {
+        namePath = extractScopePath(accessor);
+      }
     }
 
     hooks.push({

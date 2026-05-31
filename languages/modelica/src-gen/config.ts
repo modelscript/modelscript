@@ -101,14 +101,14 @@ export const INDEXER_HOOKS: IndexerHook[] = [
   {
     ruleName: "ComponentReference",
     kind: "Reference",
-    namePath: "part",
+    namePath: "$self",
     exportPaths: [],
     inheritPaths: [],
     metadataFieldPaths: {},
   },
   {
     ruleName: "FunctionCall",
-    kind: "Unknown",
+    kind: "FunctionCall",
     namePath: "name",
     exportPaths: [],
     inheritPaths: [],
@@ -131,7 +131,7 @@ export const REF_HOOKS: RefHook[] = [
   },
   {
     ruleName: "ComponentReference",
-    namePath: "part",
+    namePath: "$self",
     targetKinds: ["Component", "Class"],
     resolve: "qualified",
   },

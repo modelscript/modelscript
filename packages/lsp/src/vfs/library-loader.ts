@@ -272,7 +272,7 @@ export async function loadDependencyFromRegistry(
 
   try {
     const db = await openMSLCache();
-    const cacheKey = `lsp-bundle:dep:${label}`;
+    const cacheKey = `lsp-bundle:dep:v3:${label}`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let cached = await idbGet<any>(db, cacheKey);

@@ -557,6 +557,7 @@ export class SymbolIndexer {
    * against a CST node by following Tree-Sitter's field accessors.
    */
   private resolveFieldPath(node: CSTNode, fieldPath: string): CSTNode | null {
+    if (!fieldPath || fieldPath === "$self") return node;
     const parts = fieldPath.split(".");
     let current: CSTNode | null = node;
 

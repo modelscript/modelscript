@@ -76,11 +76,15 @@ export function generateFmuWasmSource(
 
 function varToC(name: string): string {
   if (name === "time") return "g_time";
-  const derMatch = name.match(/^der\((.+)\)$/);
-  if (derMatch) {
-    return `der_${sanitizeIdentifier(derMatch[1] ?? "")}`;
-  }
-  return `v_${sanitizeIdentifier(name)}`;
+
+  const isDer = name.startsWith("der(");
+  const isPre = name.startsWith("pre(");
+  let baseName = name;
+  if (isDer) baseName = name.slice(4, -1);
+  else if (isPre) baseName = name.slice(4, -1);
+
+  if (isDer) return `der_${sanitizeIdentifier(baseName)}`;
+  return `v_${sanitizeIdentifier(baseName)}`;
 }
 
 function exprToC(dae: ArenaDAEBuilder, id: number): string {
@@ -133,6 +137,8 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
       const els = exprToC(dae, dae.getExprRight(id));
       return `(${cond} ? ${then} : ${els})`;
     }
+    case ExprKind.Pre:
+      return exprToC(dae, dae.getExprData1(id));
     default:
       return "0.0";
   }
@@ -144,7 +150,11 @@ function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
   if (id < 0) return "0.0";
   if (dae.getExprKind(id) === ExprKind.Binary) {
     const op = dae.getExprData1(id) as BinOp;
-    if (op === BinOp.Lt || op === BinOp.Lte || op === BinOp.Gt || op === BinOp.Gte) {
+    if (op === BinOp.Lt || op === BinOp.Lte) {
+      const lhs = exprToC(dae, dae.getExprLeft(id));
+      const rhs = exprToC(dae, dae.getExprRight(id));
+      return `(${rhs}) - (${lhs})`;
+    } else if (op === BinOp.Gt || op === BinOp.Gte) {
       const lhs = exprToC(dae, dae.getExprLeft(id));
       const rhs = exprToC(dae, dae.getExprRight(id));
       return `(${lhs}) - (${rhs})`;
@@ -194,9 +204,11 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
       break;
     case ExprKind.Unary:
     case ExprKind.Negate:
+      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      break;
     case ExprKind.Der:
     case ExprKind.Pre:
-      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      collectReferencedNames(dae, dae.getExprData1(id), names);
       break;
     case ExprKind.Subscript: {
       collectReferencedNames(dae, dae.getExprData1(id), names);
@@ -475,6 +487,38 @@ function generateWasmC(
   }
 
   if (whenEqIdxs.length > 0) {
+    // Collect referenced variable names for local alias emission
+    const refNames = new Set<string>();
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+      collectReferencedNames(dae, weq.conditionExprId, refNames);
+      for (const eq of weq.bodyEquations) {
+        collectReferencedNames(dae, eq.rhsExprId, refNames);
+        if (dae.getExprKind(eq.lhsExprId) === ExprKind.Call) {
+          collectReferencedNames(dae, dae.getExprLeft(eq.lhsExprId + 1), refNames); // arg1 of reinit
+        }
+      }
+      for (const clause of weq.elseWhenClauses) {
+        collectReferencedNames(dae, clause.conditionExprId, refNames);
+        for (const eq of clause.bodyEquations) {
+          collectReferencedNames(dae, eq.rhsExprId, refNames);
+          if (dae.getExprKind(eq.lhsExprId) === ExprKind.Call) {
+            collectReferencedNames(dae, dae.getExprLeft(eq.lhsExprId + 1), refNames);
+          }
+        }
+      }
+    }
+
+    // Local aliases for referenced variables (read from g_vars[])
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      if (!refNames.has(sv.name)) continue;
+      const cName = varToC(sv.name);
+      L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
+    }
+    L.push("");
+
     let whenIdx = 0;
     for (const eqIdx of whenEqIdxs) {
       const weq = dae.getWhenEquationMeta(eqIdx);

@@ -554,12 +554,26 @@ export class ScopeResolver {
     // 2. Preceding sibling references (Modelica style, e.g., TypeSpecifier preceding ComponentDeclaration)
     let precedingRefs: SymbolEntry[] = [];
     if (parent.parentId) {
-      precedingRefs = this.findRefChildren(parent.parentId)
-        .filter((s) => s.id !== parent.id && s.endByte <= parent.startByte)
-        .sort((a, b) => b.endByte - a.endByte);
+      const childIds = this.index.childrenOf.get(parent.parentId);
+      if (childIds) {
+        for (const childId of childIds) {
+          if (childId === parent.id) continue;
+          const s = this.index.symbols.get(childId);
+          if (s && this.refHooksByRule.has(s.ruleName) && s.endByte <= parent.startByte) {
+            precedingRefs.push(s);
+          }
+        }
+        precedingRefs.sort((a, b) => b.endByte - a.endByte);
+      }
     }
 
-    const refsToCheck = [...childRefs];
+    const refsToCheck: SymbolEntry[] = [];
+    for (const s of childRefs) {
+      const hook = this.refHooksByRule.get(s.ruleName);
+      if (hook && hook.targetKinds && (hook.targetKinds.includes("Class") || hook.targetKinds.includes("Type"))) {
+        refsToCheck.push(s);
+      }
+    }
 
     // To maintain performance, only take the closest preceding siblings that are likely type specifiers
     // We filter for those that target "Class" or "Type" and limit to the first 3 to handle complex array subscripts
@@ -609,11 +623,22 @@ export class ScopeResolver {
   private resolveViaFeatureChain(name: string, entry: SymbolEntry): boolean {
     if (entry.parentId === null) return false;
 
-    // Find sibling reference entries under the same parent,
-    // that appear BEFORE this entry in the source text
-    const siblings = this.findRefChildren(entry.parentId)
-      .filter((s) => s.id !== entry.id && s.endByte <= entry.startByte)
-      .sort((a, b) => b.startByte - a.startByte); // closest first
+    let closestRef: SymbolEntry | null = null;
+    const childIds = this.index.childrenOf.get(entry.parentId);
+    if (childIds) {
+      for (const childId of childIds) {
+        if (childId === entry.id) continue;
+        const s = this.index.symbols.get(childId);
+        if (s && this.refHooksByRule.has(s.ruleName) && s.endByte <= entry.startByte) {
+          if (!closestRef || s.startByte > closestRef.startByte) {
+            closestRef = s;
+          }
+        }
+      }
+    }
+
+    if (!closestRef) return false;
+    const siblings = [closestRef];
 
     // Only check the MOST RECENT sibling reference.
     // Checking all previous siblings is O(N) and causes massive slowdowns

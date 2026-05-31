@@ -82,7 +82,11 @@ function collectIndexerHooks(node: any, ruleName: string, hooks: IndexerHook[]):
     if (opts.name) {
       const self = createSelfProxy();
       const accessor = opts.name(self);
-      namePath = extractScopePath(accessor);
+      if (typeof accessor === "string" && accessor === "$self") {
+        namePath = "$self";
+      } else {
+        namePath = extractScopePath(accessor);
+      }
     }
     hooks.push({
       ruleName,

@@ -1,5 +1,5 @@
 /* eslint-disable */
-// grammar-hash: ecc54a3f
+// grammar-hash: f71a9480
 // ──────────────────────────────────────────────────────────────────────────────
 // AUTO-GENERATED — do not edit manually.
 // Generated from grammar.json by scripts/generate-ast.ts
