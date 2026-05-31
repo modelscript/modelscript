@@ -225,6 +225,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
       if (wasmResult.error) {
         console.error(`WASM simulation error: ${wasmResult.error}`);
+        if (args.timing) profiler.report();
         return;
       }
 

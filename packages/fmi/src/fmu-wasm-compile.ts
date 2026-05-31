@@ -88,6 +88,8 @@ export async function compileToWasm(
       `-sEXPORTED_FUNCTIONS="[${exportList}]"`,
       `-sEXPORTED_RUNTIME_METHODS="['ccall','cwrap','getValue','setValue']"`,
       "-sALLOW_MEMORY_GROWTH=1",
+      "-sINITIAL_MEMORY=268435456",
+      "-sMAXIMUM_MEMORY=1073741824",
       "-lm",
       "-o",
       outputJsPath,
