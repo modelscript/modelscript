@@ -100,7 +100,14 @@ function generateModelAs(id: string, nVars: number, nStates: number, dae: ArenaD
   lines.push(`export let modelTime: f64 = 0.0;`);
   lines.push(`export let isInitPhase: boolean = true;`);
   lines.push(`export let terminate: boolean = false;`);
-  lines.push("");
+  lines.push(`export let h: f64 = 1e-6;`);
+  lines.push(``);
+  for (let i = 0; i < 7; i++) {
+    lines.push(`const k${i}: Float64Array = new Float64Array(${nStates + 1});`);
+  }
+  lines.push(`const yTemp: Float64Array = new Float64Array(${nStates + 1});`);
+  lines.push(`const yNew: Float64Array = new Float64Array(${nStates + 1});`);
+  lines.push(``);
 
   lines.push("export function initModel(): void {");
   lines.push("  isInitPhase = true;");
@@ -153,15 +160,83 @@ function generateModelAs(id: string, nVars: number, nStates: number, dae: ArenaD
 
   lines.push("export function doStep(currentCommunicationPoint: f64, communicationStepSize: f64): void {");
   lines.push("  isInitPhase = false;");
-  lines.push("  modelTime = currentCommunicationPoint;");
-  lines.push("  let dt: f64 = communicationStepSize;");
+  lines.push("  let t: f64 = currentCommunicationPoint;");
+  lines.push("  let tEnd: f64 = t + communicationStepSize;");
   lines.push("  ");
-  lines.push("  // Basic explicit forward Euler step in AssemblyScript");
-  lines.push("  getDerivatives();");
+  lines.push("  while (t < tEnd - 1e-15) {");
+  lines.push("    if (t + h > tEnd) h = tEnd - t;");
+  lines.push("    if (h < 1e-15) break;");
+  lines.push("    ");
+  lines.push("    modelTime = t;");
+  lines.push("    getDerivatives();");
   for (let i = 0; i < stateVRs.length; i++) {
-    lines.push(`  vars[${stateVRs[i]}] = vars[${stateVRs[i]}] + derivatives[${i}] * dt;`);
+    lines.push(`    k0[${i}] = derivatives[${i}];`);
   }
-  lines.push("  modelTime += dt;");
+
+  const A = [
+    [],
+    [1.0 / 5.0],
+    [3.0 / 40.0, 9.0 / 40.0],
+    [44.0 / 45.0, -56.0 / 15.0, 32.0 / 9.0],
+    [19372.0 / 6561.0, -25360.0 / 2187.0, 64448.0 / 6561.0, -212.0 / 729.0],
+    [9017.0 / 3168.0, -355.0 / 33.0, 46732.0 / 5247.0, 49.0 / 176.0, -5103.0 / 18656.0],
+    [35.0 / 384.0, 0.0, 500.0 / 1113.0, 125.0 / 192.0, -2187.0 / 6784.0, 11.0 / 84.0],
+  ];
+  const C = [0.0, 1.0 / 5.0, 3.0 / 10.0, 4.0 / 5.0, 8.0 / 9.0, 1.0, 1.0];
+  const B5 = [35.0 / 384.0, 0.0, 500.0 / 1113.0, 125.0 / 192.0, -2187.0 / 6784.0, 11.0 / 84.0, 0.0];
+  const B4 = [5179.0 / 57600.0, 0.0, 7571.0 / 16695.0, 393.0 / 640.0, -92097.0 / 339200.0, 187.0 / 2100.0, 1.0 / 40.0];
+
+  for (let s = 1; s < 7; s++) {
+    for (let i = 0; i < stateVRs.length; i++) {
+      let sum = `vars[${stateVRs[i]}]`;
+      const As = A[s] as number[];
+      for (let j = 0; j < As.length; j++) {
+        if (As[j] !== 0) sum += ` + h * ${As[j]} * k${j}[${i}]`;
+      }
+      lines.push(`    yTemp[${i}] = ${sum};`);
+    }
+    for (let i = 0; i < stateVRs.length; i++) {
+      lines.push(`    vars[${stateVRs[i]}] = yTemp[${i}];`);
+    }
+    lines.push(`    modelTime = t + ${C[s]} * h;`);
+    lines.push(`    getDerivatives();`);
+    for (let i = 0; i < stateVRs.length; i++) {
+      lines.push(`    k${s}[${i}] = derivatives[${i}];`);
+    }
+  }
+
+  lines.push("    let err: f64 = 0.0;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    let y5 = `vars[${stateVRs[i]}]`;
+    for (let s = 0; s < 7; s++) {
+      if (B5[s] !== 0) y5 += ` + h * ${B5[s]} * k${s}[${i}]`;
+    }
+    lines.push(`    yNew[${i}] = ${y5};`);
+
+    let errI = `0.0`;
+    for (let s = 0; s < 7; s++) {
+      const e_s = (B5[s] as number) - (B4[s] as number);
+      if (e_s !== 0) errI += ` + h * ${e_s} * k${s}[${i}]`;
+    }
+    lines.push(`    let errI_${i}: f64 = ${errI};`);
+    lines.push(`    let sc_${i}: f64 = 1e-6 + 1e-6 * Math.max(Math.abs(vars[${stateVRs[i]}]), Math.abs(yNew[${i}]));`);
+    lines.push(`    err = Math.max(err, Math.abs(errI_${i}) / sc_${i});`);
+  }
+
+  lines.push("    if (err <= 1.0) {");
+  lines.push("      t += h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    lines.push(`      vars[${stateVRs[i]}] = yNew[${i}];`);
+  }
+  lines.push("      let factor: f64 = err > 0.0 ? Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(err, -0.2))) : 5.0;");
+  lines.push("      h = Math.min(h * factor, communicationStepSize);");
+  lines.push("    } else {");
+  lines.push("      let factor: f64 = Math.max(0.2, 0.9 * Math.pow(err, -0.2));");
+  lines.push("      h = h * factor;");
+  lines.push("    }");
+  lines.push("  }"); // end while
+
+  lines.push("  modelTime = tEnd;");
   lines.push("  getDerivatives();");
   lines.push("}");
   lines.push("");
