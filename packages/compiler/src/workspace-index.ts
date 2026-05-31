@@ -492,7 +492,6 @@ export class WorkspaceIndex {
           parentsToFilter.add(entry.parentId);
           symbols.delete(id);
         }
-        childrenOf.delete(id ?? 0);
       }
 
       const t2 = performance.now();
