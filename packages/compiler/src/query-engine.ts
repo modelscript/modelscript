@@ -317,7 +317,7 @@ export class QueryEngine {
    *
    * @param changedSymbolIds - IDs of symbols that were added, removed, or modified.
    */
-  invalidate(changedSymbolIds: Set<SymbolId>): void {
+  invalidate(changedSymbolIds: Set<SymbolId>, allChangedIds?: Set<SymbolId>): void {
     this.currentRevision++;
 
     for (const id of changedSymbolIds) {
@@ -374,7 +374,8 @@ export class QueryEngine {
     for (const key of dirtyMemos) {
       dirtySet.add(this.symbolIdFromKey(key));
     }
-    for (const id of changedSymbolIds) {
+    const fullDirtySet = allChangedIds ? allChangedIds : changedSymbolIds;
+    for (const id of fullDirtySet) {
       dirtySet.add(id);
     }
 
@@ -499,9 +500,13 @@ export class QueryEngine {
    * @param newIndex - The new SymbolIndex to use.
    * @param changedSymbolIds - IDs of symbols that were added, removed, or modified.
    */
-  swapIndex(newIndex: SymbolIndex, changedSymbolIds: Set<SymbolId>): void {
+  swapIndex(newIndex: SymbolIndex, changedSymbolIds: Set<SymbolId>, structuralChangedIds?: Set<SymbolId>): void {
     this.index = newIndex;
-    this.invalidate(changedSymbolIds);
+    if (structuralChangedIds) {
+      this.invalidate(structuralChangedIds, changedSymbolIds);
+    } else {
+      this.invalidate(changedSymbolIds);
+    }
   }
 
   // =========================================================================

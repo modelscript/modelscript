@@ -1025,6 +1025,7 @@ export class ValidationService {
 
       const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
       changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
+      const structuralChangedIds = changedIdsObj ? changedIdsObj.structuralChangedIds : null;
       const engineNeedsUpdate = textChanged || (changedIds && changedIds.size > 0);
 
       if (engineNeedsUpdate) {
@@ -1057,7 +1058,11 @@ export class ValidationService {
           );
           step1T = performance.now();
           if (changedIds && typeof this.workspaceManager.globalModelicaQueryEngine.swapIndex === "function") {
-            this.workspaceManager.globalModelicaQueryEngine.swapIndex(unifiedIndex, changedIds);
+            this.workspaceManager.globalModelicaQueryEngine.swapIndex(
+              unifiedIndex,
+              changedIds,
+              structuralChangedIds || undefined,
+            );
             this.connection.console.info(`[perf] Step 1.3 (swapIndex): ${(performance.now() - step1T).toFixed(2)}ms`);
           } else {
             this.workspaceManager.globalModelicaQueryEngine.updateIndex(unifiedIndex);
