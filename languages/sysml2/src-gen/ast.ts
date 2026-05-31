@@ -3,6 +3,7 @@
 // Language: sysml2
 // =============================================================================
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { QueryDB, SpecializationArgs, SymbolEntry } from "@modelscript/compiler";
 import { GenericNode, SemanticNode, type SemanticVisitor } from "@modelscript/compiler";
 

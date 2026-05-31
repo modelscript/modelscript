@@ -414,14 +414,21 @@ export class ValidationService {
         // Register/update in OWL2 workspace index
         if (textChanged) {
           let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+          let totalDelta = 0;
           const lastText = this.lastIndexedText.get(textDocument.uri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+            totalDelta = edit.newEndIndex - edit.oldEndIndex;
           }
 
           if (this.workspaceManager.owl2WorkspaceIndex.has(textDocument.uri)) {
-            this.workspaceManager.owl2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+            this.workspaceManager.owl2WorkspaceIndex.markDirty(
+              textDocument.uri,
+              () => tree.rootNode,
+              editRanges,
+              totalDelta,
+            );
           } else {
             this.workspaceManager.owl2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
           }
@@ -645,14 +652,21 @@ export class ValidationService {
         // Register/update in SysML2 workspace index
         if (textChanged) {
           let editRanges: Array<{ startByte: number; endByte: number }> | undefined;
+          let totalDelta = 0;
           const lastText = this.lastIndexedText.get(textDocument.uri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+            totalDelta = edit.newEndIndex - edit.oldEndIndex;
           }
 
           if (this.workspaceManager.sysml2WorkspaceIndex.has(textDocument.uri)) {
-            this.workspaceManager.sysml2WorkspaceIndex.markDirty(textDocument.uri, () => tree.rootNode, editRanges);
+            this.workspaceManager.sysml2WorkspaceIndex.markDirty(
+              textDocument.uri,
+              () => tree.rootNode,
+              editRanges,
+              totalDelta,
+            );
           } else {
             this.workspaceManager.sysml2WorkspaceIndex.register(textDocument.uri, () => tree.rootNode);
           }
