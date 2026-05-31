@@ -2081,7 +2081,6 @@ export class ArenaQueryFlattener {
       if (wrapperFunc === "der") elemLhsId = dae.addDerExpr(elemLhsId);
       else if (wrapperFunc === "pre") elemLhsId = dae.addPreExpr(elemLhsId);
       else if (wrapperFunc) elemLhsId = dae.addCallExpr(wrapperFunc, [elemLhsId]);
-      console.error(`[DEBUG addScalarizedEquation] Adding equation ${elemVarName} = rhsId ${elemRhsId}`);
       dae.addEquation(eqKind, elemLhsId, elemRhsId);
     }
   }
@@ -2724,6 +2723,47 @@ export class ArenaQueryFlattener {
     funcName: string,
     scopeId?: number,
   ): { name: string; type: VarType | null; variability: Variability; classInstanceId?: number }[] {
+    // Built-in functions have polymorphic or special signatures, skip resolving them in DB
+    if (
+      funcName === "abs" ||
+      funcName === "sqrt" ||
+      funcName === "sin" ||
+      funcName === "cos" ||
+      funcName === "tan" ||
+      funcName === "exp" ||
+      funcName === "log" ||
+      funcName === "log10" ||
+      funcName === "asin" ||
+      funcName === "acos" ||
+      funcName === "atan" ||
+      funcName === "atan2" ||
+      funcName === "sinh" ||
+      funcName === "cosh" ||
+      funcName === "tanh" ||
+      funcName === "max" ||
+      funcName === "min" ||
+      funcName === "mod" ||
+      funcName === "rem" ||
+      funcName === "ceil" ||
+      funcName === "floor" ||
+      funcName === "div" ||
+      funcName === "sign" ||
+      funcName === "smooth" ||
+      funcName === "noEvent" ||
+      funcName === "sum" ||
+      funcName === "product" ||
+      funcName === "integer" ||
+      funcName === "Integer" ||
+      funcName === "Real" ||
+      funcName === "Boolean" ||
+      funcName === "String" ||
+      funcName === "size" ||
+      funcName === "ndims" ||
+      funcName === "cardinality"
+    ) {
+      return [];
+    }
+
     const parts = funcName.split(".");
     let currentId: number | undefined = scopeId;
 
@@ -2780,7 +2820,6 @@ export class ArenaQueryFlattener {
 
     const funcEntry = this.db.symbol(currentId);
     if (funcEntry?.kind !== "Class") {
-      console.error(`DEBUG resolveFunctionInputs: kind ${funcEntry?.kind} not Class for ${funcName}`);
       return [];
     }
     const elements = this.db.query<number[]>("instantiate", currentId);
@@ -3964,12 +4003,7 @@ export class ArenaQueryFlattener {
               }
             }
           }
-          visitor.validateFunctionCallArgs(
-            funcName,
-            argIds,
-            stmt.sourceRange ?? null,
-            stmt.functionCallArguments?.arguments,
-          );
+          visitor.validateFunctionCallArgs(funcName, argIds, stmt.sourceRange ?? null);
           const callExprId = dae.addCallExpr(funcName, argIds);
           dae.addProcedureCallStmt(callExprId);
         }
@@ -3996,12 +4030,7 @@ export class ArenaQueryFlattener {
               }
             }
           }
-          visitor.validateFunctionCallArgs(
-            funcName,
-            argIds,
-            stmt.sourceRange ?? null,
-            stmt.functionCallArguments?.arguments,
-          );
+          visitor.validateFunctionCallArgs(funcName, argIds, stmt.sourceRange ?? null);
           const callExprId = dae.addCallExpr(funcName, argIds);
           // Extract target expression IDs from the output list
           const targets: number[] = [];

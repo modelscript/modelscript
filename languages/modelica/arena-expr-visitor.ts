@@ -1342,7 +1342,7 @@ expected type:
           const result = def.fold1(val);
           if (!Number.isFinite(result)) return undefined;
           // Type-preserving functions (abs, sign): Integer in → Integer out
-          if (def.preserveIntegerType && this.dae.getExprKind(argId) === ExprKind.IntLiteral) {
+          if (def.preserveIntegerType && this.inferType(argId) === VarType.Integer) {
             return this.dae.addIntLiteral(result);
           }
           if (def.outputType === "Integer") return this.dae.addIntLiteral(result);
@@ -1361,8 +1361,9 @@ expected type:
         if (a !== null && b !== null) {
           const result = def.fold2(a, b);
           if (!Number.isFinite(result)) return undefined;
-          const bothInt =
-            this.dae.getExprKind(arg0) === ExprKind.IntLiteral && this.dae.getExprKind(arg1) === ExprKind.IntLiteral;
+          const arg0Type = this.inferType(arg0);
+          const arg1Type = this.inferType(arg1);
+          const bothInt = arg0Type === VarType.Integer && arg1Type === VarType.Integer;
           if (def.outputType === "Integer" || (bothInt && Number.isInteger(result))) {
             return this.dae.addIntLiteral(result);
           }

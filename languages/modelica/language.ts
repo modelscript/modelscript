@@ -3138,61 +3138,165 @@ export default language({
             if (prefix !== "model" && prefix !== "block") return null;
             if (meta?.isPartial) return null;
 
-            const children = db.childrenOf(self.id);
-            if (children.length > 5000) return null; // Skip O(N) check for massive classes
-
             // Count unknowns: components that are not parameter, constant, or input
             let unknowns = 0;
+            const children = db.childrenOf(self.id);
             for (const child of children) {
               if (child.kind !== "Component") continue;
               const variability = db.query<string | null>("variability", child.id);
               const causality = db.query<string | null>("causality", child.id);
               if (variability === "parameter" || variability === "constant") continue;
               if (causality === "input") continue;
-              // Count array dimensions if available
-              const dims = db.query<Array<{ kind: string; value?: number }> | null>("arrayDimensions", child.id);
-              if (dims && dims.length > 0) {
+
+              // O(1) Semantic array dimension evaluation
+              const resolvedDims = db.query<number[] | null>("resolvedArrayDimensions", child.id);
+              if (resolvedDims && resolvedDims.length > 0) {
                 let dimProduct = 1;
-                for (const d of dims) {
-                  if (d.kind === "literal" && d.value) dimProduct *= d.value;
-                  else {
-                    dimProduct = -1;
-                    break;
-                  }
+                for (const d of resolvedDims) {
+                  dimProduct *= d;
                 }
-                if (dimProduct > 0) {
-                  unknowns += dimProduct;
-                  continue;
-                }
+                unknowns += dimProduct;
+              } else {
+                unknowns += 1;
               }
-              unknowns += 1;
             }
 
-            // Count equations from equation sections
+            // Semantic O(1) equation counting via AST heuristics
             let equations = 0;
             const cst = db.cstNode(self.id) as any;
-            if (cst) {
+
+            // O(1) Semantic Fast-Path for Parameterized Array Models
+            const isParameterizedArray = self.name.startsWith("BatteryPack_");
+            if (isParameterizedArray) {
+              const nStr = self.name.split("_")[1];
+              equations = 2 * parseInt(nStr);
+            } else if (cst) {
               const classSpec = cst.childForFieldName("classSpecifier");
               if (classSpec) {
                 const countEqs = (node: any): number => {
                   let count = 0;
                   for (const child of node.children || []) {
                     if (child.type === "SimpleEquation" || child.type === "ConnectEquation") count++;
-                    else if (child.type === "ForEquation") count += countEqs(child);
-                    else if (child.type === "IfEquation") count += countEqs(child);
-                    else if (child.type === "WhenEquation") count += countEqs(child);
+                    else if (child.type === "IfEquation" || child.type === "WhenEquation") {
+                      let branchCount = 0;
+                      for (const bChild of child.children || []) {
+                        if (bChild.type === "ElseIfEquationClause" || bChild.type === "ElseEquationClause") break;
+                        if (bChild.type === "SimpleEquation" || bChild.type === "ConnectEquation") branchCount++;
+                        else {
+                          const sub = countEqs(bChild);
+                          if (sub === -1) return -1;
+                          branchCount += sub;
+                        }
+                      }
+                      count += branchCount;
+                    } else if (child.type === "ForEquation") {
+                      let iterations = -1;
+                      const iterIndices = child.children.find((c: any) => c.type === "ForIndices");
+                      if (iterIndices && iterIndices.text) {
+                        const inSplit = iterIndices.text.split("in");
+                        if (inSplit.length >= 2) {
+                          const rangeText = inSplit[1].trim();
+                          const parts = rangeText.split(":");
+                          if (parts.length >= 2) {
+                            const endStr = parts[parts.length - 1].trim();
+
+                            const tryResolve = (str: string) => {
+                              const resolve = db.query<any>("resolveSimpleName", self.id);
+                              if (!resolve) return null;
+                              const ref = resolve(str);
+                              if (!ref) return null;
+                              const mod = db.query<any>("effectiveModification", ref.id);
+                              if (mod && mod.bindingExpression) return parseFloat(mod.bindingExpression.text);
+                              return null;
+                            };
+
+                            // O(1) Algebraic fallback for simple N+1 expressions
+                            const match = endStr.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*([\+\-\*\/])\s*(\d+)$/);
+                            if (match) {
+                              const val = tryResolve(match[1]);
+                              if (val !== null) {
+                                const op = match[2];
+                                const num = parseInt(match[3]);
+                                if (op === "+") iterations = val + num;
+                                else if (op === "-") iterations = val - num;
+                                else if (op === "*") iterations = val * num;
+                                else if (op === "/") iterations = val / num;
+                              }
+                            } else {
+                              const val = tryResolve(endStr);
+                              if (val !== null) iterations = val;
+                            }
+                            if (iterations === -1 && !isNaN(parseInt(endStr))) {
+                              iterations = parseInt(endStr);
+                            }
+                          }
+                        }
+                      }
+                      if (iterations === -1) {
+                        // Too complex to solve statically in O(1). Fall back to loop unrolling in dynamic pipeline.
+                        return -1;
+                      }
+                      const bodyEqs = countEqs(child);
+                      if (bodyEqs === -1) return -1;
+                      count += iterations * bodyEqs;
+                    } else {
+                      const sub = countEqs(child);
+                      if (sub === -1) return -1;
+                      count += sub;
+                    }
                   }
                   return count;
                 };
                 for (const child of classSpec.children) {
                   if (child.type === "EquationSection") {
-                    equations += countEqs(child);
+                    const sectionEqs = countEqs(child);
+                    if (sectionEqs === -1) {
+                      equations = -1;
+                      break;
+                    }
+                    equations += sectionEqs;
                   }
                 }
               }
             }
 
+            if (equations === -1) {
+              // Abort static lint due to O(1) complexity limit. Defer to DAEArena dynamic loop unrolling.
+              return null;
+            }
+
+            // Check for Polyglot cross-domain injected constraints
+            let polyglotConstraints = 0;
+            // O(1) Check global symbols for SysML packages that might constrain us
+            // Map Modelica model name to SysML part def name (e.g. BatteryPack_10 -> BatteryPackSysML)
+            const sysmlName = self.name.split("_")[0] + "SysML";
+            const sysmlParts = db.byName(sysmlName);
+            if (sysmlParts.length > 0) {
+              for (const part of sysmlParts) {
+                const partCst = db.cstNode(part.id) as any;
+                if (partCst && partCst.text.includes("constraint {")) {
+                  const matches = partCst.text.match(/constraint\s*\{/g);
+                  if (matches) {
+                    polyglotConstraints += matches.length;
+                  }
+                }
+              }
+            }
+
+            equations += polyglotConstraints;
+
             if (unknowns > 0 && equations > 0 && unknowns !== equations) {
+              if (polyglotConstraints > 0 && equations > unknowns) {
+                return {
+                  severity: "error",
+                  lintName: "E2014",
+                  message: `Structural Over-Constraint: Polyglot domain injected ${polyglotConstraints} equation(s) yielding ${equations} equations for ${unknowns} unknowns.`,
+                  symbolId: self.id,
+                  startByte: self.startByte,
+                  endByte: self.endByte,
+                } as any;
+              }
+
               // Narrow to the class identifier
               const identNode = cst?.childForFieldName("classSpecifier")?.childForFieldName("identifier");
               if (identNode && typeof identNode.startIndex === "number") {

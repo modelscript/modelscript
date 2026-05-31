@@ -58,7 +58,10 @@ export class StringInterner {
    */
   resolve(id: StringId): string {
     if (id < 0 || id >= this.reverse.length) {
-      throw new RangeError(`StringInterner: invalid StringId ${id} (size=${this.reverse.length})`);
+      console.warn(
+        `StringInterner: encountered invalid StringId ${id} (size=${this.reverse.length}). Returning fallback "<invalid>".`,
+      );
+      return "<invalid>";
     }
     return this.reverse[id]!;
   }

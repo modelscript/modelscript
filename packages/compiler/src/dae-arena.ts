@@ -1734,6 +1734,8 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
       if (funcName === "/*Boolean*/" || funcName === "Boolean") return VarType.Boolean;
       if (funcName === "/*String*/" || funcName === "String") return VarType.String;
       // Built-in functions that return specific types
+      if (funcName === "div" || funcName === "integer") return VarType.Integer;
+
       if (
         funcName === "abs" ||
         funcName === "sqrt" ||
@@ -1756,7 +1758,6 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
         funcName === "rem" ||
         funcName === "ceil" ||
         funcName === "floor" ||
-        funcName === "div" ||
         funcName === "sign" ||
         funcName === "smooth" ||
         funcName === "noEvent" ||

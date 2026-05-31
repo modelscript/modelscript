@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { VerificationRunner } from "@modelscript/compiler";
+import { UnifiedWorkspace, VerificationRunner } from "@modelscript/compiler";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
-import { Context, createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/core";
+import {
+  Context,
+  createModelicaWorkspaceIndex,
+  createSysML2QueryEngine,
+  createSysML2WorkspaceIndex,
+} from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
+import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
+import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +82,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const sysmlParser = new WebParser.Parser();
     sysmlParser.setLanguage(SysML2);
 
+    const mIdx = createModelicaWorkspaceIndex();
     const sysmlIndex = createSysML2WorkspaceIndex();
 
     // Build mapping from absolute resolved paths to user-provided paths
@@ -90,6 +98,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     for (const p of args.paths) {
       if (p.endsWith(".mo")) {
         await context.addLibrary(p);
+        const text = fs.readFileSync(p, "utf-8");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        mIdx.register(`file://${path.resolve(p)}`, () => modelicaParser.parse(text).rootNode as any);
       } else if (p.endsWith(".sysml")) {
         const text = fs.readFileSync(p, "utf-8");
         const tree = sysmlParser.parse(text);
@@ -102,11 +113,16 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     }
     profiler.end("parsing");
 
-    await sysmlIndex.toUnifiedAsync();
-    const sysmlUnified = sysmlIndex.toTreeIndex();
+    const u = new UnifiedWorkspace();
+    u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    u.registerWorkspace("sysml2", sysmlIndex, sysml2LangFallback as any);
+
+    if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
+    const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
     // Create query engine
-    const engine = createSysML2QueryEngine(sysmlUnified, {
+    const engine = createSysML2QueryEngine(unifiedDb, {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getText: (startByte: number, endByte: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
@@ -116,11 +132,14 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getNode: (startByte: number, endByte: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
-        // In CLI, we only parse once so we can just re-parse or use the cached tree.
-        // But we don't have the tree cached here! Let's parse it.
         const text = fs.readFileSync(pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", ""), "utf-8");
-        const tree = sysmlParser.parse(text);
-        return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        if (entry.resourceId.endsWith(".sysml")) {
+          const tree = sysmlParser.parse(text);
+          return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        } else {
+          const tree = modelicaParser.parse(text);
+          return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
+        }
       },
     });
     const db = engine.toQueryDB();
