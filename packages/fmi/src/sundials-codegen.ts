@@ -118,53 +118,17 @@ export function generateSundialsMainC(
 
   // ── Jacobian wrapper ──
   if (useJac) {
-    lines.push(`/* AD-generated dense Jacobian ∂f/∂x */`);
-    lines.push(`static void model_get_jacobian(void* inst, double* J) {`);
+    lines.push(`/* AD-generated exact sparse Jacobian ∂f/∂x */`);
+    lines.push(`static void model_get_jacobian_sparse(void* inst, int* colptrs, int* rowvals, double* data) {`);
     lines.push(`  ${id}_Instance* m = (${id}_Instance*)inst;`);
-    lines.push(`  int n = ${nStates};`);
-    lines.push(`  /* Finite-difference approximation using model derivatives */`);
-    lines.push(`  double* f0 = (double*)malloc(n * sizeof(double));`);
-    lines.push(`  double* fp = (double*)malloc(n * sizeof(double));`);
-    lines.push(`  ${id}_getDerivatives(m);`);
+    lines.push(`  /* Update vars[] from states[] before computing Jacobian */`);
     for (let i = 0; i < stateVarRefs.length; i++) {
       const sv = stateVarRefs[i];
       if (sv) {
-        lines.push(`  f0[${i}] = m->derivatives[${i}];`);
+        lines.push(`  m->vars[${sv.vr}] = m->states[${i}];`);
       }
     }
-    lines.push(`  for (int j = 0; j < n; j++) {`);
-    lines.push(`    double saved;`);
-    // Map state index to value reference for perturbation
-    for (let i = 0; i < stateVarRefs.length; i++) {
-      const sv = stateVarRefs[i];
-      if (sv) {
-        lines.push(`    ${i === 0 ? "" : "else "}if (j == ${i}) { saved = m->states[${i}]; m->states[${i}] += 1e-8; }`);
-      }
-    }
-    lines.push(`    /* Also update vars[] from states[] */`);
-    for (let i = 0; i < stateVarRefs.length; i++) {
-      const sv = stateVarRefs[i];
-      if (sv) {
-        lines.push(`    if (j == ${i}) m->vars[${sv.vr}] = m->states[${i}];`);
-      }
-    }
-    lines.push(`    ${id}_getDerivatives(m);`);
-    lines.push(`    for (int i = 0; i < n; i++) {`);
-    lines.push(`      fp[i] = m->derivatives[i];`);
-    lines.push(`      J[i * n + j] = (fp[i] - f0[i]) / 1e-8;`);
-    lines.push(`    }`);
-    lines.push(`    /* Restore */`);
-    for (let i = 0; i < stateVarRefs.length; i++) {
-      const sv = stateVarRefs[i];
-      if (sv) {
-        lines.push(`    if (j == ${i}) { m->states[${i}] = saved; m->vars[${sv.vr}] = saved; }`);
-      }
-    }
-    lines.push(`  }`);
-    lines.push(`  /* Restore derivatives */`);
-    lines.push(`  ${id}_getDerivatives(m);`);
-    lines.push(`  free(f0);`);
-    lines.push(`  free(fp);`);
+    lines.push(`  ${id}_getJacobianSparse(m, colptrs, rowvals, data);`);
     lines.push(`}`);
     lines.push("");
   }
@@ -226,8 +190,9 @@ export function generateSundialsMainC(
   lines.push(`  cb.get_derivatives = model_get_derivatives;`);
   lines.push(`  cb.get_event_indicators = model_get_event_indicators;`);
   if (useJac) {
-    lines.push(`  cb.get_jacobian = model_get_jacobian;`);
+    lines.push(`  cb.get_jacobian_sparse = model_get_jacobian_sparse;`);
   }
+  lines.push(`  cb.nnz = N_NONZEROS;`);
   lines.push(`  cb.states = inst.states;`);
   lines.push(`  cb.derivatives = inst.derivatives;`);
   lines.push(`  cb.time_ptr = &inst.time;`);

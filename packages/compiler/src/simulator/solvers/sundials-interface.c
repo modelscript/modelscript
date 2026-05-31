@@ -20,8 +20,8 @@
 #include <ida/ida.h>
 #include <kinsol/kinsol.h>
 #include <nvector/nvector_serial.h>
-#include <sunlinsol/sunlinsol_dense.h>
-#include <sunmatrix/sunmatrix_dense.h>
+#include <sunlinsol/sunlinsol_klu.h>
+#include <sunmatrix/sunmatrix_sparse.h>
 #include <sundials/sundials_types.h>
 
 #include <math.h>
@@ -42,6 +42,8 @@ typedef struct {
     int n_states;
     /** Number of event indicator (zero-crossing) functions. */
     int n_event_indicators;
+    /** Number of non-zeros in the Jacobian matrix. */
+    int nnz;
 
     /* ── ODE / DAE callbacks ── */
 
@@ -68,12 +70,14 @@ typedef struct {
     void (*get_residual)(void* inst, double* residual);
 
     /**
-     * Compute dense Jacobian ∂f/∂x (for CVODE) or ∂F/∂x (for IDA).
+     * Compute sparse Jacobian ∂f/∂x (for CVODE) or ∂F/∂x (for IDA).
      * Uses the model's AD-generated exact Jacobian.
-     * @param inst  Model instance
-     * @param J     Output dense Jacobian matrix (column-major, n_states × n_states)
+     * @param inst     Model instance
+     * @param colptrs  Output CSC column pointers
+     * @param rowvals  Output CSC row indices
+     * @param data     Output CSC non-zero values
      */
-    void (*get_jacobian)(void* inst, double* J);
+    void (*get_jacobian_sparse)(void* inst, int* colptrs, int* rowvals, double* data);
 
     /* ── Initialization callbacks ── */
 
@@ -86,10 +90,12 @@ typedef struct {
 
     /**
      * Compute Jacobian of the initialization residual ∂R/∂z (KINSOL).
-     * @param inst  Model instance
-     * @param J     Output dense Jacobian (column-major, n_states × n_states)
+     * @param inst     Model instance
+     * @param colptrs  Output CSC column pointers
+     * @param rowvals  Output CSC row indices
+     * @param data     Output CSC non-zero values
      */
-    void (*get_init_jacobian)(void* inst, double* J);
+    void (*get_init_jacobian_sparse)(void* inst, int* colptrs, int* rowvals, double* data);
 
     /* ── Direct state access ── */
 
@@ -158,11 +164,11 @@ typedef struct {
  * Copies y → model states, sets time, calls getDerivatives,
  * copies model derivatives → ydot.
  */
-static int cvode_rhs(realtype t, N_Vector y, N_Vector ydot, void* user_data) {
+static int cvode_rhs(sunrealtype t, N_Vector y, N_Vector ydot, void* user_data) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* y_data = N_VGetArrayPointer(y);
-    realtype* yd_data = N_VGetArrayPointer(ydot);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* yd_data = N_VGetArrayPointer(ydot);
 
     /* Push state into model instance */
     *cb->time_ptr = (double)t;
@@ -175,22 +181,22 @@ static int cvode_rhs(realtype t, N_Vector y, N_Vector ydot, void* user_data) {
 
     /* Pull derivatives out */
     for (int i = 0; i < n; i++) {
-        yd_data[i] = (realtype)cb->derivatives[i];
+        yd_data[i] = (sunrealtype)cb->derivatives[i];
     }
 
     return 0;
 }
 
 /**
- * CVODE dense Jacobian callback: J = ∂f/∂y.
- * Uses the model's AD-generated exact Jacobian if available.
+ * CVODE sparse Jacobian callback: J = ∂f/∂y.
+ * Uses the model's AD-generated exact Jacobian.
  */
-static int cvode_jac(realtype t, N_Vector y, N_Vector fy,
+static int cvode_jac(sunrealtype t, N_Vector y, N_Vector fy,
                      SUNMatrix J, void* user_data,
                      N_Vector tmp1, N_Vector tmp2, N_Vector tmp3) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
 
     (void)fy; (void)tmp1; (void)tmp2; (void)tmp3;
 
@@ -200,20 +206,14 @@ static int cvode_jac(realtype t, N_Vector y, N_Vector fy,
         cb->states[i] = (double)y_data[i];
     }
 
-    /* Fill Jacobian */
-    double* J_dense = (double*)malloc(n * n * sizeof(double));
-    if (!J_dense) return -1;
+    sunindextype* colptrs = SUNSparseMatrix_IndexPointers(J);
+    sunindextype* rowvals = SUNSparseMatrix_IndexValues(J);
+    sunrealtype* data = SUNSparseMatrix_Data(J);
 
-    cb->get_jacobian(cb->model_instance, J_dense);
+    /* Fill sparse Jacobian arrays (assuming int for now based on callback signature)
+       We'll copy them to sunindextype if needed, but in 32-bit index size they match. */
+    cb->get_jacobian_sparse(cb->model_instance, (int*)colptrs, (int*)rowvals, (double*)data);
 
-    /* Copy to SUNDIALS dense matrix (column-major) */
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            SM_ELEMENT_D(J, i, j) = (realtype)J_dense[i * n + j];
-        }
-    }
-
-    free(J_dense);
     return 0;
 }
 
@@ -221,10 +221,10 @@ static int cvode_jac(realtype t, N_Vector y, N_Vector fy,
  * CVODE root-finding callback for event detection.
  * Evaluates the model's event indicator functions.
  */
-static int cvode_root(realtype t, N_Vector y, realtype* gout, void* user_data) {
+static int cvode_root(sunrealtype t, N_Vector y, sunrealtype* gout, void* user_data) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
 
     /* Sync state */
     *cb->time_ptr = (double)t;
@@ -239,7 +239,7 @@ static int cvode_root(realtype t, N_Vector y, realtype* gout, void* user_data) {
     cb->get_event_indicators(cb->model_instance, indicators);
 
     for (int i = 0; i < cb->n_event_indicators; i++) {
-        gout[i] = (realtype)indicators[i];
+        gout[i] = (sunrealtype)indicators[i];
     }
 
     free(indicators);
@@ -294,42 +294,42 @@ void sundials_cvode_run(
     y = N_VNew_Serial(n, sunctx);
     if (!y) goto cleanup_error;
 
-    realtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
     for (int i = 0; i < n; i++) {
-        y_data[i] = (realtype)y0[i];
+        y_data[i] = (sunrealtype)y0[i];
     }
 
     /* Create CVODE solver (BDF method for stiff systems) */
     cvode_mem = CVodeCreate(CV_BDF, sunctx);
     if (!cvode_mem) goto cleanup_error;
 
-    if (CVodeInit(cvode_mem, cvode_rhs, (realtype)t0, y) != CV_SUCCESS)
+    if (CVodeInit(cvode_mem, cvode_rhs, (sunrealtype)t0, y) != CV_SUCCESS)
         goto cleanup_error;
 
-    if (CVodeSStolerances(cvode_mem, (realtype)opts->rtol, (realtype)opts->atol) != CV_SUCCESS)
+    if (CVodeSStolerances(cvode_mem, (sunrealtype)opts->rtol, (sunrealtype)opts->atol) != CV_SUCCESS)
         goto cleanup_error;
 
     CVodeSetUserData(cvode_mem, cb);
     CVodeSetMaxNumSteps(cvode_mem, opts->max_steps);
 
     if (opts->max_step > 0.0)
-        CVodeSetMaxStep(cvode_mem, (realtype)opts->max_step);
+        CVodeSetMaxStep(cvode_mem, (sunrealtype)opts->max_step);
 
     if (opts->initial_step > 0.0)
-        CVodeSetInitStep(cvode_mem, (realtype)opts->initial_step);
+        CVodeSetInitStep(cvode_mem, (sunrealtype)opts->initial_step);
 
-    /* Dense linear solver */
-    A = SUNDenseMatrix(n, n, sunctx);
+    /* Sparse linear solver */
+    A = SUNSparseMatrix(n, n, cb->nnz, CSC_MAT, sunctx);
     if (!A) goto cleanup_error;
 
-    LS = SUNLinSol_Dense(y, A, sunctx);
+    LS = SUNLinSol_KLU(y, A, sunctx);
     if (!LS) goto cleanup_error;
 
     if (CVodeSetLinearSolver(cvode_mem, LS, A) != CV_SUCCESS)
         goto cleanup_error;
 
     /* Exact Jacobian (AD-generated) */
-    if (opts->use_exact_jacobian && cb->get_jacobian) {
+    if (opts->use_exact_jacobian && cb->get_jacobian_sparse) {
         CVodeSetJacFn(cvode_mem, cvode_jac);
     }
 
@@ -340,8 +340,8 @@ void sundials_cvode_run(
 
     /* ── Integration loop ── */
     for (int k = 0; k < n_outputs; k++) {
-        realtype t_out = (realtype)output_times[k];
-        realtype t_ret;
+        sunrealtype t_out = (sunrealtype)output_times[k];
+        sunrealtype t_ret;
 
         int flag = CVode(cvode_mem, t_out, y, &t_ret, CV_NORMAL);
 
@@ -399,13 +399,13 @@ cleanup:
 /**
  * IDA residual callback: F(t, y, ẏ) = 0.
  */
-static int ida_residual(realtype t, N_Vector y, N_Vector yp,
+static int ida_residual(sunrealtype t, N_Vector y, N_Vector yp,
                         N_Vector resval, void* user_data) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* y_data = N_VGetArrayPointer(y);
-    realtype* yp_data = N_VGetArrayPointer(yp);
-    realtype* r_data = N_VGetArrayPointer(resval);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* yp_data = N_VGetArrayPointer(yp);
+    sunrealtype* r_data = N_VGetArrayPointer(resval);
 
     /* Sync state */
     *cb->time_ptr = (double)t;
@@ -421,7 +421,7 @@ static int ida_residual(realtype t, N_Vector y, N_Vector yp,
     cb->get_residual(cb->model_instance, residual);
 
     for (int i = 0; i < n; i++) {
-        r_data[i] = (realtype)residual[i];
+        r_data[i] = (sunrealtype)residual[i];
     }
 
     free(residual);
@@ -431,11 +431,11 @@ static int ida_residual(realtype t, N_Vector y, N_Vector yp,
 /**
  * IDA root-finding callback for event detection.
  */
-static int ida_root(realtype t, N_Vector y, N_Vector yp,
-                    realtype* gout, void* user_data) {
+static int ida_root(sunrealtype t, N_Vector y, N_Vector yp,
+                    sunrealtype* gout, void* user_data) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
 
     (void)yp;
 
@@ -452,7 +452,7 @@ static int ida_root(realtype t, N_Vector y, N_Vector yp,
     cb->get_event_indicators(cb->model_instance, indicators);
 
     for (int i = 0; i < cb->n_event_indicators; i++) {
-        gout[i] = (realtype)indicators[i];
+        gout[i] = (sunrealtype)indicators[i];
     }
 
     free(indicators);
@@ -511,44 +511,44 @@ void sundials_ida_run(
     yp = N_VNew_Serial(n, sunctx);
     if (!y || !yp) goto cleanup_error;
 
-    realtype* y_data = N_VGetArrayPointer(y);
-    realtype* yp_data = N_VGetArrayPointer(yp);
+    sunrealtype* y_data = N_VGetArrayPointer(y);
+    sunrealtype* yp_data = N_VGetArrayPointer(yp);
     for (int i = 0; i < n; i++) {
-        y_data[i] = (realtype)y0[i];
-        yp_data[i] = (realtype)yp0[i];
+        y_data[i] = (sunrealtype)y0[i];
+        yp_data[i] = (sunrealtype)yp0[i];
     }
 
     /* Create IDA solver */
     ida_mem = IDACreate(sunctx);
     if (!ida_mem) goto cleanup_error;
 
-    if (IDAInit(ida_mem, ida_residual, (realtype)t0, y, yp) != IDA_SUCCESS)
+    if (IDAInit(ida_mem, ida_residual, (sunrealtype)t0, y, yp) != IDA_SUCCESS)
         goto cleanup_error;
 
-    if (IDASStolerances(ida_mem, (realtype)opts->rtol, (realtype)opts->atol) != IDA_SUCCESS)
+    if (IDASStolerances(ida_mem, (sunrealtype)opts->rtol, (sunrealtype)opts->atol) != IDA_SUCCESS)
         goto cleanup_error;
 
     IDASetUserData(ida_mem, cb);
     IDASetMaxNumSteps(ida_mem, opts->max_steps);
 
     if (opts->max_step > 0.0)
-        IDASetMaxStep(ida_mem, (realtype)opts->max_step);
+        IDASetMaxStep(ida_mem, (sunrealtype)opts->max_step);
 
     if (opts->initial_step > 0.0)
-        IDASetInitStep(ida_mem, (realtype)opts->initial_step);
+        IDASetInitStep(ida_mem, (sunrealtype)opts->initial_step);
 
-    /* Dense linear solver */
-    A = SUNDenseMatrix(n, n, sunctx);
+    /* Sparse linear solver */
+    A = SUNSparseMatrix(n, n, cb->nnz, CSC_MAT, sunctx);
     if (!A) goto cleanup_error;
 
-    LS = SUNLinSol_Dense(y, A, sunctx);
+    LS = SUNLinSol_KLU(y, A, sunctx);
     if (!LS) goto cleanup_error;
 
     if (IDASetLinearSolver(ida_mem, LS, A) != IDA_SUCCESS)
         goto cleanup_error;
 
     /* Compute consistent initial conditions */
-    if (IDACalcIC(ida_mem, IDA_YA_YDP_INIT, (realtype)output_times[0]) != IDA_SUCCESS) {
+    if (IDACalcIC(ida_mem, IDA_YA_YDP_INIT, (sunrealtype)output_times[0]) != IDA_SUCCESS) {
         /* IC calculation failed — proceed with user-supplied ICs */
         fprintf(stderr, "IDA: consistent IC calculation failed, using supplied ICs\n");
     }
@@ -560,8 +560,8 @@ void sundials_ida_run(
 
     /* ── Integration loop ── */
     for (int k = 0; k < n_outputs; k++) {
-        realtype t_out = (realtype)output_times[k];
-        realtype t_ret;
+        sunrealtype t_out = (sunrealtype)output_times[k];
+        sunrealtype t_ret;
 
         int flag = IDASolve(ida_mem, t_out, &t_ret, y, yp, IDA_NORMAL);
 
@@ -621,8 +621,8 @@ cleanup:
 static int kinsol_sysfn(N_Vector z, N_Vector fval, void* user_data) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* z_data = N_VGetArrayPointer(z);
-    realtype* f_data = N_VGetArrayPointer(fval);
+    sunrealtype* z_data = N_VGetArrayPointer(z);
+    sunrealtype* f_data = N_VGetArrayPointer(fval);
 
     /* Push z into model states */
     for (int i = 0; i < n; i++) {
@@ -636,7 +636,7 @@ static int kinsol_sysfn(N_Vector z, N_Vector fval, void* user_data) {
     cb->get_init_residual(cb->model_instance, residual);
 
     for (int i = 0; i < n; i++) {
-        f_data[i] = (realtype)residual[i];
+        f_data[i] = (sunrealtype)residual[i];
     }
 
     free(residual);
@@ -644,14 +644,14 @@ static int kinsol_sysfn(N_Vector z, N_Vector fval, void* user_data) {
 }
 
 /**
- * KINSOL dense Jacobian callback.
+ * KINSOL sparse Jacobian callback.
  */
 static int kinsol_jac(N_Vector z, N_Vector fval,
                       SUNMatrix J, void* user_data,
                       N_Vector tmp1, N_Vector tmp2) {
     SundialsModelCallbacks* cb = (SundialsModelCallbacks*)user_data;
     int n = cb->n_states;
-    realtype* z_data = N_VGetArrayPointer(z);
+    sunrealtype* z_data = N_VGetArrayPointer(z);
 
     (void)fval; (void)tmp1; (void)tmp2;
 
@@ -660,20 +660,12 @@ static int kinsol_jac(N_Vector z, N_Vector fval,
         cb->states[i] = (double)z_data[i];
     }
 
-    /* Evaluate Jacobian */
-    double* J_dense = (double*)malloc(n * n * sizeof(double));
-    if (!J_dense) return -1;
+    sunindextype* colptrs = SUNSparseMatrix_IndexPointers(J);
+    sunindextype* rowvals = SUNSparseMatrix_IndexValues(J);
+    sunrealtype* data = SUNSparseMatrix_Data(J);
 
-    cb->get_init_jacobian(cb->model_instance, J_dense);
+    cb->get_init_jacobian_sparse(cb->model_instance, (int*)colptrs, (int*)rowvals, (double*)data);
 
-    /* Copy to SUNDIALS dense matrix (column-major) */
-    for (int j = 0; j < n; j++) {
-        for (int i = 0; i < n; i++) {
-            SM_ELEMENT_D(J, i, j) = (realtype)J_dense[i * n + j];
-        }
-    }
-
-    free(J_dense);
     return 0;
 }
 
@@ -706,9 +698,9 @@ int sundials_kinsol_solve(
     scale = N_VNew_Serial(n, sunctx);
     if (!z || !scale) goto cleanup;
 
-    realtype* z_data = N_VGetArrayPointer(z);
+    sunrealtype* z_data = N_VGetArrayPointer(z);
     for (int i = 0; i < n; i++) {
-        z_data[i] = (realtype)z0[i];
+        z_data[i] = (sunrealtype)z0[i];
     }
     N_VConst(1.0, scale);
 
@@ -719,27 +711,27 @@ int sundials_kinsol_solve(
     if (KINInit(kin_mem, kinsol_sysfn, z) != KIN_SUCCESS) goto cleanup;
 
     KINSetUserData(kin_mem, cb);
-    KINSetFuncNormTol(kin_mem, (realtype)opts->atol);
-    KINSetScaledStepTol(kin_mem, (realtype)opts->rtol);
+    KINSetFuncNormTol(kin_mem, (sunrealtype)opts->atol);
+    KINSetScaledStepTol(kin_mem, (sunrealtype)opts->rtol);
     KINSetMaxSetupCalls(kin_mem, 1); /* Recompute Jacobian every iteration */
     KINSetNumMaxIters(kin_mem, (int)opts->max_steps);
 
-    /* Dense linear solver */
-    A = SUNDenseMatrix(n, n, sunctx);
+    /* Sparse linear solver */
+    A = SUNSparseMatrix(n, n, cb->nnz, CSC_MAT, sunctx);
     if (!A) goto cleanup;
 
-    LS = SUNLinSol_Dense(z, A, sunctx);
+    LS = SUNLinSol_KLU(z, A, sunctx);
     if (!LS) goto cleanup;
 
     if (KINSetLinearSolver(kin_mem, LS, A) != KIN_SUCCESS) goto cleanup;
 
     /* Exact Jacobian */
-    if (opts->use_exact_jacobian && cb->get_init_jacobian) {
+    if (opts->use_exact_jacobian && cb->get_init_jacobian_sparse) {
         KINSetJacFn(kin_mem, kinsol_jac);
     }
 
     /* Solve */
-    int flag = KINSol(kin_mem, z, KIN_NEWTON, scale, scale);
+    int flag = KINSol(kin_mem, z, KIN_NONE, scale, scale);
 
     if (flag >= 0) {
         /* Success — copy solution back */

@@ -58,9 +58,14 @@ export function generateFmuCSources(dae: ArenaDAEBuilder, fmuResult: FmuResult, 
   const nVars = vars.length > 0 ? maxVr + 1 : 0;
   const nStates = fmuResult.modelStructure.derivatives.length;
 
-  const modelH = generateModelH(id, nVars, nStates, nStringVars, dae, fmuResult);
+  const { code: jacCode, nnz } = generateGetJacobianSparse(id, dae, fmuResult);
+  const modelH = generateModelH(id, nVars, nStates, nStringVars, nnz, dae, fmuResult);
   const modelC =
-    generateModelC(id, dae, fmuResult) + "\n\n" + generateAlgebraicLoopSolvers(id, dae, fmuResult, options);
+    generateModelC(id, dae, fmuResult) +
+    "\n\n" +
+    generateAlgebraicLoopSolvers(id, dae, fmuResult, options) +
+    "\n\n" +
+    jacCode.join("\n");
   const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, dae, fmuResult);
   const fmi3FunctionsC = generateFmi3FunctionsC(id, dae);
 
@@ -207,6 +212,7 @@ function generateModelH(
   nVars: number,
   nStates: number,
   nStringVars: number,
+  nnz: number,
   dae: ArenaDAEBuilder,
   result: FmuResult,
 ): string {
@@ -224,6 +230,7 @@ function generateModelH(
   lines.push(`#define N_STATES ${nStates}`);
   lines.push(`#define N_STRING_VARS ${nStringVars}`);
   lines.push(`#define N_EVENT_INDICATORS ${result.numberOfEventIndicators}`);
+  lines.push(`#define N_NONZEROS ${nnz}`);
 
   let nWhenConditions = 0;
   for (let idx = 0; idx < dae.eqCount; idx++) {
@@ -294,6 +301,7 @@ function generateModelH(
   lines.push(`void ${id}_solveAlgebraicLoops(${id}_Instance* inst);`);
   lines.push(`void ${id}_getDerivatives(${id}_Instance* inst);`);
   lines.push(`void ${id}_getEventIndicators(${id}_Instance* inst, double* indicators);`);
+  lines.push(`void ${id}_getJacobianSparse(${id}_Instance* inst, int* colptrs, int* rowvals, double* data);`);
   lines.push("");
   lines.push("#endif");
   return lines.join("\n");
@@ -2121,9 +2129,147 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
     lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = tEnd;");
   }
 
-  lines.push("  if (terminateSimulation) *terminateSimulation = 0;");
-  lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
   return lines.join("\n");
+}
+
+function generateGetJacobianSparse(
+  id: string,
+  dae: ArenaDAEBuilder,
+  result: FmuResult,
+): { code: string[]; nnz: number } {
+  const lines: string[] = [];
+  lines.push(`/* Exact Sparse Analytical Jacobian (CSC) */`);
+  lines.push(`void ${id}_getJacobianSparse(${id}_Instance* inst, int* colptrs, int* rowvals, double* data) {`);
+
+  // Find states and their derivative expressions
+  const states: string[] = [];
+  const derEqs = new Map<string, number>();
+
+  const derVars = result.scalarVariables.filter((sv) => sv.name.startsWith("der("));
+  const derMap = new Map<string, number>();
+  for (let i = 0; i < derVars.length; i++) {
+    const match = derVars[i]?.name.match(/^der\((.+)\)$/);
+    if (match && match[1]) {
+      states.push(match[1]);
+      derMap.set(match[1], i);
+    }
+  }
+
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    const lhs = dae.getEqLhs(idx);
+    const rhs = dae.getEqRhs(idx);
+    const lhsDer = extractDerName(dae, lhs);
+    const rhsDer = extractDerName(dae, rhs);
+
+    if (lhsDer && derMap.has(lhsDer)) derEqs.set(lhsDer, rhs);
+    else if (rhsDer && derMap.has(rhsDer)) derEqs.set(rhsDer, lhs);
+  }
+
+  const nStates = states.length;
+  const tapes: (StaticTapeBuilder | null)[] = [];
+  const tapeOutputs: number[] = [];
+
+  for (const state of states) {
+    const exprId = derEqs.get(state);
+    if (exprId !== undefined) {
+      const tape = new StaticTapeBuilder();
+      const outIdx = tape.addExpression(exprId, dae);
+      tapes.push(tape);
+      tapeOutputs.push(outIdx);
+    } else {
+      tapes.push(null);
+      tapeOutputs.push(-1);
+    }
+  }
+
+  // Structural sparsity
+  const conDeps: Set<string>[] = [];
+  for (let i = 0; i < nStates; i++) {
+    const tape = tapes[i];
+    const outIdx = tapeOutputs[i];
+    if (!tape || outIdx === undefined || outIdx === -1) {
+      conDeps.push(new Set<string>());
+      continue;
+    }
+    const deps = tape.getDependencies(outIdx);
+    const filtered = new Set<string>();
+    for (const d of deps) {
+      if (states.includes(d)) filtered.add(d);
+    }
+    conDeps.push(filtered);
+  }
+
+  // CCS sparsity pattern
+  const jacRowIdx: number[] = [];
+  const jacColPtr: number[] = [];
+  const sparseIdxMap = new Map<string, number>();
+
+  for (let col = 0; col < nStates; col++) {
+    jacColPtr.push(jacRowIdx.length);
+    const varName = states[col];
+    if (!varName) continue;
+    for (let row = 0; row < nStates; row++) {
+      const deps = conDeps[row];
+      if (deps && deps.has(varName)) {
+        sparseIdxMap.set(`${row},${col}`, jacRowIdx.length);
+        jacRowIdx.push(row);
+      }
+    }
+  }
+  jacColPtr.push(jacRowIdx.length);
+  const nnz = jacRowIdx.length;
+
+  if (nnz === 0) {
+    lines.push(`  (void)inst; (void)colptrs; (void)rowvals; (void)data;`);
+    lines.push(`}`);
+    return { code: lines, nnz: 0 };
+  }
+
+  lines.push(`  static const int static_colptrs[${nStates + 1}] = {${jacColPtr.join(", ")}};`);
+  lines.push(
+    `  static const int static_rowvals[${Math.max(nnz, 1)}] = {${jacRowIdx.length > 0 ? jacRowIdx.join(", ") : "0"}};`,
+  );
+  lines.push(`  if (colptrs) {`);
+  lines.push(`    for (int i = 0; i <= ${nStates}; i++) colptrs[i] = static_colptrs[i];`);
+  lines.push(`  }`);
+  lines.push(`  if (rowvals) {`);
+  lines.push(`    for (int i = 0; i < ${nnz}; i++) rowvals[i] = static_rowvals[i];`);
+  lines.push(`  }`);
+  lines.push(`  if (!data) return;`);
+  lines.push("");
+
+  const varResolver = (name: string): string => {
+    if (name === "time") return "inst->time";
+    const sv = result.scalarVariables.find((v) => v.name === name);
+    return sv ? `inst->vars[${sv.valueReference}]` : `0.0 /* ${name} */`;
+  };
+
+  for (let row = 0; row < nStates; row++) {
+    const tape = tapes[row];
+    const deps = conDeps[row];
+    const outIdx = tapeOutputs[row];
+    if (!tape || !deps || deps.size === 0 || outIdx === undefined || outIdx === -1) continue;
+
+    lines.push(`  { /* Row ${row}: der(${states[row]}) */`);
+    const fwdCode = tape.emitForwardC(varResolver);
+    lines.push(...fwdCode.map((c) => "    " + c));
+    const { code: revCode, gradients } = tape.emitReverseC(outIdx);
+    lines.push(...revCode.map((c) => "    " + c));
+
+    for (let col = 0; col < nStates; col++) {
+      const varName = states[col];
+      if (!varName || !deps.has(varName)) continue;
+      const gIdx = gradients.get(varName);
+      const sparseIdx = sparseIdxMap.get(`${row},${col}`);
+      if (gIdx !== undefined && sparseIdx !== undefined) {
+        lines.push(`    data[${sparseIdx}] = dt[${gIdx}];`);
+      }
+    }
+    lines.push(`  }`);
+  }
+
+  lines.push(`}`);
+  return { code: lines, nnz };
 }

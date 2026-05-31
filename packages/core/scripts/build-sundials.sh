@@ -22,7 +22,7 @@ SUNDIALS_VERSION="7.2.0"
 SUNDIALS_URL="https://github.com/LLNL/sundials/releases/download/v${SUNDIALS_VERSION}/sundials-${SUNDIALS_VERSION}.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
-SRC_DIR="$PACKAGE_DIR/src/compiler/modelica"
+SRC_DIR="$(cd "$PACKAGE_DIR/../compiler/src/simulator/solvers" && pwd)"
 BUILD_DIR="$PACKAGE_DIR/.build/sundials"
 WASM_DIR="$PACKAGE_DIR/wasm"
 
@@ -35,7 +35,38 @@ fi
 
 echo "=== Building SUNDIALS ${SUNDIALS_VERSION} for WebAssembly ==="
 
-# ── Step 1: Download source ──
+# ── Step 1: Download & Build SuiteSparse (KLU) ──
+SUITESPARSE_VERSION="5.13.0"
+SUITESPARSE_URL="https://github.com/DrTimothyAldenDavis/SuiteSparse/archive/refs/tags/v${SUITESPARSE_VERSION}.tar.gz"
+
+mkdir -p "$BUILD_DIR"
+if [ ! -f "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" ]; then
+  echo "Downloading SuiteSparse ${SUITESPARSE_VERSION}..."
+  curl -L -o "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" "$SUITESPARSE_URL"
+fi
+
+if [ ! -d "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}" ]; then
+  echo "Extracting SuiteSparse..."
+  tar -xzf "$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}.tar.gz" -C "$BUILD_DIR"
+fi
+
+SUITESPARSE_SRC="$BUILD_DIR/SuiteSparse-${SUITESPARSE_VERSION}"
+
+echo "Building SuiteSparse static libraries for WASM..."
+for lib in SuiteSparse_config AMD COLAMD BTF KLU; do
+  if [ ! -f "$SUITESPARSE_SRC/$lib/Lib/lib${lib,,}.a" ] && [ ! -f "$SUITESPARSE_SRC/$lib/Lib/lib${lib}.a" ] && [ ! -f "$SUITESPARSE_SRC/$lib/libsuitesparseconfig.a" ]; then
+    echo "  -> Building $lib..."
+    emmake make -C "$SUITESPARSE_SRC/$lib" static CC=emcc CXX=em++ AR=emar RANLIB=emranlib -j"$(nproc)"
+  fi
+done
+
+# Prepare SuiteSparse install structure for SUNDIALS
+SUITESPARSE_INSTALL="$BUILD_DIR/suitesparse_install"
+mkdir -p "$SUITESPARSE_INSTALL/include" "$SUITESPARSE_INSTALL/lib"
+find "$SUITESPARSE_SRC" -name "*.h" -exec cp {} "$SUITESPARSE_INSTALL/include" \;
+find "$SUITESPARSE_SRC" -name "*.a" -exec cp {} "$SUITESPARSE_INSTALL/lib" \;
+
+# ── Step 2: Download SUNDIALS ──
 mkdir -p "$BUILD_DIR"
 if [ ! -f "$BUILD_DIR/sundials-${SUNDIALS_VERSION}.tar.gz" ]; then
   echo "Downloading SUNDIALS ${SUNDIALS_VERSION}..."
@@ -51,7 +82,7 @@ SUNDIALS_SRC="$BUILD_DIR/sundials-${SUNDIALS_VERSION}"
 SUNDIALS_BUILD="$BUILD_DIR/build"
 SUNDIALS_INSTALL="$BUILD_DIR/install"
 
-# ── Step 2: Configure and build with Emscripten ──
+# ── Step 3: Configure and build SUNDIALS with Emscripten ──
 echo "Configuring SUNDIALS with Emscripten..."
 mkdir -p "$SUNDIALS_BUILD"
 
@@ -69,12 +100,20 @@ emcmake cmake -S "$SUNDIALS_SRC" -B "$SUNDIALS_BUILD" \
   -DBUILD_CPODES=OFF \
   -DBUILD_TESTING=OFF \
   -DSUNDIALS_PRECISION=double \
-  -DSUNDIALS_INDEX_SIZE=32
+  -DSUNDIALS_INDEX_SIZE=32 \
+  -DENABLE_KLU=ON \
+  -DKLU_INCLUDE_DIR="$SUITESPARSE_INSTALL/include" \
+  -DKLU_LIBRARY_DIR="$SUITESPARSE_INSTALL/lib" \
+  -DKLU_LIBRARY="$SUITESPARSE_INSTALL/lib/libklu.a" \
+  -DAMD_LIBRARY="$SUITESPARSE_INSTALL/lib/libamd.a" \
+  -DCOLAMD_LIBRARY="$SUITESPARSE_INSTALL/lib/libcolamd.a" \
+  -DBTF_LIBRARY="$SUITESPARSE_INSTALL/lib/libbtf.a" \
+  -DSUITESPARSECONFIG_LIBRARY="$SUITESPARSE_INSTALL/lib/libsuitesparseconfig.a"
 
 echo "Building SUNDIALS..."
 emmake make -C "$SUNDIALS_BUILD" -j"$(nproc)" install
 
-# ── Step 3: Compile WASM entry point ──
+# ── Step 4: Compile WASM entry point ──
 echo "Compiling SUNDIALS WASM module..."
 mkdir -p "$WASM_DIR"
 
@@ -147,7 +186,8 @@ int sundials_cvode_wasm(
     cb.n_event_indicators = n_events;
     cb.get_derivatives = wasm_get_derivatives;
     cb.get_event_indicators = n_events > 0 ? wasm_get_event_indicators : NULL;
-    cb.get_jacobian = NULL;
+    cb.get_jacobian_sparse = NULL;
+    cb.nnz = 0;
     cb.states = g_states_buf;
     cb.derivatives = g_derivatives_buf;
     cb.time_ptr = &g_time;
@@ -218,7 +258,7 @@ int sundials_kinsol_wasm(
     opts.atol = atol;
     opts.rtol = rtol;
 
-    int status = sundials_kinsol_solve(&cb, z0, &opts);
+    int status = sundials_kinsol_solve(&cb, z0, n, &opts);
     *status_out = (double)status;
 
     free(cb.derivatives);
@@ -231,6 +271,7 @@ ENTRY_EOF
 # Compile with Emscripten
 emcc -O2 \
   -I"$SUNDIALS_INSTALL/include" \
+  -I"$SUITESPARSE_INSTALL/include" \
   -I"$SRC_DIR" \
   "$BUILD_DIR/sundials_wasm_entry.c" \
   -L"$SUNDIALS_INSTALL/lib" \
@@ -238,8 +279,10 @@ emcc -O2 \
   -lsundials_idas \
   -lsundials_kinsol \
   -lsundials_nvecserial \
-  -lsundials_sunmatrixdense \
-  -lsundials_sunlinsoldense \
+  -lsundials_sunmatrixsparse \
+  -lsundials_sunlinsolklu \
+  -lsundials_core \
+  -L"$SUITESPARSE_INSTALL/lib" -lklu -lamd -lcolamd -lbtf -lsuitesparseconfig \
   -lm \
   -s MODULARIZE=1 \
   -s EXPORT_ES6=1 \
