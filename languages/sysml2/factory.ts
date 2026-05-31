@@ -16,7 +16,7 @@ import { INDEXER_HOOKS, REF_HOOKS, graphicsConfig as sysml2GraphicsConfig } from
 import { QUERY_HOOKS } from "./src-gen/query-hooks.js";
 
 const indexerHooks = INDEXER_HOOKS ?? (globalThis as any).__sysml2IndexerHooksFallback;
-const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;
+export const queryHooks = QUERY_HOOKS ?? (globalThis as any).__sysml2QueryHooksFallback;
 const refHooks = REF_HOOKS ?? (globalThis as any).__sysml2RefHooksFallback;
 const gfxConfig = sysml2GraphicsConfig ?? {};
 

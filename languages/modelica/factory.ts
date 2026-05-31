@@ -137,10 +137,24 @@ export function createModelicaWorkspaceIndex(): WorkspaceIndex {
 /**
  * Creates a configured QueryEngine for a given SymbolIndex.
  */
-export function createModelicaQueryEngine(index: any, tree?: any, cacheStore?: any, maxMemos?: number): QueryEngine {
+export function createModelicaQueryEngine(
+  index: any,
+  tree?: any,
+  cacheStore?: any,
+  maxMemos?: number,
+  extraHooks?: Map<string, any>,
+): QueryEngine {
   const symbolIndex = index?.toUnified ? index.toUnified() : index;
   injectPredefinedTypes(symbolIndex);
-  return new QueryEngine(symbolIndex, mergedQueryHooks, {
+
+  const finalHooks = new Map(mergedQueryHooks);
+  if (extraHooks) {
+    for (const [k, v] of extraHooks.entries()) {
+      finalHooks.set(k, v);
+    }
+  }
+
+  return new QueryEngine(symbolIndex, finalHooks, {
     evaluator,
     tree,
     cacheStore,

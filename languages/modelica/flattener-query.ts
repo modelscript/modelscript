@@ -942,6 +942,7 @@ export class ArenaQueryFlattener {
     shadowedNames: Set<string> = new Set(),
   ): void {
     // Cycle detection
+    // console.error(`[DEBUG FLATTEN_CLASS] classId=${classId} name=${this.db.symbol(classId)?.name} prefix=${prefix}`);
     if (visited.has(classId)) return;
     visited.add(classId);
 
@@ -980,6 +981,7 @@ export class ArenaQueryFlattener {
     }
 
     const children = this.db.childrenOf(classId);
+    // console.error(`[DEBUG CHILDREN] classId=${classId} name=${this.db.symbol(classId)?.name} childrenCount=${children.length} kinds=${children.map((c) => c.kind).join(",")}`);
 
     // Pre-scan for body-level redeclares (names that shadow inherited elements)
     const redeclaredNames = new Set<string>();
@@ -1083,6 +1085,9 @@ export class ArenaQueryFlattener {
         const baseEntry = this.db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
         if (!baseEntry) continue;
 
+        const baseChildren = this.db.childrenOf(baseEntry.id);
+        // console.error(`[DEBUG EXTENDS] child=${child.name} baseEntry=${baseEntry.name} (id=${baseEntry.id}, kind=${baseEntry.kind}, ruleName=${baseEntry.ruleName}) childrenCount=${baseChildren.length} (${baseChildren.map(c => c.name + ':' + c.ruleName).join(', ')})`);
+
         // Parse the extends clause's local modification from CST
         const localMod = this.db.query<ModelicaModArgs | null>("extendsModificationParsed", child.id);
 
@@ -1112,7 +1117,23 @@ export class ArenaQueryFlattener {
     }
 
     // Process direct children (components, equations, etc.)
-    for (const child of children) {
+    const projectedChildren = children.map((c) => {
+      if (
+        c.kind === "Usage" ||
+        c.kind === "PartUsage" ||
+        c.kind === "AttributeUsage" ||
+        c.kind === "ItemUsage" ||
+        c.kind === "PortUsage" ||
+        c.ruleName === "PartUsage" ||
+        c.ruleName === "AttributeUsage"
+      ) {
+        const projected = Object.create(c);
+        projected.kind = "Component";
+        return projected;
+      }
+      return c;
+    });
+    for (const child of projectedChildren) {
       if (child.kind === "Component") {
         const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
         if (isBroken(topMod, child.name)) {
@@ -1134,6 +1155,7 @@ export class ArenaQueryFlattener {
           if (condVal === false || condVal === 0) continue;
         }
 
+        // console.error(`[DEBUG PROJECTED] child=${child.name} kind=${child.kind}`);
         this.flattenComponent(child, prefix, dae, modStack);
         emittedNames.add(child.name);
       } else if (child.kind === "ConnectEquation") {
@@ -1488,7 +1510,9 @@ export class ArenaQueryFlattener {
 
     if (classInstanceId === null) {
       const resolvedType = this.db.query<SymbolEntry | null>("resolvedType", entry.id);
-      if (!resolvedType) {
+      if (resolvedType) {
+        classInstanceId = resolvedType.id;
+      } else {
         dae.diagnostics.push({
           code: 4004,
           rule: "arena-flattener",
@@ -1496,8 +1520,8 @@ export class ArenaQueryFlattener {
           message: `Cannot resolve type for component '${fullName}'`,
           range: { startByte: entry.startByte, endByte: entry.endByte },
         });
+        return;
       }
-      return;
     }
 
     let classEntry = this.db.symbol(classInstanceId);
@@ -1588,6 +1612,33 @@ export class ArenaQueryFlattener {
     let arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id) || [];
     let arrayDimsExprIds: number[] | undefined = undefined;
 
+    let metaMultiplicityStr = (entry.metadata as Record<string, unknown>)?.multiplicityStr as string | undefined;
+    let metaMultiplicityUpper = (entry.metadata as Record<string, unknown>)?.multiplicityUpper as
+      | number
+      | string
+      | undefined;
+
+    if (!metaMultiplicityUpper) {
+      metaMultiplicityUpper = (entry.metadata as Record<string, unknown>)?.multiplicityLower as
+        | number
+        | string
+        | undefined;
+    }
+
+    if (metaMultiplicityStr === null) metaMultiplicityStr = undefined;
+    if (metaMultiplicityUpper === null) metaMultiplicityUpper = undefined;
+
+    if (metaMultiplicityStr !== undefined && metaMultiplicityStr !== "" && rawDims.length === 0) {
+      // Mock rawDims so it parses the expression via the normal arena builder
+      rawDims = [{ kind: "expression", cstBytes: null, value: metaMultiplicityStr }];
+    } else if (metaMultiplicityUpper !== undefined && metaMultiplicityUpper !== "" && rawDims.length === 0) {
+      const numValue = Number(metaMultiplicityUpper);
+      if (!isNaN(numValue)) {
+        arrayDims = [numValue];
+        arrayDimsExprIds = [dae.addIntLiteral(numValue)];
+      }
+    }
+
     if (rawDims.length > 0) {
       arrayDimsExprIds = [];
       const evaluatedDims: number[] = [];
@@ -1612,6 +1663,25 @@ export class ArenaQueryFlattener {
               continue;
             }
           }
+        } else if (dim.kind === "expression" && dim.value && typeof dim.value === "string") {
+          const numValue = Number(dim.value);
+          if (!isNaN(numValue)) {
+            arrayDimsExprIds?.push(dae.addIntLiteral(numValue));
+            evaluatedDims.push(numValue);
+            continue;
+          }
+          const exprId = dae.addNameExpr(dim.value);
+          arrayDimsExprIds?.push(exprId);
+
+          // Try to evaluate it symbolically if possible
+          const scopeToUse = effectiveMod?.evaluationScopeId ?? entry.parentId ?? entry.id;
+          const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
+          if (typeof evalResult === "number") {
+            evaluatedDims.push(evalResult);
+          } else {
+            evaluatedDims.push(0);
+          }
+          continue;
         } else if (dim.kind === "literal") {
           arrayDimsExprIds?.push(dae.addIntLiteral(dim.value));
           evaluatedDims.push(dim.value);
@@ -1661,11 +1731,6 @@ export class ArenaQueryFlattener {
           }
         }
         if (inferredDims && inferredDims.length > 0) {
-          if (entry.name === "x" || entry.name === "u") {
-            console.error(
-              `[DEBUG DIMS] entry=${entry.name} original_arrayDims=${arrayDims.join(",")} inferredDims=${inferredDims.join(",")}`,
-            );
-          }
           // Merge inferredDims into arrayDims to replace unknown dimensions (0)
           for (let i = 0; i < arrayDims.length; i++) {
             if (arrayDims[i] <= 0 && i < inferredDims.length) {
@@ -1678,7 +1743,7 @@ export class ArenaQueryFlattener {
           }
 
           if (entry.name === "x" || entry.name === "u") {
-            console.error(`[DEBUG DIMS] entry=${entry.name} merged_arrayDims=${arrayDims.join(",")}`);
+            // console.error(`[DEBUG DIMS] entry=${entry.name} merged_arrayDims=${arrayDims.join(",")}`);
           }
 
           hasUnknownDim = arrayDims.some((d) => d <= 0);
@@ -1723,6 +1788,9 @@ export class ArenaQueryFlattener {
       }
 
       if (this.options.arrayMode === "preserve" || hasUnknownDim) {
+        console.error(
+          `[DEBUG PRESERVE] name=${fullName} arrayMode=${this.options.arrayMode} hasUnknownDim=${hasUnknownDim} arrayDims=${arrayDims.join(",")}`,
+        );
         // In preserve mode, emit a single variable with shape metadata
         this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, modStack, isFinalFromOuterMod);
         const varIdx = dae.getVarIdxByName(fullName);

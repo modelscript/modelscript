@@ -579,7 +579,14 @@ export class SymbolIndexer {
       if (part === "parent") {
         current = current.parent ?? null;
       } else {
-        current = current.childForFieldName(part);
+        let child = current.childForFieldName(part);
+        if (!child) {
+          // Fallback: search for child by rule name
+          const children: CSTNode[] = current.children || [];
+          const pascalType = part.charAt(0).toUpperCase() + part.slice(1);
+          child = children.find((c: CSTNode) => c.type === pascalType || c.type === part) ?? null;
+        }
+        current = child;
       }
     }
 

@@ -7967,6 +7967,32 @@
     "type": "EnumerationDefinition",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          },
+          {
+            "type": "AnnotatingMember",
+            "named": true
+          },
+          {
+            "type": "EnumerationUsageMember",
+            "named": true
+          },
+          {
+            "type": "{",
+            "named": false
+          },
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
       "declaredName": {
         "multiple": false,
         "required": false,
@@ -8070,14 +8096,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "AnnotatingMember",
-          "named": true
-        },
-        {
-          "type": "EnumerationUsageMember",
-          "named": true
-        },
         {
           "type": "OwnedSubclassification",
           "named": true
@@ -12403,6 +12421,40 @@
     "type": "LibraryPackage",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          },
+          {
+            "type": "AliasMember",
+            "named": true
+          },
+          {
+            "type": "ElementFilterMember",
+            "named": true
+          },
+          {
+            "type": "Import",
+            "named": true
+          },
+          {
+            "type": "PackageMember",
+            "named": true
+          },
+          {
+            "type": "{",
+            "named": false
+          },
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
       "declaredName": {
         "multiple": false,
         "required": false,
@@ -12516,22 +12568,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "AliasMember",
-          "named": true
-        },
-        {
-          "type": "ElementFilterMember",
-          "named": true
-        },
-        {
-          "type": "Import",
-          "named": true
-        },
-        {
-          "type": "PackageMember",
-          "named": true
-        },
         {
           "type": "PrefixMetadataMember",
           "named": true
@@ -15160,6 +15196,40 @@
     "type": "Package",
     "named": true,
     "fields": {
+      "body": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": ";",
+            "named": false
+          },
+          {
+            "type": "AliasMember",
+            "named": true
+          },
+          {
+            "type": "ElementFilterMember",
+            "named": true
+          },
+          {
+            "type": "Import",
+            "named": true
+          },
+          {
+            "type": "PackageMember",
+            "named": true
+          },
+          {
+            "type": "{",
+            "named": false
+          },
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      },
       "declaredName": {
         "multiple": false,
         "required": false,
@@ -15263,22 +15333,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "AliasMember",
-          "named": true
-        },
-        {
-          "type": "ElementFilterMember",
-          "named": true
-        },
-        {
-          "type": "Import",
-          "named": true
-        },
-        {
-          "type": "PackageMember",
-          "named": true
-        },
         {
           "type": "PrefixMetadataMember",
           "named": true

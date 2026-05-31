@@ -176,7 +176,8 @@ export default grammar({
         $._MetadataBody,
       ),
     MetadataDefinition: ($) => seq(repeat($._usage_modifier), "metadata", "def", $._Definition),
-    Package: ($) => seq(repeat($._usage_modifier), "package", optional($._Identification), $._PackageBody),
+    Package: ($) =>
+      seq(repeat($._usage_modifier), "package", optional($._Identification), field("body", $._PackageBody)),
     LibraryPackage: ($) =>
       seq(
         optional(field("isStandard", "standard")),
@@ -184,7 +185,7 @@ export default grammar({
         repeat($._usage_modifier),
         "package",
         optional($._Identification),
-        $._PackageBody,
+        field("body", $._PackageBody),
       ),
     _PackageBody: ($) => choice(";", seq("{", repeat($._PackageBodyElement), "}")),
     PackageMember: ($) =>
@@ -400,7 +401,7 @@ export default grammar({
         "def",
         optional($._Identification),
         optional($._SubclassificationPart),
-        $._EnumerationBody,
+        field("body", $._EnumerationBody),
       ),
     _EnumerationBody: ($) => choice(";", seq("{", repeat(choice($.AnnotatingMember, $.EnumerationUsageMember)), "}")),
     EnumerationUsageMember: ($) =>

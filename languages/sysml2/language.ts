@@ -65,7 +65,7 @@ const metaStr = (self: SymbolEntry, key: string): string | null => (meta(self)?.
 const defAttrs = (_defKind: string) => (self: any) => ({
   kind: "Definition" as const,
   name: self.declaredName,
-  exports: [self.declaredName],
+  exports: ["body"] as any[],
   attributes: {
     isAbstract: self.isAbstract,
     isVariation: self.isVariation,
@@ -275,6 +275,15 @@ const usageQueries = {
       }
     }
     return null;
+  },
+  typeSpecifier: (db: QueryDB, self: SymbolEntry) => {
+    // Resolve type from child OwnedFeatureTyping ref
+    const typeChild = db.childrenOf(self.id).find((c) => c.ruleName === "OwnedFeatureTyping");
+    let typeName = typeChild?.name ?? null;
+    if (typeName === "KerML::Real" || typeName === "ISQ::Real") typeName = "Real";
+    if (typeName === "KerML::Integer") typeName = "Integer";
+    if (typeName === "KerML::Boolean") typeName = "Boolean";
+    return typeName;
   },
   redefinedFeatures: (db: QueryDB, self: SymbolEntry) =>
     db.childrenOf(self.id).filter((c) => c.ruleName === "OwnedRedefinition"),
@@ -2052,17 +2061,48 @@ const modelicaClassAdapter = (classKind: string) => ({
 /** Project a SysML2 Usage as a Modelica ComponentClause. */
 const modelicaComponentAdapter = (opts?: { variability?: string; mapDirection?: boolean }) => ({
   modelica: {
-    target: "ComponentClause",
+    target: "Component",
     transform: (db: AdapterDB, self: SymbolEntry | any) => {
       const s = self as SymbolEntry;
       // Resolve type from child OwnedFeatureTyping ref
       const typeChild = db.childrenOf(s.id).find((c) => c.ruleName === "OwnedFeatureTyping");
       const dir = (s.metadata as Record<string, unknown>)?.direction;
+      let typeName = typeChild?.name ?? null;
+      if (typeName === "KerML::Real" || typeName === "ISQ::Real") typeName = "Real";
+      if (typeName === "KerML::Integer") typeName = "Integer";
+      if (typeName === "KerML::Boolean") typeName = "Boolean";
+
+      const lowerStr = s.metadata?.multiplicityLower as string | undefined;
+      let upperStr = s.metadata?.multiplicityUpper as string | undefined;
+      if (!upperStr && lowerStr) upperStr = lowerStr;
+
+      let multiplicity: number | undefined = undefined;
+      if (upperStr) {
+        if (upperStr === "*" || upperStr.includes("Infinity")) {
+          multiplicity = Infinity;
+        } else {
+          // We might have an expression like 'N' instead of a pure number
+          const p = parseFloat(upperStr);
+          if (!isNaN(p)) multiplicity = p;
+          else multiplicity = undefined; // Will be handled dynamically if needed, or we can just pass the string!
+        }
+      }
+
+      // To pass strings like 'N' to the Modelica flattener, we pass it via metadata
+      const multiplicityStr = upperStr;
+
       return {
+        id: s.id,
+        kind: "Component",
         name: s.name,
-        typeSpecifier: typeChild?.name ?? null,
+        typeSpecifier: typeName,
         causality: opts?.mapDirection ? (dir === "in" ? "input" : dir === "out" ? "output" : null) : null,
         variability: opts?.variability ?? null,
+        metadata: {
+          resolvedTypeName: typeName,
+          multiplicityUpper: multiplicity,
+          multiplicityStr: multiplicityStr,
+        },
       };
     },
   },
@@ -2415,11 +2455,11 @@ export default language({
 
     Package: ($) =>
       def({
-        syntax: seq(repeat($._usage_modifier), "package", optional($._Identification), $._PackageBody),
+        syntax: seq(repeat($._usage_modifier), "package", optional($._Identification), field("body", $._PackageBody)),
         symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
-          exports: [self.declaredName],
+          exports: ["body"] as any[],
         }),
         queries: packageTraceabilityQueries,
         model: packageTraceabilityModel,
@@ -2435,12 +2475,12 @@ export default language({
           repeat($._usage_modifier),
           "package",
           optional($._Identification),
-          $._PackageBody,
+          field("body", $._PackageBody),
         ),
         symbol: (self: any) => ({
           kind: "Package",
           name: self.declaredName,
-          exports: [self.declaredName],
+          exports: ["body"] as any[],
           attributes: { isStandard: self.isStandard },
         }),
         queries: packageTraceabilityQueries,
@@ -2891,9 +2931,9 @@ export default language({
           "def",
           optional($._Identification),
           optional($._SubclassificationPart),
-          $._EnumerationBody,
+          field("body", $._EnumerationBody),
         ),
-        symbol: (self) => ({ kind: "Enumeration", name: self.declaredName, exports: [self.declaredName] }),
+        symbol: (self: any) => ({ kind: "Enumeration", name: self.declaredName, exports: ["body"] as any[] }),
         queries: definitionStructuralQueries,
         model: {
           name: "EnumerationNode" as const,
@@ -4039,7 +4079,7 @@ export default language({
         symbol: (self: any) => ({
           kind: "Definition" as const,
           name: self.declaredName,
-          exports: [self.declaredName],
+          exports: [] as any[],
           attributes: {
             isAbstract: self.isAbstract,
             isVariation: self.isVariation,

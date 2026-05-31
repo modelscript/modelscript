@@ -88,8 +88,8 @@ def run_analysis():
         disp_data[i] = disp_z
         
         # Stress concentration near the center structural joints
-        # High stress near the roots of the arms
-        stress = 1.2e7 * (1.0 - r / max_radius) + 2e6 * np.sin(x*100) * np.cos(y*100)
+        # Stress concentration near the ends of the arms (force applied on ends)
+        stress = 1.2e7 * (r / max_radius) + 2e6 * np.sin(x*100) * np.cos(y*100)
         stress_data[i] = max(0, stress)
         
     # -------------------------------------------------------------

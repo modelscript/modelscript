@@ -769,7 +769,11 @@ export function resolveSimpleNameHelper(
 
   // 7. Predefined types fallback
   const predefined = db.byName(name);
-  return predefined?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+  return (
+    predefined?.find(
+      (e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function" || e.kind === "Definition",
+    ) ?? null
+  );
 }
 
 /**
@@ -785,8 +789,17 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
   let current =
     rootEntries.find((e) => (e.metadata as any)?.isPredefined) ??
     rootEntries.find((e) => e.parentId === null) ??
+    rootEntries.find((e) => ["Class", "Package", "Function", "Definition", "Enumeration"].includes(e.kind)) ??
     rootEntries[0] ??
     null;
+  if (parts[0] === "BatteryPackSysML" || parts[0] === "BatteryArchitecture_10") {
+    console.error(
+      `[DEBUG QUALIFIED] resolving ${parts[0]} - rootEntries count=${rootEntries.length}, found kind=${current?.kind} (id=${current?.id})`,
+    );
+    for (const e of rootEntries) {
+      console.error(`  - entry: kind=${e.kind}, ruleName=${e.ruleName}, id=${e.id}, parentId=${e.parentId}`);
+    }
+  }
 
   if (!current) return null;
 
@@ -4202,6 +4215,9 @@ export default language({
               if (resolveName) {
                 // Pass true for skipInherited to prevent cyclic lookup in extends clauses
                 let resolved = resolveName(baseName, true);
+                console.error(
+                  `[DEBUG RESOLVE] resolveName("${baseName}") returned: ${resolved?.kind} (id=${resolved?.id})`,
+                );
 
                 // If it resolves to the exact class that contains this extends clause,
                 // this is a redeclared extends (e.g. `redeclare class extends BaseClass`).

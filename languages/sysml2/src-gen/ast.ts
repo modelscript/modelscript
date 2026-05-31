@@ -184,6 +184,11 @@ export class UsageNode extends SemanticNode {
   }
 
   // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   get resolvedSource(): SemanticNode[] {
     const entries = this.query<SymbolEntry[]>("resolvedSource");
     return entries.map((e) => wrapEntry(e, this.db));
@@ -383,6 +388,10 @@ export class PackageNode extends SemanticNode {
   readonly kind = "Package";
 
   // --- CST Fields ---
+  /** Field: body */
+  get body(): string | null {
+    return this.field("body");
+  }
   /** Field: isStandard */
   get isStandard(): string | null {
     return this.field("isStandard");
@@ -557,6 +566,12 @@ export class ImportNode extends SemanticNode {
 
 export class EnumerationNode extends SemanticNode {
   readonly kind = "Enumeration";
+
+  // --- CST Fields ---
+  /** Field: body */
+  get body(): string | null {
+    return this.field("body");
+  }
 
   // --- Mutable Properties (CST default + runtime override) ---
   #isAbstract: boolean | undefined = false;
@@ -1017,6 +1032,12 @@ export class CalculationUsageNode extends SemanticNode {
     return this.query<unknown>("resultExpression");
   }
 
+  // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -1372,6 +1393,11 @@ export class ConstraintUsageNode extends SemanticNode {
   }
 
   // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   get dynamicConstraintResult(): SemanticNode[] {
     const entries = this.query<SymbolEntry[]>("dynamicConstraintResult");
     return entries.map((e) => wrapEntry(e, this.db));
@@ -1797,6 +1823,12 @@ export class RequirementUsageNode extends SemanticNode {
     return this.query<boolean | null>("constraintsMet");
   }
 
+  // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -1990,6 +2022,12 @@ export class SatisfyRequirementNode extends SemanticNode {
   get satisfyingSubject(): UsageNode | null {
     const entry = this.query<SymbolEntry | null>("satisfyingSubject");
     return entry ? (wrapEntry(entry, this.db) as UsageNode | null) : (null as unknown as UsageNode | null);
+  }
+
+  // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Graphics ---
@@ -2341,6 +2379,12 @@ export class VerificationCaseUsageNode extends SemanticNode {
   get objective(): SemanticNode | null {
     const entry = this.query<SymbolEntry | null>("objective");
     return entry ? (wrapEntry(entry, this.db) as SemanticNode | null) : (null as unknown as SemanticNode | null);
+  }
+
+  // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Graphics ---
@@ -2704,6 +2748,11 @@ export class StateUsageNode extends SemanticNode {
   }
 
   // --- Query Accessors ---
+  get typeSpecifier(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("typeSpecifier");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   get members(): SemanticNode[] {
     const entries = this.query<SymbolEntry[]>("members");
     return entries.map((e) => wrapEntry(e, this.db));

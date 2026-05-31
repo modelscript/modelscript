@@ -502,7 +502,12 @@ export class VerificationRunner {
       if (!reqTarget || !this.isRequirementEntry(reqTarget)) continue;
 
       // Find and evaluate the requirement's constraint children
-      const reqConstraints = db.childrenOf(reqTarget.id).filter((c) => this.isConstraintEntry(c));
+      const allChildren = db.childrenOf(reqTarget.id);
+      console.error(
+        `DEBUG REQ TARGET ${reqTarget.name} children:`,
+        allChildren.map((c) => c.ruleName),
+      );
+      const reqConstraints = allChildren.filter((c) => this.isConstraintEntry(c));
 
       for (const constraint of reqConstraints) {
         results.push(this.evaluateConstraintOverTime(constraint, reqTarget.id, simResult));

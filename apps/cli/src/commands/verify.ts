@@ -2,12 +2,7 @@
 
 import { UnifiedWorkspace, VerificationRunner } from "@modelscript/compiler";
 import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
-import {
-  Context,
-  createModelicaWorkspaceIndex,
-  createSysML2QueryEngine,
-  createSysML2WorkspaceIndex,
-} from "@modelscript/core";
+import { Context, createModelicaWorkspaceIndex, createSysML2WorkspaceIndex } from "@modelscript/core";
 import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import Modelica from "@modelscript/modelica/parser";
@@ -121,28 +116,56 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
     const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
 
+    const { createModelicaQueryEngine } = await import("@modelscript/core");
+    const sysmlFactory = await import("@modelscript/sysml2/factory");
+
+    const fileCache = new Map<string, string>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const treeCache = new Map<string, any>();
+
     // Create query engine
-    const engine = createSysML2QueryEngine(unifiedDb, {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      getText: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
-        const text = fs.readFileSync(pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", ""), "utf-8");
-        return text.substring(startByte, endByte);
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      getNode: (startByte: number, endByte: number, entry?: any) => {
-        if (!entry || !entry.resourceId) return null;
-        const text = fs.readFileSync(pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", ""), "utf-8");
-        if (entry.resourceId.endsWith(".sysml")) {
-          const tree = sysmlParser.parse(text);
+    const engine = createModelicaQueryEngine(
+      unifiedDb,
+      {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getText: (startByte: number, endByte: number, entry?: any) => {
+          if (!entry || !entry.resourceId) return null;
+          const p = pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", "");
+          let text = fileCache.get(p);
+          if (text === undefined) {
+            text = fs.readFileSync(p, "utf-8");
+            fileCache.set(p, text as string);
+          }
+          return (text as string).substring(startByte, endByte);
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        getNode: (startByte: number, endByte: number, entry?: any) => {
+          if (!entry || !entry.resourceId) return null;
+          const p = pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", "");
+          let text = fileCache.get(p);
+          if (text === undefined) {
+            text = fs.readFileSync(p, "utf-8");
+            fileCache.set(p, text as string);
+          }
+
+          let tree = treeCache.get(p);
+          if (!tree) {
+            if (entry.resourceId.endsWith(".sysml")) {
+              tree = sysmlParser.parse(text as string);
+            } else {
+              tree = modelicaParser.parse(text as string);
+            }
+            treeCache.set(p, tree);
+          }
           return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
-        } else {
-          const tree = modelicaParser.parse(text);
-          return tree.rootNode.descendantForIndex(startByte, Math.max(startByte, endByte - 1));
-        }
+        },
       },
-    });
+      undefined,
+      undefined,
+      sysmlFactory.queryHooks,
+    );
     const db = engine.toQueryDB();
+    context.setQueryEngine(engine);
 
     // 1. Find the verify case
     const verifyEntries = db.byName(args.name);
@@ -263,10 +286,30 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     }
 
     // Verify
+    // Output CSV for plotting
+    try {
+      let csvStr = "time";
+      for (const name of simResult.states) {
+        csvStr += "," + name;
+      }
+      csvStr += "\n";
+      for (let i = 0; i < simResult.t.length; i++) {
+        csvStr += simResult.t[i];
+        for (let j = 0; j < simResult.states.length; j++) {
+          csvStr += "," + (simResult.y?.[i]?.[j] ?? 0);
+        }
+        csvStr += "\n";
+      }
+      fs.writeFileSync("results.csv", csvStr);
+    } catch (e) {
+      console.error("Failed to write results.csv", e);
+    }
+
     profiler.start("verification");
     const runner = new VerificationRunner(db, topo.variableMap);
     const vResults = runner.verifyCase(verifyEntry.id, simResult);
     profiler.end("verification");
+    console.error("DEBUG VRESULTS: ", JSON.stringify(vResults, null, 2));
 
     // Use the bridge to get formatted LSP-like diagnostics, then print them
     // Note: emitVerificationDiagnostics requires a position index. Since this is CLI,

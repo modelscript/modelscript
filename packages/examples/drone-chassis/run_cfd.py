@@ -58,8 +58,8 @@ def run_cfd():
     print(f"Generated surface mesh with {num_points} points and {num_cells} triangles.")
     
     # -------------------------------------------------------------
-    # Simulated CFD computation (Forward flight at 15 m/s)
-    # Wind comes from the +Y direction (drone flies forward in -Y)
+    # Simulated CFD computation (Rotational aerodynamics)
+    # Propeller spinning around Z-axis
     # -------------------------------------------------------------
     
     # Compute center
@@ -68,30 +68,39 @@ def run_cfd():
     pressure_data = np.zeros(num_points)
     velocity_data = np.zeros((num_points, 3))
     
-    # Basic aerodynamic proxy
-    max_x = np.max(points[:, 0])
-    min_x = np.min(points[:, 0])
-    drone_width = max_x - min_x
+    omega = 500.0  # Angular velocity (rad/s)
+    air_density = 1.225 # kg/m^3
     
     for i in range(num_points):
         x, y, z = points[i]
         
-        # Stagnation pressure at the side (highest X values)
-        normalized_x = (x - min_x) / drone_width
+        # Relative to center
+        rx = x - center[0]
+        ry = y - center[1]
+        r = np.sqrt(rx**2 + ry**2)
         
-        stagnation = np.exp(normalized_x * 4) # Exponential increase towards front
-        wake = np.sin((y - center[1]) * 50) * 200 # wake turbulence
+        # Velocity vector (tangential)
+        vx = -omega * ry
+        vy = omega * rx
+        vz = -5.0 # Slight induced downwash
         
-        pressure = 101325 + (stagnation * 150) - 50 * np.abs(z - center[2]) * 100 + wake
+        # Leading edge approximation:
+        # If rotating CCW, blade at +Y moves in -X, so leading edge is -X.
+        # Blade at -Y moves in +X, so leading edge is +X.
+        # Thus, leading edge is where rx * ry < 0
+        # We smooth this out using a normalized tangent dot product proxy.
+        # For our simple rotated box, rx*ry < 0 is a good leading edge proxy.
+        
+        # Stagnation pressure on leading edge, suction on trailing edge
+        edge_factor = -np.sign(rx * ry) * 0.8 if rx * ry != 0 else 0
+        
+        # Bernoulli's dynamic pressure: 0.5 * rho * v^2
+        dynamic_pressure = 0.5 * air_density * (r * omega)**2
+        
+        # Total pressure distribution
+        pressure = 101325 + dynamic_pressure * edge_factor
+        
         pressure_data[i] = pressure
-        
-        # Wind comes from the +X direction (drone flying sideways, or side wind)
-        # We want the fluid to "start off in the same direction", so a strong uniform -X velocity,
-        # with only slight divergence around the chassis instead of exploding outwards.
-        vx = -15.0 + (1.0 - normalized_x) * 3.0
-        vy = (y - center[1]) * 2.0  # Slight splitting
-        vz = (z - center[2]) * 2.0
-        
         velocity_data[i] = [vx, vy, vz]
         
     # -------------------------------------------------------------
