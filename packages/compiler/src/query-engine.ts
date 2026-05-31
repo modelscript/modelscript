@@ -677,8 +677,8 @@ export class QueryEngine {
     const cachedCount = validCachedIds.size;
 
     // Re-lint only changed symbols
-    let i = 0;
-    for (const [id, entry] of symbolsToRelint) {
+    for (let i = 0; i < symbolsToRelint.length; i++) {
+      const [id, entry] = symbolsToRelint[i];
       const symbolDiags: LintDiagnostic[] = [];
 
       for (const { lintName, result } of this.runLints(id)) {
@@ -734,7 +734,6 @@ export class QueryEngine {
           return diagnostics;
         }
       }
-      i++;
     }
 
     // Merge cached results from unchanged symbols

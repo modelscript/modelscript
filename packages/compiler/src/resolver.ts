@@ -420,8 +420,8 @@ export class ScopeResolver {
     );
     let chunkCount = 0;
     let lastYieldStart = performance.now();
-    let i = 0;
-    for (const entry of entriesToResolve) {
+    for (let i = 0; i < entriesToResolve.length; i++) {
+      const entry = entriesToResolve[i];
       if (yieldFn && ++chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         const isStale = await yieldFn();
         lastYieldStart = performance.now();
@@ -482,7 +482,6 @@ export class ScopeResolver {
 
       // Successfully processed, remove from dirty set
       dirtySet.delete(entry.id);
-      i++;
     }
 
     // Merge cached results from unchanged entries
