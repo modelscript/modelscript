@@ -1459,6 +1459,7 @@ export class QueryEngine {
 // ---------------------------------------------------------------------------
 
 function symbolEntryEqual(a: SymbolEntry, b: SymbolEntry): boolean {
+  if (a === b) return true;
   return (
     a.id === b.id &&
     a.kind === b.kind &&
@@ -1468,7 +1469,7 @@ function symbolEntryEqual(a: SymbolEntry, b: SymbolEntry): boolean {
     a.parentId === b.parentId &&
     arraysEqual(a.exports, b.exports) &&
     arraysEqual(a.inherits, b.inherits) &&
-    JSON.stringify(a.metadata) === JSON.stringify(b.metadata)
+    (a.metadata === b.metadata || JSON.stringify(a.metadata) === JSON.stringify(b.metadata))
   );
 }
 

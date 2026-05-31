@@ -41,6 +41,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
     description:
       "The built-in `Real` type represents floating-point continuous or discrete variables. It defines properties such as physical unit, limits, and initialization start values.",
     attributes: {
+      quantity: "",
       unit: "",
       displayUnit: "",
       min: -1e100,
@@ -56,6 +57,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
     description:
       "The built-in `Integer` type represents discrete integer variables. Commonly used for counters, indices, and discrete state machines.",
     attributes: {
+      quantity: "",
       min: -2147483648,
       max: 2147483647,
       start: 0,
@@ -67,6 +69,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
     description:
       "The built-in `Boolean` type represents true/false values. Typically used in conditional equations (`if`, `when`) and discrete logic.",
     attributes: {
+      quantity: "",
       start: false,
       fixed: false,
     },
@@ -76,6 +79,7 @@ const PREDEFINED_TYPES: PredefinedTypeInfo[] = [
     description:
       "The built-in `String` type represents character sequences. Used primarily for file paths, messages, and external function interactions.",
     attributes: {
+      quantity: "",
       start: "",
     },
   },

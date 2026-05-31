@@ -99,21 +99,26 @@ export function checkModifierNotFound(
   const results = [];
   for (const arg of mod.args) {
     if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
-      require("fs").appendFileSync(
-        "/tmp/modifier.log",
-        `DEBUG checkModifierNotFound: name ${arg.name} not in declaredNames: ${Array.from(declaredNames)}\n`,
-      );
       let msg: string;
-      if (!arg.isRedeclaration && overrideClassName) {
+      if (
+        arg.value &&
+        typeof arg.value === "object" &&
+        arg.value.kind === "break" &&
+        !arg.name.startsWith("break_connect:")
+      ) {
+        msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+      } else if (!arg.isRedeclaration && overrideClassName) {
         // value modifier on a short class
         let modText = arg.name;
-        if (arg.bindingExpression) {
+        if (arg.value && typeof arg.value.text === "string") {
+          modText += " = " + arg.value.text;
+        } else if (arg.bindingExpression) {
           modText += " = " + arg.bindingExpression;
         }
-        msg = `In modifier (${modText}), class or component ${arg.name} not found in <${overrideClassName}>.`;
+        msg = `Variable ${self.name}.${overrideClassName}: In modifier (${modText}), class or component ${arg.name} not found in <${typeEntry.name}$${self.name}$${overrideClassName}>.`;
       } else {
         // Use the base type name
-        msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+        msg = `Variable ${self.name}: In modifier (${arg.name}), class or component ${arg.name} not found in <${typeEntry.name}$${self.name}>.`;
       }
 
       if (arg.nameRange) {
@@ -130,8 +135,8 @@ export function checkModifierNotFound(
           }),
         );
       }
-    } else if (arg.isRedeclaration && arg.name && arg.redeclaredTypeSpecifier && declaredNames.has(arg.name)) {
-      // Find the original element to check if it's a function replacement
+    } else if (arg.name && declaredNames.has(arg.name)) {
+      // Find the original element to check if it's a function replacement, or if it's final/constant
       const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
       let originalId: SymbolId | null = null;
       for (const eid of elements) {
@@ -144,8 +149,57 @@ export function checkModifierNotFound(
 
       if (originalId) {
         const originalEntry = db.symbol(originalId);
+
+        if (
+          arg.value &&
+          typeof arg.value === "object" &&
+          arg.value.kind === "break" &&
+          !arg.name.startsWith("break_connect:")
+        ) {
+          if (originalEntry && originalEntry.kind !== "Component") {
+            results.push(
+              error(`Invalid use of break on non-component '${arg.name}'.`, {
+                startByte: arg.nameRange ? arg.nameRange[0] : undefined,
+                endByte: arg.nameRange ? arg.nameRange[1] : undefined,
+                field: arg.nameRange ? undefined : "declaration.modification",
+              }),
+            );
+          }
+        }
+
+        const isFinal = db.query<boolean>("isFinal", originalId);
+        if (isFinal) {
+          results.push(
+            error(`Redeclaration of final component ${arg.name} is not allowed.`, {
+              startByte: arg.nameRange ? arg.nameRange[0] : undefined,
+              endByte: arg.nameRange ? arg.nameRange[1] : undefined,
+              field: arg.nameRange ? undefined : "declaration.modification",
+            }),
+          );
+        }
+
+        const variability = db.query<string>("variability", originalId);
+        if (variability === "constant") {
+          const origCst = db.cstNode(originalId) as any;
+          const hasBinding = !!origCst?.childForFieldName?.("modification");
+          if (hasBinding) {
+            results.push(
+              error(`Redeclaration of constant component ${arg.name} is not allowed.`, {
+                startByte: arg.nameRange ? arg.nameRange[0] : undefined,
+                endByte: arg.nameRange ? arg.nameRange[1] : undefined,
+                field: arg.nameRange ? undefined : "declaration.modification",
+              }),
+            );
+          }
+        }
+
         // Check if both are functions
-        if (originalEntry && (originalEntry.metadata?.classPrefixes as string)?.includes("function")) {
+        if (
+          arg.isRedeclaration &&
+          arg.redeclaredTypeSpecifier &&
+          originalEntry &&
+          (originalEntry.metadata?.classPrefixes as string)?.includes("function")
+        ) {
           const resolve = db.query<any>("resolveName", self.id);
           let redeclaredEntry: SymbolEntry | null = null;
           if (resolve) redeclaredEntry = resolve(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
@@ -188,6 +242,38 @@ export function checkModifierNotFound(
             if (mismatch) {
               // OpenModelica does not currently enforce this strictly and successfully outputs DAE.
               // We omit the diagnostic to maintain canonical output parity.
+            }
+          }
+        }
+
+        // Recursively check nested arguments
+        if (arg.nestedArgs && arg.nestedArgs.length > 0) {
+          let nestedTypeClassId = db.query<SymbolId | null>("classInstance", originalId);
+
+          if (arg.isRedeclaration && arg.redeclaredTypeSpecifier) {
+            const resolve = db.query<any>("resolveName", self.id);
+            let redeclaredEntry: SymbolEntry | null = null;
+            if (resolve) redeclaredEntry = resolve(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
+            if (!redeclaredEntry && self.parentId) {
+              const resolveParent = db.query<any>("resolveName", self.parentId);
+              if (resolveParent)
+                redeclaredEntry = resolveParent(arg.redeclaredTypeSpecifier, true) as SymbolEntry | null;
+            }
+            if (redeclaredEntry) nestedTypeClassId = redeclaredEntry.id;
+          }
+
+          if (nestedTypeClassId) {
+            const nestedTypeEntry = db.symbol(nestedTypeClassId);
+            if (nestedTypeEntry) {
+              const nestedResults = checkModifierNotFound(
+                db,
+                self,
+                { args: arg.nestedArgs },
+                nestedTypeClassId,
+                nestedTypeEntry,
+                arg.name,
+              );
+              if (nestedResults) results.push(...nestedResults);
             }
           }
         }
@@ -535,7 +621,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
   const compoundImports: Array<{ pkg: string; names: string[] }> = [];
 
   for (const child of children) {
-    if (child.kind === "Class" || child.kind === "Component") {
+    if (child.kind === "Class" || child.kind === "Component" || child.kind === "EnumerationLiteral") {
       directByName[child.name] = child.id;
     }
 
@@ -1956,6 +2042,173 @@ export default language({
           },
         },
         lints: {
+          /** Error if duplicate element names exist in classModification. */
+          duplicateModification: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+            let current = cst;
+            while (current && current.type !== "ClassDefinition" && current.type !== "class_definition")
+              current = current.parent;
+
+            const spec = current?.childForFieldName("classSpecifier");
+            if (spec?.type !== "ShortClassSpecifier") return null;
+
+            const mod = spec.childForFieldName("classModification");
+            if (!mod) return null;
+
+            const paths: string[] = [];
+            const results = [];
+
+            function findDeclNames(node: any): any[] {
+              const names: any[] = [];
+              const walk = (n: any) => {
+                if (!n) return;
+                if (n.type === "Declaration" || n.type === "declaration") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else if (n.type === "ShortClassSpecifier" || n.type === "short_class_specifier") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else {
+                  for (const child of n.children) walk(child);
+                }
+              };
+              walk(node);
+              return names;
+            }
+
+            const walkMods = (node: any, prefix: string) => {
+              if (!node) return;
+              if (node.type === "ElementModification" || node.type === "element_modification") {
+                const nameNode = node.childForFieldName("name");
+                if (nameNode) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on inherited class ${self.name}.`, {
+                        field: "classSpecifier",
+                      }),
+                    );
+                  } else {
+                    paths.push(path);
+                  }
+                  const innerClassMod = node.childForFieldName("modification")?.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              } else if (node.type === "ElementRedeclaration" || node.type === "element_redeclaration") {
+                const decls = findDeclNames(node);
+                for (const { nameNode, declNode } of decls) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on inherited class ${self.name}.`, {
+                        field: "classSpecifier",
+                      }),
+                    );
+                  } else {
+                    paths.push(path);
+                  }
+                  const innerClassMod =
+                    declNode.childForFieldName("modification")?.childForFieldName("classModification") ||
+                    declNode.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              } else {
+                for (const child of node.children) walkMods(child, prefix);
+              }
+            };
+
+            for (const child of mod.children) walkMods(child, "");
+            return results.length > 0 ? results : null;
+          },
+          /** Error if a class extends a builtin type but has local elements. */
+          builtinExtendsWithElements: (db: QueryDB, self: SymbolEntry) => {
+            let extendsBuiltinName: string | null = null;
+            let hasElements = false;
+            for (const child of db.childrenOf(self.id)) {
+              if (child.kind === "Extends") {
+                const baseName = (child.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined;
+                if (baseName && ["Real", "Integer", "Boolean", "String"].includes(baseName)) {
+                  extendsBuiltinName = baseName;
+                } else {
+                  const baseEntry = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+                  if (baseEntry && ["Real", "Integer", "Boolean", "String"].includes(baseEntry.name)) {
+                    extendsBuiltinName = baseEntry.name;
+                  }
+                }
+              } else if (child.kind === "Component" || child.kind === "Class") {
+                hasElements = true;
+              }
+            }
+            if (extendsBuiltinName && hasElements) {
+              return error(`A class extending from builtin type ${extendsBuiltinName} may not have other elements.`, {
+                startByte: self.startByte,
+                endByte: self.endByte,
+              });
+            }
+            return null;
+          },
+          /** Error if a type specialization class derives from a non-type. */
+          classSpecializationViolation: (db: QueryDB, self: SymbolEntry) => {
+            const meta = self.metadata as Record<string, unknown>;
+            if (meta?.classPrefixes !== "type") return null;
+
+            const cst = db.cstNode(self.id) as any;
+            if (!cst) return null;
+
+            const spec = cst.childForFieldName?.("classSpecifier");
+            if (!spec) return null;
+
+            if (spec.type === "ShortClassSpecifier") {
+              const typeSpecNode = spec.childForFieldName?.("typeSpecifier");
+              if (typeSpecNode && typeSpecNode.text) {
+                if (["Real", "Integer", "Boolean", "String"].includes(typeSpecNode.text)) return null;
+                const resolveName = db.query<any>("resolveName", self.parentId || self.id);
+                let baseEntry: SymbolEntry | null = null;
+                if (resolveName) baseEntry = resolveName(typeSpecNode.text, true) as SymbolEntry | null;
+                if (!baseEntry && self.parentId) {
+                  const resSimple = db.query<any>("resolveSimpleName", self.parentId);
+                  if (resSimple) baseEntry = resSimple(typeSpecNode.text.split(".")[0]) as SymbolEntry | null;
+                }
+
+                if (baseEntry) {
+                  const baseMeta = baseEntry.metadata as Record<string, unknown>;
+                  if (baseMeta?.classPrefixes !== "type" && !baseMeta?.isPredefined) {
+                    const typeNameStr = baseEntry.name.startsWith(".") ? baseEntry.name : `.${baseEntry.name}`;
+                    return error(`Class specialization violation: ${typeNameStr} is a new def, not a type.`, {
+                      startByte: typeSpecNode.startIndex ?? self.startByte,
+                      endByte: typeSpecNode.endIndex ?? self.endByte,
+                    });
+                  }
+                }
+              }
+            }
+
+            for (const child of db.childrenOf(self.id)) {
+              if (child.kind === "Extends") {
+                const baseEntry = db.query<SymbolEntry | null>("resolvedBaseClass", child.id);
+                if (baseEntry) {
+                  const baseMeta = baseEntry.metadata as Record<string, unknown>;
+                  if (
+                    baseMeta?.classPrefixes !== "type" &&
+                    !baseMeta?.isPredefined &&
+                    !["Real", "Integer", "Boolean", "String"].includes(baseEntry.name)
+                  ) {
+                    const typeNameStr = baseEntry.name.startsWith(".") ? baseEntry.name : `.${baseEntry.name}`;
+                    return error(`Class specialization violation: ${typeNameStr} is a new def, not a type.`, {
+                      startByte: child.startByte,
+                      endByte: child.endByte,
+                    });
+                  }
+                }
+              }
+            }
+            return null;
+          },
           /** Error if a short class modifies an unknown element in its base class. */
           modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
             const cst = db.cstNode(self.id) as any;
@@ -2114,8 +2367,10 @@ export default language({
                     if (dNode) identNode = dNode.childForFieldName("identifier") || dNode;
                   }
                   // Narrow to the offending component's identifier range
+                  const isConstant = (el.metadata as any)?.variability === "constant";
+                  const diagFn = isConstant ? error : warning;
                   results.push(
-                    error(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
+                    diagFn(`Public variable '${el.name}' in function '${self.name}' must be an input or output`, {
                       startByte: identNode?.startIndex ?? el.startByte,
                       endByte: identNode?.endIndex ?? el.endByte,
                     }),
@@ -2760,7 +3015,7 @@ export default language({
                 const deps = new Set<SymbolId>();
                 const ast = mod.bindingExpression;
                 if (ast && typeof ast.text === "string") {
-                  const words = ast.text.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
+                  const words = ast.text.match(/(?<!\.)\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [];
                   for (const word of words) {
                     const resolve = db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", self.id);
                     if (resolve) {
@@ -3901,6 +4156,7 @@ export default language({
           extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
             const cst = db.cstNode(self.id) as any;
             const modNode = cst?.childForFieldName("classOrInheritanceModification");
+            console.log("extendsModificationParsed for", self.id, "cst type:", cst?.type, "modNode:", !!modNode);
             if (!modNode) return null;
             return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
           },
@@ -3920,18 +4176,96 @@ export default language({
         lints: {
           /** Error if an extends clause modifies an unknown element. */
           modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
-            require("fs").appendFileSync("/tmp/modifier2.log", `HOOK CALLED on ${self.name}\n`);
-            const mod = db.query<any>("effectiveModification", self.id);
+            console.log("EXECUTING modifierNotFound for", self.id);
+            const mod = db.query<any>("extendsModificationParsed", self.id);
             if (!mod) return null;
             const baseClassNode = db.query<any>("resolvedBaseClass", self.id);
             if (!baseClassNode || !baseClassNode.id) return null;
             const baseEntry = db.symbol(baseClassNode.id);
-            require("fs").appendFileSync(
-              "/tmp/modifier2.log",
-              `DEBUG modifierNotFound on extends: ${baseEntry?.name} mod args: ${mod?.args?.map((a: any) => a.name)}\n`,
-            );
             if (baseEntry) return checkModifierNotFound(db, self, mod, baseEntry.id, baseEntry, undefined);
             return null;
+          },
+          /** Error if duplicate element names exist in classModification. */
+          duplicateModification: (db: QueryDB, self: SymbolEntry) => {
+            const cst = db.cstNode(self.id) as any;
+            console.error(`[Extends] CST node for ${self.id}:`, !!cst);
+            if (!cst) return null;
+            console.error(`[Extends] CST type: ${cst.type}`);
+            let current = cst;
+            while (current && current.type !== "ExtendsClause" && current.type !== "extends_clause")
+              current = current.parent;
+
+            const mod = current?.childForFieldName("classOrInheritanceModification");
+            if (!mod) return null;
+
+            const paths: string[] = [];
+            const results = [];
+
+            function findDeclNames(node: any): any[] {
+              const names: any[] = [];
+              const walk = (n: any) => {
+                if (!n) return;
+                if (n.type === "Declaration" || n.type === "declaration") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else if (n.type === "ShortClassSpecifier" || n.type === "short_class_specifier") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else {
+                  for (const child of n.children) walk(child);
+                }
+              };
+              walk(node);
+              return names;
+            }
+
+            const walkMods = (node: any, prefix: string) => {
+              if (!node) return;
+              if (node.type === "ElementModification" || node.type === "element_modification") {
+                const nameNode = node.childForFieldName("name");
+                if (nameNode) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on extends ${self.name}.`, {
+                        field: "classOrInheritanceModification",
+                      }),
+                    );
+                  } else {
+                    paths.push(path);
+                  }
+                  const innerClassMod = node.childForFieldName("modification")?.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              } else if (node.type === "ElementRedeclaration" || node.type === "element_redeclaration") {
+                const decls = findDeclNames(node);
+                for (const { nameNode, declNode } of decls) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on extends ${self.name}.`, {
+                        field: "classOrInheritanceModification",
+                      }),
+                    );
+                  } else {
+                    paths.push(path);
+                  }
+                  const innerClassMod =
+                    declNode.childForFieldName("modification")?.childForFieldName("classModification") ||
+                    declNode.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              } else {
+                for (const child of node.children) walkMods(child, prefix);
+              }
+            };
+
+            for (const child of mod.children) walkMods(child, "");
+            return results.length > 0 ? results : null;
           },
           /**
            * Detect extends cycles (A extends B extends A).
@@ -4708,7 +5042,6 @@ export default language({
             const typeEntry = db.symbol(typeClassId);
             if (!typeEntry) return null;
             const mod = db.query<any | null>("effectiveModification", self.id);
-            require("fs").appendFileSync("/tmp/modifier2.log", `HOOK CALLED on Component ${self.name} mod: ${mod}\n`);
             return checkModifierNotFound(db, self, mod, typeClassId, typeEntry, undefined);
           },
           /** Error if duplicate element names exist in classModification. */
@@ -4716,7 +5049,13 @@ export default language({
             const cst = db.cstNode(self.id) as any;
             if (!cst) return null;
             let current = cst;
-            while (current && current.type !== "ComponentDeclaration") current = current.parent;
+            while (
+              current &&
+              current.type !== "ComponentDeclaration" &&
+              current.type !== "component_declaration" &&
+              current.type !== "component_clause"
+            )
+              current = current.parent;
 
             const decl = current?.childForFieldName("declaration");
             if (!decl) return null;
@@ -4728,28 +5067,70 @@ export default language({
             const paths: string[] = [];
             const results = [];
 
+            function findDeclNames(node: any): any[] {
+              const names: any[] = [];
+              const walk = (n: any) => {
+                if (!n) return;
+                if (n.type === "Declaration" || n.type === "declaration") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else if (n.type === "ShortClassSpecifier" || n.type === "short_class_specifier") {
+                  const nameNode = n.childForFieldName("identifier");
+                  if (nameNode) names.push({ nameNode, declNode: n });
+                } else {
+                  for (const child of n.children) walk(child);
+                }
+              };
+              walk(node);
+              return names;
+            }
+
             const walkMods = (node: any, prefix: string) => {
-              if (node.type === "ElementModification") {
+              if (!node) return;
+              if (node.type === "ElementModification" || node.type === "element_modification") {
                 const nameNode = node.childForFieldName("name");
                 if (nameNode) {
                   const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
-                  const modExpr = node.childForFieldName("modification")?.childForFieldName("modificationExpression");
-                  if (modExpr) {
-                    if (paths.includes(path)) {
-                      results.push(
-                        error(`Duplicate modification of element '${path}'`, { field: "declaration.modification" }),
-                      );
-                    } else {
-                      paths.push(path);
-                    }
+                  const modNode = node.childForFieldName("modification");
+                  const hasExpression = modNode?.childForFieldName("modificationExpression") != null;
+
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on component ${self.name}.`, {
+                        field: "declaration.modification",
+                      }),
+                    );
+                  } else if (hasExpression) {
+                    paths.push(path);
                   }
 
-                  // Check nested classModification
-                  const innerClassMod = node.childForFieldName("modification")?.childForFieldName("classModification");
+                  const innerClassMod = modNode?.childForFieldName("classModification");
                   if (innerClassMod) {
                     for (const child of innerClassMod.children) walkMods(child, path);
                   }
                 }
+              } else if (node.type === "ElementRedeclaration" || node.type === "element_redeclaration") {
+                const decls = findDeclNames(node);
+                for (const { nameNode, declNode } of decls) {
+                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
+                  if (paths.includes(path)) {
+                    results.push(
+                      error(`Duplicate modification of element ${path} on component ${self.name}.`, {
+                        field: "declaration.modification",
+                      }),
+                    );
+                  } else {
+                    paths.push(path);
+                  }
+                  const innerClassMod =
+                    declNode.childForFieldName("modification")?.childForFieldName("classModification") ||
+                    declNode.childForFieldName("classModification");
+                  if (innerClassMod) {
+                    for (const child of innerClassMod.children) walkMods(child, path);
+                  }
+                }
+              } else {
+                for (const child of node.children) walkMods(child, prefix);
               }
             };
 

@@ -261,9 +261,20 @@ export class ArenaQueryFlattener {
   private inheritedProtected = false;
   /** Set of connection texts (e.g. "prefix:connect(c1,c2)") that have been broken by modifications. */
   private brokenConnections = new Set<string>();
+  private brokenComponents = new Set<string>();
 
   /** Map from fully-qualified outer component path -> fully-qualified inner component path. */
   private outerAliasMap = new Map<string, string>();
+
+  private isPathBroken(path: string): boolean {
+    const parts = path.split(".");
+    let current = "";
+    for (const part of parts) {
+      current = current ? current + "." + part : part;
+      if (this.brokenComponents.has(current)) return true;
+    }
+    return false;
+  }
 
   /** Map to track class redeclarations for functions */
   private classRedeclarations = new Map<string, SymbolId>();
@@ -329,6 +340,7 @@ export class ArenaQueryFlattener {
     } else {
       dae = new ArenaDAEBuilder(undefined, className, "");
       this.brokenConnections.clear();
+      this.brokenComponents.clear();
 
       // Pre-pass: count connector cardinality for cardinality() built-in
       this.connectorCardinality.clear();
@@ -805,6 +817,9 @@ export class ArenaQueryFlattener {
             let rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
             lhsName = this.resolveOuter(lhsName) ?? lhsName;
             rhsName = this.resolveOuter(rhsName) ?? rhsName;
+            if (this.isPathBroken(lhsName) || this.isPathBroken(rhsName)) {
+              continue;
+            }
             const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhsName));
             const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhsName));
             dae.addEquation(EqKind.Connect, lhsId, rhsId);
@@ -884,6 +899,7 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     scopeId: SymbolId,
   ): void {
+    console.error(`flattenAlgorithmSection called! scopeId=${scopeId}`);
     const isInitial = sectionNode.initial;
     const stmtNodes: ModelicaStatementSyntaxNode[] = sectionNode.statements ?? [];
 
@@ -1099,7 +1115,10 @@ export class ArenaQueryFlattener {
     for (const child of children) {
       if (child.kind === "Component") {
         const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
-        if (isBroken(topMod, child.name)) continue;
+        if (isBroken(topMod, child.name)) {
+          this.brokenComponents.add(prefix ? prefix + "." + child.name : child.name);
+          continue;
+        }
 
         // Skip components that are shadowed by a body-level redeclaration in a subclass
         if (shadowedNames.has(child.name)) continue;
@@ -1146,6 +1165,20 @@ export class ArenaQueryFlattener {
             }
           }
         }
+
+        // Also skip connect equation if it involves a broken component!
+        if (!isBrokenConnect) {
+          const cst = this.db.cstNode(child.id) as any;
+          const connectClause = cst?.childForFieldName("connectClause") || cst;
+          const source = connectClause?.childForFieldName("componentReference1")?.text;
+          const target = connectClause?.childForFieldName("componentReference2")?.text;
+          const sourcePath = prefix ? prefix + "." + source : source;
+          const targetPath = prefix ? prefix + "." + target : target;
+          if ((sourcePath && this.isPathBroken(sourcePath)) || (targetPath && this.isPathBroken(targetPath))) {
+            isBrokenConnect = true;
+          }
+        }
+
         if (isBrokenConnect) continue;
 
         this.recordConnection(child, prefix, dae);
@@ -2687,15 +2720,72 @@ export class ArenaQueryFlattener {
     }
   }
 
-  private resolveFunctionInputs(funcName: string): { name: string; type: VarType | null; variability: Variability }[] {
-    const resolvedEntries = this.db.byName(funcName);
-    if (resolvedEntries.length === 0) return [];
-    const resolvedId = resolvedEntries[0].id;
-    const funcEntry = this.db.symbol(resolvedId);
-    if (funcEntry?.kind !== "Class") return [];
-    const elements = this.db.query<number[]>("instantiate", resolvedId);
+  private resolveFunctionInputs(
+    funcName: string,
+    scopeId?: number,
+  ): { name: string; type: VarType | null; variability: Variability; classInstanceId?: number }[] {
+    const parts = funcName.split(".");
+    let currentId: number | undefined = scopeId;
+
+    for (let i = 0; i < parts.length; i++) {
+      if (i === 0) {
+        if (currentId !== undefined) {
+          const children = this.db.childrenOf(currentId);
+          const child = children.find((c) => c.name === parts[0]);
+          if (child) {
+            currentId = child.id;
+          } else {
+            // Fallback to global search if not found in scope
+            const entries = this.db.byName(parts[0]);
+            for (const entry of entries) {
+              if (entry.kind === "Class") {
+                currentId = entry.id;
+                break;
+              }
+            }
+          }
+        }
+        if (currentId === undefined) {
+          const entries = this.db.byName(parts[0]);
+          for (const entry of entries) {
+            if (entry.kind === "Class") {
+              currentId = entry.id;
+              break;
+            }
+          }
+        }
+      } else {
+        if (currentId !== undefined) {
+          const children = this.db.childrenOf(currentId);
+          const child = children.find((c) => c.name === parts[i]);
+          currentId = child?.id;
+        }
+      }
+    }
+
+    if (currentId === undefined) {
+      const entries = this.db.byName(funcName);
+      for (const entry of entries) {
+        if (entry.kind === "Class") {
+          currentId = entry.id;
+          break;
+        }
+      }
+    }
+
+    if (currentId === undefined) {
+      // It might be a builtin, don't log error here
+      return [];
+    }
+
+    const funcEntry = this.db.symbol(currentId);
+    if (funcEntry?.kind !== "Class") {
+      console.error(`DEBUG resolveFunctionInputs: kind ${funcEntry?.kind} not Class for ${funcName}`);
+      return [];
+    }
+    const elements = this.db.query<number[]>("instantiate", currentId);
     if (!elements) return [];
-    const inputs: { name: string; type: VarType | null; variability: Variability }[] = [];
+    const inputs: { name: string; type: VarType | null; variability: Variability; classInstanceId?: number }[] = [];
     for (const elemId of elements) {
       const entry = this.db.symbol(elemId);
       if (entry && entry.kind === "Component") {
@@ -2717,7 +2807,19 @@ export class ArenaQueryFlattener {
           if (qVariability === "parameter") varVariability = Variability.Parameter;
           else if (qVariability === "constant") varVariability = Variability.Constant;
           else if (qVariability === "discrete") varVariability = Variability.Discrete;
-          inputs.push({ name: entry.name, type: varType, variability: varVariability });
+
+          if (funcName.includes("f")) {
+            console.error(
+              `DEBUG FLATTENER_QUERY: funcName=${funcName} elem=${entry.name} classInstanceId=${classInstanceId}`,
+            );
+          }
+
+          inputs.push({
+            name: entry.name,
+            type: varType,
+            variability: varVariability,
+            classInstanceId: classInstanceId ?? undefined,
+          });
         }
       }
     }
@@ -3640,9 +3742,10 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     prefix: string,
     scopeId: SymbolId,
+    loopVars?: Map<string, number>,
   ): void {
     const startIdx = dae.stmtCount;
-    this.flattenStatementInternal(stmt, dae, prefix, scopeId);
+    this.flattenStatementInternal(stmt, dae, prefix, scopeId, loopVars);
     const endIdx = dae.stmtCount;
     if (stmt.sourceRange && startIdx < endIdx) {
       const loc = {
@@ -3660,9 +3763,10 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     prefix: string,
     scopeId: SymbolId,
+    loopVars?: Map<string, number>,
   ): void {
     if (stmt instanceof ModelicaSimpleAssignmentStatementSyntaxNode) {
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
       const lhsId = stmt.target ? visitor.visit(stmt.target) : undefined;
       const rhsId = stmt.source ? visitor.visit(stmt.source) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
@@ -3690,11 +3794,6 @@ export class ArenaQueryFlattener {
         let finalRhsId = rhsId;
         if (targetType === VarType.Real && (sourceType === VarType.Integer || sourceType === null)) {
           finalRhsId = visitor.castToRealExpr(rhsId);
-          console.error(
-            `[DEBUG CAST] rhsId=${rhsId}, finalRhsId=${finalRhsId}, sourceType=${sourceType}, targetType=${targetType}`,
-          );
-        } else {
-          console.error(`[DEBUG NO CAST] rhsId=${rhsId}, sourceType=${sourceType}, targetType=${targetType}`);
         }
         dae.addAssignmentStmt(lhsId, finalRhsId);
       }
@@ -3702,11 +3801,11 @@ export class ArenaQueryFlattener {
       // For statement: for i in range loop ... end for;
       const forIndexes = stmt.forIndexes ?? [];
       if (forIndexes.length > 0) {
-        const emitNestedFor = (idxPos: number) => {
+        const emitNestedFor = (idxPos: number, currentLoopVars: Map<string, number> | undefined) => {
           if (idxPos >= forIndexes.length) {
             const bodyStmts = stmt.statements ?? [];
             for (const inner of bodyStmts) {
-              this.flattenStatement(inner, dae, prefix, scopeId);
+              this.flattenStatement(inner, dae, prefix, scopeId, currentLoopVars);
             }
             return;
           }
@@ -3714,7 +3813,7 @@ export class ArenaQueryFlattener {
           const idxNode = forIndexes[idxPos]!;
           const indexName = idxNode.identifier?.text ?? "";
           const indexNameId = dae.interner.intern(indexName);
-          const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+          const visitor = this.createExprVisitor(dae, currentLoopVars, prefix, scopeId, false);
 
           let rangeExprId = idxNode.expression ? visitor.visit(idxNode.expression) : undefined;
           const bodyStmts = stmt.statements ?? [];
@@ -3727,23 +3826,27 @@ export class ArenaQueryFlattener {
           const bodySize = idxPos === forIndexes.length - 1 ? bodyStmts.length : 1;
           dae.addForStmt(indexNameId, rangeExprId ?? -1, bodySize);
 
-          emitNestedFor(idxPos + 1);
+          // Create a new scope for the inner loops/statements
+          const nextLoopVars = new Map(currentLoopVars ?? []);
+          nextLoopVars.set(indexName, 0); // dummy value
+
+          emitNestedFor(idxPos + 1, nextLoopVars);
         };
 
-        emitNestedFor(0);
+        emitNestedFor(0, loopVars);
       }
     } else if (stmt instanceof ModelicaWhileStatementSyntaxNode) {
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
       const bodyStmts = stmt.statements ?? [];
 
       // Header first, then body (prefix layout)
       dae.addWhileStmt(condId ?? -1, bodyStmts.length);
       for (const inner of bodyStmts) {
-        this.flattenStatement(inner, dae, prefix, scopeId);
+        this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
       }
     } else if (stmt instanceof ModelicaIfStatementSyntaxNode) {
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
 
       // Collect all branches: then, elseifs, else
       const branches: { condId: number; stmts: any[]; isTrue: boolean; isFalse: boolean }[] = [];
@@ -3787,7 +3890,7 @@ export class ArenaQueryFlattener {
         if (b.isTrue) {
           if (finalBranches.length === 0) {
             for (const inner of b.stmts) {
-              this.flattenStatement(inner, dae, prefix, scopeId);
+              this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
             }
             return;
           } else {
@@ -3805,16 +3908,16 @@ export class ArenaQueryFlattener {
 
       dae.addIfStmt(mainBranch.condId, mainBranch.stmts.length, otherBranches.length);
       for (const inner of mainBranch.stmts) {
-        this.flattenStatement(inner, dae, prefix, scopeId);
+        this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
       }
       for (const branch of otherBranches) {
         dae.addBlockStmt(branch.condId, branch.stmts.length);
         for (const inner of branch.stmts) {
-          this.flattenStatement(inner, dae, prefix, scopeId);
+          this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
         }
       }
     } else if (stmt instanceof ModelicaWhenStatementSyntaxNode) {
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
       const condId = stmt.condition ? visitor.visit(stmt.condition) : undefined;
       const bodyStmts = stmt.statements ?? [];
       const elseWhenClauses = stmt.elseWhenStatementClauses ?? [];
@@ -3822,16 +3925,16 @@ export class ArenaQueryFlattener {
       // Header first, then body, then elsewhen blocks (prefix layout)
       dae.addWhenStmt(condId ?? -1, bodyStmts.length, elseWhenClauses.length);
       for (const inner of bodyStmts) {
-        this.flattenStatement(inner, dae, prefix, scopeId);
+        this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
       }
 
       for (const ew of elseWhenClauses) {
-        const ewVisitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+        const ewVisitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
         const ewCondId = ew.condition ? ewVisitor.visit(ew.condition) : -1;
         const ewStmts = ew.statements ?? [];
         dae.addBlockStmt(ewCondId ?? -1, ewStmts.length);
         for (const inner of ewStmts) {
-          this.flattenStatement(inner, dae, prefix, scopeId);
+          this.flattenStatement(inner, dae, prefix, scopeId, loopVars);
         }
       }
     } else if (stmt instanceof ModelicaReturnStatementSyntaxNode) {
@@ -3840,7 +3943,7 @@ export class ArenaQueryFlattener {
       dae.addBreakStmt();
     } else if (stmt instanceof ModelicaProcedureCallStatementSyntaxNode) {
       // Procedure call: e.g., assert(...), terminate(...), Modelica.Utilities.Streams.print(...)
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
       // Build a function call expression from functionReference + arguments
       const funcRef = stmt.functionReference;
       if (funcRef) {
@@ -3852,17 +3955,28 @@ export class ArenaQueryFlattener {
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {
             for (const arg of stmt.functionCallArguments.arguments) {
-              const id = visitor.visit(arg.expression);
-              if (id !== undefined) argIds.push(id);
+              if (arg.functionPartialApplication) {
+                const id = visitor.visitPartialApplication(arg.functionPartialApplication);
+                if (id !== undefined) argIds.push(id);
+              } else {
+                const id = visitor.visit(arg.expression);
+                if (id !== undefined) argIds.push(id);
+              }
             }
           }
+          visitor.validateFunctionCallArgs(
+            funcName,
+            argIds,
+            stmt.sourceRange ?? null,
+            stmt.functionCallArguments?.arguments,
+          );
           const callExprId = dae.addCallExpr(funcName, argIds);
           dae.addProcedureCallStmt(callExprId);
         }
       }
     } else if (stmt instanceof ModelicaComplexAssignmentStatementSyntaxNode) {
       // Complex assignment: (a, b, ...) := func(args)
-      const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+      const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
       const funcRef = stmt.functionReference;
       if (funcRef) {
         let funcName = this.serializeRef(funcRef);
@@ -3873,10 +3987,21 @@ export class ArenaQueryFlattener {
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {
             for (const arg of stmt.functionCallArguments.arguments) {
-              const id = visitor.visit(arg.expression);
-              if (id !== undefined) argIds.push(id);
+              if (arg.functionPartialApplication) {
+                const id = visitor.visitPartialApplication(arg.functionPartialApplication);
+                if (id !== undefined) argIds.push(id);
+              } else {
+                const id = visitor.visit(arg.expression);
+                if (id !== undefined) argIds.push(id);
+              }
             }
           }
+          visitor.validateFunctionCallArgs(
+            funcName,
+            argIds,
+            stmt.sourceRange ?? null,
+            stmt.functionCallArguments?.arguments,
+          );
           const callExprId = dae.addCallExpr(funcName, argIds);
           // Extract target expression IDs from the output list
           const targets: number[] = [];
@@ -3947,7 +4072,7 @@ export class ArenaQueryFlattener {
       // Fallback: try to handle via duck-typing for any other statement types
       const stmtAny = stmt as any;
       if (stmtAny.functionReference && stmtAny.functionCallArguments) {
-        const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+        const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId, false);
         const funcCallExprId = visitor.visit(stmt);
         if (funcCallExprId !== undefined) {
           dae.addProcedureCallStmt(funcCallExprId);
@@ -4274,6 +4399,7 @@ export class ArenaQueryFlattener {
     loopVars?: Map<string, number>,
     namePrefix?: string,
     scopeId?: SymbolId,
+    substituteLoopVars = true,
   ): ArenaExprVisitor {
     return new ArenaExprVisitor(
       dae,
@@ -4283,12 +4409,13 @@ export class ArenaQueryFlattener {
         return this.functionNameMap.get(funcName);
       },
       this.connectorCardinality,
-      (funcName) => this.resolveFunctionInputs(funcName),
+      (funcName) => this.resolveFunctionInputs(funcName, scopeId),
       namePrefix,
       this.db,
       scopeId,
       undefined,
       this.resolveOuter,
+      substituteLoopVars,
     );
   }
 
@@ -4423,7 +4550,6 @@ export class ArenaQueryFlattener {
   private collectedQualifiedFunctions = new Set<string>();
 
   private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder, scopeId?: SymbolId): void {
-    console.error(`[DEBUG FUNC START] funcName=${funcName}, scopeId=${scopeId}`);
     if (
       !funcName.includes(".") &&
       [
@@ -4529,11 +4655,6 @@ export class ArenaQueryFlattener {
       this.collectedQualifiedFunctions.add(qualifiedName);
 
       const funcEntry = this.db.symbol(resolvedId);
-      console.error(
-        `[DEBUG collectFunc] funcName=${funcName}, resolvedId=${resolvedId}, funcEntry=`,
-        funcEntry?.kind,
-        (funcEntry?.metadata as any)?.classPrefixes,
-      );
       if (funcEntry?.kind !== "Class") return;
 
       // Verify it's actually a function
@@ -4759,13 +4880,6 @@ export class ArenaQueryFlattener {
         if (hasChildren) continue;
 
         // If we reach here, the variable is not found in the DAE!
-        // We push a diagnostic.
-        // Try to derive the scope from the name if possible, or fallback to the root class name.
-        // e.g. "a.x" -> scope "a" maybe? OMC says "Variable a.x not found in scope B."
-        // We will just report "Variable <name> not found in scope <rootClassName>."
-        console.error(
-          `[DEBUG UNRESOLVED] Variable ${name} not found in scope ${this.rootClassName}. ExprID: ${i}, kind: ${dae.getExprKind(i)}`,
-        );
         dae.diagnostics.push({
           code: 2001,
           rule: "unresolved-reference",

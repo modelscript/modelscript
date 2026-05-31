@@ -73,6 +73,9 @@ export class SymbolIndexer {
     totalDelta: number = 0,
     idGenerator?: () => SymbolId,
   ): { index: SymbolIndex; changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } {
+    // Sort edit ranges ascending for binary search
+    editRanges.sort((a, b) => a.startByte - b.startByte);
+
     const oldByStableKey = new Map<string, SymbolEntry>();
     const ordinalCounters = new Map<string, number>();
     for (const parentId of oldIndex.childrenOf.keys()) {
@@ -531,9 +534,18 @@ export class SymbolIndexer {
 
   /** Check if a CST node's byte range overlaps with any edit range. */
   private nodeOverlapsEdits(node: CSTNode, editRanges: Array<{ startByte: number; endByte: number }>): boolean {
-    for (const range of editRanges) {
-      if (nodeStartByte(node) < range.endByte && nodeEndByte(node) > range.startByte) {
-        return true;
+    const start = nodeStartByte(node);
+    const end = nodeEndByte(node);
+    let low = 0;
+    let high = editRanges.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >>> 1;
+      const range = editRanges[mid];
+      if (start < range.endByte && end > range.startByte) return true;
+      if (end <= range.startByte) {
+        high = mid - 1;
+      } else {
+        low = mid + 1;
       }
     }
     return false;
@@ -541,6 +553,7 @@ export class SymbolIndexer {
 
   /** Compare two entries for equality (ignoring byte offsets). */
   private entryEqual(a: SymbolEntry, b: SymbolEntry): boolean {
+    if (a === b) return true;
     return (
       a.kind === b.kind &&
       a.name === b.name &&
@@ -548,7 +561,7 @@ export class SymbolIndexer {
       a.parentId === b.parentId &&
       a.exports.join(",") === b.exports.join(",") &&
       a.inherits.join(",") === b.inherits.join(",") &&
-      JSON.stringify(a.metadata) === JSON.stringify(b.metadata)
+      (a.metadata === b.metadata || JSON.stringify(a.metadata) === JSON.stringify(b.metadata))
     );
   }
 

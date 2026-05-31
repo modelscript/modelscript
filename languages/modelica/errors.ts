@@ -179,8 +179,11 @@ export const ModelicaErrorCode = {
     code: 4002,
     rule: "duplicate-modification",
     severity: "error",
-    message: (elementName: string, componentName: string) =>
-      `Duplicate modification of element '${elementName}' on component '${componentName}'.`,
+    message: (
+      elementName: string,
+      componentName: string,
+      kind: "component" | "extends" | "inherited class" = "component",
+    ) => `Duplicate modification of element ${elementName} on ${kind} ${componentName}.`,
   },
   ARRAY_DIMENSION_MISMATCH: {
     code: 4003,
@@ -581,6 +584,18 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (varName: string, modText: string) =>
       `Protected element '${varName}' may not be modified, got '${modText}'.`,
+  },
+  CLASS_SPECIALIZATION_VIOLATION: {
+    code: 4050,
+    rule: "class-specialization-violation",
+    severity: "error",
+    message: (className: string, errorDetail: string) => `Class specialization violation: ${className} ${errorDetail}.`,
+  },
+  BUILTIN_EXTENDS_WITH_ELEMENTS: {
+    code: 4051,
+    rule: "builtin-extends-with-elements",
+    severity: "error",
+    message: (typeName: string) => `A class extending from builtin type ${typeName} may not have other elements.`,
   },
   NEGATIVE_DIMENSION: {
     code: 4041,

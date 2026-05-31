@@ -12,7 +12,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
   const hooks = new Map<string, QueryHooks>();
   if (!langDef.rules) return hooks;
 
-  // ClassDefinition: members, arrayDimensions, effectiveModification, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, isOperatorRecord, operatorFunctions, resolveModification, scopeData, inheritedSymbolsMap, resolveSimpleName, resolveName, instantiate, lint__modifierNotFound, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__chunked__forIteratorNot1D, lint__chunked__classBodyTypeChecks, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch, lint__packageVariableNotConstant, lint__restrictionViolation, lint__partialInstantiation
+  // ClassDefinition: members, arrayDimensions, effectiveModification, nestedClasses, components, extendsClasses, imports, inputParameters, outputParameters, parameters, constants, connectEquations, allElements, isConnector, isOperatorRecord, operatorFunctions, resolveModification, scopeData, inheritedSymbolsMap, resolveSimpleName, resolveName, instantiate, lint__duplicateModification, lint__builtinExtendsWithElements, lint__classSpecializationViolation, lint__modifierNotFound, lint__classNamingConvention, lint__emptyClass, lint__identifierMismatch, lint__duplicateElement, lint__functionPublicVariable, lint__externalWithAlgorithm, lint__functionInvalidVarType, lint__functionProtectedIo, lint__nestedWhen, lint__divisionByZero, lint__assignmentToConstant, lint__forIteratorNot1D, lint__chunked__forIteratorNot1D, lint__chunked__classBodyTypeChecks, lint__classBodyTypeChecks, lint__tupleExpressionContext, lint__connectFlowMismatch, lint__nonConnectorType, lint__functionArgVariability, lint__functionDefaultArgCycle, lint__unusedInputVariable, lint__unbalancedModel, lint__missingInner, lint__nameNotFound, lint__binaryOpTypeMismatch, lint__withinInScript, lint__arrayDimensionMismatch, lint__packageVariableNotConstant, lint__restrictionViolation, lint__partialInstantiation
   {
     const $ = new Proxy(
       {},
@@ -40,7 +40,7 @@ function buildQueryHooks(): Map<string, QueryHooks> {
     }
   }
 
-  // ExtendsClause: modificationText, resolvedBaseClass, effectiveModification, extendsModificationParsed, lint__modifierNotFound, lint__extendsCycle
+  // ExtendsClause: modificationText, resolvedBaseClass, effectiveModification, extendsModificationParsed, lint__modifierNotFound, lint__duplicateModification, lint__extendsCycle
   {
     const $ = new Proxy(
       {},

@@ -232,7 +232,7 @@ export class ArenaDAEPrinter {
 
       case ExprKind.EnumLiteral: {
         const strVal = a.interner.resolve(a.getExprLeft(id));
-        this.out.write('"' + strVal + '"');
+        this.out.write(strVal ?? "");
         break;
       }
 
@@ -362,21 +362,8 @@ export class ArenaDAEPrinter {
             collectMul(lhsId);
             operands.push({ virtual: reciprocal });
 
-            // Sort: virtual literals by rank 10, real exprs by rank
-            const opRank = (o: VirtualMulOp): number =>
-              o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
-            const opStr = (o: VirtualMulOp): string =>
-              o.virtual !== undefined ? String(o.virtual) : this.getExprStringFallback(o.exprId as number);
-            operands.sort((oa, ob) => {
-              const ra = opRank(oa),
-                rb = opRank(ob);
-              if (ra !== rb) return ra - rb;
-              const sa = opStr(oa),
-                sb = opStr(ob);
-              if (sa < sb) return -1;
-              if (sa > sb) return 1;
-              return 0;
-            });
+            // DO NOT sort operands for OMC parity.
+            // operands.sort((oa, ob) => { ... });
 
             for (let i = 0; i < operands.length; i++) {
               if (i > 0) this.out.write(" * ");
@@ -432,17 +419,7 @@ export class ArenaDAEPrinter {
           }
 
           if (!isStringConcat) {
-            // Sort operands by rank
-            operands.sort((idA, idB) => {
-              const rankA = this.getExprRank(idA);
-              const rankB = this.getExprRank(idB);
-              if (rankA !== rankB) return rankA - rankB;
-              const strA = this.getExprStringFallback(idA);
-              const strB = this.getExprStringFallback(idB);
-              if (strA < strB) return -1;
-              if (strA > strB) return 1;
-              return 0;
-            });
+            // DO NOT Sort operands by rank for OMC parity. OMC preserves original source order in expressions.
           }
 
           for (let i = 0; i < operands.length; i++) {
@@ -461,42 +438,27 @@ export class ArenaDAEPrinter {
           break;
         }
 
-        let lhs = a.getExprLeft(id);
-        let rhs = a.getExprRight(id);
-
+        const lhs = a.getExprLeft(id);
+        const rhs = a.getExprRight(id);
+        const finalLhs = lhs;
+        const finalRhs = rhs;
         if (COMMUTATIVE_OPS.has(op)) {
-          const rankL = this.getExprRank(lhs);
-          const rankR = this.getExprRank(rhs);
-          let shouldSwap = false;
-
-          if (rankR < rankL) {
-            shouldSwap = true;
-          } else if (rankR === rankL) {
-            if (this.getExprStringFallback(rhs) < this.getExprStringFallback(lhs)) {
-              shouldSwap = true;
-            }
-          }
-
-          if (shouldSwap) {
-            const temp = lhs;
-            lhs = rhs;
-            rhs = temp;
-          }
+          // DO NOT swap for OMC parity. OMC preserves original source order.
         }
 
-        if (needsParens(lhs)) {
+        if (needsParens(finalLhs)) {
           this.out.write("(");
-          this.printExpr(lhs);
+          this.printExpr(finalLhs);
           this.out.write(")");
-        } else this.printExpr(lhs);
+        } else this.printExpr(finalLhs);
 
         this.out.write(" " + (binOpStr[op] ?? "+") + " ");
 
-        if (needsParens(rhs, true)) {
+        if (needsParens(finalRhs, true)) {
           this.out.write("(");
-          this.printExpr(rhs);
+          this.printExpr(finalRhs);
           this.out.write(")");
-        } else this.printExpr(rhs);
+        } else this.printExpr(finalRhs);
         break;
       }
 
