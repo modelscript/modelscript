@@ -117,47 +117,55 @@ async function run() {
     const ctx = new Context(new NodeFileSystem());
     const t0 = performance.now();
     ctx.load(sourceCode, "benchmark.mo");
-    ctx.queryEngine.runAllLints("benchmark.mo");
+    await ctx.queryEngine.runAllLintsAsync("benchmark.mo");
     const coldStartTime = performance.now() - t0;
     results.cold_start.push(Math.round(coldStartTime));
-    originalLog(`  Cold Start: ${Math.round(coldStartTime)} ms`);
+    originalLog(`  Cold Start: ${Math.round(coldStartTime)} ms (Revision: ${ctx.workspaceIndex.structuralRevision})`);
 
     // Lexical Mutation (rename parameter L to L_new)
     let mutatedLexical = sourceCode.replace("parameter Real L = 1.0;", "parameter Real L_new = 1.0;");
     mutatedLexical = mutatedLexical.replace(/ L /g, " L_new ");
     const t1 = performance.now();
     loadIncremental(ctx, parser, sourceCode, mutatedLexical, "benchmark.mo");
-    ctx.queryEngine.runAllLints("benchmark.mo");
+    await ctx.queryEngine.runAllLintsAsync("benchmark.mo");
     const lexicalTime = performance.now() - t1;
     results.incremental_lexical.push(Math.round(lexicalTime));
-    originalLog(`  Lexical Mutation: ${Math.round(lexicalTime)} ms`);
+    originalLog(
+      `  Lexical Mutation: ${Math.round(lexicalTime)} ms (Revision: ${ctx.workspaceIndex.structuralRevision})`,
+    );
 
     // Modifier Mutation (change start=zeros(N) to start=ones(N))
     const mutatedModifier = mutatedLexical.replace("start=zeros(N)", "start=ones(N)");
     const t2 = performance.now();
     loadIncremental(ctx, parser, mutatedLexical, mutatedModifier, "benchmark.mo");
-    ctx.queryEngine.runAllLints("benchmark.mo");
+    await ctx.queryEngine.runAllLintsAsync("benchmark.mo");
     const modifierTime = performance.now() - t2;
     results.incremental_modifier.push(Math.round(modifierTime));
-    originalLog(`  Modifier Mutation: ${Math.round(modifierTime)} ms`);
+    originalLog(
+      `  Modifier Mutation: ${Math.round(modifierTime)} ms (Revision: ${ctx.workspaceIndex.structuralRevision})`,
+    );
 
     // Equation Mutation (change 100.0 to 200.0 in the first equation)
     const mutatedEquation = mutatedModifier.replace("100.0 - 2.0*T[1]", "200.0 - 2.0*T[1]");
     const t3 = performance.now();
     loadIncremental(ctx, parser, mutatedModifier, mutatedEquation, "benchmark.mo");
-    ctx.queryEngine.runAllLints("benchmark.mo");
+    await ctx.queryEngine.runAllLintsAsync("benchmark.mo");
     const equationTime = performance.now() - t3;
     results.incremental_equation.push(Math.round(equationTime));
-    originalLog(`  Equation Mutation: ${Math.round(equationTime)} ms`);
+    originalLog(
+      `  Equation Mutation: ${Math.round(equationTime)} ms (Revision: ${ctx.workspaceIndex.structuralRevision})`,
+    );
 
     // Structural Mutation (add cross-coupling algebraic loop: T[1] = T[N])
     const mutatedStructural = mutatedEquation.replace("equation\n", "equation\n  T[1] = T[N]; // structural loop\n");
     const t4 = performance.now();
     loadIncremental(ctx, parser, mutatedEquation, mutatedStructural, "benchmark.mo");
-    ctx.queryEngine.runAllLints("benchmark.mo");
+    await ctx.queryEngine.runAllLintsAsync("benchmark.mo");
     const structuralTime = performance.now() - t4;
     results.incremental_structural.push(Math.round(structuralTime));
-    originalLog(`  Structural Mutation: ${Math.round(structuralTime)} ms`);
+    originalLog(
+      `  Structural Mutation: ${Math.round(structuralTime)} ms (Revision: ${ctx.workspaceIndex.structuralRevision})`,
+    );
 
     // Attempt GC
     Context.gcBetweenPhases();

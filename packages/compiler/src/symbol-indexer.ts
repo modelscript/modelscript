@@ -6,6 +6,7 @@ interface IndexContext {
   symbols: IdTrieMap<SymbolEntry>;
   byName: StringTrieMap<SymbolId[]>;
   childrenOf: IdTrieMap<SymbolId[]>;
+  processedOldIds: Set<SymbolId>;
 }
 
 /**
@@ -43,6 +44,7 @@ export class SymbolIndexer {
       symbols: new IdTrieMap(),
       byName: new StringTrieMap(),
       childrenOf: new IdTrieMap(),
+      processedOldIds: new Set(),
     };
 
     this.nextId = 1;
@@ -92,6 +94,7 @@ export class SymbolIndexer {
       symbols: Object.assign(new IdTrieMap<SymbolEntry>(), { trie: (oldIndex.symbols as any).trie }),
       byName: Object.assign(new StringTrieMap<SymbolId[]>(), { trie: (oldIndex.byName as any).trie }),
       childrenOf: Object.assign(new IdTrieMap<SymbolId[]>(), { trie: (oldIndex.childrenOf as any).trie }),
+      processedOldIds: new Set(),
     };
 
     let maxOldId = 0;
@@ -100,6 +103,36 @@ export class SymbolIndexer {
     }
     this.nextId = maxOldId + 1;
     this.idGenerator = idGenerator || (() => this.nextId++);
+
+    const rootOldChildIds = oldIndex.childrenOf.get(0) ?? [];
+    for (const childId of rootOldChildIds) {
+      if (ctx.processedOldIds.has(childId)) continue;
+      const childEntry = oldIndex.symbols.get(childId);
+      if (!childEntry) continue;
+
+      let overlap = false;
+      for (const r of editRanges) {
+        if (childEntry.startByte < r.endByte && childEntry.endByte > r.startByte) {
+          overlap = true;
+          break;
+        }
+      }
+      if (overlap) continue;
+
+      let isBefore = true;
+      for (const r of editRanges) {
+        if (childEntry.startByte >= r.endByte) {
+          isBefore = false;
+          break;
+        }
+      }
+
+      if (isBefore) {
+        this.shiftSubtree(childId, oldIndex, ctx, 0);
+      } else {
+        this.shiftSubtree(childId, oldIndex, ctx, totalDelta);
+      }
+    }
 
     this.walkNodeIncremental(
       rootNode,
@@ -141,10 +174,11 @@ export class SymbolIndexer {
     }
 
     for (const [id, oldEntry] of oldIndex.symbols.entries()) {
-      if (!ctx.symbols.has(id)) {
+      if (!ctx.processedOldIds.has(id)) {
         changedIds.add(id);
         structuralChangedIds.add(id);
         invalidateParent(oldEntry.parentId, true);
+        this.deleteSubtree(id, oldIndex, ctx);
       }
     }
 
@@ -254,6 +288,7 @@ export class SymbolIndexer {
 
       if (oldEntry) {
         oldByStableKey.delete(matchedKey);
+        ctx.processedOldIds.add(oldEntry.id);
       }
 
       const overlaps = this.nodeOverlapsEdits(node, editRanges);
@@ -300,11 +335,41 @@ export class SymbolIndexer {
       currentParentId = id;
       currentOldParentId = oldEntry?.id ?? id;
 
+      if (oldEntry) {
+        const oldChildIds = oldIndex.childrenOf.get(oldEntry.id) ?? [];
+        for (const childId of oldChildIds) {
+          if (ctx.processedOldIds.has(childId)) continue;
+          const childEntry = oldIndex.symbols.get(childId);
+          if (!childEntry) continue;
+
+          let overlap = false;
+          for (const r of editRanges) {
+            if (childEntry.startByte < r.endByte && childEntry.endByte > r.startByte) {
+              overlap = true;
+              break;
+            }
+          }
+          if (overlap) continue;
+
+          let isBefore = true;
+          for (const r of editRanges) {
+            if (childEntry.startByte >= r.endByte) {
+              isBefore = false;
+              break;
+            }
+          }
+
+          if (isBefore) {
+            this.shiftSubtree(childId, oldIndex, ctx, 0);
+          } else {
+            this.shiftSubtree(childId, oldIndex, ctx, totalDelta);
+          }
+        }
+      }
+
       if (unchanged) {
         const byteDelta = oldEntry ? nodeStartByte(node) - oldEntry.startByte : totalDelta;
-        if (byteDelta !== 0) {
-          this.shiftSubtree(id, oldIndex, ctx, byteDelta);
-        }
+        this.shiftSubtree(id, oldIndex, ctx, byteDelta);
         return;
       }
     }
@@ -366,21 +431,6 @@ export class SymbolIndexer {
     }
     const lastAffected = Math.min(childCount - 1, lo);
 
-    const walkZoneStartByte =
-      firstAffected < childCount && children[firstAffected] ? nodeStartByte(children[firstAffected]!) : Infinity;
-    const walkZoneEndByte =
-      lastAffected < childCount && children[lastAffected] ? nodeEndByte(children[lastAffected]!) : 0;
-
-    const oldChildIds = oldIndex.childrenOf.get(oldParentId ?? 0) ?? [];
-
-    for (const oldId of oldChildIds) {
-      const entry = oldIndex.symbols.get(oldId);
-      if (!entry) continue;
-      if (entry.endByte > walkZoneStartByte && entry.startByte < walkZoneEndByte) {
-        this.deleteSubtree(oldId, oldIndex, ctx);
-      }
-    }
-
     const siblingCounts = new Map<string, number>();
     for (let i = firstAffected; i <= lastAffected && i < childCount; i++) {
       const child = children[i];
@@ -399,19 +449,12 @@ export class SymbolIndexer {
         totalDelta,
       );
     }
-
-    if (totalDelta !== 0) {
-      for (const oldId of oldChildIds) {
-        const entry = oldIndex.symbols.get(oldId);
-        if (!entry) continue;
-        if (entry.startByte >= walkZoneEndByte) {
-          this.shiftSubtree(oldId, oldIndex, ctx, totalDelta);
-        }
-      }
-    }
   }
 
   private deleteSubtree(id: SymbolId, oldIndex: SymbolIndex, ctx: IndexContext) {
+    if (ctx.processedOldIds.has(id)) return;
+    ctx.processedOldIds.add(id);
+
     const entry = oldIndex.symbols.get(id);
     if (!entry) return;
 
@@ -441,23 +484,14 @@ export class SymbolIndexer {
   }
 
   private shiftSubtree(id: SymbolId, oldIndex: SymbolIndex, ctx: IndexContext, byteDelta: number) {
+    if (ctx.processedOldIds.has(id)) return;
+    ctx.processedOldIds.add(id);
+
     const oldEntry = oldIndex.symbols.get(id);
     if (!oldEntry) return;
 
     if (byteDelta === 0) {
       ctx.symbols.set(id, oldEntry); // Structural sharing for the whole subtree
-
-      const name = oldEntry.name;
-      const existingNameIds = ctx.byName.get(name);
-      if (!existingNameIds || !existingNameIds.includes(id)) {
-        ctx.byName.set(name, existingNameIds ? [...existingNameIds, id] : [id]);
-      }
-
-      const pId = oldEntry.parentId ?? 0;
-      const siblings = ctx.childrenOf.get(pId);
-      if (!siblings || !siblings.includes(id)) {
-        ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
-      }
     } else {
       const entry = { ...oldEntry };
       entry.startByte += byteDelta;
@@ -470,18 +504,6 @@ export class SymbolIndexer {
         }
       }
       ctx.symbols.set(id, entry);
-
-      const name = entry.name;
-      const existingNameIds = ctx.byName.get(name);
-      if (!existingNameIds || !existingNameIds.includes(id)) {
-        ctx.byName.set(name, existingNameIds ? [...existingNameIds, id] : [id]);
-      }
-
-      const pId = entry.parentId ?? 0;
-      const siblings = ctx.childrenOf.get(pId);
-      if (!siblings || !siblings.includes(id)) {
-        ctx.childrenOf.set(pId, siblings ? [...siblings, id] : [id]);
-      }
     }
     const children = oldIndex.childrenOf.get(id);
     if (children) {

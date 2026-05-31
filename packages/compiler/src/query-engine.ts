@@ -683,10 +683,6 @@ export class QueryEngine {
     let lastYieldStart = performance.now();
     const cachedCount = validCachedIds.size;
 
-    console.info(
-      `[runAllLintsAsync] starting for ${resourceId}, total=${totalSymbols}, cached=${cachedCount}, relint=${symbolsToRelint.length}${viewportRange ? `, viewport=${viewportRange.startByte}-${viewportRange.endByte}` : ""}`,
-    );
-
     // Re-lint only changed symbols
     for (const [id, entry] of symbolsToRelint) {
       const symbolDiags: LintDiagnostic[] = [];
@@ -726,9 +722,6 @@ export class QueryEngine {
         lastYieldStart = performance.now();
 
         if (isStale) {
-          console.info(
-            `[runAllLintsAsync] STALE at chunk ${chunkCount}, aborting! CPU: ${cpuTime.toFixed(2)}ms, Yield: ${yieldTime.toFixed(2)}ms`,
-          );
           return diagnostics;
         }
       }
@@ -744,9 +737,6 @@ export class QueryEngine {
     this.lintCacheRevision.set(cacheKey, this.currentRevision);
 
     cpuTime += performance.now() - lastTime;
-    console.info(
-      `[runAllLintsAsync] COMPLETED for ${resourceId}, relinted=${symbolsToRelint.length}/${totalSymbols}, CPU=${cpuTime.toFixed(2)}ms, Yield=${yieldTime.toFixed(2)}ms`,
-    );
     return diagnostics;
   }
 

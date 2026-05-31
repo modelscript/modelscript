@@ -20,6 +20,8 @@ export class WorkspaceIndex {
       oldIndex: SymbolIndex | null;
       /** Edit byte ranges for incremental re-indexing. */
       editRanges: Array<{ startByte: number; endByte: number }> | null;
+      /** Total delta in bytes from edits */
+      totalDelta?: number;
       loader: (() => CSTNode) | null;
       parentFQN?: string;
       dirty: boolean;
@@ -144,12 +146,18 @@ export class WorkspaceIndex {
    * Mark a file as dirty (will re-index on next access).
    * Optionally provide a new loader.
    */
-  markDirty(uri: string, loader?: () => CSTNode, editRanges?: Array<{ startByte: number; endByte: number }>): void {
+  markDirty(
+    uri: string,
+    loader?: () => CSTNode,
+    editRanges?: Array<{ startByte: number; endByte: number }>,
+    totalDelta?: number,
+  ): void {
     const file = this.files.get(uri);
     if (file) {
       file.dirty = true;
       file.oldIndex = file.index; // Retain for incremental update
       file.editRanges = editRanges ?? null;
+      file.totalDelta = totalDelta ?? 0;
       file.index = null;
       if (loader) file.loader = loader;
       this.unifiedCache = null;
@@ -191,7 +199,7 @@ export class WorkspaceIndex {
       // --- Incremental path: use SymbolIndexer.update() when we have an old index ---
       if (file.oldIndex && file.editRanges) {
         // Compute total byte delta for position adjustment of post-edit entries
-        let totalDelta = 0;
+        let totalDelta = file.totalDelta ?? 0;
 
         const {
           index: rawIndex,
@@ -341,12 +349,11 @@ export class WorkspaceIndex {
     const symbols = new IdTrieMap<SymbolEntry>();
     const byName = new StringTrieMap<SymbolId[]>();
 
-    console.info(`[WorkspaceIndex] toUnified() started. Processing ${this.files.size} files...`);
     let processed = 0;
     for (const uri of this.files.keys()) {
       const fileIndex = this.getFileIndex(uri);
       processed++;
-      if (processed % 500 === 0) console.error(`[WorkspaceIndex] Processed ${processed}/${this.files.size} files...`);
+
       if (!fileIndex) continue;
 
       for (const [id, entry] of fileIndex.symbols) {

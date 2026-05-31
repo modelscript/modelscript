@@ -427,7 +427,8 @@ export class ValidationService {
           this.lastIndexedText.set(textDocument.uri, text);
         }
 
-        const changedIds = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedIds();
+        const changedIdsObj = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedIds();
+        const changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
         const changedNames = this.workspaceManager.owl2WorkspaceIndex.takeGlobalChangedNames();
 
         const unifiedIndex = this.workspaceManager.unifiedWorkspace.toUnifiedPartial();
@@ -661,7 +662,8 @@ export class ValidationService {
         }
 
         // Get ALL changed symbol IDs across the workspace since last check
-        const changedIds = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedIds();
+        const changedIdsObj = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedIds();
+        const changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
         const changedNames = this.workspaceManager.sysml2WorkspaceIndex.takeGlobalChangedNames();
 
         // Create or update query engine, resolver, and LSP bridge for the document
@@ -980,16 +982,23 @@ export class ValidationService {
 
       if (textChanged) {
         const step0t = performance.now();
+        let totalDelta = 0;
         if (!editRanges) {
           const lastText = this.lastIndexedText.get(effectiveUri);
           if (lastText) {
             const edit = computeTreeEdit(lastText, text);
             editRanges = [{ startByte: edit.startIndex, endByte: edit.newEndIndex }];
+            totalDelta = edit.newEndIndex - edit.oldEndIndex;
           }
         }
 
         if (this.workspaceManager.globalWorkspaceIndex.has(effectiveUri)) {
-          this.workspaceManager.globalWorkspaceIndex.markDirty(effectiveUri, () => tree.rootNode, editRanges);
+          this.workspaceManager.globalWorkspaceIndex.markDirty(
+            effectiveUri,
+            () => tree.rootNode,
+            editRanges,
+            totalDelta,
+          );
         } else {
           this.workspaceManager.globalWorkspaceIndex.register(effectiveUri, () => tree.rootNode);
         }
@@ -1002,7 +1011,8 @@ export class ValidationService {
         );
       }
 
-      changedIds = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
+      const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
+      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
       changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
 
       if (isStale()) return;
