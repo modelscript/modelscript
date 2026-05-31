@@ -1,5 +1,11 @@
-import { type Distribution, type RandomVariable, runMonteCarloArena } from "@modelscript/compiler/simulator";
+import {
+  type Distribution,
+  type RandomVariable,
+  runMonteCarloArena,
+  runWasmSimulation,
+} from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs/promises";
 import Parser from "tree-sitter";
@@ -16,6 +22,7 @@ interface McArgs {
   lhs: boolean;
   format: "csv" | "json";
   output?: string;
+  engine: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -67,6 +74,12 @@ export const MC: CommandModule<{}, McArgs> = {
       .option("output", {
         description: "Output file path (defaults to stdout if not provided)",
         type: "string",
+      })
+      .option("engine", {
+        description: "simulation backend: wasm or js",
+        type: "string",
+        choices: ["wasm", "js"],
+        default: "wasm",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, McArgs>["builder"],
@@ -147,8 +160,106 @@ export const MC: CommandModule<{}, McArgs> = {
       mcOpts.seed = args.seed;
     }
 
-    console.error(`Running Monte Carlo with ${args.runs} runs...`);
-    const mcResult = runMonteCarloArena(arena, randomVars, mcOpts);
+    console.error(`Running Monte Carlo with ${args.runs} runs using ${args.engine} engine...`);
+
+    let mcResult;
+
+    if (args.engine === "js") {
+      mcResult = runMonteCarloArena(arena, randomVars, mcOpts);
+    } else {
+      // WASM execution path
+      const { latinHypercubeSample, sampleDistribution, Xoshiro256pp, normalQuantile } =
+        await import("@modelscript/compiler/simulator");
+
+      const modelIdentifier = args.name.replace(/\./g, "_");
+      const stateVars = new Set<string>();
+      // To get state variables we need to prepare the simulator once
+      const { ArenaSimulator } = await import("@modelscript/compiler/simulator");
+      const simulator = new ArenaSimulator(arena);
+      simulator.prepare();
+      for (const varIdx of simulator.stateVars) {
+        stateVars.add(arena.getVarName(varIdx));
+      }
+
+      const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
+      const wasmSource = generateFmuWasmSource(arena, fmuResult, { modelIdentifier });
+      console.error("Compiling WASM...");
+      const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
+
+      if (!compileResult.success || !compileResult.wasm || !compileResult.jsGlue) {
+        console.error(`WASM compilation failed: ${compileResult.message}`);
+        process.exit(1);
+      }
+
+      const scalarVars = fmuResult.scalarVariables.map((sv) => ({
+        name: sv.name,
+        valueReference: sv.valueReference,
+        causality: sv.causality,
+      }));
+
+      // Generate Samples
+      const rng = new Xoshiro256pp(args.seed ?? Date.now());
+      let allSamples: Map<string, number>[] = [];
+      if (args.lhs) {
+        allSamples = latinHypercubeSample(randomVars, args.runs, rng);
+      } else {
+        for (let i = 0; i < args.runs; i++) {
+          const sample = new Map<string, number>();
+          for (const rv of randomVars) {
+            sample.set(rv.name, sampleDistribution(rv.distribution, rng));
+          }
+          allSamples.push(sample);
+        }
+      }
+
+      const allResults: { t: number[]; states: string[]; y: number[][] }[] = [];
+      for (const sample of allSamples) {
+        if (!sample) continue;
+
+        // Merge overrides and convert to valueReference map
+        const paramMap = new Map<number, number>();
+        for (const [k, v] of sample) {
+          const sv = scalarVars.find((s) => s.name === k);
+          if (sv) {
+            paramMap.set(sv.valueReference, v);
+          }
+        }
+
+        try {
+          const wasmResult = await runWasmSimulation(
+            compileResult.wasm.buffer as ArrayBuffer,
+            compileResult.jsGlue,
+            scalarVars,
+            {
+              startTime,
+              stopTime,
+              stepSize,
+              parameters: paramMap,
+            },
+          );
+
+          if (!wasmResult.error) {
+            // Convert to row-major format
+            const times = wasmResult.times;
+            const names = wasmResult.variableNames;
+            const y = times.map((_t: number, i: number) =>
+              names.map((_n: string, j: number) => wasmResult.trajectories[j]?.[i] ?? 0),
+            );
+
+            allResults.push({
+              t: times,
+              states: names,
+              y: y,
+            });
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const { aggregateResults } = await import("@modelscript/compiler/simulator");
+      mcResult = aggregateResults(allResults, normalQuantile((1 + 0.95) / 2), false);
+    }
 
     console.error(`Finished ${mcResult.numSamples} valid runs.`);
 

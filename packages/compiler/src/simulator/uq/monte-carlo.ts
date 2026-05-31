@@ -259,7 +259,7 @@ function mergeOverrides(base: Map<string, number> | undefined, sample: Map<strin
 }
 
 /** Aggregate simulation results into MonteCarloResult statistics. */
-function aggregateResults(
+export function aggregateResults(
   allResults: ArenaSimulationResult[],
   z: number,
   storeTrajectories: boolean,

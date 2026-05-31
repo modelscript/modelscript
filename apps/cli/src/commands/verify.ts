@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { VerificationRunner } from "@modelscript/compiler";
-import { simulateArenaAsync } from "@modelscript/compiler/simulator";
+import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/compiler/simulator";
 import { Context, createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/core";
+import { compileToWasm, generateFmu, generateFmuWasmSource } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,6 +18,7 @@ import { Profiler } from "../util/timing.js";
 interface VerifyArgs {
   name: string; // The sysml verification case name
   paths: string[];
+  engine: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -36,6 +38,12 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         demandOption: true,
         description: "paths of libraries, modules (.mo) and sysml files to load",
         type: "string",
+      })
+      .option("engine", {
+        description: "simulation backend: wasm (WebAssembly via emcc) or js (pure JavaScript)",
+        type: "string",
+        choices: ["wasm", "js"],
+        default: "wasm",
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, VerifyArgs>["builder"],
@@ -162,11 +170,68 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const stopTime = exp.stopTime ?? 10;
     const step = exp.interval ?? (stopTime - startTime) / 1000;
 
-    const simResult = await simulateArenaAsync(arena, {
-      startTime,
-      stopTime,
-      step,
-    });
+    let simResult;
+
+    if (args.engine === "js") {
+      simResult = await simulateArenaAsync(arena, {
+        startTime,
+        stopTime,
+        step,
+      });
+    } else {
+      // WASM execution path
+      const simulator = new ArenaSimulator(arena);
+      simulator.prepare();
+
+      const modelIdentifier = targetEntry?.name?.replace(/\./g, "_") || "model";
+      const stateVars = new Set<string>();
+      for (const varIdx of simulator.stateVars) {
+        stateVars.add(arena.getVarName(varIdx));
+      }
+      const fmuResult = generateFmu(arena, { modelIdentifier, generationTool: "ModelScript CLI" }, stateVars);
+      const wasmSource = generateFmuWasmSource(arena, fmuResult, { modelIdentifier });
+      const compileResult = await compileToWasm(wasmSource.wasmC, modelIdentifier, wasmSource.exportedFunctions);
+
+      if (!compileResult.success || !compileResult.wasm || !compileResult.jsGlue) {
+        console.error(`WASM compilation failed: ${compileResult.message}`);
+        return;
+      }
+
+      const scalarVars = fmuResult.scalarVariables.map((sv) => ({
+        name: sv.name,
+        valueReference: sv.valueReference,
+        causality: sv.causality,
+      }));
+
+      const wasmResult = await runWasmSimulation(
+        compileResult.wasm.buffer as ArrayBuffer,
+        compileResult.jsGlue,
+        scalarVars,
+        {
+          startTime,
+          stopTime,
+          stepSize: step,
+        },
+      );
+
+      if (wasmResult.error) {
+        console.error(`WASM simulation error: ${wasmResult.error}`);
+        return;
+      }
+
+      const times = wasmResult.times;
+      const names = wasmResult.variableNames;
+      const y = times.map((_t: number, i: number) =>
+        names.map((_n: string, j: number) => wasmResult.trajectories[j]?.[i] ?? 0),
+      );
+
+      simResult = {
+        t: times,
+        states: names,
+        y: y,
+      };
+    }
+
     profiler.end("simulation");
 
     // Verify
