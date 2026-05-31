@@ -1494,7 +1494,7 @@ export class ValidationService {
         const bridge = this.documentLSPBridges.get(uri);
         if (bridge) {
           const diags: Diagnostic[] = vResults.map((v) => ({
-            range: bridge["positions"].getRange(v.constraintId) || {
+            range: this.findRangeForIri(v.constraintId, uri) || {
               start: { line: 0, character: 0 },
               end: { line: 0, character: 0 },
             },
