@@ -451,6 +451,7 @@ export class ScopeResolver {
           : this.resolveLexical(name, entry.parentId, []);
 
       if (lenientResolved.length > 0) {
+        if (name === "g") console.log("g lenient resolved:", lenientResolved);
         perSymbolCache.set(entry.id, null);
         dirtySet.delete(entry.id);
         continue;

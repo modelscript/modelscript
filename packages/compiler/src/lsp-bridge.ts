@@ -152,14 +152,15 @@ export class LSPBridge {
       const docSymbolIds = this.index.symbolsByResource.get(this.documentUri) || [];
       for (const id of docSymbolIds) {
         const entry = this.index.symbols.get(id);
-        if (!entry || entry.kind === "Reference") continue;
+        if (!entry || entry.kind === "Reference" || entry.kind === "ConnectEquation" || entry.kind === "FunctionCall")
+          continue;
         docSymbols.add(entry.id);
       }
     } else {
       // Fallback for older index format
       for (const entry of this.index.symbols.values()) {
         if (entry.resourceId !== this.documentUri) continue;
-        if (entry.kind === "Reference") continue;
+        if (entry.kind === "Reference" || entry.kind === "ConnectEquation" || entry.kind === "FunctionCall") continue;
         docSymbols.add(entry.id);
       }
     }

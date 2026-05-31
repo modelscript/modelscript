@@ -1011,8 +1011,6 @@ export class ValidationService {
         );
       }
 
-      const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
-      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
       changedNames = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedNames();
 
       if (isStale()) return;
@@ -1025,6 +1023,8 @@ export class ValidationService {
       const cstTreeWrapper = getSharedCstTreeWrapper();
       this.connection.console.info(`[perf] Step 1.0 (toUnifiedPartial): ${(step0_4t - step0_3t).toFixed(2)}ms`);
 
+      const changedIdsObj = this.workspaceManager.globalWorkspaceIndex.takeGlobalChangedIds();
+      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
       const engineNeedsUpdate = textChanged || (changedIds && changedIds.size > 0);
 
       if (engineNeedsUpdate) {

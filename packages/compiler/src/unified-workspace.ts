@@ -105,7 +105,17 @@ export class UnifiedWorkspace {
     // This enables cross-language IRI resolution in OWL2 lint queries
     this.mergeOWL2Synthetics(symbols, byName, childrenOf);
 
-    return { symbols, byName, childrenOf };
+    const symbolsByResource = new StringTrieMap<number[]>();
+    for (const workspace of this.indices.values()) {
+      const index = workspace.toUnified();
+      if (index.symbolsByResource) {
+        for (const [resId, ids] of index.symbolsByResource) {
+          symbolsByResource.set(resId, ids);
+        }
+      }
+    }
+
+    return { symbols, byName, childrenOf, symbolsByResource };
   }
 
   /**
@@ -145,7 +155,17 @@ export class UnifiedWorkspace {
     // Inject synthetic entries for projected OWL2 axioms
     this.mergeOWL2Synthetics(symbols, byName, childrenOf);
 
-    return { symbols, byName, childrenOf };
+    const symbolsByResource = new StringTrieMap<number[]>();
+    for (const workspace of this.indices.values()) {
+      const index = await workspace.toUnifiedAsync();
+      if (index.symbolsByResource) {
+        for (const [resId, ids] of index.symbolsByResource) {
+          symbolsByResource.set(resId, ids);
+        }
+      }
+    }
+
+    return { symbols, byName, childrenOf, symbolsByResource };
   }
 
   /**

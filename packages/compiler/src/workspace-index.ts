@@ -245,10 +245,6 @@ export class WorkspaceIndex {
           const names = Array.from(structuralChangedIds)
             .map((id) => rawIndex.symbols.get(id)?.name || id)
             .join(", ");
-          require("fs").appendFileSync(
-            "/tmp/perf.txt",
-            `[PERF STRUCTURAL] structuralChangedIds.size=${structuralChangedIds.size} for uri=${uri}: ${names}\n`,
-          );
           this._structuralRevision++;
         }
 
@@ -317,6 +313,10 @@ export class WorkspaceIndex {
     return { changedIds, structuralChangedIds };
   }
 
+  hasPendingChanges(): boolean {
+    return this.globalChangedIdsBuffer.size > 0;
+  }
+
   /**
    * Retrieve and clear the aggregated set of symbol names that have changed
    * across the workspace since this method was last called.
@@ -370,6 +370,13 @@ export class WorkspaceIndex {
       }
     }
 
+    const symbolsByResource = new StringTrieMap<SymbolId[]>();
+    for (const uri of this.files.keys()) {
+      const fileIndex = this.getFileIndex(uri);
+      if (!fileIndex) continue;
+      symbolsByResource.set(uri, Array.from(fileIndex.symbols.keys()));
+    }
+
     // Merge childrenOf maps
     const childrenOf = new IdTrieMap<SymbolId[]>();
     for (const uri of this.files.keys()) {
@@ -386,7 +393,7 @@ export class WorkspaceIndex {
     }
 
     this.stitchParentFQNs(symbols, byName, childrenOf);
-    this.unifiedCache = { symbols, byName, childrenOf };
+    this.unifiedCache = { symbols, byName, childrenOf, symbolsByResource };
     return this.unifiedCache;
   }
 
