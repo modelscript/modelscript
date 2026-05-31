@@ -621,6 +621,7 @@ export class QueryEngine {
 
     // Determine which symbols actually need re-linting
     const symbolsToRelint: Array<[SymbolId, SymbolEntry]> = [];
+    const relintIds = new Set<SymbolId>();
     const validCachedIds = new Set<SymbolId>();
 
     const totalSymbols = resourceId
@@ -636,6 +637,7 @@ export class QueryEngine {
       if (resourceId && entry.resourceId !== resourceId) continue;
 
       symbolsToRelint.push([id, entry]);
+      relintIds.add(id);
     }
 
     // ── Viewport prioritization ───────────────────────────────────────────
@@ -662,7 +664,7 @@ export class QueryEngine {
       const entry = this.index.symbols.get(cachedId);
       if (!entry || (resourceId && entry.resourceId !== resourceId)) {
         perSymbolCache.delete(cachedId);
-      } else if (this.index.symbols.has(cachedId)) {
+      } else if (this.index.symbols.has(cachedId) && !relintIds.has(cachedId)) {
         validCachedIds.add(cachedId);
       }
     }
@@ -675,6 +677,7 @@ export class QueryEngine {
     const cachedCount = validCachedIds.size;
 
     // Re-lint only changed symbols
+    let i = 0;
     for (const [id, entry] of symbolsToRelint) {
       const symbolDiags: LintDiagnostic[] = [];
 
@@ -718,6 +721,12 @@ export class QueryEngine {
         if (isStale) {
           // Merge cached results for symbols we DID NOT process yet so they aren't lost
           // from the display entirely while the user keeps typing.
+          for (let j = i + 1; j < symbolsToRelint.length; j++) {
+            const unprocessedId = symbolsToRelint[j][0];
+            const cached = perSymbolCache.get(unprocessedId);
+            if (cached && cached.length > 0) diagnostics.push(...cached);
+          }
+          // Merge cached results for symbols that were NOT dirty
           for (const id of validCachedIds) {
             const cached = perSymbolCache.get(id);
             if (cached && cached.length > 0) diagnostics.push(...cached);
@@ -725,6 +734,7 @@ export class QueryEngine {
           return diagnostics;
         }
       }
+      i++;
     }
 
     // Merge cached results from unchanged symbols

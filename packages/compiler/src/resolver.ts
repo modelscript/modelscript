@@ -420,6 +420,7 @@ export class ScopeResolver {
     );
     let chunkCount = 0;
     let lastYieldStart = performance.now();
+    let i = 0;
     for (const entry of entriesToResolve) {
       if (yieldFn && ++chunkCount % 500 === 0 && performance.now() - lastYieldStart > 200) {
         const isStale = await yieldFn();
@@ -427,6 +428,12 @@ export class ScopeResolver {
         if (isStale) {
           // Merge cached results for symbols we DID NOT process yet so they aren't lost
           // from the display entirely while the user keeps typing.
+          for (let j = i; j < entriesToResolve.length; j++) {
+            const id = entriesToResolve[j].id;
+            const cached = perSymbolCache.get(id);
+            if (cached) diagnostics.push(cached);
+          }
+          // Merge cached results for the ones that were NOT dirty
           for (const id of cachedEntryIds) {
             const cached = perSymbolCache.get(id);
             if (cached) diagnostics.push(cached);
@@ -475,6 +482,7 @@ export class ScopeResolver {
 
       // Successfully processed, remove from dirty set
       dirtySet.delete(entry.id);
+      i++;
     }
 
     // Merge cached results from unchanged entries
