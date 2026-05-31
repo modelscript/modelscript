@@ -19,6 +19,7 @@ interface VerifyArgs {
   name: string; // The sysml verification case name
   paths: string[];
   engine: string;
+  timing?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -44,6 +45,11 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         type: "string",
         choices: ["wasm", "js"],
         default: "wasm",
+      })
+      .option("timing", {
+        description: "output timing JSON to stderr",
+        type: "boolean",
+        default: false,
       });
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, VerifyArgs>["builder"],
@@ -163,8 +169,6 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       return;
     }
 
-    // Simulate the model
-    profiler.start("simulation");
     const exp = arena.experiment;
     const startTime = exp.startTime ?? 0;
     const stopTime = exp.stopTime ?? 10;
@@ -173,12 +177,15 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     let simResult;
 
     if (args.engine === "js") {
+      profiler.start("numeric simulation");
       simResult = await simulateArenaAsync(arena, {
         startTime,
         stopTime,
         step,
       });
+      profiler.end("numeric simulation");
     } else {
+      profiler.start("wasm compilation");
       // WASM execution path
       const simulator = new ArenaSimulator(arena);
       simulator.prepare();
@@ -202,7 +209,9 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         valueReference: sv.valueReference,
         causality: sv.causality,
       }));
+      profiler.end("wasm compilation");
 
+      profiler.start("numeric simulation");
       const wasmResult = await runWasmSimulation(
         compileResult.wasm.buffer as ArrayBuffer,
         compileResult.jsGlue,
@@ -230,9 +239,8 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         states: names,
         y: y,
       };
+      profiler.end("numeric simulation");
     }
-
-    profiler.end("simulation");
 
     // Verify
     profiler.start("verification");
@@ -262,6 +270,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     if (hasFailures) {
       process.exitCode = 1;
+    }
+
+    if (args.timing) {
+      profiler.report();
     }
   },
 };

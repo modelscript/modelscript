@@ -37,6 +37,9 @@ export class ValidationService {
   public declaredDependencies: Array<{ name: string; version: string }> = [];
   public loadedDependencies = new Set<string>();
 
+  public verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
+  public verificationResultsByUri = new Map<string, any[]>();
+
   get dependenciesReady(): boolean {
     return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
   }
@@ -777,7 +780,7 @@ export class ValidationService {
           sysmlDiagnostics.push(...cachedSemantic);
         }
 
-        const vDiags = verificationDiagnosticsByUri.get(textDocument.uri);
+        const vDiags = this.verificationDiagnosticsByUri.get(textDocument.uri);
         if (vDiags) {
           sysmlDiagnostics.push(...vDiags);
         }
@@ -1508,8 +1511,8 @@ export class ValidationService {
 
       if (signal.aborted) return { ok: false };
 
-      verificationDiagnosticsByUri.set(uri, newDiagnostics);
-      verificationResultsByUri.set(uri, allResults);
+      this.verificationDiagnosticsByUri.set(uri, newDiagnostics);
+      this.verificationResultsByUri.set(uri, allResults);
 
       this.validateTextDocument(textDocument);
       return { ok: true };
@@ -1522,7 +1525,7 @@ export class ValidationService {
         message: `Verification CRASHED: ${e.message}`,
         source: "sysml2-verifier",
       };
-      verificationDiagnosticsByUri.set(uri, [crashDiag]);
+      this.verificationDiagnosticsByUri.set(uri, [crashDiag]);
       const doc = this.documentManager.documents.get(uri);
       if (doc) this.validateTextDocument(doc);
 

@@ -371,8 +371,7 @@ documents.listen(connection);
 // Validate documents when they change, and re-validate other open docs for cross-file resolution
 let verificationTimer: ReturnType<typeof setTimeout> | null = null;
 let activeVerification: AbortController | null = null;
-const verificationDiagnosticsByUri = new Map<string, Diagnostic[]>();
-const verificationResultsByUri = new Map<string, any[]>();
+// (Moved to ValidationService)
 // Track deferred semantic work so it can be cancelled when new edits arrive
 const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
 globalThis.activeSemanticTimers = activeSemanticTimers;
@@ -392,7 +391,7 @@ globalThis.activeValidationPromises = validationService.activeValidationPromises
 globalThis.documentRevisions = validationService.documentRevisions;
 globalThis.lastIndexedText = validationService.lastIndexedText;
 globalThis.lastSemanticDiagnostics = validationService.lastSemanticDiagnostics;
-globalThis.verificationDiagnosticsByUri = verificationDiagnosticsByUri;
+globalThis.verificationDiagnosticsByUri = validationService.verificationDiagnosticsByUri;
 Object.defineProperty(globalThis, "revalidationTimer", {
   get: () => validationService.revalidationTimer,
   set: (v) => (validationService.revalidationTimer = v),
@@ -422,8 +421,8 @@ documents.onDidChangeContent((change) => {
   const tKeypressStart = performance.now();
   const uri = change.document.uri;
   connection.console.info(`[perf][keypress] onDidChangeContent started for ${uri}`);
-  verificationDiagnosticsByUri.delete(uri);
-  verificationResultsByUri.delete(uri);
+  validationService.verificationDiagnosticsByUri.delete(uri);
+  validationService.verificationResultsByUri.delete(uri);
 
   // Bump revision — any in-flight deferred semantic work for an older revision
   // will check this and bail out before doing expensive linting.

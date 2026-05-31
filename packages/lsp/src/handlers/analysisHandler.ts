@@ -136,7 +136,7 @@ export function registerAnalysisHandlers(context: LspContext) {
       const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
       // Gather all verification results across the workspace
       const allResults = [];
-      for (const res of verificationResultsByUri.values()) {
+      for (const res of context.validationService.verificationResultsByUri.values()) {
         allResults.push(...res);
       }
       return getRequirements(db, undefined, allResults); // Do not filter by uri to show workspace-level requirements
