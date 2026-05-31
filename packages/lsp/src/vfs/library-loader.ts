@@ -418,11 +418,21 @@ export async function loadDependencyFromRegistry(
       const byName = new Map(cached.indexJson.byName);
       const childrenOf = new Map(cached.indexJson.childrenOf);
 
-      ctx.globalWorkspaceIndex.hydrate(uri, {
-        symbols,
-        byName,
-        childrenOf,
-      });
+      ctx.globalWorkspaceIndex.hydrate(
+        uri,
+        {
+          symbols,
+          byName,
+          childrenOf,
+        },
+        undefined,
+        (origPath) => {
+          if (origPath.startsWith("sources/")) {
+            return "file://" + ctx.sharedFs.join(basePath, origPath.substring("sources/".length));
+          }
+          return "file://" + ctx.sharedFs.join(basePath, origPath);
+        },
+      );
 
       ctx.logger.log(`[registry] Hydrated ${label}: ${fileCount} files, index hydrated with ${symbols.size} symbols.`);
     }

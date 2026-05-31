@@ -15,7 +15,32 @@ export async function exportLspBundle(
 
     // 1. Serialize the unified SymbolIndex to index.json
     const index = engine.index; // This is the unified SymbolIndex
-    const symbolsArr = Array.from(index.symbols.entries());
+
+    // Normalize libraryPath for mapping
+    const libPrefix = libraryPath.replace(/\\/g, "/").replace(/\/?$/, "/");
+
+    const symbolsArr = Array.from(index.symbols.entries()).map(([id, entry]) => {
+      const mappedEntry = { ...entry };
+      if (mappedEntry.resourceId) {
+        let resPath = mappedEntry.resourceId;
+        // In Context.ts, resourceId might be prefixed with a scheme like "modelica:/" or "sysml2:/",
+        // but addLibrary registers the absolute filesystem path as the URI!
+        resPath = resPath.replace(/\\/g, "/");
+        if (resPath.startsWith(libPrefix)) {
+          mappedEntry.resourceId = "sources/" + resPath.substring(libPrefix.length);
+        } else {
+          // If it has a scheme prefix (like file://), try stripping it
+          const cleanPath = resPath.replace(/^[a-z0-9+-]+:\/\//i, "");
+          if (cleanPath.startsWith(libPrefix)) {
+            mappedEntry.resourceId = "sources/" + cleanPath.substring(libPrefix.length);
+          } else {
+            mappedEntry.resourceId = "sources/" + path.basename(resPath);
+          }
+        }
+      }
+      return [id, mappedEntry];
+    });
+
     const byNameArr = Array.from(index.byName.entries());
     const childrenOfArr = Array.from(index.childrenOf.entries());
 

@@ -93,7 +93,7 @@ export class WorkspaceIndex {
    * Useful for loading massive libraries (like MSL) instantly from an LSP bundle
    * without needing to parse individual files.
    */
-  hydrate(uri: string, index: SymbolIndex, parentFQN?: string): void {
+  hydrate(uri: string, index: SymbolIndex, parentFQN?: string, mapResourceId?: (original: string) => string): void {
     const offset = globalIdCounter;
     let localMaxId = 0;
 
@@ -102,7 +102,11 @@ export class WorkspaceIndex {
       if (localId > localMaxId) localMaxId = localId;
       const globalId = localId >= 0 ? localId + offset : localId;
       entry.id = globalId;
-      entry.resourceId = uri;
+      if (mapResourceId && entry.resourceId) {
+        entry.resourceId = mapResourceId(entry.resourceId);
+      } else {
+        entry.resourceId = uri;
+      }
       if (entry.parentId !== null) {
         entry.parentId = entry.parentId >= 0 ? entry.parentId + offset : entry.parentId;
       }
