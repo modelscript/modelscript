@@ -1368,100 +1368,119 @@ function generateFmi2FunctionsC(
   lines.push("");
 
   // ── Co-Simulation Step Integration (RK4 / DOPRI5 / Forward Euler) ──
-  lines.push("/* Runge-Kutta 4th Order fixed-step integrator */");
-  lines.push("static void integrate_rk4(FMUInstance* inst, double t, double tEnd, double h) {");
+  lines.push("/* Runge-Kutta 4th Order fixed-step integrator with Event Detection */");
+  lines.push("static void integrate_rk4(FMUInstance* inst, double t_start, double t_end, double dt) {");
   lines.push("  int n = N_STATES;");
   lines.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
-  lines.push("  double y0[N_STATES + 1];");
-
-  // Load states into y0
+  lines.push("  double y0[N_STATES + 1], tmp_states[N_STATES + 1];");
+  lines.push("  double z_prev[N_EVENT_INDICATORS + 1];");
+  lines.push("  double t = t_start;");
+  lines.push("");
+  lines.push("  while (t < t_end - 1e-13) {");
+  lines.push("    double h = t_end - t;");
+  lines.push("    int step_accepted = 0;");
+  lines.push("    for (int i = 0; i < n; i++) {");
   for (let i = 0; i < stateVRs.length; i++) {
     const vr = stateVRs[i];
     if (vr !== undefined && vr >= 0) {
-      lines.push(`  y0[${i}] = inst->model.vars[${vr}];`);
+      lines.push(`      y0[${i}] = inst->model.vars[${vr}];`);
     }
   }
-
-  lines.push("  /* k1 */");
-  lines.push("  inst->model.time = t;");
-  lines.push(`  ${id}_getDerivatives(&inst->model);`);
-  lines.push("  for (int i = 0; i < n; i++) k1[i] = inst->model.derivatives[i];");
+  lines.push("    }");
+  lines.push("    inst->model.time = t;");
+  lines.push("    if (N_EVENT_INDICATORS > 0) {");
+  lines.push(`      ${id}_getEventIndicators(&inst->model, z_prev);`);
+  lines.push("    }");
   lines.push("");
-  lines.push("  /* k2 */");
-  lines.push("  inst->model.time = t + 0.5 * h;");
+  lines.push("    while (!step_accepted) {");
+  lines.push("      /* k1 */");
+  lines.push("      inst->model.time = t;");
   for (let i = 0; i < stateVRs.length; i++) {
     const vr = stateVRs[i];
     if (vr !== undefined && vr >= 0) {
-      lines.push(`  inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k1[${i}];`);
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}];`);
     }
   }
-  lines.push(`  ${id}_getDerivatives(&inst->model);`);
-  lines.push("  for (int i = 0; i < n; i++) k2[i] = inst->model.derivatives[i];");
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k1[i] = inst->model.derivatives[i];");
   lines.push("");
-  lines.push("  /* k3 */");
+  lines.push("      /* k2 */");
+  lines.push("      inst->model.time = t + 0.5 * h;");
   for (let i = 0; i < stateVRs.length; i++) {
     const vr = stateVRs[i];
     if (vr !== undefined && vr >= 0) {
-      lines.push(`  inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k2[${i}];`);
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k1[${i}];`);
     }
   }
-  lines.push(`  ${id}_getDerivatives(&inst->model);`);
-  lines.push("  for (int i = 0; i < n; i++) k3[i] = inst->model.derivatives[i];");
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k2[i] = inst->model.derivatives[i];");
   lines.push("");
-  lines.push("  /* k4 */");
-  lines.push("  inst->model.time = t + h;");
+  lines.push("      /* k3 */");
   for (let i = 0; i < stateVRs.length; i++) {
     const vr = stateVRs[i];
     if (vr !== undefined && vr >= 0) {
-      lines.push(`  inst->model.vars[${vr}] = y0[${i}] + h * k3[${i}];`);
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k2[${i}];`);
     }
   }
-  lines.push(`  ${id}_getDerivatives(&inst->model);`);
-  lines.push("  for (int i = 0; i < n; i++) k4[i] = inst->model.derivatives[i];");
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k3[i] = inst->model.derivatives[i];");
   lines.push("");
-  lines.push("  /* Update */");
+  lines.push("      /* k4 */");
+  lines.push("      inst->model.time = t + h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + h * k3[${i}];`);
+    }
+  }
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k4[i] = inst->model.derivatives[i];");
+  lines.push("");
+  lines.push("      /* Combine */");
   for (let i = 0; i < stateVRs.length; i++) {
     const vr = stateVRs[i];
     if (vr !== undefined && vr >= 0) {
       lines.push(
-        `  inst->model.vars[${vr}] = y0[${i}] + (h / 6.0) * (k1[${i}] + 2.0 * k2[${i}] + 2.0 * k3[${i}] + k4[${i}]);`,
+        `      tmp_states[${i}] = y0[${i}] + (h / 6.0) * (k1[${i}] + 2.0 * k2[${i}] + 2.0 * k3[${i}] + k4[${i}]);`,
       );
     }
   }
-  lines.push("}");
   lines.push("");
-
-  // ── RK4 helper function ──
-  lines.push("/* Adaptive step Dormand-Prince 5(4) integrator */");
-  lines.push("static void integrate_dopri5(FMUInstance* inst, double t, double tEnd, double h) {");
-  lines.push("  (void)t; (void)tEnd; (void)h;");
-  lines.push("  /* Fall back to RK4 for embedded target simulation compatibility */");
-  lines.push("  integrate_rk4(inst, t, tEnd, h);");
-  lines.push("}");
+  lines.push("      int crossing = 0;");
+  lines.push("      if (N_EVENT_INDICATORS > 0) {");
+  lines.push("        inst->model.time = t + h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`        inst->model.vars[${vr}] = tmp_states[${i}];`);
+    }
+  }
+  lines.push("        double z_curr[N_EVENT_INDICATORS + 1];");
+  lines.push(`        ${id}_getEventIndicators(&inst->model, z_curr);`);
+  lines.push("        for (int i = 0; i < N_EVENT_INDICATORS; i++) {");
+  lines.push("          if (z_prev[i] * z_curr[i] < 0.0) { crossing = 1; break; }");
+  lines.push("        }");
+  lines.push("      }");
+  lines.push("      if (crossing && h > 1e-7) {");
+  lines.push("        h *= 0.5;");
+  lines.push("      } else {");
+  lines.push("        step_accepted = 1;");
+  lines.push("      }");
+  lines.push("    }");
+  lines.push("    t += h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`    inst->model.vars[${vr}] = tmp_states[${i}];`);
+    }
+  }
+  lines.push("    inst->model.time = t;");
   lines.push("");
-
-  // ── Static worker function for async co-simulation ──
-  lines.push("#ifdef _WIN32");
-  lines.push("static DWORD WINID async_step_worker(LPVOID lpParam) {");
-  lines.push("#else");
-  lines.push("static void* async_step_worker(void* lpParam) {");
-  lines.push("#endif");
-  lines.push("  FMUInstance* inst = (FMUInstance*)lpParam;");
-  lines.push("  double t = inst->asyncCurrentT;");
-  lines.push("  double tEnd = inst->asyncTEnd;");
-  lines.push("  double h = inst->stepSize;");
-  lines.push("  while (t < tEnd - 1e-13 && !inst->cancelRequested) {");
-  lines.push("    double hStep = h;");
-  lines.push("    if (t + hStep > tEnd) hStep = tEnd - t;");
-  lines.push("    integrate_rk4(inst, t, t + hStep, hStep);");
-  lines.push("    t += hStep;");
+  lines.push("    /* Call discrete state update */");
+  lines.push("    fmi2EventInfo info;");
+  lines.push("    fmi2NewDiscreteStates(inst, &info);");
   lines.push("  }");
-  lines.push("  inst->asyncCurrentT = t;");
-  lines.push("  inst->asyncDone = 1;");
-  lines.push("  inst->asyncResult = fmi2OK;");
-  lines.push("  return 0;");
   lines.push("}");
-  lines.push("");
 
   // ── fmi2DoStep ──
   lines.push("fmi2Status fmi2DoStep(fmi2Component c, fmi2Real currentCommunicationPoint,");

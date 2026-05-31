@@ -140,6 +140,26 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
 
 // ── DAE Analysis Helpers ──
 
+function conditionToZeroCrossingC(dae: ArenaDAEBuilder, id: number): string {
+  if (id < 0) return "0.0";
+  if (dae.getExprKind(id) === ExprKind.Binary) {
+    const op = dae.getExprData1(id) as BinOp;
+    if (op === BinOp.Lt || op === BinOp.Lte || op === BinOp.Gt || op === BinOp.Gte) {
+      const lhs = exprToC(dae, dae.getExprLeft(id));
+      const rhs = exprToC(dae, dae.getExprRight(id));
+      return `(${lhs}) - (${rhs})`;
+    }
+  }
+  return `(${exprToC(dae, id)} ? 1.0 : -1.0)`;
+}
+
+function extractAssignmentTarget(dae: ArenaDAEBuilder, id: number): string | null {
+  if (id >= 0 && dae.getExprKind(id) === ExprKind.Name) {
+    return dae.interner.resolve(dae.getExprData1(id));
+  }
+  return null;
+}
+
 function extractDerName(dae: ArenaDAEBuilder, exprId: number): string | null {
   if (exprId >= 0 && dae.getExprKind(exprId) === ExprKind.Der) {
     const operand = dae.getExprData1(exprId);
@@ -239,6 +259,17 @@ function generateWasmC(
   L.push(`#define N_VARS ${nVars}`);
   L.push(`#define N_STATES ${nStates}`);
   L.push(`#define N_EVENT_INDICATORS ${nEventIndicators}`);
+
+  let nWhenConditions = 0;
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) === EqKind.When) {
+      const meta = dae.getWhenEquationMeta(idx);
+      if (meta) {
+        nWhenConditions += 1 + meta.elseWhenClauses.length;
+      }
+    }
+  }
+  L.push(`#define N_WHEN_CONDITIONS ${nWhenConditions}`);
   L.push("");
 
   // ── Variable reference constants ──
@@ -254,6 +285,7 @@ function generateWasmC(
   L.push(`static double g_states[N_STATES + 1];`);
   L.push(`static double g_derivatives[N_STATES + 1];`);
   L.push(`static double g_event_indicators[N_EVENT_INDICATORS + 1];`);
+  L.push(`static double g_when_prev[N_WHEN_CONDITIONS + 1];`);
   L.push(`static double g_time = 0.0;`);
   L.push(`static int g_isInitPhase = 1;`);
   L.push("");
@@ -294,6 +326,7 @@ function generateWasmC(
   L.push("  memset(g_vars, 0, sizeof(g_vars));");
   L.push("  memset(g_states, 0, sizeof(g_states));");
   L.push("  memset(g_derivatives, 0, sizeof(g_derivatives));");
+  L.push("  memset(g_when_prev, 0, sizeof(g_when_prev));");
   L.push("  g_time = 0.0;");
   L.push("  g_isInitPhase = 1;");
 
@@ -406,6 +439,23 @@ function generateWasmC(
   if (dae.eventIndicatorExprIds.length === 0) {
     L.push("  /* no event indicators */");
   } else {
+    // Collect referenced variable names for local alias emission
+    const refNames = new Set<string>();
+    for (const indicator of dae.eventIndicatorExprIds) {
+      if (indicator !== undefined && indicator >= 0) {
+        collectReferencedNames(dae, indicator, refNames);
+      }
+    }
+
+    // Local aliases for referenced variables (read from g_vars[])
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      if (!refNames.has(sv.name)) continue;
+      const cName = varToC(sv.name);
+      L.push(`  double ${cName} = g_vars[${sv.valueReference}];`);
+    }
+    L.push("");
+
     for (let i = 0; i < dae.eventIndicatorExprIds.length; i++) {
       const indicator = dae.eventIndicatorExprIds[i];
       if (indicator !== undefined && indicator >= 0) {
@@ -416,66 +466,158 @@ function generateWasmC(
   L.push("}");
   L.push("");
 
-  // ── Embedded RK4 stepper ──
-  L.push("/* Embedded RK4 integration step */");
-  L.push("static void rk4_step(double t, double dt) {");
-  L.push("  int i;");
-  L.push(`  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];`);
-  L.push(`  double tmp_states[N_STATES + 1];`);
-  L.push("");
-  L.push("  /* k1 = f(t, y) */");
-  L.push("  g_time = t;");
-
-  for (const sv of stateVarRefs) {
-    L.push(`  g_vars[${sv.vr}] = g_states[${sv.idx}];  /* ${sv.name} */`);
+  // ── model_event_update function ──
+  L.push("/* Event update: evaluate when-equations and discrete changes */");
+  L.push("static void model_event_update(void) {");
+  const whenEqIdxs: number[] = [];
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) === EqKind.When) whenEqIdxs.push(idx);
   }
-  L.push("  model_get_derivatives();");
-  L.push("  for (i = 0; i < N_STATES; i++) k1[i] = g_derivatives[i];");
-  L.push("");
 
-  L.push("  /* k2 = f(t + dt/2, y + dt/2 * k1) */");
-  L.push("  g_time = t + 0.5 * dt;");
-  L.push("  for (i = 0; i < N_STATES; i++) tmp_states[i] = g_states[i] + 0.5 * dt * k1[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`  g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+  if (whenEqIdxs.length > 0) {
+    let whenIdx = 0;
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+
+      const processBlock = (
+        condExprId: number,
+        bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
+      ) => {
+        const condC = conditionToZeroCrossingC(dae, condExprId);
+        L.push(`  if (${condC} > 0.0 && g_when_prev[${whenIdx}] <= 0.0) {`);
+        for (const bodyEq of bodyEquations) {
+          if (bodyEq.kind === EqKind.Simple) {
+            const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
+            if (lhsName) {
+              const sv = result.scalarVariables.find((v) => v.name === lhsName);
+              if (sv) {
+                L.push(`    g_vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`);
+                const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
+              }
+            }
+          } else if (bodyEq.kind === EqKind.FunctionCall) {
+            if (dae.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
+              const callId = bodyEq.lhsExprId;
+              const fname = dae.interner.resolve(dae.getExprData1(callId));
+              if (fname === "reinit") {
+                const arg0 = dae.getExprLeft(callId);
+                const arg1 = dae.getExprLeft(callId + 1);
+                if (dae.getExprKind(arg0) === ExprKind.Name) {
+                  const stateName = dae.interner.resolve(dae.getExprData1(arg0));
+                  const sv = result.scalarVariables.find((v) => v.name === stateName);
+                  if (sv) {
+                    L.push(`    g_vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`);
+                    const stateRef = stateVarRefs.find((s) => s.vr === sv.valueReference);
+                    if (stateRef) L.push(`    g_states[${stateRef.idx}] = g_vars[${sv.valueReference}];`);
+                  }
+                }
+              }
+            }
+          }
+        }
+        L.push("  }");
+        L.push(`  g_when_prev[${whenIdx}] = ${condC};`);
+        whenIdx++;
+      };
+
+      processBlock(weq.conditionExprId, weq.bodyEquations);
+      for (const clause of weq.elseWhenClauses) {
+        processBlock(clause.conditionExprId, clause.bodyEquations);
+      }
+    }
   }
-  L.push("  model_get_derivatives();");
-  L.push("  for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
-  L.push("");
-
-  L.push("  /* k3 = f(t + dt/2, y + dt/2 * k2) */");
-  L.push("  for (i = 0; i < N_STATES; i++) tmp_states[i] = g_states[i] + 0.5 * dt * k2[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`  g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("  model_get_derivatives();");
-  L.push("  for (i = 0; i < N_STATES; i++) k3[i] = g_derivatives[i];");
-  L.push("");
-
-  L.push("  /* k4 = f(t + dt, y + dt * k3) */");
-  L.push("  g_time = t + dt;");
-  L.push("  for (i = 0; i < N_STATES; i++) tmp_states[i] = g_states[i] + dt * k3[i];");
-  for (const sv of stateVarRefs) {
-    L.push(`  g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
-  }
-  L.push("  model_get_derivatives();");
-  L.push("  for (i = 0; i < N_STATES; i++) k4[i] = g_derivatives[i];");
-  L.push("");
-
-  L.push("  /* Combine: y_new = y + dt/6 * (k1 + 2*k2 + 2*k3 + k4) */");
-  L.push("  for (i = 0; i < N_STATES; i++) g_states[i] += (dt / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);");
-  L.push("");
-
-  // Write updated states back to g_vars[]
-  for (const sv of stateVarRefs) {
-    L.push(`  g_vars[${sv.vr}] = g_states[${sv.idx}];  /* ${sv.name} */`);
-  }
-  L.push("  g_time = t + dt;");
-  L.push("  model_get_derivatives();");
   L.push("}");
   L.push("");
 
-  // ── Exported WASM API ──
+  // ── Embedded RK4 stepper ──
+  L.push("/* Embedded RK4 integration step */");
+
+  L.push("static void rk4_step(double t_start, double dt) {");
+  L.push("  int i;");
+  L.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
+  L.push("  double tmp_states[N_STATES + 1];");
+  L.push("  double y0[N_STATES + 1];");
+  L.push("  double z_prev[N_EVENT_INDICATORS + 1];");
+  L.push("  double t = t_start;");
+  L.push("  double t_end = t_start + dt;");
+  L.push("");
+  L.push("  while (t < t_end - 1e-13) {");
+  L.push("    double h = t_end - t;");
+  L.push("    int step_accepted = 0;");
+  L.push("    for (i = 0; i < N_STATES; i++) y0[i] = g_states[i];");
+  L.push("    g_time = t;");
+  for (const sv of stateVarRefs) {
+    L.push(`    g_vars[${sv.vr}] = y0[${sv.idx}];`);
+  }
+  L.push("    if (N_EVENT_INDICATORS > 0) {");
+  L.push("      model_get_event_indicators();");
+  L.push("      for (i = 0; i < N_EVENT_INDICATORS; i++) z_prev[i] = g_event_indicators[i];");
+  L.push("    }");
+  L.push("    while (!step_accepted) {");
+  L.push("      /* k1 */");
+  L.push("      g_time = t;");
+  for (const sv of stateVarRefs) {
+    L.push(`      g_vars[${sv.vr}] = y0[${sv.idx}];`);
+  }
+  L.push("      model_get_derivatives();");
+  L.push("      for (i = 0; i < N_STATES; i++) k1[i] = g_derivatives[i];");
+  L.push("      /* k2 */");
+  L.push("      g_time = t + 0.5 * h;");
+  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k1[i];");
+  for (const sv of stateVarRefs) {
+    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+  }
+  L.push("      model_get_derivatives();");
+  L.push("      for (i = 0; i < N_STATES; i++) k2[i] = g_derivatives[i];");
+  L.push("      /* k3 */");
+  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + 0.5 * h * k2[i];");
+  for (const sv of stateVarRefs) {
+    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+  }
+  L.push("      model_get_derivatives();");
+  L.push("      for (i = 0; i < N_STATES; i++) k3[i] = g_derivatives[i];");
+  L.push("      /* k4 */");
+  L.push("      g_time = t + h;");
+  L.push("      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + h * k3[i];");
+  for (const sv of stateVarRefs) {
+    L.push(`      g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+  }
+  L.push("      model_get_derivatives();");
+  L.push("      for (i = 0; i < N_STATES; i++) k4[i] = g_derivatives[i];");
+  L.push("      /* Combine */");
+  L.push(
+    "      for (i = 0; i < N_STATES; i++) tmp_states[i] = y0[i] + (h / 6.0) * (k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);",
+  );
+  L.push("      ");
+  L.push("      int crossing = 0;");
+  L.push("      if (N_EVENT_INDICATORS > 0) {");
+  L.push("        g_time = t + h;");
+  for (const sv of stateVarRefs) {
+    L.push(`        g_vars[${sv.vr}] = tmp_states[${sv.idx}];`);
+  }
+  L.push("        model_get_event_indicators();");
+  L.push("        for (i = 0; i < N_EVENT_INDICATORS; i++) {");
+  L.push("          if (z_prev[i] * g_event_indicators[i] < 0.0) { crossing = 1; break; }");
+  L.push("        }");
+  L.push("      }");
+  L.push("      if (crossing && h > 1e-7) {");
+  L.push("        h *= 0.5;");
+  L.push("      } else {");
+  L.push("        step_accepted = 1;");
+  L.push("      }");
+  L.push("    }");
+  L.push("    t += h;");
+  L.push("    for (i = 0; i < N_STATES; i++) g_states[i] = tmp_states[i];");
+  for (const sv of stateVarRefs) {
+    L.push(`    g_vars[${sv.vr}] = g_states[${sv.idx}];`);
+  }
+  L.push("    g_time = t;");
+  L.push("    model_event_update();");
+  L.push("  }");
+  L.push("}");
+
   L.push("/* ═══════════════════════════════════════════════════════════ */");
   L.push("/*  Exported WASM API                                        */");
   L.push("/* ═══════════════════════════════════════════════════════════ */");

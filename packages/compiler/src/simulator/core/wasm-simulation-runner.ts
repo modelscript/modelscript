@@ -170,10 +170,26 @@ async function loadWasmModule(wasmBytes: ArrayBuffer, jsGlueCode: string): Promi
   // The Emscripten-generated JS glue defines a module factory function
   const factoryFn = new Function(
     "Module",
+    "require",
+    "__dirname",
+    "__filename",
     jsGlueCode + "\nreturn typeof createWasmModel !== 'undefined' ? createWasmModel : Module;",
   );
 
   const wasmBinary = new Uint8Array(wasmBytes);
+
+  // Try to provide Node.js require if we are in Node
+  let req: unknown = undefined;
+  if (typeof require !== "undefined") {
+    req = require;
+  } else if (typeof process !== "undefined" && process.release?.name === "node") {
+    try {
+      const mod = await import("module");
+      req = mod.createRequire(import.meta.url);
+    } catch {
+      // ignore
+    }
+  }
 
   return new Promise<WasmModelModule>((resolve, reject) => {
     try {
@@ -184,7 +200,10 @@ async function loadWasmModule(wasmBytes: ArrayBuffer, jsGlueCode: string): Promi
         },
       };
 
-      const factory = factoryFn(moduleConfig);
+      let factory = factoryFn(moduleConfig, req, "", "");
+      if (typeof factory === "function") {
+        factory = factory(moduleConfig);
+      }
 
       // Handle both callback and promise patterns
       if (factory && typeof factory.then === "function") {

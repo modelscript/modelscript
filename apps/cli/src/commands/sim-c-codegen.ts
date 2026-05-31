@@ -521,6 +521,8 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
       break;
     case ExprKind.Unary:
     case ExprKind.Negate:
+      collectReferencedNames(dae, dae.getExprLeft(id), names);
+      break;
     case ExprKind.Der:
     case ExprKind.Pre:
       collectReferencedNames(dae, dae.getExprData1(id), names);
