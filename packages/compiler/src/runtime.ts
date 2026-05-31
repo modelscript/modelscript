@@ -148,11 +148,9 @@ export interface QueryDB {
   allEntries(): SymbolEntry[];
 
   /**
-   * Invoke a query with additional arguments beyond symbolId.
-   * Enables compound keys like (symbolId, otherSymbolId) for
-   * e.g. type compatibility checks.
+   * Execute a query with arguments and an optional custom hash for cache keying.
    */
-  queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T;
+  queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T;
 
   // -------------------------------------------------------------------------
   // Specialization — language-agnostic parameterized instances

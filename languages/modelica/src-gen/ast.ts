@@ -51,6 +51,9 @@ export class ClassDefinition extends SemanticNode {
   get annotationClause(): string | null {
     return this.attribute("annotationClause");
   }
+  get endIdentifier(): string | null {
+    return this.attribute("endIdentifier");
+  }
 
   // --- Mutable Properties (CST default + runtime override) ---
   #diagnostics: string[] | undefined = undefined;
@@ -217,6 +220,21 @@ export class ClassDefinition extends SemanticNode {
   // --- Query Accessors ---
   get arrayDimensions(): SemanticNode[] {
     const entries = this.query<SymbolEntry[]>("arrayDimensions");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get effectiveModification(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("effectiveModification");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get isOperatorRecord(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("isOperatorRecord");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get operatorFunctions(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("operatorFunctions");
     return entries.map((e) => wrapEntry(e, this.db));
   }
 
@@ -467,6 +485,11 @@ export class ExtendsClause extends SemanticNode {
     return entries.map((e) => wrapEntry(e, this.db));
   }
 
+  get extendsModificationParsed(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("extendsModificationParsed");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
   // --- Graphics ---
   get graphics() {
     return {
@@ -670,6 +693,42 @@ export class ShortClassDefinition extends SemanticNode {
   // --- Metadata ---
   get enumeration(): string | null {
     return this.attribute("enumeration");
+  }
+
+  // --- Computed Properties (query-backed) ---
+  get instantiate(): SymbolId[] {
+    return this.query<SymbolId[]>("instantiate");
+  }
+
+  // --- Query Accessors ---
+  get effectiveModification(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("effectiveModification");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get resolvedBaseClass(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("resolvedBaseClass");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get resolveSimpleName(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("resolveSimpleName");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get resolveName(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("resolveName");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get allElements(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("allElements");
+    return entries.map((e) => wrapEntry(e, this.db));
+  }
+
+  get scopeData(): SemanticNode[] {
+    const entries = this.query<SymbolEntry[]>("scopeData");
+    return entries.map((e) => wrapEntry(e, this.db));
   }
 
   // --- Clone / Specialize ---

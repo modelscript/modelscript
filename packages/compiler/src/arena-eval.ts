@@ -552,19 +552,6 @@ export function evaluateArenaExpression(
       // Cannot statically evaluate a derivative
       return null;
 
-    case ExprKind.Cast: {
-      const childExprId = dae.getExprLeft(exprId);
-      return evaluateArenaExpression(
-        dae,
-        childExprId,
-        parameters,
-        db,
-        scopeId,
-        visitedVars,
-        onlyConstants,
-        functionLookup,
-      );
-    }
     case ExprKind.Pre:
       // Cannot statically evaluate a previous value
       return null;

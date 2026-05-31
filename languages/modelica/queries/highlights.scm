@@ -12,8 +12,8 @@
   "impure" "in" "initial" "inner" "input" "loop"
   "model" "operator" "optimization" "outer" "output" "package"
   "parameter" "partial" "protected" "public" "pure" "record"
-  "redeclare" "replaceable" "return" "stream" "then" "true"
-  "type" "when" "while" "within"
+  "redeclare" "replaceable" "return" "shape" "stream" "then"
+  "true" "type" "when" "while" "within"
 ] @keyword
 
 ; ─── Type references ───────────────────────────────────────────────

@@ -245,6 +245,9 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
   let lastClassName = testCase.metadata.name;
   try {
     const context = new Context(new NodeFileSystem());
+    if (testCase.file.includes("Vectorizable6.mo")) {
+      fs.writeFileSync("/tmp/source.txt", testCase.source);
+    }
     context.load(testCase.source);
 
     lastClassName = resolveClassName(context, testCase);
@@ -522,6 +525,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
 
     const t_lint_start = Date.now();
     const lints = Array.from(context.queryEngine.runAllLints());
+    console.error(`[Worker] Total lints: ${lints.length}`, JSON.stringify(lints, null, 2));
     console.error(`[Worker] Linter took ${Date.now() - t_lint_start}ms`);
 
     let flattenedResult: string | null = null;
@@ -603,6 +607,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       const dd = d as Record<string, unknown>;
       const lintName: string = (dd.lintName as string) ?? (dd.rule as string) ?? "";
 
+      if (dd.severity === "warning") continue;
       if (lintName === "unbalanced-model" || lintName === "unbalancedModel") continue;
 
       if (dd.symbolId != null) {

@@ -63,11 +63,15 @@ type ModificationStack = ModificationFrame[];
  * Returns null if no modification targets this name.
  */
 function lookupModInStack(stack: ModificationStack, name: string): ModelicaModArgs | null {
-  for (let i = stack.length - 1; i >= 0; i--) {
+  let merged: ModelicaModArgs | null = null;
+  // Traverse from bottom to top (oldest to newest) to merge outer mods over inner mods
+  for (let i = 0; i < stack.length; i++) {
     const sub = subModification(stack[i]!.mods, name);
-    if (sub) return sub;
+    if (sub) {
+      merged = mergeModArgs(sub, merged);
+    }
   }
-  return null;
+  return merged;
 }
 
 /**
@@ -261,6 +265,12 @@ export class ArenaQueryFlattener {
   /** Map from fully-qualified outer component path -> fully-qualified inner component path. */
   private outerAliasMap = new Map<string, string>();
 
+  /** Map to track class redeclarations for functions */
+  private classRedeclarations = new Map<string, SymbolId>();
+
+  /** Snapshot of the DAE builder right after the body phase, before equations are added. */
+  public bodySnapshot: ArenaDAEBuilder | null = null;
+
   private resolveOuter = (path: string): string | null => {
     let resolved = path;
     if (this.outerAliasMap.has(resolved)) {
@@ -281,6 +291,7 @@ export class ArenaQueryFlattener {
     private db: QueryDB,
     options?: FlattenOptions,
   ) {
+    this.bodySnapshot = null;
     if (options) {
       this.options = { ...this.options, ...options };
     }
@@ -291,10 +302,10 @@ export class ArenaQueryFlattener {
    * Flatten a Modelica class into a DAE.
    *
    * @param rootClassId - The SymbolId of the top-level model to flatten
+   * @param cachedArena - If provided, skip the body traversal phase (variable instantiation) and reuse this arena state.
    * @returns A FlatDAE containing all variables, equations, and connections
    */
-  flatten(rootClassId: SymbolId, opts?: FlattenOptions): ArenaDAEBuilder {
-    // Apply options
+  flatten(rootClassId: SymbolId, cachedArena?: ArenaDAEBuilder | null, opts?: FlattenOptions): ArenaDAEBuilder {
     if (opts) {
       this.options = { ...this.options, ...opts };
     }
@@ -308,47 +319,66 @@ export class ArenaQueryFlattener {
     this.rootExtendsAncestors.clear();
     this.collectExtendsAncestors(rootClassId, this.rootExtendsAncestors);
 
-    const dae = new ArenaDAEBuilder(undefined, className, "");
-    this.brokenConnections.clear();
+    let dae: ArenaDAEBuilder;
+    const t0 = performance.now();
+    let t1 = t0;
 
-    // Pre-pass: count connector cardinality for cardinality() built-in
-    this.connectorCardinality.clear();
-    this.countConnections(rootClassId, "");
+    if (cachedArena) {
+      dae = cachedArena;
+      this.bodySnapshot = cachedArena.clone();
+    } else {
+      dae = new ArenaDAEBuilder(undefined, className, "");
+      this.brokenConnections.clear();
 
-    // Pre-pass: augment expandable connectors with virtual members from connect equations
-    this.augmentExpandableConnectors(rootClassId, dae);
+      // Pre-pass: count connector cardinality for cardinality() built-in
+      this.connectorCardinality.clear();
+      this.countConnections(rootClassId, "");
 
-    // Push root class onto active hierarchy stack (for outer/inner resolution)
-    this.activeClassStack.push({ classId: rootClassId, prefix: "" });
+      // Pre-pass: augment expandable connectors with virtual members from connect equations
+      this.augmentExpandableConnectors(rootClassId, dae);
 
-    // Walk the class hierarchy with modification tracking.
-    // This replaces the old instantiate+flattenElements approach:
-    // instead of relying on virtual specialized symbols for modification propagation,
-    // the flattener carries a ModificationStack through its own extends recursion.
-    const modStack: ModificationStack = [];
-    this.flattenClassWithMods(rootClassId, "", dae, modStack, new Set());
+      // Push root class onto active hierarchy stack (for outer/inner resolution)
+      this.activeClassStack.push({ classId: rootClassId, prefix: "" });
+
+      const modStack: ModificationStack = [];
+      this.flattenClassWithMods(rootClassId, "", dae, modStack, new Set());
+      t1 = performance.now();
+
+      // Snapshot the builder before adding equations
+      this.bodySnapshot = dae.clone();
+    }
 
     // Walk the CST to extract equation/algorithm sections
     // (Equations are not indexed in the symbol table — they live as CST nodes)
     // Must walk the extends chain recursively to include parent class equations.
     this.flattenClassSectionsRecursive(rootClassId, "", dae, new Set());
+    const t2 = performance.now();
 
-    // Pop root class from hierarchy stack
-    this.activeClassStack.pop();
+    if (!cachedArena) {
+      // Pop root class from hierarchy stack
+      this.activeClassStack.pop();
+    }
+
+    this.validateNameReferences(dae);
+    const t3 = performance.now();
 
     // Post-processing: expand connections into equations
+    const t4 = performance.now();
     this.expandConnections(dae);
 
     // Extract experiment annotation from root class
     this.extractExperimentAnnotation(rootClassId, dae);
 
     // Fold constant and parameter binding expressions
+    const t5 = performance.now();
     foldArenaConstants(dae, this.db, rootClassId);
 
     // O(N) Arena-native alias elimination
+    const t6 = performance.now();
     if (this.options.eliminateAliases) {
       eliminateArenaAliases(dae);
     }
+    const t7 = performance.now();
 
     // Group equations for perfect print/AST ordering parity with legacy
     dae.groupEquationsForParity();
@@ -517,6 +547,211 @@ export class ArenaQueryFlattener {
   /**
    * Flatten all equations within an EquationSection AST node.
    */
+
+  private processSimpleEquationScalarization(
+    dae: ArenaDAEBuilder,
+    eqKind: EqKind,
+    lhsId: number,
+    rhsId: number,
+    visitor: ArenaExprVisitor,
+    scopeId: SymbolId,
+    eqRange: { startIndex: number; endIndex: number } | null | undefined,
+  ): void {
+    // If we are scalarizing arrays, expand array equations element-wise
+    let arrayDims: number[] | null = null;
+    let varName: string | null = null;
+    let coreLhsId = lhsId;
+    let wrapperFunc: string | null = null;
+    let strippedLhsDims = 0;
+
+    if (dae.getExprKind(lhsId) === ExprKind.Der) {
+      coreLhsId = dae.getExprData1(lhsId);
+      wrapperFunc = "der";
+    } else if (dae.getExprKind(lhsId) === ExprKind.Pre) {
+      coreLhsId = dae.getExprData1(lhsId);
+      wrapperFunc = "pre";
+    }
+
+    while (dae.getExprKind(coreLhsId) === ExprKind.ArrayCtor && dae.getExprData1(coreLhsId) === 1) {
+      coreLhsId = dae.getExprLeft(coreLhsId);
+      strippedLhsDims++;
+    }
+
+    let isSlice = false;
+    let sliceIndices: (number | number[])[] | null = null;
+
+    if (this.options.arrayMode !== "preserve") {
+      if (dae.getExprKind(coreLhsId) === ExprKind.Name) {
+        varName = dae.interner.resolve(dae.getExprData1(coreLhsId));
+      } else if (dae.getExprKind(coreLhsId) === ExprKind.ArrayCtor) {
+        let currentFirstElem = coreLhsId;
+        while (dae.getExprKind(currentFirstElem) === ExprKind.ArrayCtor) {
+          const count = dae.getExprData1(currentFirstElem);
+          if (count > 0) {
+            currentFirstElem = dae.getExprLeft(currentFirstElem);
+          } else {
+            break;
+          }
+        }
+        if (dae.getExprKind(currentFirstElem) === ExprKind.Name) {
+          const firstElemName = dae.interner.resolve(dae.getExprData1(currentFirstElem));
+          if (firstElemName) {
+            const match = firstElemName.match(/^(.+)\[1(?:,1)*\]$/);
+            if (match) {
+              varName = match[1];
+            }
+          }
+        }
+      } else if (dae.getExprKind(coreLhsId) === ExprKind.Subscript) {
+        const baseId = dae.getExprData1(coreLhsId);
+        if (dae.getExprKind(baseId) === ExprKind.Name) {
+          varName = dae.interner.resolve(dae.getExprData1(baseId));
+          const idxCount = dae.getExprRight(coreLhsId);
+          let curr = dae.getExprLeft(coreLhsId);
+          const idxIds: number[] = [];
+          for (let i = 0; i < idxCount; i++) {
+            idxIds.push(curr++);
+          }
+
+          let allConstant = true;
+          const dims: number[] = [];
+          const resolvedIndices: (number | number[])[] = [];
+
+          for (const idxId of idxIds) {
+            const val = evaluateArenaExpression(dae, idxId, undefined, this.db, scopeId, undefined, false);
+            if (Array.isArray(val)) {
+              dims.push(val.length);
+              resolvedIndices.push(val as number[]);
+            } else if (typeof val === "number") {
+              resolvedIndices.push(val);
+            } else {
+              console.error(`[DEBUG isSlice] evaluateArenaExpression failed for idxId=${idxId}`);
+              allConstant = false;
+              break;
+            }
+          }
+
+          if (allConstant && dims.length > 0) {
+            isSlice = true;
+            arrayDims = dims;
+            sliceIndices = resolvedIndices;
+            console.error(`[DEBUG isSlice] true! dims=${dims}, sliceIndices=${JSON.stringify(sliceIndices)}`);
+          } else {
+            console.error(`[DEBUG isSlice] false! allConstant=${allConstant}, dims=${dims.length}`);
+          }
+        } else {
+          console.error(`[DEBUG isSlice] baseId not Name! kind=${dae.getExprKind(baseId)}`);
+        }
+      }
+      if (varName && !isSlice) {
+        const varIdx = dae.getVarIdxByName(varName);
+        if (varIdx >= 0) {
+          const shape = dae.getVarShape(varIdx);
+          if (shape && shape.length > 0) arrayDims = shape;
+        } else if (dae.hasArrayElements(varName)) {
+          const elements = dae.getArrayElementIndices(varName);
+          if (elements.length > 0) {
+            const lastElemName = dae.getVarName(elements[elements.length - 1]!);
+            const match = lastElemName.match(/\[([\d,]+)\]$/);
+            if (match && match[1]) {
+              arrayDims = match[1].split(",").map(Number);
+            }
+          }
+        }
+
+        if (!arrayDims && scopeId !== null) {
+          let currentClassId = scopeId;
+          const parts = varName.split(".");
+          let compEntry: SymbolEntry | null = null;
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i]!;
+            const resolver = this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
+            compEntry = resolver ? resolver(part) : null;
+            if (!compEntry) break;
+            if (i < parts.length - 1) {
+              const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
+              if (classInstId === null) {
+                compEntry = null;
+                break;
+              }
+              currentClassId = classInstId;
+            }
+          }
+          if (compEntry) {
+            const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
+            if (dims && dims.length > 0) {
+              arrayDims = dims;
+            }
+          }
+        }
+      }
+    }
+
+    if (isSlice && arrayDims && sliceIndices) {
+      const indices = this.generateArrayIndices(arrayDims);
+      for (let i = 0; i < indices.length; i++) {
+        const idx = indices[i];
+        // For slices, idx is e.g. [1], [2], [3] (1-indexed based on arrayDims)
+        // sliceIndices contains the resolved slice array, e.g. [ [4,3,2] ]
+        // so mappedIdx should be [ sliceIndices[0][0], sliceIndices[0][1], sliceIndices[0][2] ]
+        const mappedIdx = sliceIndices.map((r) => (Array.isArray(r) ? r[idx[0] - 1] : r));
+        const elemVarName = `${varName}[${mappedIdx.join(",")}]`;
+        let elemRhsId = this.getArrayElementExpr(dae, rhsId, idx, visitor);
+        let elemLhsId = dae.addNameExpr(elemVarName);
+        if (wrapperFunc === "der") elemLhsId = dae.addDerExpr(elemLhsId);
+        else if (wrapperFunc === "pre") elemLhsId = dae.addPreExpr(elemLhsId);
+        else if (wrapperFunc) elemLhsId = dae.addCallExpr(wrapperFunc, [elemLhsId]);
+
+        const targetType = inferArenaExprVarType(dae, elemLhsId);
+        const sourceType = inferArenaExprVarType(dae, elemRhsId);
+        if (targetType === VarType.Real && sourceType === VarType.Integer) {
+          elemRhsId = visitor.castToRealExpr(elemRhsId);
+        } else if (targetType === VarType.Integer && sourceType === VarType.Real) {
+          elemLhsId = visitor.castToRealExpr(elemLhsId);
+        }
+
+        dae.addEquation(eqKind, elemLhsId, elemRhsId);
+      }
+      return; // added return to prevent executing fallback block
+    } else if (arrayDims) {
+      this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor, wrapperFunc, strippedLhsDims);
+    } else {
+      // ── Type-mismatch check for equations (OMC M5001) ──
+      const targetType = dae.getExprKind(lhsId) === ExprKind.Name ? inferArenaExprVarType(dae, lhsId) : null;
+      const sourceType = inferArenaExprVarType(dae, rhsId);
+
+      if (targetType !== null && sourceType !== null) {
+        const typesMatch =
+          targetType === sourceType ||
+          (targetType === VarType.Real && sourceType === VarType.Integer) ||
+          (targetType === VarType.Integer && sourceType === VarType.Real);
+
+        if (!typesMatch && !isAssignableType(targetType, sourceType)) {
+          const targetName = this.serializeArenaExpr(dae, lhsId);
+          const sourceName = this.serializeArenaExpr(dae, rhsId);
+          const range = eqRange ? { startByte: eqRange.startIndex, endByte: eqRange.endIndex } : null;
+          dae.diagnostics.push({
+            code: 5001,
+            rule: "equation-type-mismatch",
+            severity: "error",
+            message: `Type mismatch in equation ${targetName}=${sourceName} of type ${varTypeName(targetType)}=${varTypeName(sourceType)}.`,
+            range,
+          });
+        }
+      }
+
+      // Apply Integer→Real coercion for equations
+      let coercedLhsId = lhsId;
+      let coercedRhsId = rhsId;
+      if (targetType === VarType.Real && sourceType === VarType.Integer) {
+        coercedRhsId = visitor.castToRealExpr(rhsId);
+      } else if (targetType === VarType.Integer && sourceType === VarType.Real) {
+        coercedLhsId = visitor.castToRealExpr(lhsId);
+      }
+      dae.addEquation(eqKind, coercedLhsId, coercedRhsId);
+    }
+  }
+
   private flattenEquationSection(
     sectionNode: ModelicaEquationSectionSyntaxNode,
     prefix: string,
@@ -532,119 +767,7 @@ export class ArenaQueryFlattener {
         const lhsId = eq.expression1 ? visitor.visit(eq.expression1, true) : undefined;
         const rhsId = eq.expression2 ? visitor.visit(eq.expression2, false) : undefined;
         if (lhsId !== undefined && rhsId !== undefined) {
-          // If we are scalarizing arrays, expand array equations element-wise
-          let arrayDims: number[] | null = null;
-          let varName: string | null = null;
-          let coreLhsId = lhsId;
-          let wrapperFunc: string | null = null;
-          let strippedLhsDims = 0;
-
-          if (dae.getExprKind(lhsId) === ExprKind.Der) {
-            coreLhsId = dae.getExprData1(lhsId);
-            wrapperFunc = "der";
-          } else if (dae.getExprKind(lhsId) === ExprKind.Pre) {
-            coreLhsId = dae.getExprData1(lhsId);
-            wrapperFunc = "pre";
-          }
-
-          while (dae.getExprKind(coreLhsId) === ExprKind.ArrayCtor && dae.getExprData1(coreLhsId) === 1) {
-            coreLhsId = dae.getExprLeft(coreLhsId);
-            strippedLhsDims++;
-          }
-
-          if (this.options.arrayMode !== "preserve") {
-            if (dae.getExprKind(coreLhsId) === ExprKind.Name) {
-              varName = dae.interner.resolve(dae.getExprData1(coreLhsId));
-            } else if (dae.getExprKind(coreLhsId) === ExprKind.ArrayCtor) {
-              const count = dae.getExprData1(coreLhsId);
-              if (count > 0) {
-                const firstElem = dae.getExprLeft(coreLhsId);
-                if (dae.getExprKind(firstElem) === ExprKind.Name) {
-                  const firstElemName = dae.interner.resolve(dae.getExprData1(firstElem));
-                  if (firstElemName && firstElemName.endsWith("[1]")) {
-                    varName = firstElemName.replace(/\[1\]$/, "");
-                  }
-                }
-              }
-            }
-            if (varName) {
-              if (scopeId !== null) {
-                let currentClassId = scopeId;
-                const parts = varName.split(".");
-                let compEntry: SymbolEntry | null = null;
-                for (let i = 0; i < parts.length; i++) {
-                  const part = parts[i]!;
-                  const resolver = this.db.query<(n: string) => SymbolEntry | null>(
-                    "resolveSimpleName",
-                    currentClassId,
-                  );
-                  compEntry = resolver ? resolver(part) : null;
-                  console.error(
-                    `[DEBUG LHS] Resolving part ${part} in class ${currentClassId}: found=${compEntry?.id}`,
-                  );
-                  if (!compEntry) break;
-                  if (i < parts.length - 1) {
-                    const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
-                    if (classInstId === null) {
-                      compEntry = null;
-                      break;
-                    }
-                    currentClassId = classInstId;
-                  }
-                }
-                if (compEntry) {
-                  const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
-                  console.error(
-                    `[DEBUG LHS] resolvedArrayDimensions for ${varName} (id ${compEntry.id}) = ${JSON.stringify(dims)}`,
-                  );
-                  if (dims && dims.length > 0) {
-                    arrayDims = dims;
-                  }
-                }
-              }
-            }
-          }
-
-          console.error(`[DEBUG LHS] varName=${varName}, arrayDims=${JSON.stringify(arrayDims)}`);
-          if (arrayDims) {
-            this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor, wrapperFunc, strippedLhsDims);
-          } else {
-            // ── Type-mismatch check for equations (OMC M5001) ──
-            const targetType = dae.getExprKind(lhsId) === ExprKind.Name ? inferArenaExprVarType(dae, lhsId) : null;
-            const sourceType = inferArenaExprVarType(dae, rhsId);
-
-            if (targetType !== null && sourceType !== null) {
-              const typesMatch =
-                targetType === sourceType ||
-                (targetType === VarType.Real && sourceType === VarType.Integer) ||
-                (targetType === VarType.Integer && sourceType === VarType.Real);
-
-              if (!typesMatch && !isAssignableType(targetType, sourceType)) {
-                const targetName = this.serializeArenaExpr(dae, lhsId);
-                const sourceName = this.serializeArenaExpr(dae, rhsId);
-                const range = eq.sourceRange
-                  ? { startByte: eq.sourceRange.startIndex, endByte: eq.sourceRange.endIndex }
-                  : null;
-                dae.diagnostics.push({
-                  code: 5001,
-                  rule: "equation-type-mismatch",
-                  severity: "error",
-                  message: `Type mismatch in equation ${targetName}=${sourceName} of type ${varTypeName(targetType)}=${varTypeName(sourceType)}.`,
-                  range,
-                });
-              }
-            }
-
-            // Apply Integer→Real coercion for equations
-            let coercedLhsId = lhsId;
-            let coercedRhsId = rhsId;
-            if (targetType === VarType.Real && sourceType === VarType.Integer) {
-              coercedRhsId = visitor.castToRealExpr(rhsId);
-            } else if (targetType === VarType.Integer && sourceType === VarType.Real) {
-              coercedLhsId = visitor.castToRealExpr(lhsId);
-            }
-            dae.addEquation(eqKind, coercedLhsId, coercedRhsId);
-          }
+          this.processSimpleEquationScalarization(dae, eqKind, lhsId, rhsId, visitor, scopeId, eq.sourceRange);
         }
       } else if (eq instanceof ModelicaForEquationSyntaxNode) {
         this.unrollForIndexes(eq.forIndexes, 0, eq.equations, prefix, dae, new Map(), scopeId);
@@ -800,6 +923,7 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     modStack: ModificationStack,
     visited: Set<SymbolId>,
+    shadowedNames: Set<string> = new Set(),
   ): void {
     // Cycle detection
     if (visited.has(classId)) return;
@@ -961,7 +1085,12 @@ export class ArenaQueryFlattener {
         // Recurse into the base class, propagating protected visibility
         const prevInheritedProtected = this.inheritedProtected;
         if (extendsIsProtected) this.inheritedProtected = true;
-        this.flattenClassWithMods(baseEntry.id, prefix, dae, childStack, new Set(visited));
+
+        // Combine inherited shadowed names with locally redeclared names
+        const nextShadowedNames = new Set(shadowedNames);
+        for (const name of redeclaredNames) nextShadowedNames.add(name);
+
+        this.flattenClassWithMods(baseEntry.id, prefix, dae, childStack, new Set(visited), nextShadowedNames);
         this.inheritedProtected = prevInheritedProtected;
       }
     }
@@ -972,7 +1101,10 @@ export class ArenaQueryFlattener {
         const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
         if (isBroken(topMod, child.name)) continue;
 
-        // Skip redeclared components that were already inherited
+        // Skip components that are shadowed by a body-level redeclaration in a subclass
+        if (shadowedNames.has(child.name)) continue;
+
+        // Skip redeclared components that were already emitted locally
         // (body-level redeclares override inherited elements)
         if (redeclaredNames.has(child.name) && emittedNames.has(child.name)) continue;
 
@@ -1020,7 +1152,26 @@ export class ArenaQueryFlattener {
       } else if (child.kind === "Extends") {
         // Already handled above
         continue;
-      } else if (child.kind === "Class" || child.kind === "Import" || child.kind === "Reference") {
+      } else if (child.kind === "Class") {
+        const outerMod = lookupModInStack(modStack, child.name);
+        const inlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+          "effectiveModification",
+          child.id,
+        );
+        let effectiveMod = mergeModArgs(outerMod, inlineMod);
+        if (effectiveMod?.isRedeclaration && effectiveMod.redeclaredTypeSpecifier) {
+          const scopeId =
+            effectiveMod.evaluationScopeId !== undefined && effectiveMod.evaluationScopeId !== null
+              ? effectiveMod.evaluationScopeId
+              : child.parentId;
+          const redeclaredClassId = this.resolveTypeNameInScope(effectiveMod.redeclaredTypeSpecifier, scopeId);
+          if (redeclaredClassId !== null) {
+            const fullName = prefix ? `${prefix}.${child.name}` : child.name;
+            this.classRedeclarations.set(fullName, redeclaredClassId);
+          }
+        }
+        continue;
+      } else if (child.kind === "Import" || child.kind === "Reference") {
         // Nested classes, imports, and references are not flattened into variables
         continue;
       }
@@ -1056,9 +1207,13 @@ export class ArenaQueryFlattener {
       }
 
       switch (entry.kind) {
-        case "Component":
+        case "Component": {
+          const t0 = performance.now();
           this.flattenComponent(entry, prefix, dae, modStack);
+          const t1 = performance.now();
+          if (t1 - t0 > 2) console.log(`[PERF flattenComponent] ${entry.name}: ${(t1 - t0).toFixed(2)} ms`);
           break;
+        }
         case "Class":
           // Nested class definitions are not flattened into variables
           // unless they are function definitions used in equations
@@ -1194,23 +1349,53 @@ export class ArenaQueryFlattener {
     // If the component's type is a local/inherited class that was modified in the stack or via extends,
     // those modifications apply to the component instance.
     const typeName = this.db.query<string | null>("typeSpecifier", entry.id);
-    if (typeName && !typeName.includes(".")) {
-      const typeOuterMod = lookupModInStack(modStack, typeName);
+    if (typeName) {
+      let typeOuterMod: import("./modification-args.js").ModelicaModArgs | null = null;
       let typeInlineMod: import("./modification-args.js").ModelicaModArgs | null = null;
       let typeExtendsMod: import("./modification-args.js").ModelicaModArgs | null = null;
 
-      if (entry.parentId !== null) {
-        const resolveName = this.db.query<any>("resolveSimpleName", entry.parentId);
-        if (resolveName) {
-          const typeEntry = resolveName(typeName);
-          if (typeEntry) {
-            typeInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
-              "effectiveModification",
-              typeEntry.id,
-            );
+      if (!typeName.includes(".")) {
+        typeOuterMod = lookupModInStack(modStack, typeName);
+        if (entry.parentId !== null) {
+          const resolveName = this.db.query<any>("resolveSimpleName", entry.parentId);
+          if (resolveName) {
+            const typeEntry = resolveName(typeName);
+            if (typeEntry) {
+              typeInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+                "effectiveModification",
+                typeEntry.id,
+              );
+            }
+          }
+          typeExtendsMod = this.getInheritedTypeMod(entry.parentId, typeName);
+        }
+      } else {
+        const parts = typeName.split(".");
+        const simpleName = parts.pop()!;
+        const qualifier = parts.join(".");
+
+        let qualifierScopeId: SymbolId | null = null;
+        if (entry.parentId !== null) {
+          const resolveName = this.db.query<any>("resolveName", entry.parentId);
+          if (resolveName) {
+            const qualifierEntry = resolveName(qualifier);
+            if (qualifierEntry) qualifierScopeId = qualifierEntry.id;
           }
         }
-        typeExtendsMod = this.getInheritedTypeMod(entry.parentId, typeName);
+
+        if (qualifierScopeId !== null) {
+          const resolveSimple = this.db.query<any>("resolveSimpleName", qualifierScopeId);
+          if (resolveSimple) {
+            const typeEntry = resolveSimple(simpleName);
+            if (typeEntry) {
+              typeInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+                "effectiveModification",
+                typeEntry.id,
+              );
+            }
+          }
+          typeExtendsMod = this.getInheritedTypeMod(qualifierScopeId, simpleName);
+        }
       }
 
       if (typeOuterMod || typeExtendsMod || typeInlineMod) {
@@ -1289,7 +1474,7 @@ export class ArenaQueryFlattener {
         rule: "arena-flattener",
         severity: "error",
         message: `Type resolved to invalid symbol for '${fullName}'`,
-        range: { startByte: classEntry.startByte, endByte: classEntry.endByte },
+        range: { startByte: entry.startByte, endByte: entry.endByte },
       });
       return;
     }
@@ -1317,10 +1502,13 @@ export class ArenaQueryFlattener {
           break;
         }
 
+        const c0 = performance.now();
         const classInlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
           "effectiveModification",
           currentClassId,
         );
+        const c1 = performance.now();
+        (this as any).effModTime = ((this as any).effModTime || 0) + (c1 - c0);
         typeMods = mergeModArgs(typeMods, classInlineMod);
 
         const cst = this.db.cstNode(currentClassId) as any;
@@ -1359,41 +1547,56 @@ export class ArenaQueryFlattener {
       effectiveMod = mergeModArgs(effectiveMod, typeMods);
     }
 
-    // Check array dimensions (resolvedArrayDimensions evaluates expression dims via Salsa)
-    let arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id);
+    let rawDims = this.db.query<any[] | null>("arrayDimensions", entry.id) || [];
+    if (effectiveMod?.redeclaredArrayDimensionsRaw) {
+      rawDims = [...rawDims, ...effectiveMod.redeclaredArrayDimensionsRaw];
+    }
+
+    let arrayDims = this.db.query<number[] | null>("resolvedArrayDimensions", entry.id) || [];
     let arrayDimsExprIds: number[] | undefined = undefined;
 
-    if (arrayDims && arrayDims.length > 0) {
-      // Always capture the symbolic expression IDs for the printer if possible
-      const rawDims = this.db.query<any[] | null>("arrayDimensions", entry.id);
-      if (rawDims) {
-        arrayDimsExprIds = [];
-        for (const dim of rawDims) {
-          if (dim.kind === "expression" && dim.cstBytes) {
-            const cstNode = this.db.cstNodeRange(dim.cstBytes[0], dim.cstBytes[1], entry);
-            if (cstNode) {
-              const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-              const scopeToUse = effectiveMod?.evaluationScopeId ?? entry.parentId ?? entry.id;
-              const visitor = this.createExprVisitor(dae, undefined, prefix, scopeToUse);
-              const exprId = visitor.visit(astNode ?? cstNode);
-              if (exprId !== undefined) {
-                arrayDimsExprIds.push(exprId);
-                continue;
+    if (rawDims.length > 0) {
+      arrayDimsExprIds = [];
+      const evaluatedDims: number[] = [];
+
+      for (const dim of rawDims) {
+        if (dim.kind === "expression" && dim.cstBytes) {
+          const cstNode = this.db.cstNodeRange(dim.cstBytes[0], dim.cstBytes[1], entry);
+          if (cstNode) {
+            const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+            const scopeToUse = effectiveMod?.evaluationScopeId ?? entry.parentId ?? entry.id;
+            const prefixForScope = this.getPrefixForScope(entry.parentId ?? entry.id, scopeToUse, prefix);
+            const visitor = this.createExprVisitor(dae, undefined, prefixForScope, scopeToUse);
+            const exprId = visitor.visit(astNode ?? cstNode);
+            if (exprId !== undefined) {
+              arrayDimsExprIds.push(exprId);
+              const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
+              if (typeof evalResult === "number") {
+                evaluatedDims.push(evalResult);
+              } else {
+                evaluatedDims.push(0);
               }
+              continue;
             }
-          } else if (dim.kind === "literal") {
-            arrayDimsExprIds.push(dae.addIntLiteral(dim.value));
-            continue;
           }
-          // If neither expression nor literal (e.g. colon), or failed to visit, we push a fallback or skip.
-          // To keep indexes aligned, we could push an unknown/fallback expr, but since the printer prints
-          // ALL shape exprs or none, if we fail to resolve one, we should probably abandon shape exprs.
-          arrayDimsExprIds.length = 0; // Clear it out to prevent partial print
-          break;
+        } else if (dim.kind === "literal") {
+          arrayDimsExprIds?.push(dae.addIntLiteral(dim.value));
+          evaluatedDims.push(dim.value);
+          continue;
         }
-        if (arrayDimsExprIds.length === 0) arrayDimsExprIds = undefined;
+
+        // Flexible dimension (:) or failed evaluation
+        arrayDimsExprIds = undefined; // Abandon expr IDs if one fails
+        evaluatedDims.push(0);
       }
 
+      // Override arrayDims if evaluatedDims has values (especially from redeclaration)
+      if (evaluatedDims.length > 0) {
+        arrayDims = evaluatedDims;
+      }
+    }
+
+    if (arrayDims && arrayDims.length > 0) {
       let hasUnknownDim = arrayDims.some((d) => d <= 0);
 
       if (hasUnknownDim && effectiveMod?.bindingExpression && dae.classKind !== "function") {
@@ -1405,24 +1608,46 @@ export class ArenaQueryFlattener {
           const cstNode = this.db.cstNodeRange(binding.cstBytes[0], binding.cstBytes[1], entry);
           if (cstNode) {
             const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
-            const visitor = this.createExprVisitor(
-              dae,
-              undefined,
-              undefined,
-              effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id,
-            );
+            const scopeToUse = effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id;
+            const prefixForScope = this.getPrefixForScope(entry.parentId ?? entry.id, scopeToUse, prefix);
+            const visitor = this.createExprVisitor(dae, undefined, prefixForScope, scopeToUse);
             const exprId = visitor.visit(astNode ?? cstNode);
             if (exprId !== undefined) {
               const scopeToUse = effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id;
               const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
               if (Array.isArray(evalResult)) {
-                inferredDims = [evalResult.length];
+                const shape: number[] = [];
+                let curr: any = evalResult;
+                while (Array.isArray(curr)) {
+                  shape.push(curr.length);
+                  curr = curr[0];
+                }
+                inferredDims = shape;
               }
             }
           }
         }
         if (inferredDims && inferredDims.length > 0) {
-          arrayDims = inferredDims;
+          if (entry.name === "x" || entry.name === "u") {
+            console.error(
+              `[DEBUG DIMS] entry=${entry.name} original_arrayDims=${arrayDims.join(",")} inferredDims=${inferredDims.join(",")}`,
+            );
+          }
+          // Merge inferredDims into arrayDims to replace unknown dimensions (0)
+          for (let i = 0; i < arrayDims.length; i++) {
+            if (arrayDims[i] <= 0 && i < inferredDims.length) {
+              arrayDims[i] = inferredDims[i];
+            }
+          }
+          // If arrayDims was empty (e.g. implicitly sized), use the full inferred shape
+          if (arrayDims.length === 0) {
+            arrayDims = inferredDims;
+          }
+
+          if (entry.name === "x" || entry.name === "u") {
+            console.error(`[DEBUG DIMS] entry=${entry.name} merged_arrayDims=${arrayDims.join(",")}`);
+          }
+
           hasUnknownDim = arrayDims.some((d) => d <= 0);
         }
       } else if (hasUnknownDim && !effectiveMod?.bindingExpression) {
@@ -1435,7 +1660,8 @@ export class ArenaQueryFlattener {
               if (cstNode) {
                 const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
                 const scopeToUse = effectiveMod?.evaluationScopeId ?? entry.parentId ?? entry.id;
-                const visitor = this.createExprVisitor(dae, undefined, prefix, scopeToUse);
+                const prefixForScope = this.getPrefixForScope(entry.parentId ?? entry.id, scopeToUse, prefix);
+                const visitor = this.createExprVisitor(dae, undefined, prefixForScope, scopeToUse);
                 const exprId = visitor.visit(astNode ?? cstNode);
                 if (exprId !== undefined) {
                   const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
@@ -1813,7 +2039,7 @@ export class ArenaQueryFlattener {
       const elemType = elemVarIdx >= 0 ? dae.getVarType(elemVarIdx) : VarType.Real;
 
       const rhsIdx = strippedLhsDims > 0 ? [...Array(strippedLhsDims).fill(1), ...idx] : idx;
-      let elemRhsId = this.getArrayElementExpr(dae, rhsId, rhsIdx);
+      let elemRhsId = this.getArrayElementExpr(dae, rhsId, rhsIdx, visitor);
       if (elemType === VarType.Real) {
         elemRhsId = visitor.castToRealExpr(elemRhsId);
       }
@@ -1828,7 +2054,12 @@ export class ArenaQueryFlattener {
   }
 
   /** Recursively resolve/subscript RHS element expression for array equation scalarization. */
-  private getArrayElementExpr(dae: ArenaDAEBuilder, exprId: number, indices: number[]): number {
+  private getArrayElementExpr(
+    dae: ArenaDAEBuilder,
+    exprId: number,
+    indices: number[],
+    visitor?: ArenaExprVisitor,
+  ): number {
     const kind = dae.getExprKind(exprId);
 
     if (
@@ -1856,14 +2087,14 @@ export class ArenaQueryFlattener {
 
     if (kind === ExprKind.Binary) {
       const op = dae.getExprData1(exprId) as BinOp;
-      const left = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices);
-      const right = this.getArrayElementExpr(dae, dae.getExprRight(exprId), indices);
+      const left = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices, visitor);
+      const right = this.getArrayElementExpr(dae, dae.getExprRight(exprId), indices, visitor);
       return dae.addBinaryExpr(op, left, right);
     }
 
     if (kind === ExprKind.Unary) {
       const op = dae.getExprData1(exprId) as UnaryOp;
-      const operand = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices);
+      const operand = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices, visitor);
       return dae.addUnaryExpr(op, operand);
     }
 
@@ -1907,6 +2138,10 @@ export class ArenaQueryFlattener {
           "sqrt",
           "abs",
           "sign",
+          "/*Real*/",
+          "/*Integer*/",
+          "/*String*/",
+          "/*Boolean*/",
         ]);
         if (scalarBuiltins.has(funcName)) {
           returnsScalar = true;
@@ -1919,26 +2154,83 @@ export class ArenaQueryFlattener {
         const newArgs: number[] = [];
         for (let i = 0; i < numArgs; i++) {
           const argId = i === 0 ? firstArg : dae.getExprLeft(exprId + i);
-          newArgs.push(this.getArrayElementExpr(dae, argId, indices));
+          newArgs.push(this.getArrayElementExpr(dae, argId, indices, visitor));
+        }
+        if (visitor) {
+          const folded = (visitor as any).tryFoldBuiltinCall(funcName, newArgs);
+          if (folded !== undefined) return folded;
+          const inlined = (visitor as any).tryInlineFunctionCall(funcName, newArgs);
+          if (inlined !== undefined) return inlined;
         }
         return dae.addCallExpr(funcName, newArgs);
+      }
+    }
+
+    if (kind === ExprKind.Subscript) {
+      const baseId = dae.getExprData1(exprId);
+      const idxCount = dae.getExprRight(exprId);
+      let curr = dae.getExprLeft(exprId);
+      const idxIds: number[] = [];
+      for (let i = 0; i < idxCount; i++) {
+        idxIds.push(curr++);
+      }
+
+      // We only support 1D slicing mapping right now
+      if (idxIds.length === 1 && indices.length === 1 && visitor) {
+        const sliceIdxExprId = idxIds[0]!;
+        const activeClass = (visitor as any).scopeId;
+        const val = evaluateArenaExpression(dae, sliceIdxExprId, undefined, this.db, activeClass, undefined, false);
+        if (Array.isArray(val)) {
+          const targetIdx = indices[0]! - 1;
+          if (targetIdx >= 0 && targetIdx < val.length) {
+            const mappedIdx = val[targetIdx];
+            if (typeof mappedIdx === "number") {
+              let baseVarName = "";
+              if (dae.getExprKind(baseId) === ExprKind.Name) {
+                baseVarName = dae.interner.resolve(dae.getExprData1(baseId));
+              }
+              if (baseVarName) {
+                const elemVarName = `${baseVarName}[${mappedIdx}]`;
+                if (dae.hasVar(elemVarName)) {
+                  return dae.addNameExpr(elemVarName);
+                }
+              }
+              return dae.addSubscriptExpr(baseId, [dae.addIntLiteral(mappedIdx)]);
+            }
+          }
+        }
       }
     }
 
     let currentExprId = exprId;
     let success = true;
     for (const idx of indices) {
-      const currKind = dae.getExprKind(currentExprId);
+      let currKind = dae.getExprKind(currentExprId);
+
+      // Unwrap Cast (which was used previously, now handled via Call to /*Real*/)
+      let isCast = false;
+      let castType = 0;
+      if (currKind === ExprKind.Call && dae.interner.resolve(dae.getExprData1(currentExprId)) === "/*Real*/") {
+        isCast = true;
+        currentExprId = dae.getExprLeft(currentExprId); // For Call, left is first arg
+        currKind = dae.getExprKind(currentExprId);
+      }
+
       if (currKind === ExprKind.ArrayCtor) {
         const count = dae.getExprData1(currentExprId);
         const i = idx - 1;
         if (i >= 0 && i < count) {
           currentExprId = i === 0 ? dae.getExprLeft(currentExprId) : dae.getExprLeft(currentExprId + i);
+          if (isCast) {
+            currentExprId = dae.addCallExpr("/*Real*/", [currentExprId]);
+          }
         } else {
+          console.error(`[DEBUG VEC FAIL] idx out of bounds: idx=${idx}, count=${count}`);
           success = false;
           break;
         }
       } else {
+        console.error(`[DEBUG VEC FAIL] not ArrayCtor: currKind=${currKind}, currentExprId=${currentExprId}`);
         success = false;
         break;
       }
@@ -2395,7 +2687,7 @@ export class ArenaQueryFlattener {
     }
   }
 
-  private resolveFunctionInputs(funcName: string): { name: string; type: VarType | null }[] {
+  private resolveFunctionInputs(funcName: string): { name: string; type: VarType | null; variability: Variability }[] {
     const resolvedEntries = this.db.byName(funcName);
     if (resolvedEntries.length === 0) return [];
     const resolvedId = resolvedEntries[0].id;
@@ -2403,7 +2695,7 @@ export class ArenaQueryFlattener {
     if (funcEntry?.kind !== "Class") return [];
     const elements = this.db.query<number[]>("instantiate", resolvedId);
     if (!elements) return [];
-    const inputs: { name: string; type: VarType | null }[] = [];
+    const inputs: { name: string; type: VarType | null; variability: Variability }[] = [];
     for (const elemId of elements) {
       const entry = this.db.symbol(elemId);
       if (entry && entry.kind === "Component") {
@@ -2420,7 +2712,12 @@ export class ArenaQueryFlattener {
               else if (typeEntry.name === "String") varType = VarType.String;
             }
           }
-          inputs.push({ name: entry.name, type: varType });
+          let varVariability = Variability.Continuous;
+          const qVariability = this.db.query<string | null>("variability", elemId);
+          if (qVariability === "parameter") varVariability = Variability.Parameter;
+          else if (qVariability === "constant") varVariability = Variability.Constant;
+          else if (qVariability === "discrete") varVariability = Variability.Discrete;
+          inputs.push({ name: entry.name, type: varType, variability: varVariability });
         }
       }
     }
@@ -2835,54 +3132,113 @@ export class ArenaQueryFlattener {
         // If we are scalarizing arrays, expand array equations element-wise
         let arrayDims: number[] | null = null;
         let varName: string | null = null;
-        if (this.options.arrayMode !== "preserve" && dae.getExprKind(lhsId) === ExprKind.Name) {
-          varName = dae.interner.resolve(dae.getExprData1(lhsId));
-          console.log(`[DEBUG SCAL] varName: ${varName}`);
-          const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
-          const startClassId = entry.parentId ?? (activeClass ? activeClass.classId : null);
-          console.log(`[DEBUG SCAL] activeClass: ${JSON.stringify(activeClass)}, startClassId: ${startClassId}`);
-          if (startClassId !== null) {
-            let currentClassId = startClassId;
-            const parts = varName.split(".");
-            let compEntry: SymbolEntry | null = null;
-            for (let i = 0; i < parts.length; i++) {
-              const part = parts[i]!;
-              const resolver = this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
-              compEntry = resolver ? resolver(part) : null;
-              console.log(`[DEBUG SCAL] part: ${part}, resolved: ${compEntry ? compEntry.id : "null"}`);
-              if (!compEntry) break;
-              if (i < parts.length - 1) {
-                const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
-                console.log(`[DEBUG SCAL] classInstance for ${compEntry.id}: ${classInstId}`);
-                if (classInstId === null) {
-                  compEntry = null;
-                  break;
+        let isSlice = false;
+        let sliceIndices: (number | number[])[] | null = null;
+
+        if (this.options.arrayMode !== "preserve") {
+          if (dae.getExprKind(lhsId) === ExprKind.Name) {
+            varName = dae.interner.resolve(dae.getExprData1(lhsId));
+            const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
+            const startClassId = entry.parentId ?? (activeClass ? activeClass.classId : null);
+            if (startClassId !== null) {
+              let currentClassId = startClassId;
+              const parts = varName.split(".");
+              let compEntry: SymbolEntry | null = null;
+              for (let i = 0; i < parts.length; i++) {
+                const part = parts[i]!;
+                const resolver = this.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", currentClassId);
+                compEntry = resolver ? resolver(part) : null;
+                if (!compEntry) break;
+                if (i < parts.length - 1) {
+                  const classInstId = this.db.query<SymbolId | null>("classInstance", compEntry.id);
+                  if (classInstId === null) {
+                    compEntry = null;
+                    break;
+                  }
+                  currentClassId = classInstId;
                 }
-                currentClassId = classInstId;
+              }
+              if (compEntry) {
+                const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
+                if (dims && dims.length > 0) {
+                  arrayDims = dims;
+                }
               }
             }
-            if (compEntry) {
-              const dims = this.db.query<number[] | null>("resolvedArrayDimensions", compEntry.id);
-              console.log(`[DEBUG SCAL] compEntry: ${compEntry.id}, dims: ${JSON.stringify(dims)}`);
-              if (dims && dims.length > 0) {
+          } else if (dae.getExprKind(lhsId) === ExprKind.Subscript) {
+            const baseId = dae.getExprData1(lhsId);
+            if (dae.getExprKind(baseId) === ExprKind.Name) {
+              varName = dae.interner.resolve(dae.getExprData1(baseId));
+              const idxCount = dae.getExprRight(lhsId);
+              let curr = dae.getExprLeft(lhsId);
+              const idxIds: number[] = [];
+              for (let i = 0; i < idxCount; i++) {
+                idxIds.push(curr++);
+              }
+              const activeClass = this.activeClassStack[this.activeClassStack.length - 1];
+              const startClassId = entry.parentId ?? (activeClass ? activeClass.classId : null);
+
+              let allConstant = true;
+              const dims: number[] = [];
+              const resolvedIndices: (number | number[])[] = [];
+
+              for (const idxId of idxIds) {
+                const val = evaluateArenaExpression(
+                  dae,
+                  idxId,
+                  undefined,
+                  this.db,
+                  startClassId ?? undefined,
+                  undefined,
+                  false,
+                );
+                if (Array.isArray(val)) {
+                  dims.push(val.length);
+                  resolvedIndices.push(val as number[]);
+                } else if (typeof val === "number") {
+                  resolvedIndices.push(val);
+                } else {
+                  allConstant = false;
+                  break;
+                }
+              }
+
+              if (allConstant && dims.length > 0) {
+                isSlice = true;
                 arrayDims = dims;
+                sliceIndices = resolvedIndices;
+                console.error(
+                  `[DEBUG SLICE] isSlice=true, dims=${JSON.stringify(dims)}, sliceIndices=${JSON.stringify(sliceIndices)}`,
+                );
+              } else {
+                console.error(`[DEBUG SLICE] allConstant=${allConstant}, dims=${JSON.stringify(dims)}`);
               }
             }
           }
         }
 
-        if (arrayDims) {
-          console.error(
-            `[DEBUG SCAL] SCALARIZING EQUATION: lhs=${varName}, rhsId=${rhsId}, rhsKind=${dae.getExprKind(rhsId)}`,
-          );
-          if (dae.getExprKind(rhsId) === 5) {
-            const rhsName = dae.interner.resolve(dae.getExprData1(rhsId));
-            console.error(`[DEBUG SCAL] rhsName = ${rhsName}`);
-            console.error(`[DEBUG SCAL] hasVar(${rhsName}[1]) = ${dae.hasVar(`${rhsName}[1]`)}`);
-            if (!dae.hasVar(`${rhsName}[1]`)) {
-              console.error(`[DEBUG SCAL] All vars in DAE:`, Array.from((dae as any)._nameIndex.keys()));
+        if (isSlice && arrayDims && sliceIndices) {
+          console.error(`[DEBUG SLICE] Generating array indices for shape=${JSON.stringify(arrayDims)}`);
+          const indices = this.generateArrayIndices(arrayDims);
+          for (let i = 0; i < indices.length; i++) {
+            const idx = indices[i];
+            const mappedIdx = sliceIndices.map((r) => (Array.isArray(r) ? r[idx[0] - 1] : r));
+            const elemVarName = `${varName}[${mappedIdx.join(",")}]`;
+
+            let elemRhsId = this.getArrayElementExpr(dae, rhsId, idx, visitor);
+            const elemVarIdx = dae.getVarIdxByName(elemVarName);
+            const elemType = elemVarIdx >= 0 ? dae.getVarType(elemVarIdx) : VarType.Real;
+            if (elemType === VarType.Real) {
+              elemRhsId = visitor.castToRealExpr(elemRhsId);
             }
+
+            const elemLhsId = dae.addNameExpr(elemVarName);
+            dae.addEquation(eqKind, elemLhsId, elemRhsId);
           }
+          return;
+        }
+
+        if (arrayDims) {
           this.addScalarizedEquation(dae, eqKind, varName!, rhsId, arrayDims, visitor);
           return;
         }
@@ -3023,7 +3379,7 @@ export class ArenaQueryFlattener {
       const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1, true) : undefined;
       const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2, false) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
-        this.addUnpackedEquation(dae, EqKind.Simple, lhsId, rhsId);
+        this.processSimpleEquationScalarization(dae, EqKind.Simple, lhsId, rhsId, visitor, scopeId, eqNode.sourceRange);
       }
     } else if (eqNode instanceof ModelicaForEquationSyntaxNode) {
       // Nested for-equation — recurse
@@ -3046,7 +3402,7 @@ export class ArenaQueryFlattener {
         const lhsId = visitor.visit(n.expression1, true);
         const rhsId = visitor.visit(n.expression2, false);
         if (lhsId !== undefined && rhsId !== undefined) {
-          this.addUnpackedEquation(dae, EqKind.Simple, lhsId, rhsId);
+          this.processSimpleEquationScalarization(dae, EqKind.Simple, lhsId, rhsId, visitor, scopeId, n.sourceRange);
         }
       }
     }
@@ -4315,6 +4671,109 @@ export class ArenaQueryFlattener {
       dae.diagnostics.push(...fnDae.diagnostics);
     } finally {
       this.collectingFunctions.delete(funcName);
+    }
+  }
+  private getPrefixForScope(
+    currentScopeId: SymbolId,
+    targetScopeId: SymbolId,
+    currentPrefix?: string,
+  ): string | undefined {
+    if (!currentPrefix) return currentPrefix;
+    if (currentScopeId === targetScopeId) return currentPrefix;
+
+    let curr = currentScopeId;
+    const parts = currentPrefix.split(".");
+
+    while (curr !== targetScopeId && curr !== -1) {
+      const entry = this.db.symbol(curr);
+      if (!entry) break;
+      if (entry.kind === "Component") {
+        parts.pop();
+      }
+      curr = entry.parentId ?? -1;
+    }
+
+    return parts.length > 0 ? parts.join(".") : undefined;
+  }
+
+  private validateNameReferences(dae: ArenaDAEBuilder): void {
+    // Collect all valid loop iterator variables first to avoid false positives
+    const loopVars = new Set<string>();
+    for (let i = 0; i < dae.eqCount; i++) {
+      if (dae.getEqKind(i) === 2 /* EqKind.For */ || dae.getEqKind(i) === 8 /* EqKind.InitialFor */) {
+        const meta = dae.getForEquationMeta(i);
+        if (meta) {
+          const idxName = dae.interner.resolve(meta.indexNameId);
+          if (idxName) loopVars.add(idxName);
+        }
+      }
+    }
+
+    // Statements
+    for (let i = 0; i < dae.stmtCount; i++) {
+      if (dae.getStmtKind(i) === 1 /* StmtKind.For */) {
+        const indexNameId = dae.getStmtData1(i);
+        const idxName = dae.interner.resolve(indexNameId);
+        if (idxName) loopVars.add(idxName);
+      }
+    }
+
+    // Now validate all Name expressions
+    for (let i = 0; i < dae.exprCount; i++) {
+      if (dae.getExprKind(i) === 0 /* ExprKind.Name */) {
+        const nameId = dae.getExprData1(i);
+        const name = dae.interner.resolve(nameId);
+        if (!name) continue;
+
+        // "time" is a built-in implicitly available variable
+        if (name === "time") continue;
+
+        // Check if it's a loop variable
+        if (loopVars.has(name)) continue;
+
+        // Check if it's a valid variable
+        const varIdx = dae.getVarIdxByName(name);
+        if (varIdx >= 0) continue;
+
+        // Check if it's a scalarized array root
+        if (dae.hasArrayElements(name)) continue;
+
+        // Check if it's an array element whose base exists
+        const bracketIdx = name.indexOf("[");
+        if (bracketIdx > 0) {
+          const baseName = name.substring(0, bracketIdx);
+          if (dae.getVarIdxByName(baseName) >= 0 || dae.hasArrayElements(baseName)) {
+            continue;
+          }
+        }
+
+        // Check if it's a compound base name (like "ip" where "ip.v" exists)
+        let hasChildren = false;
+        for (let v = 0; v < dae.varCount; v++) {
+          if (dae.isVarRemoved(v)) continue;
+          if (dae.getVarName(v).startsWith(name + ".")) {
+            hasChildren = true;
+            break;
+          }
+        }
+        if (hasChildren) continue;
+
+        // If we reach here, the variable is not found in the DAE!
+        // We push a diagnostic.
+        // Try to derive the scope from the name if possible, or fallback to the root class name.
+        // e.g. "a.x" -> scope "a" maybe? OMC says "Variable a.x not found in scope B."
+        // We will just report "Variable <name> not found in scope <rootClassName>."
+        console.error(
+          `[DEBUG UNRESOLVED] Variable ${name} not found in scope ${this.rootClassName}. ExprID: ${i}, kind: ${dae.getExprKind(i)}`,
+        );
+        dae.diagnostics.push({
+          code: 2001,
+          rule: "unresolved-reference",
+          severity: "error",
+          message: `Variable ${name} not found in scope ${this.rootClassName}.`,
+          range: null,
+        });
+      }
     }
   }
 }

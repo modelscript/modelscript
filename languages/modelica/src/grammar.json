@@ -431,14 +431,6 @@
                 "type": "STRING",
                 "value": "shape"
               }
-            },
-            {
-              "type": "FIELD",
-              "name": "study",
-              "content": {
-                "type": "STRING",
-                "value": "study"
-              }
             }
           ]
         }

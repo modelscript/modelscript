@@ -70,7 +70,7 @@ export class SymbolIndexer {
     editRanges: Array<{ startByte: number; endByte: number }>,
     totalDelta: number = 0,
     idGenerator?: () => SymbolId,
-  ): { index: SymbolIndex; changedIds: Set<SymbolId> } {
+  ): { index: SymbolIndex; changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } {
     const oldByStableKey = new Map<string, SymbolEntry>();
     const ordinalCounters = new Map<string, number>();
     for (const parentId of oldIndex.childrenOf.keys()) {
@@ -115,36 +115,40 @@ export class SymbolIndexer {
     );
 
     const changedIds = new Set<SymbolId>();
-    const invalidateParent = (parentId: SymbolId | null) => {
-      if (parentId !== null) changedIds.add(parentId);
+    const structuralChangedIds = new Set<SymbolId>();
+    const invalidateParent = (parentId: SymbolId | null, structural: boolean) => {
+      if (parentId !== null) {
+        changedIds.add(parentId);
+        if (structural) structuralChangedIds.add(parentId);
+      }
     };
 
     for (const [id, entry] of ctx.symbols.entries()) {
       const oldEntry = oldIndex.symbols.get(id);
-      if (
-        !oldEntry ||
-        !this.entryEqual(oldEntry, entry) ||
-        oldEntry.startByte !== entry.startByte ||
-        oldEntry.endByte !== entry.endByte
-      ) {
+      if (!oldEntry || !this.entryEqual(oldEntry, entry)) {
         changedIds.add(id);
+        structuralChangedIds.add(id);
         if (!oldEntry) {
-          invalidateParent(entry.parentId);
+          invalidateParent(entry.parentId, true);
         } else if (oldEntry.parentId !== entry.parentId) {
-          invalidateParent(oldEntry.parentId);
-          invalidateParent(entry.parentId);
+          invalidateParent(oldEntry.parentId, true);
+          invalidateParent(entry.parentId, true);
         }
+      } else if (oldEntry.startByte !== entry.startByte || oldEntry.endByte !== entry.endByte) {
+        changedIds.add(id);
+        invalidateParent(entry.parentId, false);
       }
     }
 
     for (const [id, oldEntry] of oldIndex.symbols.entries()) {
       if (!ctx.symbols.has(id)) {
         changedIds.add(id);
-        invalidateParent(oldEntry.parentId);
+        structuralChangedIds.add(id);
+        invalidateParent(oldEntry.parentId, true);
       }
     }
 
-    return { index: ctx, changedIds };
+    return { index: ctx, changedIds, structuralChangedIds };
   }
 
   // -------------------------------------------------------------------------

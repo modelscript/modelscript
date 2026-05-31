@@ -441,7 +441,35 @@ export class Context extends BaseContext {
 
     const queryDB = this.#queryEngine.toQueryDB();
     const flattener = new ArenaQueryFlattener(queryDB, options);
-    return flattener.flatten(firstId);
+
+    const currentStructuralRevision = this.#workspaceIndex.structuralRevision;
+    const cacheKey = firstId;
+    const cached = (this as any)._daeBodyCache?.get(cacheKey);
+
+    let clonedBuilder = null;
+    if (cached) {
+      if (cached.revision === currentStructuralRevision) {
+        clonedBuilder = cached.builder.clone();
+      }
+    }
+
+    // Flatten from scratch (or partially from scratch)
+    const dae = flattener.flatten(firstId, clonedBuilder, options);
+
+    if (flattener.bodySnapshot == null) {
+      throw new Error(
+        `flattener.bodySnapshot is ${flattener.bodySnapshot}. cached was ${!!cached}. builder was ${cached?.builder}`,
+      );
+    }
+
+    // Save snapshot of the body phase
+    if (!(this as any)._daeBodyCache) (this as any)._daeBodyCache = new Map();
+    (this as any)._daeBodyCache.set(cacheKey, {
+      builder: flattener.bodySnapshot, // already cloned inside flatten()
+      revision: currentStructuralRevision,
+    });
+
+    return dae;
   }
 
   /**
@@ -536,6 +564,7 @@ export class Context extends BaseContext {
         this.#classes.push(new ModelicaClassInstance(id, this.#queryEngine.toQueryDB()));
       }
     }
+    this.#classes.sort((a, b) => a.id - b.id);
     return tree;
   }
 

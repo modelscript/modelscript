@@ -658,16 +658,6 @@
           }
         ]
       },
-      "study": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "study",
-            "named": false
-          }
-        ]
-      },
       "type": {
         "multiple": false,
         "required": false,
@@ -5863,10 +5853,6 @@
   },
   {
     "type": "stream",
-    "named": false
-  },
-  {
-    "type": "study",
     "named": false
   },
   {

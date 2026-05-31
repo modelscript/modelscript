@@ -1,5 +1,5 @@
 /* eslint-disable */
-// grammar-hash: aa32d266
+// grammar-hash: ecc54a3f
 // ──────────────────────────────────────────────────────────────────────────────
 // AUTO-GENERATED — do not edit manually.
 // Generated from grammar.json by scripts/generate-ast.ts
@@ -1258,7 +1258,6 @@ export interface IClassPrefixes extends ISyntaxNode {
   readonly function: ISyntaxNode;
   readonly optimization: ISyntaxNode;
   readonly shape: ISyntaxNode;
-  readonly study: ISyntaxNode;
 }
 
 export class ClassPrefixes extends SyntaxNode implements IClassPrefixes {
@@ -1488,22 +1487,6 @@ export class ClassPrefixes extends SyntaxNode implements IClassPrefixes {
     })!;
   }
 
-  /** Field: `study` */
-  get study(): SyntaxNode {
-    return this.lazyChild<SyntaxNode>("study", () => {
-      const c = this._cstNode?.childForFieldName("study") ?? null;
-      if (!c) return null;
-      const old = this.alternate?.isMaterialized("study")
-        ? (this.alternate.getChild("study") as SyntaxNode | null)
-        : null;
-      if (old && !c.hasChanges) {
-        old.updateCST(c);
-        return old;
-      }
-      return createNode(c) as SyntaxNode | null;
-    })!;
-  }
-
   constructor(cstNode?: TSNode | null, astNode?: IClassPrefixes | null) {
     super(cstNode ? sourceRangeFrom(cstNode) : (astNode?.sourceRange ?? null), astNode?.nodeId, cstNode);
     this._slotNames.add("partial");
@@ -1520,7 +1503,6 @@ export class ClassPrefixes extends SyntaxNode implements IClassPrefixes {
     this._slotNames.add("function");
     this._slotNames.add("optimization");
     this._slotNames.add("shape");
-    this._slotNames.add("study");
     if (astNode) {
       this.setChild("partial", astNode.partial ? createNodeFromJSON(astNode.partial as any) : null);
       this.setChild("class", astNode.class ? createNodeFromJSON(astNode.class as any) : null);
@@ -1536,7 +1518,6 @@ export class ClassPrefixes extends SyntaxNode implements IClassPrefixes {
       this.setChild("function", astNode.function ? createNodeFromJSON(astNode.function as any) : null);
       this.setChild("optimization", astNode.optimization ? createNodeFromJSON(astNode.optimization as any) : null);
       this.setChild("shape", astNode.shape ? createNodeFromJSON(astNode.shape as any) : null);
-      this.setChild("study", astNode.study ? createNodeFromJSON(astNode.study as any) : null);
     }
     // CST path: children are NOT constructed here — lazy getters handle it
   }
@@ -1561,7 +1542,6 @@ export class ClassPrefixes extends SyntaxNode implements IClassPrefixes {
       function: (this.function?.toJSON() as any) ?? null,
       optimization: (this.optimization?.toJSON() as any) ?? null,
       shape: (this.shape?.toJSON() as any) ?? null,
-      study: (this.study?.toJSON() as any) ?? null,
     };
   }
 
@@ -9830,7 +9810,6 @@ export abstract class ModelicaSyntaxVisitor<R, A> implements IModelicaSyntaxVisi
     node.function?.accept(this, argument);
     node.optimization?.accept(this, argument);
     node.shape?.accept(this, argument);
-    node.study?.accept(this, argument);
     return null;
   }
 

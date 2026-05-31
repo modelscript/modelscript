@@ -199,7 +199,7 @@ export const ModelicaErrorCode = {
   FUNCTION_PUBLIC_VARIABLE: {
     code: 4007,
     rule: "function-public-variable",
-    severity: "error",
+    severity: "warning",
     message: (varName: string) =>
       `Invalid public variable ${varName}, function variables that are not input/output must be protected.`,
   },

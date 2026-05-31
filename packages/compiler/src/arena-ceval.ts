@@ -443,7 +443,8 @@ export function evaluateArenaFunctionCall(
     };
 
     const outputs: string[] = [];
-    let argIndex = 0;
+    const flatArgs: ArenaValue[] = [];
+    let flatArgIndex = 0;
 
     for (let i = 0; i < funcArena.varCount; i++) {
       if (funcArena.isVarRemoved(i)) continue;
@@ -458,7 +459,15 @@ export function evaluateArenaFunctionCall(
       else if (type === VarType.String) defaultVal = "";
 
       if (causality === 1 /* Input */) {
-        const val = argValues[argIndex];
+        if (flatArgs.length === 0) {
+          const flattenArg = (val: ArenaValue): void => {
+            if (Array.isArray(val)) val.forEach(flattenArg);
+            else flatArgs.push(val);
+          };
+          argValues.forEach(flattenArg);
+        }
+
+        const val = flatArgs[flatArgIndex++];
         if (val !== undefined) {
           env.set(name, val);
         } else if (typeof startExprId === "number" && startExprId !== -1) {
@@ -470,7 +479,6 @@ export function evaluateArenaFunctionCall(
         } else {
           env.set(name, defaultVal);
         }
-        argIndex++;
       } else {
         if (causality === 2 /* Output */) outputs.push(name);
         if (typeof startExprId === "number" && startExprId !== -1) {

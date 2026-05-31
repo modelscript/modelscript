@@ -32,15 +32,26 @@ export class WorkspaceIndex {
   /** Aggregated symbol IDs that changed across the entire workspace since the last takeGlobalChangedIds() call. */
   private globalChangedIdsBuffer = new Set<SymbolId>();
 
+  /** Symbol IDs whose *logical structure* changed (ignoring pure byte shifts). */
+  private globalStructuralChangedIdsBuffer = new Set<SymbolId>();
+
   /** Aggregated names of symbols that changed across the workspace. Used for surgical event-driven validation. */
   private globalChangedNamesBuffer = new Set<string>();
 
   /** Monotonic version counter — bumped on every register/markDirty/remove. */
   private _version = 0;
 
+  /** Monotonic structural revision counter — bumped ONLY when structural changes occur. */
+  private _structuralRevision = 0;
+
   /** The current version — increments on any structural change. */
   get version(): number {
     return this._version;
+  }
+
+  /** The current structural revision — increments ONLY on structural changes. */
+  get structuralRevision(): number {
+    return this._structuralRevision;
   }
 
   /** The number of registered files in this workspace. */
@@ -182,13 +193,11 @@ export class WorkspaceIndex {
         // Compute total byte delta for position adjustment of post-edit entries
         let totalDelta = 0;
 
-        const { index: rawIndex, changedIds } = indexer.update(
-          file.oldIndex,
-          rootNode,
-          file.editRanges,
-          totalDelta,
-          () => globalIdCounter++,
-        );
+        const {
+          index: rawIndex,
+          changedIds,
+          structuralChangedIds,
+        } = indexer.update(file.oldIndex, rootNode, file.editRanges, totalDelta, () => globalIdCounter++);
 
         // Add resourceId back to entries if necessary (in case newly created ones don't have it)
         for (const entry of rawIndex.symbols.values()) {
@@ -211,6 +220,9 @@ export class WorkspaceIndex {
             this.globalChangedNamesBuffer.add(entry.name);
           }
         }
+        for (const id of structuralChangedIds) {
+          this.globalStructuralChangedIdsBuffer.add(id);
+        }
         this.lastChangedIds.set(uri, globalChangedIds);
 
         file.dirty = false;
@@ -221,6 +233,16 @@ export class WorkspaceIndex {
         this.unifiedCache = null;
         this.skeletonCache = null;
         this._version++;
+        if (structuralChangedIds.size > 0) {
+          const names = Array.from(structuralChangedIds)
+            .map((id) => rawIndex.symbols.get(id)?.name || id)
+            .join(", ");
+          require("fs").appendFileSync(
+            "/tmp/perf.txt",
+            `[PERF STRUCTURAL] structuralChangedIds.size=${structuralChangedIds.size} for uri=${uri}: ${names}\n`,
+          );
+          this._structuralRevision++;
+        }
 
         return file.index;
       }
@@ -247,6 +269,7 @@ export class WorkspaceIndex {
       this.lastChangedIds.set(uri, allFileSymbolIds);
       for (const id of allFileSymbolIds) {
         this.globalChangedIdsBuffer.add(id);
+        this.globalStructuralChangedIdsBuffer.add(id);
         const entry = rawIndex.symbols.get(id);
         if (entry && entry.name) {
           this.globalChangedNamesBuffer.add(entry.name);
@@ -259,6 +282,7 @@ export class WorkspaceIndex {
       this.unifiedCache = null;
       this.skeletonCache = null;
       this._version++;
+      this._structuralRevision++;
     }
 
     return file.index;
@@ -277,10 +301,12 @@ export class WorkspaceIndex {
    * Retrieve and clear the aggregated set of globally-unique symbol IDs
    * that have changed across the workspace since this method was last called.
    */
-  takeGlobalChangedIds(): Set<SymbolId> {
-    const ids = new Set(this.globalChangedIdsBuffer);
+  takeGlobalChangedIds(): { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } {
+    const changedIds = new Set(this.globalChangedIdsBuffer);
+    const structuralChangedIds = new Set(this.globalStructuralChangedIdsBuffer);
     this.globalChangedIdsBuffer.clear();
-    return ids;
+    this.globalStructuralChangedIdsBuffer.clear();
+    return { changedIds, structuralChangedIds };
   }
 
   /**

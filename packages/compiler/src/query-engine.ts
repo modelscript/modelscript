@@ -173,6 +173,9 @@ export class QueryEngine {
    */
   private lintCache = new Map<string, Map<SymbolId, LintDiagnostic[]>>();
 
+  /** The set of dirty symbols for each lint cache key. */
+  private dirtyLintSymbols = new Map<string, Set<SymbolId>>();
+
   /** The engine revision at which each resource's lint cache was last fully populated. */
   private lintCacheRevision = new Map<string, Revision>();
 
@@ -367,11 +370,24 @@ export class QueryEngine {
       }
     }
 
-    // Drop dirty memos from lint cache so runAllLintsAsync picks them up
+    const dirtySet = new Set<SymbolId>();
     for (const key of dirtyMemos) {
-      const symbolId = this.symbolIdFromKey(key);
+      dirtySet.add(this.symbolIdFromKey(key));
+    }
+    for (const id of changedSymbolIds) {
+      dirtySet.add(id);
+    }
+
+    for (const [cacheKey, cacheDirtySet] of this.dirtyLintSymbols) {
+      for (const id of dirtySet) {
+        cacheDirtySet.add(id);
+      }
+    }
+
+    // Drop dirty memos from lint cache so runAllLintsAsync picks them up
+    for (const id of dirtySet) {
       for (const cache of this.lintCache.values()) {
-        cache.delete(symbolId);
+        cache.delete(id);
       }
     }
 
@@ -400,11 +416,21 @@ export class QueryEngine {
     let hasNewSymbols = false;
 
     // Determine which symbols are new or changed
+    const dirtySet = new Set<SymbolId>();
     for (const [id, entry] of newIndex.symbols) {
       const oldEntry = this.index.symbols.get(id);
       if (!oldEntry) hasNewSymbols = true;
       if (!oldEntry || !symbolEntryEqual(oldEntry, entry)) {
         this.inputRevisions.set(id, this.currentRevision);
+        dirtySet.add(id);
+      }
+    }
+
+    if (dirtySet.size > 0) {
+      for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+        for (const id of dirtySet) {
+          cacheDirtySet.add(id);
+        }
       }
     }
 
@@ -447,6 +473,15 @@ export class QueryEngine {
     for (const id of this.inputRevisions.keys()) {
       if (!newIndex.symbols.has(id)) {
         this.inputRevisions.delete(id);
+      }
+    }
+
+    // Prune dirtyLintSymbols for deleted symbols
+    for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+      for (const id of cacheDirtySet) {
+        if (!newIndex.symbols.has(id)) {
+          cacheDirtySet.delete(id);
+        }
       }
     }
 
@@ -571,41 +606,44 @@ export class QueryEngine {
   ): Promise<LintDiagnostic[]> {
     const diagnostics: LintDiagnostic[] = [];
 
-    let allSymbolPairs: Array<[SymbolId, SymbolEntry]>;
-    if (resourceId && this.index.symbolsByResource) {
-      const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
-      if (!resourceSymbolIds) return diagnostics;
-      allSymbolPairs = resourceSymbolIds
-        .map((id: SymbolId) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
-        .filter((pair: any): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
-    } else {
-      allSymbolPairs = Array.from(this.index.symbols);
-    }
-
     // ── Incremental lint caching ──────────────────────────────────────────
-    // Only re-lint symbols whose inputRevision changed since the last run.
-    // Reuse cached results for unchanged symbols.
     const cacheKey = resourceId ?? "__all__";
     let perSymbolCache = this.lintCache.get(cacheKey);
-    const lastRevision = this.lintCacheRevision.get(cacheKey) ?? -1;
+    let cacheDirtySet = this.dirtyLintSymbols.get(cacheKey);
 
-    if (!perSymbolCache) {
+    if (!perSymbolCache || !cacheDirtySet) {
       perSymbolCache = new Map();
       this.lintCache.set(cacheKey, perSymbolCache);
+
+      cacheDirtySet = new Set(this.index.symbols.keys());
+      this.dirtyLintSymbols.set(cacheKey, cacheDirtySet);
     }
 
     // Determine which symbols actually need re-linting
     const symbolsToRelint: Array<[SymbolId, SymbolEntry]> = [];
     const validCachedIds = new Set<SymbolId>();
 
-    for (const [id, entry] of allSymbolPairs) {
+    const totalSymbols = resourceId
+      ? (this.index.symbolsByResource?.get(resourceId)?.length ?? 0)
+      : this.index.symbols.size;
+
+    for (const id of cacheDirtySet) {
+      const entry = this.index.symbols.get(id);
+      if (!entry) continue;
       if (resourceId && entry.resourceId !== resourceId) continue;
-      if (!perSymbolCache.has(id)) {
-        // Missing from cache (either new, or dropped by dirty bit propagation)
-        symbolsToRelint.push([id, entry]);
-      } else {
-        // Safe to reuse
-        validCachedIds.add(id);
+
+      symbolsToRelint.push([id, entry]);
+    }
+
+    // Clear dirty bits for the symbols we are about to process
+    for (const id of cacheDirtySet) {
+      const entry = this.index.symbols.get(id);
+      if (!entry) {
+        cacheDirtySet.delete(id);
+        continue;
+      }
+      if (!resourceId || entry.resourceId === resourceId) {
+        cacheDirtySet.delete(id);
       }
     }
 
@@ -619,8 +657,6 @@ export class QueryEngine {
       const outViewport: Array<[SymbolId, SymbolEntry]> = [];
       for (const pair of symbolsToRelint) {
         const entry = pair[1];
-        // A symbol overlaps the viewport if it starts before the viewport ends
-        // and ends after the viewport starts
         if (entry.startByte <= vpEnd && entry.endByte >= vpStart) {
           inViewport.push(pair);
         } else {
@@ -631,12 +667,20 @@ export class QueryEngine {
       symbolsToRelint.push(...inViewport, ...outViewport);
     }
 
+    for (const cachedId of perSymbolCache.keys()) {
+      const entry = this.index.symbols.get(cachedId);
+      if (!entry || (resourceId && entry.resourceId !== resourceId)) {
+        perSymbolCache.delete(cachedId);
+      } else if (this.index.symbols.has(cachedId)) {
+        validCachedIds.add(cachedId);
+      }
+    }
+
     let chunkCount = 0;
     let cpuTime = 0;
     let yieldTime = 0;
     let lastTime = performance.now();
     let lastYieldStart = performance.now();
-    const totalSymbols = allSymbolPairs.length;
     const cachedCount = validCachedIds.size;
 
     console.info(
@@ -694,12 +738,6 @@ export class QueryEngine {
     for (const id of validCachedIds) {
       const cached = perSymbolCache.get(id);
       if (cached && cached.length > 0) diagnostics.push(...cached);
-    }
-
-    // Prune cache entries for symbols that no longer exist in this resource
-    const currentSymbolIds = new Set(allSymbolPairs.map(([id]) => id));
-    for (const cachedId of perSymbolCache.keys()) {
-      if (!currentSymbolIds.has(cachedId)) perSymbolCache.delete(cachedId);
     }
 
     // Record this revision as the cache baseline
@@ -886,10 +924,20 @@ export class QueryEngine {
       return memo.value;
     }
 
-    // Try to deep-verify: check if all dependencies are still current
-    // We must also check if the symbol itself was modified since the memo was verified.
+    // Push-based invalidation optimization:
+    // If a memo is dirty, `invalidate()` sets its `verified_at` to -1.
+    // Therefore, if `verified_at !== -1`, the memo is guaranteed to be clean
+    // and unaffected by the current revision's changes.
+    if (memo && memo.verified_at !== -1) {
+      memo.verified_at = this.currentRevision;
+      return memo.value;
+    }
+
+    // At this point, verified_at === -1. We must check if backdating is possible via deepVerify.
+    // If deepVerify returns true, the dependencies didn't actually change their values (just their revisions),
+    // so we can backdate and avoid re-executing.
     const inputRev = this.inputRevisions.get(symbolId) ?? 0;
-    if (memo && inputRev <= memo.verified_at && this.deepVerify(memo)) {
+    if (memo && this.deepVerify(memo)) {
       memo.verified_at = this.currentRevision;
       return memo.value;
     }
@@ -1289,8 +1337,8 @@ export class QueryEngine {
         return results;
       },
 
-      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>): T {
-        const argsHash = JSON.stringify(args, Object.keys(args).sort());
+      queryWith<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T {
+        const argsHash = hashOverride ?? JSON.stringify(args, Object.keys(args).sort());
         const key = engine.memoKey(queryName, id, argsHash);
 
         // Record compound dependency

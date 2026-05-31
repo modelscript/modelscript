@@ -453,6 +453,74 @@ export class ArenaDAEBuilder {
   /** Count of non-removed variables. */
   private _activeVarCount = 0;
 
+  /**
+   * Clone the arena up to the current variable count.
+   * This is used to snapshot the body flattening phase and skip it during equation-only edits.
+   */
+  clone(): ArenaDAEBuilder {
+    const clone = new ArenaDAEBuilder(
+      this.interner,
+      this.interner.resolve(this.nameId),
+      this.interner.resolve(this.descriptionId),
+    );
+    clone.classKind = this.classKind;
+    clone.isImpure = this.isImpure;
+    clone.experiment = { ...this.experiment };
+    clone.externalDecl = this.externalDecl;
+    clone.jsSource = this.jsSource;
+    clone.jsPath = this.jsPath;
+    clone.externalLibraries = [...this.externalLibraries];
+    clone.externalIncludes = [...this.externalIncludes];
+    clone.diagnostics = [...this.diagnostics];
+
+    // Arrays
+    clone.varData = new Int32Array(this.varData);
+    clone._varCount = this._varCount;
+    clone.eqData = new Int32Array(this.eqData);
+    clone._eqCount = this._eqCount;
+    clone.exprData = new Int32Array(this.exprData);
+    clone._exprCount = this._exprCount;
+    clone.stmtData = new Int32Array(this.stmtData);
+    clone._stmtCount = this._stmtCount;
+    clone._algorithmSections = [...this._algorithmSections];
+    clone._initialAlgorithmSections = [...this._initialAlgorithmSections];
+
+    // Clone maps and sets
+    clone._nameIndex = new Map(this._nameIndex);
+    clone._arrayRootIndex = new Map();
+    for (const [k, v] of this._arrayRootIndex) clone._arrayRootIndex.set(k, [...v]);
+    clone._encodedIndex = new Map(this._encodedIndex);
+    clone._causalityIndex = new Map();
+    for (const [k, v] of this._causalityIndex) clone._causalityIndex.set(k, [...v]);
+    clone._activeVarCount = this._activeVarCount;
+
+    clone.whenEquationMeta = new Map(this.whenEquationMeta);
+    clone.forEquationMeta = new Map(this.forEquationMeta);
+    clone.ifEquationMeta = new Map(this.ifEquationMeta);
+
+    clone.varAttrExprIds = new Map();
+    for (const [k, v] of this.varAttrExprIds) clone.varAttrExprIds.set(k, new Map(v));
+
+    clone.shapesMap = new Map();
+    for (const [k, v] of this.shapesMap) clone.shapesMap.set(k, [...v]);
+
+    clone.shapesExprsMap = new Map();
+    for (const [k, v] of this.shapesExprsMap) clone.shapesExprsMap.set(k, [...v]);
+
+    clone.aliasMap = new Map(this.aliasMap);
+    clone.varDescriptions = new Map(this.varDescriptions);
+    clone.varCustomTypes = new Map(this.varCustomTypes);
+    clone.varFunctionTypes = new Map(this.varFunctionTypes);
+    clone.varEnumerationLiterals = new Map(this.varEnumerationLiterals);
+    clone.varFlowPrefixes = new Map(this.varFlowPrefixes);
+    clone.varCadAnnotations = new Map(this.varCadAnnotations);
+    clone.varExpressions = new Map(this.varExpressions);
+    clone.varStartAttrs = new Map(this.varStartAttrs);
+    clone.varFixedFlags = new Set(this.varFixedFlags);
+
+    return clone;
+  }
+
   constructor(interner?: StringInterner, name = "", description = "") {
     this.interner = interner ?? new StringInterner();
     this.nameId = this.interner.intern(name);

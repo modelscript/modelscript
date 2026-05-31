@@ -16,6 +16,7 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       replaceable: "replaceable",
       encapsulated: "encapsulated",
       annotationClause: "classSpecifier.annotationClause",
+      endIdentifier: "classSpecifier.endIdentifier",
     },
   },
   {
@@ -67,6 +68,7 @@ export const INDEXER_HOOKS: IndexerHook[] = [
     metadataFieldPaths: {
       modification: "declaration.modification",
       description: "description",
+      conditionAttribute: "conditionAttribute.condition",
       typeSpecifier: "parent.typeSpecifier",
       causality: "parent.causality",
       variability: "parent.variability",

@@ -70,6 +70,8 @@ export interface ModificationArg {
   readonly redeclaredClassPrefixes?: string;
   /** For redeclarations: the new type specifier. */
   readonly redeclaredTypeSpecifier?: string;
+  /** For redeclarations: the raw array dimensions of the new type specifier. */
+  readonly redeclaredArrayDimensionsRaw?: any[];
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
   readonly evaluationScopeId?: number;
 }
@@ -93,6 +95,8 @@ export interface ModelicaModArgs {
   readonly isRedeclaration?: boolean;
   /** The new type specifier if redeclared. */
   readonly redeclaredTypeSpecifier?: string;
+  /** The raw array dimensions of the new type specifier if redeclared. */
+  readonly redeclaredArrayDimensionsRaw?: any[];
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
   readonly evaluationScopeId?: number | null;
 }
@@ -238,6 +242,12 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
   if (!outer) return inner!;
   if (!inner) return outer;
 
+  // If the outer modification is a redeclaration, it completely replaces the inner element.
+  // Any inner modifications are discarded.
+  if (outer.isRedeclaration) {
+    return outer;
+  }
+
   const merged = new Map<string, ModificationArg>();
 
   // Inner args first (declaration-level, lower priority)
@@ -269,7 +279,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
       // Recursive merge of nested modifications
       if (arg.nestedArgs.length > 0 || existing.nestedArgs.length > 0) {
         let mergedNestedArgs = arg.nestedArgs;
-        if (!(arg.isRedeclaration && existing.isRedeclaration)) {
+        if (!arg.isRedeclaration) {
           const mergedNested = mergeModArgs(
             { args: arg.nestedArgs, bindingExpression: null },
             { args: existing.nestedArgs, bindingExpression: null },
@@ -287,6 +297,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
           final: arg.final || existing.final,
           isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
           redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw ?? existing.redeclaredArrayDimensionsRaw,
           evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
         });
       } else {
@@ -297,6 +308,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
           final: arg.final || existing.final,
           isRedeclaration: arg.isRedeclaration || existing.isRedeclaration,
           redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier ?? existing.redeclaredTypeSpecifier,
+          redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw ?? existing.redeclaredArrayDimensionsRaw,
           value: arg.value ?? existing.value,
           evaluationScopeId: arg.evaluationScopeId ?? existing.evaluationScopeId,
         });
@@ -312,6 +324,7 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
     bindingExpression: outer.bindingExpression ?? inner.bindingExpression,
     isRedeclaration: outer.isRedeclaration || inner.isRedeclaration,
     redeclaredTypeSpecifier: outer.redeclaredTypeSpecifier ?? inner.redeclaredTypeSpecifier,
+    redeclaredArrayDimensionsRaw: outer.redeclaredArrayDimensionsRaw ?? inner.redeclaredArrayDimensionsRaw,
     evaluationScopeId: outer.evaluationScopeId ?? inner.evaluationScopeId,
   };
 }
@@ -381,6 +394,7 @@ export function subModification(mod: ModelicaModArgs | null, name: string): Mode
     bindingExpression: arg.value,
     isRedeclaration: arg.isRedeclaration,
     redeclaredTypeSpecifier: arg.redeclaredTypeSpecifier,
+    redeclaredArrayDimensionsRaw: arg.redeclaredArrayDimensionsRaw,
     evaluationScopeId: arg.evaluationScopeId,
   };
 }

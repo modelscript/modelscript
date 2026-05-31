@@ -8,6 +8,7 @@ import {
   inferArenaExprVarType,
   isAssignableType,
   UnaryOp,
+  Variability,
   VarType,
   varTypeName,
   type ArenaValue,
@@ -129,7 +130,9 @@ export class ArenaExprVisitor {
     loopVars?: Map<string, number>,
     private onFunctionCall?: (funcName: string) => string | undefined,
     private cardinalityMap?: Map<string, number>,
-    private resolveFunctionInputs?: (funcName: string) => { name: string; type: VarType | null }[],
+    private resolveFunctionInputs?: (
+      funcName: string,
+    ) => { name: string; type: VarType | null; variability: Variability }[],
     private namePrefix?: string,
     private db?: QueryDB,
     private scopeId?: SymbolId,
@@ -428,8 +431,7 @@ export class ArenaExprVisitor {
         for (const sub of part.arraySubscripts.subscripts) {
           // Handle flexible subscript (:) — whole-dimension slice
           if (sub.flexible) {
-            subIds.push(this.dae.addColonExpr());
-            allStatic = false;
+            staticSuffix += "[:]";
             continue;
           }
           if (!sub.expression) continue;
@@ -445,7 +447,15 @@ export class ArenaExprVisitor {
             staticSuffix += `[${this.dae.getExprData1(subId)}]`;
           } else {
             // Try to evaluate non-literal subscript expressions (e.g., i+1, 2*j-1)
-            const evaluated = evaluateArenaExpression(this.dae, subId);
+            const evaluated = evaluateArenaExpression(
+              this.dae,
+              subId,
+              undefined,
+              this.db,
+              this.scopeId,
+              undefined,
+              false,
+            );
             if (typeof evaluated === "number" && Number.isInteger(evaluated)) {
               staticSuffix += `[${evaluated}]`;
               // Replace the complex expression with a plain IntLiteral for downstream use
@@ -459,7 +469,7 @@ export class ArenaExprVisitor {
         if (allStatic) {
           path += staticSuffix;
         } else {
-          // Dynamic subscript or slice. We emit a Name expr for the path so far, then a Subscript expr.
+          // Dynamic subscript. We emit a Name expr for the path so far, then a Subscript expr.
           const currentBase = this.dae.addNameExpr(this.prefixName(path));
           baseId = this.dae.addSubscriptExpr(currentBase, subIds);
         }
@@ -476,22 +486,27 @@ export class ArenaExprVisitor {
     }
 
     // Emit a Name expression
-    const fullName = this.prefixName(path);
+    let fullName = this.prefixName(path);
+
+    // Try to find the variable in the DAE. If not found, try parent scopes by stripping prefix parts.
+    let varIdx = this.dae.getVarIdxByName(fullName);
+    if (varIdx < 0 && this.namePrefix && !path.startsWith(".")) {
+      const prefixParts = this.namePrefix.split(".");
+      while (prefixParts.length > 0 && varIdx < 0) {
+        prefixParts.pop();
+        const candidate = prefixParts.length > 0 ? `${prefixParts.join(".")}.${path}` : path;
+        varIdx = this.dae.getVarIdxByName(candidate);
+        if (varIdx >= 0 || this.dae.hasArrayElements(candidate)) {
+          fullName = candidate;
+          break;
+        }
+      }
+    }
+
     return this.resolveNameExpr(fullName);
   }
 
   private resolveNameExpr(fullName: string): number {
-    if (this.dae.getVarIdxByName(fullName) < 0 && this.dae.hasArrayElements(fullName)) {
-      const elements = this.dae.getArrayElementIndices(fullName);
-      if (elements.length > 0) {
-        const elementExprs: number[] = [];
-        for (const idx of elements) {
-          const elName = this.dae.getVarName(idx);
-          elementExprs.push(this.dae.addNameExpr(elName));
-        }
-        return this.dae.addArrayCtorExpr(elementExprs);
-      }
-    }
     return this.dae.addNameExpr(fullName);
   }
 
@@ -766,7 +781,6 @@ export class ArenaExprVisitor {
       }
     }
     if (rows.length === 0) return undefined;
-    if (rows.length === 1) return rows[0];
     return this.dae.addArrayCtorExpr(rows);
   }
 
@@ -971,6 +985,52 @@ export class ArenaExprVisitor {
       }
     }
 
+    // Specialized: sum(a[:].k) — scalarize slices
+    if (funcName === "sum") {
+      const argIds = getArgExprs();
+      if (argIds.length === 1 && argIds[0] !== undefined) {
+        const argId = argIds[0];
+        if (this.dae.getExprKind(argId) === ExprKind.Name) {
+          const varName = this.dae.interner.resolve(this.dae.getExprData1(argId));
+          if (varName && varName.includes("[:]")) {
+            let prefix = varName.split("[:]")[0] || "";
+            const suffix = varName.substring(prefix.length + 3);
+            let rootIndices = this.dae.getArrayElementIndices(prefix);
+            if (rootIndices.length === 0 && prefix.includes(".")) {
+              const parts = prefix.split(".");
+              while (parts.length > 1 && rootIndices.length === 0) {
+                parts.shift();
+                const candidate = parts.join(".");
+                rootIndices = this.dae.getArrayElementIndices(candidate);
+                if (rootIndices.length > 0) {
+                  prefix = candidate;
+                }
+              }
+            }
+            if (rootIndices.length > 0) {
+              const regex = new RegExp(
+                "^" +
+                  prefix.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, "\\$&") +
+                  "\\[(\\d+)\\]" +
+                  suffix.replace(/[-\\/\\\\^$*+?.()|[\\]{}]/g, "\\$&") +
+                  "$",
+              );
+              const matchingIds: number[] = [];
+              for (const idx of rootIndices) {
+                const elemName = this.dae.getVarName(idx);
+                if (regex.test(elemName)) {
+                  matchingIds.push(this.resolveNameExpr(elemName));
+                }
+              }
+              if (matchingIds.length > 0) {
+                return matchingIds.reduce((acc, curr) => this.dae.addBinaryExpr(BinOp.Add, acc, curr));
+              }
+            }
+          }
+        }
+      }
+    }
+
     // General function call — collect positional + named arguments
     const argIds = getArgExprs();
     const namedArgs = getNamedArgs();
@@ -999,6 +1059,32 @@ export class ArenaExprVisitor {
               message: `Type mismatch for positional argument ${i + 1} in ${nodeText}. The argument has type:\n  ${varTypeName(finalType)}\nexpected type:\n  ${varTypeName(expectedType)}`,
               range: range ? { startByte: range.startIndex, endByte: range.endIndex } : null,
             });
+          }
+
+          // Variability check
+          const expectedVariability = inputs[i]?.variability;
+          if (expectedVariability !== undefined && expectedVariability === Variability.Constant) {
+            const argVarType = this.dae.getExprKind(argId);
+            if (argVarType === ExprKind.Name) {
+              const resolvedName = this.dae.interner.resolve(this.dae.getExprData1(argId));
+              if (resolvedName) {
+                const varIdx = this.dae.getVarIdxByName(resolvedName);
+                if (varIdx >= 0) {
+                  const providedVar = this.dae.getVarVariability(varIdx);
+                  if (providedVar !== Variability.Constant && providedVar !== Variability.Parameter) {
+                    this.dae.diagnostics.push({
+                      code: 3006,
+                      rule: "function-arg-type-mismatch",
+                      severity: "error",
+                      message: `Function argument x=${this.dae.interner.resolve(this.dae.getExprData1(argId))} in call to ${funcName} has variability continuous which is not a constant expression.`,
+                      range: node.sourceRange
+                        ? { startByte: node.sourceRange.startIndex, endByte: node.sourceRange.endIndex }
+                        : null,
+                    });
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1142,7 +1228,7 @@ export class ArenaExprVisitor {
     if (kind === ExprKind.RealLiteral) return this.dae.getExprRealValue(exprId);
     if (kind === ExprKind.IntLiteral) return this.dae.getExprData1(exprId);
     // Try evaluating constant expressions
-    const val = evaluateArenaExpression(this.dae, exprId);
+    const val = evaluateArenaExpression(this.dae, exprId, undefined, this.db, this.scopeId, undefined, false);
     if (typeof val === "number") return val;
     return null;
   }
@@ -1407,7 +1493,8 @@ export class ArenaExprVisitor {
     // Evaluate all arguments to constant values
     const argValues: ArenaValue[] = [];
     for (const argId of argIds) {
-      const val = evaluateArenaExpression(this.dae, argId);
+      const val = evaluateArenaExpression(this.dae, argId, undefined, this.db, this.scopeId, undefined, false);
+      console.error(`[DEBUG INLINE] funcName=${funcName}, argId=${argId}, val=${JSON.stringify(val)}`);
       if (val === null) {
         console.error(`[DEBUG INLINE SKIP] argument evaluation failed for funcName=${funcName}, argId=${argId}`);
         return undefined;
@@ -1426,7 +1513,28 @@ export class ArenaExprVisitor {
     const outVar = outputVars[0];
     const outType = outVar ? fnDae.getVarType(outVar.idx) : undefined;
 
-    // Evaluate function using the new evaluateArenaFunctionCall
+    // Check if the flattened arguments match the scalarized inputs
+    let expectedInputs = 0;
+    for (let i = 0; i < fnDae.varCount; i++) {
+      if (!fnDae.isVarRemoved(i) && fnDae.getVarCausality(i) === 1 /* Input */) {
+        expectedInputs++;
+      }
+    }
+
+    let flatArgCount = 0;
+    const countFlatArgs = (val: ArenaValue): void => {
+      if (Array.isArray(val)) val.forEach(countFlatArgs);
+      else flatArgCount++;
+    };
+    argValues.forEach(countFlatArgs);
+
+    if (flatArgCount !== expectedInputs) {
+      console.error(
+        `[DEBUG INLINE SKIP] Vectorized call to ${funcName}: expected ${expectedInputs} scalar inputs, got ${flatArgCount} flat arguments`,
+      );
+      return undefined;
+    }
+
     const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues, this.db, this.scopeId);
     if (outVal === null) {
       return undefined;

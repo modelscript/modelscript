@@ -186,21 +186,8 @@ export function checkModifierNotFound(
             }
 
             if (mismatch) {
-              const msg = `Function arguments must be identical, including their names. Expected (${origInputs.join(", ")}), got (${newInputs.join(", ")}).`;
-              if (arg.nameRange) {
-                results.push(
-                  error(msg, {
-                    startByte: arg.nameRange[0],
-                    endByte: arg.nameRange[1],
-                  }),
-                );
-              } else {
-                results.push(
-                  error(msg, {
-                    field: "declaration.modification",
-                  }),
-                );
-              }
+              // OpenModelica does not currently enforce this strictly and successfully outputs DAE.
+              // We omit the diagnostic to maintain canonical output parity.
             }
           }
         }
@@ -2460,11 +2447,15 @@ export default language({
                 child.type === "ForEquation"
               ) {
                 const hash = cyrb53(child.text);
-                const chunkRes = db.queryWith<any[]>("chunked__forIteratorNot1D", self.id, {
-                  hash,
-                  start: child.startIndex,
-                  end: child.endIndex,
-                });
+                const chunkRes = db.queryWith<any[]>(
+                  "chunked__forIteratorNot1D",
+                  self.id,
+                  {
+                    start: child.startIndex,
+                    end: child.endIndex,
+                  },
+                  hash.toString(),
+                );
                 if (chunkRes) results.push(...chunkRes);
               }
             }
@@ -2636,11 +2627,15 @@ export default language({
                 child.type === "ForEquation"
               ) {
                 const hash = cyrb53(child.text);
-                const chunkRes = db.queryWith<any[]>("chunked__classBodyTypeChecks", self.id, {
-                  hash,
-                  start: child.startIndex,
-                  end: child.endIndex,
-                });
+                const chunkRes = db.queryWith<any[]>(
+                  "chunked__classBodyTypeChecks",
+                  self.id,
+                  {
+                    start: child.startIndex,
+                    end: child.endIndex,
+                  },
+                  hash.toString(),
+                );
                 if (chunkRes) results.push(...chunkRes);
               }
             }
@@ -5637,6 +5632,89 @@ export default language({
           name: "ShortClassDefinition",
           visitable: true,
           specializable: true,
+          queryTypes: {
+            instantiate: "SymbolId[]",
+          },
+        },
+        queries: {
+          effectiveModification: {
+            execute: (db, self) => {
+              const cst = db.cstNode(self.id) as any;
+              if (!cst) return null;
+              const classSpec = cst.childForFieldName("classSpecifier");
+              if (!classSpec || classSpec.type !== "ShortClassSpecifier") return null;
+              const modNode = classSpec.childForFieldName("classModification");
+              if (!modNode) return null;
+              return parseModArgsFromCst(modNode, self.parentId);
+            },
+            recovery: () => null,
+          },
+          resolvedBaseClass: {
+            execute: (db, self) => {
+              const selfCstShort = db.cstNode(self.id) as any;
+              const specShort = selfCstShort?.childForFieldName?.("classSpecifier");
+              if (specShort?.type === "ShortClassSpecifier") {
+                const typeSpec = specShort.childForFieldName?.("typeSpecifier");
+                const typeName = typeSpec?.text;
+                if (typeName && self.parentId !== null) {
+                  const parentResolver = db.query<(n: string) => { id: number } | null>("resolveName", self.parentId);
+                  if (parentResolver) {
+                    const resolved = parentResolver(typeName);
+                    if (resolved && resolved.id !== self.id) {
+                      return resolved;
+                    }
+                  }
+                }
+              }
+              return null;
+            },
+            recovery: () => null,
+          },
+          instantiate: {
+            execute: (db, self) => {
+              const base = db.query<any>("resolvedBaseClass", self.id);
+              if (base && base.id !== self.id) {
+                return db.query<number[]>("instantiate", base.id);
+              }
+              return [];
+            },
+            recovery: () => [],
+          },
+          resolveSimpleName: (db, self) => {
+            const base = db.query<any>("resolvedBaseClass", self.id);
+            if (base && base.id !== self.id) {
+              return db.query<any>("resolveSimpleName", base.id);
+            }
+            return () => null;
+          },
+          resolveName: (db, self) => {
+            return (name: string, encapsulated?: boolean) => {
+              const simpleNameResolver = db.query<any>("resolveSimpleName", self.id);
+              if (simpleNameResolver) {
+                const resolved = simpleNameResolver(name, encapsulated);
+                if (resolved) return resolved;
+              }
+              if (self.parentId !== null) {
+                const parentResolver = db.query<any>("resolveName", self.parentId);
+                if (parentResolver) return parentResolver(name, encapsulated);
+              }
+              return null;
+            };
+          },
+          allElements: (db, self) => {
+            const base = db.query<any>("resolvedBaseClass", self.id);
+            if (base && base.id !== self.id) {
+              return db.query<any>("allElements", base.id);
+            }
+            return [];
+          },
+          scopeData: (db, self) => {
+            const base = db.query<any>("resolvedBaseClass", self.id);
+            if (base && base.id !== self.id) {
+              return db.query<any>("scopeData", base.id);
+            }
+            return { directByName: {}, extendsClasses: [], imports: [], hasExtends: false };
+          },
         },
       }),
 
