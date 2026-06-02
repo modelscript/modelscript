@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export const MODELSCRIPT_GEOMETRY_PACKAGE = `
-package Geometry "Built-in parametric solid primitives for procedural CAD"
+package ModelScript
+  package Geometry "Built-in parametric solid primitives for procedural CAD"
 
   shape Box "Axis-aligned box centered at origin"
     parameter Real width = 1 "Full extent along X [mm]";
@@ -76,5 +77,6 @@ package Geometry "Built-in parametric solid primitives for procedural CAD"
     poissonsRatio = 0.4
   );
 
-end Geometry;
+  end Geometry;
+end ModelScript;
 `;

@@ -448,7 +448,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagramWebview.js"));
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagram.js"));
     const nonce = getNonce();
 
     return `<!DOCTYPE html>

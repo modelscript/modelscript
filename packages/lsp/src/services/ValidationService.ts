@@ -801,6 +801,9 @@ export class ValidationService {
 
         this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: sysmlDiagnostics });
 
+        // Notify UI that the project tree (and requirements index) has been updated
+        this.connection.sendNotification("modelscript/projectTreeChanged");
+
         // Auto-trigger verification if this document contains verification/analysis cases.
         // This makes the "compiler actively fails the build" behavior described in the paper
         // happen automatically without requiring the user to run a command.
@@ -1511,7 +1514,7 @@ export class ValidationService {
         const bridge = this.documentLSPBridges.get(uri);
         if (bridge) {
           const diags: Diagnostic[] = vResults.map((v) => ({
-            range: this.findRangeForIri(v.constraintId, uri) || {
+            range: this.findRangeForIri(v.constraintId as unknown as string, uri) || {
               start: { line: 0, character: 0 },
               end: { line: 0, character: 0 },
             },

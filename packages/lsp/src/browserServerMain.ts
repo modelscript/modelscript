@@ -89,9 +89,9 @@ console.log("ModelScript language server starting...");
 
 /* Browser-specific connection setup */
 
-const messageReader = new BrowserMessageReader(self);
-const messageWriter = new BrowserMessageWriter(self);
-
+const globalScope = typeof self !== "undefined" ? self : globalThis;
+const messageReader = new BrowserMessageReader(globalScope as any);
+const messageWriter = new BrowserMessageWriter(globalScope as any);
 const connection = createConnection(messageReader, messageWriter);
 
 /* Shared filesystem + context (populated with MSL during init) */

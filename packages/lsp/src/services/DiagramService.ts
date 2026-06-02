@@ -35,7 +35,7 @@ export class DiagramService {
 
     // SysML2 — delegate directly to dispatch (no caching needed, layout is in-memory)
     if (params.uri.endsWith(".sysml")) {
-      return getDiagramDispatch().getData(params);
+      return this.getDiagramDispatch().getData(params);
     }
 
     // Modelica — check cache first.

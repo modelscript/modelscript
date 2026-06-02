@@ -80,25 +80,23 @@ export interface TraceabilityMatrix {
 // ---------------------------------------------------------------------------
 
 function isRequirementEntry(entry: SymbolEntry): boolean {
-  return (
-    entry.ruleName.includes("Requirement") &&
-    (entry.kind === "Usage" || entry.kind === "Definition" || entry.kind === "Def" || entry.kind === "Class")
-  );
+  return entry.ruleName === "RequirementDefinition" || entry.ruleName === "RequirementUsage";
 }
 
 function isConstraintEntry(entry: SymbolEntry): boolean {
   return (
-    entry.ruleName.includes("Constraint") &&
-    (entry.kind === "Usage" || entry.kind === "Definition" || entry.kind === "Def")
+    entry.ruleName === "ConstraintDefinition" ||
+    entry.ruleName === "ConstraintUsage" ||
+    entry.ruleName === "AssertConstraintUsage"
   );
 }
 
 function isSatisfyEntry(entry: SymbolEntry): boolean {
-  return entry.ruleName.includes("Satisfy");
+  return entry.ruleName === "SatisfyRequirementUsage";
 }
 
 function isVerifyEntry(entry: SymbolEntry): boolean {
-  return entry.ruleName.includes("Verify");
+  return entry.ruleName === "VerifyRequirementUsage";
 }
 
 // ---------------------------------------------------------------------------
@@ -129,7 +127,11 @@ export function getRequirements(
   const rows: RequirementRow[] = [];
   let seqId = 1;
 
+  console.log(`[getRequirements] Total symbols in index: ${index.symbols.size}, filtering by URI: ${uri}`);
+  const sampleRuleNames = new Set<string>();
+
   for (const entry of index.symbols.values()) {
+    if (sampleRuleNames.size < 20 && entry.ruleName) sampleRuleNames.add(entry.ruleName);
     if (uri && entry.resourceId !== uri) continue;
     if (!isRequirementEntry(entry)) continue;
 
@@ -209,6 +211,7 @@ export function getRequirements(
     });
   }
 
+  console.log("[getRequirements] Sample rule names found in index:", Array.from(sampleRuleNames).join(", "));
   return rows;
 }
 

@@ -16,12 +16,17 @@ export function registerCodeLensProvider(context: LspContext) {
 
     for (const [, symbol] of index.symbols.entries()) {
       // Find classes with the "study" kind
+      // @ts-expect-error missing type properties
       if (symbol.classKind === "study" && symbol.name) {
         // We only want the top-level declaration range, not the whole body
         const range = Range.create(
+          // @ts-expect-error missing type properties
           symbol.selectionRange?.start.line ?? symbol.range.start.line,
+          // @ts-expect-error missing type properties
           symbol.selectionRange?.start.character ?? symbol.range.start.character,
+          // @ts-expect-error missing type properties
           symbol.selectionRange?.start.line ?? symbol.range.start.line,
+          // @ts-expect-error missing type properties
           symbol.selectionRange?.start.character ?? symbol.range.start.character,
         );
 

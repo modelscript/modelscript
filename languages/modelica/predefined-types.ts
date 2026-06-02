@@ -164,11 +164,11 @@ export function injectPredefinedTypes(index: SymbolIndex): SymbolIndex {
     }
 
     // Register in childrenOf (top-level, no parent)
-    const topLevel = index.childrenOf.get(null);
+    const topLevel = index.childrenOf.get(0);
     if (topLevel) {
       topLevel.push(id);
     } else {
-      index.childrenOf.set(null, [id]);
+      index.childrenOf.set(0, [id]);
     }
 
     // If this is an enumeration, add child entries for the literal values

@@ -7,7 +7,7 @@ const __dirname = dirname(__filename);
 
 const nodeBuiltinsPlugin = {
   name: "node-builtins-ignore",
-  setup(build) {
+  setup(build: esbuild.PluginBuild) {
     const builtins = [
       "assert",
       "buffer",
@@ -37,12 +37,12 @@ const nodeBuiltinsPlugin = {
 
     const filter = new RegExp(`^(node:)?(?:${builtins.join("|")})$`);
 
-    build.onResolve({ filter }, (args) => ({ path: args.path, namespace: "ignore" }));
+    build.onResolve({ filter }, (args: esbuild.OnResolveArgs) => ({ path: args.path, namespace: "ignore" }));
     build.onLoad({ filter: /.*/, namespace: "ignore" }, () => ({ contents: "", loader: "js" }));
   },
 };
 
-const buildOptions = {
+const buildOptions: esbuild.BuildOptions = {
   entryPoints: [
     resolve(__dirname, "src/browserServerMain.ts"),
     resolve(__dirname, "src/step-worker.ts"),
@@ -55,11 +55,11 @@ const buildOptions = {
   target: "es2022",
   minify: false,
   keepNames: true,
+  // @ts-expect-error esbuild options typings issue
   sourcemap: "inline",
   define: {
     "process.env": "{}",
     "process.browser": "true",
-    "import.meta.url": "self.location.href",
   },
   plugins: [nodeBuiltinsPlugin],
   logLevel: "info",

@@ -29,6 +29,7 @@ let finalResult: CalibrationResultData | null = null;
 let isDark = true;
 let logScale = false;
 let activeTab: "cost" | "params" | "overlay" = "cost";
+let currentCsvData = "";
 
 // ── DOM Setup ──
 
@@ -40,11 +41,16 @@ if (root) {
         <div style="padding: 12px 16px; font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--vscode-panel-border, #333);">Calibration</div>
         <div style="padding: 8px 16px; font-size: 11px;">
           <label style="display:block;margin-bottom:4px">Measurement Data (CSV)</label>
-          <textarea id="cal-csv" rows="5" style="width:100%;box-sizing:border-box;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);font-family:monospace;font-size:10px;" placeholder="time,x&#10;0,1.0&#10;1,0.37"></textarea>
+          <div style="display:flex;gap:4px;">
+            <input type="text" id="cal-csv-path" readonly style="flex:1;min-width:0;box-sizing:border-box;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);" placeholder="Select file...">
+            <button id="btn-pick-file" style="background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:none;border-radius:2px;cursor:pointer;padding:2px 8px;">Browse</button>
+          </div>
         </div>
         <div style="padding: 4px 16px; font-size: 11px;">
-          <label style="display:block;margin-bottom:4px">Parameters to Optimize (comma separated)</label>
-          <input type="text" id="cal-params" style="width:100%;box-sizing:border-box;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);" placeholder="a, b">
+          <label style="display:block;margin-bottom:4px">Parameters to Tune</label>
+          <div id="cal-params-container" style="max-height:100px;overflow-y:auto;border:1px solid var(--vscode-input-border);padding:4px;">
+            <div style="color:var(--vscode-descriptionForeground)">Loading parameters...</div>
+          </div>
         </div>
         <div style="padding: 4px 16px; font-size: 11px; display: flex; justify-content: space-between; align-items: center;">
           <label>Method</label>
@@ -86,25 +92,28 @@ if (root) {
   // Wire up controls
   const btnCalibrate = document.getElementById("btn-calibrate");
   const btnSave = document.getElementById("btn-save");
+  const btnPickFile = document.getElementById("btn-pick-file");
   const logToggle = document.getElementById("log-toggle") as HTMLInputElement | null;
+
+  if (btnPickFile) {
+    btnPickFile.addEventListener("click", () => {
+      vscode.postMessage({ type: "pickFile" });
+    });
+  }
 
   if (btnCalibrate) {
     btnCalibrate.addEventListener("click", () => {
-      const csvEl = document.getElementById("cal-csv") as HTMLTextAreaElement | null;
-      const paramsEl = document.getElementById("cal-params") as HTMLInputElement | null;
       const methodEl = document.getElementById("cal-method") as HTMLSelectElement | null;
       const itersEl = document.getElementById("cal-iters") as HTMLInputElement | null;
 
-      const csvData = csvEl?.value ?? "";
-      const parameters = (paramsEl?.value ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const checkedCbs = document.querySelectorAll(".cal-param-cb:checked") as NodeListOf<HTMLInputElement>;
+      const parameters = Array.from(checkedCbs).map((cb) => cb.value);
+
       const method = (methodEl?.value ?? "lm") as "lm" | "sqp";
       const maxIterations = parseInt(itersEl?.value ?? "100", 10) || 100;
 
-      if (!csvData || parameters.length === 0) {
-        setStatus("Please provide CSV data and parameter names.");
+      if (!currentCsvData || parameters.length === 0) {
+        setStatus("Please select a CSV file and at least one parameter.");
         return;
       }
 
@@ -114,7 +123,7 @@ if (root) {
 
       vscode.postMessage({
         type: "calibrateRequest",
-        payload: { csvData, parameters, method, maxIterations },
+        payload: { csvData: currentCsvData, parameters, method, maxIterations },
       });
     });
   }
@@ -176,6 +185,37 @@ window.addEventListener("message", (event) => {
     renderChart();
   } else if (msg.type === "calibrationError") {
     setStatus(`Error: ${msg.error}`);
+  } else if (msg.type === "modelParameters") {
+    const container = document.getElementById("cal-params-container");
+    if (container && msg.parameters) {
+      container.innerHTML = "";
+      if (msg.parameters.length === 0) {
+        container.innerHTML = `<div style="color:var(--vscode-descriptionForeground)">No parameters found.</div>`;
+      } else {
+        msg.parameters.forEach((p: string) => {
+          const label = document.createElement("label");
+          label.style.display = "flex";
+          label.style.alignItems = "center";
+          label.style.cursor = "pointer";
+          label.style.marginBottom = "2px";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.value = p;
+          cb.className = "cal-param-cb";
+          label.appendChild(cb);
+          label.appendChild(document.createTextNode(" " + p));
+          container.appendChild(label);
+        });
+      }
+    }
+  } else if (msg.type === "filePicked") {
+    const pathEl = document.getElementById("cal-csv-path") as HTMLInputElement;
+    if (pathEl) {
+      const parts = msg.path.split(/[/\\]/);
+      pathEl.value = parts.pop() || msg.path;
+      pathEl.title = msg.path;
+    }
+    currentCsvData = msg.csvData;
   }
 });
 
@@ -451,5 +491,8 @@ function renderOverlayChart(
 
 // Resize listener
 window.addEventListener("resize", () => renderChart());
+
+// Notify extension that webview is ready to receive messages
+vscode.postMessage({ type: "webviewReady" });
 
 export {};

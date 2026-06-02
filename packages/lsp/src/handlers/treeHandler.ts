@@ -18,7 +18,7 @@ export function registerTreeHandlers(context: LspContext) {
 
       // Invalidate FQN cache when the index changes
       if (fqnCacheIndex !== unifiedIndex) {
-        context.state.fqnCache = new Map();
+        fqnCache.clear();
         fqnCacheIndex = unifiedIndex;
       }
 
@@ -64,6 +64,7 @@ export function registerTreeHandlers(context: LspContext) {
     if (!params.parentId) {
       // Root level: return one node per parsed file (exclude stdlib)
       for (const [uri, entries] of files.entries()) {
+        if (!uri) continue;
         if (uri.startsWith("file:///lib/")) continue;
 
         const fileName = uri.split("/").pop() ?? uri;
@@ -140,6 +141,7 @@ export function registerTreeHandlers(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getClassIcon",
     async (params: { className: string; uri?: string }): Promise<string | null> => {
+      if (!params.className) return null;
       if (iconCache.has(params.className)) {
         return iconCache.get(params.className) || null;
       }
@@ -147,7 +149,7 @@ export function registerTreeHandlers(context: LspContext) {
       // Yield to event loop to avoid blocking LSP completely
       await new Promise((r) => setTimeout(r, 0));
 
-      const cls = context.workspaceManager.resolveClassInstance(params.uri || "modelica:/", params.className);
+      const cls = context.workspaceManager.resolveModelicaClassInstance(params.uri || "modelica:/", params.className);
       if (!cls) {
         iconCache.set(params.className, null);
         return null;

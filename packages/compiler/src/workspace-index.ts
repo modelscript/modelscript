@@ -901,7 +901,10 @@ export class WorkspaceIndex {
       }
     }
 
-    const parentId = this.resolveFQN(file.parentFQN, symbols, byName);
+    const prefixMatch = uri.match(/^(modelica:\/\/[^/]+\/[^/]+\/|sysml2:\/\/[^/]+\/)/);
+    const preferredPrefix = prefixMatch ? prefixMatch[0] : undefined;
+
+    const parentId = this.resolveFQN(file.parentFQN, symbols, byName, preferredPrefix);
     if (parentId !== null) {
       const rootChildIds = file.index.childrenOf.get(0);
       if (rootChildIds) {
@@ -929,29 +932,47 @@ export class WorkspaceIndex {
     this.stitchedUris.add(uri);
   }
 
-  private resolveFQN(fqn: string, symbols: IdTrieMap<SymbolEntry>, byName: StringTrieMap<SymbolId[]>): SymbolId | null {
+  private resolveFQN(
+    fqn: string | undefined,
+    symbols: IdTrieMap<SymbolEntry>,
+    byName: StringTrieMap<SymbolId[]>,
+    preferredPrefix?: string,
+  ): SymbolId | null {
     if (!fqn) return null;
     const parts = fqn.split(".");
     const lastName = parts[parts.length - 1];
     const candidates = byName.get(lastName);
-    if (!candidates) return null;
+    if (!candidates || candidates.length === 0) return null;
+
+    let fallbackId: SymbolId = candidates[0];
 
     for (const id of candidates) {
+      const sym = symbols.get(id);
+
+      // If we have a preferred prefix (e.g. library URI), use it as the strongest affinity signal.
+      // This correctly associates library sub-packages to the real library root, even if the
+      // parentId chain isn't fully stitched yet due to file traversal order.
+      if (preferredPrefix && sym?.resourceId?.startsWith(preferredPrefix)) {
+        return id;
+      }
+
+      // Secondary check: if it's already stitched and matches the FQN exactly
       let currentId: SymbolId | null = id;
       let matched = true;
       for (let i = parts.length - 1; i >= 0; i--) {
-        const sym = symbols.get(currentId!);
-        if (!sym || sym.name !== parts[i]) {
+        const pSym = symbols.get(currentId!);
+        if (!pSym || pSym.name !== parts[i]) {
           matched = false;
           break;
         }
-        currentId = sym.parentId;
+        currentId = pSym.parentId;
       }
       if (matched && currentId === null) {
-        return id;
+        fallbackId = id; // Stronger fallback if we didn't match the prefix but it IS structurally correct
       }
     }
-    return null;
+
+    return fallbackId;
   }
 
   /** Get all registered file URIs. */

@@ -50,6 +50,11 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
       }
     });
 
+    // Re-fetch when LSP completes semantic indexing (which may happen long after document open)
+    const projectTreeListener = this.client.onNotification("modelscript/projectTreeChanged", () => {
+      sendData();
+    });
+
     // Handle messages from the webview
     webviewPanel.webview.onDidReceiveMessage((msg) => {
       switch (msg.type) {
@@ -74,6 +79,7 @@ export class RequirementsEditorProvider implements vscode.CustomTextEditorProvid
 
     webviewPanel.onDidDispose(() => {
       changeListener.dispose();
+      projectTreeListener.dispose();
     });
   }
 

@@ -71,7 +71,39 @@ export class CalibrationPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
       async (msg) => {
-        if (msg.type === "calibrateRequest") {
+        if (msg.type === "webviewReady") {
+          if (this.client && this.sourceUri) {
+            this.client
+              .sendRequest<{ parameters: string[]; error?: string }>("modelscript/getParameters", {
+                uri: this.sourceUri,
+              })
+              .then((res) => {
+                if (res && res.parameters) {
+                  this.panel.webview.postMessage({
+                    type: "modelParameters",
+                    parameters: res.parameters,
+                  });
+                } else {
+                  this.panel.webview.postMessage({
+                    type: "modelParameters",
+                    parameters: [],
+                  });
+                }
+              })
+              .catch((e) => {
+                console.error("Failed to fetch parameters:", e);
+                this.panel.webview.postMessage({
+                  type: "modelParameters",
+                  parameters: [],
+                });
+              });
+          } else {
+            this.panel.webview.postMessage({
+              type: "modelParameters",
+              parameters: [],
+            });
+          }
+        } else if (msg.type === "calibrateRequest") {
           try {
             if (!this.client) return;
             const result = await this.client.sendRequest("modelscript/calibrate", {
@@ -100,6 +132,25 @@ export class CalibrationPanel {
           }
         } else if (msg.type === "saveResultRequest") {
           this.saveResult(msg.payload);
+        } else if (msg.type === "pickFile") {
+          const uris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            openLabel: "Select CSV Data",
+            filters: { CSV: ["csv", "txt"] },
+          });
+          if (uris && uris[0]) {
+            try {
+              const fileData = await vscode.workspace.fs.readFile(uris[0]);
+              const csvData = new TextDecoder().decode(fileData);
+              this.panel.webview.postMessage({
+                type: "filePicked",
+                path: uris[0].fsPath,
+                csvData,
+              });
+            } catch (e) {
+              vscode.window.showErrorMessage(`Failed to read file: ${e}`);
+            }
+          }
         }
       },
       null,

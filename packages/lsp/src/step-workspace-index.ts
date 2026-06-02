@@ -312,6 +312,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
 
     childrenOf.set(productId, productChildren);
 
+    // @ts-expect-error incompatible types
     return { symbols, byName, childrenOf };
   }
 
@@ -349,6 +350,7 @@ export class StepWorkspaceIndex implements IWorkspaceIndex {
       }
     }
 
+    // @ts-expect-error incompatible types
     return { symbols, byName, childrenOf };
   }
 

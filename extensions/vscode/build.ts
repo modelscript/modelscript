@@ -70,7 +70,7 @@ const webviewConfig: esbuild.BuildOptions = {
   ],
   outdir: "dist",
   bundle: true,
-  format: "esm",
+  format: "iife",
   platform: "browser",
   sourcemap: "inline",
 };

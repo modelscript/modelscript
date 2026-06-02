@@ -161,7 +161,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
     async (params: { uri: string; className: string; x: number; y: number }) => {
       // SysML2 — dispatch handles element insert + layout storage
       if (params.uri.endsWith(".sysml")) {
-        const result = await getDiagramDispatch().applyEdits({
+        const result = await context.diagramService.getDiagramDispatch().applyEdits({
           uri: params.uri,
           seq: 0,
           actions: [{ type: "addComponent", className: params.className, x: params.x, y: params.y }],

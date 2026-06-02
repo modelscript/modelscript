@@ -784,6 +784,65 @@ export function registerAnalysisEndpoints(context: LspContext) {
   );
 
   context.connection.onRequest(
+    "modelscript/getParameters",
+    async (params: { uri: string; className?: string }): Promise<{ parameters: string[]; error?: string }> => {
+      let instances = context.workspaceManager.documentInstances.get(params.uri);
+      if (!instances || instances.length === 0) {
+        const doc = context.documents.get(params.uri);
+        if (doc) {
+          await context.validationService.validateTextDocument(doc);
+          instances = context.workspaceManager.documentInstances.get(params.uri);
+        }
+      }
+
+      if (!instances || instances.length === 0) {
+        return { parameters: [], error: "No class instances found for this document." };
+      }
+
+      let classInstance = instances[0];
+      if (params.className) {
+        const found = instances.find((i) => i.name === params.className);
+        if (found) classInstance = found;
+      }
+
+      if (!classInstance.instantiated) {
+        try {
+          classInstance.instantiate();
+        } catch {
+          return { parameters: [], error: "Failed to instantiate class." };
+        }
+      }
+
+      try {
+        const docContext = context.workspaceManager.documentContexts.get(params.uri);
+        if (!docContext) {
+          throw new Error(`No Modelica context found for URI '${params.uri}'`);
+        }
+
+        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const parameters: string[] = [];
+
+        for (let i = 0; i < arena.varCount; i++) {
+          if (arena.isVarRemoved(i)) continue;
+          if (arena.getVarVariability(i) === Variability.Parameter) {
+            // Check if it evaluates to a number
+            const val = evaluateArenaExprToNum(arena, arena.getVarBindingExprId(i));
+            if (val !== null) {
+              parameters.push(arena.getVarName(i));
+            } else if (arena.getVarBindingExprId(i) === undefined) {
+              parameters.push(arena.getVarName(i)); // unassigned parameter
+            }
+          }
+        }
+
+        return { parameters };
+      } catch (e) {
+        return { parameters: [], error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  context.connection.onRequest(
     "modelscript/getIntervals",
     (params: { uri: string; className?: string }): IntervalAnalysisResult | null => {
       const instances = context.workspaceManager.documentInstances.get(params.uri);

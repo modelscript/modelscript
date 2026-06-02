@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 
 import { LspContext } from "../LspContext";
@@ -133,7 +133,29 @@ export function registerAnalysisHandlers(context: LspContext) {
 
   context.connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
     try {
+      context.connection.console.info(`[requirements] modelscript/getRequirements called for uri=${params.uri}`);
       const db = context.workspaceManager.unifiedWorkspace.toUnifiedPartial();
+
+      const reqCount = getRequirements(db, undefined, []);
+      context.connection.console.info(
+        `[requirements] Found ${reqCount.length} requirements. Workspace symbols: ${db.symbols.size}`,
+      );
+
+      // DEBUG: print sample rule names in the index
+      const rules = new Set<string>();
+      let hasReqDef = false;
+      for (const entry of db.symbols.values()) {
+        if (entry.ruleName) rules.add(entry.ruleName);
+        if (entry.ruleName === "RequirementDefinition" || entry.ruleName === "RequirementUsage") {
+          hasReqDef = true;
+          context.connection.console.info(`[requirements] FOUND Req: ${entry.name} at ${entry.resourceId}`);
+        }
+      }
+      context.connection.console.info(
+        `[requirements] Rule names present (sample): ${Array.from(rules).slice(0, 20).join(", ")}`,
+      );
+      context.connection.console.info(`[requirements] Has RequirementDefinition: ${hasReqDef}`);
+
       // Gather all verification results across the workspace
       const allResults = [];
       for (const res of context.validationService.verificationResultsByUri.values()) {
@@ -141,7 +163,7 @@ export function registerAnalysisHandlers(context: LspContext) {
       }
       return getRequirements(db, undefined, allResults); // Do not filter by uri to show workspace-level requirements
     } catch (e) {
-      console.error("[requirements] Error:", e);
+      console.error("[requirements] Error", e);
       return [];
     }
   });

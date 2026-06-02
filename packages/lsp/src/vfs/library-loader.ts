@@ -157,7 +157,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
       ctx.logger.warn(`[registry] Failed to read directory ${basePath}: ${e}`);
     }
     // Register files in the global workspace index
-    const pkgTreeCache = new Map<string, Tree | null>();
+
     let registeredCount = 0;
     const registeredUris: string[] = [];
     const registerDirLazy = (dir: string) => {
@@ -189,19 +189,27 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
             ctx.globalWorkspaceIndex.register(
               uri,
               () => {
-                if (!pkgTreeCache.has(fullPath)) {
-                  try {
-                    const text = ctx.sharedFs.read(fullPath);
-                    if (text) {
-                      const tree = ctx.sharedContext.parse(".mo", text);
-                      pkgTreeCache.set(fullPath, tree);
-                    }
-                  } catch {
-                    pkgTreeCache.set(fullPath, null);
+                let tree: Tree | null = null;
+                try {
+                  const text = ctx.sharedFs.read(fullPath);
+                  if (text) {
+                    tree = ctx.sharedContext.parse(".mo", text);
                   }
+                } catch {
+                  /* ignore */
                 }
-                return (pkgTreeCache.get(fullPath)?.rootNode ??
-                  null) as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
+                if (tree) {
+                  // WorkspaceIndex uses the node synchronously.
+                  // Schedule deletion to avoid WASM memory leaks.
+                  setTimeout(() => {
+                    try {
+                      tree.delete();
+                    } catch {
+                      /* ignore */
+                    }
+                  }, 0);
+                }
+                return (tree?.rootNode ?? null) as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
               },
               parentFQN,
             );
@@ -406,7 +414,7 @@ export async function loadDependencyFromRegistry(
         }
       }
 
-      ctx.sharedFs.addFile(fullPath, encoder.encode(content));
+      ctx.sharedFs.addFile(fullPath, encoder.encode(content as string));
       fileCount++;
     }
 
@@ -421,8 +429,11 @@ export async function loadDependencyFromRegistry(
       ctx.globalWorkspaceIndex.hydrate(
         uri,
         {
+          // @ts-expect-error missing types
           symbols,
+          // @ts-expect-error missing types
           byName,
+          // @ts-expect-error missing types
           childrenOf,
         },
         undefined,
@@ -517,7 +528,7 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
 
     ctx.sharedFs.readdir("/lib");
 
-    const mslTreeCache = new Map<string, Tree | null>();
+    const registeredUris: string[] = [];
     let registeredCount = 0;
 
     const registerDirLazy = (dir: string) => {
@@ -546,22 +557,31 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
             ctx.globalWorkspaceIndex.register(
               uri,
               () => {
-                if (!mslTreeCache.has(fullPath)) {
-                  try {
-                    const text = ctx.sharedFs.read(fullPath);
-                    if (text) {
-                      const tree = ctx.sharedContext.parse(".mo", text);
-                      mslTreeCache.set(fullPath, tree);
-                    }
-                  } catch {
-                    mslTreeCache.set(fullPath, null);
+                let tree: Tree | null = null;
+                try {
+                  const text = ctx.sharedFs.read(fullPath);
+                  if (text) {
+                    tree = ctx.sharedContext.parse(".mo", text);
                   }
+                } catch {
+                  /* ignore */
                 }
-                return (mslTreeCache.get(fullPath)?.rootNode ??
-                  null) as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
+                if (tree) {
+                  // WorkspaceIndex uses the node synchronously.
+                  // Schedule deletion to avoid WASM memory leaks.
+                  setTimeout(() => {
+                    try {
+                      tree.delete();
+                    } catch {
+                      /* ignore */
+                    }
+                  }, 0);
+                }
+                return (tree?.rootNode ?? null) as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
               },
               parentFQN,
             );
+            registeredUris.push(uri);
             registeredCount++;
           }
         }
@@ -570,7 +590,23 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       }
     };
     registerDirLazy("/lib");
-    ctx.logger.log(`[polyglot] Registered ${registeredCount} MSL files lazily in globalWorkspaceIndex`);
+
+    let indexedCount = 0;
+    for (let i = 0; i < registeredUris.length; i++) {
+      try {
+        ctx.globalWorkspaceIndex.getFileIndex(registeredUris[i]);
+        indexedCount++;
+      } catch {
+        /* ignore */
+      }
+      if (i % 50 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    ctx.logger.log(
+      `[polyglot] Registered ${registeredCount} MSL files, indexed ${indexedCount} in globalWorkspaceIndex`,
+    );
   } catch (e) {
     ctx.logger.error("Failed to load MSL zip:", e);
   }
@@ -630,6 +666,7 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
 
     let fileCount = 0;
     const textDecoder = new TextDecoder("utf-8");
+    const registeredUris: string[] = [];
     for (const [name, data] of Object.entries(fileEntries)) {
       if (!name.endsWith(".sysml")) continue;
       if (!name.includes("kerml/") && !name.includes("sysml.library/")) continue;
@@ -641,14 +678,38 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
       ctx.sysml2WorkspaceIndex.register(uri, () => {
         if (!ctx.sysml2Parser) return null as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
         const tree = ctx.sysml2Parser.parse(text);
-        const node = ctx.documentTrees.get(uri);
-        if (node && tree) node.tree = tree;
+        if (tree) {
+          // WorkspaceIndex uses the node synchronously. Schedule deletion to avoid memory leak.
+          setTimeout(() => {
+            try {
+              tree.delete();
+            } catch {
+              /* ignore */
+            }
+          }, 0);
+        }
         return (tree ? tree.rootNode : null) as unknown as import("@modelscript/compiler/symbol-indexer").CSTNode;
       });
+      registeredUris.push(uri);
       fileCount++;
     }
 
-    ctx.logger.log(`SysML2 Standard Library loaded: ${fileCount} files registered in sysml2WorkspaceIndex.`);
+    let indexedCount = 0;
+    for (let i = 0; i < registeredUris.length; i++) {
+      try {
+        ctx.sysml2WorkspaceIndex.getFileIndex(registeredUris[i]);
+        indexedCount++;
+      } catch {
+        /* ignore */
+      }
+      if (i % 50 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    ctx.logger.log(
+      `SysML2 Standard Library loaded: ${fileCount} files registered, ${indexedCount} indexed in sysml2WorkspaceIndex.`,
+    );
   } catch (e) {
     ctx.logger.error("Failed to load SysML2 standard library:", e);
   }

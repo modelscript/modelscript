@@ -17,17 +17,34 @@ export function classKindFromEntry(entry: any): string {
 }
 
 export function isTreeVisible(entry: any): boolean {
+  if (entry.metadata?.isPredefined) return false;
   if (entry.language === "sysml2") {
     return SYSML2_TREE_KINDS.has(entry.kind);
   }
   return entry.kind === "Class";
 }
 
-export function getCompositeName(entry: any, index: any): string {
+export function getCompositeName(entry: any, index: any, visited = new Set<string>()): string {
   if (entry.parentId === null) return entry.name;
+  if (visited.has(entry.id?.toString())) return entry.name;
+  visited.add(entry.id?.toString());
+
   const parent = index.symbols.get(entry.parentId);
   if (!parent) return entry.name;
-  return getCompositeName(parent, index) + "." + entry.name;
+  return getCompositeName(parent, index, visited) + "." + entry.name;
+}
+
+function getLibraryName(resourceId?: string): string | null {
+  if (!resourceId) return null;
+  if (resourceId.startsWith("modelica:/")) {
+    const withoutPrefix = resourceId.substring("modelica:/".length);
+    const parts = withoutPrefix.split("/").filter((p: string) => p !== "" && p !== "lib");
+    if (parts.length > 0) return parts[0];
+  }
+  if (resourceId.startsWith("sysml2://stdlib/")) {
+    return "SysML2 Standard Library";
+  }
+  return null;
 }
 
 export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
@@ -35,25 +52,67 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
   const seen = new Set<string>();
 
   if (!parentId) {
-    // Root level: get children of null (top-level symbols)
-    const rootChildIds = index.childrenOf.get(null) ?? [];
+    // Root level: group by library or show workspace files directly
+    const rootChildIds = index.childrenOf.get(0) ?? [];
+    const libraryNames = new Set<string>();
+
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);
       if (!entry || !isTreeVisible(entry)) continue;
-      const compositeName = entry.name; // Root classes have no parent
-      if (seen.has(compositeName)) continue;
-      seen.add(compositeName);
 
+      const libName = getLibraryName(entry.resourceId);
+      if (libName) {
+        libraryNames.add(libName);
+      } else {
+        const compositeName = entry.name;
+        if (seen.has(compositeName)) continue;
+        seen.add(compositeName);
+
+        nodes.push({
+          id: compositeName,
+          name: entry.name,
+          compositeName,
+          classKind: classKindFromEntry(entry),
+          hasChildren: hasClassChildren(index, id),
+          language: entry.language,
+        });
+        fqnCache.set(compositeName, id);
+      }
+    }
+
+    for (const libName of libraryNames) {
       nodes.push({
-        id: compositeName,
-        name: entry.name,
-        compositeName,
-        classKind: classKindFromEntry(entry),
-        hasChildren: hasClassChildren(index, id),
-        language: entry.language,
+        id: `__LIB__:${libName}`,
+        name: libName,
+        compositeName: `__LIB__:${libName}`,
+        classKind: "package",
+        hasChildren: true,
+        language: libName.includes("SysML") ? "sysml2" : "modelica",
       });
-      // Cache FQN → ID
-      fqnCache.set(compositeName, id);
+    }
+  } else if (parentId.startsWith("__LIB__:")) {
+    // Return root children belonging to this library
+    const libName = parentId.substring("__LIB__:".length);
+    const rootChildIds = index.childrenOf.get(0) ?? [];
+    for (const id of rootChildIds) {
+      const entry = index.symbols.get(id);
+      if (!entry || !isTreeVisible(entry)) continue;
+
+      if (getLibraryName(entry.resourceId) === libName) {
+        const compositeName = entry.name;
+        if (seen.has(compositeName)) continue;
+        seen.add(compositeName);
+
+        nodes.push({
+          id: compositeName,
+          name: entry.name,
+          compositeName,
+          classKind: classKindFromEntry(entry),
+          hasChildren: hasClassChildren(index, id),
+          language: entry.language,
+        });
+        fqnCache.set(compositeName, id);
+      }
     }
   } else {
     // Find the parent's numeric ID
@@ -87,7 +146,6 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           hasChildren: hasClassChildren(index, id),
           language: entry.language,
         });
-        // Cache FQN → ID
         fqnCache.set(compositeName, id);
       }
     }

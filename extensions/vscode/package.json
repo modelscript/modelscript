@@ -321,11 +321,11 @@
             "default": "http://127.0.0.1:3000",
             "description": "ModelScript package registry URL. Use http://127.0.0.1:3000 for local development."
           },
-          "modelscript.library.useLocalMsl": {
+          "modelscript.library.useApiRegistry": {
             "type": "boolean",
             "scope": "window",
             "default": false,
-            "description": "If enabled, Modelica Standard Library is loaded from the local bundled zip. If disabled, it fetches from the remote registry."
+            "description": "If enabled, standard libraries (MSL, SysML2) are downloaded from the remote API registry. If disabled, they are loaded from local bundled ZIPs."
           }
         }
       }

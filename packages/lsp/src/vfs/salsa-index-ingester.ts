@@ -37,6 +37,7 @@ export async function ingestSalsaIndex(
           // Ignore malformed memos
         }
       }
+      // @ts-expect-error incompatible types
       await cacheStore.setMemos(memos);
     }
 

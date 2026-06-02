@@ -381,7 +381,7 @@ async function simulateC(
   } catch (e: unknown) {
     const stderr = e && typeof e === "object" && "stderr" in e ? String((e as { stderr: unknown }).stderr) : String(e);
     console.error(`C compilation failed:\n${stderr}`);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    //fs.rmSync(tmpDir, { recursive: true, force: true });
     return;
   }
   profiler.end("compilation");
@@ -423,7 +423,7 @@ async function simulateC(
   }
 
   // Clean up temp files
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  //fs.rmSync(tmpDir, { recursive: true, force: true });
 
   // The C binary outputs CSV to stdout — relay it or convert to JSON
   if (args.format === "json") {

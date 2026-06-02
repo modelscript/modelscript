@@ -266,7 +266,10 @@ export class Context extends BaseContext {
           );
         }
       } else if (s.isDirectory()) {
+        const ignoreList = new Set(["node_modules", "dist", ".git", "testsuite"]);
         for (const entry of this.#fs.readdir(dir)) {
+          if (ignoreList.has(entry.name)) continue;
+
           const entryMode = this.#fs.stat(this.#fs.join(dir, entry.name));
           if (entryMode?.isDirectory()) {
             const nextFQN = `${currentFQN}.${entry.name}`;
