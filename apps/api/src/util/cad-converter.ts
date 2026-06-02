@@ -10,7 +10,12 @@ export async function convertStepToJson(url: string, database: LibraryDatabase):
   }
 
   console.log(`[CAD] Fetching and converting STEP: ${url}`);
-  const response = await fetch(url);
+  let fetchUrl = url;
+  if (url.startsWith("/")) {
+    const port = process.env["PORT"] || "3000";
+    fetchUrl = `http://localhost:${port}${url}`;
+  }
+  const response = await fetch(fetchUrl);
   if (!response.ok) {
     throw new Error(`Failed to fetch STEP file: ${response.status} ${response.statusText}`);
   }

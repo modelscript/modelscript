@@ -392,13 +392,13 @@ export function compileAssemblyToStep(asm: Assembly): string {
   const ctx = createContext();
   const { geomCtx, appCtx } = emitGlobalContext(ctx);
 
-  const allBreps: string[] = [];
-  for (const p of asm.parts) {
+  for (let i = 0; i < asm.parts.length; i++) {
+    const p = asm.parts[i];
     const refs = flattenSolid(ctx, p.solid, IDENTITY);
-    allBreps.push(...refs);
+    const uniqueName = `${asm.name}_${p.solid.name}_${i}`;
+    emitProductDefinition(ctx, uniqueName, refs, geomCtx, appCtx);
   }
 
-  emitProductDefinition(ctx, asm.name, allBreps, geomCtx, appCtx);
   return wrapStep(ctx, asm.name);
 }
 
