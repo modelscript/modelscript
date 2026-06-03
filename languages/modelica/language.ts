@@ -3980,6 +3980,8 @@ export default language({
           field("operator", "operator"),
           field("optimization", "optimization"),
           field("shape", "shape"),
+          field("field", "field"),
+          field("process", "process"),
         ),
       ),
 

@@ -348,6 +348,9 @@ export class ArenaDAEBuilder {
   /** External object descriptors. */
   externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
 
+  /** Field boundary nodes (e.g. 3D continuum interfaces). */
+  boundaryNodes: { name: string; typeName: string; parameters: Record<string, unknown> }[] = [];
+
   /**
    * State machines for Modelica state machine semantics.
    * Each machine has states (with per-state equations), transitions, and an initial state.
@@ -472,6 +475,7 @@ export class ArenaDAEBuilder {
     clone.externalLibraries = [...this.externalLibraries];
     clone.externalIncludes = [...this.externalIncludes];
     clone.diagnostics = [...this.diagnostics];
+    clone.boundaryNodes = this.boundaryNodes.map((n) => ({ ...n }));
 
     // Arrays
     clone.varData = new Int32Array(this.varData);

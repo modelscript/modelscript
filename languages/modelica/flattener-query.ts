@@ -309,8 +309,10 @@ export class ArenaQueryFlattener {
     console.error(`[DEBUG Flattener] options=`, this.options);
   }
 
+  public rootDae?: ArenaDAEBuilder;
+
   /**
-   * Flatten a Modelica class into a DAE.
+   * Flatten a class from the root down.
    *
    * @param rootClassId - The SymbolId of the top-level model to flatten
    * @param cachedArena - If provided, skip the body traversal phase (variable instantiation) and reuse this arena state.
@@ -349,6 +351,8 @@ export class ArenaQueryFlattener {
       dae = new ArenaDAEBuilder(undefined, className, "");
       this.brokenConnections.clear();
       this.brokenComponents.clear();
+
+      this.rootDae = dae;
 
       // Pre-pass: count connector cardinality for cardinality() built-in
       this.connectorCardinality.clear();
@@ -1888,7 +1892,14 @@ export class ArenaQueryFlattener {
     // Push compound type onto hierarchy stack for outer/inner resolution
     this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
     this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
-    this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
+
+    const isField = typeof classMeta?.classPrefixes === "string" && classMeta.classPrefixes.includes("field");
+    if (isField) {
+      dae.boundaryNodes.push({ name: fullName, typeName: resolvedTypeName, parameters: {} });
+    } else {
+      this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
+    }
+
     this.activeClassStack.pop();
   }
 
@@ -4665,6 +4676,7 @@ export class ArenaQueryFlattener {
   private collectedQualifiedFunctions = new Set<string>();
 
   private collectFunctionDefinition(funcName: string, dae: ArenaDAEBuilder, scopeId?: SymbolId): void {
+    const rootDae = this.rootDae!;
     if (
       !funcName.includes(".") &&
       [
@@ -4739,8 +4751,8 @@ export class ArenaQueryFlattener {
       return;
     }
 
-    const funcNameId = dae.interner.intern(funcName);
-    if (dae.functions.has(funcNameId) || this.collectingFunctions.has(funcName)) return;
+    const funcNameId = rootDae.interner.intern(funcName);
+    if (rootDae.functions.has(funcNameId) || this.collectingFunctions.has(funcName)) return;
     this.collectingFunctions.add(funcName);
 
     try {
@@ -4781,8 +4793,8 @@ export class ArenaQueryFlattener {
       this.functionNameMap.set(funcName, qualifiedName);
 
       // Check if already collected under the qualified name
-      const qualifiedNameId = dae.interner.intern(qualifiedName);
-      if (dae.functions.has(qualifiedNameId)) return;
+      const qualifiedNameId = rootDae.interner.intern(qualifiedName);
+      if (rootDae.functions.has(qualifiedNameId)) return;
 
       // Get the CST to extract metadata (description, external decl, impure)
       const cstNode = this.db.cstNode(resolvedId) as any;
@@ -4903,8 +4915,8 @@ export class ArenaQueryFlattener {
         });
       }
 
-      dae.functions.set(qualifiedNameId, fnDae);
-      dae.diagnostics.push(...fnDae.diagnostics);
+      rootDae.functions.set(qualifiedNameId, fnDae);
+      rootDae.diagnostics.push(...fnDae.diagnostics);
     } finally {
       this.collectingFunctions.delete(funcName);
     }
