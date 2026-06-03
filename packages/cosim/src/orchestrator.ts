@@ -35,6 +35,8 @@ export interface OrchestratorCallbacks {
   onStateChange?: (state: string) => void;
   /** Called when unit compatibility issues are detected. */
   onUnitWarning?: (warnings: UnitWarning[]) => void;
+  /** Called when a CFD provider produces a VTK mesh for VR visualization. */
+  onVtkData?: (participantId: string, time: number, vtkData: Uint8Array) => void;
 }
 
 /**
@@ -165,6 +167,20 @@ export class Orchestrator {
 
         // Notify callback
         this.callbacks.onStep?.(result);
+
+        // ── Phase 5: Real-time VR Visualization Pipeline ──
+        // Extract VTK volumetric buffers from CFD providers if available
+        for (const p of participants) {
+          if (
+            "getVtkBuffer" in p &&
+            typeof (p as unknown as { getVtkBuffer?: () => Promise<Uint8Array | null> }).getVtkBuffer === "function"
+          ) {
+            const vtkData = await (p as unknown as { getVtkBuffer: () => Promise<Uint8Array | null> }).getVtkBuffer();
+            if (vtkData) {
+              this.callbacks.onVtkData?.(p.id, t + effectiveH, vtkData);
+            }
+          }
+        }
 
         t += effectiveH;
       }
