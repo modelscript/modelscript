@@ -33,6 +33,7 @@ export default defineConfig([
             "packages/compiler/bench-50k.ts",
             "packages/compiler/bench_direct.ts",
             "packages/compiler/bench_stages.ts",
+            "packages/examples/drone-chassis/evaluate-manufacturing.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

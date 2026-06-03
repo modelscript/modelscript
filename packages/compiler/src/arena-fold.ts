@@ -268,10 +268,17 @@ export function foldArenaConstants(
       }
     }
 
-    // Phase 4: Fold pure constant arithmetic expressions
+    // Phase 4: Fold pure constant arithmetic expressions and casts
     for (let e = 0; e < arena.exprCount; e++) {
       const kind = arena.getExprKind(e);
-      if (kind === ExprKind.Binary || kind === ExprKind.Unary) {
+      let canFold = kind === ExprKind.Binary || kind === ExprKind.Unary;
+      if (!canFold && kind === ExprKind.Call) {
+        const funcName = arena.interner.resolve(arena.getExprData1(e));
+        if (funcName === "/*Real*/" || funcName === "/*Integer*/") {
+          canFold = true;
+        }
+      }
+      if (canFold) {
         // Pass empty paramMap and onlyConstants=true to safely evaluate purely static arithmetic
         const val = evaluateArenaExpression(arena, e, new Map(), undefined, undefined, undefined, true);
         if (val !== null && typeof val === "number") {

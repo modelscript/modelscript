@@ -557,6 +557,9 @@ export class ComponentDeclaration extends SemanticNode {
   get modification(): string | null {
     return this.attribute("modification");
   }
+  get redeclare(): string | null {
+    return this.attribute("redeclare");
+  }
 
   // --- Computed Properties (query-backed) ---
   get typeSpecifier(): string | null {

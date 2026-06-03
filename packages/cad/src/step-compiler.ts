@@ -394,6 +394,7 @@ export function compileAssemblyToStep(asm: Assembly): string {
 
   for (let i = 0; i < asm.parts.length; i++) {
     const p = asm.parts[i];
+    if (!p) continue;
     const refs = flattenSolid(ctx, p.solid, IDENTITY);
     const uniqueName = `${asm.name}_${p.solid.name}_${i}`;
     emitProductDefinition(ctx, uniqueName, refs, geomCtx, appCtx);

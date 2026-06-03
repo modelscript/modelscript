@@ -72,6 +72,7 @@ export const INDEXER_HOOKS: IndexerHook[] = [
       typeSpecifier: "parent.typeSpecifier",
       causality: "parent.causality",
       variability: "parent.variability",
+      redeclare: "parent.redeclare",
     },
   },
   {

@@ -184,7 +184,7 @@ export function checkModifierNotFound(
           const hasBinding = !!origCst?.childForFieldName?.("modification");
           if (hasBinding) {
             results.push(
-              error(`Redeclaration of constant component ${arg.name} is not allowed.`, {
+              warning(`Redeclaration of constant component ${arg.name} is not allowed.`, {
                 startByte: arg.nameRange ? arg.nameRange[0] : undefined,
                 endByte: arg.nameRange ? arg.nameRange[1] : undefined,
                 field: arg.nameRange ? undefined : "declaration.modification",
@@ -1803,7 +1803,10 @@ export default language({
                 current =
                   db
                     .byName(parts[1])
-                    ?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
+                    ?.find(
+                      (e) =>
+                        e.parentId === null && (e.kind === "Class" || e.kind === "Package" || e.kind === "Function"),
+                    ) ?? null;
                 startIndex = 2;
               } else {
                 // Resolve first part via scope resolution
@@ -4560,6 +4563,7 @@ export default language({
             typeSpecifier: (self as any).parent.typeSpecifier,
             causality: (self as any).parent.causality,
             variability: (self as any).parent.variability,
+            redeclare: (self as any).parent.redeclare,
           },
         }),
         queries: {

@@ -224,9 +224,12 @@ export function evaluateArenaExpression(
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const mod = db.query<any | null>("effectiveModification", resolved.id);
               if (mod && mod.bindingExpression) {
-                const val = db.evaluate(mod.bindingExpression, resolved.parentId);
-                if (val !== null && val !== undefined) {
-                  return val as ArenaValue;
+                const variability = resolved.metadata?.variability;
+                if (variability === "constant" || (!onlyConstants && variability === "parameter")) {
+                  const val = db.evaluate(mod.bindingExpression, resolved.parentId);
+                  if (val !== null && val !== undefined) {
+                    return val as ArenaValue;
+                  }
                 }
               }
             }

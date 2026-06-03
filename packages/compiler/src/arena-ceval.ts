@@ -509,7 +509,11 @@ export function evaluateArenaFunctionCall(
         return env.get(firstOutName) ?? null;
       }
     } else if (outputs.length > 1) {
-      return outputs.map((out) => env.get(out) ?? 0);
+      const res = outputs.map((out) => env.get(out) ?? 0);
+      console.error(
+        `[DEBUG EVAL FUNC] ${dae.interner.resolve(funcNameId)} outputs=${outputs.join(",")} returning array of length ${res.length}`,
+      );
+      return res;
     }
 
     return null;

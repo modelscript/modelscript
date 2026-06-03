@@ -242,11 +242,8 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
   if (!outer) return inner!;
   if (!inner) return outer;
 
-  // If the outer modification is a redeclaration, it completely replaces the inner element.
-  // Any inner modifications are discarded.
-  if (outer.isRedeclaration) {
-    return outer;
-  }
+  // Modelica 7.3.2.1: The modifications of a replaceable element are applied to the redeclared element.
+  // We do not discard inner modifications.
 
   const merged = new Map<string, ModificationArg>();
 
@@ -278,14 +275,11 @@ export function mergeModArgs(outer: ModelicaModArgs | null, inner: ModelicaModAr
 
       // Recursive merge of nested modifications
       if (arg.nestedArgs.length > 0 || existing.nestedArgs.length > 0) {
-        let mergedNestedArgs = arg.nestedArgs;
-        if (!arg.isRedeclaration) {
-          const mergedNested = mergeModArgs(
-            { args: arg.nestedArgs, bindingExpression: null },
-            { args: existing.nestedArgs, bindingExpression: null },
-          );
-          mergedNestedArgs = mergedNested.args;
-        }
+        const mergedNested = mergeModArgs(
+          { args: arg.nestedArgs, bindingExpression: null },
+          { args: existing.nestedArgs, bindingExpression: null },
+        );
+        let mergedNestedArgs = mergedNested.args;
         merged.set(arg.name, {
           ...arg,
           nestedArgs: mergedNestedArgs,

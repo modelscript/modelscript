@@ -323,6 +323,14 @@ export class ArenaQueryFlattener {
 
     const rootEntry = this.db.symbol(rootClassId);
     const className = rootEntry?.name ?? "<unknown>";
+
+    if (rootEntry) {
+      const classPrefixes = (rootEntry.metadata as Record<string, unknown>)?.classPrefixes as string | undefined;
+      if (classPrefixes && classPrefixes.includes("package")) {
+        throw new Error(`Cannot instantiate ${className} due to class specialization package.`);
+      }
+    }
+
     this.rootClassName = className;
     this.functionNameMap.clear();
 
@@ -546,11 +554,16 @@ export class ArenaQueryFlattener {
     if (!classDef) return;
 
     const sections = [...classDef.sections];
-    for (let i = 0; i < sections.length; i++) {
+    for (let i = sections.length - 1; i >= 0; i--) {
       const section = sections[i]!;
       if (section instanceof ModelicaEquationSectionSyntaxNode) {
         this.flattenEquationSection(section, prefix, dae, classId);
-      } else if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+      }
+    }
+    for (let i = 0; i < sections.length; i++) {
+      const section = sections[i]!;
+      if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
+        console.error(`[DEBUG ALG SECTION] classId=${classId} secIdx=${i}`);
         this.flattenAlgorithmSection(section, prefix, dae, classId);
       }
     }
@@ -899,7 +912,6 @@ export class ArenaQueryFlattener {
     dae: ArenaDAEBuilder,
     scopeId: SymbolId,
   ): void {
-    console.error(`flattenAlgorithmSection called! scopeId=${scopeId}`);
     const isInitial = sectionNode.initial;
     const stmtNodes: ModelicaStatementSyntaxNode[] = sectionNode.statements ?? [];
 
@@ -1360,7 +1372,7 @@ export class ArenaQueryFlattener {
       typeEntry = entries?.find((e) => e.kind === "Class" || e.kind === "Package" || e.kind === "Function") ?? null;
     }
 
-    if (!typeEntry) {
+    if (!typeEntry && !typeName.startsWith(".")) {
       const simpleName = typeName.includes(".") ? typeName.split(".").pop()! : typeName;
       const entries = this.db.byName(simpleName);
       typeEntry =
@@ -1384,11 +1396,11 @@ export class ArenaQueryFlattener {
     modStack: ModificationStack,
   ): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
-
+    const isDiamondSkipped = dae.getVarIdxByName(fullName) >= 0 || dae.hasArrayElements(fullName);
     // Deduplicate diamond inheritance: if component already emitted by a previous
     // extends clause, skip it. Modelica semantics state that the lexically first
     // extends clause modifications take precedence, which matches our evaluation order.
-    if (dae.getVarIdxByName(fullName) >= 0 || dae.hasArrayElements(fullName)) {
+    if (isDiamondSkipped) {
       return;
     }
 
@@ -4058,6 +4070,9 @@ export class ArenaQueryFlattener {
         if (funcName) {
           this.collectFunctionDefinition(funcName, dae, scopeId);
           funcName = this.functionNameMap.get(funcName) ?? funcName;
+          if (funcName.startsWith(".")) {
+            funcName = funcName.substring(1);
+          }
 
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {
@@ -4085,6 +4100,9 @@ export class ArenaQueryFlattener {
         if (funcName) {
           this.collectFunctionDefinition(funcName, dae, scopeId);
           funcName = this.functionNameMap.get(funcName) ?? funcName;
+          if (funcName.startsWith(".")) {
+            funcName = funcName.substring(1);
+          }
 
           const argIds: number[] = [];
           if (stmt.functionCallArguments?.arguments) {

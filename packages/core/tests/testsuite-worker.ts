@@ -27,10 +27,10 @@ globalThis.WeakRef = class WeakRefMock {
 
 import { simulateArena } from "@modelscript/compiler/simulator";
 
+import { ArenaDAEPrinter } from "@modelscript/compiler/arena-printer";
 import { ModelicaClassKind } from "@modelscript/modelica/ast";
 import Modelica from "@modelscript/modelica/parser";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
-import { ArenaDAEPrinter } from "@modelscript/symbolics";
 import { StringWriter } from "@modelscript/utils";
 import { execSync } from "node:child_process";
 import path from "node:path";

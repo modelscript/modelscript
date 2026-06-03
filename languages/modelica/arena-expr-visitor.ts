@@ -1299,7 +1299,11 @@ expected type:
     let effectiveFuncName = funcName;
     if (this.onFunctionCall) {
       const qualifiedName = this.onFunctionCall(funcName);
-      if (typeof qualifiedName === "string") effectiveFuncName = qualifiedName;
+      if (typeof qualifiedName === "string") {
+        effectiveFuncName = qualifiedName;
+      } else if (effectiveFuncName.startsWith(".")) {
+        effectiveFuncName = effectiveFuncName.substring(1);
+      }
     }
 
     // If there are named arguments, append them after positional args
@@ -1312,8 +1316,8 @@ expected type:
 
     // Attempt function inlining: if all args are constant and the function body
     // can be fully evaluated, replace the call with the computed result.
-    // const inlined = this.tryInlineFunctionCall(effectiveFuncName, argIds);
-    // if (inlined !== undefined) return inlined;
+    const inlined = this.tryInlineFunctionCall(effectiveFuncName, argIds);
+    if (inlined !== undefined) return inlined;
 
     return this.dae.addCallExpr(effectiveFuncName, argIds);
   }
@@ -1602,22 +1606,21 @@ expected type:
 
   public castToRealExpr(exprId: number): number {
     const kind = this.dae.getExprKind(exprId);
-    // IntLiteral → promote to RealLiteral
     if (kind === ExprKind.IntLiteral) {
       const val = this.dae.getExprData1(exprId);
       return this.dae.addRealLiteral(val);
     }
     if (kind === ExprKind.RealLiteral) return exprId;
 
-    // Call — check if it's already a /*Real*/ cast
     if (kind === ExprKind.Call) {
       const funcNameId = this.dae.getExprData1(exprId);
       const funcName = this.dae.interner.resolve(funcNameId);
-      if (funcName === "/*Real*/") return exprId; // already cast
+      if (funcName === "/*Real*/") return exprId;
     }
 
     const varType = this.inferType(exprId);
     if (varType === VarType.Integer) {
+      console.log(`DEBUG castToRealExpr: kind=${kind} (not IntLiteral?), exprId=${exprId}`);
       return this.dae.addCallExpr("/*Real*/", [exprId]);
     }
 
@@ -1748,9 +1751,14 @@ expected type:
     }
 
     // If the function returns multiple outputs, evaluateArenaFunctionCall returns an array of them.
-    // In Modelica, when a multi-output function is called in an expression, only the first result is returned.
-    const finalVal = outputVars.length > 1 && Array.isArray(outVal) ? outVal[0] : outVal;
+    if (outputVars.length > 1 && Array.isArray(outVal)) {
+      const outIds = outVal.map((v) =>
+        typeof v === "number" ? this.dae.addRealLiteral(v) : this.dae.addStringLiteral(String(v)),
+      );
+      return this.dae.addTupleExpr(outIds);
+    }
 
+    const finalVal = Array.isArray(outVal) ? outVal[0] : outVal;
     const resultExprId = this.addArenaValueAsExpr(finalVal as ArenaValue, outType, false);
     if (resultExprId === -1) return undefined;
 

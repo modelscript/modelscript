@@ -56,17 +56,6 @@ const LOW_PREC_OPS = new Set([
   BinOp.Neq,
 ]);
 
-const COMMUTATIVE_OPS = new Set([
-  BinOp.Add,
-  BinOp.Mul,
-  BinOp.ElemAdd,
-  BinOp.ElemMul,
-  BinOp.And,
-  BinOp.Or,
-  BinOp.Eq,
-  BinOp.Neq,
-]);
-
 const ASSOCIATIVE_OPS = new Set([BinOp.Add, BinOp.Mul, BinOp.ElemAdd, BinOp.ElemMul, BinOp.And, BinOp.Or]);
 
 export class ArenaDAEPrinter {
@@ -300,21 +289,18 @@ export class ArenaDAEPrinter {
             isInt: a.getExprKind(a.getExprRight(id)) === ExprKind.IntLiteral,
           });
 
-          // Sort: virtual negated literals by value, real exprs by rank
-          const opRank = (o: VirtualOperand): number =>
+          // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
+          // We use a stable sort that only pulls literal nodes to the front.
+          const getRank = (o: VirtualOperand): number =>
             o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
-          const opStr = (o: VirtualOperand): string =>
-            o.virtual !== undefined ? String(o.virtual) : this.getExprStringFallback(o.exprId as number);
-          operands.sort((oa, ob) => {
-            const ra = opRank(oa),
-              rb = opRank(ob);
-            if (ra !== rb) return ra - rb;
-            const sa = opStr(oa),
-              sb = opStr(ob);
-            if (sa < sb) return -1;
-            if (sa > sb) return 1;
-            return 0;
-          });
+          const literals: VirtualOperand[] = [];
+          const nonLiterals: VirtualOperand[] = [];
+          for (const o of operands) {
+            if (getRank(o) === 10) literals.push(o);
+            else nonLiterals.push(o);
+          }
+          operands.length = 0;
+          operands.push(...literals, ...nonLiterals);
 
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) this.out.write(" + ");
@@ -362,8 +348,18 @@ export class ArenaDAEPrinter {
             collectMul(lhsId);
             operands.push({ virtual: reciprocal });
 
-            // DO NOT sort operands for OMC parity.
-            // operands.sort((oa, ob) => { ... });
+            // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
+            // We use a stable sort that only pulls literal nodes to the front.
+            const getRank = (o: VirtualMulOp): number =>
+              o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
+            const literals: VirtualMulOp[] = [];
+            const nonLiterals: VirtualMulOp[] = [];
+            for (const o of operands) {
+              if (getRank(o) === 10) literals.push(o);
+              else nonLiterals.push(o);
+            }
+            operands.length = 0;
+            operands.push(...literals, ...nonLiterals);
 
             for (let i = 0; i < operands.length; i++) {
               if (i > 0) this.out.write(" * ");
@@ -418,10 +414,34 @@ export class ArenaDAEPrinter {
             }
           }
 
-          if (!isStringConcat) {
-            // DO NOT Sort operands by rank for OMC parity. OMC preserves original source order in expressions.
-          }
+          if (!isStringConcat && (op === BinOp.Add || op === BinOp.Mul)) {
+            // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
+            // We use a stable sort that only pulls literal nodes to the front.
+            const getRank = (nodeId: number): number => {
+              if (nodeId < 0) return 99;
+              const kind = a.getExprKind(nodeId);
+              if (
+                kind === ExprKind.IntLiteral ||
+                kind === ExprKind.RealLiteral ||
+                kind === ExprKind.BoolLiteral ||
+                kind === ExprKind.StringLiteral ||
+                kind === ExprKind.EnumLiteral
+              ) {
+                return 10;
+              }
+              return 99;
+            };
 
+            // Stable sort
+            const literals: number[] = [];
+            const nonLiterals: number[] = [];
+            for (const childId of operands) {
+              if (getRank(childId) === 10) literals.push(childId);
+              else nonLiterals.push(childId);
+            }
+            operands.length = 0;
+            operands.push(...literals, ...nonLiterals);
+          }
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) {
               this.out.write(" " + (binOpStr[op] ?? "+") + " ");
@@ -440,10 +460,25 @@ export class ArenaDAEPrinter {
 
         const lhs = a.getExprLeft(id);
         const rhs = a.getExprRight(id);
-        const finalLhs = lhs;
-        const finalRhs = rhs;
-        if (COMMUTATIVE_OPS.has(op)) {
-          // DO NOT swap for OMC parity. OMC preserves original source order.
+        let finalLhs = lhs;
+        let finalRhs = rhs;
+        if (op === BinOp.Mul) {
+          const lKind = a.getExprKind(lhs);
+          const rKind = a.getExprKind(rhs);
+          const lIsLit =
+            lKind === ExprKind.IntLiteral ||
+            lKind === ExprKind.RealLiteral ||
+            lKind === ExprKind.BoolLiteral ||
+            lKind === ExprKind.StringLiteral;
+          const rIsLit =
+            rKind === ExprKind.IntLiteral ||
+            rKind === ExprKind.RealLiteral ||
+            rKind === ExprKind.BoolLiteral ||
+            rKind === ExprKind.StringLiteral;
+          if (rIsLit && !lIsLit) {
+            finalLhs = rhs;
+            finalRhs = lhs;
+          }
         }
 
         if (needsParens(finalLhs)) {
@@ -1005,6 +1040,31 @@ export class ArenaDAEPrinter {
 
       case StmtKind.ComplexAssignment: {
         const tcount = a.getStmtData1(idx);
+
+        let validTargetCount = 0;
+        let singleTargetId = -1;
+        let singleTargetIndex = -1;
+
+        let nextTarget = idx + 1;
+        for (let i = 0; i < tcount; i++) {
+          const targetId = a.getStmtData1(nextTarget);
+          if (targetId >= 0) {
+            validTargetCount++;
+            singleTargetId = targetId;
+            singleTargetIndex = i + 1;
+          }
+          nextTarget++;
+        }
+
+        if (validTargetCount === 1) {
+          this.out.write(this.indent());
+          this.printExpr(singleTargetId);
+          this.out.write(" := ");
+          this.printExpr(a.getStmtLeft(idx));
+          this.out.write(`[${singleTargetIndex}];\n`);
+          return nextTarget;
+        }
+
         this.out.write(this.indent() + "(");
         let next = idx + 1;
         for (let i = 0; i < tcount; i++) {

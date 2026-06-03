@@ -402,7 +402,6 @@ export function generateAstClasses(specs: ClassSpec[], langName: string): string
   lines.push(`// Language: ${langName}`);
   lines.push(`// =============================================================================`);
   lines.push(``);
-  lines.push(`// eslint-disable-next-line @typescript-eslint/no-unused-vars`);
   lines.push(`import type { QueryDB, SymbolEntry, SymbolId, SpecializationArgs } from "@modelscript/compiler";`);
   lines.push(`import { SemanticNode, GenericNode, type SemanticVisitor } from "@modelscript/compiler";`);
   lines.push(``);
