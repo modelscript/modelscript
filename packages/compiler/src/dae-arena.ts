@@ -435,6 +435,9 @@ export class ArenaDAEBuilder {
   private varExpressions = new Map<number, unknown>();
   /** Start attribute expression per variable (for initialization). */
   private varStartAttrs = new Map<number, unknown>();
+  /** Extracted geometric annotations. */
+  readonly annotations = new Map<string, unknown>();
+
   /** Whether each variable has `fixed=true` (for consistent initialization). */
   private varFixedFlags = new Set<number>();
 

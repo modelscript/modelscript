@@ -998,6 +998,10 @@ export class ModelicaClassPrefixesSyntaxNode extends ModelicaSyntaxNode implemen
       this.classKind = ModelicaClassKind.OPTIMIZATION;
     } else if (concreteSyntaxNode.childForFieldName("shape")) {
       this.classKind = ModelicaClassKind.SHAPE;
+    } else if (concreteSyntaxNode.childForFieldName("field")) {
+      this.classKind = ModelicaClassKind.FIELD;
+    } else if (concreteSyntaxNode.childForFieldName("process")) {
+      this.classKind = ModelicaClassKind.PROCESS;
     } else if (concreteSyntaxNode.childForFieldName("study")) {
       this.classKind = ModelicaClassKind.STUDY;
     } else {

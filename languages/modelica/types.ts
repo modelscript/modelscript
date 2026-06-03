@@ -38,6 +38,8 @@ export enum ModelicaClassKind {
   PACKAGE = "package",
   RECORD = "record",
   SHAPE = "shape",
+  FIELD = "field",
+  PROCESS = "process",
   STUDY = "study",
   TYPE = "type",
 }

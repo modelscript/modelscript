@@ -202,6 +202,7 @@ import {
   ModelicaWhenStatementSyntaxNode,
   ModelicaWhileStatementSyntaxNode,
 } from "./ast.js";
+import { ModelicaClassKind } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Compiler Options
@@ -556,6 +557,10 @@ export class ArenaQueryFlattener {
 
     const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
     if (!classDef) return;
+
+    if (classDef.classPrefixes?.classKind === ModelicaClassKind.FIELD) {
+      return; // Boundary Node: do not flatten equations for 3D fields
+    }
 
     const sections = [...classDef.sections];
     for (let i = sections.length - 1; i >= 0; i--) {
