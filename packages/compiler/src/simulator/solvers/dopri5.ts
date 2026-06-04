@@ -75,6 +75,8 @@ export interface Dopri5Result {
  * Takes the current time and state vector, returns derivatives.
  */
 export type RhsFunction = (t: number, y: number[]) => number[];
+export type RhsFunctionAsync = (t: number, y: number[]) => Promise<number[]>;
+export type EventFunctionAsync = (t: number, y: number[]) => Promise<number>;
 
 /**
  * Event callback: called when an event is detected.
@@ -274,7 +276,7 @@ export function dopri5(
             const thetaEvent = (tEvent - t) / h;
             const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
 
-            // ── Output interpolation BEFORE the event! ──
+            // ── Output interpolation BEFORE the event /* eslint-disable-line @typescript-eslint/no-non-null-assertion */ ! ──
             if (equidistant) {
               while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
                 const tOut = outputTimes[outputIdx] ?? tEvent;
@@ -568,5 +570,333 @@ function bisectEvent(
     }
   }
 
+  return (lo + hi) / 2;
+}
+
+export async function dopri5Async(
+  f: RhsFunctionAsync,
+  t0: number,
+  y0: number[],
+  tEnd: number,
+  outputTimes: number[],
+  options: Dopri5Options = {},
+  eventFunctions?: EventFunctionAsync[],
+  eventCallback?: EventCallback,
+  eventDirections?: number[],
+): Promise<Dopri5Result> {
+  const atol = options.atol ?? 1e-6;
+  const rtol = options.rtol ?? 1e-6;
+  const maxStep = options.maxStep ?? Math.abs(tEnd - t0);
+  const maxSteps = options.maxSteps ?? 100000;
+  const equidistant = options.equidistantOutput !== false;
+  const n = y0.length;
+
+  const result: Dopri5Result = { times: [], states: [], fEvals: 0, acceptedSteps: 0, rejectedSteps: 0 };
+  let outputIdx = 0;
+  if (equidistant) {
+    while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? t0) <= t0) {
+      result.times.push(t0);
+      result.states.push([...y0]);
+      outputIdx++;
+    }
+  } else {
+    result.times.push(t0);
+    result.states.push([...y0]);
+  }
+
+  let h = options.initialStep ?? (await estimateInitialStepAsync(f, t0, y0, atol, rtol, maxStep));
+  h = Math.min(h, maxStep);
+
+  let t = t0;
+  let y = [...y0];
+  let k1 = await f(t, y);
+  result.fEvals++;
+
+  const k: number[][] = Array.from({ length: 7 }, () => new Array(n).fill(0));
+  k[0] = k1;
+
+  const computeEventValuesWithProbeAsync = async (currentTime: number, currentState: number[]) => {
+    if (!eventFunctions) return [];
+    const vals = [];
+    for (let gIdx = 0; gIdx < eventFunctions.length; gIdx++) {
+      const g = eventFunctions[gIdx] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+      const gVal = await g(currentTime, currentState);
+      if (Math.abs(gVal) < 1e-10) {
+        const dydt = await f(currentTime, currentState);
+        const probe = currentState.map((yi, si) => yi + 1e-8 * (dydt[si] ?? 0));
+        const gProbe = await g(currentTime + 1e-8, probe);
+        if (Math.abs(gProbe) > 1e-14) {
+          vals.push(gProbe > 0 ? 1e-10 : -1e-10);
+        } else {
+          const reqDir = eventDirections?.[gIdx] ?? 0;
+          if (reqDir < 0) vals.push(1e-10);
+          else if (reqDir > 0) vals.push(-1e-10);
+          else vals.push(1e-10);
+        }
+      } else {
+        vals.push(gVal);
+      }
+    }
+    return vals;
+  };
+
+  let prevEventValues: number[] | null = null;
+  if (eventFunctions && eventFunctions.length > 0) {
+    prevEventValues = await computeEventValuesWithProbeAsync(t, y);
+  }
+
+  let totalSteps = 0;
+  let lastEventTime = -Infinity;
+  let consecutiveEvents = 0;
+
+  while (t < tEnd && totalSteps < maxSteps) {
+    totalSteps++;
+    if (t + h > tEnd) h = tEnd - t;
+    if (h < 1e-15) break;
+
+    for (let s = 1; s < 7; s++) {
+      const cs = C[s] ?? 0;
+      const as = A[s];
+      if (!as) continue;
+
+      const yStage = new Array(n);
+      for (let i = 0; i < n; i++) {
+        let sum = y[i] ?? 0;
+        for (let j = 0; j < as.length; j++) {
+          sum += h * (as[j] ?? 0) * ((k[j] ?? [])[i] ?? 0);
+        }
+        yStage[i] = sum;
+      }
+      k[s] = await f(t + cs * h, yStage);
+      result.fEvals++;
+    }
+
+    const yNew = new Array(n);
+    let err = 0;
+    for (let i = 0; i < n; i++) {
+      let y5 = y[i] ?? 0;
+      let errI = 0;
+      for (let s = 0; s < 7; s++) {
+        const ks = (k[s] ?? [])[i] ?? 0;
+        y5 += h * (B5[s] ?? 0) * ks;
+        errI += h * (E[s] ?? 0) * ks;
+      }
+      yNew[i] = y5;
+      const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(y5));
+      err = Math.max(err, Math.abs(errI) / sc);
+    }
+
+    if (err <= 1.0) {
+      result.acceptedSteps++;
+      const tNew = t + h;
+      let eventOccurred = false;
+
+      if (eventFunctions && prevEventValues && eventCallback) {
+        const newEventValues = [];
+        for (const g of eventFunctions) newEventValues.push(await g(tNew, yNew));
+
+        for (let ei = 0; ei < eventFunctions.length; ei++) {
+          const prev = prevEventValues[ei] ?? 0;
+          const curr = newEventValues[ei] ?? 0;
+          const reqDir = eventDirections?.[ei] ?? 0;
+          let signChange = false;
+          if (prev * curr < 0) {
+            if (reqDir === 0) signChange = true;
+            else if (reqDir < 0 && prev > 0 && curr < 0) signChange = true;
+            else if (reqDir > 0 && prev < 0 && curr > 0) signChange = true;
+          }
+
+          if (signChange) {
+            eventOccurred = true;
+            const eventFn = eventFunctions[ei];
+            if (!eventFn) continue;
+
+            const tEvent = await bisectEventAsync(eventFn, t, tNew, y, yNew, k, h, n, prev);
+            const thetaEvent = (tEvent - t) / h;
+            const yEvent = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, thetaEvent, n);
+
+            if (equidistant) {
+              while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) < tEvent - 1e-14) {
+                const tOut = outputTimes[outputIdx] ?? tEvent;
+                if (Math.abs(tOut - t) < 1e-14) {
+                  result.times.push(t);
+                  result.states.push([...y]);
+                } else {
+                  const theta = (tOut - t) / h;
+                  const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+                  result.times.push(tOut);
+                  result.states.push(yInterp);
+                }
+                outputIdx++;
+              }
+              if (outputIdx < outputTimes.length && Math.abs((outputTimes[outputIdx] ?? tEnd) - tEvent) < 1e-14) {
+                outputIdx++;
+              }
+            }
+
+            result.times.push(tEvent);
+            result.states.push([...yEvent]);
+
+            const dir = curr < 0 ? -1 : 1;
+            const yAfter = eventCallback(tEvent, yEvent, ei, dir);
+
+            if (Math.abs(tEvent - lastEventTime) < 1e-6) consecutiveEvents++;
+            else {
+              consecutiveEvents = 1;
+              lastEventTime = tEvent;
+            }
+
+            if (consecutiveEvents >= 10) {
+              result.times.push(tEvent);
+              result.states.push([...yAfter]);
+              if (equidistant) {
+                while (outputIdx < outputTimes.length) {
+                  const tOut = outputTimes[outputIdx] ?? tEnd;
+                  if (tOut > tEvent + 1e-14) {
+                    result.times.push(tOut);
+                    result.states.push([...yAfter]);
+                  }
+                  outputIdx++;
+                }
+              } else {
+                if (tEnd > tEvent + 1e-14) {
+                  result.times.push(tEnd);
+                  result.states.push([...yAfter]);
+                }
+              }
+              return result;
+            }
+
+            result.times.push(tEvent);
+            result.states.push([...yAfter]);
+
+            t = tEvent;
+            y = yAfter;
+            k1 = await f(t, y);
+            result.fEvals++;
+            k[0] = k1;
+
+            prevEventValues = await computeEventValuesWithProbeAsync(t, y);
+            const t0Out = outputTimes[0] ?? 0;
+            const t1Out = outputTimes[1] ?? 0;
+            h = Math.min(h, outputTimes.length > 1 ? t1Out - t0Out : h * 0.1);
+            break;
+          }
+        }
+      }
+
+      if (!eventOccurred && eventFunctions && prevEventValues) {
+        prevEventValues = [];
+        for (const g of eventFunctions) prevEventValues.push(await g(tNew, yNew));
+      }
+
+      if (!eventOccurred) {
+        if (equidistant) {
+          while (outputIdx < outputTimes.length && (outputTimes[outputIdx] ?? tEnd) <= tNew + 1e-14) {
+            const tOut = outputTimes[outputIdx] ?? tNew;
+            if (tOut <= t + 1e-14) {
+              result.times.push(t);
+              result.states.push([...y]);
+            } else if (Math.abs(tOut - tNew) < 1e-14) {
+              result.times.push(tNew);
+              result.states.push([...yNew]);
+            } else {
+              const theta = (tOut - t) / h;
+              const yInterp = hermiteInterpolation(y, yNew, k[0] ?? [], k[6] ?? [], h, theta, n);
+              result.times.push(tOut);
+              result.states.push(yInterp);
+            }
+            outputIdx++;
+          }
+        } else {
+          result.times.push(tNew);
+          result.states.push([...yNew]);
+        }
+
+        t = tNew;
+        y = yNew;
+        k1 = k[6] ?? k1;
+        k[0] = k1;
+      }
+
+      const factor = err > 0 ? Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(err, -0.2))) : 5.0;
+      h = Math.min(h * factor, maxStep);
+    } else {
+      result.rejectedSteps++;
+      const factor = Math.max(0.2, 0.9 * Math.pow(err, -0.2));
+      h *= factor;
+    }
+  }
+
+  const shouldPushFinal = equidistant
+    ? result.times.length === 0 || (result.times[result.times.length - 1] ?? -1) < tEnd - 1e-14
+    : result.times.length === 0 || Math.abs((result.times[result.times.length - 1] ?? -1) - tEnd) > 1e-14;
+
+  if (shouldPushFinal) {
+    result.times.push(t);
+    result.states.push([...y]);
+  }
+
+  return result;
+}
+
+async function estimateInitialStepAsync(
+  f: RhsFunctionAsync,
+  t0: number,
+  y0: number[],
+  atol: number,
+  rtol: number,
+  maxStep: number,
+): Promise<number> {
+  const n = y0.length;
+  const f0 = await f(t0, y0);
+  let d0 = 0,
+    d1 = 0;
+  for (let i = 0; i < n; i++) {
+    const sc = atol + rtol * Math.abs(y0[i] ?? 0);
+    d0 = Math.max(d0, Math.abs(y0[i] ?? 0) / sc);
+    d1 = Math.max(d1, Math.abs(f0[i] ?? 0) / sc);
+  }
+  let h0 = d0 < 1e-5 || d1 < 1e-5 ? 1e-6 : 0.01 * (d0 / d1);
+  h0 = Math.min(h0, maxStep);
+
+  const y1 = new Array(n);
+  for (let i = 0; i < n; i++) y1[i] = (y0[i] ?? 0) + h0 * (f0[i] ?? 0);
+  const f1 = await f(t0 + h0, y1);
+
+  let d2 = 0;
+  for (let i = 0; i < n; i++) {
+    const sc = atol + rtol * Math.abs(y0[i] ?? 0);
+    d2 = Math.max(d2, Math.abs(((f1[i] ?? 0) - (f0[i] ?? 0)) / h0) / sc);
+  }
+  const h1 = Math.max(d1, d2) <= 1e-15 ? Math.max(1e-6, h0 * 1e-3) : Math.pow(0.01 / Math.max(d1, d2), 0.2);
+  return Math.min(100 * h0, Math.min(h1, maxStep));
+}
+
+async function bisectEventAsync(
+  eventFn: EventFunctionAsync,
+  tLo: number,
+  tHi: number,
+  yLo: number[],
+  yHi: number[],
+  k: number[][],
+  h: number,
+  n: number,
+  gLo: number,
+): Promise<number> {
+  let lo = tLo,
+    hi = tHi;
+  for (let iter = 0; iter < 50; iter++) {
+    const tMid = (lo + hi) / 2;
+    if (hi - lo < 1e-12) break;
+    const theta = (tMid - tLo) / h;
+    const yMid = hermiteInterpolation(yLo, yHi, k[0] ?? [], k[6] ?? [], h, theta, n);
+    const gMid = await eventFn(tMid, yMid);
+    if (gLo * gMid <= 0) hi = tMid;
+    else {
+      lo = tMid;
+      gLo = gMid;
+    }
+  }
   return (lo + hi) / 2;
 }

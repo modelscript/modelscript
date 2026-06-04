@@ -61,7 +61,7 @@
     },
     "./flattener-query": {
       "types": "./dist/flattener-query.d.ts",
-      "default": "./dist/flattener-query.js"
+      "default": "./flattener-query.ts"
     },
     "./shape-flattener": {
       "types": "./dist/shape-flattener.d.ts",
@@ -85,7 +85,7 @@
     },
     "./ast": {
       "types": "./dist/ast.d.ts",
-      "default": "./dist/ast.js"
+      "default": "./ast.ts"
     },
     "./ast_classes": {
       "types": "./dist/src-gen/ast.d.ts",

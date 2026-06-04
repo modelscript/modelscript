@@ -131,10 +131,10 @@ export class Context extends BaseContext {
 
   /**
    * Create a Context optimized for batch (one-shot) compilation.
-   * Disables Salsa memoization to minimize memory usage.
+   * Uses a reasonable memo limit to prevent O(N^2) query re-evaluation while bounding memory.
    */
   static createBatch(fs: FileSystem): Context {
-    return new Context(fs, undefined, 0);
+    return new Context(fs, undefined, 500_000);
   }
 
   /**

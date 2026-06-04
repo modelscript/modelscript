@@ -38,7 +38,7 @@ export interface ArenaSimulateOptions {
   /** Number of output intervals (used if `step` is not given). */
   numberOfIntervals?: number;
   /** ODE solver selection. */
-  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu";
   /** Absolute tolerance for adaptive solvers (default: 1e-6). */
   atol?: number;
   /** Relative tolerance for adaptive solvers (default: 1e-6). */
@@ -157,7 +157,7 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
   sim.initializeFmuSubsystems(startTime, stopTime, step);
 
   const rawResult = sim.simulate(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-    solver: options?.solver ?? "rk4",
+    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
   });
@@ -258,8 +258,88 @@ export async function simulateArenaAsync(
 
   sim.initializeFmuSubsystems(startTime, stopTime, step);
 
+  if (options?.solver === "webgpu") {
+    // ── Phase 5: WebGPU Execution with Fallback ──
+    const { serializeArenaForGPU } = await import("../../arena-gpu-buffers.js");
+    const { WebGPUSimulationRunner } = await import("./webgpu-simulation-runner.js");
+
+    // Create the BLT result shape expected by serializeArenaForGPU
+    const bltResult = {
+      blocks: sim.blocks,
+      sortedEquations: sim.sortedEquations,
+    };
+
+    const buffers = serializeArenaForGPU(arena, bltResult, sim.stateVars);
+
+    // Copy the initialized values into the GPU state buffer
+    for (let i = 0; i < arena.varCount; i++) {
+      const nameId = arena.getVarNameId(i);
+      buffers.stateBuffer[i] = valuesByStringId[nameId] ?? 0;
+    }
+
+    const runner = new WebGPUSimulationRunner(arena, buffers);
+    const initialized = await runner.initialize();
+
+    if (initialized) {
+      console.log("WebGPU simulation backend initialized successfully.");
+      // If tolerances are provided, use the adaptive DOPRI5 orchestrator
+      const isAdaptive = options?.atol !== undefined || options?.rtol !== undefined;
+
+      let t: number[];
+      let y: number[][];
+
+      if (isAdaptive) {
+        const outputTimes: number[] = [];
+        for (let s = 0; s <= steps; s++) {
+          outputTimes.push(startTime + s * step);
+        }
+
+        const stateVarsArr = Array.from(sim.stateVars);
+        const y0 = new Float32Array(stateVarsArr.length);
+        for (let i = 0; i < stateVarsArr.length; i++) {
+          const varIdx = stateVarsArr[i] ?? -1;
+          y0[i] = varIdx !== -1 ? (buffers.stateBuffer[varIdx] ?? 0) : 0;
+        }
+
+        const result = await runner.runSimulationAdaptive(startTime, y0, stopTime, outputTimes, {
+          atol: options?.atol,
+          rtol: options?.rtol,
+        });
+
+        t = result.t;
+        y = new Array(result.t.length);
+        for (let s = 0; s < result.t.length; s++) {
+          const row = new Array(stateNames.length);
+          for (let j = 0; j < stateNames.length; j++) {
+            row[j] = result.y[s]?.[j] ?? 0;
+          }
+          y[s] = row;
+        }
+      } else {
+        const gpuResultBuffer = await runner.runSimulation(steps, step, startTime);
+        t = new Array(steps + 1);
+        y = new Array(steps + 1);
+
+        for (let s = 0; s <= steps; s++) {
+          t[s] = startTime + s * step;
+          const row = new Array(stateNames.length);
+          for (let j = 0; j < stateNames.length; j++) {
+            const varIdx = Array.from(sim.stateVars)[j] ?? -1;
+            row[j] = varIdx !== -1 ? (gpuResultBuffer[s * arena.varCount + varIdx] ?? 0) : 0;
+          }
+          y[s] = row;
+        }
+      }
+
+      sim.terminateFmuSubsystems();
+      return { t, y, states: stateNames };
+    } else {
+      console.warn("WebGPU initialization failed. Falling back to CPU simulation.");
+    }
+  }
+
   const rawResult = await sim.simulateAsync(steps, step, valuesByStringId, stateNameIds, derivNameIds, {
-    solver: options?.solver ?? "rk4",
+    solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
     ...(options?.signal !== undefined && { signal: options.signal }),
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),

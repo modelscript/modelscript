@@ -18,6 +18,7 @@ export interface IWorkspaceIndex {
  */
 export class UnifiedWorkspace {
   private indices = new Map<string, IWorkspaceIndex>();
+  private engines = new Map<string, unknown>(); // QueryEngine
   public adapterRegistry: AdapterRegistry;
 
   /** OWL2 ontology store — incrementally maintained from all source language projections. */
@@ -33,6 +34,30 @@ export class UnifiedWorkspace {
   constructor() {
     this.adapterRegistry = new AdapterRegistry();
     this.owl2Store = new OWL2OntologyStore(this.adapterRegistry);
+
+    // Wire up CST providers for cross-language adapters automatically
+    this.adapterRegistry.cstNodeProvider = (id) => {
+      const entry = this.toUnifiedPartial().symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const language = (entry as unknown).language || "modelica";
+      const engine = this.engines.get(language);
+      return engine?.toQueryDB().cstNode(id) ?? null;
+    };
+
+    this.adapterRegistry.cstTextProvider = (startByte, endByte, entry) => {
+      if (!entry.resourceId) return null;
+      const language = (entry as unknown).language || "modelica";
+      const engine = this.engines.get(language);
+      return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
+    };
+
+    this.adapterRegistry.queryProvider = (queryName, id) => {
+      const entry = this.toUnifiedPartial().symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const language = (entry as unknown).language || "modelica";
+      const engine = this.engines.get(language);
+      return engine?.query(queryName, id) ?? null;
+    };
   }
 
   /**
@@ -295,6 +320,13 @@ export class UnifiedWorkspace {
         }
       }
     }
+  }
+
+  /**
+   * Registers a QueryEngine for a language, enabling CST access for cross-language projections.
+   */
+  registerQueryEngine(language: string, engine: unknown): void {
+    this.engines.set(language, engine);
   }
 
   /**

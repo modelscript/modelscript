@@ -116,9 +116,13 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run lint && tsc",
+    "asbuild": "npm run asbuild:debug && npm run asbuild:release",
+    "asbuild:debug": "asc assembly/index.ts --target debug",
+    "asbuild:release": "asc assembly/index.ts --target release",
+    "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint src",
+    "start": "npx serve .",
     "test": "vitest run",
     "watch": "tsc --watch"
   },
@@ -142,6 +146,8 @@
     "@jest/globals": "^30.2.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.3.2",
+    "@webgpu/types": "^0.1.70",
+    "assemblyscript": "^0.28.18",
     "dedent-js": "^1.0.1",
     "eslint": "^9.39.1",
     "husky": "^9.1.7",

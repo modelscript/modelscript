@@ -67,9 +67,49 @@ export function checkModifierNotFound(
   if (!typeClassId || !typeEntry || !mod || !mod.args || mod.args.length === 0) return null;
 
   const declaredNames = new Set<string>();
-  const isBuiltin = typeEntry.metadata?.isPredefined;
-  if (isBuiltin || typeEntry.metadata?.classPrefixes === "enumeration") {
-    for (const k of Object.keys(typeEntry.metadata || {})) {
+
+  let currentEntry: SymbolEntry | null = typeEntry;
+  let isBuiltin = currentEntry?.metadata?.isPredefined;
+  let isEnum = currentEntry?.metadata?.classPrefixes === "enumeration";
+  let visited = new Set<SymbolId>();
+
+  while (currentEntry && !isBuiltin && !isEnum && !visited.has(currentEntry.id)) {
+    visited.add(currentEntry.id);
+    let nextId: SymbolId | null = null;
+
+    // If it's a component, get its class instance
+    if (currentEntry.kind === "Component") {
+      nextId = db.query<SymbolId | null>("classInstance", currentEntry.id);
+    } else if (currentEntry.kind === "Class") {
+      // If it's a ShortClassSpecifier, resolve its type
+      const cst = db.cstNode(currentEntry.id) as any;
+      const spec = cst?.childForFieldName?.("classSpecifier");
+      if (spec?.type === "ShortClassSpecifier") {
+        const typeName = spec.childForFieldName("typeSpecifier")?.text;
+        if (typeName) {
+          const resolve = db.query<any>("resolveName", currentEntry.parentId || currentEntry.id);
+          let baseEntry: SymbolEntry | null = null;
+          if (resolve) baseEntry = resolve(typeName, true) as SymbolEntry | null;
+          if (!baseEntry && currentEntry.parentId) {
+            const resSimple = db.query<any>("resolveSimpleName", currentEntry.parentId);
+            if (resSimple) baseEntry = resSimple(typeName.split(".")[0]) as SymbolEntry | null;
+          }
+          if (!baseEntry) baseEntry = db.byName(typeName.split(".").pop()!)[0] ?? null;
+          if (baseEntry) nextId = baseEntry.id;
+        }
+      }
+    }
+
+    if (!nextId || nextId === currentEntry.id) break;
+    currentEntry = db.symbol(nextId) as SymbolEntry | null;
+    if (currentEntry) {
+      isBuiltin = currentEntry.metadata?.isPredefined;
+      isEnum = currentEntry.metadata?.classPrefixes === "enumeration";
+    }
+  }
+
+  if (isBuiltin || isEnum) {
+    for (const k of Object.keys(currentEntry?.metadata || {})) {
       if (
         k !== "classKind" &&
         k !== "isPredefined" &&
@@ -81,34 +121,44 @@ export function checkModifierNotFound(
         declaredNames.add(k);
       }
     }
-    if (typeEntry.metadata?.classPrefixes === "enumeration") {
+    if (isEnum) {
       declaredNames.add("min");
       declaredNames.add("max");
       declaredNames.add("start");
       declaredNames.add("fixed");
     }
-    if (typeEntry.name === "StateSelect") declaredNames.add("default");
-  } else {
-    const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
-    for (const eid of elements) {
-      const child = db.symbol(eid);
-      if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
-    }
+    if (currentEntry?.name === "StateSelect") declaredNames.add("default");
+  }
+
+  const elements = db.query<SymbolId[]>("instantiate", typeClassId) || [];
+  for (const eid of elements) {
+    const child = db.symbol(eid);
+    if (child && child.name && child.kind !== "Reference") declaredNames.add(child.name);
   }
 
   const results = [];
   for (const arg of mod.args) {
-    if (arg.name && arg.name !== "annotation" && !declaredNames.has(arg.name)) {
+    if (
+      arg.name &&
+      arg.name !== "annotation" &&
+      !arg.name.startsWith("break_connect:") &&
+      !declaredNames.has(arg.name)
+    ) {
       let msg: string;
-      if (
-        arg.value &&
-        typeof arg.value === "object" &&
-        arg.value.kind === "break" &&
-        !arg.name.startsWith("break_connect:")
-      ) {
-        msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+      if (self.kind === "Class") {
+        if (overrideClassName === self.name) {
+          let modText = arg.name;
+          if (arg.value && typeof arg.value.text === "string") {
+            modText += " = " + arg.value.text;
+          } else if (arg.bindingExpression) {
+            modText += " = " + arg.bindingExpression;
+          }
+          msg = `In modifier (${modText}), class or component ${arg.name} not found in <${self.name}>.`;
+        } else {
+          msg = `Modified element ${arg.name} not found in class ${typeEntry.name}.`;
+        }
       } else if (!arg.isRedeclaration && overrideClassName) {
-        // value modifier on a short class
+        // value modifier on a short class or nested
         let modText = arg.name;
         if (arg.value && typeof arg.value.text === "string") {
           modText += " = " + arg.value.text;
@@ -240,8 +290,13 @@ export function checkModifierNotFound(
             }
 
             if (mismatch) {
-              // OpenModelica does not currently enforce this strictly and successfully outputs DAE.
-              // We omit the diagnostic to maintain canonical output parity.
+              results.push(
+                error(`Function arguments must be identical, including their names, in functions of the same type.`, {
+                  startByte: arg.nameRange ? arg.nameRange[0] : undefined,
+                  endByte: arg.nameRange ? arg.nameRange[1] : undefined,
+                  field: arg.nameRange ? undefined : "declaration.modification",
+                }),
+              );
             }
           }
         }
@@ -411,7 +466,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       }
       return;
     } else if (n.type === "InheritanceModification") {
-      const connectEq = n.childForFieldName("connectClause");
+      const connectEq = n.childForFieldName("connectEquation");
       if (connectEq) {
         const source = connectEq.childForFieldName("componentReference1");
         const target = connectEq.childForFieldName("componentReference2");
@@ -610,7 +665,11 @@ export interface ScopeData {
   id: SymbolId;
 }
 
+let __g_scope_calls = 0;
+let __g_scope_time = 0;
 export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
+  const _t0 = performance.now();
+  __g_scope_calls++;
   const baseId = db.baseOf(self.id);
   const sourceId = baseId ?? self.id;
   const children = db.childrenOf(sourceId);
@@ -653,7 +712,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
 
   const isEncapsulated = !!(self.metadata as Record<string, unknown>)?.encapsulated;
 
-  return {
+  const ret = {
     directByName,
     qualifiedImports,
     unqualifiedImportPkgs,
@@ -662,6 +721,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
     parentId: self.parentId,
     id: self.id,
   };
+  return ret;
 }
 
 export function mergeInto(target: Record<string, SymbolId>, source: Record<string, SymbolId>) {
@@ -792,14 +852,6 @@ function resolveQualified(db: QueryDB, path: string): SymbolEntry | null {
     rootEntries.find((e) => ["Class", "Package", "Function", "Definition", "Enumeration"].includes(e.kind)) ??
     rootEntries[0] ??
     null;
-  if (parts[0] === "BatteryPackSysML" || parts[0] === "BatteryArchitecture_10") {
-    console.error(
-      `[DEBUG QUALIFIED] resolving ${parts[0]} - rootEntries count=${rootEntries.length}, found kind=${current?.kind} (id=${current?.id})`,
-    );
-    for (const e of rootEntries) {
-      console.error(`  - entry: kind=${e.kind}, ruleName=${e.ruleName}, id=${e.id}, parentId=${e.parentId}`);
-    }
-  }
 
   if (!current) return null;
 
@@ -1070,14 +1122,14 @@ function evaluateDimSizeCall(db: QueryDB, self: SymbolEntry, node: any): number 
   }
 
   if (!resolved) {
-    console.error(`[DEBUG LANG SIZE CALL FAIL] refName=${refName} NOT RESOLVED!`);
+    // console.error(`[DEBUG LANG SIZE CALL FAIL] refName=${refName} NOT RESOLVED!`);
     return null;
   }
 
   activeDimQueriesStack.push({ symbolId: resolved.id, dimIndex: dimIndex - 1 });
   try {
     const res = getOrEvaluateSingleDimension(db, resolved, dimIndex - 1);
-    console.error(`[DEBUG LANG SIZE CALL] refName=${refName} dimIndex=${dimIndex} res=${res}`);
+    // console.error(`[DEBUG LANG SIZE CALL] refName=${refName} dimIndex=${dimIndex} res=${res}`);
     return res;
   } finally {
     activeDimQueriesStack.pop();
@@ -1419,7 +1471,7 @@ export default language({
            * Get the effective modification for this class (specifically for ShortClassSpecifier).
            */
           effectiveModification: (db: QueryDB, self: SymbolEntry) => {
-            console.error("Executing effectiveModification on ClassDefinition for " + self.name);
+            // console.error("Executing effectiveModification on ClassDefinition for " + self.name);
             const cst = db.cstNode(self.id) as import("@modelscript/compiler/symbol-indexer").CSTNode | null;
             if (!cst) return null;
             const classSpec = cst.childForFieldName("classSpecifier");
@@ -1569,7 +1621,7 @@ export default language({
             const result = new Map<string, OperatorOverload[]>();
 
             const children = db.childrenOf(self.id);
-            console.error(`[debug] operatorFunctions for ${self.name}, children count: ${children.length}`);
+            // console.error(`[debug] operatorFunctions for ${self.name}, children count: ${children.length}`);
 
             // Walk children of the operator record
             for (const child of children) {
@@ -1577,7 +1629,7 @@ export default language({
               const childMeta = child.metadata as Record<string, unknown>;
               const childPrefix = childMeta?.classPrefixes as string | undefined;
 
-              console.error(`[debug] child: ${child.name}, prefix: ${childPrefix}`);
+              // console.error(`[debug] child: ${child.name}, prefix: ${childPrefix}`);
 
               // Case 1: `operator function '+'` (shorthand — the class IS the function)
               if (childPrefix === "operator function") {
@@ -1616,14 +1668,14 @@ export default language({
                 const opName = child.name; // e.g., "'+'"
 
                 const funcs = db.childrenOf(child.id);
-                console.error(`[debug] found operator ${opName}, funcs count: ${funcs.length}`);
+                // console.error(`[debug] found operator ${opName}, funcs count: ${funcs.length}`);
 
                 for (const func of funcs) {
-                  console.error(`[debug]   func: ${func.name}, kind: ${func.kind}`);
+                  // console.error(`[debug]   func: ${func.name}, kind: ${func.kind}`);
                   if (func.kind !== "Class") continue;
                   const funcMeta = func.metadata as Record<string, unknown>;
                   const funcPrefix = funcMeta?.classPrefixes as string | undefined;
-                  console.error(`[debug]   funcPrefix: ${funcPrefix}`);
+                  // console.error(`[debug]   funcPrefix: ${funcPrefix}`);
                   if (funcPrefix !== "function" && funcPrefix !== "operator function") continue;
 
                   const inputTypes: string[] = [];
@@ -1656,7 +1708,7 @@ export default language({
               }
             }
 
-            console.error(`[debug] returning result size: ${result.size}`);
+            // console.error(`[debug] returning result size: ${result.size}`);
             return result.size > 0 ? result : null;
           },
           /**
@@ -3813,24 +3865,97 @@ export default language({
         adapters: {
           sysml2: {
             target: "BlockDefinition",
-            transform: (db, self) => ({
-              name: (self as SymbolEntry).name,
-              defKind: ((self as SymbolEntry).metadata as Record<string, unknown>)?.classPrefixes ?? "class",
-              isAbstract: false,
-              parts: db
-                .childrenOf((self as SymbolEntry).id)
-                .filter((c) => c.kind === "Component")
-                .map((c) => ({
-                  name: c.name,
-                  typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined,
-                  direction: ((c.metadata as Record<string, unknown>)?.causality as string) ?? null,
-                  isParameter: (c.metadata as Record<string, unknown>)?.variability === "parameter",
-                })),
-              nestedBlocks: db
-                .childrenOf((self as SymbolEntry).id)
-                .filter((c) => c.kind === "Class")
-                .map((c) => db.project(c, "sysml2")),
-            }),
+            transform: (db, self) => {
+              const s = self as SymbolEntry;
+              const children = db.childrenOf(s.id);
+              const classPrefixes = ((s.metadata as Record<string, unknown>)?.classPrefixes as string) ?? "class";
+              // Classes that typically have equation/algorithm sections
+              const behavioralKinds = new Set(["model", "block", "class"]);
+              return {
+                name: s.name,
+                defKind: classPrefixes,
+                classKind: classPrefixes,
+                isAbstract: false,
+                // Signal that this class likely has behavioral content (equations/algorithms)
+                // that requires CST access to fully project
+                hasBehavior: behavioralKinds.has(classPrefixes),
+                parts: children
+                  .filter((c) => c.kind === "Component")
+                  .map((c) => {
+                    const meta = c.metadata as Record<string, unknown>;
+                    const typeName = meta?.typeSpecifier as string | undefined;
+                    return {
+                      name: c.name,
+                      typeName,
+                      direction: (meta?.causality as string) ?? null,
+                      isParameter: meta?.variability === "parameter",
+                      condition: meta?.conditionAttribute as string | undefined,
+                      isSpatial: typeName?.includes("Modelica.Mechanics.MultiBody.Interfaces") ?? false,
+                    };
+                  }),
+                constraints: (() => {
+                  const cst = db.cstNode(s.id) as any;
+                  if (!cst) return [];
+                  const results = [];
+                  const findEquations = (node: any) => {
+                    if (!node) return;
+                    if (node.type === "SimpleEquation") {
+                      results.push({
+                        kind: "ConstraintUsage",
+                        expression: db.cstText(node.startIndex, node.endIndex, s),
+                      });
+                    }
+                    if (typeof node.children !== "function" && node.children) {
+                      for (const child of node.children) {
+                        findEquations(child);
+                      }
+                    }
+                  };
+                  findEquations(cst);
+                  return results;
+                })(),
+                actions: (() => {
+                  const cst = db.cstNode(s.id) as any;
+                  if (!cst) return [];
+                  const results = [];
+                  const findActions = (node: any) => {
+                    if (!node) return;
+                    if (
+                      node.type === "WhenEquation" ||
+                      node.type === "IfEquation" ||
+                      node.type === "WhenStatement" ||
+                      node.type === "IfStatement"
+                    ) {
+                      results.push({
+                        kind: "ActionUsage",
+                        body: db.cstText(node.startIndex, node.endIndex, s),
+                      });
+                    } else if (typeof node.children !== "function" && node.children) {
+                      for (const child of node.children) {
+                        findActions(child);
+                      }
+                    }
+                  };
+                  findActions(cst);
+                  return results;
+                })(),
+                nestedBlocks: children.filter((c) => c.kind === "Class").map((c) => db.project(c, "sysml2")),
+                connections: children
+                  .filter((c) => c.kind === "ConnectEquation")
+                  .map((c) => {
+                    const meta = c.metadata as Record<string, unknown>;
+                    return {
+                      source: (meta?.ref1 as string) ?? null,
+                      target: (meta?.ref2 as string) ?? null,
+                    };
+                  }),
+                specializations: children
+                  .filter((c) => c.kind === "Extends")
+                  .map((c) => ({
+                    superclassifier: c.name,
+                  })),
+              };
+            },
           },
           owl2: {
             target: "ClassEntity",
@@ -4223,9 +4348,7 @@ export default language({
               if (resolveName) {
                 // Pass true for skipInherited to prevent cyclic lookup in extends clauses
                 let resolved = resolveName(baseName, true);
-                console.error(
-                  `[DEBUG RESOLVE] resolveName("${baseName}") returned: ${resolved?.kind} (id=${resolved?.id})`,
-                );
+                // console.error(`[DEBUG RESOLVE] resolveName("${baseName}") returned: ${resolved?.kind} (id=${resolved?.id})`);
 
                 // If it resolves to the exact class that contains this extends clause,
                 // this is a redeclared extends (e.g. `redeclare class extends BaseClass`).
@@ -4304,7 +4427,7 @@ export default language({
         lints: {
           /** Error if an extends clause modifies an unknown element. */
           modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
-            console.log("EXECUTING modifierNotFound for", self.id);
+            // console.log("EXECUTING modifierNotFound for", self.id);
             const mod = db.query<any>("extendsModificationParsed", self.id);
             if (!mod) return null;
             const baseClassNode = db.query<any>("resolvedBaseClass", self.id);
@@ -4316,9 +4439,9 @@ export default language({
           /** Error if duplicate element names exist in classModification. */
           duplicateModification: (db: QueryDB, self: SymbolEntry) => {
             const cst = db.cstNode(self.id) as any;
-            console.error(`[Extends] CST node for ${self.id}:`, !!cst);
+            // console.error(`[Extends] CST node for ${self.id}:`, !!cst);
             if (!cst) return null;
-            console.error(`[Extends] CST type: ${cst.type}`);
+            // console.error(`[Extends] CST type: ${cst.type}`);
             let current = cst;
             while (current && current.type !== "ExtendsClause" && current.type !== "extends_clause")
               current = current.parent;
@@ -4416,6 +4539,18 @@ export default language({
               current = extendsChildren[0];
             }
             return null;
+          },
+        },
+        adapters: {
+          sysml2: {
+            target: "OwnedSubclassification",
+            transform: (_db, self) => {
+              const s = self as SymbolEntry;
+              return {
+                superclassifier: s.name,
+                typeSpecifier: ((s.metadata as Record<string, unknown>)?.typeSpecifier as string) ?? s.name,
+              };
+            },
           },
         },
         graphics: (self) => ({
@@ -5104,6 +5239,30 @@ export default language({
               return null;
             },
           },
+
+          /**
+           * Aggregate query returning the component's metadata.
+           */
+          componentInstance: (db: QueryDB, self: SymbolEntry) => {
+            return {
+              id: self.id,
+              name: self.name,
+              classInstance: db.query<SymbolId | null>("classInstance", self.id),
+              variability: db.query<string | null>("variability", self.id),
+              causality: db.query<string | null>("causality", self.id),
+              flowPrefix: db.query<string | null>("flowPrefix", self.id),
+              isFinal: db.query<boolean>("isFinal", self.id),
+              isRedeclare: db.query<boolean>("isRedeclare", self.id),
+              isInner: db.query<boolean>("isInner", self.id),
+              isOuter: db.query<boolean>("isOuter", self.id),
+              isReplaceable: db.query<boolean>("isReplaceable", self.id),
+              isProtected: db.query<boolean>("isProtected", self.id),
+              arrayDimensions: db.query<number[] | null>("resolvedArrayDimensions", self.id),
+              isConnectorType: db.query<boolean>("isConnectorType", self.id),
+              typeSpecifier: db.query<string | null>("typeSpecifier", self.id),
+              modification: db.query<any>("effectiveModification", self.id),
+            };
+          },
         },
         model: {
           name: "ComponentDeclaration",
@@ -5129,6 +5288,7 @@ export default language({
             isProtected: "boolean",
             flowPrefix: "string | null",
             isRedeclare: "boolean",
+            componentInstance: "any",
           },
         },
         lints: {
@@ -5968,9 +6128,7 @@ export default language({
                 if (actualArgEntries[i]) {
                   const paramVar = db.query<string | null>("variability", inputs[i].id) || "continuous";
                   const argVar = db.query<string | null>("variability", actualArgEntries[i]!.id) || "continuous";
-                  console.error(
-                    `[DEBUG VAR] funcName=${funcName} param=${inputs[i].name} paramVar=${paramVar} argVar=${argVar}`,
-                  );
+                  // console.error(`[DEBUG VAR] funcName=${funcName} param=${inputs[i].name} paramVar=${paramVar} argVar=${argVar}`);
                   if (paramVar === "constant" && argVar !== "constant") {
                     const argNodes = callArgs.children.filter(
                       (c) => c.type === "FunctionArgument" || c.type === "NamedArgument",
@@ -6599,6 +6757,19 @@ export default language({
             return diagnostics.length > 0 ? diagnostics : null;
           },
         },
+        adapters: {
+          sysml2: {
+            target: "ConnectionUsage",
+            transform: (_db, self) => {
+              const s = self as SymbolEntry;
+              const meta = s.metadata as Record<string, unknown>;
+              return {
+                sourceEnd: (meta?.ref1 as string) ?? null,
+                targetEnd: (meta?.ref2 as string) ?? null,
+              };
+            },
+          },
+        },
         graphics: (self) => ({
           role: "edge" as const,
           edge: {
@@ -6930,23 +7101,49 @@ export default language({
 
   adapters: {
     sysml2: {
-      ClassDefinition: (db, node) => ({
-        target: "BlockDefinition",
-        props: {
-          name: node.name,
-          isAbstract: false,
-          defKind: "block",
-          classKind: (node.metadata as Record<string, unknown>)?.classPrefixes ?? "model",
-          parts: db
-            .childrenOf(node.id)
-            .filter((c) => c.kind === "Component")
-            .map((c) => ({
-              name: c.name,
-              typeName: (c.metadata as Record<string, unknown>)?.typeSpecifier as string | undefined,
-              direction: ((c.metadata as Record<string, unknown>)?.causality as string) ?? null,
-            })),
-        },
-      }),
+      ClassDefinition: (db, node) => {
+        const children = db.childrenOf(node.id);
+        return {
+          target: "BlockDefinition",
+          props: {
+            name: node.name,
+            isAbstract: false,
+            defKind: "block",
+            classKind: (node.metadata as Record<string, unknown>)?.classPrefixes ?? "model",
+            hasBehavior: (() => {
+              const cp = ((node.metadata as Record<string, unknown>)?.classPrefixes as string) ?? "model";
+              return new Set(["model", "block", "class"]).has(cp);
+            })(),
+            parts: children
+              .filter((c) => c.kind === "Component")
+              .map((c) => {
+                const meta = c.metadata as Record<string, unknown>;
+                const typeName = meta?.typeSpecifier as string | undefined;
+                return {
+                  name: c.name,
+                  typeName,
+                  direction: (meta?.causality as string) ?? null,
+                  condition: meta?.conditionAttribute as string | undefined,
+                  isSpatial: typeName?.includes("Modelica.Mechanics.MultiBody.Interfaces") ?? false,
+                };
+              }),
+            connections: children
+              .filter((c) => c.kind === "ConnectEquation")
+              .map((c) => {
+                const meta = c.metadata as Record<string, unknown>;
+                return {
+                  source: (meta?.ref1 as string) ?? null,
+                  target: (meta?.ref2 as string) ?? null,
+                };
+              }),
+            specializations: children
+              .filter((c) => c.kind === "Extends")
+              .map((c) => ({
+                superclassifier: c.name,
+              })),
+          },
+        };
+      },
     },
     owl2: {
       /**

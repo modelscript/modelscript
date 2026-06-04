@@ -91,6 +91,19 @@ export function getLsp(): ProtocolConnection | null {
   return connection;
 }
 
+/**
+ * Passes an OffscreenCanvas directly to the LSP worker via the side-channel.
+ * This is used for Zero-Copy WebGPU visualization where the worker simulates and renders.
+ */
+export function passCanvasToLsp(canvas: HTMLCanvasElement, uri: string, className: string): void {
+  if (!worker) {
+    console.error("LSP Worker not running. Cannot pass canvas.");
+    return;
+  }
+  const offscreen = canvas.transferControlToOffscreen();
+  worker.postMessage({ type: "START_ZERO_COPY", canvas: offscreen, uri, className }, [offscreen]);
+}
+
 /** Shut down the LSP worker gracefully. */
 export async function stopLsp(): Promise<void> {
   if (connection) {
@@ -107,4 +120,12 @@ export async function stopLsp(): Promise<void> {
     worker.terminate();
     worker = null;
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("START_ZERO_COPY_LSP", (e: any) => {
+    if (e.detail && e.detail.canvas) {
+      passCanvasToLsp(e.detail.canvas, e.detail.uri, e.detail.className);
+    }
+  });
 }

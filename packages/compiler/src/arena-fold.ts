@@ -65,20 +65,22 @@ export function foldArenaConstants(
           const evaluated = evaluateArenaExpression(arena, exprId, paramMap, db, scopeId);
           if (evaluated !== null) {
             let foldedValue: ArenaValue | null = evaluated;
-            const match = name.match(/\[([\d,]+)\]$/);
-            if (match) {
-              const indices = match[1].split(",").map(Number);
-              let current = foldedValue;
-              for (const idx of indices) {
-                if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
-                  current = current[idx - 1] as ArenaValue;
-                } else {
-                  foldedValue = null;
-                  break;
+            if (Array.isArray(evaluated)) {
+              const match = name.match(/\[([\d,]+)\]$/);
+              if (match) {
+                const indices = match[1].split(",").map(Number);
+                let current = foldedValue;
+                for (const idx of indices) {
+                  if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                    current = current[idx - 1] as ArenaValue;
+                  } else {
+                    foldedValue = null;
+                    break;
+                  }
                 }
-              }
-              if (foldedValue !== null) {
-                foldedValue = current;
+                if (foldedValue !== null) {
+                  foldedValue = current;
+                }
               }
             }
             if (foldedValue !== null && (typeof foldedValue === "number" || typeof foldedValue === "boolean")) {
@@ -105,20 +107,22 @@ export function foldArenaConstants(
       if (result !== null) {
         const name = arena.getVarName(i);
         let foldedValue: ArenaValue | null = result;
-        const match = name.match(/\[([\d,]+)\]$/);
-        if (match) {
-          const indices = match[1].split(",").map(Number);
-          let current = foldedValue;
-          for (const idx of indices) {
-            if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
-              current = current[idx - 1] as ArenaValue;
-            } else {
-              foldedValue = null;
-              break;
+        if (Array.isArray(result)) {
+          const match = name.match(/\[([\d,]+)\]$/);
+          if (match) {
+            const indices = match[1].split(",").map(Number);
+            let current = foldedValue;
+            for (const idx of indices) {
+              if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                current = current[idx - 1] as ArenaValue;
+              } else {
+                foldedValue = null;
+                break;
+              }
             }
-          }
-          if (foldedValue !== null) {
-            foldedValue = current;
+            if (foldedValue !== null) {
+              foldedValue = current;
+            }
           }
         }
 
@@ -162,20 +166,22 @@ export function foldArenaConstants(
               const rhsVal = evaluateArenaExpression(arena, rhs, paramMap, db, scopeId);
               if (rhsVal !== null) {
                 let foldedValue: ArenaValue | null = rhsVal;
-                const match = name.match(/\[([\d,]+)\]$/);
-                if (match) {
-                  const indices = match[1].split(",").map(Number);
-                  let current = foldedValue;
-                  for (const idx of indices) {
-                    if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
-                      current = current[idx - 1] as ArenaValue;
-                    } else {
-                      foldedValue = null;
-                      break;
+                if (Array.isArray(rhsVal)) {
+                  const match = name.match(/\[([\d,]+)\]$/);
+                  if (match) {
+                    const indices = match[1].split(",").map(Number);
+                    let current = foldedValue;
+                    for (const idx of indices) {
+                      if (Array.isArray(current) && idx >= 1 && idx <= current.length) {
+                        current = current[idx - 1] as ArenaValue;
+                      } else {
+                        foldedValue = null;
+                        break;
+                      }
                     }
-                  }
-                  if (foldedValue !== null) {
-                    foldedValue = current;
+                    if (foldedValue !== null) {
+                      foldedValue = current;
+                    }
                   }
                 }
 
@@ -273,7 +279,7 @@ export function foldArenaConstants(
     // Phase 4: Fold pure constant arithmetic expressions and casts
     for (let e = 0; e < arena.exprCount; e++) {
       const kind = arena.getExprKind(e);
-      let canFold = kind === ExprKind.Binary || kind === ExprKind.Unary;
+      let canFold = kind === ExprKind.Binary || kind === ExprKind.Unary || kind === ExprKind.Range;
       if (!canFold && kind === ExprKind.Call) {
         const funcName = arena.interner.resolve(arena.getExprData1(e));
         if (funcName === "/*Real*/" || funcName === "/*Integer*/") {
@@ -283,19 +289,34 @@ export function foldArenaConstants(
       if (canFold) {
         // Pass empty paramMap and onlyConstants=true to safely evaluate purely static arithmetic
         const val = evaluateArenaExpression(arena, e, new Map(), undefined, undefined, undefined, true);
-        if (val !== null && typeof val === "number") {
-          const varType = inferArenaExprVarType(arena, e);
-          if (varType === VarType.Integer) {
-            arena.setExprKind(e, ExprKind.IntLiteral);
-            arena.setExprData1(e, Math.trunc(val));
-          } else if (varType === VarType.Boolean) {
-            arena.setExprKind(e, ExprKind.BoolLiteral);
-            arena.setExprData1(e, val ? 1 : 0);
-          } else {
-            arena.setExprKind(e, ExprKind.RealLiteral);
-            arena.setExprRealValue(e, val);
+        if (val !== null) {
+          if (typeof val === "number") {
+            const varType = inferArenaExprVarType(arena, e);
+            if (varType === VarType.Integer) {
+              arena.setExprKind(e, ExprKind.IntLiteral);
+              arena.setExprData1(e, Math.trunc(val));
+            } else if (varType === VarType.Boolean) {
+              arena.setExprKind(e, ExprKind.BoolLiteral);
+              arena.setExprData1(e, val ? 1 : 0);
+            } else {
+              arena.setExprKind(e, ExprKind.RealLiteral);
+              arena.setExprRealValue(e, val);
+            }
+            changed = true;
+          } else if (Array.isArray(val)) {
+            const elementIds: number[] = [];
+            for (const item of val) {
+              if (typeof item === "number") {
+                elementIds.push(arena.addIntLiteral(Math.trunc(item)));
+              }
+            }
+            const ctorId = arena.addArrayCtorExpr(elementIds);
+            arena.setExprKind(e, ExprKind.ArrayCtor);
+            arena.setExprData1(e, arena.getExprData1(ctorId));
+            arena.setExprLeft(e, arena.getExprLeft(ctorId));
+            arena.setExprRight(e, ctorId);
+            changed = true;
           }
-          changed = true;
         }
       }
     }

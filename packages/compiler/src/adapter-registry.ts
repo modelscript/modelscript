@@ -9,6 +9,11 @@ export interface AdapterDB {
   /** Get all direct children of a symbol. */
   childrenOf(id: SymbolId): SymbolEntry[];
   /**
+   * Look up all symbols with a given name across all registered indices.
+   * Enables type resolution and cross-referencing during projection.
+   */
+  byName(name: string): SymbolEntry[];
+  /**
    * Recursively project a foreign SymbolEntry into the given target language.
    * Walks registered adapters (C → B → A priority) to find a matching transform.
    * Returns a property bag ready to pass into the target's AST class constructors,
@@ -19,6 +24,12 @@ export interface AdapterDB {
    *   sysml2  → modelica: db.project(foreignSysmlBlock, "modelica")
    */
   project(foreignEntry: SymbolEntry, targetLang: string): Record<string, unknown> | null;
+  /** Retrieve the CST node for a symbol (if available). */
+  cstNode(id: SymbolId): unknown | null;
+  /** Retrieve CST source text for a byte range. */
+  cstText(startByte: number, endByte: number, entry: SymbolEntry): string | null;
+  /** Execute a named query on a symbol (e.g. 'instantiate', 'variability') */
+  query<T>(queryName: string, id: SymbolId): T | null;
 }
 
 /**
@@ -180,9 +191,17 @@ export class AdapterRegistry {
   /** Maps languageName → SymbolIndex for cross-index navigation. */
   private indices = new Map<string, SymbolIndex>();
 
+  public cstNodeProvider?: (id: SymbolId) => unknown | null;
+  public cstTextProvider?: (startByte: number, endByte: number, entry: SymbolEntry) => string | null;
+  public queryProvider?: (queryName: string, id: SymbolId) => unknown | null;
+
   // -------------------------------------------------------------------------
   // Registration
   // -------------------------------------------------------------------------
+
+  getIndex(langName: string): SymbolIndex | undefined {
+    return this.indices.get(langName);
+  }
 
   /**
    * Scan a language config and register all adapter entries it declares.
@@ -403,12 +422,38 @@ export class AdapterRegistry {
         return results;
       },
 
+      byName(name: string): SymbolEntry[] {
+        const results: SymbolEntry[] = [];
+        for (const index of registry.indices.values()) {
+          const ids = index.byName.get(name);
+          if (ids) {
+            for (const id of ids) {
+              const entry = index.symbols.get(id);
+              if (entry) results.push(entry);
+            }
+          }
+        }
+        return results;
+      },
+
       project(foreignEntry: SymbolEntry, targetLang: string): Record<string, unknown> | null {
         // Detect which language this foreign entry came from
         const sourceLang = registry.detectLang(foreignEntry);
         if (!sourceLang) return null;
         const result = registry.project(foreignEntry, sourceLang, targetLang);
         return result ? result.props : null;
+      },
+
+      cstNode(id: SymbolId): unknown | null {
+        return registry.cstNodeProvider ? registry.cstNodeProvider(id) : null;
+      },
+
+      cstText(startByte: number, endByte: number, entry: SymbolEntry): string | null {
+        return registry.cstTextProvider ? registry.cstTextProvider(startByte, endByte, entry) : null;
+      },
+
+      query<T>(queryName: string, id: SymbolId): T | null {
+        return registry.queryProvider ? (registry.queryProvider(queryName, id) as T) : null;
       },
     };
   }

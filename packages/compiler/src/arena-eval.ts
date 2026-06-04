@@ -28,11 +28,21 @@ export function isArenaObject(v: ArenaValue): v is ArenaObjectValue {
   return typeof v === "object" && v !== null && !Array.isArray(v) && (v as ArenaObjectValue).__kind === "object";
 }
 
-function getSequenceElements(dae: ArenaDAEBuilder, baseExprId: number, count: number, firstElement: number): number[] {
+export function getSequenceElements(
+  dae: ArenaDAEBuilder,
+  baseExprId: number,
+  count: number,
+  firstElement: number,
+): number[] {
   if (count === 0) return [];
   const elements = [firstElement];
+  const kind = dae.getExprKind(baseExprId);
+  const redirect = dae.getExprRight(baseExprId);
+  // Only Call, Range, and ArrayCtor use redirect in 'right'
+  const usesRedirect = kind === ExprKind.Call || kind === ExprKind.Range || kind === ExprKind.ArrayCtor;
+  const actualBase = usesRedirect && redirect >= 0 ? redirect : baseExprId;
   for (let i = 1; i < count; i++) {
-    const tupleId = baseExprId + i;
+    const tupleId = actualBase + i;
     elements.push(dae.getExprLeft(tupleId));
   }
   return elements;
@@ -306,14 +316,19 @@ export function evaluateArenaExpression(
           if (typeof a === "number" && typeof b === "number") {
             switch (op) {
               case BinOp.Add:
+              case BinOp.ElemAdd:
                 return a + b;
               case BinOp.Sub:
+              case BinOp.ElemSub:
                 return a - b;
               case BinOp.Mul:
+              case BinOp.ElemMul:
                 return a * b;
               case BinOp.Div:
+              case BinOp.ElemDiv:
                 return a / b;
               case BinOp.Pow:
+              case BinOp.ElemPow:
                 return Math.pow(a, b);
               case BinOp.Eq:
                 return a === b;
@@ -642,7 +657,7 @@ export function evaluateArenaExpression(
       const baseId = dae.getExprData1(exprId);
       const base = evaluateArenaExpression(dae, baseId, parameters, db, scopeId, visitedVars, onlyConstants);
       if (!Array.isArray(base)) {
-        console.error(`[DEBUG SUBSCRIPT FAIL 1] baseId=${baseId} base=${JSON.stringify(base)}`);
+        // console.error(`[DEBUG SUBSCRIPT FAIL 1] baseId=${baseId} base=${JSON.stringify(base)}`);
         return null;
       }
 
@@ -653,13 +668,13 @@ export function evaluateArenaExpression(
       let current: ArenaValue = base;
       for (const id of idxIds) {
         if (!Array.isArray(current)) {
-          console.error(`[DEBUG SUBSCRIPT FAIL 2] current=${JSON.stringify(current)}`);
+          // console.error(`[DEBUG SUBSCRIPT FAIL 2] current=${JSON.stringify(current)}`);
           return null;
         }
         const idx = evaluateArenaExpression(dae, id, parameters, db, scopeId, visitedVars, onlyConstants);
         // Modelica arrays are 1-indexed
         if (typeof idx !== "number" || idx < 1 || idx > current.length) {
-          console.error(`[DEBUG SUBSCRIPT FAIL 3] idx=${idx} current.length=${current.length}`);
+          // console.error(`[DEBUG SUBSCRIPT FAIL 3] idx=${idx} current.length=${current.length}`);
           return null;
         }
         current = current[idx - 1] as ArenaValue;

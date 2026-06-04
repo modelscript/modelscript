@@ -28,6 +28,33 @@ export class WorkspaceManager {
   constructor(documentManager: DocumentManager) {
     this.documentManager = documentManager;
     // Step integration is handled in browserServerMain or by a setter
+
+    // Wire up CST providers for cross-language adapters
+    this.unifiedWorkspace.adapterRegistry.cstNodeProvider = (id) => {
+      const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const engine = entry.resourceId.endsWith(".sysml")
+        ? this.globalSysML2QueryEngine
+        : this.globalModelicaQueryEngine;
+      return engine?.toQueryDB().cstNode(id) ?? null;
+    };
+
+    this.unifiedWorkspace.adapterRegistry.cstTextProvider = (startByte, endByte, entry) => {
+      if (!entry.resourceId) return null;
+      const engine = entry.resourceId.endsWith(".sysml")
+        ? this.globalSysML2QueryEngine
+        : this.globalModelicaQueryEngine;
+      return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
+    };
+
+    this.unifiedWorkspace.adapterRegistry.queryProvider = (queryName, id) => {
+      const entry = this.unifiedWorkspace.toUnifiedPartial().symbols.get(id);
+      if (!entry || !entry.resourceId) return null;
+      const engine = entry.resourceId.endsWith(".sysml")
+        ? this.globalSysML2QueryEngine
+        : this.globalModelicaQueryEngine;
+      return engine?.query(queryName, id) ?? null;
+    };
   }
 
   public resolveModelicaClassInstance(uri: string, className?: string): ModelicaClassInstance | null {

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { LSPBridge } from "@modelscript/compiler";
+
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { STEP_SCHEMA } from "../utils/stepUtils";
@@ -11,8 +11,9 @@ function isStepDocument(document: TextDocument): boolean {
 export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  documentLSPBridges: Map<string, LSPBridge>,
+  validationService: any,
 ) {
+  const documentLSPBridges = validationService.documentLSPBridges;
   connection.onHover((params): Hover | null => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
@@ -84,10 +85,50 @@ export function registerHoverProvider(
     const hoverDef = bridge.hover(offset, text);
     if (!hoverDef) return null;
 
+    let hoverContent = hoverDef.contents;
+
+    // Enhance hover with reasoner inferences if this is SysML2 and reasonerService is available
+    if (document.uri.endsWith(".sysml")) {
+      const bridgePos = (bridge as any).positions;
+      const resolver = (bridge as any).resolver;
+      if (resolver && bridgePos) {
+        // find symbol at offset
+        const queryEngine = validationService.workspaceManager.globalSysML2QueryEngine;
+        if (queryEngine && validationService.reasonerService) {
+          const id = (resolver as any).findSymbolAtPosition(document.uri, offset);
+          if (id !== undefined) {
+            const entry = queryEngine.index.symbols.get(id);
+            if (entry) {
+              const iri = `sysml:${entry.name || `anon_${entry.id}`}`;
+              const taxonomy = validationService.reasonerService.reasoner.getTaxonomy();
+              const node = taxonomy.get(iri);
+
+              if (node && node.superClasses.size > 0) {
+                const inferred = Array.from(node.superClasses).filter(
+                  (superIri: string) => superIri !== "owl:Thing" && superIri !== iri,
+                );
+                if (inferred.length > 0) {
+                  hoverContent += `\n\n**Inferred Types (Reasoner):**\n- ${inferred.map((i: string) => i.replace("sysml:", "")).join(", ")}`;
+                }
+
+                // If there are subclasses, we can show them too
+                const subclasses = Array.from(node.subClasses).filter(
+                  (subIri: string) => subIri !== "owl:Nothing" && subIri !== iri,
+                );
+                if (subclasses.length > 0) {
+                  hoverContent += `\n\n**Inferred Subtypes:**\n- ${subclasses.map((i: string) => i.replace("sysml:", "")).join(", ")}`;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {
       contents: {
         kind: "markdown" as const,
-        value: hoverDef.contents,
+        value: hoverContent,
       },
       range: hoverDef.range as any,
     };

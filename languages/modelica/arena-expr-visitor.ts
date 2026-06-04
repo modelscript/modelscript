@@ -16,6 +16,7 @@ import {
   type SymbolId,
 } from "@modelscript/compiler";
 import {
+  AstTag,
   ModelicaArrayConcatenationSyntaxNode,
   ModelicaArrayConstructorSyntaxNode,
   ModelicaBinaryExpressionSyntaxNode,
@@ -160,53 +161,56 @@ export class ArenaExprVisitor {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const n = node as any;
 
-    // Check specific node types. The AST nodes are subclasses of ModelicaSyntaxNode.
-    // Literal subclasses must be checked before the base ModelicaLiteralSyntaxNode.
-    if (n instanceof ModelicaBooleanLiteralSyntaxNode) {
-      return this.dae.addBoolLiteral(n.value);
-    } else if (n instanceof ModelicaUnsignedRealLiteralSyntaxNode) {
-      return this.dae.addRealLiteral(n.value);
-    } else if (n instanceof ModelicaUnsignedIntegerLiteralSyntaxNode) {
-      return this.dae.addIntLiteral(n.value);
-    } else if (n instanceof ModelicaStringLiteralSyntaxNode) {
-      if (n.text != null) return this.dae.addStringLiteral(n.text);
-      return undefined;
-    } else if (n instanceof ModelicaLiteralSyntaxNode) {
-      // Fallback for any other literal subclass
-      return this.visitLiteralFallback(n);
-    } else if (n instanceof ModelicaComponentReferenceSyntaxNode) {
-      return this.visitComponentReference(n);
-    } else if (n instanceof ModelicaIdentifierSyntaxNode) {
-      const text = n.text;
-      if (text) {
-        if (this.loopVars.has(text)) {
-          if (this.substituteLoopVars) {
-            return this.dae.addIntLiteral(this.loopVars.get(text) as number);
-          } else {
-            return this.resolveNameExpr("\0loop\0" + text);
+    // Use pre-computed integer type tag for fast dispatch
+    const tag = n._typeTag;
+    if (tag !== undefined) {
+      switch (tag) {
+        case AstTag.ModelicaBooleanLiteralSyntaxNode:
+          return this.dae.addBoolLiteral(n.value);
+        case AstTag.ModelicaUnsignedRealLiteralSyntaxNode:
+          return this.dae.addRealLiteral(n.value);
+        case AstTag.ModelicaUnsignedIntegerLiteralSyntaxNode:
+          return this.dae.addIntLiteral(n.value);
+        case AstTag.ModelicaStringLiteralSyntaxNode:
+          return n.text != null ? this.dae.addStringLiteral(n.text) : undefined;
+        case AstTag.ModelicaComponentReferenceSyntaxNode:
+          return this.visitComponentReference(n);
+        case AstTag.ModelicaIdentifierSyntaxNode: {
+          const text = n.text;
+          if (text) {
+            if (this.loopVars.has(text)) {
+              if (this.substituteLoopVars) return this.dae.addIntLiteral(this.loopVars.get(text) as number);
+              return this.resolveNameExpr("\0loop\0" + text);
+            }
+            return this.resolveNameExpr(this.prefixName(text));
           }
+          return undefined;
         }
-        const pref = this.prefixName(text);
-        return this.resolveNameExpr(pref);
+        case AstTag.ModelicaBinaryExpressionSyntaxNode:
+          return this.visitBinaryExpression(n);
+        case AstTag.ModelicaUnaryExpressionSyntaxNode:
+          return this.visitUnaryExpression(n);
+        case AstTag.ModelicaFunctionCallSyntaxNode:
+          return this.visitFunctionCall(n, allowTuple);
+        case AstTag.ModelicaFunctionPartialApplicationSyntaxNode:
+          return this.visitPartialApplication(n);
+        case AstTag.ModelicaIfElseExpressionSyntaxNode:
+          return this.visitIfElseExpression(n);
+        case AstTag.ModelicaOutputExpressionListSyntaxNode:
+          return this.visitOutputExpressionList(n, allowTuple);
+        case AstTag.ModelicaRangeExpressionSyntaxNode:
+          return this.visitRangeExpression(n);
+        case AstTag.ModelicaArrayConstructorSyntaxNode:
+          return this.visitArrayConstructor(n);
+        case AstTag.ModelicaArrayConcatenationSyntaxNode:
+          return this.visitArrayConcatenation(n);
+        case AstTag.ModelicaLiteralSyntaxNode:
+          return this.visitLiteralFallback(n);
       }
-      return undefined;
-    } else if (n instanceof ModelicaBinaryExpressionSyntaxNode) {
-      return this.visitBinaryExpression(n);
-    } else if (n instanceof ModelicaUnaryExpressionSyntaxNode) {
-      return this.visitUnaryExpression(n);
-    } else if (n instanceof ModelicaFunctionCallSyntaxNode) {
-      return this.visitFunctionCall(n, allowTuple);
-    } else if (n instanceof ModelicaFunctionPartialApplicationSyntaxNode) {
-      return this.visitPartialApplication(n);
-    } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
-      return this.visitIfElseExpression(n);
-    } else if (n instanceof ModelicaOutputExpressionListSyntaxNode) {
-      return this.visitOutputExpressionList(n, allowTuple);
-    } else if (n instanceof ModelicaRangeExpressionSyntaxNode) {
-      return this.visitRangeExpression(n);
-    } else if (n instanceof ModelicaArrayConstructorSyntaxNode) {
-      return this.visitArrayConstructor(n);
-    } else if (
+    }
+
+    // Fallback if tag is missing (e.g. manually constructed objects)
+    if (
       n.type === "ModelicaArrayConcatenationSyntaxNode" ||
       n.constructor?.name === "ModelicaArrayConcatenationSyntaxNode"
     ) {
@@ -237,7 +241,6 @@ export class ArenaExprVisitor {
     }
 
     // Unhandled node type
-    console.warn(`ArenaExprVisitor: Unhandled expression node type: ${n.constructor?.name}`);
     return undefined;
   }
 
@@ -437,6 +440,8 @@ export class ArenaExprVisitor {
           // Handle flexible subscript (:) — whole-dimension slice
           if (sub.flexible) {
             staticSuffix += "[:]";
+            subIds.push(this.dae.addColonExpr());
+            allStatic = false;
             continue;
           }
           if (!sub.expression) continue;
@@ -444,12 +449,13 @@ export class ArenaExprVisitor {
           if (subId === undefined) return undefined;
           subIds.push(subId);
 
-          // Check if subscript is a compile-time constant integer.
-          // This handles both literal subscripts (x[3]) and loop variable
-          // expressions (x[i+1] where i is substituted during for-loop unrolling).
           const exprKind = this.dae.getExprKind(subId);
+          let evaluatedValue: number | string | null = null;
+
           if (exprKind === ExprKind.IntLiteral) {
-            staticSuffix += `[${this.dae.getExprData1(subId)}]`;
+            evaluatedValue = this.dae.getExprData1(subId);
+          } else if (sub.flexible) {
+            evaluatedValue = ":";
           } else {
             let evaluated: ArenaValue | null = null;
             if (!this.hasLoopVar(subId)) {
@@ -457,16 +463,27 @@ export class ArenaExprVisitor {
               evaluated = evaluateArenaExpression(this.dae, subId, undefined, this.db, this.scopeId, undefined, false);
             }
             if (typeof evaluated === "number" && Number.isInteger(evaluated)) {
-              staticSuffix += `[${evaluated}]`;
+              evaluatedValue = evaluated;
               // Replace the complex expression with a plain IntLiteral for downstream use
               subIds[subIds.length - 1] = this.dae.addIntLiteral(evaluated);
             } else {
               allStatic = false;
             }
           }
+
+          if (evaluatedValue !== null) {
+            if (staticSuffix.length === 0) {
+              staticSuffix = `[${evaluatedValue}`;
+            } else {
+              staticSuffix += `,${evaluatedValue}`;
+            }
+          }
         }
 
         if (allStatic) {
+          if (staticSuffix.length > 0) {
+            staticSuffix += `]`;
+          }
           path += staticSuffix;
         } else {
           // Dynamic subscript. We emit a Name expr for the path so far, then a Subscript expr.
@@ -659,7 +676,7 @@ export class ArenaExprVisitor {
         binOp = BinOp.ElemPow;
         break;
       default:
-        console.warn(`ArenaExprVisitor: Unhandled binary operator: ${op}`);
+        // console.warn(`ArenaExprVisitor: Unhandled binary operator: ${op}`);
         return undefined;
     }
 
@@ -705,7 +722,7 @@ export class ArenaExprVisitor {
       case ModelicaUnaryOperator.ELEMENTWISE_UNARY_PLUS:
         return exprId; // Positive is a no-op
       default:
-        console.warn(`ArenaExprVisitor: Unhandled unary operator: ${op}`);
+        // console.warn(`ArenaExprVisitor: Unhandled unary operator: ${op}`);
         return undefined;
     }
 

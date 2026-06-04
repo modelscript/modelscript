@@ -125,9 +125,9 @@ describe("isolateSymbolicallyArena", () => {
     const isolatedId = isolateSymbolicallyArena(arena, eq, xIdx);
     expect(isolatedId).toBeGreaterThanOrEqual(0);
     // Expected symbolic representation from linear coefficient extraction:
-    // B = ((2 * 0) + 5) - 0
-    // A = ((2 * 1) + 0) - 0
-    expect(printExpr(arena, isolatedId)).toBe("((-1 * (((2 * 0) + 5) - 0)) / (((2 * 1) + 0) - 0))");
+    // B = ((2 * 0) + 5) - 0 -> folded to 5
+    // A = ((2 * 1) + 0) - 0 -> folded to 2
+    expect(printExpr(arena, isolatedId)).toBe("((-1 * 5) / 2)");
   });
 
   it("should isolate single-occurrence math functions (inversion)", () => {

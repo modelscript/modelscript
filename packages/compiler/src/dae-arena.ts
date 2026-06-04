@@ -1071,6 +1071,65 @@ export class ArenaDAEBuilder {
 
   /** Add a binary expression. */
   addBinaryExpr(op: BinOp, lhs: number, rhs: number): number {
+    if (lhs >= 0 && rhs >= 0) {
+      const lKind = this.getExprKind(lhs);
+      const rKind = this.getExprKind(rhs);
+
+      if (op === BinOp.Mul) {
+        if (
+          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 1.0) ||
+          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 1)
+        ) {
+          return rhs;
+        }
+        if (
+          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 1.0) ||
+          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 1)
+        ) {
+          return lhs;
+        }
+        // 0 * X = 0 (except NaN, but we assume ideal arithmetic for flattening)
+        if (
+          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 0.0) ||
+          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 0)
+        ) {
+          return lhs;
+        }
+        if (
+          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
+          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
+        ) {
+          return rhs;
+        }
+      } else if (op === BinOp.Add) {
+        if (
+          (lKind === ExprKind.RealLiteral && this.getExprRealValue(lhs) === 0.0) ||
+          (lKind === ExprKind.IntLiteral && this.getExprData1(lhs) === 0)
+        ) {
+          return rhs;
+        }
+        if (
+          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
+          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
+        ) {
+          return lhs;
+        }
+      } else if (op === BinOp.Sub) {
+        if (
+          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 0.0) ||
+          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 0)
+        ) {
+          return lhs;
+        }
+      } else if (op === BinOp.Div) {
+        if (
+          (rKind === ExprKind.RealLiteral && this.getExprRealValue(rhs) === 1.0) ||
+          (rKind === ExprKind.IntLiteral && this.getExprData1(rhs) === 1)
+        ) {
+          return lhs;
+        }
+      }
+    }
     return this.addExpression(ExprKind.Binary, op, lhs, rhs);
   }
 
@@ -1209,8 +1268,16 @@ export class ArenaDAEBuilder {
     return this.exprData[idx * EXPR_STRIDE + EXPR_LEFT]!;
   }
 
+  setExprLeft(idx: number, value: number): void {
+    this.exprData[idx * EXPR_STRIDE + EXPR_LEFT] = value;
+  }
+
   getExprRight(idx: number): number {
     return this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT]!;
+  }
+
+  setExprRight(idx: number, value: number): void {
+    this.exprData[idx * EXPR_STRIDE + EXPR_RIGHT] = value;
   }
 
   /** Read a real literal value from an expression. */

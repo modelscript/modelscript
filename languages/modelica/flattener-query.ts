@@ -52,23 +52,82 @@ interface ModificationFrame {
 }
 
 /**
- * Stack of modification frames carried through the flattener's recursion.
- * The topmost (last) frame has the highest priority.
+ * Flat array-based arena for Modification Frames to avoid [...modStack] allocation overhead.
  */
-type ModificationStack = ModificationFrame[];
+class ModificationArena {
+  private mods: (ModelicaModArgs | null)[] = [];
+  private scopeIds = new Int32Array(1024);
+  private scopePrefixes: string[] = [];
+  private isFinals = new Uint8Array(1024);
+  private _length = 0;
+
+  get length(): number {
+    return this._length;
+  }
+
+  pushFrame(
+    mods: ModelicaModArgs | null,
+    evaluationScopeId: SymbolId,
+    evaluationScopePrefix?: string,
+    isFinal: boolean = false,
+  ): void {
+    if (this._length >= this.scopeIds.length) {
+      const newScopeIds = new Int32Array(this.scopeIds.length * 2);
+      newScopeIds.set(this.scopeIds);
+      this.scopeIds = newScopeIds;
+
+      const newIsFinals = new Uint8Array(this.isFinals.length * 2);
+      newIsFinals.set(this.isFinals);
+      this.isFinals = newIsFinals;
+    }
+
+    this.mods[this._length] = mods;
+    this.scopeIds[this._length] = evaluationScopeId;
+    this.scopePrefixes[this._length] = evaluationScopePrefix ?? "";
+    this.isFinals[this._length] = isFinal ? 1 : 0;
+    this._length++;
+  }
+
+  popFrame(): void {
+    if (this._length > 0) {
+      this._length--;
+      this.mods[this._length] = null; // Help GC
+      this.scopePrefixes[this._length] = "";
+    }
+  }
+
+  getMods(index: number): ModelicaModArgs | null {
+    return this.mods[index] ?? null;
+  }
+
+  getScopeId(index: number): SymbolId {
+    return this.scopeIds[index]!;
+  }
+
+  getScopePrefix(index: number): string {
+    return this.scopePrefixes[index]!;
+  }
+
+  isFinal(index: number): boolean {
+    return this.isFinals[index] !== 0;
+  }
+}
 
 /**
  * Look up a sub-modification for a named element from the modification stack.
  * Searches from the top (most recent) frame downward.
  * Returns null if no modification targets this name.
  */
-function lookupModInStack(stack: ModificationStack, name: string): ModelicaModArgs | null {
+function lookupModInStack(stack: ModificationArena, name: string): ModelicaModArgs | null {
   let merged: ModelicaModArgs | null = null;
   // Traverse from bottom to top (oldest to newest) to merge outer mods over inner mods
   for (let i = 0; i < stack.length; i++) {
-    const sub = subModification(stack[i]!.mods, name);
-    if (sub) {
-      merged = mergeModArgs(sub, merged);
+    const mods = stack.getMods(i);
+    if (mods) {
+      const sub = subModification(mods, name);
+      if (sub) {
+        merged = mergeModArgs(sub, merged);
+      }
     }
   }
   return merged;
@@ -79,12 +138,15 @@ function lookupModInStack(stack: ModificationStack, name: string): ModelicaModAr
  * This is needed because `subModification()` extracts the nested args but drops
  * the `final` flag from the enclosing `ModificationArg`.
  */
-function isModFinalInStack(stack: ModificationStack, name: string): boolean {
+function isModFinalInStack(stack: ModificationArena, name: string): boolean {
   for (let i = stack.length - 1; i >= 0; i--) {
     // If the frame itself is final (parent was final), all children are final
-    if (stack[i]!.isFinal) return true;
-    const arg = getModArg(stack[i]!.mods, name);
-    if (arg) return arg.final;
+    if (stack.isFinal(i)) return true;
+    const mods = stack.getMods(i);
+    if (mods) {
+      const arg = getModArg(mods, name);
+      if (arg) return arg.final;
+    }
   }
   return false;
 }
@@ -169,8 +231,10 @@ import {
   evaluateArenaExpression,
   ExprKind,
   foldArenaConstants,
+  getSequenceElements,
   inferArenaExprVarType,
   isAssignableType,
+  scalarizeArena,
   UnaryOp,
   Variability,
   VarType,
@@ -343,8 +407,6 @@ export class ArenaQueryFlattener {
     this.collectExtendsAncestors(rootClassId, this.rootExtendsAncestors);
 
     let dae: ArenaDAEBuilder;
-    const t0 = performance.now();
-    let t1 = t0;
 
     if (cachedArena) {
       dae = cachedArena;
@@ -378,9 +440,8 @@ export class ArenaQueryFlattener {
       // Push root class onto active hierarchy stack (for outer/inner resolution)
       this.activeClassStack.push({ classId: rootClassId, prefix: "" });
 
-      const modStack: ModificationStack = [];
+      const modStack = new ModificationArena();
       this.flattenClassWithMods(rootClassId, "", dae, modStack, new Set());
-      t1 = performance.now();
 
       // Snapshot the builder before adding equations
       this.bodySnapshot = dae.clone();
@@ -390,7 +451,6 @@ export class ArenaQueryFlattener {
     // (Equations are not indexed in the symbol table — they live as CST nodes)
     // Must walk the extends chain recursively to include parent class equations.
     this.flattenClassSectionsRecursive(rootClassId, "", dae, new Set());
-    const t2 = performance.now();
 
     if (!cachedArena) {
       // Pop root class from hierarchy stack
@@ -398,25 +458,25 @@ export class ArenaQueryFlattener {
     }
 
     this.validateNameReferences(dae);
-    const t3 = performance.now();
 
     // Post-processing: expand connections into equations
-    const t4 = performance.now();
     this.expandConnections(dae);
 
     // Extract experiment annotation from root class
     this.extractExperimentAnnotation(rootClassId, dae);
 
     // Fold constant and parameter binding expressions
-    const t5 = performance.now();
     foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
     // O(N) Arena-native alias elimination
-    const t6 = performance.now();
     if (this.options.eliminateAliases) {
       eliminateArenaAliases(dae);
     }
-    const t7 = performance.now();
+
+    // Deferred scalarization if arrays were preserved
+    if (this.options.arrayMode === "preserve") {
+      dae = scalarizeArena(dae);
+    }
 
     // Group equations for perfect print/AST ordering parity with legacy
     dae.groupEquationsForParity();
@@ -441,7 +501,7 @@ export class ArenaQueryFlattener {
       if (node.targetClassId) {
         const elements = this.db.query<SymbolId[]>("instantiate", node.targetClassId);
         if (elements) {
-          this.flattenElements(elements, currentPrefix, dae, []);
+          this.flattenElements(elements, currentPrefix, dae, new ModificationArena());
         }
       }
 
@@ -568,6 +628,31 @@ export class ArenaQueryFlattener {
     const cstNode = this.db.cstNode(classId) as any;
     if (!cstNode) return;
 
+    // Fast-path: iterate class definition composition and extract equations lazily to avoid peak memory
+    if (cstNode.type === "class_definition") {
+      const classSpecifier = cstNode.childForFieldName("classSpecifier");
+      const composition = classSpecifier?.childForFieldName("composition");
+      if (composition) {
+        const sections = composition.namedChildren;
+        for (let i = sections.length - 1; i >= 0; i--) {
+          const sectionNode = sections[i];
+          if (sectionNode.type === "equation_section" || sectionNode.type === "initial_equation_section") {
+            this.flattenEquationSectionCst(sectionNode, prefix, dae, classId);
+          }
+        }
+        for (let i = 0; i < sections.length; i++) {
+          const sectionNode = sections[i];
+          if (sectionNode.type === "algorithm_section" || sectionNode.type === "initial_algorithm_section") {
+            const astSection = ModelicaSyntaxNode.new(null, sectionNode);
+            if (astSection instanceof ModelicaAlgorithmSectionSyntaxNode) {
+              this.flattenAlgorithmSection(astSection, prefix, dae, classId);
+            }
+          }
+        }
+        return; // Fast path successful!
+      }
+    }
+
     const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
     if (!classDef) return;
 
@@ -582,6 +667,73 @@ export class ArenaQueryFlattener {
       const section = sections[i]!;
       if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
         this.flattenAlgorithmSection(section, prefix, dae, classId);
+      }
+    }
+  }
+
+  private flattenEquationSectionCst(sectionNode: any, prefix: string, dae: ArenaDAEBuilder, scopeId: SymbolId): void {
+    const isInitial = sectionNode.type === "initial_equation_section";
+    const eqKind = isInitial ? EqKind.InitialSimple : EqKind.Simple;
+
+    for (const eqCst of sectionNode.namedChildren) {
+      if (eqCst.type === "equation") {
+        const child = eqCst.firstNamedChild;
+        if (!child) continue;
+
+        const astEq = ModelicaSyntaxNode.new(null, child);
+        if (!astEq) continue;
+
+        if (astEq instanceof ModelicaSimpleEquationSyntaxNode) {
+          const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
+          const lhsId = astEq.expression1 ? visitor.visit(astEq.expression1, true) : undefined;
+          const isTuple = astEq.expression1 instanceof ModelicaOutputExpressionListSyntaxNode;
+          const rhsId = astEq.expression2 ? visitor.visit(astEq.expression2, isTuple) : undefined;
+          if (lhsId !== undefined && rhsId !== undefined) {
+            this.processSimpleEquationScalarization(dae, eqKind, lhsId, rhsId, visitor, scopeId, astEq.sourceRange);
+          }
+        } else if (astEq instanceof ModelicaForEquationSyntaxNode) {
+          this.unrollForIndexes(astEq.forIndexes, 0, astEq.equations, prefix, dae, new Map(), scopeId);
+        } else if (astEq instanceof ModelicaIfEquationSyntaxNode) {
+          this.flattenIfEquationAst(astEq, prefix, dae, new Map(), scopeId);
+        } else if (astEq instanceof ModelicaWhenEquationSyntaxNode) {
+          this.flattenWhenEquationAst(astEq, prefix, dae, new Map(), scopeId);
+        } else if (astEq instanceof ModelicaConnectEquationSyntaxNode) {
+          const eqStart = astEq.sourceRange?.startIndex;
+          const eqEnd = astEq.sourceRange?.endIndex;
+          let eqText = "";
+          if (eqStart !== undefined && eqEnd !== undefined) {
+            const scopeEntry = scopeId ? this.db.symbol(scopeId) : undefined;
+            eqText = this.db.cstText(eqStart, eqEnd, scopeEntry) ?? "";
+          }
+
+          if (eqText) {
+            const canonEq = this.canonicalizeConnect(eqText);
+            if (this.brokenConnections.has(prefix + ":" + canonEq)) {
+              continue; // Skip this broken connect
+            }
+          }
+
+          const lhs = astEq.componentReference1;
+          const rhs = astEq.componentReference2;
+          if (lhs && rhs) {
+            const lhsRef = this.serializeRef(lhs);
+            const rhsRef = this.serializeRef(rhs);
+            if (lhsRef && rhsRef) {
+              let lhsName = prefix ? `${prefix}.${lhsRef}` : lhsRef;
+              let rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
+              lhsName = this.resolveOuter(lhsName) ?? lhsName;
+              rhsName = this.resolveOuter(rhsName) ?? rhsName;
+              if (this.isPathBroken(lhsName) || this.isPathBroken(rhsName)) {
+                continue;
+              }
+              const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhsName));
+              const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhsName));
+              dae.addEquation(EqKind.Connect, lhsId, rhsId);
+            }
+          }
+        } else if (astEq instanceof ModelicaSpecialEquationSyntaxNode) {
+          this.handleSpecialEquation(astEq, prefix, dae, scopeId);
+        }
       }
     }
   }
@@ -681,11 +833,16 @@ export class ArenaQueryFlattener {
         } else {
         }
       }
+      let knownScalar = false;
       if (varName && !isSlice) {
         const varIdx = dae.getVarIdxByName(varName);
         if (varIdx >= 0) {
           const shape = dae.getVarShape(varIdx);
-          if (shape && shape.length > 0) arrayDims = shape;
+          if (shape && shape.length > 0) {
+            arrayDims = shape;
+          } else {
+            knownScalar = true;
+          }
         } else if (dae.hasArrayElements(varName)) {
           const elements = dae.getArrayElementIndices(varName);
           if (elements.length > 0) {
@@ -697,7 +854,7 @@ export class ArenaQueryFlattener {
           }
         }
 
-        if (!arrayDims && scopeId !== null) {
+        if (!arrayDims && !knownScalar && scopeId !== null) {
           let currentClassId = scopeId;
           const parts = varName.split(".");
           let compEntry: SymbolEntry | null = null;
@@ -960,7 +1117,7 @@ export class ArenaQueryFlattener {
     classId: SymbolId,
     prefix: string,
     dae: ArenaDAEBuilder,
-    modStack: ModificationStack,
+    modStack: ModificationArena,
     visited: Set<SymbolId>,
     shadowedNames: Set<string> = new Set(),
   ): void {
@@ -985,15 +1142,19 @@ export class ArenaQueryFlattener {
           const resolved = parentResolver(typeName);
           if (resolved && resolved.id !== classId) {
             const localMod = this.db.query<ModelicaModArgs | null>("effectiveModification", classId);
-            const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+            const topMod = modStack.length > 0 ? modStack.getMods(modStack.length - 1) : null;
             const mergedMod = mergeModArgs(topMod, localMod);
-            const childStack: ModificationStack =
-              mergedMod && mergedMod.args.length > 0
-                ? [...modStack, { mods: mergedMod, evaluationScopeId: entry.parentId, evaluationScopePrefix: prefix }]
-                : modStack;
+
+            let pushed = false;
+            if (mergedMod && mergedMod.args.length > 0) {
+              modStack.pushFrame(mergedMod, entry.parentId!, prefix);
+              pushed = true;
+            }
 
             // Recurse into the resolved base class
-            this.flattenClassWithMods(resolved.id, prefix, dae, childStack, visited);
+            this.flattenClassWithMods(resolved.id, prefix, dae, modStack, visited);
+
+            if (pushed) modStack.popFrame();
 
             // Pop from visited to match original semantics
             visited.delete(classId);
@@ -1074,15 +1235,18 @@ export class ArenaQueryFlattener {
                   localMod = parseModArgsFromCst(modNode, classId);
                 }
 
-                const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+                const topMod = modStack.length > 0 ? modStack.getMods(modStack.length - 1) : null;
                 const mergedMod = mergeModArgs(topMod, localMod);
 
-                const childStack: ModificationStack =
-                  mergedMod && mergedMod.args.length > 0
-                    ? [...modStack, { mods: mergedMod, evaluationScopeId: classId, evaluationScopePrefix: prefix }]
-                    : modStack;
+                let pushed = false;
+                if (mergedMod && mergedMod.args.length > 0) {
+                  modStack.pushFrame(mergedMod, classId, prefix);
+                  pushed = true;
+                }
 
-                this.flattenClassWithMods(resolvedBase.id, prefix, dae, childStack, new Set(visited));
+                this.flattenClassWithMods(resolvedBase.id, prefix, dae, modStack, new Set(visited));
+
+                if (pushed) modStack.popFrame();
               }
             }
           }
@@ -1095,7 +1259,7 @@ export class ArenaQueryFlattener {
     for (const child of children) {
       if (child.kind === "Extends") {
         // Check for `break` modification
-        const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+        const topMod = modStack.length > 0 ? modStack.getMods(modStack.length - 1) : null;
         if (isBroken(topMod, child.name)) continue;
 
         // Resolve the base class
@@ -1111,11 +1275,11 @@ export class ArenaQueryFlattener {
         // Merge: outer mod (from enclosing scope) with local extends mod
         const mergedMod = mergeModArgs(topMod, localMod);
 
-        // Build child modification stack for the base class
-        const childStack: ModificationStack =
-          mergedMod && mergedMod.args.length > 0
-            ? [...modStack, { mods: mergedMod, evaluationScopeId: child.parentId, evaluationScopePrefix: prefix }]
-            : modStack;
+        let pushed = false;
+        if (mergedMod && mergedMod.args.length > 0) {
+          modStack.pushFrame(mergedMod, child.parentId!, prefix);
+          pushed = true;
+        }
 
         // Check if this extends clause is in a protected section
         const extendsIsProtected = this.isEntryInProtectedSection(child);
@@ -1128,7 +1292,10 @@ export class ArenaQueryFlattener {
         const nextShadowedNames = new Set(shadowedNames);
         for (const name of redeclaredNames) nextShadowedNames.add(name);
 
-        this.flattenClassWithMods(baseEntry.id, prefix, dae, childStack, new Set(visited), nextShadowedNames);
+        this.flattenClassWithMods(baseEntry.id, prefix, dae, modStack, new Set(visited), nextShadowedNames);
+
+        if (pushed) modStack.popFrame();
+
         this.inheritedProtected = prevInheritedProtected;
       }
     }
@@ -1152,7 +1319,7 @@ export class ArenaQueryFlattener {
     });
     for (const child of projectedChildren) {
       if (child.kind === "Component") {
-        const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+        const topMod = modStack.length > 0 ? modStack.getMods(modStack.length - 1) : null;
         if (isBroken(topMod, child.name)) {
           this.brokenComponents.add(prefix ? prefix + "." + child.name : child.name);
           continue;
@@ -1175,10 +1342,16 @@ export class ArenaQueryFlattener {
         // console.error(`[DEBUG PROJECTED] child=${child.name} kind=${child.kind}`);
         this.flattenComponent(child, prefix, dae, modStack);
         emittedNames.add(child.name);
+
+        // Memory optimization: periodically evict volatile cache queries
+        // (e.g. arrayDimensions, effectiveModification) during huge array iterations
+        if (dae.varCount > 0 && dae.varCount % 500 === 0) {
+          this.db.flushVolatile();
+        }
       } else if (child.kind === "ConnectEquation") {
         // Check if this connection is broken by a modification
         let isBrokenConnect = false;
-        const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
+        const topMod = modStack.length > 0 ? modStack.getMods(modStack.length - 1) : null;
 
         if (topMod) {
           const connectArgs = topMod.args.filter(
@@ -1260,7 +1433,7 @@ export class ArenaQueryFlattener {
     elementIds: SymbolId[],
     prefix: string,
     dae: ArenaDAEBuilder,
-    modStack: ModificationStack,
+    modStack: ModificationArena,
   ): void {
     for (const eid of elementIds) {
       const entry = this.db.symbol(eid);
@@ -1393,16 +1566,141 @@ export class ArenaQueryFlattener {
     entry: SymbolEntry,
     prefix: string,
     dae: ArenaDAEBuilder,
-    modStack: ModificationStack,
+    modStack: ModificationArena,
   ): void {
     const fullName = prefix ? `${prefix}.${entry.name}` : entry.name;
     const isDiamondSkipped = dae.getVarIdxByName(fullName) >= 0 || dae.hasArrayElements(fullName);
-    // Deduplicate diamond inheritance: if component already emitted by a previous
-    // extends clause, skip it. Modelica semantics state that the lexically first
-    // extends clause modifications take precedence, which matches our evaluation order.
-    if (isDiamondSkipped) {
-      return;
+    if (isDiamondSkipped) return;
+
+    // =========================================================================
+    // FAST PATH: predefined scalar with no modifications
+    // =========================================================================
+    // For components like `Real x(start=1.0)`, bypass the expensive query chain
+    // (typeSpecifier → resolveSimpleName → classInstance → isOuter/isInner/etc.)
+    // by reading metadata directly from the SymbolEntry.
+    // This eliminates ~30 Salsa queries per component (all with 0% cache hit rate
+    // since each component has a unique SymbolId).
+    const meta = entry.metadata as Record<string, unknown>;
+    const metaType = meta?.typeSpecifier as string | undefined;
+    if (
+      metaType &&
+      PREDEFINED_SCALAR_TYPES.has(metaType) &&
+      modStack.length === 0 &&
+      !meta?.redeclare &&
+      !this.inheritedProtected
+    ) {
+      // Read the inline modification directly (single query)
+      const inlineMod = this.db.query<import("./modification-args.js").ModelicaModArgs | null>(
+        "effectiveModification",
+        entry.id,
+      );
+
+      // Check for arrays directly from the CST — avoid the arrayDimensions query
+      // which internally triggers classInstance → resolveSimpleName → scopeData chain.
+      let hasArrayDims = false;
+      const cstFast = this.db.cstNode(entry.id) as any;
+      if (cstFast) {
+        // Check ComponentDeclaration-level subscripts (e.g. x[2])
+        let declNode = cstFast;
+        while (declNode && declNode.type !== "Declaration") declNode = declNode.parent;
+        if (declNode?.childForFieldName("arraySubscripts")) hasArrayDims = true;
+        // Check ComponentClause-level subscripts (e.g. Real[3])
+        if (!hasArrayDims) {
+          let clauseNode = cstFast;
+          while (clauseNode && clauseNode.type !== "ComponentClause") clauseNode = clauseNode.parent;
+          if (clauseNode?.childForFieldName("arraySubscripts")) hasArrayDims = true;
+        }
+      }
+      if (!hasArrayDims) {
+        // --- Inline emitVariable for predefined scalar types ---
+        // Read variability/causality from metadata (already extracted at index time)
+        let varType = VarType.Real;
+        if (metaType === "Integer") varType = VarType.Integer;
+        else if (metaType === "Boolean") varType = VarType.Boolean;
+        else if (metaType === "String") varType = VarType.String;
+
+        let variability = Variability.Continuous;
+        const metaVari = meta?.variability as string | null;
+        if (metaVari === "discrete") variability = Variability.Discrete;
+        else if (metaVari === "parameter") variability = Variability.Parameter;
+        else if (metaVari === "constant") variability = Variability.Constant;
+
+        let causality = Causality.Local;
+        const metaCaus = meta?.causality as string | null;
+        if (metaCaus === "input") causality = Causality.Input;
+        else if (metaCaus === "output") causality = Causality.Output;
+
+        // For the fast path: no flow, no protection (inheritedProtected already checked above),
+        // no final, no evaluate — these are all 0 for simple declarations
+        const flags = 0;
+
+        // Resolve start value from modification
+        const hasExplicitStart = inlineMod?.args.some((a) => a.name === "start") ?? false;
+        const startVal = hasExplicitStart
+          ? (this.resolveModAttribute(inlineMod, "start", metaType, dae, entry, modStack) ?? 0.0)
+          : 0.0;
+        const initialValue =
+          typeof startVal === "number" ? startVal : startVal === true ? 1.0 : startVal === false ? 0.0 : 0.0;
+
+        const varIdx = dae.addVariable(fullName, varType, variability, causality, initialValue, flags);
+
+        // Set start attribute expression
+        if (hasExplicitStart) {
+          const startExprId =
+            varType === VarType.Boolean
+              ? dae.addBoolLiteral(initialValue !== 0)
+              : varType === VarType.Integer
+                ? dae.addIntLiteral(initialValue)
+                : dae.addRealLiteral(initialValue);
+          dae.setVarAttrExprId(varIdx, "start", startExprId);
+        }
+
+        // Handle binding expression (for parameters/constants)
+        if (inlineMod?.bindingExpression) {
+          if (inlineMod.bindingExpression.kind === "expression") {
+            const bytes = inlineMod.bindingExpression.cstBytes;
+            const cstNode = this.db.cstNodeRange(bytes[0], bytes[1], entry);
+            if (cstNode) {
+              const astNode = ModelicaSyntaxNode.new(null, cstNode as any);
+              const dotIdx = fullName.lastIndexOf(".");
+              const parentPrefix = dotIdx >= 0 ? fullName.substring(0, dotIdx) : undefined;
+
+              const visitor = this.createExprVisitor(dae, undefined, parentPrefix, entry.parentId ?? entry.id);
+              let exprId = visitor.visit(astNode ?? cstNode);
+              if (exprId !== undefined) {
+                if (varType === VarType.Real) {
+                  exprId = visitor.castToRealExpr(exprId);
+                }
+                dae.setVarExpression(varIdx, exprId);
+                if (variability !== Variability.Parameter && variability !== Variability.Constant) {
+                  const nameExpr = dae.addNameExpr(fullName);
+                  dae.addEquation(EqKind.Simple, nameExpr, exprId);
+                }
+              }
+            }
+          } else if (inlineMod.bindingExpression.kind === "literal") {
+            const val = inlineMod.bindingExpression.value;
+            let exprId: number;
+            if (typeof val === "number") {
+              exprId = varType === VarType.Integer ? dae.addIntLiteral(Math.round(val)) : dae.addRealLiteral(val);
+            } else if (typeof val === "boolean") {
+              exprId = dae.addBoolLiteral(val);
+            } else {
+              exprId = dae.addStringLiteral(val as string);
+            }
+            dae.setVarExpression(varIdx, exprId);
+            if (variability !== Variability.Parameter && variability !== Variability.Constant) {
+              const nameExpr = dae.addNameExpr(fullName);
+              dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            }
+          }
+        }
+        return;
+      }
     }
+    // =========================================================================
+    // END FAST PATH — fall through to full resolution
+    // =========================================================================
 
     // --- Compute effective modification from stack + inline CST ---
     const outerMod = lookupModInStack(modStack, entry.name);
@@ -1710,6 +2008,7 @@ export class ArenaQueryFlattener {
         arrayDims = evaluatedDims;
       }
     }
+    const tDims = performance.now();
 
     if (arrayDims && arrayDims.length > 0) {
       let hasUnknownDim = arrayDims.some((d) => d <= 0);
@@ -1861,30 +2160,19 @@ export class ArenaQueryFlattener {
     // Build child modification stack: push this component's effective mod
     // If this component is declared `final`, propagate that to all children
     const componentIsFinal = this.db.query<boolean>("isFinal", entry.id) || isFinalFromOuterMod;
-    const childStack: ModificationStack = effectiveMod
-      ? [
-          ...modStack,
-          {
-            mods: effectiveMod,
-            evaluationScopeId: entry.parentId,
-            isFinal: componentIsFinal || undefined,
-            evaluationScopePrefix: prefix,
-          },
-        ]
-      : componentIsFinal
-        ? [
-            ...modStack,
-            {
-              mods: { args: [], bindingExpression: null },
-              evaluationScopeId: entry.parentId,
-              isFinal: true,
-              evaluationScopePrefix: prefix,
-            },
-          ]
-        : modStack;
+    let pushed = false;
+    if (effectiveMod) {
+      modStack.pushFrame(effectiveMod, entry.parentId!, prefix, componentIsFinal);
+      pushed = true;
+    } else if (componentIsFinal) {
+      modStack.pushFrame({ args: [], bindingExpression: null }, entry.parentId!, prefix, true);
+      pushed = true;
+    }
     // Push compound type onto hierarchy stack for outer/inner resolution
     this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
-    this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
+    this.flattenClassWithMods(classInstanceId, fullName, dae, modStack, new Set());
+
+    if (pushed) modStack.popFrame();
 
     const cstNode = this.db.cstNode(classInstanceId) as any;
     const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
@@ -1934,7 +2222,7 @@ export class ArenaQueryFlattener {
     shape: number[],
     entry: SymbolEntry,
     dae: ArenaDAEBuilder,
-    modStack: ModificationStack,
+    modStack: ModificationArena,
     effectiveMod: ModelicaModArgs | null,
     isPredefined: boolean = false,
     primitiveTypeName: string = "Real",
@@ -1971,9 +2259,17 @@ export class ArenaQueryFlattener {
           let scopeId = entry.parentId ?? entry.id;
           if (effectiveMod?.evaluationScopeId && effectiveMod.evaluationScopeId !== entry.parentId) {
             scopeId = effectiveMod.evaluationScopeId;
-            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
-            if (frame && frame.evaluationScopePrefix !== undefined) {
-              exprPrefix = frame.evaluationScopePrefix;
+            let foundPrefix: string | undefined = undefined;
+            let found = false;
+            for (let i = modStack.length - 1; i >= 0; i--) {
+              if (modStack.getScopeId(i) === scopeId) {
+                foundPrefix = modStack.getScopePrefix(i);
+                found = true;
+                break;
+              }
+            }
+            if (found) {
+              exprPrefix = foundPrefix || undefined;
             } else if (scopeId === entry.parentId) {
               exprPrefix = parentPrefix;
             } else {
@@ -2123,10 +2419,14 @@ export class ArenaQueryFlattener {
         }
 
         // Compound array element — recurse using flattenClassWithMods
-        const childStack: ModificationStack = currentElementMod
-          ? [...modStack, { mods: currentElementMod, evaluationScopeId: entry.parentId }]
-          : modStack;
-        this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
+        let pushed = false;
+        if (currentElementMod) {
+          modStack.pushFrame(currentElementMod, entry.parentId!);
+          pushed = true;
+        }
+        this.flattenClassWithMods(classInstanceId, fullName, dae, modStack, new Set());
+
+        if (pushed) modStack.popFrame();
         this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
       }
     }
@@ -2145,9 +2445,17 @@ export class ArenaQueryFlattener {
           let scopeId = entry.parentId ?? entry.id;
           if (effectiveMod?.evaluationScopeId && effectiveMod.evaluationScopeId !== entry.parentId) {
             scopeId = effectiveMod.evaluationScopeId;
-            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
-            if (frame && frame.evaluationScopePrefix !== undefined) {
-              exprPrefix = frame.evaluationScopePrefix;
+            let foundPrefix: string | undefined = undefined;
+            let found = false;
+            for (let i = modStack.length - 1; i >= 0; i--) {
+              if (modStack.getScopeId(i) === scopeId) {
+                foundPrefix = modStack.getScopePrefix(i);
+                found = true;
+                break;
+              }
+            }
+            if (found) {
+              exprPrefix = foundPrefix || undefined;
             } else if (scopeId === entry.parentId) {
               exprPrefix = parentPrefix;
             } else {
@@ -2234,6 +2542,61 @@ export class ArenaQueryFlattener {
     }
   }
 
+  private getArenaExprShape(dae: ArenaDAEBuilder, exprId: number, scopeId: number | null): number[] | undefined {
+    if (exprId < 0) return undefined;
+    const kind = dae.getExprKind(exprId);
+
+    if (kind === ExprKind.Name) {
+      const varName = dae.interner.resolve(dae.getExprData1(exprId));
+      if (!varName) return undefined;
+      const entry = this.db.byName(varName)[0];
+      if (entry && entry.kind === "Component") {
+        const rawShape = this.db.query<any[] | null>("arrayDimensions", entry.id);
+        const shape = rawShape ? rawShape.map((d: any) => (typeof d === "object" ? (d.value ?? 1) : d)) : undefined;
+        return shape;
+      }
+      if (dae.hasVar(varName)) {
+        const shape = dae.getVarShape(dae.getVarIdxByName(varName));
+        return shape;
+      }
+      return undefined;
+    }
+
+    if (kind === ExprKind.Subscript) {
+      const baseId = dae.getExprData1(exprId);
+      const idxCount = dae.getExprRight(exprId);
+
+      const baseShape = this.getArenaExprShape(dae, baseId, scopeId);
+      const sliceDims: number[] = [];
+      for (let i = 0; i < idxCount; i++) {
+        const idxExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
+        const subKind = dae.getExprKind(idxExprId);
+        if (subKind === ExprKind.Colon) {
+          if (baseShape && i < baseShape.length) {
+            sliceDims.push(baseShape[i]!);
+          } else {
+            sliceDims.push(0); // Fallback
+          }
+        } else {
+          const val = evaluateArenaExpression(
+            dae,
+            idxExprId,
+            undefined,
+            this.db,
+            scopeId ?? undefined,
+            undefined,
+            false,
+          );
+          if (Array.isArray(val)) {
+            sliceDims.push(val.length);
+          }
+        }
+      }
+      if (sliceDims.length > 0) return sliceDims;
+    }
+    return undefined;
+  }
+
   /** Recursively resolve/subscript RHS element expression for array equation scalarization. */
   private getArrayElementExpr(
     dae: ArenaDAEBuilder,
@@ -2255,7 +2618,9 @@ export class ArenaQueryFlattener {
     if (kind === ExprKind.Name) {
       const varName = dae.interner.resolve(dae.getExprData1(exprId));
       const elemVarName = `${varName}[${indices.join(",")}]`;
-      if (dae.hasVar(elemVarName)) {
+      const hasElemVar = dae.hasVar(elemVarName);
+      // console.log(`[DEBUG] getArrayElementExpr Name: varName=${varName}, indices=${indices.join(",")}, elemVarName=${elemVarName}, hasVar=${hasElemVar}`);
+      if (hasElemVar) {
         return dae.addNameExpr(elemVarName);
       }
       if (dae.hasVar(varName)) {
@@ -2267,9 +2632,63 @@ export class ArenaQueryFlattener {
     }
 
     if (kind === ExprKind.Binary) {
-      const op = dae.getExprData1(exprId) as BinOp;
+      let op = dae.getExprData1(exprId) as BinOp;
+
+      // Handle Matrix/Vector multiplication expansion
+      if (op === BinOp.Mul) {
+        const leftId = dae.getExprLeft(exprId);
+        const rightId = dae.getExprRight(exprId);
+        const lShape = this.getArenaExprShape(dae, leftId, (visitor as any)?.scopeId ?? null);
+        const rShape = this.getArenaExprShape(dae, rightId, (visitor as any)?.scopeId ?? null);
+
+        if (lShape && rShape && lShape.length > 0 && rShape.length > 0) {
+          let iIdx = -1;
+          let jIdx = -1;
+          let nDim = -1;
+
+          if (lShape.length === 2 && rShape.length === 2) {
+            iIdx = indices[0] ?? 1;
+            jIdx = indices[1] ?? 1;
+            nDim = lShape[1]!;
+          } else if (lShape.length === 2 && rShape.length === 1) {
+            iIdx = indices[0] ?? 1;
+            nDim = lShape[1]!;
+          } else if (lShape.length === 1 && rShape.length === 2) {
+            jIdx = indices[0] ?? 1;
+            nDim = lShape[0]!;
+          } else if (lShape.length === 1 && rShape.length === 1) {
+            nDim = lShape[0]!;
+          }
+
+          if (nDim > 0) {
+            const productIds: number[] = [];
+            for (let k = 1; k <= nDim; k++) {
+              const lIndices = lShape.length === 2 ? [iIdx, k] : [k];
+              const rIndices = rShape.length === 2 ? [k, jIdx] : [k];
+              const lElem = this.getArrayElementExpr(dae, leftId, lIndices, visitor);
+              const rElem = this.getArrayElementExpr(dae, rightId, rIndices, visitor);
+              productIds.push(dae.addBinaryExpr(BinOp.Mul, lElem, rElem));
+            }
+            if (productIds.length === 0) return dae.addRealLiteral(0);
+
+            let sumId = productIds[0]!;
+            for (let i = 1; i < productIds.length; i++) {
+              sumId = dae.addBinaryExpr(BinOp.Add, sumId, productIds[i]!);
+            }
+            return sumId;
+          }
+        }
+      }
+
       const left = this.getArrayElementExpr(dae, dae.getExprLeft(exprId), indices, visitor);
       const right = this.getArrayElementExpr(dae, dae.getExprRight(exprId), indices, visitor);
+
+      if (op === BinOp.ElemAdd) op = BinOp.Add;
+      else if (op === BinOp.ElemSub) op = BinOp.Sub;
+      else if (op === BinOp.ElemMul) op = BinOp.Mul;
+      else if (op === BinOp.ElemDiv) op = BinOp.Div;
+      else if (op === BinOp.ElemPow) op = BinOp.Pow;
+
       return dae.addBinaryExpr(op, left, right);
     }
 
@@ -2347,79 +2766,104 @@ export class ArenaQueryFlattener {
     if (kind === ExprKind.Subscript) {
       const baseId = dae.getExprData1(exprId);
       const idxCount = dae.getExprRight(exprId);
-      let curr = dae.getExprLeft(exprId);
       const idxIds: number[] = [];
       for (let i = 0; i < idxCount; i++) {
-        idxIds.push(curr++);
+        idxIds.push(i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i));
       }
 
-      // We only support 1D slicing mapping right now
-      if (idxIds.length === 1 && indices.length === 1 && visitor) {
-        const sliceIdxExprId = idxIds[0]!;
-        const activeClass = (visitor as any).scopeId;
-        const val = evaluateArenaExpression(dae, sliceIdxExprId, undefined, this.db, activeClass, undefined, false);
-        if (Array.isArray(val)) {
-          const targetIdx = indices[0]! - 1;
-          if (targetIdx >= 0 && targetIdx < val.length) {
-            const mappedIdx = val[targetIdx];
-            if (typeof mappedIdx === "number") {
-              let baseVarName = "";
-              if (dae.getExprKind(baseId) === ExprKind.Name) {
-                baseVarName = dae.interner.resolve(dae.getExprData1(baseId));
-              }
-              if (baseVarName) {
-                const elemVarName = `${baseVarName}[${mappedIdx}]`;
-                if (dae.hasVar(elemVarName)) {
-                  return dae.addNameExpr(elemVarName);
-                }
-              }
-              return dae.addSubscriptExpr(baseId, [dae.addIntLiteral(mappedIdx)]);
+      const activeClass = (visitor as any)?.scopeId;
+      let success = true;
+      const mappedIndices: number[] = [];
+      let targetDim = 0;
+
+      for (let i = 0; i < idxIds.length; i++) {
+        const sliceIdxExprId = idxIds[i]!;
+        const subKind = dae.getExprKind(sliceIdxExprId);
+        if (subKind === ExprKind.Colon) {
+          mappedIndices.push(indices[targetDim]!);
+          targetDim++;
+        } else {
+          const val = evaluateArenaExpression(
+            dae,
+            sliceIdxExprId,
+            undefined,
+            this.db,
+            activeClass ?? undefined,
+            undefined,
+            false,
+          );
+          if (Array.isArray(val)) {
+            const targetIdx = indices[targetDim]! - 1;
+            if (targetIdx >= 0 && targetIdx < val.length) {
+              mappedIndices.push(val[targetIdx] as number);
+              targetDim++;
+            } else {
+              success = false;
+              break;
             }
+          } else if (typeof val === "number") {
+            mappedIndices.push(val);
+          } else {
+            success = false;
+            break;
           }
         }
       }
+
+      if (success) {
+        for (let i = targetDim; i < indices.length; i++) {
+          mappedIndices.push(indices[i]!);
+        }
+        return this.getArrayElementExpr(dae, baseId, mappedIndices, visitor);
+      }
     }
 
-    let currentExprId = exprId;
-    let success = true;
+    let baseId = exprId;
+    let allUnwrapped = true;
     for (const idx of indices) {
-      let currKind = dae.getExprKind(currentExprId);
-
-      // Unwrap Cast (which was used previously, now handled via Call to /*Real*/)
-      let isCast = false;
-      let castType = 0;
-      if (currKind === ExprKind.Call && dae.interner.resolve(dae.getExprData1(currentExprId)) === "/*Real*/") {
-        isCast = true;
-        currentExprId = dae.getExprLeft(currentExprId); // For Call, left is first arg
-        currKind = dae.getExprKind(currentExprId);
-      }
-
-      if (currKind === ExprKind.ArrayCtor) {
-        const count = dae.getExprData1(currentExprId);
+      if (dae.getExprKind(baseId) === ExprKind.ArrayCtor) {
+        const count = dae.getExprData1(baseId);
         const i = idx - 1;
         if (i >= 0 && i < count) {
-          currentExprId = i === 0 ? dae.getExprLeft(currentExprId) : dae.getExprLeft(currentExprId + i);
-          if (isCast) {
-            currentExprId = dae.addCallExpr("/*Real*/", [currentExprId]);
+          if (i === 0) {
+            baseId = dae.getExprLeft(baseId);
+          } else {
+            const seqIds = getSequenceElements(dae, baseId, count, dae.getExprLeft(baseId));
+            if (i < seqIds.length) {
+              baseId = seqIds[i]!;
+            } else {
+              allUnwrapped = false;
+              break;
+            }
           }
         } else {
-          success = false;
+          allUnwrapped = false;
           break;
         }
       } else {
-        success = false;
+        allUnwrapped = false;
         break;
       }
     }
-    if (success) {
-      return currentExprId;
+
+    if (allUnwrapped) {
+      return baseId;
     }
 
     // Fallback: subscript expression
-    return dae.addSubscriptExpr(
-      exprId,
-      indices.map((idxVal) => dae.addIntLiteral(idxVal)),
-    );
+    baseId = exprId;
+    const allIndices: number[] = [];
+    if (dae.getExprKind(exprId) === ExprKind.Subscript) {
+      baseId = dae.getExprData1(exprId);
+      const idxCount = dae.getExprRight(exprId);
+      const firstIdx = dae.getExprLeft(exprId);
+      const existing = getSequenceElements(dae, exprId, idxCount, firstIdx);
+      allIndices.push(...existing);
+    }
+    for (const idx of indices) {
+      allIndices.push(dae.addIntLiteral(idx));
+    }
+    return dae.addSubscriptExpr(baseId, allIndices);
   }
 
   // -------------------------------------------------------------------------
@@ -2432,7 +2876,7 @@ export class ArenaQueryFlattener {
     componentEntry: SymbolEntry,
     dae: ArenaDAEBuilder,
     effectiveMod: ModelicaModArgs | null = null,
-    modStack: ModificationStack = [],
+    modStack: ModificationArena = new ModificationArena(),
     isFinalFromOuterMod: boolean = false,
   ): number {
     // Use the pre-computed effective modification from the caller.
@@ -2444,7 +2888,11 @@ export class ArenaQueryFlattener {
     else if (typeName === "Boolean") varType = VarType.Boolean;
     else if (typeName === "String") varType = VarType.String;
 
-    // Resolve variability via the query system (reads from ComponentClause CST)
+    // Read variability/causality from metadata first (already extracted at index time),
+    // falling back to queries only when metadata doesn't contain the info.
+    const emitMeta = componentEntry.metadata as Record<string, unknown>;
+
+    // Resolve variability
     let variability = Variability.Continuous;
     const modVariability = this.resolveModAttribute(
       mod,
@@ -2454,21 +2902,30 @@ export class ArenaQueryFlattener {
       componentEntry,
       modStack,
     ) as string;
-    const qVariability = this.db.query<string | null>("variability", componentEntry.id);
+    // Metadata stores null when no variability prefix (= continuous), undefined if key missing
+    const metaVariability = emitMeta?.variability as string | null | undefined;
+    const qVariability =
+      metaVariability !== undefined
+        ? metaVariability // null → no prefix → continuous (default)
+        : this.db.query<string | null>("variability", componentEntry.id);
     const vStr = modVariability ?? qVariability ?? "continuous";
     if (vStr === "discrete") variability = Variability.Discrete;
     else if (vStr === "parameter") variability = Variability.Parameter;
     else if (vStr === "constant") variability = Variability.Constant;
 
-    // Resolve causality via the query system
+    // Resolve causality
     let causality = Causality.Local;
     const modCausality = this.resolveModAttribute(mod, "causality", typeName, dae, componentEntry, modStack) as string;
-    const qCausality = this.db.query<string | null>("causality", componentEntry.id);
+    const metaCausality = emitMeta?.causality as string | null | undefined;
+    const qCausality =
+      metaCausality !== undefined
+        ? metaCausality // null → no prefix → local (default)
+        : this.db.query<string | null>("causality", componentEntry.id);
     const cStr = modCausality ?? qCausality ?? "local";
     if (cStr === "input") causality = Causality.Input;
     else if (cStr === "output") causality = Causality.Output;
 
-    // Resolve flow prefix via the query system
+    // Resolve flow prefix — no metadata available, must query
     const qFlowPrefix = this.db.query<string | null>("flowPrefix", componentEntry.id);
     let flags = 0;
     if (qFlowPrefix === "flow" || qFlowPrefix === "stream") {
@@ -2601,9 +3058,17 @@ export class ArenaQueryFlattener {
           let scopeId = componentEntry.parentId ?? componentEntry.id;
           if (mod.evaluationScopeId && mod.evaluationScopeId !== componentEntry.parentId) {
             scopeId = mod.evaluationScopeId;
-            const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
-            if (frame && frame.evaluationScopePrefix !== undefined) {
-              exprPrefix = frame.evaluationScopePrefix;
+            let foundPrefix: string | undefined = undefined;
+            let found = false;
+            for (let i = modStack.length - 1; i >= 0; i--) {
+              if (modStack.getScopeId(i) === scopeId) {
+                foundPrefix = modStack.getScopePrefix(i);
+                found = true;
+                break;
+              }
+            }
+            if (found) {
+              exprPrefix = foundPrefix || undefined;
             } else if (scopeId === componentEntry.parentId) {
               exprPrefix = parentPrefix;
             } else {
@@ -2857,7 +3322,7 @@ export class ArenaQueryFlattener {
     const varShortName = name.split(".").pop() ?? name;
     const customSig = `${varShortName}<function>(${inputParts.join(", ")}) => ${outputType}`;
 
-    const varIdx = this.emitVariable(name, typeName, componentEntry, dae, effectiveMod, []);
+    const varIdx = this.emitVariable(name, typeName, componentEntry, dae, effectiveMod, new ModificationArena());
     if (varIdx >= 0) {
       dae.setVarCustomType(varIdx, customSig);
     }
@@ -3201,7 +3666,7 @@ export class ArenaQueryFlattener {
       // Compound type — expand its elements under the virtual name
       const subElements = this.db.query<SymbolId[]>("instantiate", currentScopeId);
       if (subElements) {
-        this.flattenElements(subElements, virtualName, dae, []);
+        this.flattenElements(subElements, virtualName, dae, new ModificationArena());
       }
     }
   }
@@ -3263,7 +3728,7 @@ export class ArenaQueryFlattener {
     typeName: string,
     dae: ArenaDAEBuilder,
     contextEntry?: SymbolEntry,
-    modStack: ModificationStack = [],
+    modStack: ModificationArena = new ModificationArena(),
     parameters?: Map<string, any>,
   ): unknown {
     if (mod) {
@@ -3291,9 +3756,17 @@ export class ArenaQueryFlattener {
             const evalScope = arg.evaluationScopeId ?? mod.evaluationScopeId;
             if (evalScope && evalScope !== contextEntry?.parentId) {
               scopeId = evalScope;
-              const frame = modStack.find((f) => f.evaluationScopeId === scopeId);
-              if (frame && frame.evaluationScopePrefix !== undefined) {
-                exprPrefix = frame.evaluationScopePrefix;
+              let foundPrefix: string | undefined = undefined;
+              let found = false;
+              for (let i = modStack.length - 1; i >= 0; i--) {
+                if (modStack.getScopeId(i) === scopeId) {
+                  foundPrefix = modStack.getScopePrefix(i);
+                  found = true;
+                  break;
+                }
+              }
+              if (found) {
+                exprPrefix = foundPrefix || undefined;
               } else {
                 exprPrefix = undefined;
               }
@@ -3703,6 +4176,41 @@ export class ArenaQueryFlattener {
       this.flattenIfEquationAst(eqNode, prefix, dae, loopVars, scopeId);
     } else if (eqNode instanceof ModelicaWhenEquationSyntaxNode) {
       this.flattenWhenEquationAst(eqNode, prefix, dae, loopVars, scopeId);
+    } else if (eqNode instanceof ModelicaConnectEquationSyntaxNode) {
+      // Check if this connection was broken
+      const eqStart = eqNode.sourceRange?.startIndex;
+      const eqEnd = eqNode.sourceRange?.endIndex;
+      let eqText = "";
+      if (eqStart !== undefined && eqEnd !== undefined) {
+        const scopeEntry = scopeId ? this.db.symbol(scopeId) : undefined;
+        eqText = this.db.cstText(eqStart, eqEnd, scopeEntry) ?? "";
+      }
+
+      if (eqText) {
+        const canonEq = this.canonicalizeConnect(eqText);
+        if (this.brokenConnections.has(prefix + ":" + canonEq)) {
+          return; // Skip this broken connect
+        }
+      }
+
+      const lhs = eqNode.componentReference1;
+      const rhs = eqNode.componentReference2;
+      if (lhs && rhs) {
+        const lhsRef = this.serializeRef(lhs);
+        const rhsRef = this.serializeRef(rhs);
+        if (lhsRef && rhsRef) {
+          let lhsName = prefix ? `${prefix}.${lhsRef}` : lhsRef;
+          let rhsName = prefix ? `${prefix}.${rhsRef}` : rhsRef;
+          lhsName = this.resolveOuter(lhsName) ?? lhsName;
+          rhsName = this.resolveOuter(rhsName) ?? rhsName;
+          if (this.isPathBroken(lhsName) || this.isPathBroken(rhsName)) {
+            return;
+          }
+          const lhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(lhsName));
+          const rhsId = dae.addExpression(ExprKind.Name, dae.interner.intern(rhsName));
+          dae.addEquation(EqKind.Connect, lhsId, rhsId);
+        }
+      }
     } else if (eqNode instanceof ModelicaSpecialEquationSyntaxNode) {
       // Handle assert, terminate, reinit, etc. inside for/if/when bodies
       const callExpr = this.compileSpecialEquationExpr(eqNode, prefix, dae, loopVars, scopeId);
@@ -4026,7 +4534,7 @@ export class ArenaQueryFlattener {
 
           const idxNode = forIndexes[idxPos]!;
           const indexName = idxNode.identifier?.text ?? "";
-          const indexNameId = dae.interner.intern(indexName);
+          const indexNameId = dae.interner.intern("\0loop\0" + indexName);
           const visitor = this.createExprVisitor(dae, currentLoopVars, prefix, scopeId, false);
 
           let rangeExprId = idxNode.expression ? visitor.visit(idxNode.expression) : undefined;
@@ -4397,25 +4905,49 @@ export class ArenaQueryFlattener {
       }
     }
 
-    // 2. Resolve structural connections to variable index pairs
+    // 2. Build a prefix map to quickly locate hierarchical descendants without O(N^2) scanning
+    const prefixMap = new Map<string, number[]>();
     for (let i = 0; i < dae.varCount; i++) {
       const varName = dae.getVarName(i);
+      let dot = varName.indexOf(".");
+      while (dot !== -1) {
+        const prefix = varName.substring(0, dot);
+        let arr = prefixMap.get(prefix);
+        if (!arr) {
+          arr = [];
+          prefixMap.set(prefix, arr);
+        }
+        arr.push(i);
+        dot = varName.indexOf(".", dot + 1);
+      }
+    }
 
-      for (const [fromStrId, toStrId] of connectPairs) {
-        const fromStr = dae.interner.resolve(fromStrId);
-        const toStr = dae.interner.resolve(toStrId);
+    // 3. Resolve structural connections to variable index pairs efficiently
+    for (const [fromStrId, toStrId] of connectPairs) {
+      const fromStr = dae.interner.resolve(fromStrId);
+      const toStr = dae.interner.resolve(toStrId);
+      if (!fromStr || !toStr) continue;
 
-        // Match from -> to
-        let matchSuffix: string | null = null;
-        if (varName === fromStr) matchSuffix = "";
-        else if (varName.startsWith(fromStr + ".")) matchSuffix = varName.substring(fromStr.length);
+      // Match exact top-level connectors
+      const exactFrom = dae.getVarIdxByName(fromStr);
+      const exactTo = dae.getVarIdxByName(toStr);
+      if (exactFrom >= 0 && exactTo >= 0) {
+        uf.union(exactFrom, exactTo);
+        resolvedPairs.push([exactFrom, exactTo]);
+      }
 
-        if (matchSuffix !== null) {
+      // Match hierarchical descendants
+      const children = prefixMap.get(fromStr);
+      if (children) {
+        const prefixLen = fromStr.length;
+        for (const idx of children) {
+          const varName = dae.getVarName(idx);
+          const matchSuffix = varName.substring(prefixLen); // e.g. ".v" or ".sub.v"
           const targetName = toStr + matchSuffix;
           const targetIdx = dae.getVarIdxByName(targetName);
           if (targetIdx >= 0) {
-            uf.union(i, targetIdx);
-            resolvedPairs.push([i, targetIdx]);
+            uf.union(idx, targetIdx);
+            resolvedPairs.push([idx, targetIdx]);
           }
         }
       }
@@ -4954,9 +5486,10 @@ export class ArenaQueryFlattener {
       const elements = this.db.query<number[]>("instantiate", resolvedId);
       if (elements) {
         const localMod = this.db.query<ModelicaModArgs | null>("effectiveModification", resolvedId);
-        const modStack = localMod
-          ? [{ mods: localMod, evaluationScopeId: localMod.evaluationScopeId ?? resolvedId }]
-          : [];
+        const modStack = new ModificationArena();
+        if (localMod) {
+          modStack.pushFrame(localMod, localMod.evaluationScopeId ?? resolvedId, "");
+        }
         this.flattenElements(elements, "", fnDae, modStack);
       }
 

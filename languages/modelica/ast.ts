@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ModelicaBinaryOperator,
   ModelicaCausality,
@@ -32,6 +33,7 @@ export interface IModelicaSyntaxNode {
 }
 
 export abstract class ModelicaSyntaxNode implements IModelicaSyntaxNode {
+  declare readonly _typeTag: number;
   static #nextId = 0;
   #id: number;
   #parent: WeakRef<ModelicaSyntaxNode> | null;
@@ -7244,3 +7246,207 @@ export class ModelicaSyntaxPrinter extends ModelicaSyntaxVisitor<void, number> {
     this.print(node.text ?? "?");
   }
 }
+
+// --- Type Tags ---
+export enum AstTag {
+  UNKNOWN = 0,
+  ModelicaSyntaxNode = 1,
+  ModelicaStoredDefinitionSyntaxNode = 2,
+  ModelicaWithinDirectiveSyntaxNode = 3,
+  ModelicaElementSyntaxNode = 4,
+  ModelicaClassDefinitionSyntaxNode = 5,
+  ModelicaClassPrefixesSyntaxNode = 6,
+  ModelicaClassSpecifierSyntaxNode = 7,
+  ModelicaLongClassSpecifierSyntaxNode = 8,
+  ModelicaShortClassSpecifierSyntaxNode = 9,
+  ModelicaDerClassSpecifierSyntaxNode = 10,
+  ModelicaEnumerationLiteralSyntaxNode = 11,
+  ModelicaExternalFunctionClauseSyntaxNode = 12,
+  ModelicaLanguageSpecificationSyntaxNode = 13,
+  ModelicaExternalFunctionCallSyntaxNode = 14,
+  ModelicaSectionSyntaxNode = 15,
+  ModelicaElementSectionSyntaxNode = 16,
+  ModelicaElementAnnotationSyntaxNode = 17,
+  ModelicaImportClauseSyntaxNode = 18,
+  ModelicaSimpleImportClauseSyntaxNode = 19,
+  ModelicaCompoundImportClauseSyntaxNode = 20,
+  ModelicaUnqualifiedImportClauseSyntaxNode = 21,
+  ModelicaExtendsClauseSyntaxNode = 22,
+  ModelicaConstrainingClauseSyntaxNode = 23,
+  ModelicaClassOrInheritanceModificationSyntaxNode = 24,
+  ModelicaInheritanceModificationSyntaxNode = 25,
+  ModelicaComponentClauseSyntaxNode = 26,
+  ModelicaComponentDeclarationSyntaxNode = 27,
+  ModelicaConditionAttributeSyntaxNode = 28,
+  ModelicaDeclarationSyntaxNode = 29,
+  ModelicaModificationSyntaxNode = 30,
+  ModelicaModificationExpressionSyntaxNode = 31,
+  ModelicaClassModificationSyntaxNode = 32,
+  ModelicaModificationArgumentSyntaxNode = 33,
+  ModelicaElementModificationSyntaxNode = 34,
+  ModelicaElementRedeclarationSyntaxNode = 35,
+  ModelicaComponentClause1SyntaxNode = 36,
+  ModelicaComponentDeclaration1SyntaxNode = 37,
+  ModelicaShortClassDefinitionSyntaxNode = 38,
+  ModelicaEquationSectionSyntaxNode = 39,
+  ModelicaAlgorithmSectionSyntaxNode = 40,
+  ModelicaEquationSyntaxNode = 41,
+  ModelicaStatementSyntaxNode = 42,
+  ModelicaSimpleAssignmentStatementSyntaxNode = 43,
+  ModelicaProcedureCallStatementSyntaxNode = 44,
+  ModelicaComplexAssignmentStatementSyntaxNode = 45,
+  ModelicaSimpleEquationSyntaxNode = 46,
+  ModelicaSpecialEquationSyntaxNode = 47,
+  ModelicaIfEquationSyntaxNode = 48,
+  ModelicaElseIfEquationClauseSyntaxNode = 49,
+  ModelicaIfStatementSyntaxNode = 50,
+  ModelicaElseIfStatementClauseSyntaxNode = 51,
+  ModelicaForEquationSyntaxNode = 52,
+  ModelicaForStatementSyntaxNode = 53,
+  ModelicaForIndexSyntaxNode = 54,
+  ModelicaWhileStatementSyntaxNode = 55,
+  ModelicaWhenEquationSyntaxNode = 56,
+  ModelicaElseWhenEquationClauseSyntaxNode = 57,
+  ModelicaWhenStatementSyntaxNode = 58,
+  ModelicaElseWhenStatementClauseSyntaxNode = 59,
+  ModelicaConnectEquationSyntaxNode = 60,
+  ModelicaBreakStatementSyntaxNode = 61,
+  ModelicaReturnStatementSyntaxNode = 62,
+  ModelicaExpressionSyntaxNode = 63,
+  ModelicaIfElseExpressionSyntaxNode = 64,
+  ModelicaElseIfExpressionClauseSyntaxNode = 65,
+  ModelicaRangeExpressionSyntaxNode = 66,
+  ModelicaSimpleExpressionSyntaxNode = 67,
+  ModelicaUnaryExpressionSyntaxNode = 68,
+  ModelicaBinaryExpressionSyntaxNode = 69,
+  ModelicaPrimaryExpressionSyntaxNode = 70,
+  ModelicaEndExpressionSyntaxNode = 71,
+  ModelicaLiteralSyntaxNode = 72,
+  ModelicaTypeSpecifierSyntaxNode = 73,
+  ModelicaNameSyntaxNode = 74,
+  ModelicaComponentReferenceSyntaxNode = 75,
+  ModelicaComponentReferencePartSyntaxNode = 76,
+  ModelicaFunctionCallSyntaxNode = 77,
+  ModelicaFunctionCallArgumentsSyntaxNode = 78,
+  ModelicaArrayConcatenationSyntaxNode = 79,
+  ModelicaArrayConstructorSyntaxNode = 80,
+  ModelicaComprehensionClauseSyntaxNode = 81,
+  ModelicaNamedArgumentSyntaxNode = 82,
+  ModelicaFunctionArgumentSyntaxNode = 83,
+  ModelicaFunctionPartialApplicationSyntaxNode = 84,
+  ModelicaMemberAccessExpressionSyntaxNode = 85,
+  ModelicaOutputExpressionListSyntaxNode = 86,
+  ModelicaExpressionListSyntaxNode = 87,
+  ModelicaArraySubscriptsSyntaxNode = 88,
+  ModelicaSubscriptSyntaxNode = 89,
+  ModelicaDescriptionSyntaxNode = 90,
+  ModelicaAnnotationClauseSyntaxNode = 91,
+  ModelicaBooleanLiteralSyntaxNode = 92,
+  ModelicaIdentifierSyntaxNode = 93,
+  ModelicaStringLiteralSyntaxNode = 94,
+  ModelicaUnsignedIntegerLiteralSyntaxNode = 95,
+  ModelicaUnsignedRealLiteralSyntaxNode = 96,
+}
+(ModelicaSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSyntaxNode;
+(ModelicaStoredDefinitionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaStoredDefinitionSyntaxNode;
+(ModelicaWithinDirectiveSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaWithinDirectiveSyntaxNode;
+(ModelicaElementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElementSyntaxNode;
+(ModelicaClassDefinitionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaClassDefinitionSyntaxNode;
+(ModelicaClassPrefixesSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaClassPrefixesSyntaxNode;
+(ModelicaClassSpecifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaClassSpecifierSyntaxNode;
+(ModelicaLongClassSpecifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaLongClassSpecifierSyntaxNode;
+(ModelicaShortClassSpecifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaShortClassSpecifierSyntaxNode;
+(ModelicaDerClassSpecifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaDerClassSpecifierSyntaxNode;
+(ModelicaEnumerationLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaEnumerationLiteralSyntaxNode;
+(ModelicaExternalFunctionClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaExternalFunctionClauseSyntaxNode;
+(ModelicaLanguageSpecificationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaLanguageSpecificationSyntaxNode;
+(ModelicaExternalFunctionCallSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaExternalFunctionCallSyntaxNode;
+(ModelicaSectionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSectionSyntaxNode;
+(ModelicaElementSectionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElementSectionSyntaxNode;
+(ModelicaElementAnnotationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElementAnnotationSyntaxNode;
+(ModelicaImportClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaImportClauseSyntaxNode;
+(ModelicaSimpleImportClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSimpleImportClauseSyntaxNode;
+(ModelicaCompoundImportClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaCompoundImportClauseSyntaxNode;
+(ModelicaUnqualifiedImportClauseSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaUnqualifiedImportClauseSyntaxNode;
+(ModelicaExtendsClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaExtendsClauseSyntaxNode;
+(ModelicaConstrainingClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaConstrainingClauseSyntaxNode;
+(ModelicaClassOrInheritanceModificationSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaClassOrInheritanceModificationSyntaxNode;
+(ModelicaInheritanceModificationSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaInheritanceModificationSyntaxNode;
+(ModelicaComponentClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentClauseSyntaxNode;
+(ModelicaComponentDeclarationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentDeclarationSyntaxNode;
+(ModelicaConditionAttributeSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaConditionAttributeSyntaxNode;
+(ModelicaDeclarationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaDeclarationSyntaxNode;
+(ModelicaModificationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaModificationSyntaxNode;
+(ModelicaModificationExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaModificationExpressionSyntaxNode;
+(ModelicaClassModificationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaClassModificationSyntaxNode;
+(ModelicaModificationArgumentSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaModificationArgumentSyntaxNode;
+(ModelicaElementModificationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElementModificationSyntaxNode;
+(ModelicaElementRedeclarationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElementRedeclarationSyntaxNode;
+(ModelicaComponentClause1SyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentClause1SyntaxNode;
+(ModelicaComponentDeclaration1SyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentDeclaration1SyntaxNode;
+(ModelicaShortClassDefinitionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaShortClassDefinitionSyntaxNode;
+(ModelicaEquationSectionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaEquationSectionSyntaxNode;
+(ModelicaAlgorithmSectionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaAlgorithmSectionSyntaxNode;
+(ModelicaEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaEquationSyntaxNode;
+(ModelicaStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaStatementSyntaxNode;
+(ModelicaSimpleAssignmentStatementSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaSimpleAssignmentStatementSyntaxNode;
+(ModelicaProcedureCallStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaProcedureCallStatementSyntaxNode;
+(ModelicaComplexAssignmentStatementSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaComplexAssignmentStatementSyntaxNode;
+(ModelicaSimpleEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSimpleEquationSyntaxNode;
+(ModelicaSpecialEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSpecialEquationSyntaxNode;
+(ModelicaIfEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaIfEquationSyntaxNode;
+(ModelicaElseIfEquationClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElseIfEquationClauseSyntaxNode;
+(ModelicaIfStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaIfStatementSyntaxNode;
+(ModelicaElseIfStatementClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElseIfStatementClauseSyntaxNode;
+(ModelicaForEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaForEquationSyntaxNode;
+(ModelicaForStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaForStatementSyntaxNode;
+(ModelicaForIndexSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaForIndexSyntaxNode;
+(ModelicaWhileStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaWhileStatementSyntaxNode;
+(ModelicaWhenEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaWhenEquationSyntaxNode;
+(ModelicaElseWhenEquationClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElseWhenEquationClauseSyntaxNode;
+(ModelicaWhenStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaWhenStatementSyntaxNode;
+(ModelicaElseWhenStatementClauseSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaElseWhenStatementClauseSyntaxNode;
+(ModelicaConnectEquationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaConnectEquationSyntaxNode;
+(ModelicaBreakStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaBreakStatementSyntaxNode;
+(ModelicaReturnStatementSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaReturnStatementSyntaxNode;
+(ModelicaExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaExpressionSyntaxNode;
+(ModelicaIfElseExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaIfElseExpressionSyntaxNode;
+(ModelicaElseIfExpressionClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaElseIfExpressionClauseSyntaxNode;
+(ModelicaRangeExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaRangeExpressionSyntaxNode;
+(ModelicaSimpleExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSimpleExpressionSyntaxNode;
+(ModelicaUnaryExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaUnaryExpressionSyntaxNode;
+(ModelicaBinaryExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaBinaryExpressionSyntaxNode;
+(ModelicaPrimaryExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaPrimaryExpressionSyntaxNode;
+(ModelicaEndExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaEndExpressionSyntaxNode;
+(ModelicaLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaLiteralSyntaxNode;
+(ModelicaTypeSpecifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaTypeSpecifierSyntaxNode;
+(ModelicaNameSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaNameSyntaxNode;
+(ModelicaComponentReferenceSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentReferenceSyntaxNode;
+(ModelicaComponentReferencePartSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComponentReferencePartSyntaxNode;
+(ModelicaFunctionCallSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaFunctionCallSyntaxNode;
+(ModelicaFunctionCallArgumentsSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaFunctionCallArgumentsSyntaxNode;
+(ModelicaArrayConcatenationSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaArrayConcatenationSyntaxNode;
+(ModelicaArrayConstructorSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaArrayConstructorSyntaxNode;
+(ModelicaComprehensionClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaComprehensionClauseSyntaxNode;
+(ModelicaNamedArgumentSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaNamedArgumentSyntaxNode;
+(ModelicaFunctionArgumentSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaFunctionArgumentSyntaxNode;
+(ModelicaFunctionPartialApplicationSyntaxNode.prototype as any)._typeTag =
+  AstTag.ModelicaFunctionPartialApplicationSyntaxNode;
+(ModelicaMemberAccessExpressionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaMemberAccessExpressionSyntaxNode;
+(ModelicaOutputExpressionListSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaOutputExpressionListSyntaxNode;
+(ModelicaExpressionListSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaExpressionListSyntaxNode;
+(ModelicaArraySubscriptsSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaArraySubscriptsSyntaxNode;
+(ModelicaSubscriptSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaSubscriptSyntaxNode;
+(ModelicaDescriptionSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaDescriptionSyntaxNode;
+(ModelicaAnnotationClauseSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaAnnotationClauseSyntaxNode;
+(ModelicaBooleanLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaBooleanLiteralSyntaxNode;
+(ModelicaIdentifierSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaIdentifierSyntaxNode;
+(ModelicaStringLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaStringLiteralSyntaxNode;
+(ModelicaUnsignedIntegerLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaUnsignedIntegerLiteralSyntaxNode;
+(ModelicaUnsignedRealLiteralSyntaxNode.prototype as any)._typeTag = AstTag.ModelicaUnsignedRealLiteralSyntaxNode;

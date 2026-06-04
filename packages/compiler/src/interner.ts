@@ -30,8 +30,105 @@ export class StringInterner {
   /** Forward map: string → StringId. */
   private table = new Map<string, StringId>();
 
+  /** Fast-path map for short strings (<16 chars). */
+  private shortTable = new Map<string, StringId>();
+
+  /** Cache for path concatenation: (prefixId * 2^26 + nameId) -> StringId */
+  private pathCache = new Map<number, StringId>();
+
   /** Reverse map: StringId → string (indexed by ID). */
   private reverse: string[] = [];
+
+  // Pre-assigned IDs for hot-path lookup
+  public static readonly REAL = 0;
+  public static readonly INTEGER = 1;
+  public static readonly BOOLEAN = 2;
+  public static readonly STRING = 3;
+  public static readonly PARAMETER = 4;
+  public static readonly CONSTANT = 5;
+  public static readonly DISCRETE = 6;
+  public static readonly CONTINUOUS = 7;
+  public static readonly INPUT = 8;
+  public static readonly OUTPUT = 9;
+
+  constructor() {
+    this._internPredefined("Real", StringInterner.REAL);
+    this._internPredefined("Integer", StringInterner.INTEGER);
+    this._internPredefined("Boolean", StringInterner.BOOLEAN);
+    this._internPredefined("String", StringInterner.STRING);
+    this._internPredefined("parameter", StringInterner.PARAMETER);
+    this._internPredefined("constant", StringInterner.CONSTANT);
+    this._internPredefined("discrete", StringInterner.DISCRETE);
+    this._internPredefined("continuous", StringInterner.CONTINUOUS);
+    this._internPredefined("input", StringInterner.INPUT);
+    this._internPredefined("output", StringInterner.OUTPUT);
+
+    // Pre-intern common Modelica keywords and built-ins to avoid runtime allocations
+    const MODELICA_KEYWORDS = [
+      "model",
+      "record",
+      "block",
+      "connector",
+      "type",
+      "package",
+      "function",
+      "equation",
+      "algorithm",
+      "initial equation",
+      "initial algorithm",
+      "public",
+      "protected",
+      "encapsulated",
+      "partial",
+      "within",
+      "extends",
+      "import",
+      "end",
+      "annotation",
+      "der",
+      "time",
+      "true",
+      "false",
+      "if",
+      "then",
+      "elseif",
+      "else",
+      "for",
+      "while",
+      "loop",
+      "return",
+      "break",
+      "connect",
+      "flow",
+      "stream",
+      "inner",
+      "outer",
+      "replaceable",
+      "redeclare",
+      "constrainedby",
+      "final",
+      "each",
+      "pure",
+      "impure",
+    ];
+
+    for (const kw of MODELICA_KEYWORDS) {
+      if (!this.table.has(kw)) {
+        const id = this.reverse.length;
+        this.reverse.push(kw);
+        this.table.set(kw, id);
+        this.shortTable.set(kw, id);
+      }
+    }
+  }
+
+  private _internPredefined(s: string, expectedId: number) {
+    const id = this.reverse.length;
+    if (id !== expectedId) throw new Error("StringInterner predefined ID mismatch");
+    this.reverse.push(s);
+    this.table.set(s, id);
+    this.shortTable.set(s, id);
+  }
 
   /**
    * Intern a string, returning its unique integer ID.
@@ -41,11 +138,21 @@ export class StringInterner {
    * @returns The unique StringId for this string.
    */
   intern(s: string): StringId {
+    // Fast path for single-word identifiers (99% of calls)
+    if (s.length < 16) {
+      const id = this.shortTable.get(s);
+      if (id !== undefined) return id;
+    }
+
     let id = this.table.get(s);
     if (id !== undefined) return id;
+
     id = this.reverse.length;
     this.reverse.push(s);
     this.table.set(s, id);
+    if (s.length < 16) {
+      this.shortTable.set(s, id);
+    }
     return id;
   }
 
@@ -84,6 +191,25 @@ export class StringInterner {
    */
   tryGet(s: string): StringId {
     return this.table.get(s) ?? NULL_STRING_ID;
+  }
+
+  /**
+   * Interns a compound path "prefix.name" using StringIds, avoiding string
+   * concatenation if the path has been interned before.
+   */
+  internPath(prefixId: StringId, nameId: StringId): StringId {
+    if (prefixId === NULL_STRING_ID) return nameId;
+
+    // Combine 32-bit IDs into a 52-bit key (safe up to 2^26 strings ~ 67 million)
+    const key = prefixId * 67108864 + nameId;
+    const cachedId = this.pathCache.get(key);
+    if (cachedId !== undefined) return cachedId;
+
+    const prefixStr = this.resolve(prefixId);
+    const nameStr = this.resolve(nameId);
+    const id = this.intern(`${prefixStr}.${nameStr}`);
+    this.pathCache.set(key, id);
+    return id;
   }
 
   /** The number of unique strings currently interned. */

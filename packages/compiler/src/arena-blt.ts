@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { alloc, computeBlt, memory } from "../build/release.js";
 import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
 
 /**
@@ -143,119 +144,70 @@ export function performBltTransformationArena(
   }
 
   // 2. Map equations to dependencies
-  const eqDeps = new Map<number, Set<number>>();
-  const equations: number[] = [];
+  const eqDepsArr = new Array<number[]>(arena.eqCount);
+  let totalDepsCount = 0;
 
   for (let i = 0; i < arena.eqCount; i++) {
+    eqDepsArr[i] = [];
     if (arena.getEqKind(i) !== EqKind.Simple) continue;
 
-    // Do NOT skip derivative equations. They will be matched to der() variables.
-
-    equations.push(i);
     const deps = new Set<number>();
     // excludeDer=true: variables inside der() are states managed by the
     // ODE integrator, not algebraic unknowns for the BLT to solve.
     collectArenaExprDeps(arena, arena.getEqLhs(i), deps, /* excludeDer */ true);
     collectArenaExprDeps(arena, arena.getEqRhs(i), deps, /* excludeDer */ true);
 
-    const filteredDeps = new Set<number>();
+    const filteredDeps: number[] = [];
     for (const d of deps) {
-      if (unknowns.has(d)) filteredDeps.add(d);
+      if (unknowns.has(d)) filteredDeps.push(d);
     }
-    eqDeps.set(i, filteredDeps);
+    eqDepsArr[i] = filteredDeps;
+    totalDepsCount += 1 + filteredDeps.length;
   }
 
-  // 3. Maximum Cardinality Bipartite Matching (DFS / Hopcroft-Karp)
-  const match = new Map<number, number>(); // VarIdx -> EqIdx
-  const assignedEqs = new Set<number>();
-
-  for (const eqIdx of equations) {
-    const visited = new Set<number>();
-    const dfs = (e: number): boolean => {
-      const deps = eqDeps.get(e);
-      if (!deps) return false;
-      for (const v of deps) {
-        if (!visited.has(v)) {
-          visited.add(v);
-          const previouslyAssignedEq = match.get(v);
-          if (previouslyAssignedEq === undefined || dfs(previouslyAssignedEq)) {
-            match.set(v, e);
-            return true;
-          }
-        }
-      }
-      return false;
-    };
-    if (dfs(eqIdx)) {
-      assignedEqs.add(eqIdx);
+  // 3. Allocate and write to WASM memory
+  const adjSize = totalDepsCount * 4;
+  const adjPtr = alloc(adjSize);
+  const adjMem = new Int32Array(memory.buffer, adjPtr, totalDepsCount);
+  let adjOffset = 0;
+  for (let i = 0; i < arena.eqCount; i++) {
+    const deps = eqDepsArr[i] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+    adjMem[adjOffset++] = deps.length;
+    for (const d of deps) {
+      adjMem[adjOffset++] = d;
     }
   }
 
-  // 4. Tarjan's SCC on the matching
-  let indexCounter = 0;
-  const indexMap = new Map<number, number>();
-  const lowlinkMap = new Map<number, number>();
-  const onStack = new Set<number>();
-  const stack: number[] = [];
-  const sccs: number[][] = []; // Array of VarIdx arrays
+  const outEqsSize = arena.eqCount * 4;
+  const outEqsPtr = alloc(outEqsSize);
 
-  const strongconnect = (v: number) => {
-    indexMap.set(v, indexCounter);
-    lowlinkMap.set(v, indexCounter);
-    indexCounter++;
-    stack.push(v);
-    onStack.add(v);
+  const outBlocksMax = 1 + arena.eqCount * 2 + arena.varCount;
+  const outBlocksSize = outBlocksMax * 4;
+  const outBlocksPtr = alloc(outBlocksSize);
 
-    const eqIdx = match.get(v);
-    const deps = eqIdx !== undefined ? Array.from(eqDeps.get(eqIdx) || []) : [];
+  // 4. Execute WASM BLT
+  const blockCount = computeBlt(arena.varCount, arena.eqCount, adjPtr, outEqsPtr, outBlocksPtr);
 
-    for (const w of deps) {
-      if (w === v) continue;
-      if (!indexMap.has(w)) {
-        strongconnect(w);
-        lowlinkMap.set(v, Math.min(lowlinkMap.get(v) ?? 0, lowlinkMap.get(w) ?? 0));
-      } else if (onStack.has(w)) {
-        lowlinkMap.set(v, Math.min(lowlinkMap.get(v) ?? 0, indexMap.get(w) ?? 0));
-      }
-    }
+  // 5. Read outputs
+  const outEqsMem = new Int32Array(memory.buffer, outEqsPtr, arena.eqCount);
+  const sortedEquations = Array.from(outEqsMem);
 
-    if (lowlinkMap.get(v) === indexMap.get(v)) {
-      const scc: number[] = [];
-      let w: number;
-      do {
-        w = stack.pop() ?? -1;
-        onStack.delete(w);
-        scc.push(w);
-      } while (w !== v);
-      sccs.push(scc);
-    }
-  };
-
-  for (const v of unknownList) {
-    if (!indexMap.has(v)) {
-      strongconnect(v);
-    }
-  }
-
-  // 5. Build Sorted Equations
-  const sortedEquations: number[] = [];
+  const outBlocksMem = new Int32Array(memory.buffer, outBlocksPtr, outBlocksMax);
   const blocks: { eqIdxs: number[]; vars: number[] }[] = [];
 
-  for (const scc of sccs) {
-    const sccEqs: number[] = [];
-    for (const v of scc) {
-      const eqIdx = match.get(v);
-      if (eqIdx !== undefined) sccEqs.push(eqIdx);
+  let bOffset = 1;
+  for (let i = 0; i < blockCount; i++) {
+    const eqLen = outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+    const vLen = outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+    const eqIdxs: number[] = [];
+    for (let j = 0; j < eqLen; j++) {
+      eqIdxs.push(outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!);
     }
-    blocks.push({ eqIdxs: sccEqs, vars: scc });
-    sortedEquations.push(...sccEqs);
-  }
-
-  // Unused equations
-  for (const eqIdx of equations) {
-    if (!assignedEqs.has(eqIdx)) {
-      sortedEquations.push(eqIdx);
+    const blockVars: number[] = [];
+    for (let j = 0; j < vLen; j++) {
+      blockVars.push(outBlocksMem[bOffset++] /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!);
     }
+    blocks.push({ eqIdxs, vars: blockVars });
   }
 
   return { sortedEquations, blocks };

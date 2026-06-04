@@ -225,6 +225,11 @@ export interface QueryDB {
    * Throws if no evaluator was configured on the QueryEngine.
    */
   evaluate(expression: unknown, scopeId?: SymbolId | null): unknown;
+
+  /**
+   * Clears memoized queries marked as volatile from memory.
+   */
+  flushVolatile(): void;
 }
 
 /**

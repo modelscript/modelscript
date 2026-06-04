@@ -63,6 +63,7 @@ lerna-debug.log*
 
 # API data (published libraries and sqlite databases)
 /data/
+/results/
 packages/api/data/
 apps/api/data/
 apps/api/public/thumbnails

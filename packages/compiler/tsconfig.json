@@ -11,7 +11,7 @@
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext", "DOM"],
-    "types": ["node"],
+    "types": ["node", "@webgpu/types"],
     "paths": {
       "@modelscript/compiler": ["./src/index.ts"],
       "@modelscript/compiler/*": ["./src/*"]

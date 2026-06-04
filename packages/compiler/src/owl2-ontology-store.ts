@@ -151,11 +151,26 @@ export class OWL2OntologyStore {
    */
   projectLanguage(language: string): OWL2AxiomDelta {
     const previousLangAxioms = this._axiomsBySource.get(language) ?? [];
-    const projections = this._registry.projectAll(language, "owl2");
     const newLangAxioms: OWL2Axiom[] = [];
 
-    for (const projection of projections) {
-      newLangAxioms.push(...projectionToAxioms(projection));
+    if (language === "sysml2" && this._registry.queryProvider) {
+      const index = this._registry.getIndex("sysml2");
+      if (index) {
+        // Find root nodes (packages/namespaces) and extract their axioms natively
+        for (const entry of index.symbols.values()) {
+          if (entry.parentId === null) {
+            const axioms = this._registry.queryProvider("emitAxioms", entry.id) as OWL2Axiom[] | null;
+            if (axioms) {
+              newLangAxioms.push(...axioms);
+            }
+          }
+        }
+      }
+    } else {
+      const projections = this._registry.projectAll(language, "owl2");
+      for (const projection of projections) {
+        newLangAxioms.push(...projectionToAxioms(projection));
+      }
     }
 
     this._axiomsBySource.set(language, newLangAxioms);

@@ -24,6 +24,8 @@
     "languages/*/*"
   ],
   "scripts": {
+    "benchmark:incremental": "npx tsx scripts/benchmark-incremental.ts",
+    "benchmark:simulation": "npx tsx scripts/benchmark-simulation.ts",
     "prebuild": "mkdir -p data",
     "build": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=8",
     "build:all": "nx run-many --target=build --exclude=@modelscript/morsel --parallel=8",

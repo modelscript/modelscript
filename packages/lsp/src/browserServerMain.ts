@@ -589,7 +589,7 @@ registerSemanticTokensProvider(
 // Completion provider — polyglot-driven scoped completion + keyword fallback
 registerCompletionProvider(connection, documents, validationService.documentLSPBridges);
 
-registerHoverProvider(connection, documents, validationService.documentLSPBridges);
+registerHoverProvider(connection, documents, validationService);
 
 /* Go to Definition — reuses hover's resolution logic to locate declarations */
 
@@ -1001,3 +1001,131 @@ export interface FlatSemanticEdit {
 
 // Auto-generated exports for extracted handlers
 export { cadComponentsCache, documents, flattenArenaFromInstance, sharedContext, simpleHash };
+
+// --- Zero-Copy WebGPU Visualization Pipeline ---
+import { WebGPUSimulationRunner } from "../../compiler/src/simulator/core/webgpu-simulation-runner.js";
+
+if (typeof self !== "undefined") {
+  self.addEventListener("message", async (e: MessageEvent) => {
+    if (e.data && e.data.type === "START_ZERO_COPY") {
+      const { canvas, uri, className } = e.data;
+      connection.console.info(`[ZeroCopy] Initializing OffscreenCanvas WebGPU pipeline for ${uri}`);
+
+      try {
+        let instances = workspaceManager.documentInstances.get(uri);
+        if (!instances || instances.length === 0) {
+          throw new Error("No class instances found for this document.");
+        }
+        let classInstance = instances[0];
+        if (className) {
+          const found = instances.find((i) => i.name === className);
+          if (found) classInstance = found;
+        }
+
+        const docContext = workspaceManager.documentContexts.get(uri);
+        if (!docContext) throw new Error("No Modelica context found");
+
+        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const { serializeArenaForGPU } = await import("@modelscript/compiler/src/arena-gpu-buffers.js");
+        const buffers = serializeArenaForGPU(arena);
+
+        const runner = new WebGPUSimulationRunner(arena, buffers);
+        const initialized = await runner.initialize();
+        if (!initialized) {
+          throw new Error("WebGPU initialization failed on worker");
+        }
+
+        const context = canvas.getContext("webgpu");
+        if (!context) throw new Error("WebGPU context not available on offscreen canvas");
+
+        const format = "bgra8unorm"; // Standard format for offscreen WebGPU
+        context.configure({
+          device: runner.device,
+          format,
+          alphaMode: "premultiplied",
+        });
+
+        const SHADER_CODE = `
+        @group(0) @binding(0) var<storage, read> sim_state: array<f32>;
+
+        struct VertexOutput {
+            @builtin(position) position: vec4<f32>,
+            @location(0) color: vec3<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+            var out: VertexOutput;
+            let total_states = f32(arrayLength(&sim_state));
+            let x = (f32(vertexIndex) / max(total_states - 1.0, 1.0)) * 2.0 - 1.0;
+            let y = sim_state[vertexIndex] * 0.1;
+            out.position = vec4<f32>(x, y, 0.0, 1.0);
+            let r = clamp(y + 0.5, 0.0, 1.0);
+            let b = clamp(0.5 - y, 0.0, 1.0);
+            out.color = vec3<f32>(r, 0.5, b);
+            return out;
+        }
+
+        @fragment
+        fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+            return vec4<f32>(in.color, 1.0);
+        }
+        `;
+
+        const shaderModule = runner.device.createShaderModule({ code: SHADER_CODE });
+        const pipeline = runner.device.createRenderPipeline({
+          layout: "auto",
+          vertex: { module: shaderModule, entryPoint: "vs_main" },
+          fragment: { module: shaderModule, entryPoint: "fs_main", targets: [{ format }] },
+          primitive: { topology: "line-strip" },
+        });
+
+        const bindGroup = runner.device.createBindGroup({
+          layout: pipeline.getBindGroupLayout(0),
+          entries: [{ binding: 0, resource: { buffer: runner.stateBuffer } }],
+        });
+
+        const numVars = runner.buffers.varCount;
+        let currentTime = 0;
+        const dt = 0.001;
+
+        const loop = () => {
+          for (let i = 0; i < 10; i++) {
+            runner.stepSimulation(dt, currentTime);
+            currentTime += dt;
+          }
+
+          const commandEncoder = runner.device.createCommandEncoder();
+          const textureView = context.getCurrentTexture().createView();
+          const renderPass = commandEncoder.beginRenderPass({
+            colorAttachments: [
+              {
+                view: textureView,
+                clearValue: { r: 0.05, g: 0.05, b: 0.07, a: 1.0 },
+                loadOp: "clear",
+                storeOp: "store",
+              },
+            ],
+          });
+          renderPass.setPipeline(pipeline);
+          renderPass.setBindGroup(0, bindGroup);
+          renderPass.draw(numVars, 1, 0, 0);
+          renderPass.end();
+
+          runner.device.queue.submit([commandEncoder.finish()]);
+
+          if (typeof requestAnimationFrame !== "undefined") {
+            requestAnimationFrame(loop);
+          } else {
+            setTimeout(loop, 16);
+          }
+        };
+        loop();
+
+        connection.console.info(`[ZeroCopy] Pipeline running successfully!`);
+      } catch (e) {
+        connection.console.error(`[ZeroCopy] Error: ${e}`);
+      }
+    }
+  });
+}

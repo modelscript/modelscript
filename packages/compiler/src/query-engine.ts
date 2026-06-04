@@ -129,6 +129,7 @@ export class QueryEngine {
    * Maintained as an LRU cache. Oldest items are at the front of the Map iteration.
    */
   private memos = new Map<number, Memo>();
+  public instanceId = Math.random();
 
   private static nextQueryId = 1;
   private static queryIds = new Map<string, number>();
@@ -161,6 +162,51 @@ export class QueryEngine {
 
   private inputReverseDependencies = new Map<SymbolId, Set<number>>();
   private byNameReverseDependencies = new Map<string, Set<number>>();
+
+  public volatileQueryNames = new Set<string>([
+    "arrayDimensions",
+    "effectiveModification",
+    "isProtected",
+    "isFinal",
+    "isEvaluate",
+    "isOuter",
+    "isInner",
+    "isReplaceable",
+    "isConnectorType",
+    "flowPrefix",
+    "causality",
+    "variability",
+    "classInstance",
+    "resolvedArrayDimensions",
+  ]);
+
+  /**
+   * Marks a query as volatile, meaning it is ephemeral and safely discarded
+   * periodically to prevent unbounded memory growth (e.g. per-component modifiers).
+   */
+  public markVolatile(queryName: string): void {
+    this.volatileQueryNames.add(queryName);
+  }
+
+  /**
+   * Clears all memoized results for queries marked as volatile.
+   * This is a critical memory management optimization for the compiler fast-path.
+   */
+  public flushVolatile(): void {
+    const volatileIds = new Set<number>();
+    for (const name of this.volatileQueryNames) {
+      const id = QueryEngine.queryIds.get(name);
+      if (id !== undefined) volatileIds.add(id);
+    }
+    if (volatileIds.size === 0) return;
+
+    for (const key of this.memos.keys()) {
+      const queryId = Math.floor(key / 10000000) % 1000;
+      if (volatileIds.has(queryId)) {
+        this.memos.delete(key);
+      }
+    }
+  }
 
   /** Tracks when each input (symbol entry) was last modified. */
   private inputRevisions = new Map<SymbolId, Revision>();
@@ -896,6 +942,10 @@ export class QueryEngine {
         if (!engine.tree) return null;
         return engine.tree.getNode(startByte, endByte, entry);
       },
+
+      flushVolatile(): void {
+        engine.flushVolatile();
+      },
     };
     this._queryDBCache = db;
     return db;
@@ -1418,6 +1468,10 @@ export class QueryEngine {
       cstNodeRange(startByte: number, endByte: number, entry?: SymbolEntry): unknown | null {
         if (!engine.tree) return null;
         return engine.tree.getNode(startByte, endByte, entry);
+      },
+
+      flushVolatile(): void {
+        engine.flushVolatile();
       },
     };
   }

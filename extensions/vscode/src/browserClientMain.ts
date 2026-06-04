@@ -1742,9 +1742,12 @@ export async function deactivate(): Promise<void> {
   }
 }
 
+export let languageWorker: Worker | undefined;
+
 async function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
   const serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
   const worker = new Worker(serverMain.toString(true)); // No { type: "module" } because VS Code's web worker polyfill uses importScripts
+  languageWorker = worker;
   return new LanguageClient("modelscript", "ModelScript Language Server", clientOptions, worker);
 }
 

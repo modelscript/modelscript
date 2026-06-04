@@ -98,7 +98,14 @@ function generateHeatConduction1D(n: number): string {
 }
 
 async function run() {
-  const Ns = [10, 100, 1000, 10000, 100000];
+  let Ns = [10, 100, 1000, 10000, 100000];
+  const args = process.argv.slice(2);
+  if (args.length > 0) {
+    const singleN = parseInt(args[0], 10);
+    if (!isNaN(singleN)) {
+      Ns = [singleN];
+    }
+  }
   const results = {
     n_equations: Ns,
     cold_start: [] as number[],
@@ -171,7 +178,10 @@ async function run() {
     Context.gcBetweenPhases();
   }
 
-  const outPath = path.resolve("/home/omar/git/amc2026/data/measurements.json");
+  const outPath = path.resolve("./results/measurements.json");
+  if (!fs.existsSync(path.dirname(outPath))) {
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+  }
 
   // Read existing json to merge data instead of overwriting the whole file
   let existingData: any = {};

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-function, @typescript-eslint/prefer-for-of, @typescript-eslint/array-type, @typescript-eslint/no-non-null-assertion, no-empty */
 // ts-check
-import { Connection, Diagnostic } from "vscode-languageserver";
+import { Connection, Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./DocumentManager";
 import { ParserService } from "./ParserService";
@@ -19,11 +19,11 @@ import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscri
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
 import { TableauReasoner } from "@modelscript/reasoner";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
-import { DiagnosticSeverity } from "vscode-languageserver";
 import { Node as SyntaxNode } from "web-tree-sitter";
 import { getArenaParameterInfo } from "../utils/arenaUtils";
 import { computeTreeEdit } from "../utils/astUtils";
 import { parseStepReferences, STEP_SCHEMA } from "../utils/stepUtils";
+import { ReasonerService } from "./ReasonerService";
 
 export class ValidationService {
   // Instance state (previously module-level variables in browserServerMain.ts)
@@ -54,12 +54,16 @@ export class ValidationService {
    */
   public documentViewports = new Map<string, { startByte: number; endByte: number }>();
 
+  public reasonerService: ReasonerService;
+
   constructor(
     private connection: Connection,
     private documentManager: DocumentManager,
     private workspaceManager: WorkspaceManager,
     public parserService: ParserService,
-  ) {}
+  ) {
+    this.reasonerService = new ReasonerService(connection, workspaceManager);
+  }
 
   public collectSyntaxErrors(rootNode: any, textDocument: TextDocument): Diagnostic[] {
     const t0 = performance.now();
@@ -787,6 +791,38 @@ export class ValidationService {
               message: r.message,
               source: "sysml2",
             });
+          }
+
+          // Run the incremental reasoner update for SysML2
+          try {
+            const versions = new Map<string, number>();
+            versions.set("sysml2", this.workspaceManager.sysml2WorkspaceIndex.version);
+            this.reasonerService.updateAndReason(versions);
+
+            const consistency = this.reasonerService.reasoner.checkConsistency();
+            if (!consistency.isConsistent) {
+              // Find any inconsistencies related to this file and map them
+              for (const axiom of consistency.conflictingAxioms || []) {
+                let targetIri: string | null = null;
+                if (axiom.type === "SubClassOf") targetIri = axiom.subClassIri;
+                else if (axiom.type === "ClassAssertion") targetIri = axiom.individualIri;
+                else if ((axiom as any).iri) targetIri = (axiom as any).iri;
+
+                if (targetIri) {
+                  const range = this.findRangeForIri(targetIri, textDocument.uri);
+                  if (range) {
+                    sysmlDiagnostics.push({
+                      severity: DiagnosticSeverity.Error,
+                      range,
+                      message: `Logical contradiction: ${this.reasonerService.reasoner.explain(targetIri, "satisfiability")}`,
+                      source: "sysml2-reasoner",
+                    });
+                  }
+                }
+              }
+            }
+          } catch (e: any) {
+            this.connection.console.error(`[sysml2-reasoner] Update failed: ${e.message}`);
           }
         } else {
           // Retain existing semantic diagnostics if the AST is broken to prevent flashing

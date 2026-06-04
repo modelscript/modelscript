@@ -501,6 +501,16 @@ function hashToHex(hash: number): string {
   emit("export type NodeTypeValue = (typeof NodeType)[keyof typeof NodeType];");
   emit("");
 
+  emit("// ─── AstTag enum ────────────────────────────────────────────────────────────");
+  emit("");
+  emit("export const enum AstTag {");
+  let tagIndex = 1;
+  for (const [, info] of nodes) {
+    if (!info.hidden) emit(`  ${info.typeName} = ${tagIndex++},`);
+  }
+  emit("}");
+  emit("");
+
   // ── Base ISyntaxNode interface ────────────────────────────────────────────
 
   emitBlock(`// ─── Base JSON interface ─────────────────────────────────────────────────────
@@ -584,6 +594,9 @@ export function setNextNodeId(id: number): void { globalNodeId = id; }
 export abstract class SyntaxNode implements ISyntaxNode {
   /** The tree-sitter rule name (e.g. "part_definition"). */
   abstract readonly "@type": string;
+
+  /** Fast integer tag for switch dispatch. */
+  abstract readonly _typeTag: number;
 
   /** Visitor pattern: dispatch to the appropriate visitor method. */
   abstract accept<R, A>(visitor: ${visitorInterface}<R, A>, argument?: A): R;
@@ -1139,6 +1152,7 @@ function computeReconciliationKey(cstNode: TSNode, positionalIndex: number): str
 
     emit(`export class ${cls} extends SyntaxNode implements ${iface} {`);
     emit(`  readonly "@type" = "${info.ruleName}" as const;`);
+    emit(`  readonly _typeTag = AstTag.${cls};`);
 
     if (info.terminal) {
       // ── Terminal class ──────────────────────────────────────────────

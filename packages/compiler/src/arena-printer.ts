@@ -605,11 +605,13 @@ export class ArenaDAEPrinter {
 
       case ExprKind.ArrayCtor: {
         const count = a.getExprData1(id);
+        const redirect = a.getExprRight(id);
+        const baseId = redirect >= 0 ? redirect : id;
         this.out.write("{");
         if (count > 0) this.printExpr(a.getExprLeft(id));
         for (let i = 1; i < count; i++) {
           this.out.write(", ");
-          this.printExpr(a.getExprLeft(id + i));
+          this.printExpr(a.getExprLeft(baseId + i));
         }
         this.out.write("}");
         break;
@@ -873,7 +875,8 @@ export class ArenaDAEPrinter {
       case EqKind.InitialFor: {
         const meta = a.getForEquationMeta(idx);
         if (meta) {
-          const indexName = a.interner.resolve(meta.indexNameId);
+          const indexNameRaw = a.interner.resolve(meta.indexNameId);
+          const indexName = indexNameRaw?.startsWith("\0loop\0") ? indexNameRaw.substring(6) : indexNameRaw;
           this.out.write(this.indent() + "for " + indexName + " in ");
           this.printExpr(meta.rangeExprId);
           this.out.write(" loop\n");
@@ -998,7 +1001,8 @@ export class ArenaDAEPrinter {
         return idx + 1;
 
       case StmtKind.For: {
-        const indexName = a.interner.resolve(a.getStmtData1(idx));
+        const indexNameRaw = a.interner.resolve(a.getStmtData1(idx));
+        const indexName = indexNameRaw?.startsWith("\0loop\0") ? indexNameRaw.substring(6) : indexNameRaw;
         const bodyCount = a.getStmtRight(idx);
         this.out.write(this.indent() + "for " + indexName + " in ");
         this.printExpr(a.getStmtLeft(idx));

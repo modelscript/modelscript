@@ -110,8 +110,8 @@ export function executeArenaCEvalStatements(
               const currentArr = env.get(baseName) ?? [];
               const updatedArr = updateNestedArray(currentArr, subscripts, value);
               env.set(baseName, updatedArr);
-              if (baseName === "y") {
-                // debug
+              if (baseName === "z1") {
+                console.log("z1 updated to", updatedArr);
               }
             }
           } else {

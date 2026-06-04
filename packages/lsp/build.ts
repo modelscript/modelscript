@@ -50,7 +50,7 @@ const buildOptions: esbuild.BuildOptions = {
   ],
   outdir: resolve(__dirname, "dist"),
   bundle: true,
-  format: "iife", // Use classic scripts for VS Code Web worker polyfill compatibility
+  format: "esm",
   platform: "browser",
   target: "es2022",
   minify: false,
@@ -60,6 +60,7 @@ const buildOptions: esbuild.BuildOptions = {
   define: {
     "process.env": "{}",
     "process.browser": "true",
+    "import.meta.url": "''",
   },
   plugins: [nodeBuiltinsPlugin],
   logLevel: "info",
