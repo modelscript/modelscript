@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnimationController } from "./cad-viewer/animation-controller";
 import CadViewer, { type CadComponent } from "./cad-viewer/cad-viewer";
+import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
 import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -14,6 +15,7 @@ function App() {
   const [selectedName, setSelectedName] = useState<string | undefined>(undefined);
   const [isDark, setIsDark] = useState<boolean>(true);
   const animationControllerRef = useRef<AnimationController | null>(null);
+  const [cfdPayload, setCfdPayload] = useState<CfdMeshPayload | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -87,6 +89,22 @@ function App() {
             forceUpdate((n) => n + 1);
           }
         }
+      } else if (message.type === "VTK_PAYLOAD") {
+        // Decode the CFD mesh buffer from the co-simulation stream
+        try {
+          const rawBuffer = message.data?.buffer;
+          if (rawBuffer) {
+            // The buffer arrives as a plain number[] from postMessage serialization
+            const bytes = rawBuffer instanceof Uint8Array ? rawBuffer : new Uint8Array(rawBuffer);
+            const jsonStr = new TextDecoder().decode(bytes);
+            const payload = JSON.parse(jsonStr) as CfdMeshPayload;
+            if (payload.type === "cfd-mesh") {
+              setCfdPayload(payload);
+            }
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to parse VTK_PAYLOAD:", e);
+        }
       }
     };
     window.addEventListener("message", handleMessage);
@@ -118,6 +136,7 @@ function App() {
         dark={isDark}
         assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}
         animationController={animationControllerRef.current}
+        cfdPayload={cfdPayload}
       />
     </div>
   );

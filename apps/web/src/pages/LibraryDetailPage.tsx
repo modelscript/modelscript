@@ -200,7 +200,10 @@ const DiagramWrap = styled.div`
   min-height: 120px;
   overflow: auto;
 
-  svg {
+  > div > svg {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
     max-width: 100%;
   }
 `;

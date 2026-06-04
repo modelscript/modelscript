@@ -268,7 +268,6 @@ const DEFAULT_VAR_CAP = 512;
 const DEFAULT_EQ_CAP = 1024;
 const DEFAULT_STMT_CAP = 256;
 const DEFAULT_EXPR_CAP = 4096;
-
 export class ArenaDAEBuilder {
   // ── Variable arena ──
   private varData: Int32Array;
@@ -347,9 +346,6 @@ export class ArenaDAEBuilder {
 
   /** External object descriptors. */
   externalObjects: { className: string; constructorName: string; destructorName: string }[] = [];
-
-  /** Field boundary nodes (e.g. 3D continuum interfaces). */
-  boundaryNodes: { name: string; typeName: string; parameters: Record<string, unknown> }[] = [];
 
   /**
    * State machines for Modelica state machine semantics.
@@ -443,6 +439,11 @@ export class ArenaDAEBuilder {
 
   /** Collected annotations to be emitted at the end of the equation section. */
   equationAnnotations: string[] = [];
+
+  /** Boundary nodes for 3D/CFD execution */
+  boundaryNodes: { classId: number; geometryName: string; parameters: Record<string, unknown>; inlets: string[] }[] =
+    [];
+
   /** Collected annotations to be emitted at the end of the algorithm section. */
   algorithmAnnotations: string[] = [];
 
@@ -1080,6 +1081,9 @@ export class ArenaDAEBuilder {
 
   /** Add a function call expression. */
   addCallExpr(funcName: string, args: number[]): number {
+    if (funcName === "/*Real*/") {
+      console.error("[DEBUG] addCallExpr /*Real*/ called from:", new Error().stack);
+    }
     // Chain arguments: first arg in left, count in right
     // Additional args are stored as linked expressions (Binary chains)
     const funcNameId = this.interner.intern(funcName);
@@ -1825,6 +1829,15 @@ export function inferArenaExprVarType(dae: ArenaDAEBuilder, exprId: number): Var
     // ── Array constructor: type of first element ──
     case ExprKind.ArrayCtor:
       return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+
+    // ── Tuple: type of first element ──
+    case ExprKind.Tuple: {
+      const tupleCount = dae.getExprData1(exprId);
+      if (tupleCount > 0) {
+        return inferArenaExprVarType(dae, dae.getExprLeft(exprId));
+      }
+      return null;
+    }
 
     // ── Subscript: type of the base expression ──
     case ExprKind.Subscript:

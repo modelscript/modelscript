@@ -2,10 +2,12 @@
 // @ts-nocheck
 import { ArenaDAEBuilder, Causality } from "@modelscript/compiler";
 import { simulateArena, simulateArenaAsync } from "@modelscript/compiler/simulator";
+import { CoSimSession, Orchestrator } from "@modelscript/cosim";
+import { WasmOpenFoamProvider } from "@modelscript/cosim/participants/cfd-provider";
 import { generateMultiModelWrapper } from "@modelscript/fmi";
 import { LspContext } from "../LspContext";
 import { getArenaParameterInfo } from "../utils/arenaUtils";
-
+import { ModelScriptParticipant } from "./modelscriptParticipant";
 export function registerSimulationEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/simulate",
@@ -108,6 +110,79 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
+
+        if (classInstance.classKind === "process") {
+          context.connection.console.info(`[simulate] Detected process. Launching Co-Simulation Orchestrator...`);
+          const session = new CoSimSession("vscode-cosim");
+          const exp = arena.experiment;
+          const cosimStartTime = params.startTime ?? exp.startTime ?? 0;
+          const cosimStopTime = params.stopTime ?? exp.stopTime ?? 0.1;
+          const cosimStepSize = params.interval ?? exp.interval ?? 0.05;
+
+          session.experiment = {
+            startTime: cosimStartTime,
+            stopTime: cosimStopTime,
+            stepSize: cosimStepSize,
+            tolerance: exp.tolerance ?? 1e-4,
+          };
+
+          const cfd = new WasmOpenFoamProvider("3d-cfd", "InjectionCavity");
+          cfd.metadata.variables = [
+            { name: "gateInlet.p", causality: "input", type: "Real" },
+            { name: "gateInlet.m_flow", causality: "output", type: "Real" },
+          ];
+
+          const modelica = new ModelScriptParticipant("1d-solver", classInstance.name, arena);
+
+          session.addParticipant(cfd);
+          session.addParticipant(modelica);
+
+          session.coupling.addCoupling({
+            from: { participantId: "1d-solver", variableName: "fluidOut.p" },
+            to: { participantId: "3d-cfd", variableName: "gateInlet.p" },
+          });
+          session.coupling.addCoupling({
+            from: { participantId: "3d-cfd", variableName: "gateInlet.m_flow" },
+            to: { participantId: "1d-solver", variableName: "fluidOut.m_flow" },
+          });
+
+          // Create the orchestrator
+          const orchestrator = new Orchestrator(session, null, {
+            onStep: (res) => {
+              context.connection.console.info(`[Orchestrator] Step completed at t=${res.time}.`);
+              context.connection.sendNotification("modelscript/cosimStream", {
+                type: "step",
+                time: res.time,
+              });
+            },
+            onVtkData: (pid, time, data) => {
+              context.connection.console.info(
+                `[Orchestrator] VTK Data extracted from ${pid} at t=${time}. Length: ${data.length}`,
+              );
+              // Send the VTK blob
+              context.connection.sendNotification("modelscript/cosimStream", {
+                type: "vtk",
+                participantId: pid,
+                time,
+                data: Array.from(data),
+              });
+            },
+            onComplete: () => {
+              context.connection.console.info("[Orchestrator] Simulation completed.");
+              context.connection.sendNotification("modelscript/cosimStream", { type: "complete" });
+            },
+            onError: (err) => {
+              context.connection.console.error(`[Orchestrator] Simulation failed: ${err.message}`);
+              context.connection.sendNotification("modelscript/cosimStream", { type: "error", message: err.message });
+            },
+            stepFiles: new Map([["3d-cfd", new Uint8Array([83, 84, 69, 80])]]), // mock step file
+          });
+
+          // Run asynchronously in the background so we can return empty result to close the request
+          orchestrator.run().catch((e) => console.error("Orchestrator failed:", e));
+
+          return { t: [], y: [], states: [], parameters: [], experiment: exp };
+        }
 
         context.connection.console.info(`[simulate] Arena active variables: ${arena.activeVarCount}`);
         context.connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);

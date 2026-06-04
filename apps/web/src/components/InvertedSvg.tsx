@@ -56,6 +56,7 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
         if (cancelled) return;
         if (!text || !text.trim()) {
           dispatch({ type: "failed" });
+          onErrorRef.current?.(new Error("Empty content"));
           return;
         }
         dispatch({ type: "loaded", content: text });
@@ -87,8 +88,8 @@ const InvertedSvg: React.FC<InvertedSvgProps> = ({ src, alt, width, height, styl
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        width,
-        height,
+        width: width || "100%",
+        height: height || "auto",
         flexShrink: 0,
         ...style,
       }}

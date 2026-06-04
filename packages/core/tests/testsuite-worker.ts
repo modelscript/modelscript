@@ -191,35 +191,51 @@ function formatSimulationCsv(csvContent: string): string {
 // ── Test execution (arena-native pipeline) ───────────────────────────────────
 
 function resolveClassName(context: Context, testCase: TestCase): string {
-  let lastClassName = testCase.metadata.name;
   const classes = context.classes;
-  if (classes.some((c) => c.name === testCase.metadata.name)) {
-    lastClassName = testCase.metadata.name;
-  } else if (classes.length > 0) {
-    const lastClass = classes[classes.length - 1];
-    if (lastClass?.classKind === ModelicaClassKind.PACKAGE) {
-      const nonPkgClass = [...classes].reverse().find((c) => c.classKind !== ModelicaClassKind.PACKAGE);
-      if (nonPkgClass?.name) {
-        lastClassName = nonPkgClass.name;
-      } else if (lastClass?.name) {
-        let nestedName: string | null = null;
-        for (const element of lastClass.elements) {
-          if (
-            element instanceof ModelicaClassInstance &&
-            element.classKind !== ModelicaClassKind.PACKAGE &&
-            element.classKind !== ModelicaClassKind.FUNCTION &&
-            element.name
-          ) {
-            nestedName = `${lastClass.name}.${element.name}`;
-          }
-        }
-        lastClassName = nestedName ?? lastClass.name;
-      }
-    } else {
-      lastClassName = lastClass?.name ?? testCase.metadata.name;
-    }
+
+  // First, check if the test name matches a class that is NOT a function/package.
+  // If there's a model/class with the exact test name, use it.
+  const exactNonFunc = classes.find(
+    (c) =>
+      c.name === testCase.metadata.name &&
+      c.classKind !== ModelicaClassKind.FUNCTION &&
+      c.classKind !== ModelicaClassKind.PACKAGE,
+  );
+  if (exactNonFunc) {
+    return exactNonFunc.name;
   }
-  return lastClassName;
+
+  // Otherwise, use the last non-function, non-package class (OMC flattens the last model)
+  const lastModel = [...classes]
+    .reverse()
+    .find((c) => c.classKind !== ModelicaClassKind.FUNCTION && c.classKind !== ModelicaClassKind.PACKAGE);
+  if (lastModel?.name) {
+    // For packages with nested models, look inside
+    if (lastModel.classKind === ModelicaClassKind.PACKAGE) {
+      let nestedName: string | null = null;
+      for (const element of lastModel.elements) {
+        if (
+          element instanceof ModelicaClassInstance &&
+          element.classKind !== ModelicaClassKind.PACKAGE &&
+          element.classKind !== ModelicaClassKind.FUNCTION &&
+          element.name
+        ) {
+          nestedName = `${lastModel.name}.${element.name}`;
+        }
+      }
+      return nestedName ?? lastModel.name;
+    }
+    return lastModel.name;
+  }
+
+  // Fallback: if only functions exist, use the test name (which may be the function itself)
+  if (classes.some((c) => c.name === testCase.metadata.name)) {
+    return testCase.metadata.name;
+  }
+
+  // Last resort: use the last class regardless of kind
+  const lastClass = classes[classes.length - 1];
+  return lastClass?.name ?? testCase.metadata.name;
 }
 
 function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: boolean, omcMode = false): TestResult {
@@ -548,7 +564,7 @@ function runTestCase(testCase: TestCase, testsuiteRoot: string, updateMode: bool
       const hasArenaErrors = arena.diagnostics.some((d) => d.severity === "error");
       if (!hasArenaErrors && !hasLintErrors) {
         const out = new StringWriter();
-        const printer = new ArenaDAEPrinter(out, arena);
+        const printer = new ArenaDAEPrinter(out, arena, true);
         printer.printDAE(arena);
         flattenedResult = out.toString();
       }

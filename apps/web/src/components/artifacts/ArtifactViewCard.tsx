@@ -6,6 +6,7 @@ import { API_BASE_URL } from "../../config";
 import Box from "../Box";
 import AudioViewer from "./AudioViewer";
 import CadStepViewer from "./CadStepViewer";
+import CfdAnimationViewer from "./CfdAnimationViewer";
 import CsvViewer from "./CsvViewer";
 import GCodeViewer from "./GCodeViewer";
 import LazyHeavyViewer from "./LazyHeavyViewer";
@@ -157,6 +158,19 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
             <SimulationResultViewer viewConfig={viewConfig} isFullScreen={isFullScreen} onPinCreated={onPinCreated} />
           </LazyHeavyViewer>
         );
+      case "cfd-animation":
+        return (
+          <LazyHeavyViewer
+            artifactId={artifactId}
+            thumbnailUrl={resolvedThumbnailUrl}
+            thumbnailUrlLight={resolvedThumbnailUrlLight}
+            thumbnailUrlDark={resolvedThumbnailUrlDark}
+            title="CFD Animation"
+            placeholderType="cfd"
+          >
+            <CfdAnimationViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+          </LazyHeavyViewer>
+        );
       case "gcode":
       case "cam-result":
         return (
@@ -210,8 +224,8 @@ const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({ artifactId, onPinCr
               );
             }
 
-            const placeholderType = ["cfd-result", "fea-result"].includes(artifact.view_type)
-              ? artifact.view_type === "cfd-result"
+            const placeholderType = ["cfd-result", "fea-result", "cfd-animation"].includes(artifact.view_type)
+              ? ["cfd-result", "cfd-animation"].includes(artifact.view_type)
                 ? "cfd"
                 : "fea"
               : ["cad-step", "3d-model"].includes(artifact.view_type)

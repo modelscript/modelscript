@@ -601,6 +601,30 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  client.onNotification(
+    "modelscript/cosimStream",
+    async (msg: { type: string; participantId: string; time: number; data: number[] }) => {
+      // Forward the co-simulation streaming events to the CAD Viewer React webview
+      const { CadViewerPanel } = await import("./cadViewerPanel");
+      if (CadViewerPanel.currentPanel) {
+        // Send message with type VTK_PAYLOAD so that VtkRenderer can pick it up
+        if (msg.type === "vtk") {
+          CadViewerPanel.currentPanel.postMessage({
+            type: "VTK_PAYLOAD",
+            data: {
+              pid: msg.participantId,
+              time: msg.time,
+              buffer: new Uint8Array(msg.data), // Parse Array back to typed array
+            },
+          });
+        } else {
+          // Forward general step or complete events
+          CadViewerPanel.currentPanel.postMessage(msg);
+        }
+      }
+    },
+  );
+
   // Update tree when active editor changes to a .mo or .owl2 file
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -1840,6 +1864,51 @@ function scaffoldTemplateFiles(memFs: MemoryFileSystemProvider, workspaceUri: vs
     "bouncing-ball": {
       "BouncingBall.mo": `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`,
     },
+    "injection-molding-cosim": {
+      "Manufacturing.mo": `package Manufacturing
+  import Modelica.Fluid.Interfaces.FluidPort_a;
+  import Modelica.Fluid.Sources.MassFlowSource_T;
+  import ModelScript.Geometry;
+  
+  // 1. Define the 3D CAD Geometry
+  shape SnesTopShell extends Geometry.Box
+    parameter Real width = 150;
+    parameter Real height = 60;
+    parameter Real depth = 20;
+  end SnesTopShell;
+
+  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
+  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
+    parameter Geometry.Shape geometry;
+    parameter String material = "ABS";
+    parameter Real moldTemp = 40.0;
+    FluidPort_a gateInlet;
+  end InjectionCavity;
+
+  // 3. Define the 1D System Dynamics
+  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
+    parameter Real targetPressure = 150e6;
+    parameter Real barrelTemp = 493.15;
+    Modelica.Fluid.Sources.MassFlowSource_T ram(nPorts = 1, m_flow = 0.05, T = barrelTemp);
+    FluidPort_a fluidOut;
+  equation
+    connect(ram.ports[1], fluidOut);
+  end HydraulicInjectionUnit;
+
+  // 4. The Full System Orchestration
+  process SnesMoldProcess
+    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
+    InjectionCavity mold(
+      geometry = SnesTopShell(),
+      material = "ABS",
+      moldTemp = 40.0
+    );
+  equation
+    connect(injectionMachine.fluidOut, mold.gateInlet);
+  end SnesMoldProcess;
+end Manufacturing;
+`,
+    },
     rlc: {
       "RLC.mo": [
         'model RLC "RLC circuit with MSL components"',
@@ -2896,6 +2965,52 @@ async function initWorkspaceAndTree(
         case "bouncing-ball":
           filename = "BouncingBall.mo";
           content = `model BouncingBall "A bouncing ball"\n  parameter Real e = 0.8 "Coefficient of restitution";\n  parameter Real g = 9.81 "Gravity";\n  Real h(start = 1) "Height";\n  Real v "Velocity";\nequation\n  der(h) = v;\n  der(v) = -g;\n  when h < 0 then\n    reinit(v, -e * pre(v));\n  end when;\nend BouncingBall;\n`;
+          break;
+        case "injection-molding-cosim":
+          filename = "Manufacturing.mo";
+          content = `package Manufacturing
+  import Modelica.Fluid.Interfaces.FluidPort_a;
+  import Modelica.Fluid.Sources.MassFlowSource_T;
+  import ModelScript.Geometry;
+  
+  // 1. Define the 3D CAD Geometry
+  shape SnesTopShell extends Geometry.Box
+    parameter Real width = 150;
+    parameter Real height = 60;
+    parameter Real depth = 20;
+  end SnesTopShell;
+
+  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
+  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
+    parameter Geometry.Shape geometry;
+    parameter String material = "ABS";
+    parameter Real moldTemp = 40.0;
+    FluidPort_a gateInlet;
+  end InjectionCavity;
+
+  // 3. Define the 1D System Dynamics
+  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
+    parameter Real targetPressure = 150e6;
+    parameter Real barrelTemp = 493.15;
+    Modelica.Fluid.Sources.MassFlowSource_T ram(nPorts = 1, m_flow = 0.05, T = barrelTemp);
+    FluidPort_a fluidOut;
+  equation
+    connect(ram.ports[1], fluidOut);
+  end HydraulicInjectionUnit;
+
+  // 4. The Full System Orchestration
+  process SnesMoldProcess
+    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
+    InjectionCavity mold(
+      geometry = SnesTopShell(),
+      material = "ABS",
+      moldTemp = 40.0
+    );
+  equation
+    connect(injectionMachine.fluidOut, mold.gateInlet);
+  end SnesMoldProcess;
+end Manufacturing;
+`;
           break;
         case "rlc":
           filename = "RLC.mo";

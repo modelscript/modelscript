@@ -29,6 +29,8 @@ export function foldArenaConstants(
   arena: ArenaDAEBuilder,
   db?: QueryDB,
   scopeId?: SymbolId,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  omcCompatibility = false,
   maxIterations = 100,
 ): number {
   // Build a name→varIdx map for O(1) lookups

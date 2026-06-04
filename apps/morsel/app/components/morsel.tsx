@@ -205,7 +205,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [contextVersion, setContextVersion] = useState(0);
   const expectedComponentNameRef = useRef<string | null>(null);
   const pendingModelNameRef = useRef<string | null>(null);
-  const [isSplashVisible, setSplashVisible] = useState(false);
+  const [isSplashVisible, setSplashVisible] = useState(!props.dataUrl);
   const [pendingSplashVisible, setPendingSplashVisible] = useState(false);
   const [recentModels, setRecentModels] = useState<ModelData[]>([]);
   const [exampleModels, setExampleModels] = useState<ModelData[]>([]);
@@ -474,7 +474,72 @@ export default function MorselEditor(props: MorselEditorProps) {
 
       setAvailableLanguages(uiLanguages);
 
-      setExampleModels([]); // Examples could be loaded via LSP, but for now we clear them to avoid fs errors
+      setExampleModels([
+        {
+          id: "injection-molding-cosim",
+          name: "Injection Molding Co-Simulation",
+          content: `package Manufacturing
+  import Modelica.Fluid.Interfaces.FluidPort_a;
+  import Modelica.Fluid.Sources.MassFlowSource_T;
+  import ModelScript.Geometry;
+  
+  // 1. Define the 3D CAD Geometry
+  shape SnesTopShell extends Geometry.Box
+    parameter Real width = 150;
+    parameter Real height = 60;
+    parameter Real depth = 20;
+    // ... CSG operations for buttons omitted for brevity
+  end SnesTopShell;
+
+  // 2. Define the 3D CFD Interface Block using a new 'field' class kind
+  field InjectionCavity "A boundary node that proxies the 3D OpenFOAM solver"
+    parameter Geometry.Shape geometry;
+    parameter String material = "ABS";
+    parameter Real moldTemp = 40.0;
+    
+    // The 1D port that connects to the rest of the Modelica system
+    FluidPort_a gateInlet;
+  equation
+    // The pressure and flow equations are NOT defined here algebraically.
+    // They are satisfied by the external OpenFOAM orchestrator.
+  end InjectionCavity;
+
+  // 3. Define the 1D System Dynamics (The Machine) using the 'model' class kind
+  model HydraulicInjectionUnit "1D Lumped parameter model of the injection machine"
+    parameter Real targetPressure = 150e6;
+    parameter Real barrelTemp = 493.15;
+    
+    // Internal 1D physics components
+    Modelica.Fluid.Sources.MassFlowSource_T ram(
+      nPorts = 1,
+      m_flow = 0.05,
+      T = barrelTemp
+    );
+    
+    // Expose the fluid port to the outside
+    FluidPort_a fluidOut;
+  equation
+    connect(ram.ports[1], fluidOut);
+  end HydraulicInjectionUnit;
+
+  // 4. The Full System Orchestration using the 'process' class kind
+  process SnesMoldProcess
+    // Instantiate the 1D Machine (model)
+    HydraulicInjectionUnit injectionMachine(targetPressure = 150e6);
+    
+    // Instantiate the 3D CFD Domain (field)
+    InjectionCavity mold(
+      geometry = SnesTopShell(), // Instantiate the 3D CAD (shape)
+      material = "ABS",
+      moldTemp = 40.0
+    );
+  equation
+    // The crucial connection: 1D mass flow couples to the 3D boundary patch
+    connect(injectionMachine.fluidOut, mold.gateInlet);
+  end SnesMoldProcess;
+end Manufacturing;`,
+        },
+      ]);
 
       // Defer hiding the loading screen until the browser is idle
       const hideLoading = () => {

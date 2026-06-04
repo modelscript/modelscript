@@ -34,6 +34,7 @@ import { sparqlRouter } from "./routes/sparql.js";
 import { storageRouter } from "./routes/storage.js";
 import { usersRouter } from "./routes/users.js";
 import { seedCadAssembly } from "./seed-cad-assembly.js";
+import { seedCfdAnimation } from "./seed-cfd-animation.js";
 import { seedDroneCfd } from "./seed-drone-cfd.js";
 import { seedDroneFea } from "./seed-drone-fea.js";
 import { seedScriptsAndTemplates } from "./seed-scripts.js";
@@ -92,6 +93,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     seedCadAssembly(database);
     seedDroneCfd(database);
     seedScriptsAndTemplates(database);
+    seedCfdAnimation(database).catch(console.error);
+    console.log("[DevServer] Restarted to fix parabolic flow 92% cap issue!");
 
     // Run asynchronously in the background
     void seedExamplePackages(libraryStorage, database, jobQueue).catch((err) => {
@@ -254,6 +257,7 @@ graph TD
           seedCadAssembly(database);
           seedDroneCfd(database);
           seedScriptsAndTemplates(database);
+          await seedCfdAnimation(database);
         }
 
         await seedExamplePackages(libraryStorage, database, jobQueue);

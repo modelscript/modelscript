@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import AudioViewer from "../components/artifacts/AudioViewer";
 import CadStepViewer from "../components/artifacts/CadStepViewer";
+import CfdAnimationViewer from "../components/artifacts/CfdAnimationViewer";
 import CsvViewer from "../components/artifacts/CsvViewer";
 import GCodeViewer from "../components/artifacts/GCodeViewer";
 import LinkPreviewViewer from "../components/artifacts/LinkPreviewViewer";
@@ -48,9 +49,16 @@ export default function RenderArtifactPage() {
     // we still need to unblock puppeteer.
     if (artifact) {
       if (
-        !["simulation-result", "fea-result", "cfd-result", "cad-step", "cad_step", "gcode", "cam-result"].includes(
-          artifact.view_type,
-        )
+        ![
+          "simulation-result",
+          "fea-result",
+          "cfd-result",
+          "cad-step",
+          "cad_step",
+          "gcode",
+          "cam-result",
+          "cfd-animation",
+        ].includes(artifact.view_type)
       ) {
         (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
       }
@@ -96,6 +104,8 @@ export default function RenderArtifactPage() {
       case "fea-result":
       case "cfd-result":
         return <SimulationResultViewer viewConfig={viewConfig} isFullScreen={true} />;
+      case "cfd-animation":
+        return <CfdAnimationViewer viewConfig={viewConfig} isFullScreen={true} />;
       case "gcode":
       case "cam-result":
         return <GCodeViewer viewConfig={viewConfig} isFullScreen={true} />;

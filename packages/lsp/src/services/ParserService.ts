@@ -55,6 +55,18 @@ export class ParserService {
               const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
+              if (this.documentManager.lazyLibTrees.size > 50) {
+                const oldest = this.documentManager.lazyLibTrees.keys().next().value;
+                const oldCache = this.documentManager.lazyLibTrees.get(oldest);
+                if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
+                  try {
+                    oldCache.tree.delete();
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                this.documentManager.lazyLibTrees.delete(oldest);
+              }
             }
           } catch (e) {
             // ignore
@@ -90,6 +102,18 @@ export class ParserService {
               const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };
               this.documentManager.lazyLibTrees.set(uri, lazyCache);
+              if (this.documentManager.lazyLibTrees.size > 50) {
+                const oldest = this.documentManager.lazyLibTrees.keys().next().value;
+                const oldCache = this.documentManager.lazyLibTrees.get(oldest);
+                if (oldCache && oldCache.tree && typeof oldCache.tree.delete === "function") {
+                  try {
+                    oldCache.tree.delete();
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                this.documentManager.lazyLibTrees.delete(oldest);
+              }
             } else {
               this.connection.console.error(`[cstTreeWrapper] failed to read fsPath: ${fsPath}`);
             }
@@ -373,12 +397,7 @@ export class ParserService {
         this.workspaceManager.globalModelicaQueryEngine!,
       );
       (globalThis as any).sharedContext = this.sharedContext;
-      this.workspaceManager.globalModelicaQueryEngine!.updateTree({
-        getText: (start: number, end: number, entry?: any) =>
-          this.sharedContext!.getTreeText(entry?.resourceId, start, end),
-        getNode: (start: number, end: number, entry?: any) =>
-          this.sharedContext!.getTreeNode(entry?.resourceId, start, end),
-      });
+      this.workspaceManager.globalModelicaQueryEngine!.updateTree(this.getSharedCstTreeWrapper());
       const loaderCtx: LoaderContext = {
         connectionState: this.connection,
         logger: {

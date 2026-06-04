@@ -324,7 +324,7 @@
           "modelscript.library.useApiRegistry": {
             "type": "boolean",
             "scope": "window",
-            "default": false,
+            "default": true,
             "description": "If enabled, standard libraries (MSL, SysML2) are downloaded from the remote API registry. If disabled, they are loaded from local bundled ZIPs."
           }
         }

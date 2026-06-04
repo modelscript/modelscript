@@ -206,7 +206,10 @@ const DiagramWrap = styled.div`
   min-height: 120px;
   overflow: auto;
 
-  svg {
+  > div > svg {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
     max-width: 100%;
   }
 `;
@@ -233,8 +236,9 @@ const ClassIconBox = styled.div`
   overflow: hidden;
   box-sizing: border-box;
 
-  div[role="img"],
-  svg {
+  > div[role="img"],
+  > div[role="img"] > svg,
+  > svg {
     width: 100% !important;
     height: auto !important;
   }
@@ -247,8 +251,9 @@ const ComponentIconWrap = styled.div`
   width: 32px;
   height: 32px;
 
-  div[role="img"],
-  svg {
+  > div[role="img"],
+  > div[role="img"] > svg,
+  > svg {
     width: 32px !important;
     height: 32px !important;
   }

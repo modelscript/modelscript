@@ -191,6 +191,7 @@ import {
   ModelicaIfEquationSyntaxNode,
   ModelicaIfStatementSyntaxNode,
   ModelicaLongClassSpecifierSyntaxNode,
+  ModelicaOutputExpressionListSyntaxNode,
   ModelicaProcedureCallStatementSyntaxNode,
   ModelicaReturnStatementSyntaxNode,
   ModelicaSimpleAssignmentStatementSyntaxNode,
@@ -353,6 +354,18 @@ export class ArenaQueryFlattener {
       this.brokenConnections.clear();
       this.brokenComponents.clear();
 
+      // Propagate the root class kind (model, block, process, field, etc.) to the DAE
+      if (rootEntry) {
+        const classPrefixes = (rootEntry.metadata as Record<string, unknown>)?.classPrefixes as string | undefined;
+        if (classPrefixes) {
+          // classPrefixes may be e.g. "model", "block", "process", "partial model", etc.
+          // Extract the last word as the class kind
+          const parts = classPrefixes.trim().split(/\s+/);
+          const kind = parts[parts.length - 1];
+          if (kind) dae.classKind = kind;
+        }
+      }
+
       this.rootDae = dae;
 
       // Pre-pass: count connector cardinality for cardinality() built-in
@@ -396,7 +409,7 @@ export class ArenaQueryFlattener {
 
     // Fold constant and parameter binding expressions
     const t5 = performance.now();
-    foldArenaConstants(dae, this.db, rootClassId);
+    foldArenaConstants(dae, this.db, rootClassId, this.options.omcCompatibility);
 
     // O(N) Arena-native alias elimination
     const t6 = performance.now();
@@ -557,10 +570,6 @@ export class ArenaQueryFlattener {
 
     const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
     if (!classDef) return;
-
-    if (classDef.classPrefixes?.classKind === ModelicaClassKind.FIELD) {
-      return; // Boundary Node: do not flatten equations for 3D fields
-    }
 
     const sections = [...classDef.sections];
     for (let i = sections.length - 1; i >= 0; i--) {
@@ -799,7 +808,8 @@ export class ArenaQueryFlattener {
       if (eq instanceof ModelicaSimpleEquationSyntaxNode) {
         const visitor = this.createExprVisitor(dae, undefined, prefix, scopeId);
         const lhsId = eq.expression1 ? visitor.visit(eq.expression1, true) : undefined;
-        const rhsId = eq.expression2 ? visitor.visit(eq.expression2, false) : undefined;
+        const isTuple = eq.expression1 instanceof ModelicaOutputExpressionListSyntaxNode;
+        const rhsId = eq.expression2 ? visitor.visit(eq.expression2, isTuple) : undefined;
         if (lhsId !== undefined && rhsId !== undefined) {
           this.processSimpleEquationScalarization(dae, eqKind, lhsId, rhsId, visitor, scopeId, eq.sourceRange);
         }
@@ -821,9 +831,6 @@ export class ArenaQueryFlattener {
 
         if (eqText) {
           const canonEq = this.canonicalizeConnect(eqText);
-          console.error(
-            `[DEBUG SECTIONS CONNECT] scope=${scopeId ? this.db.symbol(scopeId)?.name : "null"}, eqText='${eqText}', canonEq='${canonEq}', hasBroken=${this.brokenConnections.has(prefix + ":" + canonEq)}`,
-          );
           if (this.brokenConnections.has(prefix + ":" + canonEq)) {
             continue; // Skip this broken connect
           }
@@ -1898,12 +1905,40 @@ export class ArenaQueryFlattener {
     this.activeClassStack.push({ classId: classInstanceId, prefix: fullName });
     this.flattenClassWithMods(classInstanceId, fullName, dae, childStack, new Set());
 
-    const isField = typeof classMeta?.classPrefixes === "string" && classMeta.classPrefixes.includes("field");
+    const cstNode = this.db.cstNode(classInstanceId) as any;
+    const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
+    const isField = classDef?.classPrefixes?.classKind === ModelicaClassKind.FIELD;
     if (isField) {
-      dae.boundaryNodes.push({ name: fullName, typeName: resolvedTypeName, parameters: {} });
-    } else {
-      this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
+      const parameters: Record<string, unknown> = {};
+      if (effectiveMod) {
+        for (const arg of effectiveMod.args) {
+          if (arg.value && arg.value.kind === "literal") {
+            parameters[arg.name] = arg.value.value;
+          }
+        }
+      }
+
+      const inlets: string[] = [];
+      const fieldElements = this.db.query<number[]>("instantiate", classInstanceId);
+      if (fieldElements) {
+        for (const fieldElemId of fieldElements) {
+          const fieldElemEntry = this.db.symbol(fieldElemId);
+          if (!fieldElemEntry) continue;
+          const elemClassId = this.db.query<number | null>("classInstance", fieldElemId);
+          if (elemClassId) {
+            const elemCstNode = this.db.cstNode(elemClassId) as any;
+            const elemClassDef = ModelicaClassDefinitionSyntaxNode.new(null, elemCstNode);
+            if (elemClassDef?.classPrefixes?.classKind === ModelicaClassKind.CONNECTOR) {
+              inlets.push(fieldElemEntry.name);
+            }
+          }
+        }
+      }
+
+      dae.boundaryNodes.push({ classId: classInstanceId, geometryName: resolvedTypeName, parameters, inlets });
     }
+
+    this.flattenClassSectionsRecursive(classInstanceId, fullName, dae, new Set());
 
     this.activeClassStack.pop();
   }
@@ -2069,6 +2104,43 @@ export class ArenaQueryFlattener {
           modStack,
         );
       } else {
+        const cstNode = this.db.cstNode(classInstanceId) as any;
+        const classDef = ModelicaClassDefinitionSyntaxNode.new(null, cstNode);
+        if (classDef?.classPrefixes?.classKind === ModelicaClassKind.FIELD) {
+          // Extract the CAD geometry and parameters for the boundary node
+          const parameters: Record<string, unknown> = {};
+          if (currentElementMod) {
+            for (const arg of currentElementMod.args) {
+              if (arg.value && arg.value.kind === "literal") {
+                parameters[arg.name] = arg.value.value;
+              }
+            }
+          }
+          const inlets: string[] = [];
+          const fieldElements = this.db.query<number[]>("instantiate", classInstanceId);
+          if (fieldElements) {
+            for (const fieldElemId of fieldElements) {
+              const fieldElemEntry = this.db.symbol(fieldElemId);
+              if (!fieldElemEntry) continue;
+              const elemClassId = this.db.query<number | null>("classInstance", fieldElemId);
+              if (elemClassId) {
+                const elemCstNode = this.db.cstNode(elemClassId) as any;
+                const elemClassDef = ModelicaClassDefinitionSyntaxNode.new(null, elemCstNode);
+                if (elemClassDef?.classPrefixes?.classKind === ModelicaClassKind.CONNECTOR) {
+                  inlets.push(fieldElemEntry.name);
+                }
+              }
+            }
+          }
+
+          dae.boundaryNodes.push({
+            classId: classInstanceId,
+            geometryName: classEntry?.name ?? "",
+            parameters: parameters,
+            inlets: inlets,
+          });
+        }
+
         // Compound array element — recurse using flattenClassWithMods
         const childStack: ModificationStack = currentElementMod
           ? [...modStack, { mods: currentElementMod, evaluationScopeId: entry.parentId }]
@@ -3480,6 +3552,13 @@ export class ArenaQueryFlattener {
           return;
         }
 
+        if (varName) {
+          const expectedType = inferArenaExprVarType(dae, lhsId);
+          if (expectedType === VarType.Real) {
+            rhsId = visitor.castToRealExpr(rhsId);
+          }
+        }
+
         dae.addEquation(eqKind, lhsId, rhsId);
         return;
       }
@@ -3566,6 +3645,39 @@ export class ArenaQueryFlattener {
     const rangeExprId = visitor.visit(forIndex.expression);
     if (rangeExprId === undefined) return null;
 
+    // Check if it's a 1D array expression
+    const rangeKind = dae.getExprKind(rangeExprId);
+    if (rangeKind === ExprKind.ArrayCtor) {
+      let is1D = true;
+      let elementType: VarType | null = null;
+      const elemCount = dae.getExprData1(rangeExprId);
+      const dim1 = elemCount;
+      let dim2 = 0;
+      const firstElem = dae.getExprLeft(rangeExprId);
+      if (firstElem >= 0) {
+        elementType = inferArenaExprVarType(dae, firstElem);
+        if (dae.getExprKind(firstElem) === ExprKind.ArrayCtor) {
+          is1D = false;
+          dim2 = dae.getExprData1(firstElem);
+        }
+      }
+      if (!is1D) {
+        const typeStr = `${varTypeName(elementType ?? VarType.Integer)}[${dim1}, ${dim2}]`;
+        const indexName = forIndex.identifier?.text ?? "unknown";
+        const range = forIndex.sourceRange
+          ? { startByte: forIndex.sourceRange.startIndex, endByte: forIndex.sourceRange.endIndex }
+          : null;
+        dae.diagnostics.push({
+          code: 5007,
+          rule: "for-iterator-not-1d",
+          severity: "error",
+          message: `Iterator ${indexName}, has type ${typeStr}, but expected a 1D array expression.`,
+          range: range,
+        });
+        return null;
+      }
+    }
+
     // Check if it's a Range expression
     if (dae.getExprKind(rangeExprId) === ExprKind.Range) {
       const startId = dae.getExprData1(rangeExprId);
@@ -3614,7 +3726,8 @@ export class ArenaQueryFlattener {
     if (eqNode instanceof ModelicaSimpleEquationSyntaxNode) {
       const visitor = this.createExprVisitor(dae, loopVars, prefix, scopeId);
       const lhsId = eqNode.expression1 ? visitor.visit(eqNode.expression1, true) : undefined;
-      const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2, false) : undefined;
+      const isTuple = eqNode.expression1 instanceof ModelicaOutputExpressionListSyntaxNode;
+      const rhsId = eqNode.expression2 ? visitor.visit(eqNode.expression2, isTuple) : undefined;
       if (lhsId !== undefined && rhsId !== undefined) {
         this.processSimpleEquationScalarization(dae, EqKind.Simple, lhsId, rhsId, visitor, scopeId, eqNode.sourceRange);
       }
@@ -3637,7 +3750,8 @@ export class ArenaQueryFlattener {
       const n = eqNode as any;
       if (n.expression1 && n.expression2) {
         const lhsId = visitor.visit(n.expression1, true);
-        const rhsId = visitor.visit(n.expression2, false);
+        const isTuple = n.expression1 instanceof ModelicaOutputExpressionListSyntaxNode;
+        const rhsId = visitor.visit(n.expression2, isTuple);
         if (lhsId !== undefined && rhsId !== undefined) {
           this.processSimpleEquationScalarization(dae, EqKind.Simple, lhsId, rhsId, visitor, scopeId, n.sourceRange);
         }
@@ -3957,6 +4071,39 @@ export class ArenaQueryFlattener {
             rangeExprId = this.inferImplicitForRange(bodyStmts, indexName, dae, visitor);
           }
 
+          if (rangeExprId !== undefined) {
+            const rangeKind = dae.getExprKind(rangeExprId);
+            if (rangeKind === ExprKind.ArrayCtor) {
+              let is1D = true;
+              let elementType: VarType | null = null;
+              const elemCount = dae.getExprData1(rangeExprId);
+              const dim1 = elemCount;
+              let dim2 = 0;
+              const firstElem = dae.getExprLeft(rangeExprId);
+              if (firstElem >= 0) {
+                elementType = inferArenaExprVarType(dae, firstElem);
+                if (dae.getExprKind(firstElem) === ExprKind.ArrayCtor) {
+                  is1D = false;
+                  dim2 = dae.getExprData1(firstElem);
+                }
+              }
+              if (!is1D) {
+                const typeStr = `${varTypeName(elementType ?? VarType.Integer)}[${dim1}, ${dim2}]`;
+                const range = stmt.sourceRange
+                  ? { startByte: stmt.sourceRange.startIndex, endByte: stmt.sourceRange.endIndex }
+                  : null;
+                dae.diagnostics.push({
+                  code: 5007,
+                  rule: "for-iterator-not-1d",
+                  severity: "error",
+                  message: `Iterator ${indexName}, has type ${typeStr}, but expected a 1D array expression.`,
+                  range: range,
+                });
+                return; // Skip adding the invalid for loop
+              }
+            }
+          }
+
           // If this is not the innermost loop, the body size is 1 (the nested for loop)
           const bodySize = idxPos === forIndexes.length - 1 ? bodyStmts.length : 1;
           dae.addForStmt(indexNameId, rangeExprId ?? -1, bodySize);
@@ -3964,6 +4111,7 @@ export class ArenaQueryFlattener {
           // Create a new scope for the inner loops/statements
           const nextLoopVars = new Map(currentLoopVars ?? []);
           nextLoopVars.set(indexName, 0); // dummy value
+          console.error(`[DEBUG emitNestedFor] indexName=${indexName} in nextLoopVars: ${nextLoopVars.has(indexName)}`);
 
           emitNestedFor(idxPos + 1, nextLoopVars);
         };
@@ -4834,6 +4982,10 @@ export class ArenaQueryFlattener {
         if (desc) fnDae.descriptionId = fnDae.interner.intern(desc);
       }
 
+      // Temporarily set arrayMode to preserve, because OpenModelica preserves function variables as arrays.
+      const oldArrayMode = this.options.arrayMode;
+      this.options.arrayMode = "preserve";
+
       // Flatten function elements (inputs, outputs, protected vars)
       const elements = this.db.query<number[]>("instantiate", resolvedId);
       if (elements) {
@@ -4846,6 +4998,9 @@ export class ArenaQueryFlattener {
 
       // Flatten algorithm sections from the function body
       this.flattenClassSectionsRecursive(resolvedId, "", fnDae, new Set());
+
+      // Restore arrayMode
+      this.options.arrayMode = oldArrayMode;
 
       // Handle external function clause
       if (classSpecifier instanceof ModelicaLongClassSpecifierSyntaxNode) {
@@ -4982,7 +5137,7 @@ export class ArenaQueryFlattener {
         if (name === "time") continue;
 
         // Check if it's a loop variable
-        if (loopVars.has(name)) continue;
+        if (name.startsWith("\0loop\0") || loopVars.has(name)) continue;
 
         // Check if it's a valid variable
         const varIdx = dae.getVarIdxByName(name);

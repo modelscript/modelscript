@@ -20,6 +20,7 @@ import { type CosimValue, type UnitWarning, CouplingGraph } from "./coupling.js"
 import type { CosimMqttClient } from "./mqtt/client.js";
 import type { StepResult } from "./mqtt/protocol.js";
 import type { CoSimParticipant } from "./participant.js";
+import type { ICfdProvider } from "./participants/cfd-provider.js";
 import { RealtimePacer } from "./realtime.js";
 import type { CoSimSession } from "./session.js";
 
@@ -37,6 +38,8 @@ export interface OrchestratorCallbacks {
   onUnitWarning?: (warnings: UnitWarning[]) => void;
   /** Called when a CFD provider produces a VTK mesh for VR visualization. */
   onVtkData?: (participantId: string, time: number, vtkData: Uint8Array) => void;
+  /** Pre-compiled STEP files (participantId -> STEP file bytes) */
+  stepFiles?: Map<string, Uint8Array>;
 }
 
 /**
@@ -73,7 +76,18 @@ export class Orchestrator {
       this.callbacks.onStateChange?.("initializing");
 
       await Promise.all(
-        participants.map((p) => p.initialize(experiment.startTime, experiment.stopTime, experiment.stepSize)),
+        participants.map(async (p) => {
+          await p.initialize(experiment.startTime, experiment.stopTime, experiment.stepSize);
+
+          // If this is a CFD provider and we have a STEP file for it, load it
+          const cfdP = p as unknown as ICfdProvider;
+          if (typeof cfdP.loadGeometry === "function" && this.callbacks.stepFiles?.has(p.id)) {
+            const stepFileData = this.callbacks.stepFiles.get(p.id);
+            if (stepFileData) {
+              await cfdP.loadGeometry(stepFileData);
+            }
+          }
+        }),
       );
 
       // ── Unit validation ──
@@ -178,6 +192,11 @@ export class Orchestrator {
             const vtkData = await (p as unknown as { getVtkBuffer: () => Promise<Uint8Array | null> }).getVtkBuffer();
             if (vtkData) {
               this.callbacks.onVtkData?.(p.id, t + effectiveH, vtkData);
+              if (this.mqttClient) {
+                // Determine topic structure dynamically or fallback to standard UNS format
+                const topic = `modelscript/site/default/area/default/line/${this.session.sessionId}/cell/${p.id}/vtk`;
+                this.mqttClient.publishRaw(topic, Buffer.from(vtkData));
+              }
             }
           }
         }

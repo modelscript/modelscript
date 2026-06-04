@@ -15,9 +15,10 @@ export function registerCodeLensProvider(context: LspContext) {
     if (!index) return lenses;
 
     for (const [, symbol] of index.symbols.entries()) {
-      // Find classes with the "study" kind
+      // Find classes with the "study", "model", "block", or "process" kind
       // @ts-expect-error missing type properties
-      if (symbol.classKind === "study" && symbol.name) {
+      const kind = symbol.classKind;
+      if ((kind === "study" || kind === "model" || kind === "block" || kind === "process") && symbol.name) {
         // We only want the top-level declaration range, not the whole body
         const range = Range.create(
           // @ts-expect-error missing type properties
@@ -30,10 +31,12 @@ export function registerCodeLensProvider(context: LspContext) {
           symbol.selectionRange?.start.character ?? symbol.range.start.character,
         );
 
+        const title = kind === "study" ? "▶ Run Study" : `▶ Simulate ${kind}`;
+
         lenses.push({
           range,
           command: {
-            title: "▶ Run Study",
+            title,
             command: "modelscript.openSimulationView",
             arguments: [uri, symbol.name],
           },

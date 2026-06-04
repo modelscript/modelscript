@@ -599,8 +599,12 @@ export async function loadMSL(serverDistBase: string, ctx: LoaderContext): Promi
       } catch {
         /* ignore */
       }
-      if (i % 50 === 0) {
+      if (i % 5 === 0) {
         await new Promise((resolve) => setTimeout(resolve, 0));
+        ctx.connectionState.sendNotification("modelscript/status", {
+          state: "loading",
+          message: `Indexing MSL classes (${indexedCount}/${registeredUris.length})...`,
+        });
       }
     }
 

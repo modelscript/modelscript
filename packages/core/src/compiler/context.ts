@@ -106,7 +106,8 @@ export class Context extends BaseContext {
         if (!entry || !entry.resourceId) return null;
         const tree = this.#trees.get(entry.resourceId);
         if (!tree) return null;
-        return tree.rootNode.text.substring(startByte, endByte);
+        const offset = tree.rootNode.startIndex;
+        return tree.rootNode.text.substring(startByte - offset, endByte - offset);
       },
       getNode: (startByte: number, endByte: number, entry?: any) => {
         if (!entry || !entry.resourceId) return null;
@@ -358,10 +359,10 @@ export class Context extends BaseContext {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns The flattened DAE output as a string, or null if the class is not found.
    */
-  flatten(name: string): string | null {
-    const arena = this.flattenArena(name);
+  flatten(name: string, options?: FlattenOptions): string | null {
+    const arena = this.flattenArena(name, undefined, undefined, options);
     if (!arena) return null;
-    return printArenaDAE(arena);
+    return printArenaDAE(arena, options?.omcCompatibility);
   }
 
   /**

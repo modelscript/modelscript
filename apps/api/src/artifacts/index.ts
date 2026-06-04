@@ -8,6 +8,7 @@
  */
 
 export { CadArtifactHandler } from "./cad-handler.js";
+export { CfdAnimationHandler } from "./cfd-animation-handler.js";
 export { CsvArtifactHandler } from "./csv-handler.js";
 export { DatasetArtifactHandler } from "./dataset-handler.js";
 export type { DatasetColumn, DatasetDetails } from "./dataset-handler.js";
@@ -22,6 +23,7 @@ export { SysmlArtifactHandler } from "./sysml-handler.js";
 export { VegaArtifactHandler } from "./vega-handler.js";
 
 import { CadArtifactHandler } from "./cad-handler.js";
+import { CfdAnimationHandler } from "./cfd-animation-handler.js";
 import { CsvArtifactHandler } from "./csv-handler.js";
 import { DatasetArtifactHandler } from "./dataset-handler.js";
 import { FmuArtifactHandler } from "./fmu-handler.js";
@@ -46,6 +48,7 @@ export function initializeArtifactSystem(): void {
   registry.register(new MermaidArtifactHandler());
   registry.register(new CsvArtifactHandler());
   registry.register(new SimulationArtifactHandler());
+  registry.register(new CfdAnimationHandler());
 
   console.log(
     `[ArtifactSystem] Initialized with ${registry.getRegisteredTypes().length} handlers: ${registry.getRegisteredTypes().join(", ")}`,

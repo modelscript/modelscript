@@ -32,6 +32,7 @@ npx msc --help
 | `instantiate` | Instantiate a Modelica class hierarchy                     |
 | `simulate`    | Simulate a Modelica model and output results (CSV or JSON) |
 | `optimize`    | Solve an optimal control problem for a Modelica model      |
+| `verify`      | Run polyglot cross-domain requirements verification        |
 | `render`      | Render a Modelica model diagram to SVG                     |
 | `i18n`        | Extract translatable strings from Modelica models          |
 | `publish`     | Publish a Modelica library to the ModelScript registry     |

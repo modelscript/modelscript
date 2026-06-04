@@ -67,13 +67,15 @@ Source (.mo) → tree-sitter → CST
 
 ### Key Packages
 
-| Package               | Responsibility                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor` |
-| `packages/salsa/`     | Salsa-inspired incremental query engine, `QueryEngine`, `QueryDB`                           |
-| `packages/compiler/`  | `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver         |
-| `packages/core/`      | `Context` (orchestrator), legacy `ModelicaFlattener`, linter, test runner                   |
-| `packages/simulator/` | `ArenaSimulator`, ODE solvers (DOPRI5), event handling                                      |
+| Package               | Responsibility                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `languages/modelica/` | tree-sitter grammar, AST wrappers, indexer hooks, `ArenaQueryFlattener`, `ArenaExprVisitor`                                                |
+| `packages/compiler/`  | Salsa-inspired query engine, `SymbolIndexer`, `WorkspaceIndex`, `ArenaDAEBuilder`, `ArenaDAEPrinter`, BLT solver, Simulation, Optimization |
+| `packages/core/`      | `Context` (orchestrator), legacy `ModelicaFlattener`, linter, test runner                                                                  |
+| `packages/cosim/`     | MQTT co-simulation engine, JS/FMU participants, OpenFOAM CFD providers                                                                     |
+| `packages/fmi/`       | FMI integration, surrogate ROM generation, SUNDIALS WASM wrappers                                                                          |
+| `packages/lsp/`       | Modularized Language Server (DI container, diagnostic handlers, completions)                                                               |
+| `packages/reasoner/`  | OWL2 Reasoner, DL-Lite entailment, SPARQL-DL evaluation                                                                                    |
 
 ### SymbolIndex Data Model
 
@@ -149,6 +151,14 @@ RULE_NAME: {
   message: (param: string) => `Descriptive message with '${param}'.`,
 },
 ```
+
+**Linter Text Generation Rules:**
+
+1. **Match OpenModelica:** Error messages must exactly match or closely mirror OpenModelica's diagnostic messages whenever possible.
+2. **Quote Identifiers:** Always wrap variable names, class names, and evaluated expressions in single quotes (e.g., `'${componentName}'`).
+3. **Punctuation:** End the diagnostic message with a period (`.`).
+4. **Descriptive Parameters:** Use clear, descriptive string parameter names (e.g., `className: string`, `actualType: string`) in the `message` function signature.
+5. **Multi-line Formatting:** If the error message requires showing complex types or signatures, use template literals with actual newlines and indentation (e.g., `\n  ${typeSignature}`).
 
 **Error code numbering:**
 

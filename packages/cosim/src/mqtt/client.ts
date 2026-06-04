@@ -167,6 +167,11 @@ export class CosimMqttClient {
     this.client?.publish(topic, encodeMessage(batch), { qos: 0 });
   }
 
+  /** Publish raw binary payload (e.g., VTK geometry blobs) */
+  publishRaw(topic: string, payload: Buffer): void {
+    this.client?.publish(topic, payload, { qos: 0 });
+  }
+
   /** Clear a participant's birth certificate (explicit death). */
   publishDeath(participantId: string): void {
     const topic = participantMetaTopic(this.unsContext, participantId);

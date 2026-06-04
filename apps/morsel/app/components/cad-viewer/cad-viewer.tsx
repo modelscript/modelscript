@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
+import { VtkRenderer } from "./vtk-renderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,8 @@ interface CadViewerProps {
   dark?: boolean;
   /** Animation controller for simulation-driven animation */
   animationController?: AnimationController | null;
+  /** Extracted VTK Buffer from the CFD Orchestrator for Real-time VR rendering */
+  vtkBuffer?: Uint8Array | null;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -314,6 +317,7 @@ function SceneContents({
   onSelect?: (name: string | null) => void;
   dark?: boolean;
   animationController?: AnimationController | null;
+  vtkBuffer?: Uint8Array | null;
 }) {
   const { gl } = useThree();
 
@@ -374,6 +378,9 @@ function SceneContents({
         ))}
       </group>
 
+      {/* CFD Isosurface rendering */}
+      {vtkBuffer && <VtkRenderer vtkBuffer={vtkBuffer} opacity={0.8} />}
+
       {/* Controls */}
       <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
 
@@ -425,6 +432,7 @@ export default function CadViewer({
   onConnect: _onConnect,
   dark = false,
   animationController = null,
+  vtkBuffer = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -477,6 +485,7 @@ export default function CadViewer({
           onSelect={onSelect}
           dark={dark}
           animationController={animationController}
+          vtkBuffer={vtkBuffer}
         />
       </Canvas>
 

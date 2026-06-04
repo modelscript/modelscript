@@ -415,21 +415,16 @@ export function evaluateArenaExpression(
       // If the argument is a variable name, we can inspect the DAE for its array dimensions.
       if ((funcName === "size" || funcName === "ndims") && argCount >= 1) {
         const firstArgId = argIds[0];
-        // debug
         if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Name) {
           const varName = dae.interner.resolve(dae.getExprData1(firstArgId));
-          console.error(`[DEBUG ARENA EVAL CALL] varName=${varName}`);
           if (varName) {
             let shape: number[] | null = null;
             const varIdx = dae.getVarIdxByName(varName);
-            console.error(`[DEBUG ARENA EVAL CALL] varIdx=${varIdx}`);
             if (varIdx >= 0) {
               const varShape = dae.getVarShape(varIdx);
-              console.error(`[DEBUG ARENA EVAL CALL] varShape=${varShape}`);
-              if (varShape && varShape.length > 0) shape = varShape;
+              if (varShape && varShape.length > 0 && !varShape.includes(0)) shape = varShape;
             } else if (dae.hasArrayElements(varName)) {
               const elements = dae.getArrayElementIndices(varName);
-              console.error(`[DEBUG ARENA EVAL CALL] elements=${elements.length}`);
               if (elements.length > 0) {
                 const lastIdx = elements[elements.length - 1];
                 if (lastIdx !== undefined) {
@@ -437,12 +432,11 @@ export function evaluateArenaExpression(
                   const match = lastElemName.match(/\[([\d,]+)\]$/);
                   if (match && match[1]) {
                     shape = match[1].split(",").map(Number);
-                    console.error(`[DEBUG SHAPE] lastElemName=${lastElemName} shape=${shape.join(",")}`);
                   }
                 }
               }
             }
-            if (shape && shape.length > 0) {
+            if (shape && shape.length > 0 && !shape.includes(0)) {
               if (funcName === "ndims") return shape.length;
               if (funcName === "size") {
                 if (argCount === 1) return shape;
@@ -465,6 +459,46 @@ export function evaluateArenaExpression(
               }
             }
           }
+        } else if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.Call) {
+          const callFuncNameId = dae.getExprData1(firstArgId);
+          const fnDae = dae.functions.get(callFuncNameId);
+          if (fnDae) {
+            let shapeExprs: number[] | undefined;
+            let shape: number[] | null = null;
+            for (let i = 0; i < fnDae.varCount; i++) {
+              if (fnDae.getVarCausality(i) === 2 /* Output */) {
+                const varShape = fnDae.getVarShape(i);
+                if (varShape && varShape.length > 0 && !varShape.includes(0)) shape = varShape;
+                else shapeExprs = fnDae.getVarShapeExprs(i);
+                break;
+              }
+            }
+            if (shape && shape.length > 0 && !shape.includes(0)) {
+              if (funcName === "ndims") return shape.length;
+              if (funcName === "size") {
+                if (argCount === 1) return shape;
+                const dimArgId = argIds[1];
+                if (dimArgId !== undefined) {
+                  const dim = evaluateArenaExpression(
+                    dae,
+                    dimArgId,
+                    parameters,
+                    db,
+                    scopeId,
+                    visitedVars,
+                    onlyConstants,
+                    functionLookup,
+                  );
+                  if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
+                    return shape[dim - 1] ?? null;
+                  }
+                }
+              }
+            }
+            if (shapeExprs && shapeExprs.length > 0) {
+              // we will implement it later if needed
+            }
+          }
         } else if (firstArgId !== undefined && dae.getExprKind(firstArgId) === ExprKind.ArrayCtor) {
           const elementsCount = dae.getExprData1(firstArgId);
           const shape = [elementsCount];
@@ -472,7 +506,6 @@ export function evaluateArenaExpression(
           if (firstElementId >= 0 && dae.getExprKind(firstElementId) === ExprKind.ArrayCtor) {
             shape.push(dae.getExprData1(firstElementId));
           }
-          console.error(`[DEBUG SIZE] ArrayCtor elementsCount=${elementsCount} argCount=${argCount} shape=${shape}`);
           if (funcName === "ndims") return shape.length;
           if (funcName === "size") {
             if (argCount === 1) return shape;
@@ -488,7 +521,6 @@ export function evaluateArenaExpression(
                 onlyConstants,
                 functionLookup,
               );
-              console.error(`[DEBUG SIZE] dim=${dim}`);
               if (typeof dim === "number" && dim >= 1 && dim <= shape.length) {
                 return shape[dim - 1] ?? null;
               }
@@ -670,6 +702,6 @@ export function evaluateArenaExpression(
     }
   }
 
-  console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
+  // console.error(`[DEBUG EVAL FAIL] exprId=${exprId} kind=${kind} returned null!`);
   return null;
 }

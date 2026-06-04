@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./animation-timeline";
+import { CfdMeshRenderer, type CfdMeshPayload } from "./cfd-mesh-renderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,8 @@ interface CadViewerProps {
   dark?: boolean;
   /** Animation controller for simulation-driven animation */
   animationController?: AnimationController | null;
+  /** CFD mesh payload from co-simulation VTK stream */
+  cfdPayload?: CfdMeshPayload | null;
 }
 
 // ── URI resolver ─────────────────────────────────────────────────────────────
@@ -308,6 +311,7 @@ function SceneContents({
   onSelect,
   dark,
   animationController,
+  cfdPayload,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -315,6 +319,7 @@ function SceneContents({
   onSelect?: (name: string | null) => void;
   dark?: boolean;
   animationController?: AnimationController | null;
+  cfdPayload?: CfdMeshPayload | null;
 }) {
   const { gl } = useThree();
 
@@ -375,6 +380,9 @@ function SceneContents({
         ))}
       </group>
 
+      {/* CFD Mesh Visualization (co-simulation melt front) */}
+      {cfdPayload && <CfdMeshRenderer payload={cfdPayload} />}
+
       {/* Controls */}
       <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
 
@@ -425,6 +433,7 @@ export default function CadViewer({
   onSelect,
   dark = false,
   animationController = null,
+  cfdPayload = null,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -477,6 +486,7 @@ export default function CadViewer({
           onSelect={onSelect}
           dark={dark}
           animationController={animationController}
+          cfdPayload={cfdPayload}
         />
       </Canvas>
 

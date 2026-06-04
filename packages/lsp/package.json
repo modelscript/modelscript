@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@modelscript/compiler": "*",
+    "@modelscript/cosim": "*",
     "@modelscript/fmi": "*",
     "@modelscript/modelica": "*",
     "@modelscript/owl2": "*",

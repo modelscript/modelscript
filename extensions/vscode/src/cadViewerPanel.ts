@@ -159,6 +159,10 @@ export class CadViewerPanel {
     });
   }
 
+  public postMessage(msg: unknown): void {
+    this._panel.webview.postMessage(msg);
+  }
+
   public dispose() {
     CadViewerPanel.currentPanel = undefined;
     this._panel.dispose();

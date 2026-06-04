@@ -3,18 +3,16 @@
 
 # @modelscript/core
 
-Central compiler engine for ModelScript. Provides Modelica parsing, semantic analysis, model instantiation, DAE flattening, simulation, optimization, SVG diagram rendering, linting, and i18n support.
+Core orchestration package for ModelScript. Provides the `Context` orchestrator, the legacy `ModelicaFlattener`, linter rules, and the test runner.
+
+> **Note:** The modern incremental query engine, symbol indexer, and arena-based simulators are now located in `@modelscript/compiler`.
 
 ## Features
 
-- **Parsing** — incremental Tree-sitter-based parsing with full Modelica grammar coverage
-- **Semantic Analysis** — scope resolution, type checking, and name lookup across class hierarchies
-- **Flattening** — transforms hierarchical Modelica models into flat DAE (Differential Algebraic Equations)
-- **Simulation** — ODE/DAE numerical solver with Pantelides index reduction, BLT ordering, and alias elimination
-- **Optimization** — direct collocation solver for Modelica optimal control problems
-- **Interpreter** — evaluates Modelica expressions, functions, and algorithms at compile time
-- **Diagram Rendering** — generates interactive SVG diagrams from Modelica annotation data
+- **Orchestration** — `Context` acts as the primary entry point for managing workspaces and polyglot compilation
+- **Legacy Flattening** — legacy AST-based `ModelicaFlattener` for DAE generation
 - **Linting** — 15+ lint rules covering parser errors, unresolved references, type mismatches, and structural checks
+- **Test Runner** — comprehensive Modelica testsuite runner comparing OpenModelica golden outputs
 - **i18n** — extracts translatable strings from Modelica model descriptions and annotations
 
 ## Scripts

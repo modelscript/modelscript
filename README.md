@@ -15,7 +15,7 @@
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/modelscript.modelscript?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=modelscript.modelscript)
 [![Open VSX](https://img.shields.io/open-vsx/v/modelscript/modelscript?label=Open%20VSX&logo=eclipseide)](https://open-vsx.org/extension/modelscript/modelscript)
 
-ModelScript is a completely web-native, polyglot incremental compiler supporting multiple engineering domains — from requirements and system architecture to simulation, CAD, CAE, and manufacturing. By natively supporting **Modelica**, **SysML v2**, and **STEP**, ModelScript enables seamless cross-domain simulation-based requirements verification.
+ModelScript is a completely web-native, polyglot incremental compiler supporting multiple engineering domains — from requirements and system architecture to simulation, CAD, CAE, and manufacturing. By natively supporting **Modelica**, **SysML v2**, **STEP**, **OWL2**, and **OpenFOAM** (CFD), ModelScript enables seamless cross-domain simulation-based requirements verification.
 
 Designed for modern workflows, it features a robust engine for incremental compilation and flattening, seamless FMU import/export and integration, surrogate ROM generation from FMUs, as well as advanced model optimization and parameter calibration. All of this is accessible directly in the browser or via the command line.
 
@@ -33,37 +33,39 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 | Package                                           | Description                                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [`@modelscript/cad`](./packages/cad/)             | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation   |
 | [`@modelscript/compiler`](./packages/compiler/)   | Salsa-based query engine for incremental compilation, type checking, and flattening |
-| [`@modelscript/simulator`](./packages/simulator/) | DoD Arena-based simulator — zero-garbage Pantelides index reduction & BLT ordering  |
-| [`@modelscript/symbolics`](./packages/symbolics/) | Symbolic manipulation engine (differentiation, simplification) native to the Arena  |
-| [`@modelscript/optimizer`](./packages/optimizer/) | Direct collocation optimizer for optimal control problems                           |
-| [`@modelscript/fmi`](./packages/fmi/)             | Functional Mock-up Interface (FMI) support and Surrogate ROM generation             |
-| [`@modelscript/cosim`](./packages/cosim/)         | Co-simulation orchestration and SSP archive generation                              |
-| [`@modelscript/ecad`](./packages/ecad/)           | ECAD integration utilities for ModelScript                                          |
-| [`@modelscript/interop`](./packages/interop/)     | Interoperability utilities connecting Modelica, SysML v2, and STEP models           |
+| [`@modelscript/core`](./packages/core/)           | Central compiler engine for ModelScript (legacy flattener, simulator, optimizer)    |
+| [`@modelscript/cosim`](./packages/cosim/)         | MQTT-linked co-simulation engine for ModelScript                                    |
 | [`@modelscript/diagram`](./packages/diagram/)     | Diagram rendering, interactive SVG generation, and X6-based visual layouts          |
+| [`@modelscript/ecad`](./packages/ecad/)           | ECAD structural extraction and Gerber layout generator for ModelScript              |
+| [`@modelscript/fmi`](./packages/fmi/)             | FMI 2.0/3.0 model description, C code generation, and FMU archive builder           |
 | [`@modelscript/lsp`](./packages/lsp/)             | Language Server Protocol — completions, hover, diagnostics, formatting, colors      |
 | [`@modelscript/mcp`](./packages/mcp/)             | Model Context Protocol implementation for AI/LLM integration                        |
+| [`@modelscript/reasoner`](./packages/reasoner/)   | ModelScript OWL2 Reasoner — subsumption, consistency, and SPARQL-DL queries         |
+| [`@modelscript/symbolics`](./packages/symbolics/) | ModelScript Symbolics Engine                                                        |
 | [`@modelscript/utils`](./packages/utils/)         | Common utility functions across the monorepo                                        |
 
 ### Languages (`languages/`)
 
 | Package                                          | Description                                                                 |
 | ------------------------------------------------ | --------------------------------------------------------------------------- |
-| [`@modelscript/modelica`](./languages/modelica/) | Tree-sitter grammar (native + WASM) and language configuration for Modelica |
-| [`@modelscript/sysml2`](./languages/sysml2/)     | SysML v2 tree-sitter AST querying, handling, and verification               |
-| [`@modelscript/step`](./languages/step/)         | STEP (ISO 10303) grammar and querying for CAD/CAE interoperability          |
+| [`@modelscript/csv`](./languages/csv/)           | CSV tabular data parsing and validation                                     |
 | [`@modelscript/example`](./languages/example/)   | Example language configuration illustrating how to add new languages        |
+| [`@modelscript/modelica`](./languages/modelica/) | Tree-sitter grammar (native + WASM) and language configuration for Modelica |
+| [`@modelscript/owl2`](./languages/owl2/)         | OWL2 Functional Syntax parsing and ontological knowledge extraction         |
+| [`@modelscript/step`](./languages/step/)         | STEP (ISO 10303) grammar and querying for CAD/CAE interoperability          |
+| [`@modelscript/sysml2`](./languages/sysml2/)     | SysML v2 tree-sitter AST querying, handling, and verification               |
 
 ### Applications (`apps/` & `extensions/`)
 
 | Package                                       | Description                                                                        |
 | --------------------------------------------- | ---------------------------------------------------------------------------------- |
 | [`@modelscript/cli`](./apps/cli/)             | `msc` command-line interface — flatten, simulate, optimize, lint, render, and more |
-| [`@modelscript/api`](./apps/api/)             | REST API server — simulation, publishing, GraphQL, SPARQL, and RDF                 |
+| [`@modelscript/api`](./apps/api/)             | REST API for ModelScript — simulation, publishing, GraphQL, SPARQL, and RDF        |
 | [`@modelscript/morsel`](./apps/morsel/)       | Visual editor — code editing, diagram viewer, simulation, and plotting             |
 | [`@modelscript/web`](./apps/web/)             | Web frontend for browsing and exploring libraries (NPM-style registry)             |
-| [`@modelscript/ide`](./apps/ide/)             | VS Code Web IDE — fully browser-based multi-language development environment       |
+| [`@modelscript/ide`](./apps/ide/)             | ModelScript VS Code Web IDE with GitHub/GitLab repository integration              |
 | [`@modelscript/site`](./apps/site/)           | Main modelscript.org website                                                       |
 | [`@modelscript/vscode`](./extensions/vscode/) | VS Code extension — syntax highlighting, LSP client, diagram view                  |
 

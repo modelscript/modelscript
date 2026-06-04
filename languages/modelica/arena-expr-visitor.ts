@@ -179,8 +179,12 @@ export class ArenaExprVisitor {
     } else if (n instanceof ModelicaIdentifierSyntaxNode) {
       const text = n.text;
       if (text) {
-        if (this.substituteLoopVars && this.loopVars.has(text)) {
-          return this.dae.addIntLiteral(this.loopVars.get(text) as number);
+        if (this.loopVars.has(text)) {
+          if (this.substituteLoopVars) {
+            return this.dae.addIntLiteral(this.loopVars.get(text) as number);
+          } else {
+            return this.resolveNameExpr("\0loop\0" + text);
+          }
         }
         const pref = this.prefixName(text);
         return this.resolveNameExpr(pref);
@@ -191,7 +195,7 @@ export class ArenaExprVisitor {
     } else if (n instanceof ModelicaUnaryExpressionSyntaxNode) {
       return this.visitUnaryExpression(n);
     } else if (n instanceof ModelicaFunctionCallSyntaxNode) {
-      return this.visitFunctionCall(n);
+      return this.visitFunctionCall(n, allowTuple);
     } else if (n instanceof ModelicaFunctionPartialApplicationSyntaxNode) {
       return this.visitPartialApplication(n);
     } else if (n instanceof ModelicaIfElseExpressionSyntaxNode) {
@@ -447,16 +451,11 @@ export class ArenaExprVisitor {
           if (exprKind === ExprKind.IntLiteral) {
             staticSuffix += `[${this.dae.getExprData1(subId)}]`;
           } else {
-            // Try to evaluate non-literal subscript expressions (e.g., i+1, 2*j-1)
-            const evaluated = evaluateArenaExpression(
-              this.dae,
-              subId,
-              undefined,
-              this.db,
-              this.scopeId,
-              undefined,
-              false,
-            );
+            let evaluated: ArenaValue | null = null;
+            if (!this.hasLoopVar(subId)) {
+              // Try to evaluate non-literal subscript expressions (e.g., i+1, 2*j-1)
+              evaluated = evaluateArenaExpression(this.dae, subId, undefined, this.db, this.scopeId, undefined, false);
+            }
             if (typeof evaluated === "number" && Number.isInteger(evaluated)) {
               staticSuffix += `[${evaluated}]`;
               // Replace the complex expression with a plain IntLiteral for downstream use
@@ -542,6 +541,14 @@ export class ArenaExprVisitor {
             return this.dae.addEnumLiteral(idx + 1, enumPath);
           }
         }
+      }
+    }
+
+    if (this.loopVars.has(path)) {
+      if (this.substituteLoopVars) {
+        return this.dae.addIntLiteral(this.loopVars.get(path) as number);
+      } else {
+        return this.resolveNameExpr("\0loop\0" + path);
       }
     }
 
@@ -844,7 +851,7 @@ export class ArenaExprVisitor {
     return this.dae.addArrayCtorExpr(rows);
   }
 
-  private visitFunctionCall(node: ModelicaFunctionCallSyntaxNode): number | undefined {
+  private visitFunctionCall(node: ModelicaFunctionCallSyntaxNode, allowTuple = false): number | undefined {
     const funcName = node.functionReferenceName;
     if (!funcName) return undefined;
 
@@ -1165,10 +1172,14 @@ export class ArenaExprVisitor {
           }
           if (finalType !== null && !isAssignableType(expectedType, finalType)) {
             const range = node.sourceRange;
-            const argText =
-              (node.functionCallArguments?.arguments?.[i]?.expression as { treeSitterNode?: { text: string } })
-                ?.treeSitterNode?.text ?? "...";
-            const nodeText = `${funcName}(${inputs[i].name}=${argText})`;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const exprNode = node.functionCallArguments?.arguments?.[i]?.expression as any;
+            console.error("DEBUG EXPR NODE:", Object.keys(exprNode || {}));
+            if (exprNode && exprNode.concreteSyntaxNode) {
+              console.error("DEBUG CONCRETE:", exprNode.concreteSyntaxNode.text);
+            }
+            const argText = exprNode?.concreteSyntaxNode?.text ?? "...";
+            const nodeText = `${funcName}(${inputs[i]?.name}=${argText})`;
             this.dae.diagnostics.push({
               code: 3006,
               rule: "function-arg-type-mismatch",
@@ -1273,8 +1284,8 @@ expected type:
               (n) => n.identifier?.text === namedArg.name,
             );
             const argText =
-              (namedArgNode?.argument?.expression as { treeSitterNode?: { text: string } })?.treeSitterNode?.text ??
-              "...";
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (namedArgNode?.argument?.expression as any)?.concreteSyntaxNode?.text ?? "...";
             const nodeText = `${funcName}(${inputDef.name}=${argText})`;
             // Best effort: find positional index for OMC parity (since OMC often says "positional argument N" even for named)
             const argIdx = inputs.findIndex((inp) => inp.name === namedArg.name);
@@ -1316,7 +1327,7 @@ expected type:
 
     // Attempt function inlining: if all args are constant and the function body
     // can be fully evaluated, replace the call with the computed result.
-    const inlined = this.tryInlineFunctionCall(effectiveFuncName, argIds);
+    const inlined = this.tryInlineFunctionCall(effectiveFuncName, argIds, allowTuple);
     if (inlined !== undefined) return inlined;
 
     return this.dae.addCallExpr(effectiveFuncName, argIds);
@@ -1407,6 +1418,84 @@ expected type:
     const val = evaluateArenaExpression(this.dae, exprId, undefined, this.db, this.scopeId, undefined, false);
     if (typeof val === "number") return val;
     return null;
+  }
+
+  /**
+   * Check if an expression is a pure compile-time constant (literal, constant variable,
+   * array of constants, or operations on those). Parameter variables are NOT considered
+   * pure constants because their values can change between simulations.
+   */
+  private isExprPureConstant(exprId: number): boolean {
+    const kind = this.dae.getExprKind(exprId);
+
+    // Direct literals are always constant
+    if (
+      kind === ExprKind.RealLiteral ||
+      kind === ExprKind.IntLiteral ||
+      kind === ExprKind.BoolLiteral ||
+      kind === ExprKind.StringLiteral ||
+      kind === ExprKind.EnumLiteral
+    )
+      return true;
+
+    // Name references: only constant if the variable is Constant variability
+    if (kind === ExprKind.Name) {
+      const varName = this.dae.interner.resolve(this.dae.getExprData1(exprId));
+      if (varName) {
+        const varIdx = this.dae.getVarIdxByName(varName);
+        if (varIdx >= 0) {
+          const v = this.dae.getVarVariability(varIdx);
+          return v === Variability.Constant;
+        }
+      }
+      return false;
+    }
+
+    // Binary/unary: both operands must be constant
+    if (kind === ExprKind.Binary) {
+      return (
+        this.isExprPureConstant(this.dae.getExprLeft(exprId)) && this.isExprPureConstant(this.dae.getExprRight(exprId))
+      );
+    }
+    if (kind === ExprKind.Unary) {
+      return this.isExprPureConstant(this.dae.getExprLeft(exprId));
+    }
+
+    if (kind === ExprKind.Call) {
+      const funcNameId = this.dae.getExprData1(exprId);
+      const funcName = this.dae.interner.resolve(funcNameId);
+      if (funcName === "/*Real*/" || funcName === "/*Integer*/") {
+        const innerId = this.dae.getExprLeft(exprId);
+        return this.isExprPureConstant(innerId);
+      }
+      if (funcName === "size" || funcName === "ndims") {
+        return true;
+      }
+    }
+
+    // Array constructor: all elements must be constant
+    if (kind === ExprKind.ArrayCtor) {
+      const count = this.dae.getExprData1(exprId);
+      if (count === 0) return true;
+      if (!this.isExprPureConstant(this.dae.getExprLeft(exprId))) return false;
+      for (let i = 1; i < count; i++) {
+        if (!this.isExprPureConstant(this.dae.getExprLeft(exprId + i))) return false;
+      }
+      return true;
+    }
+
+    // Calls to built-in functions with constant args
+    if (kind === ExprKind.Call) {
+      const funcNameId = this.dae.getExprData1(exprId);
+      const funcName = this.dae.interner.resolve(funcNameId);
+      // Only allow known pure built-ins and type casts
+      if (funcName === "/*Real*/" || funcName === "/*Integer*/") {
+        return this.isExprPureConstant(this.dae.getExprLeft(exprId));
+      }
+      return false;
+    }
+
+    return false;
   }
 
   /**
@@ -1577,6 +1666,10 @@ expected type:
     if (kind === ExprKind.Der) {
       return true;
     }
+    if (kind === ExprKind.Subscript) {
+      const baseId = this.dae.getExprData1(exprId);
+      return this.isRealTypedExpr(baseId);
+    }
     // Call expressions: check if the function returns Real
     if (kind === ExprKind.Call) {
       const fn = this.dae.interner.resolve(this.dae.getExprData1(exprId));
@@ -1618,9 +1711,53 @@ expected type:
       if (funcName === "/*Real*/") return exprId;
     }
 
+    // Recursively cast array constructor elements: {1,2,3} → {1.0,2.0,3.0}
+    if (kind === ExprKind.ArrayCtor) {
+      const count = this.dae.getExprData1(exprId);
+      if (count > 0) {
+        const newElements: number[] = [];
+        const firstElem = this.dae.getExprLeft(exprId);
+        newElements.push(this.castToRealExpr(firstElem));
+        for (let i = 1; i < count; i++) {
+          const elemId = this.dae.getExprLeft(exprId + i);
+          newElements.push(this.castToRealExpr(elemId));
+        }
+        return this.dae.addArrayCtorExpr(newElements);
+      }
+      return exprId;
+    }
+
+    // Recursively cast tuple elements: (1,2,3) → (1.0,2.0,3.0)
+    if (kind === ExprKind.Tuple) {
+      const count = this.dae.getExprData1(exprId);
+      if (count > 0) {
+        const newElements: number[] = [];
+        const firstElem = this.dae.getExprLeft(exprId);
+        newElements.push(this.castToRealExpr(firstElem));
+        for (let i = 1; i < count; i++) {
+          const elemId = this.dae.getExprLeft(exprId + i);
+          newElements.push(this.castToRealExpr(elemId));
+        }
+        return this.dae.addTupleExpr(newElements);
+      }
+      return exprId;
+    }
+
+    // Recursively cast unary negation: -(1) → -(1.0)
+    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+      const operand = this.dae.getExprLeft(exprId);
+      const operandKind = this.dae.getExprKind(operand);
+      if (operandKind === ExprKind.IntLiteral) {
+        const castOperand = this.castToRealExpr(operand);
+        if (kind === ExprKind.Negate) {
+          return this.dae.addExpression(ExprKind.Negate, 0, castOperand);
+        }
+        return this.dae.addUnaryExpr(this.dae.getExprData1(exprId) as UnaryOp, castOperand);
+      }
+    }
+
     const varType = this.inferType(exprId);
     if (varType === VarType.Integer) {
-      console.log(`DEBUG castToRealExpr: kind=${kind} (not IntLiteral?), exprId=${exprId}`);
       return this.dae.addCallExpr("/*Real*/", [exprId]);
     }
 
@@ -1635,7 +1772,7 @@ expected type:
     if (kind === ExprKind.Name && this.loopVars) {
       const nameId = this.dae.getExprData1(exprId);
       const name = this.dae.interner.resolve(nameId);
-      if (name && this.loopVars.has(name)) {
+      if (name && (name.startsWith("\0loop\0") || this.loopVars.has(name))) {
         return VarType.Integer; // Loop vars are Integer
       }
     }
@@ -1690,29 +1827,43 @@ expected type:
    *
    * Returns a literal expression ID if inlining succeeds, undefined otherwise.
    */
-  private tryInlineFunctionCall(funcName: string, argIds: number[]): number | undefined {
-    console.error("[DEBUG INLINE] called for " + funcName);
+  private tryInlineFunctionCall(funcName: string, argIds: number[], allowTuple = false): number | undefined {
     // Look up the function sub-DAE
     const funcNameId = this.dae.interner.intern(funcName);
     const fnDae = this.dae.functions.get(funcNameId);
-    if (!fnDae) return undefined;
+    if (!fnDae) {
+      return undefined;
+    }
 
-    // Check if it's a built-in math function (we can evaluate these even if they are external)
-    // For other external functions, evaluateArenaFunctionCall will return null because their body is empty
+    // Only inline when all arguments are TRUE constants (not parameter references).
+    for (const argId of argIds) {
+      if (!this.isExprPureConstant(argId)) {
+        return undefined;
+      }
+    }
 
     // Evaluate all arguments to constant values
     const argValues: ArenaValue[] = [];
+    const functionLookup = (id: number, args: ArenaValue[]) =>
+      evaluateArenaFunctionCall(this.dae, id, args, this.db, this.scopeId);
+
     for (const argId of argIds) {
-      const val = evaluateArenaExpression(this.dae, argId, undefined, this.db, this.scopeId, undefined, false);
-      console.error(`[DEBUG INLINE] funcName=${funcName}, argId=${argId}, val=${JSON.stringify(val)}`);
+      const val = evaluateArenaExpression(
+        this.dae,
+        argId,
+        undefined,
+        this.db,
+        this.scopeId,
+        undefined,
+        false,
+        functionLookup,
+      );
       if (val === null) {
-        console.error(`[DEBUG INLINE SKIP] argument evaluation failed for funcName=${funcName}, argId=${argId}`);
-        return undefined;
-      } // Non-constant argument
+        return undefined; // Cannot fully evaluate argument at compile-time
+      }
       argValues.push(val);
     }
 
-    // Determine the type of the first output variable for type-preserving serialization
     const outputVars: { name: string; idx: number }[] = [];
     for (let i = 0; i < fnDae.varCount; i++) {
       const causality = fnDae.getVarCausality(i);
@@ -1738,11 +1889,37 @@ expected type:
     };
     argValues.forEach(countFlatArgs);
 
-    if (flatArgCount !== expectedInputs) {
+    if (argValues.length !== expectedInputs && flatArgCount !== expectedInputs) {
       console.error(
         `[DEBUG INLINE SKIP] Vectorized call to ${funcName}: expected ${expectedInputs} scalar inputs, got ${flatArgCount} flat arguments`,
       );
       return undefined;
+    }
+
+    // Skip inlining vectorized calls: if the function expects scalar inputs
+    // but we're passing array arguments, let the equation scalarizer handle
+    // it per-element instead of bulk-evaluating here.
+    if (argValues.length === expectedInputs) {
+      let inputIdx = 0;
+      for (let i = 0; i < fnDae.varCount; i++) {
+        if (fnDae.isVarRemoved(i)) continue;
+        if (fnDae.getVarCausality(i) !== 1 /* Input */) continue;
+        const inputShape = fnDae.getVarShape(i);
+        const argVal = argValues[inputIdx];
+
+        let argDimCount = 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let curr: any = argVal;
+        while (Array.isArray(curr)) {
+          argDimCount++;
+          curr = curr[0];
+        }
+
+        if (argDimCount > inputShape.length) {
+          return undefined;
+        }
+        inputIdx++;
+      }
     }
 
     const outVal = evaluateArenaFunctionCall(this.dae, funcNameId, argValues, this.db, this.scopeId);
@@ -1752,13 +1929,31 @@ expected type:
 
     // If the function returns multiple outputs, evaluateArenaFunctionCall returns an array of them.
     if (outputVars.length > 1 && Array.isArray(outVal)) {
-      const outIds = outVal.map((v) =>
-        typeof v === "number" ? this.dae.addRealLiteral(v) : this.dae.addStringLiteral(String(v)),
-      );
-      return this.dae.addTupleExpr(outIds);
+      if (allowTuple) {
+        // Output a Tuple expression for multi-assignment contexts (e.g. (a,b) = f(x))
+        const elemIds: number[] = [];
+        for (let i = 0; i < outVal.length; i++) {
+          const outVar = outputVars[i];
+          if (!outVar) return undefined;
+          const currentOutType = fnDae.getVarType(outVar.idx);
+          const id = this.addArenaValueAsExpr(outVal[i] as ArenaValue, currentOutType, false);
+          if (id === -1) return undefined;
+          elemIds.push(id);
+        }
+        return this.dae.addTupleExpr(elemIds);
+      } else {
+        // In scalar context (e.g., `x = f(3)`), only the first output is used.
+        const firstOut = outVal[0];
+        if (firstOut !== undefined) {
+          const resultId = this.addArenaValueAsExpr(firstOut as ArenaValue, outType, false);
+          if (resultId !== -1) return resultId;
+        }
+        return undefined;
+      }
     }
 
-    const finalVal = Array.isArray(outVal) ? outVal[0] : outVal;
+    const finalVal = outVal;
+    console.error(`[DEBUG INLINE SUCCESS] funcName=${funcName} finalVal=`, JSON.stringify(finalVal));
     const resultExprId = this.addArenaValueAsExpr(finalVal as ArenaValue, outType, false);
     if (resultExprId === -1) return undefined;
 
@@ -2144,5 +2339,48 @@ expected type:
         }
       }
     }
+  }
+
+  private hasLoopVar(exprId: number): boolean {
+    if (exprId < 0) return false;
+    const kind = this.dae.getExprKind(exprId);
+    if (kind === ExprKind.Name) {
+      const nameId = this.dae.getExprData1(exprId);
+      const name = this.dae.interner.resolve(nameId);
+      if (name && name.startsWith("\0loop\0")) return true;
+      if (name && this.loopVars.has(name)) return true;
+      return false;
+    }
+    if (kind === ExprKind.Unary || kind === ExprKind.Negate) {
+      return this.hasLoopVar(this.dae.getExprLeft(exprId));
+    }
+    if (kind === ExprKind.Binary || kind === ExprKind.IfElse || kind === ExprKind.Range) {
+      return (
+        this.hasLoopVar(this.dae.getExprLeft(exprId)) ||
+        this.hasLoopVar(this.dae.getExprRight(exprId)) ||
+        this.hasLoopVar(this.dae.getExprData1(exprId))
+      );
+    }
+    if (
+      kind === ExprKind.Call ||
+      kind === ExprKind.Subscript ||
+      kind === ExprKind.ArrayCtor ||
+      kind === ExprKind.Tuple
+    ) {
+      if (kind === ExprKind.Call || kind === ExprKind.Subscript) {
+        if (this.hasLoopVar(this.dae.getExprData1(exprId))) return true;
+      }
+      const count =
+        kind === ExprKind.Call
+          ? this.dae.getExprRight(exprId)
+          : kind === ExprKind.Subscript
+            ? this.dae.getExprRight(exprId)
+            : this.dae.getExprData1(exprId);
+      for (let i = 0; i < count; i++) {
+        if (this.hasLoopVar(this.dae.getExprLeft(exprId + i))) return true;
+      }
+      return false;
+    }
+    return false;
   }
 }

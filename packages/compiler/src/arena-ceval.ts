@@ -446,6 +446,15 @@ export function evaluateArenaFunctionCall(
     const flatArgs: ArenaValue[] = [];
     let flatArgIndex = 0;
 
+    let expectedInputsCount = 0;
+    for (let i = 0; i < funcArena.varCount; i++) {
+      if (!funcArena.isVarRemoved(i) && funcArena.getVarCausality(i) === 1 /* Input */) {
+        expectedInputsCount++;
+      }
+    }
+
+    let inputIndex = 0;
+
     for (let i = 0; i < funcArena.varCount; i++) {
       if (funcArena.isVarRemoved(i)) continue;
 
@@ -459,15 +468,20 @@ export function evaluateArenaFunctionCall(
       else if (type === VarType.String) defaultVal = "";
 
       if (causality === 1 /* Input */) {
-        if (flatArgs.length === 0) {
-          const flattenArg = (val: ArenaValue): void => {
-            if (Array.isArray(val)) val.forEach(flattenArg);
-            else flatArgs.push(val);
-          };
-          argValues.forEach(flattenArg);
+        let val: ArenaValue | undefined;
+        if (argValues.length === expectedInputsCount) {
+          val = argValues[inputIndex++];
+        } else {
+          if (flatArgs.length === 0) {
+            const flattenArg = (val2: ArenaValue): void => {
+              if (Array.isArray(val2)) val2.forEach(flattenArg);
+              else flatArgs.push(val2);
+            };
+            argValues.forEach(flattenArg);
+          }
+          val = flatArgs[flatArgIndex++];
         }
 
-        const val = flatArgs[flatArgIndex++];
         if (val !== undefined) {
           env.set(name, val);
         } else if (typeof startExprId === "number" && startExprId !== -1) {
@@ -500,6 +514,60 @@ export function evaluateArenaFunctionCall(
       } catch (e) {
         if (e === ArenaCEvalReturnSignal) break;
         throw e;
+      }
+    }
+
+    // Fallback: external C function dispatch for known math functions
+    if (funcArena.algorithmSections.length === 0 && funcArena.externalDecl) {
+      const extMatch = funcArena.externalDecl.match(/(?:external\s+"C"\s+)?(\w+)\s*=\s*(\w+)\s*\(([^)]*)\)/);
+      if (extMatch) {
+        const [, outName, cFuncName, argList] = extMatch;
+        const cArgNames = argList ? argList.split(",").map((s: string) => s.trim()) : [];
+
+        // Known C math functions → JavaScript Math equivalents
+        const C_MATH: Record<string, (...args: number[]) => number> = {
+          sin: Math.sin,
+          cos: Math.cos,
+          tan: Math.tan,
+          asin: Math.asin,
+          acos: Math.acos,
+          atan: Math.atan,
+          atan2: Math.atan2,
+          sinh: Math.sinh,
+          cosh: Math.cosh,
+          tanh: Math.tanh,
+          exp: Math.exp,
+          log: Math.log,
+          log10: Math.log10,
+          sqrt: Math.sqrt,
+          ceil: Math.ceil,
+          floor: Math.floor,
+          fabs: Math.abs,
+          abs: Math.abs,
+          pow: Math.pow,
+          fmod: (a: number, b: number) => a % b,
+        };
+
+        const mathFn = cFuncName ? C_MATH[cFuncName] : undefined;
+        if (mathFn && outName) {
+          const numericArgs: number[] = [];
+          let allNumeric = true;
+          for (const argName of cArgNames) {
+            const val = env.get(argName);
+            if (typeof val === "number") {
+              numericArgs.push(val);
+            } else {
+              allNumeric = false;
+              break;
+            }
+          }
+          if (allNumeric && numericArgs.length > 0) {
+            const result = mathFn(...numericArgs);
+            if (Number.isFinite(result)) {
+              env.set(outName, result);
+            }
+          }
+        }
       }
     }
 

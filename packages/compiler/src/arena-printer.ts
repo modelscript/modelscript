@@ -62,15 +62,21 @@ export class ArenaDAEPrinter {
   private out: Writer;
   private depth = 0;
   private arena: ArenaDAEBuilder;
+  private omcCompatibility: boolean;
 
-  constructor(out: Writer, arena: ArenaDAEBuilder) {
+  constructor(out: Writer, arena: ArenaDAEBuilder, omcCompatibility = false) {
     this.out = out;
     this.arena = arena;
+    this.omcCompatibility = omcCompatibility;
   }
 
   private getExprRank(id: number): number {
     if (id < 0) return 99;
     switch (this.arena.getExprKind(id)) {
+      case ExprKind.Call:
+      case ExprKind.Der:
+      case ExprKind.Pre:
+        return 5;
       case ExprKind.IntLiteral:
       case ExprKind.RealLiteral:
       case ExprKind.BoolLiteral:
@@ -78,8 +84,7 @@ export class ArenaDAEPrinter {
       case ExprKind.EnumLiteral:
         return 10;
       case ExprKind.Name:
-      case ExprKind.Call:
-      case ExprKind.Der:
+      case ExprKind.Subscript:
         return 20;
       case ExprKind.Binary:
       case ExprKind.Unary:
@@ -176,9 +181,15 @@ export class ArenaDAEPrinter {
     }
     const a = this.arena;
     switch (a.getExprKind(id)) {
-      case ExprKind.Name:
-        this.out.write(a.interner.resolve(a.getExprData1(id)));
+      case ExprKind.Name: {
+        const rawName = a.interner.resolve(a.getExprData1(id));
+        if (rawName?.startsWith("\0loop\0")) {
+          this.out.write(rawName.substring(6));
+        } else {
+          this.out.write(rawName ?? "");
+        }
         break;
+      }
 
       case ExprKind.IntLiteral:
         this.out.write(String(a.getExprData1(id)));
@@ -289,18 +300,17 @@ export class ArenaDAEPrinter {
             isInt: a.getExprKind(a.getExprRight(id)) === ExprKind.IntLiteral,
           });
 
-          // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
-          // We use a stable sort that only pulls literal nodes to the front.
-          const getRank = (o: VirtualOperand): number =>
-            o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
-          const literals: VirtualOperand[] = [];
-          const nonLiterals: VirtualOperand[] = [];
-          for (const o of operands) {
-            if (getRank(o) === 10) literals.push(o);
-            else nonLiterals.push(o);
+          if (this.omcCompatibility) {
+            // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
+            const literals: VirtualOperand[] = [];
+            const nonLiterals: VirtualOperand[] = [];
+            for (const o of operands) {
+              if (o.virtual !== undefined) literals.push(o);
+              else nonLiterals.push(o);
+            }
+            operands.length = 0;
+            operands.push(...literals, ...nonLiterals);
           }
-          operands.length = 0;
-          operands.push(...literals, ...nonLiterals);
 
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) this.out.write(" + ");
@@ -348,18 +358,17 @@ export class ArenaDAEPrinter {
             collectMul(lhsId);
             operands.push({ virtual: reciprocal });
 
-            // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
-            // We use a stable sort that only pulls literal nodes to the front.
-            const getRank = (o: VirtualMulOp): number =>
-              o.virtual !== undefined ? 10 : this.getExprRank(o.exprId as number);
-            const literals: VirtualMulOp[] = [];
-            const nonLiterals: VirtualMulOp[] = [];
-            for (const o of operands) {
-              if (getRank(o) === 10) literals.push(o);
-              else nonLiterals.push(o);
+            if (this.omcCompatibility) {
+              // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
+              const literals: VirtualMulOp[] = [];
+              const nonLiterals: VirtualMulOp[] = [];
+              for (const o of operands) {
+                if (o.virtual !== undefined) literals.push(o);
+                else nonLiterals.push(o);
+              }
+              operands.length = 0;
+              operands.push(...literals, ...nonLiterals);
             }
-            operands.length = 0;
-            operands.push(...literals, ...nonLiterals);
 
             for (let i = 0; i < operands.length; i++) {
               if (i > 0) this.out.write(" * ");
@@ -398,14 +407,15 @@ export class ArenaDAEPrinter {
           // Check if it's a string concatenation to avoid sorting
           let isStringConcat = false;
           if (op === BinOp.Add) {
-            for (const id of operands) {
-              const kind = a.getExprKind(id);
+            for (const childId of operands) {
+              if (childId < 0) continue;
+              const kind = a.getExprKind(childId);
               if (kind === ExprKind.StringLiteral) {
                 isStringConcat = true;
                 break;
               }
               if (kind === ExprKind.Call) {
-                const nameId = a.getExprData1(id);
+                const nameId = a.getExprData1(childId);
                 if (a.interner.resolve(nameId) === "String") {
                   isStringConcat = true;
                   break;
@@ -414,34 +424,46 @@ export class ArenaDAEPrinter {
             }
           }
 
-          if (!isStringConcat && (op === BinOp.Add || op === BinOp.Mul)) {
-            // OMC canonicalization: For commutative binary chains, literals are bubbled to the front.
-            // We use a stable sort that only pulls literal nodes to the front.
-            const getRank = (nodeId: number): number => {
-              if (nodeId < 0) return 99;
-              const kind = a.getExprKind(nodeId);
-              if (
-                kind === ExprKind.IntLiteral ||
-                kind === ExprKind.RealLiteral ||
-                kind === ExprKind.BoolLiteral ||
-                kind === ExprKind.StringLiteral ||
-                kind === ExprKind.EnumLiteral
-              ) {
-                return 10;
-              }
-              return 99;
-            };
-
-            // Stable sort
-            const literals: number[] = [];
-            const nonLiterals: number[] = [];
+          if (this.omcCompatibility && !isStringConcat && (op === BinOp.Add || op === BinOp.Mul)) {
+            // OMC canonicalization: bubble literals to the front, UNLESS the chain
+            // contains a function call, derivative, or pre. OMC preserves order
+            // when functions are involved.
+            let hasCall = false;
             for (const childId of operands) {
-              if (getRank(childId) === 10) literals.push(childId);
-              else nonLiterals.push(childId);
+              if (childId < 0) continue;
+              const kind = a.getExprKind(childId);
+              if (kind === ExprKind.Call || kind === ExprKind.Der || kind === ExprKind.Pre) {
+                hasCall = true;
+                break;
+              }
             }
-            operands.length = 0;
-            operands.push(...literals, ...nonLiterals);
+
+            if (!hasCall) {
+              const literals: number[] = [];
+              const nonLiterals: number[] = [];
+              for (const childId of operands) {
+                if (childId < 0) {
+                  nonLiterals.push(childId);
+                  continue;
+                }
+                const kind = a.getExprKind(childId);
+                if (
+                  kind === ExprKind.IntLiteral ||
+                  kind === ExprKind.RealLiteral ||
+                  kind === ExprKind.BoolLiteral ||
+                  kind === ExprKind.StringLiteral ||
+                  kind === ExprKind.EnumLiteral
+                ) {
+                  literals.push(childId);
+                } else {
+                  nonLiterals.push(childId);
+                }
+              }
+              operands.length = 0;
+              operands.push(...literals, ...nonLiterals);
+            }
           }
+
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) {
               this.out.write(" " + (binOpStr[op] ?? "+") + " ");
@@ -462,7 +484,7 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         let finalLhs = lhs;
         let finalRhs = rhs;
-        if (op === BinOp.Mul) {
+        if (this.omcCompatibility && op === BinOp.Mul) {
           const lKind = a.getExprKind(lhs);
           const rKind = a.getExprKind(rhs);
           const lIsLit =
@@ -1097,7 +1119,11 @@ export class ArenaDAEPrinter {
       this.out.write("\n\n");
     }
 
-    this.out.write(dae.classKind + " " + dae.name);
+    if (this.omcCompatibility) {
+      this.out.write("class " + dae.name);
+    } else {
+      this.out.write(dae.classKind + " " + dae.name);
+    }
     if (dae.description) this.out.write(' "' + dae.description + '"');
     this.out.write("\n");
 
@@ -1252,14 +1278,14 @@ export class ArenaDAEPrinter {
 /**
  * Convenience function: print an ArenaDAEBuilder to a string.
  */
-export function printArenaDAE(arena: ArenaDAEBuilder): string {
+export function printArenaDAE(arena: ArenaDAEBuilder, omcCompatibility = false): string {
   const chunks: string[] = [];
   const writer: Writer = {
     write: (s: string) => {
       chunks.push(s);
     },
   };
-  const printer = new ArenaDAEPrinter(writer, arena);
+  const printer = new ArenaDAEPrinter(writer, arena, omcCompatibility);
   printer.printDAE(arena);
   return chunks.join("");
 }
