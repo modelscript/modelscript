@@ -213,12 +213,12 @@ function runTestInWorker(
 ): Promise<TestResult> {
   return new Promise((resolve) => {
     const start = Date.now();
-    const child = spawn("npx", ["tsx", WORKER_SCRIPT], {
+    const child = spawn(process.execPath, ["--import", "tsx", WORKER_SCRIPT], {
       cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        NODE_OPTIONS: "--max-old-space-size=8192",
+        NODE_OPTIONS: "--max-old-space-size=4096",
       },
     });
 
@@ -433,7 +433,7 @@ async function main(): Promise<void> {
   const concurrencyArg = rawArgs.find((a) => a.startsWith("--concurrency="));
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
-    : Math.max(1, Math.floor(os.availableParallelism() / 2));
+    : Math.max(1, process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2));
   const args = rawArgs.filter((a) => a !== "--update" && a !== "--omc" && !a.startsWith("--concurrency="));
 
   console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
