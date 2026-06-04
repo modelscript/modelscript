@@ -250,12 +250,30 @@ export class ArenaDAEPrinter {
             const uop = a.getExprData1(childId) as UnaryOp;
             if (uop !== UnaryOp.Negate) return true; // `not` etc. need parens
             // Negate only needs parens on RHS of subtraction to avoid `a - -b`
-            return isRhs && op === BinOp.Sub;
+            if (isRhs && op === BinOp.Sub) return true;
+            // OMC wraps negated non-literal operands in parens when used in Mul: (-p[1]) * x
+            if (op === BinOp.Mul || op === BinOp.ElemMul) {
+              const inner = a.getExprLeft(childId);
+              if (inner >= 0) {
+                const ik = a.getExprKind(inner);
+                if (ik !== ExprKind.RealLiteral && ik !== ExprKind.IntLiteral) return true;
+              }
+            }
+            return false;
           }
           // Dedicated Negate node: same logic
           if (ck === ExprKind.Negate) {
             if (op === BinOp.Add) return true;
-            return isRhs && op === BinOp.Sub;
+            if (isRhs && op === BinOp.Sub) return true;
+            // OMC wraps negated non-literal operands in parens when used in Mul: (-p[1]) * x
+            if (op === BinOp.Mul || op === BinOp.ElemMul) {
+              const inner = a.getExprLeft(childId);
+              if (inner >= 0) {
+                const ik = a.getExprKind(inner);
+                if (ik !== ExprKind.RealLiteral && ik !== ExprKind.IntLiteral) return true;
+              }
+            }
+            return false;
           }
           if (isHigh && ck === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(childId) as BinOp)) return true;
           if (ck === ExprKind.IfElse) return true;

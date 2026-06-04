@@ -1988,7 +1988,10 @@ export default language({
                   const baseElements = db.query<SymbolId[]>("instantiate", baseClass.id);
 
                   // Extract broken names from the extends clause modification
-                  const extendsModParsed = db.query<any[]>("extendsModificationParsed", child.id) || [];
+                  const extendsModParsedRaw = db.query<any>("extendsModificationParsed", child.id);
+                  const extendsModParsed: any[] = Array.isArray(extendsModParsedRaw)
+                    ? extendsModParsedRaw
+                    : (extendsModParsedRaw?.args ?? []);
                   const brokenNames = new Set<string>();
                   for (const arg of extendsModParsed) {
                     if (arg.isBreak && !arg.name.startsWith("break_connect:")) {

@@ -308,7 +308,7 @@ export class ArenaQueryFlattener {
     if (options) {
       this.options = { ...this.options, ...options };
     }
-    console.error(`[DEBUG Flattener] options=`, this.options);
+    // Debug logging removed for performance
   }
 
   public rootDae?: ArenaDAEBuilder;
@@ -581,7 +581,6 @@ export class ArenaQueryFlattener {
     for (let i = 0; i < sections.length; i++) {
       const section = sections[i]!;
       if (section instanceof ModelicaAlgorithmSectionSyntaxNode) {
-        console.error(`[DEBUG ALG SECTION] classId=${classId} secIdx=${i}`);
         this.flattenAlgorithmSection(section, prefix, dae, classId);
       }
     }
@@ -668,7 +667,6 @@ export class ArenaQueryFlattener {
             } else if (typeof val === "number") {
               resolvedIndices.push(val);
             } else {
-              console.error(`[DEBUG isSlice] evaluateArenaExpression failed for idxId=${idxId}`);
               allConstant = false;
               break;
             }
@@ -678,12 +676,9 @@ export class ArenaQueryFlattener {
             isSlice = true;
             arrayDims = dims;
             sliceIndices = resolvedIndices;
-            console.error(`[DEBUG isSlice] true! dims=${dims}, sliceIndices=${JSON.stringify(sliceIndices)}`);
           } else {
-            console.error(`[DEBUG isSlice] false! allConstant=${allConstant}, dims=${dims.length}`);
           }
         } else {
-          console.error(`[DEBUG isSlice] baseId not Name! kind=${dae.getExprKind(baseId)}`);
         }
       }
       if (varName && !isSlice) {
@@ -1038,7 +1033,7 @@ export class ArenaQueryFlattener {
         const identNode = specExt.childForFieldName("identifier");
         if (identNode?.text) {
           const baseName = identNode.text;
-          console.error(`[LongClassSpecifier] Processing inline extends for classId=${classId}, baseName=${baseName}`);
+
           const classEntry = this.db.symbol(classId);
           if (classEntry?.parentId !== null) {
             let resolvedBase: import("@modelscript/compiler").SymbolEntry | null = null;
@@ -1046,22 +1041,17 @@ export class ArenaQueryFlattener {
             if (resolveName) {
               let resolved = resolveName(baseName, true);
               if (resolved && resolved.id === classId) {
-                console.error(`[LongClassSpecifier] Cycle detected resolving ${baseName}, checking parent extends`);
                 // Cycle detected, look in parent's inherited classes
                 resolved = null;
                 for (const pChild of this.db.childrenOf(classEntry.parentId)) {
                   if (pChild.kind === "Extends") {
                     const pBase = this.db.query<any>("resolvedBaseClass", pChild.id);
-                    console.error(
-                      `[LongClassSpecifier] Found parent extends clause, resolved to base: ${pBase?.name} (id=${pBase?.id})`,
-                    );
+
                     if (pBase) {
                       const pExtResolver = this.db.query<any>("resolveName", pBase.id);
                       if (pExtResolver) {
                         const found = pExtResolver(baseName);
-                        console.error(
-                          `[LongClassSpecifier] Resolved ${baseName} inside ${pBase.name} -> ${found?.name} (id=${found?.id})`,
-                        );
+
                         // We must ensure the found id is NOT the same as the current class id,
                         // otherwise we'd cycle again.
                         if (found && found.id !== classId) {
@@ -1077,7 +1067,6 @@ export class ArenaQueryFlattener {
               }
 
               if (resolvedBase && resolvedBase.kind !== "Reference") {
-                console.error(`[LongClassSpecifier] Recursing into base class ${resolvedBase.name}`);
                 // Parse the local modification on the LongClassSpecifier
                 let localMod: ModelicaModArgs | null = null;
                 const modNode = specExt.childForFieldName("classModification");
@@ -1190,9 +1179,7 @@ export class ArenaQueryFlattener {
         // Check if this connection is broken by a modification
         let isBrokenConnect = false;
         const topMod = modStack.length > 0 ? modStack[modStack.length - 1]!.mods : null;
-        console.error(
-          `[DEBUG CONNECT] Visiting ConnectEquation in class ${this.db.symbol(classId)?.name}. topMod=${!!topMod}, topModArgs=${topMod?.args?.length}`,
-        );
+
         if (topMod) {
           const connectArgs = topMod.args.filter(
             (a) => a.name.startsWith("break_connect:") && a.value?.kind === "break",
@@ -1205,7 +1192,7 @@ export class ArenaQueryFlattener {
               if (childText && targetText) {
                 const canonChild = this.canonicalizeConnect(childText);
                 const canonTarget = this.canonicalizeConnect(targetText);
-                console.error(`[DEBUG break connect] canonChild='${canonChild}', canonTarget='${canonTarget}'`);
+
                 if (canonChild === canonTarget) {
                   isBrokenConnect = true;
                   this.brokenConnections.add(prefix + ":" + canonChild);
@@ -1291,10 +1278,7 @@ export class ArenaQueryFlattener {
 
       switch (entry.kind) {
         case "Component": {
-          const t0 = performance.now();
           this.flattenComponent(entry, prefix, dae, modStack);
-          const t1 = performance.now();
-          if (t1 - t0 > 2) console.log(`[PERF flattenComponent] ${entry.name}: ${(t1 - t0).toFixed(2)} ms`);
           break;
         }
         case "Class":
@@ -1816,9 +1800,6 @@ export class ArenaQueryFlattener {
       }
 
       if (this.options.arrayMode === "preserve" || hasUnknownDim) {
-        console.error(
-          `[DEBUG PRESERVE] name=${fullName} arrayMode=${this.options.arrayMode} hasUnknownDim=${hasUnknownDim} arrayDims=${arrayDims.join(",")}`,
-        );
         // In preserve mode, emit a single variable with shape metadata
         this.emitVariable(fullName, resolvedTypeName, entry, dae, effectiveMod, modStack, isFinalFromOuterMod);
         const varIdx = dae.getVarIdxByName(fullName);
@@ -2316,9 +2297,6 @@ export class ArenaQueryFlattener {
         if (outCount === 1 && outShape.length === 0) {
           returnsScalar = true;
         } else {
-          console.error(
-            `[DEBUG VEC] ${funcName} returnsScalar=false (outCount=${outCount}, outShape=${JSON.stringify(outShape)})`,
-          );
         }
       } else {
         const scalarBuiltins = new Set([
@@ -2425,12 +2403,10 @@ export class ArenaQueryFlattener {
             currentExprId = dae.addCallExpr("/*Real*/", [currentExprId]);
           }
         } else {
-          console.error(`[DEBUG VEC FAIL] idx out of bounds: idx=${idx}, count=${count}`);
           success = false;
           break;
         }
       } else {
-        console.error(`[DEBUG VEC FAIL] not ArrayCtor: currKind=${currKind}, currentExprId=${currentExprId}`);
         success = false;
         break;
       }
@@ -3015,12 +2991,6 @@ export class ArenaQueryFlattener {
           else if (qVariability === "constant") varVariability = Variability.Constant;
           else if (qVariability === "discrete") varVariability = Variability.Discrete;
 
-          if (funcName.includes("f")) {
-            console.error(
-              `DEBUG FLATTENER_QUERY: funcName=${funcName} elem=${entry.name} classInstanceId=${classInstanceId}`,
-            );
-          }
-
           inputs.push({
             name: entry.name,
             type: varType,
@@ -3516,18 +3486,13 @@ export class ArenaQueryFlattener {
                 isSlice = true;
                 arrayDims = dims;
                 sliceIndices = resolvedIndices;
-                console.error(
-                  `[DEBUG SLICE] isSlice=true, dims=${JSON.stringify(dims)}, sliceIndices=${JSON.stringify(sliceIndices)}`,
-                );
               } else {
-                console.error(`[DEBUG SLICE] allConstant=${allConstant}, dims=${JSON.stringify(dims)}`);
               }
             }
           }
         }
 
         if (isSlice && arrayDims && sliceIndices) {
-          console.error(`[DEBUG SLICE] Generating array indices for shape=${JSON.stringify(arrayDims)}`);
           const indices = this.generateArrayIndices(arrayDims);
           for (let i = 0; i < indices.length; i++) {
             const idx = indices[i];
@@ -4111,7 +4076,6 @@ export class ArenaQueryFlattener {
           // Create a new scope for the inner loops/statements
           const nextLoopVars = new Map(currentLoopVars ?? []);
           nextLoopVars.set(indexName, 0); // dummy value
-          console.error(`[DEBUG emitNestedFor] indexName=${indexName} in nextLoopVars: ${nextLoopVars.has(indexName)}`);
 
           emitNestedFor(idxPos + 1, nextLoopVars);
         };
@@ -4299,7 +4263,7 @@ export class ArenaQueryFlattener {
           // Type checking
           const funcNameId = dae.interner.intern(funcName);
           const funcDae = dae.functions.get(funcNameId);
-          console.error(`[Worker] Complex assignment to ${funcName}, funcDae: ${!!funcDae}`);
+
           if (funcDae) {
             let outputCount = 0;
             const outputTypes: string[] = [];
@@ -4310,7 +4274,7 @@ export class ArenaQueryFlattener {
                 outputTypes.push(vType === 1 ? "Integer" : vType === 2 ? "Boolean" : vType === 3 ? "String" : "Real");
               }
             }
-            console.error(`[Worker] outputCount: ${outputCount}, targets.length: ${targets.length}`);
+
             if (outputCount !== targets.length) {
               const stmtStart = stmt.sourceRange?.startIndex;
               const stmtEnd = stmt.sourceRange?.endIndex;

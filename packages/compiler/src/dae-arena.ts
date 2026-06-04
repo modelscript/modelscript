@@ -1081,9 +1081,7 @@ export class ArenaDAEBuilder {
 
   /** Add a function call expression. */
   addCallExpr(funcName: string, args: number[]): number {
-    if (funcName === "/*Real*/") {
-      console.error("[DEBUG] addCallExpr /*Real*/ called from:", new Error().stack);
-    }
+    // Debug stack trace removed for performance (was: new Error().stack on every Real cast)
     // Chain arguments: first arg in left, count in right
     // Additional args are stored as linked expressions (Binary chains)
     const funcNameId = this.interner.intern(funcName);

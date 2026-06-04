@@ -864,11 +864,11 @@ export class ArenaExprVisitor {
           // Also handle function partial applications as arguments
           if (arg.functionPartialApplication) {
             const id = this.visitPartialApplication(arg.functionPartialApplication);
-            console.error(`DEBUG ARG PARTIAL APP id=${id}`);
+
             if (id !== undefined) ids.push(id);
           } else {
             const id = this.visit(arg.expression);
-            console.error(`DEBUG ARG EXPR id=${id}`);
+
             if (id !== undefined) ids.push(id);
           }
         }
@@ -1111,12 +1111,6 @@ export class ArenaExprVisitor {
         const inputDef = inputs[i];
         const argId = argIds[i];
 
-        if (funcName.includes("f")) {
-          console.error(
-            `DEBUG ARG ${i}: name=${inputDef?.name} classId=${inputDef?.classInstanceId} argId=${argId} kind=${argId !== undefined ? this.dae.getExprKind(argId) : "none"} argData1=${argId !== undefined ? this.dae.getExprData1(argId) : "none"}`,
-          );
-        }
-
         if (inputDef && inputDef.classInstanceId && argId !== undefined) {
           const expectedClass = this.db?.symbol(inputDef.classInstanceId);
           const meta = expectedClass?.metadata as Record<string, unknown> | undefined;
@@ -1174,10 +1168,7 @@ export class ArenaExprVisitor {
             const range = node.sourceRange;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const exprNode = node.functionCallArguments?.arguments?.[i]?.expression as any;
-            console.error("DEBUG EXPR NODE:", Object.keys(exprNode || {}));
-            if (exprNode && exprNode.concreteSyntaxNode) {
-              console.error("DEBUG CONCRETE:", exprNode.concreteSyntaxNode.text);
-            }
+
             const argText = exprNode?.concreteSyntaxNode?.text ?? "...";
             const nodeText = `${funcName}(${inputs[i]?.name}=${argText})`;
             this.dae.diagnostics.push({
@@ -1580,7 +1571,7 @@ expected type:
    */
   public visitPartialApplication(node: ModelicaFunctionPartialApplicationSyntaxNode): number | undefined {
     const funcName = node.typeSpecifier?.text;
-    console.error(`DEBUG visitPartialApp funcName=${funcName} typeSpecifier=${node.typeSpecifier?.text}`);
+
     if (!funcName) return undefined;
 
     // Collect bound named arguments from the partial application
@@ -1622,10 +1613,6 @@ expected type:
     if (this.onFunctionCall) {
       this.onFunctionCall(funcName);
     }
-
-    console.error(
-      `DEBUG visitPartialApp funcName=${funcName} boundArgs.size=${boundArgs.size} argIds.length=${argIds.length}`,
-    );
 
     // Emit as a partial function application expression
     return this.dae.addPartialFuncExpr(funcName, argIds);
@@ -1890,9 +1877,6 @@ expected type:
     argValues.forEach(countFlatArgs);
 
     if (argValues.length !== expectedInputs && flatArgCount !== expectedInputs) {
-      console.error(
-        `[DEBUG INLINE SKIP] Vectorized call to ${funcName}: expected ${expectedInputs} scalar inputs, got ${flatArgCount} flat arguments`,
-      );
       return undefined;
     }
 
@@ -1953,7 +1937,7 @@ expected type:
     }
 
     const finalVal = outVal;
-    console.error(`[DEBUG INLINE SUCCESS] funcName=${funcName} finalVal=`, JSON.stringify(finalVal));
+
     const resultExprId = this.addArenaValueAsExpr(finalVal as ArenaValue, outType, false);
     if (resultExprId === -1) return undefined;
 
@@ -2236,7 +2220,7 @@ expected type:
       if (inputDef && inputDef.classInstanceId && argId !== undefined) {
         const expectedClass = this.db?.symbol(inputDef.classInstanceId);
         const meta = expectedClass?.metadata as Record<string, unknown> | undefined;
-        console.error(`DEBUG ARG ${i} classPrefixes=`, meta?.classPrefixes);
+
         if (
           expectedClass?.kind === "Class" &&
           (meta?.classPrefixes === "function" ||
@@ -2278,15 +2262,10 @@ expected type:
             let providedInputCount = providedInputs.filter((id) => db.query("causality", id) === "input").length;
 
             // Adjust for partial function application
-            // Adjust for partial function application
-            let partialArgsLen = 0;
             if (this.dae.getExprKind(argId) === ExprKind.PartialFunc) {
-              partialArgsLen = this.dae.getExprRight(argId) ?? 0;
+              const partialArgsLen = this.dae.getExprRight(argId) ?? 0;
               providedInputCount -= partialArgsLen;
             }
-            console.error(
-              `DEBUG: expInputCount=${expInputCount} providedInputCount=${providedInputCount} (partialArgsLen=${partialArgsLen}) for arg ${i} of ${funcName}`,
-            );
 
             if (expInputCount !== providedInputCount) {
               let providedName = this.dae.interner.resolve(this.dae.getExprData1(argId)) ?? "Unknown";
