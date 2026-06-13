@@ -21,7 +21,6 @@ function prompt(question: string): Promise<string> {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Init: CommandModule<{}, InitArgs> = {
   command: "init [path]",
   describe: "Initialize a ModelScript package.json for a Modelica/SysML project",
@@ -36,7 +35,6 @@ export const Init: CommandModule<{}, InitArgs> = {
         description: "Accept all defaults without prompts",
         type: "boolean",
         default: false,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any;
   },
   handler: async (args) => {
@@ -89,7 +87,7 @@ export const Init: CommandModule<{}, InitArgs> = {
     }
 
     // Build the package.json
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const packageJson: Record<string, any> = {
       name,
       version,

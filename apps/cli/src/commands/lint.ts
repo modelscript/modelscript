@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-/* eslint-disable @typescript-eslint/no-explicit-any, prefer-const, no-useless-assignment */
+/* eslint-disable no-useless-assignment */
 
 import { UnifiedWorkspace } from "@modelscript/compiler";
 import {
@@ -35,7 +35,6 @@ function findPolyglotFiles(dir: string, fileList: string[] = []) {
   return fileList;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Lint: CommandModule<{}, LintArgs> = {
   command: "lint <path> [paths...]",
   describe: "Lint a Polyglot library using the QueryEngine",

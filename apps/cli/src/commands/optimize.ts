@@ -26,11 +26,10 @@ interface OptimizeArgs {
   format: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Optimize: CommandModule<{}, OptimizeArgs> = {
   command: "optimize <name> <paths..>",
   describe: "Solve an optimal control problem for a Modelica model",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
@@ -87,13 +86,11 @@ export const Optimize: CommandModule<{}, OptimizeArgs> = {
         choices: ["csv", "json"],
         default: "csv",
       });
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, OptimizeArgs>["builder"],
   handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

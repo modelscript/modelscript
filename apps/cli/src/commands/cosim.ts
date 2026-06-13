@@ -244,11 +244,10 @@ const status = {
 
 // ── Main command ──
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Cosim: CommandModule<{}, CosimArgs> = {
   command: "cosim",
   describe: "Co-simulation management (sessions, participants, FMUs, replay)",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .option("api-url", {
@@ -264,7 +263,6 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
       .command(replay)
       .command(historianSessions)
       .demandCommand(1, "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history)");
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, CosimArgs>["builder"],
   handler: () => {
     // Parent command — handled by subcommands

@@ -34,6 +34,10 @@ export default defineConfig([
             "packages/compiler/bench_direct.ts",
             "packages/compiler/bench_stages.ts",
             "packages/examples/drone-chassis/evaluate-manufacturing.ts",
+            "packages/language/src/codegen/runtime/engine.ts",
+            "packages/language/src/codegen/runtime/arena.ts",
+            "packages/language/src/codegen/runtime/array.ts",
+            "packages/language/src/codegen/runtime/cursor.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,
@@ -47,6 +51,17 @@ export default defineConfig([
       "@typescript-eslint/consistent-generic-constructors": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+  {
+    files: ["apps/cli/src/commands/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "prefer-const": "off",
+      "no-empty": "off",
     },
   },
   {

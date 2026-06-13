@@ -24,11 +24,10 @@ interface VerifyArgs {
   timing?: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Verify: CommandModule<{}, VerifyArgs> = {
   command: "verify <name> <paths..>",
   describe: "Run SysML2 verification against a simulation",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
@@ -53,7 +52,6 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         type: "boolean",
         default: false,
       });
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, VerifyArgs>["builder"],
   handler: async (args) => {
     const profiler = new Profiler();
@@ -61,12 +59,12 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     // Load Modelica Parser
     const modelicaParser = new Parser();
     modelicaParser.setLanguage(Modelica);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     Context.registerParser(".mo", modelicaParser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
     const WebParserModule = await import("web-tree-sitter");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const WebParser: any = WebParserModule.default || WebParserModule;
 
     await WebParser.Parser.init();
@@ -94,7 +92,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       if (p.endsWith(".mo")) {
         await context.addLibrary(p);
         const text = fs.readFileSync(p, "utf-8");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         mIdx.register(`file://${path.resolve(p)}`, () => modelicaParser.parse(text).rootNode as any);
       } else if (p.endsWith(".sysml")) {
         const text = fs.readFileSync(p, "utf-8");
@@ -110,7 +108,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
 
     const u = new UnifiedWorkspace();
     u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     u.registerWorkspace("sysml2", sysmlIndex, sysml2LangFallback as any);
 
     if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
@@ -120,14 +118,13 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     const sysmlFactory = await import("@modelscript/sysml2/factory");
 
     const fileCache = new Map<string, string>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const treeCache = new Map<string, any>();
 
     // Create query engine
     const engine = createModelicaQueryEngine(
       unifiedDb,
       {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         getText: (startByte: number, endByte: number, entry?: any) => {
           if (!entry || !entry.resourceId) return null;
           const p = pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", "");
@@ -138,7 +135,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
           }
           return (text as string).substring(startByte, endByte);
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         getNode: (startByte: number, endByte: number, entry?: any) => {
           if (!entry || !entry.resourceId) return null;
           const p = pathMap.get(entry.resourceId) || entry.resourceId.replace("file://", "");
@@ -184,7 +181,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     }
 
     // 2. Extract topology mapping
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const topo = db.query("extractTopology", verifyEntry.id) as any;
     if (!topo || topo.rootIds.length === 0) {
       console.error(`Verification case '${args.name}' does not resolve to a valid simulation target topology.`);

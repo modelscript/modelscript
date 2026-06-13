@@ -12,7 +12,6 @@ interface InstantiateArgs {
   paths: string[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Instantiate: CommandModule<{}, InstantiateArgs> = {
   command: "instantiate <name> <paths...>",
   describe: "",
@@ -34,7 +33,6 @@ export const Instantiate: CommandModule<{}, InstantiateArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

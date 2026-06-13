@@ -25,7 +25,6 @@ interface McArgs {
   engine: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const MC: CommandModule<{}, McArgs> = {
   command: "mc <name> <paths..>",
   describe: "Run Monte Carlo simulation",
@@ -81,7 +80,6 @@ export const MC: CommandModule<{}, McArgs> = {
         choices: ["wasm", "js"],
         default: "wasm",
       });
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, McArgs>["builder"],
   handler: async (args) => {
     const parser = new Parser();

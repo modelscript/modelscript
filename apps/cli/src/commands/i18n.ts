@@ -29,14 +29,12 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
         alias: "o",
         description: "path to the output .pot file",
         type: "string",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       }) as any;
   },
   handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
@@ -49,7 +47,6 @@ export const I18n: CommandModule<Record<string, unknown>, I18nArgs> = {
           if (uri.startsWith(library.path)) {
             const tree = context.getTree(uri);
             if (tree?.rootNode) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               extractor.extract(tree.rootNode as any, uri);
             }
           }

@@ -12,7 +12,6 @@ interface UnpublishArgs {
   path: string | undefined;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Unpublish: CommandModule<{}, UnpublishArgs> = {
   command: "unpublish [path]",
   describe: "Remove a published library version from the ModelScript Registry",
@@ -110,7 +109,6 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
       if (!res.ok) {
         let errMessage = res.statusText;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const json = (await res.json()) as any;
           if (json.error) errMessage = json.error;
         } catch {
@@ -120,7 +118,6 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
         process.exit(1);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = (await res.json()) as any;
       console.log(`✅ ${data.message || "Unpublished successfully."}`);
     } catch (e) {

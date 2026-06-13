@@ -40,11 +40,10 @@ interface SimulateArgs {
   jacobian: "dense" | "sparse" | "fd";
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Simulate: CommandModule<{}, SimulateArgs> = {
   command: "simulate <name> <paths..>",
   describe: "Simulate a Modelica model and output results",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
@@ -112,14 +111,12 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         choices: ["dense", "sparse", "fd"],
         default: "sparse",
       });
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SimulateArgs>["builder"],
   handler: async (args) => {
     const profiler = new Profiler();
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

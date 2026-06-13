@@ -30,11 +30,10 @@ interface SurrogateArgs {
   report?: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Surrogate: CommandModule<{}, SurrogateArgs> = {
   command: "surrogate <name> <paths..>",
   describe: "Train an AI surrogate model (ROM) and generate WebAssembly C source",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
@@ -95,7 +94,6 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
         type: "string",
         default: "report.json",
       });
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   }) as CommandModule<{}, SurrogateArgs>["builder"],
   handler: async (args) => {
     const parser = new Parser();

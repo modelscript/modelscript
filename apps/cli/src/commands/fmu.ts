@@ -46,12 +46,11 @@ interface FmuArgs {
   timing: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Fmu: CommandModule<{}, FmuArgs> = {
   command: "fmu <name> <paths..>",
   aliases: ["export-fmu"], // Keep old name for backward compatibility
   describe: "Export a Modelica model as an FMU archive",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   builder: ((yargs: any) => {
     return yargs
       .positional("name", {
@@ -123,8 +122,6 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         type: "boolean",
         default: false,
       });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any,
 
   handler: async (args) => {
@@ -132,7 +129,6 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 

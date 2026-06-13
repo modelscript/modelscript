@@ -16,7 +16,6 @@ interface RenderArgs {
   icon: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Render: CommandModule<{}, RenderArgs> = {
   command: "render <name> <paths...>",
   describe: "",
@@ -44,7 +43,6 @@ export const Render: CommandModule<{}, RenderArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
@@ -75,7 +73,6 @@ export const Render: CommandModule<{}, RenderArgs> = {
       svg = renderDiagram(instance);
     }
     if (svg) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       console.log((xmlFormat as any)(svg?.svg()));
     }
   },

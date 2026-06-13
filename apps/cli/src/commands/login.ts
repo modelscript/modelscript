@@ -52,7 +52,6 @@ function prompt(question: string, hidden = false): Promise<string> {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Login: CommandModule<{}, LoginArgs> = {
   command: "login",
   describe: "Log in to the ModelScript Registry",
@@ -61,8 +60,6 @@ export const Login: CommandModule<{}, LoginArgs> = {
       alias: "e",
       description: "Email address",
       type: "string",
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any;
   },
   handler: async (args) => {
@@ -84,13 +81,11 @@ export const Login: CommandModule<{}, LoginArgs> = {
       });
 
       if (!res.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = (await res.json().catch(() => ({}))) as any;
         console.error(`Login failed: ${data.error || res.statusText}`);
         process.exit(1);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = (await res.json()) as any;
       saveToken(data.token);
       console.log(`✅ Logged in as ${data.user.username}`);

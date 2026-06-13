@@ -23,7 +23,6 @@ interface CompileArgs {
   memoryProfile?: boolean;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Compile: CommandModule<{}, CompileArgs> = {
   command: ["compile <name> <paths...>", "flatten <name> <paths...>"],
   describe: "Flatten a Modelica model to a flat DAE representation",
@@ -63,7 +62,6 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
@@ -79,7 +77,6 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     const memProfiles: Record<string, unknown> = {};
     let lastSnap = args.memoryProfile ? snapshotMemory(true) : null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let sysmlParser: any = null;
     let hasSysML = false;
     profiler.start("parsing");
@@ -87,7 +84,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       if (p.endsWith(".sysml")) {
         hasSysML = true;
         const WebParserModule = await import("web-tree-sitter");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const WebParser: any = WebParserModule.default || WebParserModule;
         await WebParser.Parser.init();
         const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/tree-sitter-sysml2.wasm");
@@ -100,12 +97,12 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
         const tree = sysmlParser.parse(text);
         const fileUri = "file://" + path.resolve(p);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         sysmlIndex.register(fileUri, () => tree.rootNode as any);
       } else if (p.endsWith(".mo")) {
         await context.addLibrary(p);
         const text = await import("fs/promises").then((m) => m.readFile(p, "utf-8"));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         mIdx.register(`file://${path.resolve(p)}`, () => parser.parse(text).rootNode as any);
       } else {
         await context.addLibrary(p);
@@ -116,18 +113,17 @@ export const Compile: CommandModule<{}, CompileArgs> = {
     if (hasSysML) {
       const u = new UnifiedWorkspace();
       u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       u.registerWorkspace("sysml2", sysmlIndex, sysml2LangFallback as any);
       if (sysmlIndex) await sysmlIndex.toUnifiedAsync();
       const unifiedDb = u.toUnifiedAsync ? await u.toUnifiedAsync() : u.toUnified();
       const sysmlFactory = await import("@modelscript/sysml2/factory");
       const fileCache = new Map<string, string>();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const treeCache = new Map<string, any>();
       const engine = createModelicaQueryEngine(
         unifiedDb,
         {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           getText: (startByte: number, endByte: number, entry?: any) => {
             if (!entry || !entry.resourceId) return null;
             const p = pathMap.get(entry.resourceId.replace("file://", ""));
@@ -139,7 +135,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
             }
             return (text as string).substring(startByte, endByte);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           getNode: (startByte: number, endByte: number, entry?: any) => {
             if (!entry || !entry.resourceId) return null;
             const p = pathMap.get(entry.resourceId.replace("file://", ""));

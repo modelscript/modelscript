@@ -1,9 +1,12 @@
 {
-  "name": "@modelscript/cli",
+  "name": "@modelscript/language",
   "version": "0.0.18",
-  "description": "CLI for ModelScript",
+  "description": "ModelScript DSL",
   "keywords": [
-    "modelscript"
+    "modelscript",
+    "dsl",
+    "parser",
+    "lexer"
   ],
   "homepage": "https://modelscript.org",
   "bugs": {
@@ -16,8 +19,19 @@
   "license": "AGPL-3.0-or-later",
   "author": "Mohamad Omar Nachawati <mnachawa@gmail.com>",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "msc": "./dist/main.js"
+    "language-generate": "./bin/language-generate.js"
   },
   "files": [
     "package.json",
@@ -30,36 +44,21 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && chmod +x dist/main.js",
+    "build": "tsc",
     "clean": "rimraf dist",
     "lint": "eslint src",
     "watch": "tsc --watch"
   },
-  "dependencies": {
-    "@modelscript/language": "*",
-    "@npmcli/package-json": "^7.0.0",
-    "adm-zip": "^0.5.16",
-    "assemblyscript": "^0.28.19",
-    "jiti": "^2.6.1",
-    "svgdom": "^0.1.22",
-    "tree-sitter": "^0.21.1",
-    "wabt": "^1.0.39",
-    "web-tree-sitter": "^0.26.8",
-    "xml-formatter": "^3.6.7",
-    "yargs": "^18.0.0"
+  "lint-staged": {
+    "*.ts": "eslint",
+    "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/adm-zip": "^0.5.7",
     "@types/node": "^25.3.2",
-    "@types/npmcli__package-json": "^4.0.4",
-    "@types/svgdom": "^0.1.2",
-    "@types/xml-formatter": "^1.2.0",
-    "@types/yargs": "^17.0.34",
     "eslint": "^9.39.1",
-    "lerna": "^9.0.0",
     "prettier": "^3.6.2",
-    "prettier-plugin-packagejson": "^3.0.0",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"

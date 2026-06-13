@@ -11,7 +11,6 @@ interface PublishArgs {
   path: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const Publish: CommandModule<{}, PublishArgs> = {
   command: "publish <path>",
   describe: "Publish a library director or single Modelica file to the ModelScript Registry",
@@ -102,7 +101,6 @@ export const Publish: CommandModule<{}, PublishArgs> = {
       if (!res.ok) {
         let errMessage = res.statusText;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const json = (await res.json()) as any;
           if (json.error) errMessage = json.error;
         } catch {
@@ -112,7 +110,6 @@ export const Publish: CommandModule<{}, PublishArgs> = {
         process.exit(1);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const data = (await res.json()) as any;
       console.log(`✅ Uploaded: ${data.message || "Published successfully."}`);
       console.log(`⏳ Processing library (SVG generation + metadata extraction)...`);
@@ -131,7 +128,6 @@ export const Publish: CommandModule<{}, PublishArgs> = {
             continue;
           }
 
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const status = (await statusRes.json()) as any;
           const classesProcessed = status.classesProcessed ?? 0;
 
