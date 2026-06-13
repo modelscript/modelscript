@@ -210,11 +210,9 @@ export class LibraryTreeProvider
   }
 
   async getChildren(element?: LibraryTreeItem): Promise<LibraryTreeItem[]> {
-    if (!this.documentUri) return [];
-
     try {
       const nodes: TreeNodeInfo[] = await this.client.sendRequest("modelscript/getLibraryTree", {
-        uri: this.documentUri,
+        uri: this.documentUri ?? "modelica:/",
         parentId: element?.info.id,
       });
 

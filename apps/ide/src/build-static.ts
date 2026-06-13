@@ -70,6 +70,16 @@ if (existsSync(sysml2WasmSrc)) {
   console.warn("  Warning: tree-sitter-sysml2.wasm not found, SysML support will be disabled");
 }
 
+// Ensure release.wasm (compiler BLT solver) is copied
+const releaseWasmSrc = resolve(__dirname, "..", "..", "..", "packages", "compiler", "build", "release.wasm");
+const releaseWasmDest = join(extDestDir, "server", "dist", "release.wasm");
+if (existsSync(releaseWasmSrc)) {
+  cpSync(releaseWasmSrc, releaseWasmDest);
+  console.log(`  Copied release.wasm to ${releaseWasmDest}`);
+} else {
+  console.warn("  Warning: release.wasm not found, BLT solver will be disabled");
+}
+
 // Ensure tree-sitter-owl2.wasm is also copied
 const owl2WasmSrc = resolve(__dirname, "..", "..", "..", "languages", "owl2", "tree-sitter-owl2.wasm");
 const owl2WasmDest = join(extDestDir, "server", "dist", "tree-sitter-owl2.wasm");

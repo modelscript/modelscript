@@ -39,7 +39,7 @@ async function computeHash(buffers: GPUArenaBuffers): Promise<string> {
  */
 export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const glob = typeof globalThis !== "undefined" ? (globalThis as unknown) : undefined;
+  const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return null;
   }
@@ -50,15 +50,15 @@ export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | 
     return new Promise((resolve) => {
       const req = glob.indexedDB.open(DB_NAME, 1);
 
-      req.onupgradeneeded = (e: unknown) => {
-        const db = e.target.result;
+      req.onupgradeneeded = () => {
+        const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           db.createObjectStore(STORE_NAME);
         }
       };
 
-      req.onsuccess = (e: unknown) => {
-        const db = e.target.result;
+      req.onsuccess = () => {
+        const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           resolve(null);
           return;
@@ -83,7 +83,7 @@ export async function getCachedWGSL(buffers: GPUArenaBuffers): Promise<string | 
  */
 export async function setCachedWGSL(buffers: GPUArenaBuffers, wgsl: string): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const glob = typeof globalThis !== "undefined" ? (globalThis as unknown) : undefined;
+  const glob = typeof globalThis !== "undefined" ? (globalThis as any) : undefined;
   if (!glob || !glob.crypto || !glob.crypto.subtle || !glob.indexedDB) {
     return;
   }
@@ -93,8 +93,8 @@ export async function setCachedWGSL(buffers: GPUArenaBuffers, wgsl: string): Pro
 
     return new Promise((resolve) => {
       const req = glob.indexedDB.open(DB_NAME, 1);
-      req.onsuccess = (e: unknown) => {
-        const db = e.target.result;
+      req.onsuccess = () => {
+        const db = req.result;
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           resolve();
           return;

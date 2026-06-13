@@ -446,7 +446,7 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
     let tsLanguage: any = null;
     if (wasmPath) {
       try {
-        const ts = await import("web-tree-sitter");
+        const ts: any = await import("web-tree-sitter");
         const Parser = ts.default || (ts as any).Parser;
         const Language = ts.default?.Language || (ts as any).Language;
         await Parser.init();
@@ -468,7 +468,7 @@ export async function startPlayground(options: PlaygroundOptions): Promise<void>
         try {
           // Split query into individual patterns and validate each one
           // This is much more robust than iteratively removing bad names
-          const ts = await import("web-tree-sitter");
+          const ts: any = await import("web-tree-sitter");
           const Query = ts.default?.Query || (ts as any).Query;
           const querySource = fs.readFileSync(queriesPath, "utf-8");
 

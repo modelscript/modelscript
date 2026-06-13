@@ -27,7 +27,7 @@ import { type SysML2Layout } from "./sysml2-layout";
 
 import { Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
-import { ArenaDAEBuilder, Context, LineIndex, QueryEngine } from "@modelscript/compiler";
+import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "@modelscript/compiler";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
 
 import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
@@ -303,10 +303,11 @@ const sysml2Layouts = new Map<string, SysML2Layout>();
 
 /* Language server initialization */
 
-connection.onInitialize((params): InitializeResult => {
+connection.onInitialize(async (params): Promise<InitializeResult> => {
   connection.console.info("[lsp] onInitialize called");
   // Get the extension URI from initializationOptions
   const extensionUri = params.initializationOptions?.extensionUri as string;
+  await initBltWasm(`${extensionUri}/server/dist/release.wasm`);
 
   // Read the registry URL from client settings (sent via initializationOptions)
   if (params.initializationOptions?.registryUrl) {
@@ -774,10 +775,6 @@ globalThis.CLASS_KIND_KEYWORDS = CLASS_KIND_KEYWORDS;
 globalThis.SYSML2_RULE_TO_KIND = SYSML2_RULE_TO_KIND;
 globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
 
-/** FQN → SymbolId cache — avoids O(n) scans on repeated getTreeChildren calls. */
-let fqnCache = new Map<string, number>();
-/** The unified index revision this cache was built against. */
-let fqnCacheIndex: any = null;
 // Custom request: search classes by name across the workspace index
 // Custom request: get project tree (workspace files and their classes)
 interface ProjectTreeNodeInfo {
@@ -1003,7 +1000,7 @@ export interface FlatSemanticEdit {
 export { cadComponentsCache, documents, flattenArenaFromInstance, sharedContext, simpleHash };
 
 // --- Zero-Copy WebGPU Visualization Pipeline ---
-import { WebGPUSimulationRunner } from "../../compiler/src/simulator/core/webgpu-simulation-runner.js";
+import { WebGPUSimulationRunner } from "@modelscript/compiler/simulator";
 
 if (typeof self !== "undefined") {
   self.addEventListener("message", async (e: MessageEvent) => {
@@ -1026,7 +1023,7 @@ if (typeof self !== "undefined") {
         if (!docContext) throw new Error("No Modelica context found");
 
         const arena = flattenArenaFromInstance(classInstance, docContext);
-        const { serializeArenaForGPU } = await import("@modelscript/compiler/src/arena-gpu-buffers.js");
+        const { serializeArenaForGPU } = await import("@modelscript/compiler");
         const buffers = serializeArenaForGPU(arena);
 
         const runner = new WebGPUSimulationRunner(arena, buffers);

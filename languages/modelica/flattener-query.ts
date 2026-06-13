@@ -2027,16 +2027,38 @@ export class ArenaQueryFlattener {
             const visitor = this.createExprVisitor(dae, undefined, prefixForScope, scopeToUse);
             const exprId = visitor.visit(astNode ?? cstNode);
             if (exprId !== undefined) {
-              const scopeToUse = effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id;
-              const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
-              if (Array.isArray(evalResult)) {
-                const shape: number[] = [];
-                let curr: any = evalResult;
-                while (Array.isArray(curr)) {
-                  shape.push(curr.length);
-                  curr = curr[0];
+              // Extract shape directly from ArrayCtor if possible (handles variables like 'time')
+              const extractShape = (id: number): number[] | null => {
+                const kind = dae.getExprKind(id);
+                if (kind === ExprKind.ArrayCtor) {
+                  const count = dae.getExprData1(id);
+                  const firstElem = dae.getExprLeft(id);
+                  if (firstElem >= 0) {
+                    const childShape = extractShape(firstElem);
+                    if (childShape) {
+                      return [count, ...childShape];
+                    }
+                  }
+                  return [count];
                 }
+                return null;
+              };
+
+              const shape = extractShape(exprId);
+              if (shape && shape.length > 0) {
                 inferredDims = shape;
+              } else {
+                const scopeToUse = effectiveMod.evaluationScopeId ?? entry.parentId ?? entry.id;
+                const evalResult = evaluateArenaExpression(dae, exprId, undefined, this.db, scopeToUse);
+                if (Array.isArray(evalResult)) {
+                  const evalShape: number[] = [];
+                  let curr: any = evalResult;
+                  while (Array.isArray(curr)) {
+                    evalShape.push(curr.length);
+                    curr = curr[0];
+                  }
+                  inferredDims = evalShape;
+                }
               }
             }
           }
@@ -2464,8 +2486,11 @@ export class ArenaQueryFlattener {
           }
 
           const visitor = this.createExprVisitor(dae, undefined, exprPrefix, scopeId);
-          const exprId = visitor.visit(astNode ?? cstNode);
+          let exprId = visitor.visit(astNode ?? cstNode);
           if (exprId !== undefined) {
+            if (primitiveTypeName === "Real") {
+              exprId = visitor.castToRealExpr(exprId);
+            }
             const nameExpr = dae.addNameExpr(baseName);
             dae.addEquation(EqKind.Simple, nameExpr, exprId);
           }
@@ -5141,7 +5166,15 @@ export class ArenaQueryFlattener {
         }
       }
 
-      for (const key of Object.keys(node)) {
+      const keys = new Set<string>(Object.keys(node));
+      let proto = Object.getPrototypeOf(node);
+      while (proto && proto !== ModelicaSyntaxNode.prototype && proto !== Object.prototype) {
+        for (const key of Object.getOwnPropertyNames(proto)) {
+          if (key !== "constructor") keys.add(key);
+        }
+        proto = Object.getPrototypeOf(proto);
+      }
+      for (const key of keys) {
         const val = node[key];
         if (Array.isArray(val)) {
           for (const item of val) {

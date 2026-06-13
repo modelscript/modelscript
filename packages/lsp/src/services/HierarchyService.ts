@@ -8,6 +8,7 @@ import {
   TreeNodeInfo,
 } from "@modelscript/compiler";
 import { Connection } from "vscode-languageserver";
+import { fqnCacheState } from "../utils/hierarchyUtils";
 import { DocumentManager } from "./DocumentManager";
 import { WorkspaceManager } from "./WorkspaceManager";
 
@@ -65,18 +66,18 @@ export class HierarchyService {
           language: entry.language,
         });
         // Cache FQN → ID
-        fqnCache.set(compositeName, id);
+        fqnCacheState.cache.set(compositeName, id);
       }
     } else {
       // Find the parent's numeric ID
-      let parentIdNum = fqnCache.get(parentId);
+      let parentIdNum = fqnCacheState.cache.get(parentId);
 
       if (parentIdNum === undefined) {
         // Cache miss — search the index (one-time cost per FQN)
         for (const [id, entry] of index.symbols) {
           if (isTreeVisible(entry) && getCompositeName(entry, index) === parentId) {
             parentIdNum = id;
-            fqnCache.set(parentId, id);
+            fqnCacheState.cache.set(parentId, id);
             break;
           }
         }
@@ -97,7 +98,7 @@ export class HierarchyService {
             language: entry.language,
           });
           // Cache FQN → ID
-          fqnCache.set(compositeName, id);
+          fqnCacheState.cache.set(compositeName, id);
         }
       }
     }

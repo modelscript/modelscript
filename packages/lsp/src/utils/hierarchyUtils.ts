@@ -2,6 +2,11 @@
 // @ts-nocheck
 import { ClassHierarchyNode, ComponentTreeNode, ModelicaClassInstance, TreeNodeInfo } from "@modelscript/compiler";
 
+export const fqnCacheState = {
+  index: null as any,
+  cache: new Map<string, number>(),
+};
+
 export function classKindFromEntry(entry: any): string {
   if (entry.language === "sysml2") {
     return SYSML2_RULE_TO_KIND[entry.ruleName] ?? entry.kind?.toLowerCase() ?? "definition";
@@ -76,7 +81,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           hasChildren: hasClassChildren(index, id),
           language: entry.language,
         });
-        fqnCache.set(compositeName, id);
+        fqnCacheState.cache.set(compositeName, id);
       }
     }
 
@@ -111,19 +116,19 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           hasChildren: hasClassChildren(index, id),
           language: entry.language,
         });
-        fqnCache.set(compositeName, id);
+        fqnCacheState.cache.set(compositeName, id);
       }
     }
   } else {
     // Find the parent's numeric ID
-    let parentIdNum = fqnCache.get(parentId);
+    let parentIdNum = fqnCacheState.cache.get(parentId);
 
     if (parentIdNum === undefined) {
       // Cache miss — search the index (one-time cost per FQN)
       for (const [id, entry] of index.symbols) {
         if (isTreeVisible(entry) && getCompositeName(entry, index) === parentId) {
           parentIdNum = id;
-          fqnCache.set(parentId, id);
+          fqnCacheState.cache.set(parentId, id);
           break;
         }
       }
@@ -146,7 +151,7 @@ export function getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo
           hasChildren: hasClassChildren(index, id),
           language: entry.language,
         });
-        fqnCache.set(compositeName, id);
+        fqnCacheState.cache.set(compositeName, id);
       }
     }
   }

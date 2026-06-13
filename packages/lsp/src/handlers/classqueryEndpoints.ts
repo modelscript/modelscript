@@ -143,9 +143,12 @@ export function registerClassQueryEndpoints(context: LspContext) {
         }
 
         if (uri && context.state.sharedContext) {
-          let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
-          if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
-          const text = context.state.sharedContext.fs.read(fsPath);
+          let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+          let text = context.state.sharedContext.fs.read(fsPath);
+          if (!text && uri.startsWith("modelica:")) {
+            const stripped = uri.replace(/^modelica:\/?\/?/, "/");
+            text = context.state.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
+          }
           return { content: text || null };
         }
 

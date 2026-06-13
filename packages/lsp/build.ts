@@ -50,13 +50,15 @@ const buildOptions: esbuild.BuildOptions = {
   ],
   outdir: resolve(__dirname, "dist"),
   bundle: true,
-  format: "esm",
+  format: "iife",
   platform: "browser",
   target: "es2022",
   minify: false,
   keepNames: true,
+  tsconfig: resolve(__dirname, "tsconfig.json"),
   // @ts-expect-error esbuild options typings issue
   sourcemap: "inline",
+  metafile: true,
   define: {
     "process.env": "{}",
     "process.browser": "true",
@@ -74,7 +76,11 @@ async function run() {
     await ctx.watch();
     console.log("Watching for changes...");
   } else {
-    await esbuild.build(buildOptions);
+    const result = await esbuild.build(buildOptions);
+    if (result.metafile) {
+      const fs = await import("fs/promises");
+      await fs.writeFile("metafile.json", JSON.stringify(result.metafile));
+    }
     console.log("Build complete.");
   }
 }

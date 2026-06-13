@@ -98,9 +98,10 @@ export class WorkspaceIndex {
     let localMaxId = 0;
 
     const symbols = new IdTrieMap<SymbolEntry>();
-    for (const [localId, entry] of index.symbols) {
+    for (let [localId, entry] of index.symbols) {
+      localId = Number(localId);
       if (localId > localMaxId) localMaxId = localId;
-      const globalId = localId >= 0 ? localId + offset : localId;
+      const globalId = localId > 0 ? localId + offset : localId;
       entry.id = globalId;
       if (mapResourceId && entry.resourceId) {
         entry.resourceId = mapResourceId(entry.resourceId);
@@ -108,7 +109,8 @@ export class WorkspaceIndex {
         entry.resourceId = uri;
       }
       if (entry.parentId !== null) {
-        entry.parentId = entry.parentId >= 0 ? entry.parentId + offset : entry.parentId;
+        const pId = Number(entry.parentId);
+        entry.parentId = pId > 0 ? pId + offset : pId;
       }
       symbols.set(globalId, entry);
     }
@@ -117,16 +119,23 @@ export class WorkspaceIndex {
     for (const [name, ids] of index.byName) {
       byName.set(
         name,
-        ids.map((id: number) => (id >= 0 ? id + offset : id)),
+        ids.map((id: number) => {
+          const numId = Number(id);
+          return numId > 0 ? numId + offset : numId;
+        }),
       );
     }
 
     const childrenOf = new IdTrieMap<SymbolId[]>();
-    for (const [parentId, ids] of index.childrenOf) {
-      const newParentId = parentId !== null ? (parentId >= 0 ? parentId + offset : parentId) : null;
+    for (let [parentId, ids] of index.childrenOf) {
+      const pId = Number(parentId);
+      const newParentId = pId > 0 ? pId + offset : pId;
       childrenOf.set(
         newParentId ?? 0,
-        ids.map((id: number) => (id >= 0 ? id + offset : id)),
+        ids.map((id: number) => {
+          const numId = Number(id);
+          return numId > 0 ? numId + offset : numId;
+        }),
       );
     }
 

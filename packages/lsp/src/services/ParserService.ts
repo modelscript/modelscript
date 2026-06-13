@@ -48,9 +48,12 @@ export class ParserService {
         let lazyCache = this.documentManager.lazyLibTrees.get(uri);
         if (!lazyCache && this.sharedContext) {
           try {
-            let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
-            if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
-            const text = this.sharedContext.fs.read(fsPath);
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            let text = this.sharedContext.fs.read(fsPath);
+            if (!text && uri.startsWith("modelica:")) {
+              const stripped = uri.replace(/^modelica:\/?\/?/, "/");
+              text = this.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
+            }
             if (text) {
               const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };
@@ -95,9 +98,12 @@ export class ParserService {
         let lazyCache = this.documentManager.lazyLibTrees.get(uri);
         if (!lazyCache && this.sharedContext) {
           try {
-            let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri.replace(/^modelica:\/?\/?/, "/");
-            if (!fsPath.startsWith("/")) fsPath = "/" + fsPath;
-            const text = this.sharedContext.fs.read(fsPath);
+            const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
+            let text = this.sharedContext.fs.read(fsPath);
+            if (!text && uri.startsWith("modelica:")) {
+              const stripped = uri.replace(/^modelica:\/?\/?/, "/");
+              text = this.sharedContext.fs.read(stripped.startsWith("/") ? stripped : "/" + stripped);
+            }
             if (text) {
               const tree = this.sharedContext.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
               lazyCache = { tree, text };

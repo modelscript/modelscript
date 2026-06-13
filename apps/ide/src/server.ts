@@ -54,10 +54,8 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
 
   // Use UUID subdomains on localhost (Chrome resolves *.localhost automatically).
   // On production, use same-origin since wildcard DNS is not configured.
-  const isLocalhost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
-  const webEndpoint = isLocalhost
-    ? `${protocol}://{{uuid}}.${host}/vscode-static`
-    : `${protocol}://${host}/vscode-static`;
+  // On production, use same-origin since wildcard DNS is not configured.
+  const webEndpoint = `${protocol}://${host}/vscode-static`;
 
   const productConfiguration: Record<string, unknown> = {
     enableTelemetry: false,
@@ -74,9 +72,8 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     },
   };
 
-  if (isLocalhost) {
-    productConfiguration.webviewContentExternalBaseUrlTemplate = `${protocol}://{{uuid}}.${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
-  }
+  // No UUID for webview content since we are same-origin
+  productConfiguration.webviewContentExternalBaseUrlTemplate = `${protocol}://${host}/vscode-static/out/vs/workbench/contrib/webview/browser/pre/`;
 
   const config: Record<string, unknown> = {
     additionalBuiltinExtensions: [],
@@ -131,26 +128,33 @@ function renderWorkbench(protocol: string, host: string, folderConfig: Record<st
     originalWarn.apply(console, arguments);
   };
   
-  var hash = location.hash.slice(1);
-  if (!hash) return; // if no hash, trust the server's config (from ?folder=)
-  
   var el = document.getElementById('vscode-workbench-web-configuration');
   if (!el) return;
   var config = JSON.parse(el.getAttribute('data-settings'));
   
-  if (hash.startsWith('memfs')) {
-    var template = hash.split(':')[1] || 'empty';
-    document.title = 'New Project — ModelScript IDE';
-    config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
-  } else {
-    var parts = hash.split('@');
-    var ownerRepo = parts[0];
-    var ref = parts[1] || 'main';
-    var p = ownerRepo.split('/');
-    var owner = p[0] || 'modelscript';
-    var repo = p[1] || 'modelscript';
-    document.title = owner + '/' + repo + ' — ModelScript IDE';
-    config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
+  // Patch extensions to use the current host (handles UUID subdomains)
+  if (config.developmentOptions && config.developmentOptions.extensions) {
+    config.developmentOptions.extensions.forEach(function(ext) {
+       ext.authority = location.host;
+    });
+  }
+  
+  var hash = location.hash.slice(1);
+  if (hash) {
+    if (hash.startsWith('memfs')) {
+      var template = hash.split(':')[1] || 'empty';
+      document.title = 'New Project — ModelScript IDE';
+      config.folderUri = { scheme: 'memfs', authority: '', path: '/' + template };
+    } else {
+      var parts = hash.split('@');
+      var ownerRepo = parts[0];
+      var ref = parts[1] || 'main';
+      var p = ownerRepo.split('/');
+      var owner = p[0] || 'modelscript';
+      var repo = p[1] || 'modelscript';
+      document.title = owner + '/' + repo + ' — ModelScript IDE';
+      config.folderUri = { scheme: 'github', authority: '', path: '/' + owner + '/' + repo, query: 'ref=' + ref };
+    }
   }
   
   config.productConfiguration = config.productConfiguration || {};

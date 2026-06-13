@@ -1110,37 +1110,39 @@ export class ArenaSimulator {
         const ei = this.eventIndicators[eventIdx];
         if (ei) {
           const eiKind = this.arena.getExprKind(ei.exprId);
-          if (eiKind === ExprKind.Binary) {
+
+          let targetStateNameId = -1;
+          let rhsVal = 0;
+
+          if (eiKind === ExprKind.Name) {
+            targetStateNameId = this.arena.getExprData1(ei.exprId);
+            rhsVal = 0; // It was simplified from `x - 0`
+          } else if (eiKind === ExprKind.Binary) {
             const op = this.arena.getExprData1(ei.exprId) as BinOp;
             if (op === BinOp.Sub) {
               const lhsId = this.arena.getExprLeft(ei.exprId);
               if (this.arena.getExprKind(lhsId) === ExprKind.Name) {
-                const nameId = this.arena.getExprData1(lhsId);
-                for (let i = 0; i < n; i++) {
-                  if (stateStringIds[i] === nameId) {
-                    const rhsVal = evaluateArenaRuntime(
-                      this.arena,
-                      this.arena.getExprRight(ei.exprId),
-                      valuesByStringId,
-                    );
-                    // Nudge past the surface: for direction -1 (g goes + → −,
-                    // e.g. h < 0), the condition becomes true when the variable
-                    // is below the threshold, so subtract a tiny epsilon.
-                    // For direction +1, add epsilon. For direction 0, use the
-                    // actual crossing direction inferred from the sign change.
-                    let nudge = 0;
-                    if (ei.direction === -1) {
-                      nudge = -1e-10;
-                    } else if (ei.direction === 1) {
-                      nudge = 1e-10;
-                    } else {
-                      // Direction 0 (both): infer from sign of current g value
-                      const gCurrent = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
-                      nudge = gCurrent >= 0 ? -1e-10 : 1e-10;
-                    }
-                    valuesByStringId[nameId] = rhsVal + nudge;
-                  }
+                targetStateNameId = this.arena.getExprData1(lhsId);
+                rhsVal = evaluateArenaRuntime(this.arena, this.arena.getExprRight(ei.exprId), valuesByStringId);
+              }
+            }
+          }
+
+          if (targetStateNameId !== -1) {
+            for (let i = 0; i < n; i++) {
+              if (stateStringIds[i] === targetStateNameId) {
+                // Nudge past the surface
+                let nudge = 0;
+                if (ei.direction === -1) {
+                  nudge = -1e-10;
+                } else if (ei.direction === 1) {
+                  nudge = 1e-10;
+                } else {
+                  const gCurrent = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+                  nudge = gCurrent >= 0 ? -1e-10 : 1e-10;
                 }
+                valuesByStringId[targetStateNameId] = rhsVal + nudge;
+                break;
               }
             }
           }

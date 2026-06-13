@@ -1,7 +1,67 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { alloc, computeBlt, memory } from "../build/release.js";
+import { instantiate } from "../build/release.js";
 import { ArenaDAEBuilder, EqKind, ExprKind, Variability } from "./dae-arena.js";
+
+// WASM Exports mapped globally within this module
+export let alloc: (size: number) => number;
+export let computeBlt: (
+  varCount: number,
+  eqCount: number,
+  adjPtr: number,
+  outEqsPtr: number,
+  outBlocksPtr: number,
+) => number;
+export let memory: WebAssembly.Memory;
+
+let isInitialized = false;
+
+/**
+ * Initializes the WASM-based BLT transformation engine.
+ * Must be called before `performBltTransformationArena` can be used.
+ */
+export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
+  if (isInitialized) return;
+  let url: string | URL;
+
+  const isNodeOrBun =
+    typeof process != "undefined" &&
+    process.versions != null &&
+    (process.versions.node != null || process.versions.bun != null);
+
+  if (urlOverride) {
+    url = urlOverride;
+  } else {
+    if (isNodeOrBun) {
+      // In Node.js, read from file system relative to dist/
+      const { join } = await import("path");
+      url = join(import.meta.dirname, "..", "build", "release.wasm");
+    } else {
+      // In browser context, use relative URL from the current module
+      url = new URL("../build/release.wasm", import.meta.url);
+    }
+  }
+
+  let module: WebAssembly.Module;
+  if (isNodeOrBun) {
+    const fs = await import("node:fs/promises");
+    module = await globalThis.WebAssembly.compile(await fs.readFile(url));
+  } else {
+    module = await globalThis.WebAssembly.compileStreaming(globalThis.fetch(url));
+  }
+
+  const exports = await instantiate(module, {
+    env: {
+      abort: () => {
+        /* empty */
+      },
+    },
+  });
+  alloc = exports.alloc as (size: number) => number;
+  computeBlt = exports.computeBlt as typeof computeBlt;
+  memory = exports.memory as WebAssembly.Memory;
+  isInitialized = true;
+}
 
 /**
  * Collects all variable indices referenced in an expression.
@@ -149,7 +209,10 @@ export function performBltTransformationArena(
 
   for (let i = 0; i < arena.eqCount; i++) {
     eqDepsArr[i] = [];
-    if (arena.getEqKind(i) !== EqKind.Simple) continue;
+    if (arena.getEqKind(i) !== EqKind.Simple) {
+      totalDepsCount += 1; // Account for the `0` length written to WASM
+      continue;
+    }
 
     const deps = new Set<number>();
     // excludeDer=true: variables inside der() are states managed by the

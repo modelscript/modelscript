@@ -5471,7 +5471,7 @@ export default language({
             if (self.parentId !== null) {
               const parent = db.symbol(self.parentId);
               if (parent && (parent.kind === "Class" || parent.kind === "Package")) {
-                const resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", parent.id);
+                const resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", parent.id);
                 if (resolve) {
                   const resolved = resolve(typeName);
                   if (resolved) found = true;
@@ -5886,7 +5886,7 @@ export default language({
             if (self.parentId !== null) {
               const parent = db.symbol(self.parentId);
               if (parent && (parent.kind === "Class" || parent.kind === "Package")) {
-                resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", parent.id);
+                resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", parent.id);
               }
             }
 
@@ -5985,7 +5985,7 @@ export default language({
             if (self.parentId !== null) {
               const parent = db.symbol(self.parentId);
               if (parent && (parent.kind === "Class" || parent.kind === "Package")) {
-                resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", parent.id);
+                resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", parent.id);
               }
             }
 
@@ -6685,7 +6685,7 @@ export default language({
             if (self.parentId !== null) {
               const parent = db.symbol(self.parentId);
               if (parent && (parent.kind === "Class" || parent.kind === "Package")) {
-                resolve = db.query<(name: string) => SymbolEntry | null>("resolveSimpleName", parent.id);
+                resolve = db.query<(name: string) => SymbolEntry | null>("resolveName", parent.id);
               }
             }
 

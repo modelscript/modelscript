@@ -51,7 +51,11 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       // O(1) array access without string materialization or hashing
-      return valuesByStringId[nameId] ?? 0;
+      const val = valuesByStringId[nameId] ?? 0;
+      if (Number.isNaN(val)) {
+        console.error("Name returned NaN! nameId:", nameId, "name:", arena.interner.resolve(nameId));
+      }
+      return val;
     }
 
     case ExprKind.Der: {
@@ -90,6 +94,10 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
       const op = arena.getExprData1(exprId) as BinOp;
       const left = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId);
       const right = evaluateArenaRuntime(arena, arena.getExprRight(exprId), valuesByStringId);
+
+      if (Number.isNaN(left) || Number.isNaN(right)) {
+        console.error("Binary op operand is NaN! left:", left, "right:", right, "op:", op, "exprId:", exprId);
+      }
 
       switch (op) {
         case BinOp.Add:

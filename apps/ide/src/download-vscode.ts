@@ -165,6 +165,13 @@ async function main() {
     );
     // Also handle case where it's not exactly that hash but has a generic sha256
     html = html.replace(/script-src 'sha256-[A-Za-z0-9+/=]+' 'self'/g, "script-src 'unsafe-inline' 'self'");
+
+    // Bypass hostname origin validation for local development
+    html = html.replace(
+      /if \(hostname === parentOriginHash/g,
+      'if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === parentOriginHash',
+    );
+
     writeFileSync(webviewHtmlPath, html);
     console.log("  Patched webview index.html CSP");
   }

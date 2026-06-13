@@ -5,6 +5,7 @@ export * from "./core/simulation.js";
 export * from "./core/simulator.js";
 export * from "./core/solver-options.js";
 export * from "./core/wasm-simulation-runner.js";
+export * from "./core/webgpu-simulation-runner.js";
 export * from "./discrete/branch-and-bound.js";
 export * from "./discrete/fmu-subsystem.js";
 export * from "./discrete/minlp-heuristics.js";

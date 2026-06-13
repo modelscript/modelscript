@@ -1745,7 +1745,18 @@ export async function deactivate(): Promise<void> {
 export let languageWorker: Worker | undefined;
 
 async function createWorkerLanguageClient(context: vscode.ExtensionContext, clientOptions: LanguageClientOptions) {
-  const serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
+  let serverMain = Uri.joinPath(context.extensionUri, "server", "dist", "browserServerMain.js");
+
+  // In web environments, the extension host runs on a dynamically generated UUID subdomain
+  // (e.g., http://<uuid>.localhost:3003) for security, while context.extensionUri points to the parent host.
+  // We must rewrite the worker URL to use the same origin to avoid cross-origin importScripts failures.
+  if (typeof self !== "undefined" && self.location && self.location.origin) {
+    const url = new URL(serverMain.toString(true));
+    if (url.origin !== self.location.origin) {
+      serverMain = Uri.parse(self.location.origin + url.pathname + url.search + url.hash);
+    }
+  }
+
   const worker = new Worker(serverMain.toString(true)); // No { type: "module" } because VS Code's web worker polyfill uses importScripts
   languageWorker = worker;
   return new LanguageClient("modelscript", "ModelScript Language Server", clientOptions, worker);

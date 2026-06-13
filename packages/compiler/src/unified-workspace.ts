@@ -18,7 +18,16 @@ export interface IWorkspaceIndex {
  */
 export class UnifiedWorkspace {
   private indices = new Map<string, IWorkspaceIndex>();
-  private engines = new Map<string, unknown>(); // QueryEngine
+  private engines = new Map<
+    string,
+    {
+      toQueryDB(): {
+        cstNode(id: number): unknown;
+        cstText(startByte: number, endByte: number, entry: unknown): string | null;
+      };
+      query(queryName: string, id: number): unknown;
+    }
+  >(); // QueryEngine
   public adapterRegistry: AdapterRegistry;
 
   /** OWL2 ontology store — incrementally maintained from all source language projections. */
@@ -39,14 +48,14 @@ export class UnifiedWorkspace {
     this.adapterRegistry.cstNodeProvider = (id) => {
       const entry = this.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const language = (entry as unknown).language || "modelica";
+      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.toQueryDB().cstNode(id) ?? null;
     };
 
     this.adapterRegistry.cstTextProvider = (startByte, endByte, entry) => {
       if (!entry.resourceId) return null;
-      const language = (entry as unknown).language || "modelica";
+      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
     };
@@ -54,7 +63,7 @@ export class UnifiedWorkspace {
     this.adapterRegistry.queryProvider = (queryName, id) => {
       const entry = this.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const language = (entry as unknown).language || "modelica";
+      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.query(queryName, id) ?? null;
     };

@@ -3,6 +3,7 @@
 
 import { LspContext } from "../LspContext";
 import { getClassIconSvg } from "../diagramData";
+import { fqnCacheState, getTreeChildrenFast } from "../utils/hierarchyUtils";
 
 export const iconCache = new Map<string, string | null>();
 
@@ -17,9 +18,9 @@ export function registerTreeHandlers(context: LspContext) {
       injectPredefinedTypes(unifiedIndex);
 
       // Invalidate FQN cache when the index changes
-      if (fqnCacheIndex !== unifiedIndex) {
-        fqnCache.clear();
-        fqnCacheIndex = unifiedIndex;
+      if (fqnCacheState.index !== unifiedIndex) {
+        fqnCacheState.cache.clear();
+        fqnCacheState.index = unifiedIndex;
       }
 
       return getTreeChildrenFast(unifiedIndex, params.parentId);

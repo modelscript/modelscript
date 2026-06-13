@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ArenaDAEBuilder } from "./dae-arena.js";
-import { ExprKind } from "./dae-arena.js";
+import { ArenaDAEBuilder, ExprKind } from "./dae-arena.js";
 
 /**
  * Generates all multi-dimensional 1-based indices for a given shape.
@@ -151,14 +150,18 @@ export function scalarizeArena(dae: ArenaDAEBuilder): ArenaDAEBuilder {
     const lhsId = dae.getEqLhs(i);
     const rhsId = dae.getEqRhs(i);
 
-    // Naive shape inference: check if LHS is an array name
-    let shape: number[] | null = null;
-    if (dae.getExprKind(lhsId) === ExprKind.Name) {
-      const name = dae.interner.resolve(dae.getExprData1(lhsId));
-      if (name && arrayShapes.has(name)) {
-        shape = arrayShapes.get(name) /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+    // Naive shape inference: check if LHS or RHS is an array name
+    const checkShape = (id: number) => {
+      if (dae.getExprKind(id) === ExprKind.Name) {
+        const name = dae.interner.resolve(dae.getExprData1(id));
+        if (name && arrayShapes.has(name)) {
+          return arrayShapes.get(name) /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!;
+        }
       }
-    }
+      return null;
+    };
+
+    const shape = checkShape(lhsId) || checkShape(rhsId);
 
     if (shape && shape.length > 0) {
       const indices = generateIndices(shape);

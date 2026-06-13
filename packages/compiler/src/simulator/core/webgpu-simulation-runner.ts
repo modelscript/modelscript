@@ -56,17 +56,17 @@ declare const GPUBufferUsage: {
 declare const GPUMapMode: { READ: 1; WRITE: 2 };
 
 export class WebGPUSimulationRunner {
-  public device /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUDevice;
-  private evalPipeline /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUComputePipeline;
-  private rk4Pipeline /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUComputePipeline;
-  public stateBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private residualsBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private paramsBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private stateIndicesBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private derivIndicesBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private y0Buffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private yAccBuffer /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBuffer;
-  private bindGroup /* eslint-disable-line @typescript-eslint/no-non-null-assertion */!: GPUBindGroup;
+  public device!: GPUDevice;
+  private evalPipeline!: GPUComputePipeline;
+  private rk4Pipeline!: GPUComputePipeline;
+  public stateBuffer!: GPUBuffer;
+  private residualsBuffer!: GPUBuffer;
+  private paramsBuffer!: GPUBuffer;
+  private stateIndicesBuffer!: GPUBuffer;
+  private derivIndicesBuffer!: GPUBuffer;
+  private y0Buffer!: GPUBuffer;
+  private yAccBuffer!: GPUBuffer;
+  private bindGroup!: GPUBindGroup;
 
   /** Total number of blocks to evaluate. */
   private blockCount: number;
