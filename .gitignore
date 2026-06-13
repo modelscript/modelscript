@@ -54,6 +54,8 @@ lerna-debug.log*
 
 # Nx caching
 .nx/
+graph.json
+project-graph.json
 
 # VS Code test artifacts
 .vscode-test-web/
