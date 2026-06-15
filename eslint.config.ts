@@ -3,7 +3,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  { ignores: ["**/.react-router/**"] },
+  { ignores: ["**/.react-router/**", "packages/language/src/codegen/runtime/**"] },
   eslint.configs.recommended,
   tseslint.configs.strict,
   tseslint.configs.stylistic,
@@ -82,6 +82,20 @@ export default defineConfig([
       "@typescript-eslint/no-dynamic-delete": "off",
       "no-useless-assignment": "off",
       "prefer-const": "off",
+    },
+  },
+  {
+    files: ["packages/language/src/**/*.ts", "packages/compiler/src/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "prefer-const": "off",
+      "@typescript-eslint/no-empty-function": "off",
+      "no-empty": "off",
+      "@typescript-eslint/no-inferrable-types": "off",
+      "no-useless-assignment": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
 ]);

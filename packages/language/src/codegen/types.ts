@@ -1,7 +1,7 @@
-import { GrammarOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
-export function generateTypes(grammar: GrammarOptions, normalized: NormalizedGrammar): string {
+export function generateTypes(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
   let typeCode = `// Token and Node Types for ${grammar.name}\n`;
 
   typeCode += `export enum SyntaxType {\n`;

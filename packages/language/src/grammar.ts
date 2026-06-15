@@ -1,6 +1,5 @@
-import { GrammarOptions, Rule, toRule } from "./dsl.js";
+import { LanguageOptions, Rule, toRule } from "./dsl.js";
 
-/* eslint-disable */
 export type SymbolName = string;
 
 export interface Production {
@@ -29,9 +28,11 @@ export class NormalizedGrammar {
 
   evaluatedRules: Record<string, Rule> = {};
   conflicts: string[][] = [];
+  extras: Rule[] = [];
   inlineRules: string[] = [];
+  supertypes = new Map<string, string[]>();
 
-  constructor(grammar: GrammarOptions) {
+  constructor(grammar: LanguageOptions<any>) {
     const dummy$ = new Proxy(
       {},
       {
@@ -62,6 +63,29 @@ export class NormalizedGrammar {
       this.evaluatedRules[ruleName] = toRule(grammar.rules[ruleName](dummy$ as any));
       this.nonTerminals.add(ruleName);
     }
+
+    if (grammar.supertypes) {
+      const stRules = grammar.supertypes(dummy$ as any).map(toRule);
+      for (const stRule of stRules) {
+        if (stRule.type === "SYMBOL") {
+          const stName = stRule.value as string;
+          const targetRule = this.evaluatedRules[stName];
+          if (targetRule && targetRule.type === "CHOICE") {
+            const subTypes: string[] = [];
+            const extractSymbols = (r: Rule) => {
+              if (r.type === "SYMBOL") {
+                subTypes.push(r.value as string);
+              } else if (r.type === "CHOICE" && r.children) {
+                r.children.forEach(extractSymbols);
+              }
+            };
+            extractSymbols(targetRule);
+            this.supertypes.set(stName, subTypes);
+          }
+        }
+      }
+    }
+
     // Tree-sitter style keyword extraction
     if (grammar.word && this.evaluatedRules[grammar.word]) {
       let wordRegex: RegExp | null = null;
@@ -263,8 +287,6 @@ export class NormalizedGrammar {
         (p as any).dynamicPrec = rule.value;
         return this.flatten(contextName, rule.children![0], p);
 
-      case "DEF":
-      case "REF":
       case "FIELD":
       case "RESERVED":
       case "TOKEN_IMMEDIATE": {

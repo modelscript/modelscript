@@ -48,14 +48,14 @@ export class UnifiedWorkspace {
     this.adapterRegistry.cstNodeProvider = (id) => {
       const entry = this.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
+      const language = ((entry as unknown as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.toQueryDB().cstNode(id) ?? null;
     };
 
     this.adapterRegistry.cstTextProvider = (startByte, endByte, entry) => {
       if (!entry.resourceId) return null;
-      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
+      const language = ((entry as unknown as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.toQueryDB().cstText(startByte, endByte, entry) ?? null;
     };
@@ -63,7 +63,7 @@ export class UnifiedWorkspace {
     this.adapterRegistry.queryProvider = (queryName, id) => {
       const entry = this.toUnifiedPartial().symbols.get(id);
       if (!entry || !entry.resourceId) return null;
-      const language = ((entry as Record<string, unknown>).language as string) || "modelica";
+      const language = ((entry as unknown as Record<string, unknown>).language as string) || "modelica";
       const engine = this.engines.get(language);
       return engine?.query(queryName, id) ?? null;
     };
@@ -334,7 +334,7 @@ export class UnifiedWorkspace {
   /**
    * Registers a QueryEngine for a language, enabling CST access for cross-language projections.
    */
-  registerQueryEngine(language: string, engine: unknown): void {
+  registerQueryEngine(language: string, engine: any): void {
     this.engines.set(language, engine);
   }
 

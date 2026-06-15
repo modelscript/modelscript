@@ -1,16 +1,11 @@
 /* eslint-disable */
 import { GLRTable, LRAutomaton } from "../automata.js";
-import { CompilerOptions, GrammarOptions } from "../dsl.js";
+import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { arenaCode, arrayCode, cursorCode, engineCode } from "../../build/src-gen/runtime-templates.js";
 import { generateLexer } from "./lexer.js";
 import { generateTypes } from "./types.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export interface ParserGenerationResult {
   grammar: NormalizedGrammar;
@@ -24,8 +19,8 @@ export interface ParserGenerationResult {
  * @param options The compiler options / DSL definition
  * @returns The generated grammar, LR automaton, and GLR action/goto tables
  */
-export function generateParser<RuleName extends string>(options: CompilerOptions<RuleName>): ParserGenerationResult {
-  const grammar = new NormalizedGrammar(options as unknown as GrammarOptions);
+export function generateParser<RuleName extends string>(options: LanguageOptions<RuleName>): ParserGenerationResult {
+  const grammar = new NormalizedGrammar(options as unknown as LanguageOptions<any>);
   const automaton = new LRAutomaton(grammar);
   const table = new GLRTable(grammar, automaton);
 
@@ -37,7 +32,7 @@ export interface GeneratedFile {
   content: string;
 }
 export function generateParserTables(
-  originalGrammar: GrammarOptions,
+  originalGrammar: LanguageOptions<any>,
   grammar: NormalizedGrammar,
   table: GLRTable,
   syncTokens: string[] = [],
@@ -163,27 +158,16 @@ export function generateParserTables(
 
   code += `\nexport * from "./engine";\n`;
 
-  const arrayCode = fs
-    .readFileSync(path.resolve(__dirname, "../../src/codegen/runtime/array.ts"), "utf8")
-    .replace("// @ts-nocheck\n", "");
-  const arenaCode = fs
-    .readFileSync(path.resolve(__dirname, "../../src/codegen/runtime/arena.ts"), "utf8")
-    .replace("// @ts-nocheck\n", "");
-  const cursorCode = fs
-    .readFileSync(path.resolve(__dirname, "../../src/codegen/runtime/cursor.ts"), "utf8")
-    .replace("// @ts-nocheck\n", "");
-  let engineCode = fs
-    .readFileSync(path.resolve(__dirname, "../../src/codegen/runtime/engine.ts"), "utf8")
-    .replace("// @ts-nocheck\n", "");
+  let engineCodeTemplate = engineCode;
 
-  engineCode = engineCode.replace(/__LEX_FN__/g, LEX_FN);
-  engineCode = engineCode.replace(/__PREPROCESSOR_HOOK__/g, preprocessorHook);
+  engineCodeTemplate = engineCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
+  engineCodeTemplate = engineCodeTemplate.replace(/__PREPROCESSOR_HOOK__/g, preprocessorHook);
 
   return [
     { filename: "parser.ts", content: code },
     { filename: "array.ts", content: arrayCode },
     { filename: "arena.ts", content: arenaCode },
     { filename: "cursor.ts", content: cursorCode },
-    { filename: "engine.ts", content: engineCode },
+    { filename: "engine.ts", content: engineCodeTemplate },
   ];
 }

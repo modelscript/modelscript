@@ -1,5 +1,4 @@
-/* eslint-disable */
-import { generateJavaScriptWrapper } from "./bindings/javascript.js";
+import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
 import { GeneratedFile, generateParser, generateParserTables } from "./codegen/parser.js";
 import { LanguageOptions } from "./dsl.js";
 
@@ -28,13 +27,7 @@ export function buildParser(languageDef: LanguageOptions): BuildResult {
     statesCount: result.table.actionTable.size,
   };
 
-  const assemblyScriptFiles = generateParserTables(
-    languageDef,
-    result.grammar,
-    result.table,
-    languageDef.syncTokens || [],
-    languageDef.preprocessorHook || "",
-  );
+  const assemblyScriptFiles = generateParserTables(languageDef, result.grammar, result.table);
 
   const javascriptWrapper = generateJavaScriptWrapper(languageDef, result.grammar);
 

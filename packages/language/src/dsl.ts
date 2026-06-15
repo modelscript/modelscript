@@ -1,4 +1,3 @@
-/* eslint-disable */
 export interface Rule {
   type: string;
   value?: any;
@@ -16,50 +15,41 @@ export interface ScannerPrimitives {
   stringLiteral?: { delim: string; escapes?: Record<string, number> };
   /** Multi-word keywords that should be lexed as single tokens: ['end if', 'end for'] */
   multiWordKeywords?: string[];
+  /** Python-style indentation layout parsing */
+  layout?: {
+    indent: string;
+    dedent: string;
+  };
 }
 
 export type RuleLike = Rule | string | RegExp;
 
 type RuleBuilder<RuleName extends string> = ($: Record<RuleName, Rule>) => RuleLike;
 
-export interface CompilerOptions<RuleName extends string = string> {
+export interface LanguageOptions<RuleName extends string = string> {
   name: string;
   word?: string; // Tree-sitter keyword extraction optimization token
   rules: Record<RuleName, RuleBuilder<RuleName>>;
 
+  // Tokens to skip automatically (e.g., whitespace, comments)
+  extras?: ($: Record<RuleName, Rule>) => RuleLike[];
+
   // Composable Scanner Primitives (Phase 1)
-  scannerPrimitives?: ScannerPrimitives;
+  primitives?: ScannerPrimitives;
 
   // External Scanner (Context-Sensitive Lexing)
   externals?: ($: Record<RuleName, Rule>) => Rule[];
-  externalScanner?: string | ((currentPos: number, scannerState: number) => number);
+  scanner?: (currentPos: number, scannerState: number) => number;
 
-  /** Optional post-processing hook */
-  postprocessorHook?: string;
-
-  /** Optional blackboard settings */
-  blackboard?: any;
-
-  /** Optional namespaces settings */
-  namespaces?: any;
-
-  // Preprocessor Interceptor (Phase 3)
-  preprocessorHook?: string;
-
-  // Tokens used for island-based error recovery (e.g., [';', '}'])
-  syncTokens?: string[];
-
-  // Tree-sitter Parity: GLR Conflicts, Inlining, and Precedences
+  // Tree-sitter Parity: Supertypes, GLR Conflicts, Inlining, and Precedences
+  supertypes?: ($: Record<RuleName, Rule>) => Rule[];
   inline?: RuleName[];
   conflicts?: (($: Record<RuleName, Rule>) => RuleLike[][]) | RuleName[][];
   precedences?: string[][];
   reserved?: Record<string, ($: Record<RuleName, Rule>) => Rule[]>;
 }
 
-export type GrammarOptions = CompilerOptions<any>;
-export type LanguageOptions = CompilerOptions<any>;
-
-export function language<RuleName extends string>(options: CompilerOptions<RuleName>): CompilerOptions<RuleName> {
+export function language<RuleName extends string>(options: LanguageOptions<RuleName>): LanguageOptions<RuleName> {
   return options;
 }
 
@@ -103,32 +93,15 @@ export function sepByTrailing(rule: RuleLike, separator: RuleLike): Rule {
   return optional(sepBy1Trailing(rule, separator));
 }
 
-export function between(left: RuleLike, right: RuleLike, rule: RuleLike): Rule {
-  return seq(left, rule, right);
-}
-
-export function terminatedBy(rule: RuleLike, terminator: RuleLike): Rule {
-  return seq(rule, terminator);
-}
-
-export function manyTill(rule: RuleLike, terminator: RuleLike): Rule {
-  return seq(repeat(rule), terminator);
-}
-
-export function separatedPair(left: RuleLike, separator: RuleLike, right: RuleLike): Rule {
-  return seq(left, separator, right);
-}
-
 export function field(name: string, rule: RuleLike): Rule {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
 
-export function sym(name: string): Rule {
-  return { type: "SYMBOL", value: name };
-}
-
-export function token(pattern: RegExp | string): Rule {
-  return { type: "TOKEN", value: pattern };
+export function token(pattern: RuleLike): Rule {
+  if (typeof pattern === "string" || pattern instanceof RegExp) {
+    return { type: "TOKEN", value: pattern };
+  }
+  return { type: "TOKEN", children: [toRule(pattern)] };
 }
 
 token.immediate = function (rule: RuleLike): Rule {
@@ -142,18 +115,6 @@ export function alias(rule: RuleLike, name: string | Rule): Rule {
 
 export function reserved(wordset: string, rule: RuleLike): Rule {
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
-}
-
-export function def(rule: Rule): Rule {
-  return { type: "DEF", children: [rule] };
-}
-
-export function ref(rule: Rule): Rule {
-  return { type: "REF", children: [rule] };
-}
-
-export function sync(rule: Rule, ...tokens: string[]): Rule {
-  return { type: "SYNC", value: tokens, children: [rule] };
 }
 
 export function prec(value: number, rule: Rule): Rule {

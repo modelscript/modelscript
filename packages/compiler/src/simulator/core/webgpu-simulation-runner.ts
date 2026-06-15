@@ -17,43 +17,7 @@ import { type ArenaDAEBuilder } from "../../dae-arena.js";
 import { generateWGSL } from "../../generators/wgsl-codegen.js";
 import { getCachedWGSL, setCachedWGSL } from "./wgsl-cache.js";
 
-// WebGPU Type Stubs
-// WebGPU Type Stubs
-interface GPUDevice {
-  createShaderModule(desc: unknown): unknown;
-  createComputePipeline(desc: unknown): unknown;
-  createBuffer(desc: unknown): unknown;
-  createBindGroup(desc: unknown): unknown;
-  createCommandEncoder(): unknown;
-  queue: {
-    writeBuffer(buffer: unknown, bufferOffset: number, data: unknown, dataOffset?: number, size?: number): void;
-    submit(commandBuffers: unknown[]): void;
-  };
-}
-interface GPUComputePipeline {
-  getBindGroupLayout(index: number): unknown;
-}
-interface GPUBuffer {
-  mapAsync(mode: number, offset?: number, size?: number): Promise<void>;
-  getMappedRange(offset?: number, size?: number): ArrayBuffer;
-  unmap(): void;
-  destroy(): void;
-}
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface GPUBindGroup {}
-declare const GPUBufferUsage: {
-  MAP_READ: 1;
-  MAP_WRITE: 2;
-  COPY_SRC: 4;
-  COPY_DST: 8;
-  INDEX: 16;
-  VERTEX: 32;
-  UNIFORM: 64;
-  STORAGE: 128;
-  INDIRECT: 256;
-  QUERY_RESOLVE: 512;
-};
-declare const GPUMapMode: { READ: 1; WRITE: 2 };
+// Uses @webgpu/types directly
 
 export class WebGPUSimulationRunner {
   public device!: GPUDevice;

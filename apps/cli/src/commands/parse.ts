@@ -30,7 +30,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
   },
   handler: async (args) => {
     const cwd = process.cwd();
-    const wrapperPath = join(cwd, "build", "src-gen", "wrapper.js");
+    const wrapperPath = join(cwd, "build", "src-gen", "index.js");
 
     if (!existsSync(wrapperPath)) {
       console.error(`Could not find parser wrapper at ${wrapperPath}. Did you run 'msc build'?`);
@@ -61,10 +61,9 @@ export const Parse: CommandModule<{}, ParseArgs> = {
     const wasmInstance = new WebAssembly.Instance(wasmModule, {
       env: {
         memory: sharedMemory,
-        ...(WasmRuntime.getWasmImports(
-          () => {},
-          () => exportedMemory,
-        ).env || {}),
+        emitTextEdit: (op: number, len: number, start: number, end: number) => {
+          console.log("DEBUG:", op, len, start, end);
+        },
         abort: (msgPtr: number, filePtr: number, line: number, column: number) => {
           let msg = "WASM aborted";
           if (msgPtr && exportedMemory) {
@@ -82,6 +81,9 @@ export const Parse: CommandModule<{}, ParseArgs> = {
           console.error(msg);
           process.exit(1);
         },
+      },
+      parser: {
+        logInt: (val: any) => console.log("DEBUG_INT:", val),
       },
       engine: {},
     });

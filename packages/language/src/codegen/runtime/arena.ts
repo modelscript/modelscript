@@ -99,10 +99,11 @@ export function atomicChunkAlloc(size: u32): u32 {
   if (rem != 0) size += 16 - rem;
 
   // The bump allocator is placed at the end of the static data segment (__heap_base)
-  let ptrLocation = __heap_base as u32;
+  // Ensure the pointer location is 4-byte aligned (required for atomic operations)
+  let ptrLocation = ((__heap_base as u32) + 3) & ~3;
 
-  // Initialize the bump pointer if it is zero
-  atomic.cmpxchg<u32>(ptrLocation, 0, ptrLocation + 16);
+  // Ensure the initial allocation itself is 16-byte aligned so AST nodes are aligned
+  atomic.cmpxchg<u32>(ptrLocation, 0, (ptrLocation + 16 + 15) & ~15);
 
   // Atomically increment the bump pointer by the requested size
   let oldPtr = atomic.add<u32>(ptrLocation, size);

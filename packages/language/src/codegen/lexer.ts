@@ -1,9 +1,8 @@
 import { compileRegexToDFA } from "../automata.js";
-import { GrammarOptions, Rule, toRule } from "../dsl.js";
+import { LanguageOptions, Rule, toRule } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
-/* eslint-disable */
 
-export function generateLexer(grammar: GrammarOptions, normalized: NormalizedGrammar): string {
+export function generateLexer(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
   // Extract all token patterns from the grammar rules
   const stringTokens = new Map<string, string>();
   const regexTokens = new Map<string, string>();
@@ -155,7 +154,7 @@ function peekCharLen(pos: u32): u32 {
 `;
 
   // Inject External Scanner Custom State/Functions
-  if (grammar.externalScanner) {
+  if (grammar.scanner) {
     lexerCode += `  // --- External Scanner --- 
 `;
     lexerCode += `  let extToken = scanExternal(lexPos, currentScannerState);
@@ -168,7 +167,7 @@ function peekCharLen(pos: u32): u32 {
   // Skip whitespace and comments (scanner primitives aware)
   lexerCode += `  // Skip whitespace`;
 
-  const sp = (grammar as any).scannerPrimitives;
+  const sp = (grammar as any).primitives;
 
   // If we have comments, integrate them into the skip loop
   if (sp && (sp.nestedComment || sp.lineComment)) {
@@ -537,11 +536,29 @@ function peekCharLen(pos: u32): u32 {
 `;
   lexerCode += helpers;
 
-  if (grammar.externalScanner) {
+  if (grammar.scanner) {
     lexerCode += `
 // External Scanner Custom Code
 `;
-    lexerCode += grammar.externalScanner + `\n`;
+    let scannerStr = grammar.scanner.toString();
+    let bodyCode = "";
+
+    // Fallback regex to extract the body of a function or arrow function
+    const blockMatch = scannerStr.match(/^[^{]*\{([\s\S]*)\}\s*$/);
+    if (blockMatch) {
+      bodyCode = blockMatch[1].trim();
+    } else {
+      const arrowMatch = scannerStr.match(/^[^=]*=>\s*(.*)$/);
+      if (arrowMatch) {
+        bodyCode = "return " + arrowMatch[1] + ";";
+      }
+    }
+
+    if (bodyCode) {
+      lexerCode += `function scanExternal(currentPos: u32, scannerState: u32): i32 {\n${bodyCode}\n}\n`;
+    } else {
+      lexerCode += scannerStr + "\n";
+    }
   }
 
   lexerCode += `

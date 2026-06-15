@@ -18,6 +18,7 @@ import { Generate } from "./commands/generate.js";
 // import { Logout } from "./commands/logout.js";
 // import { Optimize } from "./commands/optimize.js";
 import { Parse } from "./commands/parse.js";
+import { Playground } from "./commands/playground.js";
 // import { Publish } from "./commands/publish.js";
 // import { Render } from "./commands/render.js";
 // import { Simulate } from "./commands/simulate.js";
@@ -46,6 +47,7 @@ yargs(process.argv.slice(2))
   // .command(Logout)
   // .command(Optimize)
   .command(Parse)
+  .command(Playground)
   // .command(Publish)
   // .command(Render)
   // .command(Simulate)

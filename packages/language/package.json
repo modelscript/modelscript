@@ -44,8 +44,10 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf dist",
+    "build": "npm run build:templates && tsc && npm run build:browser",
+    "build:browser": "node scripts/build-browser.js",
+    "build:templates": "node scripts/bundle-templates.js",
+    "clean": "rimraf dist src/src-gen",
     "lint": "eslint src",
     "watch": "tsc --watch"
   },
@@ -53,10 +55,10 @@
     "*.ts": "eslint",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
-  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.2",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.1",
     "prettier": "^3.6.2",
     "rimraf": "^6.1.0",

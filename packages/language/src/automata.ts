@@ -774,7 +774,23 @@ type AST =
   | { type: "PLUS"; child: AST }
   | { type: "OPT"; child: AST };
 
-function parseRegex(pattern: string): AST {
+function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
+  // Safely strip standard regex anchors as DFAs inherently match from current pos
+  let stripped = false;
+  if (pattern.startsWith("^")) {
+    pattern = pattern.substring(1);
+    stripped = true;
+  }
+  if (pattern.endsWith("$") && !pattern.endsWith("\\$")) {
+    pattern = pattern.substring(0, pattern.length - 1);
+    stripped = true;
+  }
+  if (stripped) {
+    console.warn(
+      `[ModelScript Lexer Warning] Stripped redundant anchors (^ or $) from token definition '${tokenName}'. DFA lexers inherently match from the current stream position.`,
+    );
+  }
+
   let pos = 0;
 
   function parseAlt(): AST {
@@ -813,6 +829,37 @@ function parseRegex(pattern: string): AST {
         pos++;
         return { type: "OPT", child };
       }
+      if (pattern[pos] === "{") {
+        const endPos = pattern.indexOf("}", pos);
+        if (endPos > -1) {
+          const rangeStr = pattern.substring(pos + 1, endPos);
+          const parts = rangeStr.split(",");
+          if (parts.length > 0 && !isNaN(parseInt(parts[0], 10))) {
+            const min = parseInt(parts[0], 10);
+            const max = parts.length > 1 ? (parts[1].trim() === "" ? Infinity : parseInt(parts[1], 10)) : min;
+            pos = endPos + 1;
+
+            let result: AST | null = null;
+            // Add 'min' exact copies
+            for (let i = 0; i < min; i++) {
+              if (!result) result = child;
+              else result = { type: "CONCAT", left: result, right: child };
+            }
+            if (max === Infinity) {
+              if (!result) return { type: "STAR", child };
+              result = { type: "CONCAT", left: result, right: { type: "STAR", child } };
+            } else {
+              // Add (max - min) optional copies
+              for (let i = min; i < max; i++) {
+                if (!result) result = { type: "OPT", child };
+                else result = { type: "CONCAT", left: result, right: { type: "OPT", child } };
+              }
+            }
+            if (!result) throw new Error("Quantifier {0} not supported in DFA engine");
+            return result;
+          }
+        }
+      }
     }
     return child;
   }
@@ -820,6 +867,7 @@ function parseRegex(pattern: string): AST {
   function parseAtom(): AST {
     const ch = pattern[pos++];
     if (ch === "(") {
+      if (pattern[pos] === "?" && pattern[pos + 1] === ":") pos += 2;
       const inner = parseAlt();
       if (pattern[pos++] !== ")") throw new Error("Unclosed (");
       return inner;
@@ -1007,7 +1055,7 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
 
   const nfaStart = newState();
   for (const r of regexes) {
-    const ast = parseRegex(r.pattern);
+    const ast = parseRegex(r.pattern, r.tokenName);
     const s = newState();
     const e = newState();
     e.accepts = r.tokenName;

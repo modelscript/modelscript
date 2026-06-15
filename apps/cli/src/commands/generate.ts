@@ -67,8 +67,8 @@ export const Generate: CommandModule<{}, GenerateArgs> = {
       }
 
       const { js: wrapperJs, dts: wrapperDts } = javascriptWrapper;
-      const jsOutputPath = path.join(absoluteOutDir, "wrapper.js");
-      const dtsOutputPath = path.join(absoluteOutDir, "wrapper.d.ts");
+      const jsOutputPath = path.join(absoluteOutDir, "index.js");
+      const dtsOutputPath = path.join(absoluteOutDir, "index.d.ts");
       fs.writeFileSync(jsOutputPath, wrapperJs);
       fs.writeFileSync(dtsOutputPath, wrapperDts);
     } catch (err: unknown) {

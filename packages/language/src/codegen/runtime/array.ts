@@ -8,12 +8,12 @@ const CHUNK_MASK: u32 = CHUNK_SIZE - 1;
 const CHUNK_BYTE_SIZE: u32 = CHUNK_SIZE * 4;
 
 export class ChunkedArray<T> {
-  private directory: usize;
+  public directory: usize;
   private dirCapacity: u32;
   private allocatedChunks: u32;
   public length: u32;
 
-  constructor(initialElements: u32 = 0) {
+  public init(initialElements: u32 = 0): void {
     this.dirCapacity = 1024;
     this.directory = atomicChunkAlloc(this.dirCapacity * sizeof<usize>());
     this.allocatedChunks = 0;
@@ -101,20 +101,22 @@ export class ChunkedArray<T> {
   }
 }
 
-export class ChunkedUint32Array extends ChunkedArray<u32> {
-  constructor(initialElements: u32 = 0) {
-    super(initialElements);
-  }
+export class ChunkedUint32Array extends ChunkedArray<u32> {}
+
+export class ChunkedInt32Array extends ChunkedArray<i32> {}
+
+export class ChunkedFloat64Array extends ChunkedArray<f64> {}
+
+export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint32Array {
+  let ptr = atomicChunkAlloc(offsetof<ChunkedUint32Array>());
+  let arr = changetype<ChunkedUint32Array>(ptr);
+  arr.init(initialElements);
+  return arr;
 }
 
-export class ChunkedInt32Array extends ChunkedArray<i32> {
-  constructor(initialElements: u32 = 0) {
-    super(initialElements);
-  }
-}
-
-export class ChunkedFloat64Array extends ChunkedArray<f64> {
-  constructor(initialElements: u32 = 0) {
-    super(initialElements);
-  }
+export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32Array {
+  let ptr = atomicChunkAlloc(offsetof<ChunkedInt32Array>());
+  let arr = changetype<ChunkedInt32Array>(ptr);
+  arr.init(initialElements);
+  return arr;
 }
