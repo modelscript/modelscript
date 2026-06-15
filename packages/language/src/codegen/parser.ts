@@ -3,18 +3,25 @@ import { GLRTable, LRAutomaton } from "../automata.js";
 import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
-import { arenaCode, arrayCode, cursorCode, engineCode } from "../../build/src-gen/runtime-templates.js";
+import { arenaCode, arrayCode, cursorCode, engineCode, lspCode } from "../../build/src-gen/runtime-templates.js";
 import { generateLexer } from "./lexer.js";
 import { generateTypes } from "./types.js";
 
+/**
+ * The consolidated result of a successful grammar analysis and parsing phase.
+ */
 export interface ParserGenerationResult {
+  /** The normalized grammar AST containing rules, precedence matrices, and aliases. */
   grammar: NormalizedGrammar;
+  /** The generated LR State Machine handling states, GOTO, and lookaheads. */
   automaton: LRAutomaton;
+  /** The action and goto lookup tables computed for the GLR parser. */
   table: GLRTable;
 }
 
 /**
- * Generates a parser (grammar, automaton, and GLR table) from a DSL definition.
+ * Orchestrates the compilation of a raw DSL definition into a normalized grammar,
+ * builds the LALR(1) state machine, and generates the GLR lookup tables.
  *
  * @param options The compiler options / DSL definition
  * @returns The generated grammar, LR automaton, and GLR action/goto tables
@@ -27,10 +34,28 @@ export function generateParser<RuleName extends string>(options: LanguageOptions
   return { grammar, automaton, table };
 }
 
+/**
+ * A virtual file object representing an AssemblyScript source file.
+ */
 export interface GeneratedFile {
+  /** The desired relative filename (e.g. `parser.ts`, `arena.ts`). */
   filename: string;
+  /** The generated source code content. */
   content: string;
 }
+
+/**
+ * Orchestrates the conversion of the GLR lookup tables and AST logic
+ * into executable AssemblyScript source files. Generates static WASM
+ * arrays and injects token/preprocessor hooks into the runtime templates.
+ *
+ * @param originalGrammar The original DSL definition block
+ * @param grammar The normalized grammar representation
+ * @param table The precomputed GLR tables
+ * @param syncTokens Tokens marked explicitly for error recovery anchors
+ * @param preprocessorHook The name of the lexer entry function (default: "lex")
+ * @returns Array of AssemblyScript file payloads to be compiled by `asc`
+ */
 export function generateParserTables(
   originalGrammar: LanguageOptions<any>,
   grammar: NormalizedGrammar,
@@ -39,7 +64,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, arenaBuffer, getInputBuffer } from "./arena";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\ndeclare function logInt(val: i32): void;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\ndeclare function logInt(val: i32): void;\n\n`;
 
   // Lexer, Types, etc.
   code += generateTypes(originalGrammar, grammar);
@@ -156,12 +181,16 @@ export function generateParserTables(
   code += generateStaticArray(prodAliases, "prod_aliases");
   code += generateStaticArray(aliasData.length > 0 ? aliasData : [0], "alias_data");
 
-  code += `\nexport * from "./engine";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\n`;
 
   let engineCodeTemplate = engineCode;
 
   engineCodeTemplate = engineCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
   engineCodeTemplate = engineCodeTemplate.replace(/__PREPROCESSOR_HOOK__/g, preprocessorHook);
+
+  let lspCodeTemplate = lspCode;
+  lspCodeTemplate = lspCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
+  lspCodeTemplate = lspCodeTemplate.replace(/__MAX_TERMINAL_ID__/g, (grammar.terminals.size - 1).toString());
 
   return [
     { filename: "parser.ts", content: code },
@@ -169,5 +198,6 @@ export function generateParserTables(
     { filename: "arena.ts", content: arenaCode },
     { filename: "cursor.ts", content: cursorCode },
     { filename: "engine.ts", content: engineCodeTemplate },
+    { filename: "lsp.ts", content: lspCodeTemplate },
   ];
 }

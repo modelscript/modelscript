@@ -1,22 +1,43 @@
 import { LanguageOptions, Rule, toRule } from "./dsl.js";
 
+/** A type alias for string, representing a grammar symbol (terminal or non-terminal) */
 export type SymbolName = string;
 
+/**
+ * Represents a single normalized production rule in BNF (Backus-Naur Form).
+ */
 export interface Production {
+  /** Unique integer identifier for this production. */
   id: number;
+  /** The non-terminal symbol on the left-hand side of the production. */
   left: SymbolName;
+  /** The sequence of symbols (terminals/non-terminals) on the right-hand side. */
   right: SymbolName[];
+  /** Optional static precedence for conflict resolution. */
   prec?: number;
+  /** Optional associativity for shift/reduce conflict resolution. */
   assoc?: "left" | "right";
+  /** Optional dynamic precedence for GLR runtime tie-breaking. */
   dynamicPrec?: number;
+  /** True if this production is a synthetic helper or marked inline, and should not appear in AST */
   isInvisible: boolean;
+  /** True if this production represents a list (e.g. from repeat or repeat1 rules). */
   isList: boolean;
+  /** AST node renaming aliases assigned to specific RHS symbols. */
   aliases?: { index: number; target: string }[];
 }
 
+/**
+ * Converts nested Tree-sitter style DSL rule trees into a flat list of formal BNF-style
+ * productions. It handles extracting terminals, synthesizing hidden rules for repetitions
+ * and choices, and propagating precedences.
+ */
 export class NormalizedGrammar {
+  /** All flattened productions in the grammar. */
   productions: Production[] = [];
+  /** Set of all terminal symbols (tokens) discovered. */
   terminals = new Set<SymbolName>();
+  /** Set of all non-terminal symbols (rules) discovered. */
   nonTerminals = new Set<SymbolName>();
   startSymbol: SymbolName;
 
@@ -31,6 +52,8 @@ export class NormalizedGrammar {
   extras: Rule[] = [];
   inlineRules: string[] = [];
   supertypes = new Map<string, string[]>();
+  globalPrecedences = new Map<string, number>();
+  reservedKeywords = new Map<string, Set<string>>();
 
   constructor(grammar: LanguageOptions<any>) {
     const dummy$ = new Proxy(
@@ -45,14 +68,44 @@ export class NormalizedGrammar {
         group
           .map((rule) => {
             if (typeof rule === "string") return rule;
-            if (rule.type === "SYMBOL") return rule.value;
-            if (rule.type === "TOKEN") return `"${rule.value}"`;
+            if (rule.type === "SYMBOL") return rule.value || rule.name;
+            if (rule.type === "TOKEN") {
+              const val = rule.value !== undefined ? rule.value : rule.arg;
+              return `"${val}"`;
+            }
             return "";
           })
           .filter((r) => r !== ""),
       );
     } else {
       this.conflicts = (grammar.conflicts as string[][]) || [];
+    }
+    console.log("Loaded conflicts:", this.conflicts);
+
+    if (grammar.extras) {
+      this.extras = grammar.extras(dummy$ as any).map(toRule);
+    }
+
+    if (grammar.precedences) {
+      let precVal = grammar.precedences.length;
+      for (const group of grammar.precedences) {
+        for (const item of group) {
+          this.globalPrecedences.set(item, precVal);
+        }
+        precVal--;
+      }
+    }
+
+    if (grammar.reserved) {
+      for (const [key, resolver] of Object.entries(grammar.reserved)) {
+        const rules = resolver(dummy$ as any).map(toRule);
+        const tokens = new Set<string>();
+        for (const r of rules) {
+          if (r.type === "SYMBOL") tokens.add(r.value as string);
+          else if (r.type === "TOKEN") tokens.add(`"${r.value}"`);
+        }
+        this.reservedKeywords.set(key, tokens);
+      }
     }
 
     this.inlineRules = grammar.inline || [];
@@ -154,6 +207,8 @@ export class NormalizedGrammar {
     // Flatten rules
     for (const [name, rule] of Object.entries(this.evaluatedRules)) {
       const p: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = {};
+      const globalPrec = this.globalPrecedences.get(name);
+      if (globalPrec !== undefined) p.prec = globalPrec;
       const right = this.flatten(name, rule, p);
       this.addProduction(name, right, p.prec, p.assoc, false, p.dynamicPrec);
     }
@@ -220,14 +275,17 @@ export class NormalizedGrammar {
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule };
     }
-    switch (rule.type) {
+    const ruleType = rule.type || "";
+    const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
+    switch (ruleType) {
       case "SYMBOL":
         return [{ sym: rule.value }];
 
       case "TOKEN": {
-        let tokenName = rule.value.toString();
-        if (typeof rule.value === "string") {
-          tokenName = `"${rule.value}"`;
+        const val = rule.value !== undefined ? rule.value : rule.arg;
+        let tokenName = val.toString();
+        if (typeof val === "string") {
+          tokenName = `"${val}"`;
         }
         this.terminals.add(tokenName);
         return [{ sym: tokenName }];
@@ -235,15 +293,16 @@ export class NormalizedGrammar {
 
       case "SEQ": {
         const seqSyms: { sym: SymbolName; alias?: string }[] = [];
-        for (const child of rule.children || []) {
-          seqSyms.push(...this.flatten(contextName, child, p));
+        for (const child of children) {
+          const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
+          seqSyms.push(...this.flatten(contextName, child, childP));
         }
         return seqSyms;
       }
 
       case "CHOICE": {
         const choiceSym = this.nextSynthetic();
-        for (const child of rule.children || []) {
+        for (const child of children) {
           const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
           const childSyms = this.flatten(contextName, child, childP);
           this.addProduction(choiceSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
@@ -251,9 +310,10 @@ export class NormalizedGrammar {
         return [{ sym: choiceSym }];
       }
 
-      case "REPEAT": {
+      case "REPEAT":
+      case "REPEAT1": {
         const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
-        const childSyms = this.flatten(contextName, (rule.children || [])[0], childP);
+        const childSyms = this.flatten(contextName, children[0], childP);
         const repeatSym = this.nextSynthetic();
 
         // repeatSym -> repeatSym childSyms | epsilon
@@ -269,33 +329,62 @@ export class NormalizedGrammar {
         return [{ sym: repeatSym }];
       }
 
-      case "PREC":
-        p.prec = rule.value;
-        return this.flatten(contextName, rule.children![0], p);
+      case "PREC": {
+        const precSym = this.nextSynthetic();
+        const childP = { ...p, prec: rule.value || rule.precedence };
+        const childSyms = this.flatten(contextName, children[0], childP);
+        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
+        return [{ sym: precSym }];
+      }
 
-      case "PREC_LEFT":
-        p.prec = rule.value;
-        p.assoc = "left";
-        return this.flatten(contextName, rule.children![0], p);
+      case "PREC_LEFT": {
+        const precSym = this.nextSynthetic();
+        const childP = { ...p, prec: rule.value || rule.precedence, assoc: "left" as const };
+        const childSyms = this.flatten(contextName, children[0], childP);
+        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
+        return [{ sym: precSym }];
+      }
 
-      case "PREC_RIGHT":
-        p.prec = rule.value;
-        p.assoc = "right";
-        return this.flatten(contextName, rule.children![0], p);
+      case "PREC_RIGHT": {
+        const precSym = this.nextSynthetic();
+        const childP = { ...p, prec: rule.value || rule.precedence, assoc: "right" as const };
+        const childSyms = this.flatten(contextName, children[0], childP);
+        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
+        return [{ sym: precSym }];
+      }
 
-      case "PREC_DYNAMIC":
-        (p as any).dynamicPrec = rule.value;
-        return this.flatten(contextName, rule.children![0], p);
+      case "PREC_DYNAMIC": {
+        const precSym = this.nextSynthetic();
+        const childP = { ...p, dynamicPrec: rule.value || rule.precedence };
+        const childSyms = this.flatten(contextName, children[0], childP);
+        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
+        return [{ sym: precSym }];
+      }
+
+      case "DEF":
+      case "REF":
+        return this.flatten(contextName, rule.rule || children[0], p);
+
+      case "OPTIONAL": {
+        const optSym = this.nextSynthetic();
+        const childSyms = this.flatten(contextName, children[0], p);
+        this.addProduction(optSym, childSyms, p.prec, p.assoc, false, (p as any).dynamicPrec);
+        this.addProduction(optSym, [], undefined, undefined, true);
+        return [{ sym: optSym }];
+      }
+
+      case "BLANK":
+        return [];
 
       case "FIELD":
       case "RESERVED":
       case "TOKEN_IMMEDIATE": {
         // Ignored for raw grammar parsing (used later for AST building)
-        return this.flatten(contextName, (rule.children || [])[0], p);
+        return this.flatten(contextName, children[0], p);
       }
 
       case "ALIAS": {
-        const res = this.flatten(contextName, (rule.children || [])[0], p);
+        const res = this.flatten(contextName, children[0], p);
         if (res.length === 1) {
           res[0].alias = rule.value;
         }
@@ -307,7 +396,7 @@ export class NormalizedGrammar {
         for (const t of tokens) {
           this.localSyncTokens.add(t);
         }
-        return this.flatten(contextName, (rule.children || [])[0], p);
+        return this.flatten(contextName, children[0], p);
       }
 
       default:

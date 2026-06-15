@@ -2,16 +2,32 @@
 // @ts-nocheck
 // Chunked Array for Zero-GC Memory Growth
 import { atomicChunkAlloc } from "./arena";
+
 const CHUNK_BITS: u32 = 12;
 const CHUNK_SIZE: u32 = 1 << CHUNK_BITS;
 const CHUNK_MASK: u32 = CHUNK_SIZE - 1;
 const CHUNK_BYTE_SIZE: u32 = CHUNK_SIZE * 4;
 
+/**
+ * A zero-GC, linear-memory array implementation.
+ *
+ * Works like a two-level page table to provide dynamically growable arrays
+ * without ever needing to reallocate or copy old data. When the array grows
+ * beyond its current bounds, a new chunk (page) of `CHUNK_SIZE` is allocated
+ * and added to the directory.
+ *
+ * This is crucial for performance because the built-in AssemblyScript `Array<T>`
+ * uses standard malloc/realloc which fragments memory and triggers GC pauses.
+ */
 export class ChunkedArray<T> {
   public directory: usize;
   private dirCapacity: u32;
   private allocatedChunks: u32;
   public length: u32;
+
+  constructor(initialElements: u32 = 0) {
+    this.init(initialElements);
+  }
 
   public init(initialElements: u32 = 0): void {
     this.dirCapacity = 1024;
@@ -29,7 +45,7 @@ export class ChunkedArray<T> {
   @inline
   private addChunk(): void {
     if (this.allocatedChunks >= this.dirCapacity) {
-      let newDirCapacity = this.dirCapacity * 2;
+      let newDirCapacity = this.dirCapacity == 0 ? 1024 : this.dirCapacity * 2;
       let newDirectory = atomicChunkAlloc(newDirCapacity * sizeof<usize>());
       memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
       this.directory = newDirectory;

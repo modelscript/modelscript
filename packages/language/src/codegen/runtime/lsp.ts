@@ -2,7 +2,6 @@
 
 import {
   atomicChunkAlloc,
-  getInputBuffer,
   getNodeByteLength,
   getNodeFirstChild,
   getNodeFlags,
@@ -33,18 +32,13 @@ export function lsp_getBinaryLength(): u32 {
 }
 
 function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
+  if (lspBinaryLength + 3 > 500000) return;
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
 }
 
-const CHAR_SPACE: u16 = 32;
-const CHAR_TAB: u16 = 9;
-const CHAR_LF: u16 = 10;
-const CHAR_CR: u16 = 13;
-const CHAR_SLASH: u16 = 47;
-const CHAR_HASH: u16 = 35;
-const CHAR_STAR: u16 = 42;
+import { __LEX_FN__, is_extra_token, lexLen, setLexLen } from "./parser";
 
 function scanPaddingForErrors(start: u32, padLen: u32): void {
   if (padLen == 0) return;
@@ -52,86 +46,37 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
   let p = start;
   let errorStart: i32 = -1;
 
+  let savedLexLen = lexLen;
+
   while (p < end) {
-    let c = load<u16>(getInputBuffer() + p);
+    let token = __LEX_FN__(p);
 
-    // Check if it's whitespace
-    if (__IGNORE_WS__ && (c == CHAR_SPACE || c == CHAR_TAB || c == CHAR_LF || c == CHAR_CR)) {
+    // Fallback if __LEX_FN__ somehow doesn't advance pos (infinite loop guard)
+    let advance = lexLen > 0 ? lexLen : 2;
+
+    if (token == 0) break; // EOF
+
+    if (is_extra_token[token]) {
+      // It's a valid extra token (whitespace, comment, etc.)
       if (errorStart != -1) {
         allocDiagnostic(errorStart as u32, p, 0, 0);
         errorStart = -1;
       }
-      p += 2;
-      continue;
+    } else {
+      // It's NOT an extra! It's an error fragment in the padding!
+      if (errorStart == -1) {
+        errorStart = p as i32;
+      }
     }
 
-    // Check for line comment //
-    if (
-      __IGNORE_COMMENT_SLASH__ &&
-      c == CHAR_SLASH &&
-      p + 2 < end &&
-      load<u16>(getInputBuffer() + p + 2) == CHAR_SLASH
-    ) {
-      if (errorStart != -1) {
-        allocDiagnostic(errorStart as u32, p, 0, 0);
-        errorStart = -1;
-      }
-      p += 4;
-      while (p < end && load<u16>(getInputBuffer() + p) != CHAR_LF) p += 2;
-      continue;
-    }
-
-    // Check for line comment #
-    if (__IGNORE_COMMENT_HASH__ && c == CHAR_HASH) {
-      if (errorStart != -1) {
-        allocDiagnostic(errorStart as u32, p, 0, 0);
-        errorStart = -1;
-      }
-      p += 2;
-      while (p < end && load<u16>(getInputBuffer() + p) != CHAR_LF) p += 2;
-      continue;
-    }
-
-    // Check for block comment /* ... */
-    if (
-      __IGNORE_COMMENT_BLOCK__ &&
-      c == CHAR_SLASH &&
-      p + 2 < end &&
-      load<u16>(getInputBuffer() + p + 2) == CHAR_STAR
-    ) {
-      if (errorStart != -1) {
-        allocDiagnostic(errorStart as u32, p, 0, 0);
-        errorStart = -1;
-      }
-      p += 4;
-      let depth = 1;
-      while (p + 2 < end && depth > 0) {
-        let cc = load<u16>(getInputBuffer() + p);
-        let cn = load<u16>(getInputBuffer() + p + 2);
-        if (cc == CHAR_SLASH && cn == CHAR_STAR) {
-          depth++;
-          p += 4;
-        } else if (cc == CHAR_STAR && cn == CHAR_SLASH) {
-          depth--;
-          p += 4;
-        } else p += 2;
-      }
-      if (depth > 0) {
-        p = end; // unmatched block comment, consume rest
-      }
-      continue;
-    }
-
-    // It's a non-whitespace, non-comment character: start/continue error range!
-    if (errorStart == -1) {
-      errorStart = p as i32;
-    }
-    p += 2;
+    p += advance;
   }
 
   if (errorStart != -1) {
     allocDiagnostic(errorStart as u32, end, 0, 0);
   }
+
+  setLexLen(savedLexLen);
 }
 
 function lsp_clearVisited(): void {
@@ -186,10 +131,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     let isErrorNode = type == 0;
     let firstChild = getNodeFirstChild(node);
+    // 3. Mark the node as an error if it's explicitly typed as ERROR (0)
+    // We only emit diagnostics for LEAF error nodes to prevent squiggling
+    // valid syntax that was successfully shifted but wrapped in a fragmented root.
     if (isErrorNode) {
-      if (node == astRoot && firstChild != 0) {
-        // Skip wrapper error node
-      } else {
+      // Ignore 0-length ERROR nodes to prevent the editor from squiggling the preceding valid word
+      if (firstChild == 0 && len > 0) {
         allocDiagnostic(nodeStart, nodeEnd, 0, 0);
       }
     } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {

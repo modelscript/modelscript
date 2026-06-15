@@ -39,14 +39,16 @@ const AST_CHUNK_SIZE: u32 = 256 * 1024; // 256 KB incremental chunks
  * This prevents isolation of WASM globals across multiple threads.
  */
 @unmanaged
-export class SharedState {
+class SharedState {
   gen1_chunks: u32;
   gen1_chunk_count: u32;
+  gen1_active_chunk: u32;
   gen1_offset: u32;
   gen1_endLimit: u32;
   arenaOffset: u32;
   gen0_chunks: u32;
   gen0_chunk_count: u32;
+  gen0_active_chunk: u32;
   gen0_offset: u32;
   gen0_endLimit: u32;
   activeGeneration: u8;
@@ -61,12 +63,14 @@ export class SharedState {
   gcStackPtr: u32;
 }
 
+const shared_state_ptr = memory.data<u32>([0]);
+
 /**
  * Retrieves the shared cross-worker memory state.
  * Thread-safe initialization using an atomic compare-and-exchange lock.
  */
 export function S(): SharedState {
-  let ptrLocation = (__heap_base as u32) + 4;
+  let ptrLocation = changetype<usize>(shared_state_ptr);
   let ptr = atomic.load<u32>(ptrLocation);
   if (ptr == 0) {
     let newPtr = atomicChunkAlloc(256); // Allocate 256 bytes for global state
@@ -93,37 +97,19 @@ export function S(): SharedState {
  * @param size The requested allocation size in bytes.
  * @returns A pointer to the newly allocated memory chunk.
  */
+
 export function atomicChunkAlloc(size: u32): u32 {
-  // Ensure 16-byte alignment for the allocated chunk
-  let rem = size % 16;
-  if (rem != 0) size += 16 - rem;
+  // Use the built-in AssemblyScript allocator to avoid colliding with
+  // the stub runtime's internal bump pointer (which is used for Error strings, etc.)
+  // Allocate an extra 16 bytes to guarantee we can 16-byte align the pointer
+  let buffer = new ArrayBuffer(size + 16);
+  let ptr = changetype<usize>(buffer);
 
-  // The bump allocator is placed at the end of the static data segment (__heap_base)
-  // Ensure the pointer location is 4-byte aligned (required for atomic operations)
-  let ptrLocation = ((__heap_base as u32) + 3) & ~3;
+  // Ensure 16-byte alignment
+  let rem = ptr % 16;
+  if (rem != 0) ptr += 16 - rem;
 
-  // Ensure the initial allocation itself is 16-byte aligned so AST nodes are aligned
-  atomic.cmpxchg<u32>(ptrLocation, 0, (ptrLocation + 16 + 15) & ~15);
-
-  // Atomically increment the bump pointer by the requested size
-  let oldPtr = atomic.add<u32>(ptrLocation, size);
-  let newPtr = oldPtr + size;
-
-  // Check if the linear memory needs to be grown
-  let currentPages = memory.size();
-  let currentBytes = currentPages << 16; // 1 page = 65536 bytes
-
-  if (newPtr > (currentBytes as u32)) {
-    let diffBytes = newPtr - (currentBytes as u32);
-    let diffPages = (diffBytes + 65535) >> 16;
-
-    // Re-check size in case another worker already grew the memory concurrently
-    if (memory.size() < currentPages + diffPages) {
-      memory.grow(diffPages);
-    }
-  }
-
-  return oldPtr;
+  return ptr as u32;
 }
 
 /**
@@ -144,7 +130,7 @@ export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
     if (S().gen1_chunk_count > 0) {
-      S().gen1_chunk_count = 1;
+      S().gen1_active_chunk = 0;
       S().gen1_offset = load<u32>(S().gen1_chunks);
       S().arenaOffset = S().gen1_offset;
       S().gen1_endLimit = S().gen1_offset + AST_CHUNK_SIZE;
@@ -152,7 +138,7 @@ export function resetGeneration(gen: u8): void {
     }
   } else if (gen == 0) {
     if (S().gen0_chunk_count > 0) {
-      S().gen0_chunk_count = 1;
+      S().gen0_active_chunk = 0;
       S().gen0_offset = load<u32>(S().gen0_chunks);
       S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
       memory.fill(S().gen0_offset as usize, 0, AST_CHUNK_SIZE as usize);
@@ -238,6 +224,7 @@ export function initArena(sizeBytes: u32): void {
   let chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
   store<u32>(S().gen1_chunks, chunk1);
   S().gen1_chunk_count = 1;
+  S().gen1_active_chunk = 0;
   S().gen1_offset = chunk1;
   S().gen1_endLimit = chunk1 + AST_CHUNK_SIZE;
 
@@ -245,6 +232,7 @@ export function initArena(sizeBytes: u32): void {
   let chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
   store<u32>(S().gen0_chunks, chunk0);
   S().gen0_chunk_count = 1;
+  S().gen0_active_chunk = 0;
   S().gen0_offset = chunk0;
   S().gen0_endLimit = chunk0 + AST_CHUNK_SIZE;
 
@@ -290,26 +278,40 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
     if (ptr + NODE_SIZE > endLimit) {
-      let newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
-      memory.fill(newChunk as usize, 0, AST_CHUNK_SIZE as usize);
+      let isGen0 = S().activeGeneration == 0;
+      let activeChunk = isGen0 ? S().gen0_active_chunk : S().gen1_active_chunk;
+      let chunkCount = isGen0 ? S().gen0_chunk_count : S().gen1_chunk_count;
 
-      // Use cmpxchg to safely update the chunk list and limits
-      // If multiple workers hit the end simultaneously, only one will successfully swap the offset
+      let newChunk: u32 = 0;
+      let usingRecycled = false;
+
+      if (activeChunk + 1 < chunkCount) {
+        let chunkArray = isGen0 ? S().gen0_chunks : S().gen1_chunks;
+        newChunk = load<u32>(chunkArray + (activeChunk + 1) * 4);
+        usingRecycled = true;
+      } else {
+        newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
+      }
+
       let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + NODE_SIZE, newChunk + NODE_SIZE);
       if (oldOffset == ptr + NODE_SIZE) {
-        // We won the race: register the new chunk
-        if (S().activeGeneration == 0) {
-          store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
-          S().gen0_chunk_count++;
+        if (isGen0) {
+          S().gen0_active_chunk++;
+          if (!usingRecycled) {
+            store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
+            S().gen0_chunk_count++;
+          }
           S().gen0_endLimit = newChunk + AST_CHUNK_SIZE;
         } else {
-          store<u32>(S().gen1_chunks + S().gen1_chunk_count * 4, newChunk);
-          S().gen1_chunk_count++;
+          S().gen1_active_chunk++;
+          if (!usingRecycled) {
+            store<u32>(S().gen1_chunks + S().gen1_chunk_count * 4, newChunk);
+            S().gen1_chunk_count++;
+          }
           S().gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
         ptr = newChunk;
       } else {
-        // We lost the race: another worker allocated the chunk. Just retry the allocation.
         ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
       }
     }
@@ -363,32 +365,39 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
  * @returns A physical memory pointer (u32) to the newly allocated transient space.
  */
 export function allocGen0(sizeBytes: u32): u32 {
+  // Ensure sizeBytes is 4-byte aligned to keep gen0_offset perfectly aligned at all times
+  let rem = sizeBytes % 4;
+  if (rem != 0) sizeBytes += 4 - rem;
+
   let ptrLoc: usize = changetype<usize>(S()) + offsetof<SharedState>("gen0_offset");
 
   // Atomically claim the size
   let ptr = atomic.add<u32>(ptrLoc, sizeBytes);
 
-  // Ensure 4-byte alignment
-  let rem = ptr % 4;
-  if (rem != 0) {
-    atomic.add<u32>(ptrLoc, 4 - rem);
-    ptr += 4 - rem;
-  }
-
   // Request a new chunk if the current Gen0 chunk is exhausted
   if (ptr + sizeBytes > S().gen0_endLimit) {
     let allocSize = sizeBytes > AST_CHUNK_SIZE ? sizeBytes : AST_CHUNK_SIZE;
-    // ensure 4-byte alignment of the allocation size
-    let sizeRem = allocSize % 4;
-    if (sizeRem != 0) allocSize += 4 - sizeRem;
 
-    let newChunk = atomicChunkAlloc(allocSize);
-    memory.fill(newChunk as usize, 0, allocSize as usize);
+    let activeChunk = S().gen0_active_chunk;
+    let chunkCount = S().gen0_chunk_count;
+
+    let newChunk: u32 = 0;
+    let usingRecycled = false;
+
+    if (activeChunk + 1 < chunkCount && allocSize <= AST_CHUNK_SIZE) {
+      newChunk = load<u32>(S().gen0_chunks + (activeChunk + 1) * 4);
+      usingRecycled = true;
+    } else {
+      newChunk = atomicChunkAlloc(allocSize);
+    }
 
     let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + sizeBytes, newChunk + sizeBytes);
     if (oldOffset == ptr + sizeBytes) {
-      store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
-      S().gen0_chunk_count++;
+      S().gen0_active_chunk++;
+      if (!usingRecycled && S().gen0_chunk_count < 1024) {
+        store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
+        S().gen0_chunk_count++;
+      }
       S().gen0_endLimit = newChunk + allocSize;
       ptr = newChunk;
     } else {
@@ -436,6 +445,36 @@ export const FLAG_IS_LIST: u16 = 32; // Separate from FLAG_INVISIBLE to avoid co
  */
 export function getNodeFlags(ptr: u32): u16 {
   return ((load<u32>(ptr, NODE_OFFSET_W0) >> SHIFT_FLAGS) & MASK_FLAGS) as u16;
+}
+let saved_gen_offset: u32 = 0;
+let saved_freeNodeHead: u32 = 0;
+let saved_gen_active_chunk: u32 = 0;
+let saved_gen_endLimit: u32 = 0;
+
+export function checkpointMemory(): void {
+  if (S().activeGeneration == 0) {
+    saved_gen_offset = S().gen0_offset;
+    saved_gen_active_chunk = S().gen0_active_chunk;
+    saved_gen_endLimit = S().gen0_endLimit;
+  } else {
+    saved_gen_offset = S().gen1_offset;
+    saved_gen_active_chunk = S().gen1_active_chunk;
+    saved_gen_endLimit = S().gen1_endLimit;
+  }
+  saved_freeNodeHead = S().freeNodeHead;
+}
+
+export function rollbackMemory(): void {
+  if (S().activeGeneration == 0) {
+    S().gen0_offset = saved_gen_offset;
+    S().gen0_active_chunk = saved_gen_active_chunk;
+    S().gen0_endLimit = saved_gen_endLimit;
+  } else {
+    S().gen1_offset = saved_gen_offset;
+    S().gen1_active_chunk = saved_gen_active_chunk;
+    S().gen1_endLimit = saved_gen_endLimit;
+  }
+  S().freeNodeHead = saved_freeNodeHead;
 }
 
 /**

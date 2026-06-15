@@ -13,23 +13,28 @@ export const Playground: CommandModule = {
     const port = 3000;
 
     const server = createServer(async (req, res) => {
-      console.log(`[HTTP] ${req.method} ${req.url}`);
-      if (req.url === "/") {
-        res.writeHead(200, { "Content-Type": "text/html" });
+      const urlPath = req.url?.split("?")[0] || "/";
+      const headers = { "Content-Type": "text/plain", "Cache-Control": "no-store" };
+      if (urlPath === "/") {
+        headers["Content-Type"] = "text/html";
+        res.writeHead(200, headers);
         res.end(getIndexHtml());
-      } else if (req.url === "/worker-compiler.js") {
-        res.writeHead(200, { "Content-Type": "application/javascript" });
+      } else if (urlPath === "/worker-compiler.js") {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
         res.end(getCompilerWorkerJs());
-      } else if (req.url === "/worker-lsp.js") {
-        res.writeHead(200, { "Content-Type": "application/javascript" });
+      } else if (urlPath === "/worker-lsp.js") {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
         res.end(getLspWorkerJs());
-      } else if (req.url === "/browser.js") {
-        res.writeHead(200, { "Content-Type": "application/javascript" });
+      } else if (urlPath === "/browser.js") {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
         const browserJsPath = join(__dirname, "../../../../packages/language/dist/browser.js");
         res.end(existsSync(browserJsPath) ? readFileSync(browserJsPath) : "");
-      } else if (req.url?.startsWith("/node_modules/")) {
-        const filePath = join(__dirname, "../../../../node_modules", req.url.slice(14));
-        const ext = req.url.split(".").pop()?.toLowerCase();
+      } else if (urlPath?.startsWith("/node_modules/")) {
+        const filePath = join(__dirname, "../../../../node_modules", urlPath.slice(14));
+        const ext = urlPath.split(".").pop()?.toLowerCase();
         const mimeTypes: Record<string, string> = {
           js: "application/javascript",
           html: "text/html",
@@ -37,9 +42,10 @@ export const Playground: CommandModule = {
           wasm: "application/wasm",
           ttf: "font/ttf",
         };
-        res.writeHead(200, { "Content-Type": ext && mimeTypes[ext] ? mimeTypes[ext] : "text/plain" });
+        headers["Content-Type"] = ext && mimeTypes[ext] ? mimeTypes[ext] : "text/plain";
+        res.writeHead(200, headers);
         if (existsSync(filePath)) {
-          if (req.url.endsWith(".js") && req.url.includes("assemblyscript/dist/")) {
+          if (urlPath.endsWith(".js") && urlPath.includes("assemblyscript/dist/")) {
             let content = readFileSync(filePath, "utf-8");
             content = content.replace(/from\s*["']binaryen["']/g, 'from "/node_modules/binaryen/index.js"');
             content = content.replace(/from\s*["']long["']/g, 'from "/node_modules/long/index.js"');
@@ -54,11 +60,11 @@ export const Playground: CommandModule = {
         } else {
           res.end("");
         }
-      } else if (req.url === "/asc.js") {
+      } else if (urlPath === "/asc.js") {
         // Map top-level /asc.js to the node_modules path so it goes through our interceptor above
         res.writeHead(302, { Location: "/node_modules/assemblyscript/dist/asc.js" });
         res.end();
-      } else if (req.url === "/favicon.ico") {
+      } else if (urlPath === "/favicon.ico") {
         const faviconPath = join(__dirname, "../../../../apps/morsel/public/favicon.ico");
         if (existsSync(faviconPath)) {
           res.writeHead(200, { "Content-Type": "image/x-icon" });
@@ -67,7 +73,7 @@ export const Playground: CommandModule = {
           res.writeHead(404);
           res.end();
         }
-      } else if (req.url === "/logo.png") {
+      } else if (urlPath === "/logo.png") {
         const logoPath = join(__dirname, "../../../../apps/web/public/ms-logo.png");
         if (existsSync(logoPath)) {
           res.writeHead(200, { "Content-Type": "image/png" });
@@ -76,7 +82,7 @@ export const Playground: CommandModule = {
           res.writeHead(404);
           res.end();
         }
-      } else if (req.url === "/logo-light.png") {
+      } else if (urlPath === "/logo-light.png") {
         const logoPath = join(__dirname, "../../../../apps/web/public/ms-logo-light.png");
         if (existsSync(logoPath)) {
           res.writeHead(200, { "Content-Type": "image/png" });
@@ -184,6 +190,15 @@ function getIndexHtml() {
     <!-- Load Monaco Editor Locally -->
     <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
     <script type="module">
+        window.highlightNode = function(startLine, startCol, endLine, endCol) {
+            if (window.codeEditor) {
+                const range = new monaco.Range(startLine + 1, startCol + 1, endLine + 1, endCol + 1);
+                window.codeEditor.setSelection(range);
+                window.codeEditor.revealRangeInCenter(range);
+                window.codeEditor.focus();
+            }
+        };
+
         window.MonacoEnvironment = {
             getWorkerUrl: function(workerId, label) {
                 return \`data:text/javascript;charset=utf-8,\${encodeURIComponent("self.MonacoEnvironment = { baseUrl: '/node_modules/monaco-editor/min/' }; importScripts('/node_modules/monaco-editor/min/vs/base/worker/workerMain.js');")}\`;
@@ -201,6 +216,7 @@ function getIndexHtml() {
                 "        name: string;",
                 "        word?: string;",
                 "        rules: Record<string, ($: any) => RuleLike>;",
+                "        extras?: ($: any) => RuleLike[];",
                 "        primitives?: {",
                 "            nestedComment?: { open: string; close: string };",
                 "            lineComment?: string;",
@@ -251,7 +267,7 @@ function getIndexHtml() {
             });
 
             window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {
-                value: "export default language({\\n  name: 'MyLang',\\n  rules: {\\n    Main: $ => $.Identifier,\\n    Identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/\\n  }\\n});",
+                value: "export default language({\\n  name: 'MyLang',\\n  rules: {\\n    Main: $ => $.Identifier,\\n    Identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/\\n  },\\n  extras: $ => [/\\\\s/]\\n});",
                 language: 'typescript',
                 theme: editorTheme
             });
@@ -261,13 +277,14 @@ function getIndexHtml() {
                 theme: editorTheme
             });
 
-            const compilerWorker = new Worker('/worker-compiler.js', { type: 'module' });
+            const cacheBuster = Date.now();
+            const compilerWorker = new Worker('/worker-compiler.js?v=' + cacheBuster, { type: 'module' });
             compilerWorker.onerror = (e) => {
                 console.error("Compiler Worker Error:", e);
                 document.getElementById('status').innerText = "Compiler Worker Error: " + e.message;
             };
 
-            const lspWorker = new Worker('/worker-lsp.js', { type: 'module' });
+            const lspWorker = new Worker('/worker-lsp.js?v=' + cacheBuster, { type: 'module' });
             lspWorker.onerror = (e) => {
                 console.error("LSP Worker Error:", e);
             };
@@ -356,7 +373,7 @@ function getIndexHtml() {
                         monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
                     } else if (msg.type === 'astUpdate') {
                         const viewer = document.getElementById('ast-viewer');
-                        if (viewer) viewer.textContent = msg.ast || "(Empty AST)";
+                        if (viewer) viewer.innerHTML = msg.ast || "(Empty AST)";
                     }
                 }
             }
@@ -509,10 +526,11 @@ function triggerDiagnostics(changes = null) {
 
         const astRoot = lspFacade.parse(latestText, editStartByte, editOldEndByte, editNewEndByte);
         
-        const astString = lspFacade.getAstSExpr(astRoot);
+        const astString = lspFacade.getAstHtml(astRoot);
         self.postMessage({ type: 'astUpdate', ast: astString });
         
         const rawDiags = lspFacade.getDiagnostics(astRoot);
+        console.log("RAW DIAGS:", JSON.stringify(rawDiags, null, 2));
         const diagnostics = rawDiags.map(d => ({
             severity: d.severity,
             range: d.range,
@@ -537,17 +555,41 @@ self.addEventListener('message', async (e) => {
         
         try {
             const memory = new WebAssembly.Memory({ initial: 4000, maximum: 4000, shared: true });
-            const imports = { env: { memory, emitTextEdit: () => {}, abort: (msg, file, line, col) => {
-                let str = "unknown";
-                if (msg) {
-                    const mem16 = new Uint16Array(memory.buffer);
-                    const mem32 = new Uint32Array(memory.buffer);
-                    const len = mem32[(msg - 4) >> 2];
-                    str = "";
-                    for (let i = 0; i < len / 2; i++) str += String.fromCharCode(mem16[(msg >> 1) + i]);
+            const baseImports = { 
+                env: { memory, emitTextEdit: function(a,b,c,d) {}, abort: function(msg, file, line, col) {
+                    let str = "unknown";
+                    if (msg) {
+                        const mem16 = new Uint16Array(memory.buffer);
+                        const mem32 = new Uint32Array(memory.buffer);
+                        const len = mem32[(msg - 4) >> 2];
+                        str = "";
+                        for (let i = 0; i < len / 2; i++) str += String.fromCharCode(mem16[(msg >> 1) + i]);
+                    }
+                    console.error("WASM Abort:", str, "at line", line, "col", col);
+                } },
+                engine: { debugLog: function(state, cost, pos, padding) { } },
+                parser: { 
+                    logInt: function(val) {},
+                    emitTextEdit: function(op, len, start, end) {},
+                    getSourceSlice: function(start, end) { return 0; }
                 }
-                console.error("WASM Abort:", str, "at line", line, "col", col);
-            } } };
+            };
+
+            const imports = new Proxy(baseImports, {
+                get: function(target, moduleName) {
+                    if (!(moduleName in target)) {
+                        console.warn("WASM requested missing module:", moduleName);
+                        target[moduleName] = {};
+                    }
+                    return new Proxy(target[moduleName], {
+                        get: function(modTarget, fieldName) {
+                            if (fieldName in modTarget) return modTarget[fieldName];
+                            console.warn("WASM requested missing function:", moduleName + "." + fieldName);
+                            return function() { console.warn("Called dummy func:", moduleName + "." + fieldName); return 0; };
+                        }
+                    });
+                }
+            });
             
             const { instance } = await WebAssembly.instantiate(wasm, imports);
             

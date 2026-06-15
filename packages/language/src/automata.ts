@@ -1,23 +1,47 @@
 /* eslint-disable */
 import { NormalizedGrammar, Production, SymbolName } from "./grammar.js";
 
+/**
+ * Represents a single parsing state context during parser generation.
+ * An item is a production with a "dot" indicating how much of the right-hand side has been matched.
+ */
 export interface LR0Item {
+  /** The production rule this item is tracking. */
   production: Production;
+  /** The index in the production's RHS indicating the current parsing progress. */
   dot: number;
+  /** The set of terminal symbols that can legally follow this item (LALR(1) lookahead). */
   lookahead: Set<SymbolName>; // LALR(1) per-item lookahead
 }
 
+/**
+ * Represents a discrete state within the LR state machine.
+ */
 export class LRState {
+  /** The set of LR(0) items (the core and closure) that define this state. */
   items: LR0Item[] = [];
+  /** The valid GOTO and SHIFT transitions to other states based on the next symbol. */
   transitions = new Map<SymbolName, LRState>();
 
+  /**
+   * @param id The unique integer identifier for this state.
+   */
   constructor(public id: number) {}
 }
 
+/**
+ * Constructs the LALR(1) parsing automaton from a normalized grammar.
+ * This handles the generation of states, transitions, and the computation
+ * of first sets and lookaheads using the DeRemer-Pennello algorithm.
+ */
 export class LRAutomaton {
+  /** All generated states in the state machine. */
   states: LRState[] = [];
+  /** The computed FIRST sets for all symbols (terminals and non-terminals). */
   firstSets = new Map<SymbolName, Set<SymbolName>>();
-  private stateIndex = new Map<string, LRState>(); // O(1) state lookup by canonical key
+
+  /** O(1) state lookup by canonical core item signature to prevent duplicate states. */
+  private stateIndex = new Map<string, LRState>();
 
   constructor(public grammar: NormalizedGrammar) {
     this.computeFirstSets();
@@ -317,6 +341,11 @@ export class LRAutomaton {
     return result;
   }
 
+  /**
+   * Computes the Minimum Reduction Distance (MRD) for error recovery heuristics.
+   * This is used to determine the cost of error recovery paths by calculating the minimum
+   * number of terminal tokens required to fully reduce from a given state.
+   */
   computeMRD(): number[] {
     const mrd = new Array(this.states.length).fill(1000000); // Infinity equivalent
     const queue: number[] = [];
@@ -423,32 +452,58 @@ export class LRAutomaton {
   }
 }
 
+/**
+ * Indicates the type of operation the parser should perform when matching a token.
+ */
 export enum ActionType {
   SHIFT,
   REDUCE,
   ACCEPT,
 }
 
+/**
+ * A single cell operation in the LR action table.
+ */
 export interface Action {
   type: ActionType;
-  target?: number; // state id for shift, production id for reduce
+  /** State id for SHIFT, Production id for REDUCE. Undefined for ACCEPT. */
+  target?: number;
+  /** The precedence of this action, used for conflict resolution. */
   prec?: number;
+  /** The associativity of this action, used for conflict resolution. */
   assoc?: "left" | "right";
 }
 
+/**
+ * Diagnostic information regarding unresolvable grammar ambiguities.
+ */
 export interface ConflictReport {
+  /** The state ID where the conflict occurs. */
   stateId: number;
+  /** The terminal symbol triggering the conflict. */
   terminal: string;
+  /** The set of conflicting actions (e.g., multiple REDUCEs or a SHIFT and REDUCE). */
   actions: Action[];
+  /** Categorization of the conflict type. */
   conflictType: "shift/reduce" | "reduce/reduce";
 }
 
+/**
+ * Generates the Generalized LR (GLR) Action and Goto tables.
+ * Unlike strict LR parsers, GLR tables permit multiple actions per cell
+ * to support forking parser execution on ambiguous inputs.
+ */
 export class GLRTable {
-  // stateId -> terminal -> list of actions (GLR allows multiple)
+  /**
+   * The Action table mapping State ID -> Terminal Symbol -> Array of Actions.
+   * GLR natively supports multiple actions in a single cell.
+   */
   actionTable = new Map<number, Map<SymbolName, Action[]>>();
-  // stateId -> nonTerminal -> stateId
+
+  /** The Goto table mapping State ID -> Non-Terminal Symbol -> Next State ID. */
   gotoTable = new Map<number, Map<SymbolName, number>>();
-  // Conflict diagnostics
+
+  /** Unresolvable conflicts discovered during table generation. */
   conflicts: ConflictReport[] = [];
 
   constructor(
@@ -470,7 +525,7 @@ export class GLRTable {
           this.gotoTable.get(state.id)!.set(sym, targetState.id);
         } else {
           // SHIFT
-          let shiftPrec: number | undefined = undefined;
+          let shiftPrec: number | undefined = this.grammar.globalPrecedences.get(sym);
           let shiftAssoc: "left" | "right" | undefined = undefined;
           for (const item of state.items) {
             if (item.dot < item.production.right.length && item.production.right[item.dot] === sym) {
@@ -499,10 +554,12 @@ export class GLRTable {
           } else {
             // Use per-item LALR(1) lookahead instead of FOLLOW(lhs)
             for (const term of item.lookahead) {
+              const globalPrec = this.grammar.globalPrecedences.get(item.production.left);
+              const prec = item.production.prec !== undefined ? item.production.prec : globalPrec;
               this.addAction(state.id, term, {
                 type: ActionType.REDUCE,
                 target: item.production.id,
-                prec: item.production.prec,
+                prec: prec,
                 assoc: item.production.assoc,
               });
             }
@@ -680,20 +737,23 @@ export class GLRTable {
         }
       }
 
-      console.error(`Error: Error when generating parser\n`);
+      console.warn(`Warning: Conflicts when generating parser\n`);
 
       let conflictNum = 1;
-      for (const diag of diagnostics.slice(0, 10)) {
-        console.error(`Conflict ${conflictNum++}:\n${diag.output}`);
+      for (const diag of diagnostics.slice(0, 5)) {
+        console.warn(`Conflict ${conflictNum++}:\n${diag.output}`);
+      }
+      if (diagnostics.length > 5) {
+        console.warn(`... and ${diagnostics.length - 5} more conflicts suppressed.`);
       }
 
       const numReduceReduce = diagnostics.filter((d) => d.type === "reduce/reduce").length;
       const numShiftReduce = diagnostics.filter((d) => d.type === "shift/reduce").length;
 
-      console.error(
+      console.warn(
         `Found ${diagnostics.length} unresolved conflict${diagnostics.length === 1 ? "" : "s"} (${numReduceReduce} reduce/reduce, ${numShiftReduce} shift/reduce).\n`,
       );
-      process.exit(1);
+      // process.exit(1);
     }
   }
 

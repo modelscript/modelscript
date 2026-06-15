@@ -41,6 +41,12 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     extractTokens(rule);
   }
 
+  if (normalized.extras) {
+    for (const rule of normalized.extras) {
+      extractTokens(rule);
+    }
+  }
+
   let wordRegex: RegExp | null = null;
   if (grammar.word && grammar.rules[grammar.word]) {
     const dummy$ = new Proxy(
@@ -67,6 +73,24 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   lexerCode += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns
 
 `;
+
+  // Generate extras map
+  lexerCode += `\nexport const is_extra_token = new StaticArray<u8>(2048);\n`;
+  lexerCode += `export function initExtras(): void {\n`;
+  if (normalized.extras) {
+    for (const rule of normalized.extras) {
+      if (rule.type === "TOKEN") {
+        let val = rule.value.toString();
+        if (typeof rule.value === "string") val = `"${rule.value}"`;
+        const mappedInt = normalized.symToInt.get(val);
+        if (mappedInt !== undefined) {
+          lexerCode += `  is_extra_token[<u32>SyntaxType.T_${mappedInt}] = 1;\n`;
+        }
+      }
+    }
+  }
+  lexerCode += `}\n`;
+
   lexerCode += `export let inputEncoding: u8 = 0;
 `;
   lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = enc; }
@@ -132,6 +156,7 @@ function peekCharLen(pos: u32): u32 {
 `;
 
   lexerCode += `export let lexLen: u32 = 0;
+export function setLexLen(val: u32): void { lexLen = val; }
 `;
   lexerCode += `export let lexPos: u32 = 0;
 `;
@@ -164,74 +189,87 @@ function peekCharLen(pos: u32): u32 {
 `;
   }
 
-  // Skip whitespace and comments (scanner primitives aware)
-  lexerCode += `  // Skip whitespace`;
-
-  const sp = (grammar as any).primitives;
-
-  // If we have comments, integrate them into the skip loop
-  if (sp && (sp.nestedComment || sp.lineComment)) {
-    lexerCode += ` and comments`;
-  }
-  lexerCode += `\n`;
-
-  lexerCode += `  while (lexPos < inputLength) {\n`;
-  lexerCode += `    let c: i32 = peekChar(lexPos);\n`;
-  lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
-  lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13) {\n`;
-  lexerCode += `      lexPos += charLen;\n`;
-  lexerCode += `      continue;\n`;
-  lexerCode += `    }\n`;
-
-  // Task 1.3: Line comment scanner
-  if (sp && sp.lineComment) {
-    const lc = sp.lineComment;
-    if (lc.length === 2) {
-      lexerCode += `    // Line comment: ${lc}\n`;
-      lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
-      lexerCode += `    if (c == ${lc.charCodeAt(0)} && c2 == ${lc.charCodeAt(1)}) {\n`;
-      lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
-      lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
-      lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos); // skip newline\n`;
-      lexerCode += `      continue;\n`;
-      lexerCode += `    }\n`;
-    } else if (lc.length === 1) {
-      lexerCode += `    if (c == ${lc.charCodeAt(0)}) {\n`;
-      lexerCode += `      lexPos += charLen;\n`;
-      lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
-      lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos);\n`;
-      lexerCode += `      continue;\n`;
-      lexerCode += `    }\n`;
+  let hasWhitespaceExtra = false;
+  if (normalized.extras) {
+    for (const rule of normalized.extras) {
+      if (rule.type === "TOKEN") {
+        let val = rule.value.toString();
+        if (val === "/\\s/" || val === "/\\s+/" || val === "/[ \\t\\n\\r]+/" || val === "/[ \\t\\n\\r]/") {
+          hasWhitespaceExtra = true;
+        }
+      }
     }
   }
 
-  // Task 1.2: Nested comment scanner
-  if (sp && sp.nestedComment) {
-    const nc = sp.nestedComment;
-    const o0 = nc.open.charCodeAt(0);
-    const o1 = nc.open.charCodeAt(1);
-    const c0 = nc.close.charCodeAt(0);
-    const c1 = nc.close.charCodeAt(1);
-    lexerCode += `    // Nested block comment: ${nc.open} ... ${nc.close}\n`;
-    lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
-    lexerCode += `    if (c == ${o0} && c2 == ${o1}) {\n`;
-    lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
-    lexerCode += `      let commentDepth: u32 = 1;\n`;
-    lexerCode += `      while (lexPos < inputLength && commentDepth > 0) {\n`;
-    lexerCode += `        let cc = peekChar(lexPos);\n`;
-    lexerCode += `        let ccLen = peekCharLen(lexPos);\n`;
-    lexerCode += `        let cn = lexPos + ccLen < inputLength ? peekChar(lexPos + ccLen) : 0;\n`;
-    lexerCode += `        let cnLen = lexPos + ccLen < inputLength ? peekCharLen(lexPos + ccLen) : 0;\n`;
-    lexerCode += `        if (cc == ${o0} && cn == ${o1}) { commentDepth++; lexPos += ccLen + cnLen; }\n`;
-    lexerCode += `        else if (cc == ${c0} && cn == ${c1}) { commentDepth--; lexPos += ccLen + cnLen; }\n`;
-    lexerCode += `        else { lexPos += ccLen; }\n`;
-    lexerCode += `      }\n`;
-    lexerCode += `      continue;\n`;
-    lexerCode += `    }\n`;
+  const sp = (grammar as any).primitives;
+  const hasComments = sp && (sp.nestedComment || sp.lineComment);
+
+  if (hasWhitespaceExtra || hasComments) {
+    // Skip whitespace and comments (scanner primitives aware)
+    lexerCode += `  // Skip extra tokens`;
+    lexerCode += `\n`;
+
+    lexerCode += `  while (lexPos < inputLength) {\n`;
+    lexerCode += `    let c: i32 = peekChar(lexPos);\n`;
+    lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
+
+    if (hasWhitespaceExtra) {
+      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13) {\n`;
+      lexerCode += `      lexPos += charLen;\n`;
+      lexerCode += `      continue;\n`;
+      lexerCode += `    }\n`;
+    }
+
+    // Task 1.3: Line comment scanner
+    if (sp && sp.lineComment) {
+      const lc = sp.lineComment;
+      if (lc.length === 2) {
+        lexerCode += `    // Line comment: ${lc}\n`;
+        lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
+        lexerCode += `    if (c == ${lc.charCodeAt(0)} && c2 == ${lc.charCodeAt(1)}) {\n`;
+        lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
+        lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
+        lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos); // skip newline\n`;
+        lexerCode += `      continue;\n`;
+        lexerCode += `    }\n`;
+      } else if (lc.length === 1) {
+        lexerCode += `    if (c == ${lc.charCodeAt(0)}) {\n`;
+        lexerCode += `      lexPos += charLen;\n`;
+        lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
+        lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos);\n`;
+        lexerCode += `      continue;\n`;
+        lexerCode += `    }\n`;
+      }
+    }
+
+    // Task 1.2: Nested comment scanner
+    if (sp && sp.nestedComment) {
+      const nc = sp.nestedComment;
+      const o0 = nc.open.charCodeAt(0);
+      const o1 = nc.open.charCodeAt(1);
+      const c0 = nc.close.charCodeAt(0);
+      const c1 = nc.close.charCodeAt(1);
+      lexerCode += `    // Nested block comment: ${nc.open} ... ${nc.close}\n`;
+      lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
+      lexerCode += `    if (c == ${o0} && c2 == ${o1}) {\n`;
+      lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
+      lexerCode += `      let commentDepth: u32 = 1;\n`;
+      lexerCode += `      while (lexPos < inputLength && commentDepth > 0) {\n`;
+      lexerCode += `        let cc = peekChar(lexPos);\n`;
+      lexerCode += `        let ccLen = peekCharLen(lexPos);\n`;
+      lexerCode += `        let cn = lexPos + ccLen < inputLength ? peekChar(lexPos + ccLen) : 0;\n`;
+      lexerCode += `        let cnLen = lexPos + ccLen < inputLength ? peekCharLen(lexPos + ccLen) : 0;\n`;
+      lexerCode += `        if (cc == ${o0} && cn == ${o1}) { commentDepth++; lexPos += ccLen + cnLen; }\n`;
+      lexerCode += `        else if (cc == ${c0} && cn == ${c1}) { commentDepth--; lexPos += ccLen + cnLen; }\n`;
+      lexerCode += `        else { lexPos += ccLen; }\n`;
+      lexerCode += `      }\n`;
+      lexerCode += `      continue;\n`;
+      lexerCode += `    }\n`;
+    }
+    lexerCode += `    break;\n`;
+    lexerCode += `  }\n`;
   }
 
-  lexerCode += `    break;\n`;
-  lexerCode += `  }\n`;
   lexerCode += `  srcLexPos = lexPos;\n`;
   lexerCode += `  if (lexPos >= inputLength) return 1023; // EOF\n\n`;
 
@@ -466,6 +504,34 @@ function peekCharLen(pos: u32): u32 {
           }
         }
 
+        // Reserved keywords overriding
+        let reservedKey = "";
+        for (const [key, _] of normalized.reservedKeywords.entries()) {
+          const kwTokenInt = normalized.symToInt.get(key);
+          if ("T_" + kwTokenInt === tokenName) {
+            reservedKey = key;
+            break;
+          }
+        }
+
+        if (reservedKey) {
+          lexerCode += `        // Reserved keywords override\n`;
+          lexerCode += `        let kwMatch2 = false;\n`;
+          lexerCode += `        let cPos2 = lexPos;\n`;
+          const reservedTokens = normalized.reservedKeywords.get(reservedKey)!;
+          for (const rt of reservedTokens) {
+            const rtVal = rt.startsWith('"') ? rt.slice(1, -1) : rt;
+            const kwTokenInt = normalized.symToInt.get(rt);
+            lexerCode += `        kwMatch2 = true; cPos2 = lexPos;\n`;
+            for (let i = 0; i < rtVal.length; i++) {
+              lexerCode += `        if (kwMatch2 && peekChar(cPos2) == ${rtVal.charCodeAt(i)}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
+            }
+            lexerCode += `        if (kwMatch2 && (cPos2 - lexPos == lexLen)) {\n`;
+            lexerCode += `           return SyntaxType.T_${kwTokenInt};\n`;
+            lexerCode += `        }\n`;
+          }
+        }
+
         lexerCode += `        return SyntaxType.${tokenName};\n`;
         lexerCode += `      }\n`;
       }
@@ -529,10 +595,10 @@ function peekCharLen(pos: u32): u32 {
   }
 
   lexerCode += `
-  lexLen = 1; return SyntaxType.ERROR;
-`;
-  lexerCode += `}
-
+  lexLen = peekCharLen(lexPos);
+  if (lexLen == 0) lexLen = 2; // Fail-safe
+  return SyntaxType.ERROR;
+}
 `;
   lexerCode += helpers;
 

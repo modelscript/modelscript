@@ -5,7 +5,6 @@ import {
   allocGen0,
   allocNode,
   atomicChunkAlloc,
-  checkpointMemory,
   FLAG_GC_MARK,
   FLAG_INVISIBLE,
   FLAG_IS_LIST,
@@ -19,7 +18,6 @@ import {
   getNodeType,
   initArena,
   resetGeneration,
-  rollbackMemory,
   S,
   setFirstChild,
   setNextSibling,
@@ -43,7 +41,9 @@ import {
   prod_lhs as _prod_lhs,
   token_insert_costs as _token_insert_costs,
   currentScannerState,
+  initExtras,
   inputLength,
+  is_extra_token,
   lex,
   lexLen,
   lexPos,
@@ -615,6 +615,7 @@ export function getLoopIterations(): u32 {
 export function initCompiler(): void {
   const ARENA_SIZE = 96 * 1024 * 1024;
   initArena(ARENA_SIZE);
+  initExtras();
 }
 
 /**
@@ -741,6 +742,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     updateExpectedTokens();
     token = __LEX_FN__(pos);
+    while (is_extra_token[token]) {
+      pos += lexLen;
+      token = __LEX_FN__(pos);
+    }
     debugLog(8, 0, token, pos);
     initGlobalCursor(oldTree);
   }
@@ -767,7 +772,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     lastIterCount = iterGuard;
     let inputLen: u32 = inputLength;
     let loopLimit: u32 = inputLen * LOOP_MULTIPLIER_LIMIT;
-    if (loopLimit < MIN_LOOP_LIMIT) loopLimit = MIN_LOOP_LIMIT;
+    if (loopLimit < (MIN_LOOP_LIMIT as u32)) loopLimit = MIN_LOOP_LIMIT as u32;
     if (iterGuard++ > loopLimit) {
       if (activeHeadsCount > 0) {
         bestDyingHead = load<u32>(t_activeHeads + 0 * 4);
@@ -852,6 +857,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     } else {
       updateExpectedTokens();
       token = __LEX_FN__(pos);
+      while (is_extra_token[token]) {
+        head.pendingPadding += lexLen;
+        pos += lexLen;
+        token = __LEX_FN__(pos);
+      }
       debugLog(8, 0, token, pos);
       if (tokenBufferReadIdx < tokenBufferWriteIdx) {
         token = load<i32>(t_tokenBufferArena + tokenBufferReadIdx * 4);
@@ -972,6 +982,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(head));
         pos = newPos;
         token = __LEX_FN__(pos);
+        while (is_extra_token[token]) {
+          head.pendingPadding += lexLen;
+          pos += lexLen;
+          token = __LEX_FN__(pos);
+        }
         debugLog(8, currentState, token, pos);
         continue; // Yield to the next GSS iteration
       } else if (nextState != -1) {
@@ -1002,6 +1017,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(head));
         pos = newPos;
         token = __LEX_FN__(pos);
+        while (is_extra_token[token]) {
+          head.pendingPadding += lexLen;
+          pos += lexLen;
+          token = __LEX_FN__(pos);
+        }
         debugLog(8, currentState, token, pos);
         continue; // Yield to the next GSS iteration
       }
@@ -1505,7 +1525,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 }
               }
               if (nextState != -1 && nextState != 1) {
-                checkpointMemory();
                 let redHead = allocParseHead(
                   nextState,
                   parentNode,
@@ -1543,8 +1562,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     debugLog(3, nextState, head.errorCost + 1, head.pos);
                   }
                   reduced = true;
-                } else {
-                  rollbackMemory();
                 }
               }
             }
@@ -1713,7 +1730,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     let insCost = baseCost + debt;
 
                     // Allocate virtual zero-length leaf
-                    checkpointMemory();
                     let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
                     let insHead = allocParseHead(
                       target,
@@ -1733,8 +1749,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     if (stateCanAccept(insHead, target, token, 0)) {
                       store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(insHead));
                       activeHeadsCount++;
-                    } else {
-                      rollbackMemory();
                     }
                   }
                 }
@@ -1987,6 +2001,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         else setNextSibling(lastTokNode, tNode);
         lastTokNode = tNode;
 
+        reportError(lexPos, lexPos + tLen);
+
         p = lexPos + tLen;
       }
 
@@ -2105,7 +2121,7 @@ export function getListDepth(node: u32, listSym: u16): u32 {
   let curr = node;
   while (getNodeType(curr) == listSym && (getNodeFlags(curr) & FLAG_IS_LIST) != 0) {
     depth++;
-    if (depth > MAX_AST_TRAVERSAL_DEPTH) return depth; // Safety cap for corrupted trees
+    if (depth > (MAX_AST_TRAVERSAL_DEPTH as u32)) return depth; // Safety cap for corrupted trees
     let child = getNodeFirstChild(curr);
     if (child == 0) return depth;
     curr = child;

@@ -226,7 +226,8 @@ export interface Diagnostic {
   severity: number;
 }
 
-export const SYNTAX_NAMES: string[] = __SYNTAX_NAMES_LITERAL__;
+declare const __SYNTAX_NAMES_LITERAL__: string[];
+export const SYNTAX_NAMES: string[] = typeof __SYNTAX_NAMES_LITERAL__ !== "undefined" ? __SYNTAX_NAMES_LITERAL__ : [];
 
 export class LspFacade {
   private syntaxNames: string[] = SYNTAX_NAMES;
@@ -344,6 +345,21 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
 
+    // Fetch precise error byte boundaries from the WASM diagnostic pipeline
+    const errorRanges: { start: number; end: number }[] = [];
+    if (this.exports.lsp_getDiagnostics && this.exports.lsp_getBinaryBuffer) {
+      const numElements = this.exports.lsp_getDiagnostics(astRoot);
+      const dirPtr = this.exports.lsp_getBinaryBuffer();
+      for (let i = 0; i < numElements; i += 3) {
+        errorRanges.push({
+          start: mem32[(dirPtr >> 2) + i],
+          end: mem32[(dirPtr >> 2) + i + 1],
+        });
+      }
+    }
+
+    const printedErrors = new Set<string>();
+
     const toSExpr = (ptr: number, currentOffset: number, depth: number): { strs: string[]; nextOffset: number } => {
       if (depth > 100) return { strs: ["(...)"], nextOffset: currentOffset };
       if (!ptr) return { strs: [], nextOffset: currentOffset };
@@ -369,13 +385,28 @@ export class LspFacade {
       const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
 
       let childStrs: string[] = [];
+
+      if (shouldPrint && pad > 0) {
+        for (const err of errorRanges) {
+          if (err.start >= currentOffset && err.end <= startOffset) {
+            const key = `${err.start}-${err.end}`;
+            if (!printedErrors.has(key)) {
+              printedErrors.add(key);
+              const eStart = this.offsetToPos(err.start, lineStarts);
+              const eEnd = this.offsetToPos(err.end, lineStarts);
+              childStrs.push(`(ERROR [${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}])`);
+            }
+          }
+        }
+      }
+
       let childOffset = currentOffset;
       let childPtr = mem32[(ptr + 8) / 4];
       let visited = new Set<number>();
 
       while (childPtr) {
         if (visited.has(childPtr)) {
-          childStrs.push("\n" + indent + "  (CYCLE)");
+          childStrs.push("(CYCLE)");
           break;
         }
         visited.add(childPtr);
@@ -402,7 +433,138 @@ export class LspFacade {
       return { strs: [str + ")"], nextOffset: endOffset };
     };
 
-    return toSExpr(astRoot, 0, 0).strs[0] || "";
+    const rootResult = toSExpr(astRoot, 0, 0);
+    let str = rootResult.strs[0] || "";
+
+    // Append trailing errors that occur after the root node
+    for (const err of errorRanges) {
+      if (err.start >= rootResult.nextOffset) {
+        const key = `${err.start}-${err.end}`;
+        if (!printedErrors.has(key)) {
+          printedErrors.add(key);
+          const eStart = this.offsetToPos(err.start, lineStarts);
+          const eEnd = this.offsetToPos(err.end, lineStarts);
+          str += `\n(ERROR [${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}])`;
+        }
+      }
+    }
+
+    return str;
+  }
+
+  getAstHtml(astRoot: number): string {
+    if (!astRoot) return "";
+    const lineStarts = this.getLineStarts();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+
+    // Fetch precise error byte boundaries from the WASM diagnostic pipeline
+    const errorRanges: { start: number; end: number }[] = [];
+    if (this.exports.lsp_getDiagnostics && this.exports.lsp_getBinaryBuffer) {
+      const numElements = this.exports.lsp_getDiagnostics(astRoot);
+      const dirPtr = this.exports.lsp_getBinaryBuffer();
+      for (let i = 0; i < numElements; i += 3) {
+        errorRanges.push({
+          start: mem32[(dirPtr >> 2) + i],
+          end: mem32[(dirPtr >> 2) + i + 1],
+        });
+      }
+    }
+
+    const printedErrors = new Set<string>();
+
+    const toHtml = (ptr: number, currentOffset: number, depth: number): { strs: string[]; nextOffset: number } => {
+      if (depth > 100) return { strs: ["<div style='margin-left: 15px'>...</div>"], nextOffset: currentOffset };
+      if (!ptr) return { strs: [], nextOffset: currentOffset };
+
+      const typeFlags = mem32[ptr / 4];
+      const typeId = typeFlags & 0x03ff;
+      let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+      if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+
+      const envHashPadding = mem32[(ptr + 4) / 4];
+      const pad = typeFlags >>> 16;
+      const len = envHashPadding & 0x007fffff;
+
+      const startOffset = currentOffset + pad;
+      const endOffset = startOffset + len;
+
+      const startPos = this.offsetToPos(startOffset, lineStarts);
+      const endPos = this.offsetToPos(endOffset, lineStarts);
+
+      const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
+
+      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
+
+      let childStrs: string[] = [];
+
+      if (shouldPrint && pad > 0) {
+        for (const err of errorRanges) {
+          if (err.start >= currentOffset && err.end <= startOffset) {
+            const key = `${err.start}-${err.end}`;
+            if (!printedErrors.has(key)) {
+              printedErrors.add(key);
+              const eStart = this.offsetToPos(err.start, lineStarts);
+              const eEnd = this.offsetToPos(err.end, lineStarts);
+              childStrs.push(
+                `<div class="ast-error" style="margin-left: ${(depth + 1) * 20}px;" onclick="window.highlightNode(${eStart.line}, ${eStart.character}, ${eEnd.line}, ${eEnd.character})"><span class="hoverable-text">ERROR</span> <span style="color: #6e7781;">[${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}]</span></div>`,
+              );
+            }
+          }
+        }
+      }
+
+      let childOffset = currentOffset;
+      let childPtr = mem32[(ptr + 8) / 4];
+      let visited = new Set<number>();
+
+      while (childPtr) {
+        if (visited.has(childPtr)) {
+          childStrs.push(
+            `<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`,
+          );
+          break;
+        }
+        visited.add(childPtr);
+
+        const childResult = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
+        for (const s of childResult.strs) {
+          if (s) childStrs.push(s);
+        }
+        childOffset = childResult.nextOffset;
+
+        childPtr = mem32[(childPtr + 12) / 4];
+      }
+
+      if (!shouldPrint) {
+        return { strs: childStrs, nextOffset: endOffset };
+      }
+
+      let str = `<div class="ast-node" style="margin-left: ${depth * 20}px;" onclick="window.highlightNode(${startPos.line}, ${startPos.character}, ${endPos.line}, ${endPos.character})"><span class="hoverable-text">${typeName}</span> ${posStr}</div>`;
+      if (childStrs.length > 0) {
+        for (const cs of childStrs) {
+          str += cs;
+        }
+      }
+      return { strs: [str], nextOffset: endOffset };
+    };
+
+    const rootResult = toHtml(astRoot, 0, 0);
+    let str = rootResult.strs[0] || "";
+
+    // Append trailing errors that occur after the root node
+    for (const err of errorRanges) {
+      if (err.start >= rootResult.nextOffset) {
+        const key = `${err.start}-${err.end}`;
+        if (!printedErrors.has(key)) {
+          printedErrors.add(key);
+          const eStart = this.offsetToPos(err.start, lineStarts);
+          const eEnd = this.offsetToPos(err.end, lineStarts);
+          str += `<div class="ast-error" onclick="window.highlightNode(${eStart.line}, ${eStart.character}, ${eEnd.line}, ${eEnd.character})"><span class="hoverable-text">ERROR</span> <span style="color: #6e7781;">[${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}]</span></div>`;
+        }
+      }
+    }
+
+    return `<style>.ast-node, .ast-error { cursor: pointer; margin-top: 4px; display: block; width: fit-content; } .ast-node { color: #0969da; } .ast-error { color: #cf222e; } .ast-node:hover > .hoverable-text, .ast-error:hover > .hoverable-text { text-decoration: underline; }</style><div style="font-size: 15px; font-family: monospace; padding: 10px; line-height: 1.2;">${str}</div>`;
   }
 
   garbageCollect(rootToKeep: number): void {
