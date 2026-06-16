@@ -2,6 +2,7 @@
 
 import {
   atomicChunkAlloc,
+  FLAG_LSP_VISITED,
   getNodeByteLength,
   getNodeFirstChild,
   getNodeFlags,
@@ -31,14 +32,45 @@ export function lsp_getBinaryLength(): u32 {
   return lspBinaryLength;
 }
 
+import { debugLog } from "./engine";
+
 function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
+  debugLog(start, end, lintId, argPtr);
+  if (lspBinaryLength > 0 && lintId == 0) {
+    let lastLintId = load<u32>(t_lspBinaryBuffer + (lspBinaryLength - 1) * 4);
+    if (lastLintId == 0) {
+      let lastEnd = load<u32>(t_lspBinaryBuffer + (lspBinaryLength - 2) * 4);
+      let lastStart = load<u32>(t_lspBinaryBuffer + (lspBinaryLength - 3) * 4);
+      // Merge if adjacent or overlapping
+      if (start <= lastEnd) {
+        if (end > lastEnd) {
+          store<u32>(t_lspBinaryBuffer + (lspBinaryLength - 2) * 4, end);
+        }
+        if (start < lastStart) {
+          store<u32>(t_lspBinaryBuffer + (lspBinaryLength - 3) * 4, start);
+        }
+        return;
+      }
+    }
+  }
   if (lspBinaryLength + 3 > 500000) return;
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
 }
 
-import { __LEX_FN__, is_extra_token, lexLen, setLexLen } from "./parser";
+import {
+  __LEX_FN__,
+  currentScannerState,
+  is_extra_token,
+  lexLen,
+  lexPos,
+  setCurrentScannerState,
+  setLexLen,
+  setLexPos,
+  setSrcLexPos,
+  srcLexPos,
+} from "./parser";
 
 function scanPaddingForErrors(start: u32, padLen: u32): void {
   if (padLen == 0) return;
@@ -47,29 +79,50 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
   let errorStart: i32 = -1;
 
   let savedLexLen = lexLen;
+  let savedLexPos = lexPos;
+  let savedSrcLexPos = srcLexPos;
+  let savedScannerState = currentScannerState;
 
   while (p < end) {
     let token = __LEX_FN__(p);
+    let tokenStart = lexPos;
+    let tokenLen = lexLen > 0 ? lexLen : 2;
 
-    // Fallback if __LEX_FN__ somehow doesn't advance pos (infinite loop guard)
-    let advance = lexLen > 0 ? lexLen : 2;
+    // If the token starts exactly at or after our padding end, we are done
+    // and should only report skipped spaces before this token if any.
+    if (tokenStart >= end) {
+      if (errorStart != -1 && (p as i32) > errorStart) {
+        allocDiagnostic(errorStart as u32, p, 0, 0);
+      }
+      errorStart = -1;
+      break;
+    }
 
-    if (token == 0) break; // EOF
-
-    if (is_extra_token[token]) {
-      // It's a valid extra token (whitespace, comment, etc.)
+    // Check if lexer skipped any valid whitespace/comments BEFORE the token
+    if (tokenStart > p) {
       if (errorStart != -1) {
         allocDiagnostic(errorStart as u32, p, 0, 0);
         errorStart = -1;
       }
+    }
+
+    if (token == 0) break; // EOF
+
+    // Now consider the matched token
+    if (is_extra_token[token]) {
+      // Valid extra token
+      if (errorStart != -1) {
+        allocDiagnostic(errorStart as u32, tokenStart, 0, 0);
+        errorStart = -1;
+      }
     } else {
-      // It's NOT an extra! It's an error fragment in the padding!
+      // Invalid garbage inside padding!
       if (errorStart == -1) {
-        errorStart = p as i32;
+        errorStart = tokenStart as i32;
       }
     }
 
-    p += advance;
+    p = tokenStart + tokenLen;
   }
 
   if (errorStart != -1) {
@@ -77,14 +130,17 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
   }
 
   setLexLen(savedLexLen);
+  setLexPos(savedLexPos);
+  setSrcLexPos(savedSrcLexPos);
+  setCurrentScannerState(savedScannerState);
 }
 
 function lsp_clearVisited(): void {
   for (let i: u32 = 0; i < lspVisitedCount; i++) {
     let node = load<u32>(t_lspVisitedNodes + i * 4);
     let val = load<u32>(node, 0);
-    if ((val >> 10) & 0x3f & 8) {
-      store<u32>(node, val & ~(8 << 10), 0);
+    if (((val >> 10) & FLAG_LSP_VISITED) != 0) {
+      store<u32>(node, val & ~((<u32>FLAG_LSP_VISITED) << 10), 0);
     }
   }
   lspVisitedCount = 0;
@@ -148,7 +204,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         if (dEnd > 0) dStart = dEnd - 2;
         if (dStart < 0) dStart = 0;
       }
-      allocDiagnostic(dStart, dEnd, 0, 0);
+      allocDiagnostic(dStart, dEnd, type, 0);
     }
 
     if (firstChild == 0) {

@@ -33,7 +33,13 @@ export const Playground: CommandModule = {
         const browserJsPath = join(__dirname, "../../../../packages/language/dist/browser.js");
         res.end(existsSync(browserJsPath) ? readFileSync(browserJsPath) : "");
       } else if (urlPath?.startsWith("/node_modules/")) {
-        const filePath = join(__dirname, "../../../../node_modules", urlPath.slice(14));
+        const rootNodeModules = join(__dirname, "../../../../node_modules");
+        const cliNodeModules = join(__dirname, "../../node_modules");
+        let filePath = join(cliNodeModules, urlPath.slice(14));
+        if (!existsSync(filePath)) {
+          filePath = join(rootNodeModules, urlPath.slice(14));
+        }
+
         const ext = urlPath.split(".").pop()?.toLowerCase();
         const mimeTypes: Record<string, string> = {
           js: "application/javascript",
@@ -141,11 +147,15 @@ function getIndexHtml() {
         }
         body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"; background: var(--bg-color); color: var(--text-color); }
         #toolbar { padding: 12px 16px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 16px; }
-        #editors { display: flex; flex: 1; height: 100%; }
-        #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); }
-        #right-pane { flex: 1; display: flex; flex-direction: column; }
-        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); }
-        #ast-viewer { flex: 1; overflow: auto; padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre; font-size: 12px; }
+        #editors { display: flex; flex: 1; height: 100%; min-height: 0; min-width: 0; }
+        #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); min-width: 0; min-height: 0; }
+        #right-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; }
+        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+        #ast-viewer { flex: 1; overflow: auto; padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre; font-size: 12px; min-height: 0; }
+        
+        .ghost-node { opacity: 0.6; color: #d73a49; font-style: italic; }
+        .ghost-node::after { content: " (inserted)"; font-size: 10px; }
         
         .primer-btn {
             background-color: var(--btn-bg);
@@ -187,6 +197,10 @@ function getIndexHtml() {
             }
         }
     </style>
+    <!-- React and Babel -->
+    <script crossorigin src="/node_modules/react/umd/react.development.js"></script>
+    <script crossorigin src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+    <script src="/node_modules/@babel/standalone/babel.min.js"></script>
     <!-- Load Monaco Editor Locally -->
     <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
     <script type="module">
@@ -277,6 +291,11 @@ function getIndexHtml() {
                 theme: editorTheme
             });
 
+            window.addEventListener('resize', () => {
+                window.dslEditor.layout();
+                window.codeEditor.layout();
+            });
+
             const cacheBuster = Date.now();
             const compilerWorker = new Worker('/worker-compiler.js?v=' + cacheBuster, { type: 'module' });
             compilerWorker.onerror = (e) => {
@@ -298,6 +317,7 @@ function getIndexHtml() {
             compilerWorker.onmessage = (e) => {
                 if (e.data.type === 'success') {
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active.";
+                    window.syntaxNames = e.data.syntaxNames;
                     lspWorker.postMessage({ 
                         type: 'init', 
                         wasm: e.data.wasm, 
@@ -371,9 +391,10 @@ function getIndexHtml() {
                         }));
                         console.log("Client received diagnostics:", markers);
                         monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
-                    } else if (msg.type === 'astUpdate') {
-                        const viewer = document.getElementById('ast-viewer');
-                        if (viewer) viewer.innerHTML = msg.ast || "(Empty AST)";
+                    } else if (msg.type === 'statusUpdate') {
+                        document.getElementById('status').innerText = msg.message;
+                    } else if (msg.type === 'astPatch' || msg.type === 'astPatchBinary') {
+                        window.postMessage(msg, '*');
                     }
                 }
             }
@@ -381,6 +402,197 @@ function getIndexHtml() {
             // Start the client
             const languageClient = new SimpleMonacoLanguageClient(lspWorker, window.codeEditor);
         });
+    </script>
+
+    <script type="text/babel">
+        // React AST Viewer Component
+        const { useState, useEffect, useRef } = React;
+
+        function AstViewer() {
+            const [rootId, setRootId] = useState(0);
+            const [updateTick, setUpdateTick] = useState(0);
+            const [status, setStatus] = useState("(Waiting for compile...)");
+            const [renderLimit, setRenderLimit] = useState(150);
+            const [diagnostics, setDiagnostics] = useState([]);
+            const nodeMap = useRef(new Map());
+
+            const [currentGeneration, setCurrentGeneration] = useState(0);
+
+            const [lineStarts, setLineStarts] = useState([0]);
+
+            useEffect(() => {
+                const handleMessage = (e) => {
+                    const msg = e.data;
+                    if (msg.type === 'astPatchBinary') {
+                        if (msg.generationId !== undefined && msg.generationId > currentGeneration) {
+                            nodeMap.current.clear();
+                            setCurrentGeneration(msg.generationId);
+                        }
+
+                        let hasUpdates = false;
+                        if (msg.buffer && msg.buffer.byteLength > 0) {
+                            const ints = new Int32Array(msg.buffer);
+                            let i = 0;
+                            while (i < ints.length) {
+                                const op = ints[i++];
+                                const ptr = ints[i++];
+                                const typeId = ints[i++];
+                                const oldPtr = ints[i++];
+                                const pad = ints[i++];
+                                const len = ints[i++];
+                                const childCount = ints[i++];
+                                
+                                const children = [];
+                                for (let c = 0; c < childCount; c++) {
+                                    children.push(ints[i++]);
+                                }
+
+                                const typeName = typeId === 65535 ? "ERROR" : (window.syntaxNames ? window.syntaxNames[typeId] : "UNKNOWN");
+                                
+                                if (op === 1) { // INSERT
+                                    nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, children });
+                                    hasUpdates = true;
+                                } else if (op === 3) { // DELETE
+                                    nodeMap.current.delete(ptr);
+                                    hasUpdates = true;
+                                } else if (op === 2) { // UPDATE
+                                    const oldNode = nodeMap.current.get(oldPtr);
+                                    nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, children });
+                                    nodeMap.current.delete(oldPtr);
+                                    hasUpdates = true;
+                                }
+                            }
+                        }
+                        
+                        if (hasUpdates || msg.rootId !== rootId) {
+                            setRootId(msg.rootId);
+                            setUpdateTick(t => t + 1);
+                        }
+                        
+                        if (msg.lineStarts) {
+                            setLineStarts(msg.lineStarts);
+                        }
+                        
+                        if (msg.diagnostics) {
+                            setDiagnostics(msg.diagnostics);
+                        }
+                    } else if (msg.type === 'statusUpdate') {
+                        setStatus(msg.message);
+                    }
+                };
+                window.addEventListener('message', handleMessage);
+                return () => window.removeEventListener('message', handleMessage);
+            }, [rootId, currentGeneration]);
+
+            const handleScroll = (e) => {
+                const target = e.target;
+                if (target.scrollTop + target.clientHeight >= target.scrollHeight - 200) {
+                    setRenderLimit(prev => prev + 150);
+                }
+            };
+
+            const renderVirtualized = () => {
+                const flatNodes = [];
+                const visited = new Set();
+                
+                const flatten = (ptr, depth, parentOffset) => {
+                    if (flatNodes.length >= renderLimit) return parentOffset;
+                    if (visited.has(ptr)) {
+                        flatNodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
+                        return parentOffset;
+                    }
+                    visited.add(ptr);
+                    
+                    const node = nodeMap.current.get(ptr);
+                    if (!node) return parentOffset;
+                    
+                    const currentOffset = parentOffset + (node.pad || 0);
+                    const isError = node.typeName === "ERROR";
+                    const isGhost = node.len === 0 && !isError;
+                    
+                    flatNodes.push({ ...node, depth, isGhost, isError, currentOffset });
+                    
+                    let childOffset = currentOffset;
+                    for (const childPtr of node.children || []) {
+                        childOffset = flatten(childPtr, depth + 1, childOffset);
+                    }
+                    return currentOffset + (node.len || 0);
+                };
+                
+                if (rootId) flatten(rootId, 0, 0);
+                
+                const getLineCol = (offsetBytes) => {
+                    let low = 0, high = lineStarts.length - 1;
+                    while (low <= high) {
+                        const mid = (low + high) >> 1;
+                        if (lineStarts[mid] <= offsetBytes) low = mid + 1;
+                        else high = mid - 1;
+                    }
+                    const line = high;
+                    const colChars = Math.floor((offsetBytes - lineStarts[line]) / 2);
+                    return { line: line + 1, col: colChars + 1 };
+                };
+
+                const getPosStr = (offset, len) => {
+                    const startPos = getLineCol(offset);
+                    const endPos = getLineCol(offset + len);
+                    return "[" + startPos.line + ", " + startPos.col + "] - [" + endPos.line + ", " + endPos.col + "]";
+                };
+
+                const handleNodeClick = (offset, len) => {
+                    if (window.highlightNode) {
+                        const startPos = getLineCol(offset);
+                        const endPos = getLineCol(offset + len);
+                        window.highlightNode(startPos.line - 1, startPos.col - 1, endPos.line - 1, endPos.col - 1);
+                    }
+                };
+                
+                return (
+                    <>
+                        {flatNodes.map((node, i) => {
+                            if (node.isCycle) {
+                                return <div key={node.id + "_" + i} style={{ marginLeft: node.depth * 15, color: '#8c959f', marginTop: '4px' }}>CYCLE</div>;
+                            }
+                            
+                            let className = "ast-node";
+                            if (node.isGhost) className += " ghost-node";
+                            if (node.isError) className += " ast-error";
+                            
+                            return (
+                                <div key={node.id} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
+                                    <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#d2a8ff' }}>{node.typeName}</span>
+                                    <span style={{ color: '#8b949e', marginLeft: '5px' }}>
+                                        {getPosStr(node.currentOffset, node.len)}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                        {diagnostics.map((diag, i) => (
+                            <div key={"diag-" + i} className="ast-error" style={{ cursor: 'pointer', marginTop: '4px' }} onClick={() => {
+                                if (window.highlightNode) {
+                                    window.highlightNode(diag.range.start.line, diag.range.start.character, diag.range.end.line, diag.range.end.character);
+                                }
+                            }}>
+                                <span className="hoverable-text" style={{ color: '#d73a49' }}>ERROR</span>
+                                <span style={{ color: '#8b949e', marginLeft: '5px' }}>
+                                    {"[" + (diag.range.start.line + 1) + ", " + (diag.range.start.character + 1) + "] - [" + (diag.range.end.line + 1) + ", " + (diag.range.end.character + 1) + "]"}
+                                </span>
+                            </div>
+                        ))}
+                    </>
+                );
+            };
+
+            return (
+                <div id="ast-viewer" style={{ padding: '10px', overflow: 'auto', flex: 1 }} onScroll={handleScroll}>
+                    {rootId === 0 ? status : renderVirtualized()}
+                </div>
+            );
+        }
+
+        // Render React Tree
+        const root = ReactDOM.createRoot(document.getElementById('react-ast-root'));
+        root.render(<AstViewer />);
     </script>
 </head>
 <body>
@@ -401,7 +613,7 @@ function getIndexHtml() {
         <div id="dsl-editor"></div>
         <div id="right-pane">
             <div id="code-editor"></div>
-            <div id="ast-viewer">(Waiting for compile...)</div>
+            <div id="react-ast-root"></div>
         </div>
     </div>
 </body>
@@ -410,7 +622,7 @@ function getIndexHtml() {
 
 function getCompilerWorkerJs() {
   return `
-import * as Language from '/browser.js';
+import * as Language from '/browser.js?v=${Date.now()}';
 import asc from '/asc.js';
 
 console.log("Compiler Worker started", Language);
@@ -480,7 +692,7 @@ self.onmessage = async (e) => {
                 type: 'success', 
                 wasm: vfs['parser.wasm'], 
                 jsWrapper: result.javascriptWrapper.js,
-                syntaxNames: result.parserInfo.terminals.concat(result.parserInfo.nonTerminals)
+                syntaxNames: result.javascriptWrapper.syntaxNames
             });
         } catch (err) {
             self.postMessage({ type: 'error', error: err.message });
@@ -496,41 +708,66 @@ function getLspWorkerJs() {
 console.log("LSP Worker started");
 
 let lspFacade = null;
-let latestText = undefined;
 let latestUri = undefined;
+let currentTextLength = 0;
+let currentGenerationId = 0;
+
+let patchBuffer = new ArrayBuffer(1024 * 1024 * 2);
+let patchInt32 = new Int32Array(patchBuffer);
+let patchOffset = 0;
+
+function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
+    if (patchOffset + 10 + (children ? children.length : 0) > patchInt32.length) {
+        const old = patchInt32;
+        patchBuffer = new ArrayBuffer(patchBuffer.byteLength * 2);
+        patchInt32 = new Int32Array(patchBuffer);
+        patchInt32.set(old);
+    }
+    patchInt32[patchOffset++] = op;
+    patchInt32[patchOffset++] = ptr;
+    patchInt32[patchOffset++] = typeId || 0;
+    patchInt32[patchOffset++] = oldPtr || 0;
+    patchInt32[patchOffset++] = pad || 0;
+    patchInt32[patchOffset++] = len || 0;
+    patchInt32[patchOffset++] = children ? children.length : 0;
+    if (children) {
+        for (let i = 0; i < children.length; i++) {
+            patchInt32[patchOffset++] = children[i];
+        }
+    }
+}
 
 function triggerDiagnostics(changes = null) {
-    if (latestText !== undefined && latestUri && lspFacade) {
-        let editStartByte = 0;
-        let editOldEndByte = 0;
-        let editNewEndByte = 0;
-
-        if (changes && changes.length === 1 && changes[0].rangeOffset !== undefined) {
-            const change = changes[0];
-            // JS strings are UTF-16 code units. The WASM lexer reads UTF-16LE bytes directly.
-            // So we simply multiply JS character indices by 2 to get the exact byte offsets!
-            editStartByte = change.rangeOffset * 2;
-            editOldEndByte = (change.rangeOffset + change.rangeLength) * 2;
-            editNewEndByte = editStartByte + change.text.length * 2;
-            
-            latestText = latestText.substring(0, change.rangeOffset) + change.text + latestText.substring(change.rangeOffset + change.rangeLength);
-        } else if (changes && changes.length > 0) {
-            for (const change of changes) {
-                if (change.rangeOffset !== undefined) {
-                    latestText = latestText.substring(0, change.rangeOffset) + change.text + latestText.substring(change.rangeOffset + change.rangeLength);
-                } else {
-                    latestText = change.text;
-                }
+    if (latestUri && lspFacade && changes && changes.length > 0) {
+        let astRoot = 0;
+        
+        for (const change of changes) {
+            if (change.rangeOffset !== undefined) {
+                const newTotalLength = currentTextLength - change.rangeLength + change.text.length;
+                astRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
+                currentTextLength = newTotalLength;
+            } else {
+                currentTextLength = change.text.length;
+                currentGenerationId++;
+                astRoot = lspFacade.parseIncremental(change.text, 0, currentTextLength, currentTextLength);
             }
         }
-
-        const astRoot = lspFacade.parse(latestText, editStartByte, editOldEndByte, editNewEndByte);
-        
-        const astString = lspFacade.getAstHtml(astRoot);
-        self.postMessage({ type: 'astUpdate', ast: astString });
         
         const rawDiags = lspFacade.getDiagnostics(astRoot);
-        console.log("RAW DIAGS:", JSON.stringify(rawDiags, null, 2));
+        const lineStarts = lspFacade.getLineStarts();
+        
+        const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
+        patchOffset = 0; // reset for next parse
+        
+        self.postMessage({ 
+            type: 'astPatchBinary', 
+            buffer: transferBuffer, 
+            rootId: astRoot, 
+            diagnostics: rawDiags,
+            lineStarts: lineStarts,
+            generationId: currentGenerationId
+        }, [transferBuffer]);
+        
         const diagnostics = rawDiags.map(d => ({
             severity: d.severity,
             range: d.range,
@@ -538,7 +775,6 @@ function triggerDiagnostics(changes = null) {
             source: 'ModelScript DSL'
         }));
         
-        console.log("Publishing diagnostics for", latestUri, diagnostics);
         self.postMessage({
             jsonrpc: '2.0',
             method: 'textDocument/publishDiagnostics',
@@ -593,15 +829,21 @@ self.addEventListener('message', async (e) => {
             
             const { instance } = await WebAssembly.instantiate(wasm, imports);
             
-            if (instance.exports.initCompiler) {
-                instance.exports.initCompiler();
-            }
+            // initCompiler is called by LspFacade constructor; do NOT call it here
             
             const blob = new Blob([jsWrapper], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const { LspFacade } = await import(url);
             
             lspFacade = new LspFacade(memory, instance.exports);
+            
+            lspFacade.addAstChangeListener({
+                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),
+                onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, null),
+                onNodeRetained: (ptr) => {},
+                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children)
+            });
+
             console.log("LspFacade successfully loaded inside worker.");
             triggerDiagnostics();
         } catch(err) {
@@ -619,8 +861,11 @@ self.addEventListener('message', async (e) => {
         if (uri) latestUri = uri;
         
         if (e.data.method === 'textDocument/didOpen') {
-            latestText = params.textDocument?.text || params.contentChanges?.[0]?.text;
-            triggerDiagnostics();
+            const fullText = params.textDocument?.text || params.contentChanges?.[0]?.text;
+            if (lspFacade && lspFacade.resetParser) {
+                lspFacade.resetParser();
+            }
+            triggerDiagnostics([{ text: fullText }]);
         } else {
             triggerDiagnostics(params.contentChanges);
         }

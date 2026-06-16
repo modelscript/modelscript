@@ -1,7 +1,10 @@
 import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../../build/src-gen/runtime-templates.js";
 import { NormalizedGrammar } from "../../grammar.js";
 
-export function generateJavaScriptWrapper(grammarDef: any, normalized: NormalizedGrammar): { js: string; dts: string } {
+export function generateJavaScriptWrapper(
+  grammarDef: any,
+  normalized: NormalizedGrammar,
+): { js: string; dts: string; syntaxNames: string[] } {
   const langName = grammarDef.name;
 
   // Create an array mapping from symbol ID to symbol Name (like the C enum)
@@ -29,5 +32,5 @@ export function generateJavaScriptWrapper(grammarDef: any, normalized: Normalize
     .replace(/"__SYNTAX_NAMES_LITERAL__"/g, syntaxNamesStr)
     .replace(/__SYNTAX_NAMES_LITERAL__/g, syntaxNamesStr);
 
-  return { js, dts };
+  return { js, dts, syntaxNames };
 }

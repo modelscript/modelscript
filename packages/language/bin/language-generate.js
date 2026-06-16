@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 import fs from "fs";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
-import { compileAssemblyScript, compileLanguage } from "../src/api.js";
+import { pathToFileURL } from "url";
+import { buildParser } from "../src/api.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -26,7 +26,7 @@ async function main() {
     process.exit(1);
   }
 
-  const result = compileLanguage(languageDef);
+  const result = buildParser(languageDef);
 
   const absoluteOutDir = path.resolve(process.cwd(), outDir);
   if (!fs.existsSync(absoluteOutDir)) {
@@ -34,21 +34,17 @@ async function main() {
   }
 
   const outputPath = path.join(absoluteOutDir, "parser.json");
-  fs.writeFileSync(outputPath, JSON.stringify(result, null, 2));
+  fs.writeFileSync(outputPath, JSON.stringify(result.parserInfo, null, 2));
 
-  // Generate AssemblyScript parser
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const templatePath = path.resolve(__dirname, "../src/templates/parser.as.template");
-  const templateStr = fs.readFileSync(templatePath, "utf-8");
+  // Generate AssemblyScript files
+  for (const file of result.assemblyScriptFiles) {
+    fs.writeFileSync(path.join(absoluteOutDir, file.filename), file.content);
+  }
 
-  const asCode = compileAssemblyScript(languageDef, templateStr);
-  const asOutputPath = path.join(absoluteOutDir, "parser.ts");
-  fs.writeFileSync(asOutputPath, asCode);
-
-  console.log(`=== ${result.name} Parser Generated ===`);
-  console.log(`Generated ${result.statesCount} GLR states`);
+  console.log(`=== ${result.parserInfo.name} Parser Generated ===`);
+  console.log(`Generated ${result.parserInfo.statesCount} GLR states`);
   console.log(`JSON written to: ${outputPath}`);
-  console.log(`AssemblyScript written to: ${asOutputPath}`);
+  console.log(`AssemblyScript files written to: ${absoluteOutDir}`);
 }
 
 main().catch((err) => {

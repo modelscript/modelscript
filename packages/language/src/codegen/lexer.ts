@@ -69,10 +69,10 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     }
   }
 
-  let lexerCode = `// DFA Lexer State Machine\n`;
-  lexerCode += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns
+  let lexerGlobals = `// DFA Lexer State Machine\n`;
+  lexerGlobals += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns\n\n`;
 
-`;
+  let lexerCode = ``;
 
   // Generate extras map
   lexerCode += `\nexport const is_extra_token = new StaticArray<u8>(2048);\n`;
@@ -159,12 +159,15 @@ function peekCharLen(pos: u32): u32 {
 export function setLexLen(val: u32): void { lexLen = val; }
 `;
   lexerCode += `export let lexPos: u32 = 0;
+export function setLexPos(val: u32): void { lexPos = val; }
 `;
   lexerCode += `export let srcLexLen: u32 = 0;
 `;
   lexerCode += `export let srcLexPos: u32 = 0;
+export function setSrcLexPos(val: u32): void { srcLexPos = val; }
 `;
   lexerCode += `export let currentScannerState: u32 = 0; // Semantic Lexer Hack State
+export function setCurrentScannerState(val: u32): void { currentScannerState = val; }
 
 `;
 
@@ -421,12 +424,12 @@ export function setLexLen(val: u32): void { lexLen = val; }
     lexerCode += `  let lastAcceptingState = -1;\n`;
     lexerCode += `  let lastAcceptingLen = 0;\n`;
 
-    lexerCode += `  // DFA Transitions\n`;
-    // Ignore typescript warnings here for any casting
-    lexerCode += `  const classRangesS: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.s).join(",")}];\n`;
-    lexerCode += `  const classRangesE: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.e).join(",")}];\n`;
-    lexerCode += `  const classRangesC: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.c).join(",")}];\n`;
-    lexerCode += `  const dfaTable: StaticArray<i32> = [${dfa.table.join(",")}];\n`;
+    lexerGlobals += `  // DFA Transitions\n`;
+    lexerGlobals += `  const classRangesS: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.s).join(",")}];\n`;
+    lexerGlobals += `  const classRangesE: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.e).join(",")}];\n`;
+    lexerGlobals += `  const classRangesC: StaticArray<i32> = [${(dfa as any).classRanges.map((r: any) => r.c).join(",")}];\n`;
+    lexerGlobals += `  const dfaTable: StaticArray<i32> = [${dfa.table.join(",")}];\n`;
+
     lexerCode += `  let nextState = -1;\n`;
     lexerCode += `  while (lexPos + dfaLexLen < inputLength) {\n`;
     lexerCode += `    let c: i32 = peekChar(lexPos + dfaLexLen);\n`;
@@ -647,5 +650,5 @@ export function peekToken(pos: u32): i32 {
 }
 `;
 
-  return lexerCode;
+  return lexerGlobals + lexerCode;
 }

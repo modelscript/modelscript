@@ -229,6 +229,21 @@ export interface Diagnostic {
 declare const __SYNTAX_NAMES_LITERAL__: string[];
 export const SYNTAX_NAMES: string[] = typeof __SYNTAX_NAMES_LITERAL__ !== "undefined" ? __SYNTAX_NAMES_LITERAL__ : [];
 
+export interface AstChangeListener {
+  onNodeRetained(ptr: number): void;
+  onNodeInserted(ptr: number, typeId: number, typeName: string, pad: number, len: number, children: number[]): void;
+  onNodeDeleted(ptr: number): void;
+  onNodeUpdated(
+    newPtr: number,
+    oldPtr: number,
+    typeId: number,
+    typeName: string,
+    pad: number,
+    len: number,
+    children: number[],
+  ): void;
+}
+
 export class LspFacade {
   private syntaxNames: string[] = SYNTAX_NAMES;
   private wasmMemory: WebAssembly.Memory;
@@ -249,27 +264,71 @@ export class LspFacade {
     }
   }
 
-  parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
-    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
-    const textPtr = this.exports.getInputBuffer();
-    const lenBytes = text.length * 2;
-
-    const memArray16 = new Uint16Array(text.length);
-    for (let i = 0; i < text.length; i++) {
-      memArray16[i] = text.charCodeAt(i);
+  resetParser(): void {
+    if (this.exports.resetParser) {
+      this.exports.resetParser();
     }
-    const memArray8 = new Uint8Array(this.wasmMemory.buffer);
-    memArray8.set(new Uint8Array(memArray16.buffer), textPtr);
+    this.lastAstRoot = 0;
+  }
 
-    if (this.exports.setInputEncoding) this.exports.setInputEncoding(1); // 1 = UTF-16LE
+  parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
+    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+
+    const lenBytes = newTotalLength * 2;
+    const oldTotalLength = newTotalLength + rangeLength - changeText.length;
+
+    const oldTextPtr = this.exports.getInputBuffer();
+    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : oldTextPtr;
+
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, newTotalLength);
+
+    // If the buffer was reallocated, we MUST copy the old text into the new buffer first
+    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
+      const oldMemArray16 = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
+      memArray16.set(oldMemArray16.subarray(0, oldTotalLength));
+    }
+
+    if (changeText.length !== rangeLength) {
+      const sourceIndex = rangeOffset + rangeLength;
+      const targetIndex = rangeOffset + changeText.length;
+      const count = newTotalLength - targetIndex;
+      if (count > 0) {
+        memArray16.copyWithin(targetIndex, sourceIndex, sourceIndex + count);
+      }
+    }
+
+    for (let i = 0; i < changeText.length; i++) {
+      memArray16[rangeOffset + i] = changeText.charCodeAt(i);
+    }
+
+    if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+
+    let editStart = rangeOffset * 2;
+    let editOldEnd = (rangeOffset + rangeLength) * 2;
+    let editNewEnd = (rangeOffset + changeText.length) * 2;
 
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = lenBytes;
       this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed
     }
 
-    this.lastAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+
+    if (this.astListeners && this.astListeners.length > 0) {
+      if (this.lastAstRoot !== 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
+        }
+      } else if (newAstRoot !== 0) {
+        // First parse: no old tree to diff against, so emit full insertion
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(0, newAstRoot, listener);
+        }
+      }
+    }
+
+    this.lastAstRoot = newAstRoot;
 
     if (this.exports.clearAstMarks) {
       this.exports.clearAstMarks(this.lastAstRoot);
@@ -278,7 +337,7 @@ export class LspFacade {
     return this.lastAstRoot;
   }
 
-  private getLineStarts(): number[] {
+  public getLineStarts(): number[] {
     const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
     const lenChars = lenBytes / 2;
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
@@ -325,7 +384,16 @@ export class LspFacade {
       const startByte = memory[(dirPtr >> 2) + i];
       const endByte = memory[(dirPtr >> 2) + i + 1];
 
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+
       let msg = "Syntax Error";
+      if (lintId > 0 && lintId < this.syntaxNames.length) {
+        let name = this.syntaxNames[lintId];
+        if (name.startsWith('"') && name.endsWith('"')) {
+          name = name.slice(1, -1);
+        }
+        msg = `Expected '${name}'`;
+      }
 
       diags.push({
         range: {
@@ -370,7 +438,9 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const pad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 16;
+      const isFat = (envHashPadding >>> 23) & 1;
+      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
       const startOffset = currentOffset + pad;
@@ -452,12 +522,11 @@ export class LspFacade {
     return str;
   }
 
-  getAstHtml(astRoot: number): string {
-    if (!astRoot) return "";
+  getAstHtml(astRoot: number): string[] {
+    if (!astRoot) return [];
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
 
-    // Fetch precise error byte boundaries from the WASM diagnostic pipeline
     const errorRanges: { start: number; end: number }[] = [];
     if (this.exports.lsp_getDiagnostics && this.exports.lsp_getBinaryBuffer) {
       const numElements = this.exports.lsp_getDiagnostics(astRoot);
@@ -471,10 +540,29 @@ export class LspFacade {
     }
 
     const printedErrors = new Set<string>();
+    const lines: string[] = [];
 
-    const toHtml = (ptr: number, currentOffset: number, depth: number): { strs: string[]; nextOffset: number } => {
-      if (depth > 100) return { strs: ["<div style='margin-left: 15px'>...</div>"], nextOffset: currentOffset };
-      if (!ptr) return { strs: [], nextOffset: currentOffset };
+    lines.push(
+      `<style>.ast-node, .ast-error { cursor: pointer; margin-top: 4px; display: block; width: fit-content; } .ast-node { color: #0969da; } .ast-error { color: #cf222e; } .ast-node:hover > .hoverable-text, .ast-error:hover > .hoverable-text { text-decoration: underline; }</style>`,
+    );
+
+    const toHtml = (ptr: number, currentOffset: number, depth: number): number => {
+      if (lines.length > 5000) {
+        if (
+          lines[lines.length - 1] !==
+          "<div style='margin-left: 15px; color: #cf222e;'>... AST Truncated (exceeded 5000 elements) ...</div>"
+        ) {
+          lines.push(
+            "<div style='margin-left: 15px; color: #cf222e;'>... AST Truncated (exceeded 5000 elements) ...</div>",
+          );
+        }
+        return currentOffset;
+      }
+      if (depth > 100) {
+        lines.push("<div style='margin-left: 15px'>...</div>");
+        return currentOffset;
+      }
+      if (!ptr) return currentOffset;
 
       const typeFlags = mem32[ptr / 4];
       const typeId = typeFlags & 0x03ff;
@@ -482,7 +570,9 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const pad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 16;
+      const isFat = (envHashPadding >>> 23) & 1;
+      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
       const startOffset = currentOffset + pad;
@@ -495,17 +585,18 @@ export class LspFacade {
 
       const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
 
-      let childStrs: string[] = [];
+      let renderedChildren = 0;
 
       if (shouldPrint && pad > 0) {
         for (const err of errorRanges) {
+          if (err.start > startOffset) break;
           if (err.start >= currentOffset && err.end <= startOffset) {
             const key = `${err.start}-${err.end}`;
             if (!printedErrors.has(key)) {
               printedErrors.add(key);
               const eStart = this.offsetToPos(err.start, lineStarts);
               const eEnd = this.offsetToPos(err.end, lineStarts);
-              childStrs.push(
+              lines.push(
                 `<div class="ast-error" style="margin-left: ${(depth + 1) * 20}px;" onclick="window.highlightNode(${eStart.line}, ${eStart.character}, ${eEnd.line}, ${eEnd.character})"><span class="hoverable-text">ERROR</span> <span style="color: #6e7781;">[${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}]</span></div>`,
               );
             }
@@ -517,59 +608,213 @@ export class LspFacade {
       let childPtr = mem32[(ptr + 8) / 4];
       let visited = new Set<number>();
 
+      let nodeIndex = -1;
+      if (shouldPrint) {
+        const isGhost = len === 0 && typeName !== "ERROR";
+        const nodeClass = isGhost ? "ast-node ghost-node" : "ast-node";
+        nodeIndex = lines.length;
+        lines.push(
+          `<div class="${nodeClass}" style="margin-left: ${depth * 20}px;" onclick="window.highlightNode(${startPos.line}, ${startPos.character}, ${endPos.line}, ${endPos.character})"><span class="hoverable-text">${typeName}</span> ${posStr}</div>`,
+        );
+      }
+
       while (childPtr) {
         if (visited.has(childPtr)) {
-          childStrs.push(
-            `<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`,
-          );
+          if (shouldPrint) {
+            lines.push(`<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`);
+          }
           break;
         }
         visited.add(childPtr);
-
-        const childResult = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
-        for (const s of childResult.strs) {
-          if (s) childStrs.push(s);
-        }
-        childOffset = childResult.nextOffset;
-
+        childOffset = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
+        renderedChildren++;
         childPtr = mem32[(childPtr + 12) / 4];
       }
 
-      if (!shouldPrint) {
-        return { strs: childStrs, nextOffset: endOffset };
+      if (shouldPrint && nodeIndex !== -1 && len === 0 && renderedChildren === 0 && typeName !== "ERROR") {
+        // Retrospectively add ghost-node class if it ended up having no children
+        lines[nodeIndex] = lines[nodeIndex].replace('"ast-node"', '"ast-node ghost-node"');
       }
 
-      let str = `<div class="ast-node" style="margin-left: ${depth * 20}px;" onclick="window.highlightNode(${startPos.line}, ${startPos.character}, ${endPos.line}, ${endPos.character})"><span class="hoverable-text">${typeName}</span> ${posStr}</div>`;
-      if (childStrs.length > 0) {
-        for (const cs of childStrs) {
-          str += cs;
-        }
-      }
-      return { strs: [str], nextOffset: endOffset };
+      return endOffset;
     };
 
-    const rootResult = toHtml(astRoot, 0, 0);
-    let str = rootResult.strs[0] || "";
+    const nextOffset = toHtml(astRoot, 0, 0);
 
-    // Append trailing errors that occur after the root node
     for (const err of errorRanges) {
-      if (err.start >= rootResult.nextOffset) {
+      if (lines.length > 5000) break;
+      if (err.start >= nextOffset) {
         const key = `${err.start}-${err.end}`;
         if (!printedErrors.has(key)) {
           printedErrors.add(key);
           const eStart = this.offsetToPos(err.start, lineStarts);
           const eEnd = this.offsetToPos(err.end, lineStarts);
-          str += `<div class="ast-error" onclick="window.highlightNode(${eStart.line}, ${eStart.character}, ${eEnd.line}, ${eEnd.character})"><span class="hoverable-text">ERROR</span> <span style="color: #6e7781;">[${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}]</span></div>`;
+          lines.push(
+            `<div class="ast-error" onclick="window.highlightNode(${eStart.line}, ${eStart.character}, ${eEnd.line}, ${eEnd.character})"><span class="hoverable-text">ERROR</span> <span style="color: #6e7781;">[${eStart.line}, ${eStart.character}] - [${eEnd.line}, ${eEnd.character}]</span></div>`,
+          );
+        }
+      }
+    }
+    return lines;
+  }
+
+  private astListeners: AstChangeListener[] = [];
+
+  addAstChangeListener(listener: AstChangeListener): void {
+    this.astListeners.push(listener);
+  }
+
+  parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
+    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    const lenBytes = text.length * 2;
+    const textPtr = this.exports.ensureInputBuffer
+      ? this.exports.ensureInputBuffer(lenBytes)
+      : this.exports.getInputBuffer();
+
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, text.length);
+    for (let i = 0; i < text.length; i++) {
+      memArray16[i] = text.charCodeAt(i);
+    }
+
+    if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
+    if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+
+    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
+      editNewEnd = lenBytes;
+      this.lastAstRoot = 0;
+    }
+
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+
+    if (this.astListeners.length > 0) {
+      if (this.lastAstRoot !== 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
+        }
+      } else if (newAstRoot !== 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(0, newAstRoot, listener);
         }
       }
     }
 
-    return `<style>.ast-node, .ast-error { cursor: pointer; margin-top: 4px; display: block; width: fit-content; } .ast-node { color: #0969da; } .ast-error { color: #cf222e; } .ast-node:hover > .hoverable-text, .ast-error:hover > .hoverable-text { text-decoration: underline; }</style><div style="font-size: 15px; font-family: monospace; padding: 10px; line-height: 1.2;">${str}</div>`;
+    this.lastAstRoot = newAstRoot;
+
+    if (this.exports.clearAstMarks) {
+      this.exports.clearAstMarks(this.lastAstRoot);
+    }
+
+    return this.lastAstRoot;
   }
 
-  garbageCollect(rootToKeep: number): void {
-    if (this.exports.clearAstMarks) {
-      this.exports.clearAstMarks(rootToKeep);
-    }
+  walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+
+    const getChildren = (ptr: number): number[] => {
+      const children: number[] = [];
+      if (!ptr) return children;
+      let childPtr = mem32[(ptr + 8) / 4];
+      let visited = new Set<number>();
+      while (childPtr) {
+        if (visited.has(childPtr)) break;
+        visited.add(childPtr);
+        children.push(childPtr);
+        childPtr = mem32[(childPtr + 12) / 4];
+      }
+      return children;
+    };
+
+    const buildInsertions = (ptr: number): void => {
+      if (!ptr) return;
+      const typeFlags = mem32[ptr / 4];
+      const typeId = typeFlags & 0x03ff;
+      let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+      if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+      const envHashPadding = mem32[(ptr + 4) / 4];
+      const rawPad = typeFlags >>> 16;
+      const isFat = (envHashPadding >>> 23) & 1;
+      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+      const len = envHashPadding & 0x007fffff;
+
+      const children = getChildren(ptr);
+      listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
+
+      for (const child of children) {
+        buildInsertions(child);
+      }
+    };
+
+    const buildDeletions = (ptr: number): void => {
+      if (!ptr) return;
+      listener.onNodeDeleted(ptr);
+      const children = getChildren(ptr);
+      for (const child of children) {
+        buildDeletions(child);
+      }
+    };
+
+    const diffNodes = (oldPtr: number, newPtr: number): void => {
+      if (oldPtr === newPtr) {
+        listener.onNodeRetained(newPtr);
+        return;
+      }
+      if (!oldPtr) {
+        buildInsertions(newPtr);
+        return;
+      }
+      if (!newPtr) {
+        buildDeletions(oldPtr);
+        return;
+      }
+
+      const oldTypeId = mem32[oldPtr / 4] & 0x03ff;
+      const newTypeId = mem32[newPtr / 4] & 0x03ff;
+
+      if (oldTypeId !== newTypeId) {
+        buildDeletions(oldPtr);
+        buildInsertions(newPtr);
+        return;
+      }
+
+      const typeFlags = mem32[newPtr / 4];
+      let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
+      if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+      const envHashPadding = mem32[(newPtr + 4) / 4];
+      const pad = typeFlags >>> 16;
+      const len = envHashPadding & 0x007fffff;
+
+      const oldCh = getChildren(oldPtr);
+      const newCh = getChildren(newPtr);
+
+      listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, newCh);
+
+      let start = 0;
+      while (start < oldCh.length && start < newCh.length && oldCh[start] === newCh[start]) {
+        listener.onNodeRetained(newCh[start]);
+        start++;
+      }
+
+      let oldEnd = oldCh.length - 1;
+      let newEnd = newCh.length - 1;
+      while (oldEnd >= start && newEnd >= start && oldCh[oldEnd] === newCh[newEnd]) {
+        oldEnd--;
+        newEnd--;
+      }
+
+      const maxMiddle = Math.max(oldEnd - start + 1, newEnd - start + 1);
+      for (let i = 0; i < maxMiddle; i++) {
+        const oPtr = start + i <= oldEnd ? oldCh[start + i] : 0;
+        const nPtr = start + i <= newEnd ? newCh[start + i] : 0;
+        if (oPtr && nPtr) diffNodes(oPtr, nPtr);
+        else if (nPtr) buildInsertions(nPtr);
+        else if (oPtr) buildDeletions(oPtr);
+      }
+
+      for (let i = newEnd + 1; i < newCh.length; i++) {
+        listener.onNodeRetained(newCh[i]);
+      }
+    };
+
+    diffNodes(oldRoot, newRoot);
   }
 }

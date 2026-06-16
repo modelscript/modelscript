@@ -81,7 +81,14 @@ export function S(): SharedState {
     let state = changetype<SharedState>(newPtr);
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
     state.arenaBuffer = atomicChunkAlloc(state.currentInputBufferSize);
-    state.gen1_chunks = 0;
+    state.gen1_chunks = atomicChunkAlloc(1024 * 4);
+    state.gen1_chunk_count = 1;
+    store<u32>(state.gen1_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
+
+    state.gen0_chunks = atomicChunkAlloc(1024 * 4);
+    state.gen0_chunk_count = 1;
+    store<u32>(state.gen0_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
+
     state.activeGeneration = 1;
     state.activeRootsPtr = atomicChunkAlloc(100 * 4); // Up to 100 roots
     return state;
@@ -128,6 +135,7 @@ export function setActiveGeneration(gen: u8): void {
  */
 export function resetGeneration(gen: u8): void {
   if (gen == 1) {
+    S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
     if (S().gen1_chunk_count > 0) {
       S().gen1_active_chunk = 0;
@@ -922,9 +930,9 @@ export function clearAstMarks(rootToKeep: u32): void {
   // --------------------------------------------------------------------------
   S().freeNodeHead = 0; // Reset free-list
 
-  for (let i: u32 = 0; i < S().gen1_chunk_count; i++) {
+  for (let i: u32 = 0; i <= S().gen1_active_chunk; i++) {
     let start = load<u32>(S().gen1_chunks + i * 4);
-    let sweepEnd = i == S().gen1_chunk_count - 1 ? S().gen1_offset : start + AST_CHUNK_SIZE;
+    let sweepEnd = i == S().gen1_active_chunk ? S().gen1_offset : start + AST_CHUNK_SIZE;
 
     let lastLivePtr: u32 = start;
 
@@ -942,14 +950,6 @@ export function clearAstMarks(rootToKeep: u32): void {
         lastLivePtr = ptr + NODE_SIZE;
         store<u32>(ptr, val & ~((<u32>(FLAG_GC_MARK | FLAG_LSP_VISITED)) << 10), 0);
       }
-    }
-
-    // Memory compaction optimization:
-    // If a large contiguous block at the end of the final chunk was dead,
-    // contract the bump allocator offset back to the last live node.
-    if (i == S().gen1_chunk_count - 1 && lastLivePtr < S().gen1_offset) {
-      S().gen1_offset = lastLivePtr;
-      S().arenaOffset = lastLivePtr;
     }
   }
 }
