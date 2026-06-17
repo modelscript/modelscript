@@ -48,6 +48,10 @@ import {
   lex,
   lexLen,
   lexPos,
+  setCurrentScannerState,
+  setLexLen,
+  setLexPos,
+  setSrcLexPos,
   srcLexPos,
 } from "./parser";
 export function getInputBuffer(): usize {
@@ -2404,7 +2408,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     // Append the unparsed chunk
     if (unparsedNode != 0 && c_idx > 0) {
       c_idx--;
-      if (c_idx < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + c_idx * 4, unparsedNode);
+      if (c_idx < (MAX_CHILD_NODES as u32)) store<i32>(t_globalChildNodes + c_idx * 4, unparsedNode);
     }
 
     // Append the successfully parsed nodes from the GSS
@@ -2412,7 +2416,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     while (curr) {
       if (curr.astNode != 0 && c_idx > 0) {
         c_idx--;
-        if (c_idx < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + c_idx * 4, curr.astNode);
+        if (c_idx < (MAX_CHILD_NODES as u32)) store<i32>(t_globalChildNodes + c_idx * 4, curr.astNode);
       }
       curr = curr.prev;
     }

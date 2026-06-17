@@ -21,6 +21,10 @@ let t_lspOffsetStack: u32 = 0;
 let t_lspVisitedNodes: u32 = 0;
 let lspVisitedCount: u32 = 0;
 
+// --- Dynamic stack capacities ---
+let lspTraverseCapacity: u32 = 50000;
+let lspVisitedCapacity: u32 = 50000;
+
 // --- Binary Serialization ---
 let t_lspBinaryBuffer: u32 = 0;
 let lspBinaryLength: u32 = 0;
@@ -164,12 +168,45 @@ function lsp_clearVisited(): void {
   lspVisitedCount = 0;
 }
 
+/**
+ * Grows the traverse and offset stacks to at least `required` capacity.
+ * Copies existing data from [0, stackTop) into the new buffers.
+ */
+function growTraverseStacks(required: u32, stackTop: u32): void {
+  let newCapacity = lspTraverseCapacity;
+  while (newCapacity < required) newCapacity *= 2;
+  let newTraverse = atomicChunkAlloc(newCapacity * 4);
+  let newOffset = atomicChunkAlloc(newCapacity * 4);
+  if (stackTop > 0) {
+    memory.copy(newTraverse, t_lspTraverseStack, stackTop * 4);
+    memory.copy(newOffset, t_lspOffsetStack, stackTop * 4);
+  }
+  t_lspTraverseStack = newTraverse;
+  t_lspOffsetStack = newOffset;
+  lspTraverseCapacity = newCapacity;
+}
+
+/**
+ * Grows the visited nodes buffer to at least `required` capacity.
+ * Copies existing data from [0, lspVisitedCount) into the new buffer.
+ */
+function growVisitedBuffer(required: u32): void {
+  let newCapacity = lspVisitedCapacity;
+  while (newCapacity < required) newCapacity *= 2;
+  let newBuffer = atomicChunkAlloc(newCapacity * 4);
+  if (lspVisitedCount > 0) {
+    memory.copy(newBuffer, t_lspVisitedNodes, lspVisitedCount * 4);
+  }
+  t_lspVisitedNodes = newBuffer;
+  lspVisitedCapacity = newCapacity;
+}
+
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
     t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
-    t_lspTraverseStack = atomicChunkAlloc(50000 * 4);
-    t_lspOffsetStack = atomicChunkAlloc(50000 * 4);
-    t_lspVisitedNodes = atomicChunkAlloc(50000 * 4);
+    t_lspTraverseStack = atomicChunkAlloc(lspTraverseCapacity * 4);
+    t_lspOffsetStack = atomicChunkAlloc(lspTraverseCapacity * 4);
+    t_lspVisitedNodes = atomicChunkAlloc(lspVisitedCapacity * 4);
   }
 
   lspBinaryLength = 0;
@@ -182,7 +219,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   if (astRoot == 0) return lspBinaryLength;
 
-  let stackTop = 0;
+  let stackTop: u32 = 0;
   store<u32>(t_lspTraverseStack + stackTop * 4, astRoot);
   store<u32>(t_lspOffsetStack + stackTop * 4, 0);
   stackTop++;
@@ -195,6 +232,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let flags = getNodeFlags(node);
     if ((flags & 8) != 0) continue;
     setNodeFlags(node, flags | 8);
+
+    // Grow visited buffer if needed
+    if (lspVisitedCount >= lspVisitedCapacity) {
+      growVisitedBuffer(lspVisitedCount + 1);
+    }
     store<u32>(t_lspVisitedNodes + lspVisitedCount++ * 4, node);
 
     let pad = getNodePadding(node);
@@ -236,6 +278,19 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     let child = getNodeFirstChild(node);
     if (child != 0) {
+      // Count children first to check capacity
+      let childCount: u32 = 0;
+      let countChild = child;
+      while (countChild != 0) {
+        childCount++;
+        countChild = getNodeNextSibling(countChild);
+      }
+
+      // Grow traverse stacks if needed
+      if (stackTop + childCount > lspTraverseCapacity) {
+        growTraverseStacks(stackTop + childCount, stackTop);
+      }
+
       // Single-pass: push children in forward order, then reverse the range
       // on the stack to achieve in-order traversal via LIFO pop.
       let currOffset = start + pad - getNodePadding(child);
