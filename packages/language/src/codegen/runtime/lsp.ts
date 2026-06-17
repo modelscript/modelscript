@@ -53,7 +53,7 @@ function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
       }
     }
   }
-  if (lspBinaryLength + 3 > 500000) return;
+  if (lspBinaryLength + 3 > 50000) return;
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
@@ -148,10 +148,10 @@ function lsp_clearVisited(): void {
 
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
-    t_lspBinaryBuffer = atomicChunkAlloc(500000 * 4);
-    t_lspTraverseStack = atomicChunkAlloc(100000 * 4);
-    t_lspOffsetStack = atomicChunkAlloc(100000 * 4);
-    t_lspVisitedNodes = atomicChunkAlloc(200000 * 4);
+    t_lspBinaryBuffer = atomicChunkAlloc(50000 * 4);
+    t_lspTraverseStack = atomicChunkAlloc(50000 * 4);
+    t_lspOffsetStack = atomicChunkAlloc(50000 * 4);
+    t_lspVisitedNodes = atomicChunkAlloc(50000 * 4);
   }
 
   lspBinaryLength = 0;
@@ -209,31 +209,43 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     if (firstChild == 0) {
       scanPaddingForErrors(start, pad);
+    } else {
+      let childPad = getNodePadding(firstChild);
+      if (pad > childPad) {
+        scanPaddingForErrors(start, pad - childPad);
+      }
     }
 
     let child = getNodeFirstChild(node);
     if (child != 0) {
-      let cCount = 0;
-      let temp = child;
-      while (temp != 0) {
-        cCount++;
-        temp = getNodeNextSibling(temp);
-      }
-
+      // Single-pass: push children in forward order, then reverse the range
+      // on the stack to achieve in-order traversal via LIFO pop.
       let currOffset = start + pad - getNodePadding(child);
-      let ptr = stackTop + cCount - 1;
-      let pushCount = 0;
-      while (child != 0 && pushCount < cCount) {
-        pushCount++;
-        store<u32>(t_lspTraverseStack + ptr * 4, child);
+      let pushStart = stackTop;
+      while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
-        store<u32>(t_lspOffsetStack + ptr * 4, currOffset);
+        store<u32>(t_lspTraverseStack + stackTop * 4, child);
+        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
         currOffset += cLen;
         child = getNodeNextSibling(child);
-        ptr--;
+        stackTop++;
       }
-      stackTop += cCount;
+      // Reverse the range [pushStart, stackTop) so last child is popped first
+      if (stackTop > pushStart) {
+        let lo = pushStart;
+        let hi = stackTop - 1;
+        while (lo < hi) {
+          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
+          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
+          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
+          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
+          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
+          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
+          lo++;
+          hi--;
+        }
+      }
     }
   }
 

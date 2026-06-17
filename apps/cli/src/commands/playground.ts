@@ -406,7 +406,7 @@ function getIndexHtml() {
 
     <script type="text/babel">
         // React AST Viewer Component
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
         function AstViewer() {
             const [rootId, setRootId] = useState(0);
@@ -491,14 +491,14 @@ function getIndexHtml() {
                 }
             };
 
-            const renderVirtualized = () => {
-                const flatNodes = [];
+            const flatNodes = useMemo(() => {
+                const nodes = [];
                 const visited = new Set();
                 
                 const flatten = (ptr, depth, parentOffset) => {
-                    if (flatNodes.length >= renderLimit) return parentOffset;
+                    if (nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
-                        flatNodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
+                        nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
                         return parentOffset;
                     }
                     visited.add(ptr);
@@ -510,9 +510,9 @@ function getIndexHtml() {
                     const isError = node.typeName === "ERROR";
                     const isGhost = node.len === 0 && !isError;
                     
-                    flatNodes.push({ ...node, depth, isGhost, isError, currentOffset });
+                    nodes.push({ ...node, depth, isGhost, isError, currentOffset });
                     
-                    let childOffset = currentOffset;
+                    let childOffset = parentOffset;
                     for (const childPtr of node.children || []) {
                         childOffset = flatten(childPtr, depth + 1, childOffset);
                     }
@@ -520,72 +520,73 @@ function getIndexHtml() {
                 };
                 
                 if (rootId) flatten(rootId, 0, 0);
-                
-                const getLineCol = (offsetBytes) => {
-                    let low = 0, high = lineStarts.length - 1;
-                    while (low <= high) {
-                        const mid = (low + high) >> 1;
-                        if (lineStarts[mid] <= offsetBytes) low = mid + 1;
-                        else high = mid - 1;
-                    }
-                    const line = high;
-                    const colChars = Math.floor((offsetBytes - lineStarts[line]) / 2);
-                    return { line: line + 1, col: colChars + 1 };
-                };
+                return nodes;
+            }, [updateTick, rootId]);
 
-                const getPosStr = (offset, len) => {
+            const visibleNodes = flatNodes.slice(0, renderLimit);
+
+            const getLineCol = (offsetBytes) => {
+                let low = 0, high = lineStarts.length - 1;
+                while (low <= high) {
+                    const mid = (low + high) >> 1;
+                    if (lineStarts[mid] <= offsetBytes) low = mid + 1;
+                    else high = mid - 1;
+                }
+                const line = high;
+                const colChars = Math.floor((offsetBytes - lineStarts[line]) / 2);
+                return { line: line + 1, col: colChars + 1 };
+            };
+
+            const getPosStr = (offset, len) => {
+                const startPos = getLineCol(offset);
+                const endPos = getLineCol(offset + len);
+                return "[" + startPos.line + ", " + startPos.col + "] - [" + endPos.line + ", " + endPos.col + "]";
+            };
+
+            const handleNodeClick = (offset, len) => {
+                if (window.highlightNode) {
                     const startPos = getLineCol(offset);
                     const endPos = getLineCol(offset + len);
-                    return "[" + startPos.line + ", " + startPos.col + "] - [" + endPos.line + ", " + endPos.col + "]";
-                };
-
-                const handleNodeClick = (offset, len) => {
-                    if (window.highlightNode) {
-                        const startPos = getLineCol(offset);
-                        const endPos = getLineCol(offset + len);
-                        window.highlightNode(startPos.line - 1, startPos.col - 1, endPos.line - 1, endPos.col - 1);
-                    }
-                };
-                
-                return (
-                    <>
-                        {flatNodes.map((node, i) => {
-                            if (node.isCycle) {
-                                return <div key={node.id + "_" + i} style={{ marginLeft: node.depth * 15, color: '#8c959f', marginTop: '4px' }}>CYCLE</div>;
-                            }
-                            
-                            let className = "ast-node";
-                            if (node.isGhost) className += " ghost-node";
-                            if (node.isError) className += " ast-error";
-                            
-                            return (
-                                <div key={node.id} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
-                                    <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#d2a8ff' }}>{node.typeName}</span>
-                                    <span style={{ color: '#8b949e', marginLeft: '5px' }}>
-                                        {getPosStr(node.currentOffset, node.len)}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                        {diagnostics.map((diag, i) => (
-                            <div key={"diag-" + i} className="ast-error" style={{ cursor: 'pointer', marginTop: '4px' }} onClick={() => {
-                                if (window.highlightNode) {
-                                    window.highlightNode(diag.range.start.line, diag.range.start.character, diag.range.end.line, diag.range.end.character);
-                                }
-                            }}>
-                                <span className="hoverable-text" style={{ color: '#d73a49' }}>ERROR</span>
-                                <span style={{ color: '#8b949e', marginLeft: '5px' }}>
-                                    {"[" + (diag.range.start.line + 1) + ", " + (diag.range.start.character + 1) + "] - [" + (diag.range.end.line + 1) + ", " + (diag.range.end.character + 1) + "]"}
-                                </span>
-                            </div>
-                        ))}
-                    </>
-                );
+                    window.highlightNode(startPos.line - 1, startPos.col - 1, endPos.line - 1, endPos.col - 1);
+                }
             };
 
             return (
                 <div id="ast-viewer" style={{ padding: '10px', overflow: 'auto', flex: 1 }} onScroll={handleScroll}>
-                    {rootId === 0 ? status : renderVirtualized()}
+                    {rootId === 0 ? status : (
+                        <>
+                            {visibleNodes.map((node, i) => {
+                                if (node.isCycle) {
+                                    return <div key={node.id + "_" + i} style={{ marginLeft: node.depth * 15, color: '#8c959f', marginTop: '4px' }}>CYCLE</div>;
+                                }
+                                
+                                let className = "ast-node";
+                                if (node.isGhost) className += " ghost-node";
+                                if (node.isError) className += " ast-error";
+                                
+                                return (
+                                    <div key={node.id} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
+                                        <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#d2a8ff' }}>{node.typeName}</span>
+                                        <span style={{ color: '#8b949e', marginLeft: '5px' }}>
+                                            {getPosStr(node.currentOffset, node.len)}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                            {diagnostics.map((diag, i) => (
+                                <div key={"diag-" + i} className="ast-error" style={{ cursor: 'pointer', marginTop: '4px' }} onClick={() => {
+                                    if (window.highlightNode) {
+                                        window.highlightNode(diag.range.start.line, diag.range.start.character, diag.range.end.line, diag.range.end.character);
+                                    }
+                                }}>
+                                    <span className="hoverable-text" style={{ color: '#d73a49' }}>ERROR</span>
+                                    <span style={{ color: '#8b949e', marginLeft: '5px' }}>
+                                        {"[" + (diag.range.start.line + 1) + ", " + (diag.range.start.character + 1) + "] - [" + (diag.range.end.line + 1) + ", " + (diag.range.end.character + 1) + "]"}
+                                    </span>
+                                </div>
+                            ))}
+                        </>
+                    )}
                 </div>
             );
         }
@@ -711,6 +712,7 @@ let lspFacade = null;
 let latestUri = undefined;
 let currentTextLength = 0;
 let currentGenerationId = 0;
+let pendingFullText = null;
 
 let patchBuffer = new ArrayBuffer(1024 * 1024 * 2);
 let patchInt32 = new Int32Array(patchBuffer);
@@ -749,11 +751,12 @@ function triggerDiagnostics(changes = null) {
             } else {
                 currentTextLength = change.text.length;
                 currentGenerationId++;
-                astRoot = lspFacade.parseIncremental(change.text, 0, currentTextLength, currentTextLength);
+                astRoot = lspFacade.parseIncremental(change.text, 0, 0, currentTextLength);
             }
         }
         
         const rawDiags = lspFacade.getDiagnostics(astRoot);
+        console.log('DIAGS:', JSON.stringify(rawDiags), 'root:', astRoot, 'inputLen:', lspFacade.exports.inputLength?.value);
         const lineStarts = lspFacade.getLineStarts();
         
         const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
@@ -835,7 +838,8 @@ self.addEventListener('message', async (e) => {
             const url = URL.createObjectURL(blob);
             const { LspFacade } = await import(url);
             
-            lspFacade = new LspFacade(memory, instance.exports);
+            lspFacade = new LspFacade(instance.exports.memory, instance.exports);
+            currentTextLength = 0;  // Reset stale length from previous session
             
             lspFacade.addAstChangeListener({
                 onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),
@@ -845,7 +849,10 @@ self.addEventListener('message', async (e) => {
             });
 
             console.log("LspFacade successfully loaded inside worker.");
-            triggerDiagnostics();
+            if (pendingFullText !== null) {
+                triggerDiagnostics([{ text: pendingFullText }]);
+                pendingFullText = null;
+            }
         } catch(err) {
             console.error("LSP Worker WASM Init Error:", err);
         }
@@ -862,10 +869,13 @@ self.addEventListener('message', async (e) => {
         
         if (e.data.method === 'textDocument/didOpen') {
             const fullText = params.textDocument?.text || params.contentChanges?.[0]?.text;
-            if (lspFacade && lspFacade.resetParser) {
-                lspFacade.resetParser();
+            if (!lspFacade) {
+                pendingFullText = fullText;
+            } else {
+                if (lspFacade.resetParser) lspFacade.resetParser();
+                currentTextLength = 0;
+                triggerDiagnostics([{ text: fullText }]);
             }
-            triggerDiagnostics([{ text: fullText }]);
         } else {
             triggerDiagnostics(params.contentChanges);
         }

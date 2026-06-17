@@ -275,17 +275,38 @@ export class LspFacade {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
 
     const lenBytes = newTotalLength * 2;
+
+    // Fast path for empty input (e.g., clearing the editor)
+    if (newTotalLength <= 0) {
+      if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
+      if (this.exports.setInputLength) this.exports.setInputLength(0);
+      const newAstRoot = this.exports.parse(0, 0, 0, 0);
+      this.lastAstRoot = newAstRoot;
+      if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
+      return this.lastAstRoot;
+    }
+
     const oldTotalLength = newTotalLength + rangeLength - changeText.length;
 
     const oldTextPtr = this.exports.getInputBuffer();
+
+    // Snapshot old buffer contents BEFORE ensureInputBuffer which may grow memory
+    // and detach existing typed array views
+    let oldSnapshot: Uint16Array | null = null;
+    if (oldTotalLength > 0) {
+      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
+      oldSnapshot = new Uint16Array(oldTotalLength);
+      oldSnapshot.set(oldView);
+    }
+
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : oldTextPtr;
 
+    // Create new view AFTER potential memory growth
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, newTotalLength);
 
-    // If the buffer was reallocated, we MUST copy the old text into the new buffer first
-    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
-      const oldMemArray16 = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
-      memArray16.set(oldMemArray16.subarray(0, oldTotalLength));
+    // If the buffer was reallocated, copy the snapshot into the new buffer
+    if (oldTextPtr !== textPtr && oldSnapshot) {
+      memArray16.set(oldSnapshot);
     }
 
     if (changeText.length !== rangeLength) {
@@ -365,9 +386,8 @@ export class LspFacade {
     }
 
     let lineStartByte = lineStarts[line];
-    let byteLen = offset - lineStartByte;
-    if (byteLen <= 0) return { line, character: 0 };
-    return { line, character: Math.floor(byteLen / 2) };
+    const charOffset = (offset - lineStarts[line]) / 2;
+    return { line: line, character: charOffset };
   }
 
   getDiagnostics(astRoot: number): Diagnostic[] {
@@ -385,6 +405,16 @@ export class LspFacade {
       const endByte = memory[(dirPtr >> 2) + i + 1];
 
       const lintId = memory[(dirPtr >> 2) + i + 2];
+      console.log(
+        "RAW_DIAG:",
+        startByte,
+        endByte,
+        lintId,
+        "dirPtr:",
+        dirPtr,
+        "memBufLen:",
+        this.wasmMemory.buffer.byteLength,
+      );
 
       let msg = "Syntax Error";
       if (lintId > 0 && lintId < this.syntaxNames.length) {
@@ -404,8 +434,29 @@ export class LspFacade {
         severity: 1, // Error
       });
     }
-    console.log(`[LSP] getDiagnostics returned:`, diags);
+    // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
+    this._lastDiagBinaryLength = numElements;
     return diags;
+  }
+
+  private _lastDiagBinaryLength: number = 0;
+
+  /**
+   * Read error ranges from the already-populated binary buffer without
+   * calling lsp_getDiagnostics again. Only valid after getDiagnostics().
+   */
+  private readCachedErrorRanges(): { start: number; end: number }[] {
+    const errorRanges: { start: number; end: number }[] = [];
+    if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0) return errorRanges;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    for (let i = 0; i < this._lastDiagBinaryLength; i += 3) {
+      errorRanges.push({
+        start: mem32[(dirPtr >> 2) + i],
+        end: mem32[(dirPtr >> 2) + i + 1],
+      });
+    }
+    return errorRanges;
   }
 
   getAstSExpr(astRoot: number): string {
@@ -413,18 +464,9 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
 
-    // Fetch precise error byte boundaries from the WASM diagnostic pipeline
-    const errorRanges: { start: number; end: number }[] = [];
-    if (this.exports.lsp_getDiagnostics && this.exports.lsp_getBinaryBuffer) {
-      const numElements = this.exports.lsp_getDiagnostics(astRoot);
-      const dirPtr = this.exports.lsp_getBinaryBuffer();
-      for (let i = 0; i < numElements; i += 3) {
-        errorRanges.push({
-          start: mem32[(dirPtr >> 2) + i],
-          end: mem32[(dirPtr >> 2) + i + 1],
-        });
-      }
-    }
+    // Reuse cached error ranges from the last getDiagnostics() call
+    // instead of calling lsp_getDiagnostics again (avoids triple traversal)
+    const errorRanges = this.readCachedErrorRanges();
 
     const printedErrors = new Set<string>();
 
@@ -527,17 +569,8 @@ export class LspFacade {
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
 
-    const errorRanges: { start: number; end: number }[] = [];
-    if (this.exports.lsp_getDiagnostics && this.exports.lsp_getBinaryBuffer) {
-      const numElements = this.exports.lsp_getDiagnostics(astRoot);
-      const dirPtr = this.exports.lsp_getBinaryBuffer();
-      for (let i = 0; i < numElements; i += 3) {
-        errorRanges.push({
-          start: mem32[(dirPtr >> 2) + i],
-          end: mem32[(dirPtr >> 2) + i + 1],
-        });
-      }
-    }
+    // Reuse cached error ranges from the last getDiagnostics() call
+    const errorRanges = this.readCachedErrorRanges();
 
     const printedErrors = new Set<string>();
     const lines: string[] = [];
@@ -614,7 +647,7 @@ export class LspFacade {
         const nodeClass = isGhost ? "ast-node ghost-node" : "ast-node";
         nodeIndex = lines.length;
         lines.push(
-          `<div class="${nodeClass}" style="margin-left: ${depth * 20}px;" onclick="window.highlightNode(${startPos.line}, ${startPos.character}, ${endPos.line}, ${endPos.character})"><span class="hoverable-text">${typeName}</span> ${posStr}</div>`,
+          `<div class="${nodeClass}" style="margin-left: ${depth * 20}px;" onclick="window.highlightNode(${startPos.line}, ${startPos.character}, ${endPos.line}, ${endPos.character})"><span class="hoverable-text">${typeName} (pad=${pad}, len=${len}, childOffset=${childOffset}, ptr=${ptr})</span> ${posStr}</div>`,
         );
       }
 
