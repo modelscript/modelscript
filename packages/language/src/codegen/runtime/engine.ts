@@ -309,21 +309,13 @@ export function findReusableNode(
 ): u32 {
   if (globalCursorDepth < 0) return 0;
 
-  // 1. Validate cursor position and reset to root if we've somehow overshot
+  // 1. Validate cursor position. If the global cursor is already ahead of the target,
+  // it means the target is in a gap (e.g., whitespace or skipped tokens) and hasn't caught up.
+  // We can immediately return 0 in O(1) time instead of rescanning from the root.
   let startNode = cursorNodeStack[globalCursorDepth];
   let startSrc = cursorOffsetStack[globalCursorDepth] + getNodePadding(startNode);
   if (startSrc > targetSrcOldPos) {
-    globalCursorDepth = 0;
-    cursorOffsetStack[0] = 0;
-  }
-
-  // 2. Snapshot the global cursor state so we can restore it if search fails
-  let initialDepth = globalCursorDepth;
-  let savedCursorNodeStack = globalSavedCursorNodeStack;
-  let savedCursorOffsetStack = globalSavedCursorOffsetStack;
-  for (let i = 0; i <= initialDepth; i++) {
-    savedCursorNodeStack[i] = cursorNodeStack[i];
-    savedCursorOffsetStack[i] = cursorOffsetStack[i];
+    return 0;
   }
 
   let searching = true;
@@ -411,13 +403,6 @@ export function findReusableNode(
         }
       }
     }
-  }
-
-  // 5. Restore snapshot on failure
-  globalCursorDepth = initialDepth;
-  for (let i = 0; i <= initialDepth; i++) {
-    cursorNodeStack[i] = savedCursorNodeStack[i];
-    cursorOffsetStack[i] = savedCursorOffsetStack[i];
   }
 
   return 0;
@@ -514,7 +499,7 @@ declare namespace env {
 }
 
 export function debugLog(cat: i32, val1: i32, val2: i32, val3: i32): void {
-  env.emitTextEdit(cat, val1, val2, val3);
+  // env.emitTextEdit(cat, val1, val2, val3);
 }
 export let globalLoopGuard: u32 = 0;
 export let globalBestDyingHead: u32 = 0;
@@ -1462,9 +1447,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             // Count and measure the remaining fragmented nodes in the GSS
             while (t_curr) {
               if (t_curr.astNode != 0) {
-                t_bytes += getNodePadding(t_curr.astNode) + getNodeByteLength(t_curr.astNode);
-                t_count++;
-                firstPad = getNodePadding(t_curr.astNode); // The last one visited is the oldest node
+                if (getNodeType(t_curr.astNode) != TOKEN_EOF) {
+                  t_bytes += getNodePadding(t_curr.astNode) + getNodeByteLength(t_curr.astNode);
+                  t_count++;
+                  firstPad = getNodePadding(t_curr.astNode); // The last one visited is the oldest node
+                }
               }
               t_curr = t_curr.prev;
             }
@@ -1508,7 +1495,23 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 bestAcceptedCount = t_count;
                 bestAcceptedPad = firstPad;
                 lastBestCost = bestAcceptedCost;
-                acceptedNode = head.astNode;
+
+                // Find the single real node
+                let singleNode: u32 = 0;
+                let rc: ParseHead | null = head;
+                while (rc) {
+                  if (rc.astNode != 0 && getNodeType(rc.astNode) != TOKEN_EOF) {
+                    singleNode = rc.astNode;
+                    break;
+                  }
+                  rc = rc.prev;
+                }
+
+                if (singleNode != 0) {
+                  acceptedNode = cloneNodeShallow(singleNode);
+                } else {
+                  acceptedNode = head.astNode;
+                }
               } else {
                 // Multiple nodes in GSS — wrap in an error root
                 bestAcceptedCost = effectiveCost;
@@ -1521,7 +1524,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 // Collect children backwards from the GSS
                 t_curr = head; // Reset — t_curr is null after the counting loop above
                 while (t_curr) {
-                  if (t_curr.astNode != 0) {
+                  if (t_curr.astNode != 0 && getNodeType(t_curr.astNode) != TOKEN_EOF) {
                     store<i32>(t_globalChildren + c_idx-- * 4, t_curr.astNode);
                   }
                   t_curr = t_curr.prev;
@@ -1701,54 +1704,34 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let canAcceptEof = stateCanAccept(unwindCurr, recState, TOKEN_EOF, 0);
             debugLog(776, recState, canAcceptEof ? 1 : 0, unwindDepth);
             if (canAcceptEof) {
-              // Scan forward to EOF, accumulating cost
-              let eofScanPos = a1NextScanPos;
-              let eofDelCost = a1DelCost;
-              let eofDropped = a1DroppedBytes;
-              let savedLexPos2 = lexPos;
-              let savedLexLen2 = lexLen;
-              let savedSrcLexPos2 = srcLexPos;
-              let savedScannerState2 = currentScannerState;
+              // Instead of manually lexing up to 1000 tokens, approximate the cost in O(1).
+              // This prevents an O(N) slowdown where every error branch rescans trailing garbage.
+              let remainingBytes: u32 = inputLength > a1NextScanPos ? inputLength - a1NextScanPos : 0;
+              let approxTokens = remainingBytes / 5;
+              let eofDelCost = a1DelCost + approxTokens * 20;
 
-              let foundEof = false;
-              for (let skipMore: u32 = 0; skipMore < 1000; skipMore++) {
-                let nextTok2 = __LEX_FN__(eofScanPos);
-                let endPos2 = srcLexPos + lexLen;
-                let dropped2 = endPos2 - eofScanPos;
-                eofDelCost += token_insert_costs[nextTok2 == TOKEN_EOF ? 0 : nextTok2];
-                eofDropped += dropped2;
-
-                lexPos = savedLexPos2;
-                lexLen = savedLexLen2;
-                srcLexPos = savedSrcLexPos2;
-                currentScannerState = savedScannerState2;
-
-                if (nextTok2 == TOKEN_EOF) {
-                  foundEof = true;
-                  eofScanPos = endPos2;
-                  break;
-                }
-                eofScanPos = endPos2;
+              // Cap the total cost so trailing garbage doesn't exceed MAX_ERRORS and kill the parse.
+              let totalCost = head.errorCost + baseDelCost + eofDelCost;
+              if (totalCost > MAX_ERRORS - 50) {
+                totalCost = MAX_ERRORS - 50;
               }
 
-              if (foundEof) {
-                let eofHead = allocParseHead(
-                  recState,
-                  unwindCurr.astNode,
-                  unwindCurr.prev,
-                  eofScanPos,
-                  currentScannerState,
-                  head.errorCost + baseDelCost + eofDelCost,
-                  0,
-                  newBalance,
-                  0,
-                  recPrec,
-                  uPadding + droppedBytes + (eofScanPos - head.pos),
-                );
-                store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(eofHead));
-                activeHeadsCount++;
-                debugLog(777, eofHead.errorCost, eofScanPos as i32, getNodeByteLength(unwindCurr.astNode) as i32);
-              }
+              let eofHead = allocParseHead(
+                recState,
+                unwindCurr.astNode,
+                unwindCurr.prev,
+                inputLength,
+                0, // Reset scanner state for EOF
+                totalCost,
+                0,
+                newBalance,
+                0,
+                recPrec,
+                uPadding + droppedBytes + remainingBytes,
+              );
+              store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(eofHead));
+              activeHeadsCount++;
+              debugLog(777, totalCost, inputLength as i32, getNodeByteLength(unwindCurr.astNode) as i32);
             }
 
             // A2. Retrospective Deletion: Unwind state but keep the current token

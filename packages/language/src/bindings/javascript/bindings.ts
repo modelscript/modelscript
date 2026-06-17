@@ -405,16 +405,6 @@ export class LspFacade {
       const endByte = memory[(dirPtr >> 2) + i + 1];
 
       const lintId = memory[(dirPtr >> 2) + i + 2];
-      console.log(
-        "RAW_DIAG:",
-        startByte,
-        endByte,
-        lintId,
-        "dirPtr:",
-        dirPtr,
-        "memBufLen:",
-        this.wasmMemory.buffer.byteLength,
-      );
 
       let msg = "Syntax Error";
       if (lintId > 0 && lintId < this.syntaxNames.length) {

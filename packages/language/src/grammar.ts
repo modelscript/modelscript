@@ -275,7 +275,7 @@ export class NormalizedGrammar {
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule };
     }
-    const ruleType = rule.type || "";
+    const ruleType = (rule.type || "").toUpperCase();
     const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
     switch (ruleType) {
       case "SYMBOL":

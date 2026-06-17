@@ -101,8 +101,12 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
     // Check if lexer skipped any valid whitespace/comments BEFORE the token
     if (tokenStart > p) {
       if (errorStart != -1) {
-        allocDiagnostic(errorStart as u32, p, 0, 0);
-        errorStart = -1;
+        // If the upcoming token is valid (or EOF), close the error before the whitespace.
+        // Otherwise, keep it open so it merges with the next invalid garbage token.
+        if (token == 0 || is_extra_token[token]) {
+          allocDiagnostic(errorStart as u32, p, 0, 0);
+          errorStart = -1;
+        }
       }
     }
 
