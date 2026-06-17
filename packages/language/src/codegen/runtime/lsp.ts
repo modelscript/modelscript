@@ -162,9 +162,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let isErrorNode = type == 0;
     let firstChild = getNodeFirstChild(node);
 
-    // Emit diagnostics for ERROR nodes.
-    // We report the full span of any ERROR node (leaf or parent) as a syntax error.
-    if (isErrorNode && len > 0) {
+    // Emit diagnostics only for LEAF error nodes.
+    // Non-leaf ERROR nodes are structural wrappers (e.g., the root that wraps
+    // accepted content + trailing errors). Their error ranges are already
+    // reported through engine-level reportError() calls.
+    if (isErrorNode && firstChild == 0 && len > 0) {
       allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {
       // Missing terminal (ghost node inserted by error recovery)

@@ -280,6 +280,8 @@ export class LspFacade {
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
+    if (this.exports.abortSuspend) this.exports.abortSuspend();
+
     const lenBytes = newTotalLength * 2;
 
     // Fast path for empty input (e.g., clearing the editor)
@@ -725,6 +727,8 @@ export class LspFacade {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
+
+    if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = text.length * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytes)

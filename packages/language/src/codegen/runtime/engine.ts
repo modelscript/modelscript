@@ -242,6 +242,10 @@ const LIST_SPLIT_POINT: i32 = 11;
 export const TOKEN_SUSPEND: i32 = 0x7fffffff;
 export let isSuspended: boolean = false;
 
+export function abortSuspend(): void {
+  isSuspended = false;
+}
+
 // Token Buffer Arena - Used for caching tokens emitted by the scanner
 let t_tokenBufferArena: u32 = 0;
 let t_tokenBufferLenArena: u32 = 0;
@@ -255,8 +259,9 @@ export let tokenBufferLastPos: u32 = 0;
  * @param len The byte length of the token string.
  */
 export function pushTokenToBuffer(tok: i32, len: u32): void {
-  store<i32>(t_tokenBufferArena + tokenBufferWriteIdx * 4, tok);
-  store<u32>(t_tokenBufferLenArena + tokenBufferWriteIdx * 4, len);
+  let idx = tokenBufferWriteIdx & (ARENA_BUFFER_SIZE - 1);
+  store<i32>(t_tokenBufferArena + idx * 4, tok);
+  store<u32>(t_tokenBufferLenArena + idx * 4, len);
   tokenBufferWriteIdx++;
 }
 
@@ -922,12 +927,12 @@ export let lastMaxHeads = 0;
 /**
  * Tree-sitter-style trailing error wrapping.
  * If the accepted node does not span the full input, the remaining unparsed
- * bytes are wrapped in a NODE_TYPE_ERROR node and both the accepted node
- * and the error node are linked under a new root.
+ * bytes are wrapped in a NODE_TYPE_ERROR node and appended as a child to the
+ * accepted node, extending its length to cover the input.
  *
  * @param acceptedNode The accepted AST root.
  * @returns The original acceptedNode if it covers the whole input,
- *          or a new root wrapping acceptedNode + trailing ERROR.
+ *          or a new cloned root with the trailing ERROR appended.
  */
 function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
@@ -968,13 +973,14 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   let lastTokNode: u32 = 0;
   let errContentStart = trailingStart + errPad;
   let lexP = errContentStart;
-  let firstErrTokenStart: i32 = -1;
-  let lastErrTokenEnd: i32 = -1;
 
   savedLexPos = lexPos;
   savedLexLen = lexLen;
   savedSrcLexPos = srcLexPos;
   savedScannerState = currentScannerState;
+
+  // Force lexer to accept any token during error node construction
+  expected_tokens.fill(1);
 
   while (lexP < inputLength) {
     let tok = lex(lexP);
@@ -983,10 +989,8 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
     if (tLen == 0) break;
     let pad: u32 = srcLexPos > lexP ? srcLexPos - lexP : 0;
 
-    if (firstErrTokenStart == -1) {
-      firstErrTokenStart = srcLexPos as i32;
-    }
-    lastErrTokenEnd = (srcLexPos + tLen) as i32;
+    // Report error individually per token so spaces between them aren't squiggled
+    reportError(srcLexPos as u32, (srcLexPos + tLen) as u32);
 
     let tNode = allocNode(tok as u16, pad, tLen, 0);
     if (lastTokNode == 0) setFirstChild(errorNode, tNode);
@@ -1001,23 +1005,24 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  // Report the error range covering non-whitespace content
-  if (firstErrTokenStart != -1 && lastErrTokenEnd != -1) {
-    reportError(firstErrTokenStart as u32, lastErrTokenEnd as u32);
-  }
-
-  // Create a new root wrapping the accepted node + trailing error
+  // Clone acceptedNode to extend its length and append the error node
+  let newRoot = cloneNodeShallow(acceptedNode);
   let acceptedPad = getNodePadding(acceptedNode);
   let totalBytes = inputLength - acceptedPad;
-  let root = allocNode(NODE_TYPE_ERROR, acceptedPad, totalBytes, 0);
+  setNodeByteLength(newRoot, totalBytes);
 
-  // Clone and link: accepted first, then error
-  let clonedAccepted = cloneNodeShallow(acceptedNode);
-  setNodePadding(clonedAccepted, 0); // Padding is on the root now
-  setFirstChild(root, clonedAccepted);
-  setNextSibling(clonedAccepted, errorNode);
+  let child = getNodeFirstChild(newRoot);
+  if (child == 0) {
+    setFirstChild(newRoot, errorNode);
+  } else {
+    let lastChild = child;
+    while (getNodeNextSibling(lastChild) != 0) {
+      lastChild = getNodeNextSibling(lastChild);
+    }
+    setNextSibling(lastChild, errorNode);
+  }
 
-  return root;
+  return newRoot;
 }
 
 /**
@@ -1262,8 +1267,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     if (tokenBufferReadIdx < tokenBufferWriteIdx) {
-      token = load<i32>(t_tokenBufferArena + tokenBufferReadIdx * 4);
-      lexLen = load<u32>(t_tokenBufferLenArena + tokenBufferReadIdx * 4);
+      let rIdx = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
+      token = load<i32>(t_tokenBufferArena + rIdx * 4);
+      lexLen = load<u32>(t_tokenBufferLenArena + rIdx * 4);
       tokenBufferLastPos = pos;
     } else {
       updateExpectedTokens();
@@ -1275,8 +1281,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       }
       debugLog(8, head.errorCost, token, pos * 1000 + lexLen);
       if (tokenBufferReadIdx < tokenBufferWriteIdx) {
-        token = load<i32>(t_tokenBufferArena + tokenBufferReadIdx * 4);
-        lexLen = load<u32>(t_tokenBufferLenArena + tokenBufferReadIdx * 4);
+        let rIdx2 = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
+        token = load<i32>(t_tokenBufferArena + rIdx2 * 4);
+        lexLen = load<u32>(t_tokenBufferLenArena + rIdx2 * 4);
       }
       tokenBufferLastPos = pos;
     }
@@ -2019,6 +2026,28 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   lastChild = clone;
                 }
 
+                // Force lexer to accept any token during error node construction
+                expected_tokens.fill(1);
+                let p = head.pos;
+                while (p < inputLength) {
+                  let tok = __LEX_FN__(p);
+                  if (tok == -1) break;
+                  let pad = lexPos - p;
+                  let token = lex(p);
+                  let tLen = lexLen;
+                  if (tLen == 0) break; // prevent infinite loop
+
+                  // Report each garbage token individually so spaces don't get squiggled
+                  reportError(lexPos as u32, (lexPos + tLen) as u32);
+
+                  let tNode = allocNode(token as u16, pad, tLen, 0);
+                  if (lastChild == 0) setFirstChild(errNode, tNode);
+                  else setNextSibling(lastChild, tNode);
+                  lastChild = tNode;
+
+                  p = lexPos + tLen;
+                }
+
                 eofHead = allocParseHead(
                   recState,
                   errNode,
@@ -2310,6 +2339,29 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               lastChild = clone;
             }
 
+            // Lex any remaining raw garbage between the last parsed node and the resume position
+            // This ensures discarded spaces aren't squiggled and the LSP doesn't merge everything
+            expected_tokens.fill(1);
+            let p = head.pos;
+            while (p < (resumePos as u32)) {
+              let tok = __LEX_FN__(p);
+              if (tok == -1) break;
+              let pad = lexPos - p;
+              let token = lex(p);
+              let tLen = lexLen;
+              if (tLen == 0) break; // prevent infinite loop
+
+              // Report each garbage token individually so spaces don't get squiggled
+              reportError(lexPos as u32, (lexPos + tLen) as u32);
+
+              let tNode = allocNode(token as u16, pad, tLen, 0);
+              if (lastChild == 0) setFirstChild(islandLeaf, tNode);
+              else setNextSibling(lastChild, tNode);
+              lastChild = tNode;
+
+              p = lexPos + tLen;
+            }
+
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.
             // We give it an artificially low errorCost so it ALWAYS survives the
             // primary culling phase against greedy local insertions, ensuring global recovery completes.
@@ -2471,8 +2523,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, remainingLen - (firstPad - missingPadding), 0);
       let lastTokNode = 0;
 
-      let firstUnparsedTokenStart: i32 = -1;
-      let firstUnparsedTokenEnd: i32 = -1;
+      // Force lexer to accept any token during garbage collection
+      expected_tokens.fill(1);
 
       while (p < inputLength) {
         let tok = __LEX_FN__(p);
@@ -2482,10 +2534,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         let tLen = lexLen;
         if (tLen == 0) break; // prevent infinite loop
 
-        if (firstUnparsedTokenStart == -1) {
-          firstUnparsedTokenStart = lexPos;
-        }
-        firstUnparsedTokenEnd = lexPos + tLen;
+        // Report each garbage token individually so spaces don't get squiggled
+        reportError(lexPos as u32, (lexPos + tLen) as u32);
 
         let tNode = allocNode(tok as u16, pad, tLen, 0);
         if (lastTokNode == 0) setFirstChild(unparsedNode, tNode);
@@ -2493,10 +2543,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         lastTokNode = tNode;
 
         p = lexPos + tLen;
-      }
-
-      if (firstUnparsedTokenStart != -1) {
-        reportError(firstUnparsedTokenStart as u32, firstUnparsedTokenEnd as u32);
       }
 
       totalBytes += remainingLen + missingPadding;
@@ -2532,7 +2578,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     // Link them together
     let lastChild = 0;
-    for (let i: u32 = 0; i < totalNodes; i++) {
+    let loopLimit = totalNodes < (MAX_CHILD_NODES as u32) ? totalNodes : (MAX_CHILD_NODES as u32);
+    for (let i: u32 = 0; i < loopLimit; i++) {
       let child = load<i32>(t_globalChildNodes + i * 4);
       if (child == 0) continue;
       let clone = cloneNodeShallow(child);
