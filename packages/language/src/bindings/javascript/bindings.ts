@@ -250,6 +250,7 @@ export class LspFacade {
   public exports: any;
   private lastAstRoot: number = 0;
   private _cachedLineStarts: number[] | null = null;
+  private _childTailCache = new Map<number, number>();
 
   constructor(wasmMemoryOrInstance: any, exports?: any) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
@@ -271,11 +272,13 @@ export class LspFacade {
     }
     this.lastAstRoot = 0;
     this._cachedLineStarts = null;
+    this._childTailCache.clear();
   }
 
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
+    this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     const lenBytes = newTotalLength * 2;
 
@@ -692,9 +695,36 @@ export class LspFacade {
     this.astListeners.push(listener);
   }
 
+  /**
+   * Appends a child to a parent node in O(1) using a JS-side tail pointer cache.
+   * Falls back to the WASM ast_appendChild if the cache misses or the export is unavailable.
+   */
+  appendChild(parentPtr: number, childPtr: number): void {
+    if (!parentPtr || !childPtr) return;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const lastChild = this._childTailCache.get(parentPtr);
+    if (lastChild !== undefined) {
+      // Wire nextSibling of the cached tail → new child
+      mem32[(lastChild + 12) / 4] = childPtr;
+    } else {
+      // Check if parent already has a firstChild
+      const firstChild = mem32[(parentPtr + 8) / 4];
+      if (firstChild === 0) {
+        mem32[(parentPtr + 8) / 4] = childPtr;
+      } else if (this.exports.ast_appendChild) {
+        // Fallback: let WASM walk the chain (cold path)
+        this.exports.ast_appendChild(parentPtr, childPtr);
+        this._childTailCache.set(parentPtr, childPtr);
+        return;
+      }
+    }
+    this._childTailCache.set(parentPtr, childPtr);
+  }
+
   parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
+    this._childTailCache.clear(); // Invalidate tail pointers on edit
     const lenBytes = text.length * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytes)
