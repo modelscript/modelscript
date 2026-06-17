@@ -107,6 +107,7 @@ export class ChunkedArray<T> {
 
   @inline
   public pop(): T {
+    if (this.length == 0) return 0 as T;
     this.length--;
     return this.get(this.length);
   }

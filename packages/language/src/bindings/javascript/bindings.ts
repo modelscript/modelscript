@@ -747,32 +747,43 @@ export class LspFacade {
       return children;
     };
 
-    const buildInsertions = (ptr: number): void => {
-      if (!ptr) return;
-      const typeFlags = mem32[ptr / 4];
-      const typeId = typeFlags & 0x03ff;
-      let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
-      if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-      const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 16;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
-      const len = envHashPadding & 0x007fffff;
+    const buildInsertions = (startPtr: number): void => {
+      if (!startPtr) return;
+      const stack: number[] = [startPtr];
+      while (stack.length > 0) {
+        const ptr = stack.pop()!;
+        if (!ptr) continue;
+        const typeFlags = mem32[ptr / 4];
+        const typeId = typeFlags & 0x03ff;
+        let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+        if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+        const envHashPadding = mem32[(ptr + 4) / 4];
+        const rawPad = typeFlags >>> 16;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        const len = envHashPadding & 0x007fffff;
 
-      const children = getChildren(ptr);
-      listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
+        const children = getChildren(ptr);
+        listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
 
-      for (const child of children) {
-        buildInsertions(child);
+        // Push children in reverse so they are processed in forward order
+        for (let i = children.length - 1; i >= 0; i--) {
+          stack.push(children[i]);
+        }
       }
     };
 
-    const buildDeletions = (ptr: number): void => {
-      if (!ptr) return;
-      listener.onNodeDeleted(ptr);
-      const children = getChildren(ptr);
-      for (const child of children) {
-        buildDeletions(child);
+    const buildDeletions = (startPtr: number): void => {
+      if (!startPtr) return;
+      const stack: number[] = [startPtr];
+      while (stack.length > 0) {
+        const ptr = stack.pop()!;
+        if (!ptr) continue;
+        listener.onNodeDeleted(ptr);
+        const children = getChildren(ptr);
+        for (let i = children.length - 1; i >= 0; i--) {
+          stack.push(children[i]);
+        }
       }
     };
 

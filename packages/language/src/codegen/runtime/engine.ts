@@ -115,9 +115,21 @@ const ARENA_BUFFER_SIZE: i32 = 16384;
 const MAX_LOOKAHEAD_DEPTH: i32 = 10;
 const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
 const LOOP_MULTIPLIER_LIMIT: u32 = 100;
+const MAX_PANIC_SCAN_TOKENS: u32 = 500;
 
 const PENALTY_UNWIND_NODE: i32 = 500;
 const PENALTY_SYNC_TOKEN: i32 = 5;
+
+/**
+ * Safely pushes a new head onto the active heads buffer.
+ * Returns true if successful, false if the buffer is full.
+ */
+function pushActiveHead(headPtr: u32): boolean {
+  if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
+  store<u32>(t_activeHeads + activeHeadsCount * 4, headPtr);
+  activeHeadsCount++;
+  return true;
+}
 
 export function getErrorStart(index: i32): u32 {
   return load<u32>(t_errorStarts + index * 4);
@@ -1005,8 +1017,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     if (token == TOKEN_SUSPEND) {
       // Push the head back and yield execution
-      store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(head));
-      activeHeadsCount++;
+      pushActiveHead(changetype<u32>(head));
       isSuspended = true;
       if (tokenBufferReadIdx < tokenBufferWriteIdx) {
         tokenBufferReadIdx++;
@@ -1112,7 +1123,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           head.consecutiveInsertions,
           head.dynamicPrec,
         );
-        store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(head));
+        pushActiveHead(changetype<u32>(head));
         pos = newPos;
         token = __LEX_FN__(pos);
         while (is_extra_token[token]) {
@@ -1147,7 +1158,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           head.consecutiveInsertions,
           head.dynamicPrec,
         );
-        store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(head));
+        pushActiveHead(changetype<u32>(head));
         pos = newPos;
         token = __LEX_FN__(pos);
         while (is_extra_token[token]) {
@@ -1239,7 +1250,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               }
             }
 
-            if (!mergedH) store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(newHead));
+            if (!mergedH) pushActiveHead(changetype<u32>(newHead));
             anyAction = true;
 
             // --------------------------------------------------------------------
@@ -1263,6 +1274,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let needed = popCount;
 
             while (needed > 0 && curr != null) {
+              if (c_idx <= 0) break; // Prevent underflow on t_globalReduceCollected
               if (curr.astNode != 0 && getNodeType(curr.astNode) == NODE_TYPE_ERROR) {
                 // type 0 == Error node
                 store<u32>(t_globalReduceCollected + c_idx-- * 4, curr.astNode);
@@ -1428,7 +1440,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     break;
                   }
                 }
-                if (!mergedH) store<u32>(t_activeHeads + activeHeadsCount++ * 4, changetype<u32>(newHead));
+                if (!mergedH) pushActiveHead(changetype<u32>(newHead));
                 anyAction = true;
               }
             }
@@ -1687,8 +1699,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   recPrec,
                   uPadding + droppedBytes + (a1NextScanPos - head.pos),
                 );
-                store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(delHead));
-                activeHeadsCount++;
+                pushActiveHead(changetype<u32>(delHead));
                 break;
               }
 
@@ -1771,8 +1782,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   0, // pendingPadding is absorbed
                 );
               }
-              store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(eofHead));
-              activeHeadsCount++;
+              pushActiveHead(changetype<u32>(eofHead));
               debugLog(777, totalCost, inputLength as i32, getNodeByteLength(unwindCurr.astNode) as i32);
             }
 
@@ -1794,8 +1804,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   recPrec,
                   uPadding + droppedBytes,
                 );
-                store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(retroHead));
-                activeHeadsCount++;
+                pushActiveHead(changetype<u32>(retroHead));
                 debugLog(5, recState, head.errorCost + retroCost, head.pos);
               }
             }
@@ -1886,8 +1895,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   uPadding + droppedBytes,
                 );
 
-                store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(insHead));
-                activeHeadsCount++;
+                pushActiveHead(changetype<u32>(insHead));
               }
 
               if (bestSym2 != -1) {
@@ -1919,8 +1927,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   uPadding + droppedBytes,
                 );
 
-                store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(insHead));
-                activeHeadsCount++;
+                pushActiveHead(changetype<u32>(insHead));
               }
             }
           }
@@ -1944,8 +1951,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           let currPop: ParseHead | null = null;
           let resumePos = 0;
 
-          // Step 1: Scan forward for a synchronization point
-          while (searchPos <= inputLength) {
+          // Step 1: Scan forward for a synchronization point (capped to prevent O(N²))
+          let panicScanCount: u32 = 0;
+          while (searchPos <= inputLength && panicScanCount < MAX_PANIC_SCAN_TOKENS) {
+            panicScanCount++;
             let tok = TOKEN_EOF;
             let tokenLen = 0;
 
@@ -2003,9 +2012,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let currChild: ParseHead | null = head;
             let childCount = 0;
             while (currChild != null && currChild != currPop) {
-              store<i32>(t_globalChildNodes + childCount++ * 4, currChild.astNode);
+              if (childCount < MAX_CHILD_NODES) {
+                store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+              }
+              childCount++;
               currChild = currChild.prev;
             }
+            if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
             // Allocate a monolithic ERROR leaf that spans the entire discarded section
             let islandLeaf = allocNode(NODE_TYPE_ERROR, 0, resumePos - currPop.pos, head.balanceHash & 0xff);
@@ -2039,8 +2052,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               0,
               head.dynamicPrec,
             );
-            store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(islandHead));
-            activeHeadsCount++;
+            pushActiveHead(changetype<u32>(islandHead));
             debugLog(6, currPop.state, islandCost, resumePos);
           }
         }

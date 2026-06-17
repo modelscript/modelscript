@@ -225,27 +225,31 @@ export function getFatPaddingPtr(idx: u32): usize {
  * @param sizeBytes Expected initial size (unused currently).
  */
 export function initArena(sizeBytes: u32): void {
-  S().gen1_chunks = atomicChunkAlloc(8192 * 4); // Metadata array: up to 8192 chunks
-  S().gen0_chunks = atomicChunkAlloc(8192 * 4);
+  let s = S();
+  s.gen1_chunks = atomicChunkAlloc(8192 * 4); // Metadata array: up to 8192 chunks
+  s.gen0_chunks = atomicChunkAlloc(8192 * 4);
 
   // Initialize first chunk for Generation 1 (Persistent)
   let chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  store<u32>(S().gen1_chunks, chunk1);
-  S().gen1_chunk_count = 1;
-  S().gen1_active_chunk = 0;
-  S().gen1_offset = chunk1;
-  S().gen1_endLimit = chunk1 + AST_CHUNK_SIZE;
+  store<u32>(s.gen1_chunks, chunk1);
+  s.gen1_chunk_count = 1;
+  s.gen1_active_chunk = 0;
+  s.gen1_offset = chunk1;
+  s.gen1_endLimit = chunk1 + AST_CHUNK_SIZE;
 
   // Initialize first chunk for Generation 0 (Transient)
   let chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  store<u32>(S().gen0_chunks, chunk0);
-  S().gen0_chunk_count = 1;
-  S().gen0_active_chunk = 0;
-  S().gen0_offset = chunk0;
-  S().gen0_endLimit = chunk0 + AST_CHUNK_SIZE;
+  store<u32>(s.gen0_chunks, chunk0);
+  s.gen0_chunk_count = 1;
+  s.gen0_active_chunk = 0;
+  s.gen0_offset = chunk0;
+  s.gen0_endLimit = chunk0 + AST_CHUNK_SIZE;
 
-  S().activeGeneration = 1;
-  S().arenaOffset = S().gen1_offset;
+  s.activeGeneration = 1;
+  s.arenaOffset = s.gen1_offset;
+
+  // Eagerly initialize fat padding arena (avoids per-allocNode null check)
+  ensureFatPaddingArena();
 }
 
 /**
@@ -260,19 +264,20 @@ export function initArena(sizeBytes: u32): void {
  * @returns A physical memory pointer (u32) to the newly allocated 16-byte node.
  */
 export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32): u32 {
-  S().allocCount++;
+  let s = S();
+  s.allocCount++;
   let ptr: u32 = 0;
 
   // 1. Attempt to reclaim memory from the free list (structural sharing)
-  if (S().freeNodeHead != 0) {
-    ptr = S().freeNodeHead;
-    S().freeNodeHead = load<u32>(ptr + 8, 0); // The 'firstChild' slot is overloaded as the 'next' pointer
+  if (s.freeNodeHead != 0) {
+    ptr = s.freeNodeHead;
+    s.freeNodeHead = load<u32>(ptr + 8, 0); // The 'firstChild' slot is overloaded as the 'next' pointer
   } else {
     // 2. Perform atomic bump allocation in the currently active generation
     let ptrLoc: usize =
-      changetype<usize>(S()) +
-      (S().activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
-    let endLimit = S().activeGeneration == 0 ? S().gen0_endLimit : S().gen1_endLimit;
+      changetype<usize>(s) +
+      (s.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
+    let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : s.gen1_endLimit;
 
     // Atomically claim a 16-byte slot
     ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
@@ -286,15 +291,15 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
     if (ptr + NODE_SIZE > endLimit) {
-      let isGen0 = S().activeGeneration == 0;
-      let activeChunk = isGen0 ? S().gen0_active_chunk : S().gen1_active_chunk;
-      let chunkCount = isGen0 ? S().gen0_chunk_count : S().gen1_chunk_count;
+      let isGen0 = s.activeGeneration == 0;
+      let activeChunk = isGen0 ? s.gen0_active_chunk : s.gen1_active_chunk;
+      let chunkCount = isGen0 ? s.gen0_chunk_count : s.gen1_chunk_count;
 
       let newChunk: u32 = 0;
       let usingRecycled = false;
 
       if (activeChunk + 1 < chunkCount) {
-        let chunkArray = isGen0 ? S().gen0_chunks : S().gen1_chunks;
+        let chunkArray = isGen0 ? s.gen0_chunks : s.gen1_chunks;
         newChunk = load<u32>(chunkArray + (activeChunk + 1) * 4);
         usingRecycled = true;
       } else {
@@ -304,19 +309,19 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + NODE_SIZE, newChunk + NODE_SIZE);
       if (oldOffset == ptr + NODE_SIZE) {
         if (isGen0) {
-          S().gen0_active_chunk++;
-          if (!usingRecycled && S().gen0_chunk_count < 8192) {
-            store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
-            S().gen0_chunk_count++;
+          s.gen0_active_chunk++;
+          if (!usingRecycled && s.gen0_chunk_count < 8192) {
+            store<u32>(s.gen0_chunks + s.gen0_chunk_count * 4, newChunk);
+            s.gen0_chunk_count++;
           }
-          S().gen0_endLimit = newChunk + AST_CHUNK_SIZE;
+          s.gen0_endLimit = newChunk + AST_CHUNK_SIZE;
         } else {
-          S().gen1_active_chunk++;
-          if (!usingRecycled && S().gen1_chunk_count < 8192) {
-            store<u32>(S().gen1_chunks + S().gen1_chunk_count * 4, newChunk);
-            S().gen1_chunk_count++;
+          s.gen1_active_chunk++;
+          if (!usingRecycled && s.gen1_chunk_count < 8192) {
+            store<u32>(s.gen1_chunks + s.gen1_chunk_count * 4, newChunk);
+            s.gen1_chunk_count++;
           }
-          S().gen1_endLimit = newChunk + AST_CHUNK_SIZE;
+          s.gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
         ptr = newChunk;
       } else {
@@ -324,19 +329,19 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       }
     }
 
-    if (S().activeGeneration != 0) {
-      S().arenaOffset = ptr + NODE_SIZE;
+    if (s.activeGeneration != 0) {
+      s.arenaOffset = ptr + NODE_SIZE;
     }
   }
 
   // 4. Handle values that exceed the 16-bit inline padding limit
-  ensureFatPaddingArena();
+  // Fat padding arena is eagerly initialized in initArena(), no null check needed here
   let fatFlag: u32 = 0;
   if (paddingLength >= 0xffff) {
-    if (S().fatPaddingCount < FAT_PADDING_CAPACITY) {
-      store<u32>(S().fatPaddingArenaPtr + S().fatPaddingCount * 4, paddingLength, 0);
-      paddingLength = S().fatPaddingCount;
-      S().fatPaddingCount++;
+    if (s.fatPaddingCount < FAT_PADDING_CAPACITY) {
+      store<u32>(s.fatPaddingArenaPtr + s.fatPaddingCount * 4, paddingLength, 0);
+      paddingLength = s.fatPaddingCount;
+      s.fatPaddingCount++;
       fatFlag = 1;
     } else {
       paddingLength = 0xfffe; // Saturate if the fat arena is completely full
