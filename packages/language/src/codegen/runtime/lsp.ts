@@ -24,6 +24,7 @@ let lspVisitedCount: u32 = 0;
 // --- Binary Serialization ---
 let t_lspBinaryBuffer: u32 = 0;
 let lspBinaryLength: u32 = 0;
+let lspBinaryCapacity: u32 = 50000; // Initial capacity, grows dynamically
 
 export function lsp_getBinaryBuffer(): u32 {
   return t_lspBinaryBuffer;
@@ -53,7 +54,14 @@ function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
       }
     }
   }
-  if (lspBinaryLength + 3 > 50000) return;
+  if (lspBinaryLength + 3 > lspBinaryCapacity) {
+    // Grow the binary buffer dynamically instead of silently dropping diagnostics
+    let newCapacity = lspBinaryCapacity * 2;
+    let newBuffer = atomicChunkAlloc(newCapacity * 4);
+    memory.copy(newBuffer, t_lspBinaryBuffer, lspBinaryLength * 4);
+    t_lspBinaryBuffer = newBuffer;
+    lspBinaryCapacity = newCapacity;
+  }
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
@@ -83,7 +91,12 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
   let savedSrcLexPos = srcLexPos;
   let savedScannerState = currentScannerState;
 
-  while (p < end) {
+  // Guard: limit iterations to prevent runaway scanning on malformed input
+  let maxIterations: u32 = 100000;
+  let iterations: u32 = 0;
+
+  while (p < end && iterations < maxIterations) {
+    iterations++;
     let token = __LEX_FN__(p);
     let tokenStart = lexPos;
     let tokenLen = lexLen > 0 ? lexLen : 2;
@@ -133,6 +146,7 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
     allocDiagnostic(errorStart as u32, end, 0, 0);
   }
 
+  // Always restore scanner state, even if the loop exited early
   setLexLen(savedLexLen);
   setLexPos(savedLexPos);
   setSrcLexPos(savedSrcLexPos);
@@ -152,7 +166,7 @@ function lsp_clearVisited(): void {
 
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
-    t_lspBinaryBuffer = atomicChunkAlloc(50000 * 4);
+    t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
     t_lspTraverseStack = atomicChunkAlloc(50000 * 4);
     t_lspOffsetStack = atomicChunkAlloc(50000 * 4);
     t_lspVisitedNodes = atomicChunkAlloc(50000 * 4);

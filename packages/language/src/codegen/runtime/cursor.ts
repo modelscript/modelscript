@@ -1,6 +1,6 @@
 /* eslint-disable */
 // @ts-nocheck
-import { getNodeFirstChild, getNodeNextSibling } from "./arena";
+import { getNodeByteLength, getNodeFirstChild, getNodeNextSibling, getNodePadding } from "./arena";
 import { ChunkedUint32Array } from "./array";
 // TreeCursor State Machine for Persistent AST
 

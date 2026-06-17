@@ -1737,9 +1737,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               let currChild: ParseHead | null = head;
               let childCount = 0;
               while (currChild != null && currChild != unwindCurr) {
-                store<i32>(t_globalChildNodes + childCount++ * 4, currChild.astNode);
+                if (childCount < MAX_CHILD_NODES) {
+                  store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+                }
+                childCount++;
                 currChild = currChild.prev;
               }
+              if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
               let eofHead: ParseHead;
               if (childCount > 0 || errLen > 0) {
@@ -1815,7 +1819,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           // ------------------------------------------------------------
           // Search the action table for any valid SHIFT out of the unwound state.
           // Create a zero-length virtual AST node for that expected token.
-          if (head.consecutiveInsertions < 4) {
+          if (head.consecutiveInsertions < 8) {
             let aOffset = action_offsets[recState];
             if (aOffset >= 0 && aOffset < action_data.length) {
               idx2 = aOffset + 1;
@@ -1968,7 +1972,17 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             // We treat EVERY token as a potential synchronization point (like Tree-sitter's ERROR pseudo-node).
             // We rely on `stateCanAccept` to contextually determine if the popped state can resume here.
             let nextPos = searchPos + tokenLen;
+            // Save lexer state before lookahead to prevent clobbering tok's lexLen
+            let savedPanicLexLen = lexLen;
+            let savedPanicLexPos = lexPos;
+            let savedPanicSrcLexPos = srcLexPos;
+            let savedPanicScannerState = currentScannerState;
             let nextTok = __LEX_FN__(nextPos); // lookahead token after the sync token
+            // Restore lexer state so tokenLen stays valid for subsequent iterations
+            setLexLen(savedPanicLexLen);
+            setLexPos(savedPanicLexPos);
+            setSrcLexPos(savedPanicSrcLexPos);
+            setCurrentScannerState(savedPanicScannerState);
 
             currPop = head;
             while (currPop != null) {
@@ -2210,17 +2224,17 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     let c_idx = totalNodes;
 
     // Append the unparsed chunk
-    if (unparsedNode != 0) {
+    if (unparsedNode != 0 && c_idx > 0) {
       c_idx--;
-      store<i32>(t_globalChildNodes + c_idx * 4, unparsedNode);
+      if (c_idx < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + c_idx * 4, unparsedNode);
     }
 
     // Append the successfully parsed nodes from the GSS
     curr = changetype<ParseHead>(bestDyingHead);
     while (curr) {
-      if (curr.astNode != 0) {
+      if (curr.astNode != 0 && c_idx > 0) {
         c_idx--;
-        store<i32>(t_globalChildNodes + c_idx * 4, curr.astNode);
+        if (c_idx < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + c_idx * 4, curr.astNode);
       }
       curr = curr.prev;
     }

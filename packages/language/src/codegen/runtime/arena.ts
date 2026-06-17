@@ -137,6 +137,7 @@ export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
+    dirtyNodeStrings.clear(); // Prevent stale text entries from leaking across parses
     if (S().gen1_chunk_count > 0) {
       S().gen1_active_chunk = 0;
       S().gen1_offset = load<u32>(S().gen1_chunks);
@@ -161,7 +162,8 @@ export function resetGeneration(gen: u8): void {
  * @returns The pointer to the start of the usable input buffer.
  */
 export function ensureInputBuffer(size: u32): usize {
-  // Allow an extra 64 bytes for internal overhead or padding
+  // Allow an extra 64 bytes of leading overhead so the usable region starts at
+  // a cache-line-aligned offset, keeping metadata out of the hot input path.
   if (size + 64 > S().currentInputBufferSize) {
     S().currentInputBufferSize = size + 64;
     S().arenaBuffer = atomicChunkAlloc(S().currentInputBufferSize);
@@ -171,6 +173,8 @@ export function ensureInputBuffer(size: u32): usize {
 
 /**
  * Retrieves the memory pointer where the input source text is stored.
+ * The +64 offset reserves a leading cache-line for internal arena metadata,
+ * ensuring the usable input region does not alias with allocator bookkeeping.
  * @returns The pointer to the usable region of the input buffer.
  */
 export function getInputBuffer(): usize {
@@ -191,7 +195,7 @@ export function getNodeArenaStart(): u32 {
 
 /** Pointer to the arena used for storing values that exceed the 16-bit inline padding limit. */
 /* moved S().fatPaddingArenaPtr to state */
-const FAT_PADDING_CAPACITY: u32 = 100000;
+let fatPaddingCapacity: u32 = 100000; // Grows dynamically if exhausted
 /** The number of active fat padding slots currently utilized. */
 /* moved S().fatPaddingCount to state */
 
@@ -201,8 +205,8 @@ const FAT_PADDING_CAPACITY: u32 = 100000;
  */
 function ensureFatPaddingArena(): void {
   if (S().fatPaddingArenaPtr == 0) {
-    S().fatPaddingArenaPtr = atomicChunkAlloc(FAT_PADDING_CAPACITY * 4);
-    memory.fill(S().fatPaddingArenaPtr as usize, 0, FAT_PADDING_CAPACITY * 4);
+    S().fatPaddingArenaPtr = atomicChunkAlloc(fatPaddingCapacity * 4);
+    memory.fill(S().fatPaddingArenaPtr as usize, 0, fatPaddingCapacity * 4);
   }
 }
 
@@ -338,14 +342,18 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   // Fat padding arena is eagerly initialized in initArena(), no null check needed here
   let fatFlag: u32 = 0;
   if (paddingLength >= 0xffff) {
-    if (s.fatPaddingCount < FAT_PADDING_CAPACITY) {
-      store<u32>(s.fatPaddingArenaPtr + s.fatPaddingCount * 4, paddingLength, 0);
-      paddingLength = s.fatPaddingCount;
-      s.fatPaddingCount++;
-      fatFlag = 1;
-    } else {
-      paddingLength = 0xfffe; // Saturate if the fat arena is completely full
+    if (s.fatPaddingCount >= fatPaddingCapacity) {
+      // Grow the fat padding arena dynamically
+      let newCapacity = fatPaddingCapacity * 2;
+      let newPtr = atomicChunkAlloc(newCapacity * 4);
+      memory.copy(newPtr, s.fatPaddingArenaPtr, fatPaddingCapacity * 4);
+      s.fatPaddingArenaPtr = newPtr;
+      fatPaddingCapacity = newCapacity;
     }
+    store<u32>(s.fatPaddingArenaPtr + s.fatPaddingCount * 4, paddingLength, 0);
+    paddingLength = s.fatPaddingCount;
+    s.fatPaddingCount++;
+    fatFlag = 1;
   }
 
   // 5. Clamp lengths to fit within bit-packed limits

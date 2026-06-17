@@ -714,7 +714,9 @@ let currentTextLength = 0;
 let currentGenerationId = 0;
 let pendingFullText = null;
 
-let patchBuffer = new ArrayBuffer(1024 * 1024 * 2);
+let patchBufferA = new ArrayBuffer(1024 * 1024 * 2);
+let patchBufferB = new ArrayBuffer(1024 * 1024 * 2);
+let patchBuffer = patchBufferA;
 let patchInt32 = new Int32Array(patchBuffer);
 let patchOffset = 0;
 
@@ -724,6 +726,9 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
         patchBuffer = new ArrayBuffer(patchBuffer.byteLength * 2);
         patchInt32 = new Int32Array(patchBuffer);
         patchInt32.set(old);
+        // Keep both buffers in sync size-wise
+        if (patchBuffer === patchBufferA) patchBufferA = patchBuffer;
+        else patchBufferB = patchBuffer;
     }
     patchInt32[patchOffset++] = op;
     patchInt32[patchOffset++] = ptr;
@@ -759,8 +764,12 @@ function triggerDiagnostics(changes = null) {
         console.log('DIAGS:', JSON.stringify(rawDiags), 'root:', astRoot, 'inputLen:', lspFacade.exports.inputLength?.value);
         const lineStarts = lspFacade.getLineStarts();
         
+        // Double-buffer swap: transfer the current buffer and switch to the other
         const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
-        patchOffset = 0; // reset for next parse
+        patchOffset = 0;
+        // Swap to the alternate buffer to avoid allocating a new one each edit
+        patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
+        patchInt32 = new Int32Array(patchBuffer);
         
         self.postMessage({ 
             type: 'astPatchBinary', 

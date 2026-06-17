@@ -249,6 +249,7 @@ export class LspFacade {
   private wasmMemory: WebAssembly.Memory;
   public exports: any;
   private lastAstRoot: number = 0;
+  private _cachedLineStarts: number[] | null = null;
 
   constructor(wasmMemoryOrInstance: any, exports?: any) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
@@ -269,10 +270,12 @@ export class LspFacade {
       this.exports.resetParser();
     }
     this.lastAstRoot = 0;
+    this._cachedLineStarts = null;
   }
 
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    this._cachedLineStarts = null; // Invalidate cached line starts on edit
 
     const lenBytes = newTotalLength * 2;
 
@@ -359,6 +362,7 @@ export class LspFacade {
   }
 
   public getLineStarts(): number[] {
+    if (this._cachedLineStarts) return this._cachedLineStarts;
     const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
     const lenChars = lenBytes / 2;
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
@@ -368,6 +372,7 @@ export class LspFacade {
         lineStarts.push((i + 1) * 2);
       }
     }
+    this._cachedLineStarts = lineStarts;
     return lineStarts;
   }
 
@@ -689,6 +694,7 @@ export class LspFacade {
 
   parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    this._cachedLineStarts = null; // Invalidate cached line starts on edit
     const lenBytes = text.length * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytes)
