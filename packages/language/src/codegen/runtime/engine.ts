@@ -1706,9 +1706,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             if (canAcceptEof) {
               // Instead of manually lexing up to 1000 tokens, approximate the cost in O(1).
               // This prevents an O(N) slowdown where every error branch rescans trailing garbage.
-              let remainingBytes: u32 = inputLength > a1NextScanPos ? inputLength - a1NextScanPos : 0;
+              let remainingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
               let approxTokens = remainingBytes / 5;
-              let eofDelCost = a1DelCost + approxTokens * 20;
+              let eofDelCost = approxTokens * 20;
 
               // Cap the total cost so trailing garbage doesn't exceed MAX_ERRORS and kill the parse.
               let totalCost = head.errorCost + baseDelCost + eofDelCost;
@@ -1716,19 +1716,61 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 totalCost = MAX_ERRORS - 50;
               }
 
-              let eofHead = allocParseHead(
-                recState,
-                unwindCurr.astNode,
-                unwindCurr.prev,
-                inputLength,
-                0, // Reset scanner state for EOF
-                totalCost,
-                0,
-                newBalance,
-                0,
-                recPrec,
-                uPadding + droppedBytes + remainingBytes,
-              );
+              let errPad = uPadding;
+              let errLen = droppedBytes + remainingBytes;
+              if (unwindDepth == 0 && srcLexPos > head.pos) {
+                errPad += srcLexPos - head.pos;
+                errLen = inputLength > srcLexPos ? inputLength - srcLexPos : 0;
+              }
+              // Collect dropped children between `head` and `unwindCurr`
+              let currChild: ParseHead | null = head;
+              let childCount = 0;
+              while (currChild != null && currChild != unwindCurr) {
+                store<i32>(t_globalChildNodes + childCount++ * 4, currChild.astNode);
+                currChild = currChild.prev;
+              }
+
+              let eofHead: ParseHead;
+              if (childCount > 0 || errLen > 0) {
+                let errNode = allocNode(NODE_TYPE_ERROR, errPad, errLen, newBalance & 0xff);
+                let lastChild = 0;
+                for (let k = childCount - 1; k >= 0; k--) {
+                  let child = load<i32>(t_globalChildNodes + k * 4);
+                  if (child == 0) continue;
+                  let clone = cloneNodeShallow(child);
+                  if (lastChild == 0) setFirstChild(errNode, clone);
+                  else setNextSibling(lastChild, clone);
+                  lastChild = clone;
+                }
+
+                eofHead = allocParseHead(
+                  recState,
+                  errNode,
+                  unwindCurr,
+                  inputLength,
+                  0, // Reset scanner state for EOF
+                  totalCost,
+                  0,
+                  newBalance,
+                  0,
+                  recPrec,
+                  0, // pendingPadding is absorbed
+                );
+              } else {
+                eofHead = allocParseHead(
+                  recState,
+                  unwindCurr.astNode,
+                  unwindCurr.prev,
+                  inputLength,
+                  0, // Reset scanner state for EOF
+                  totalCost,
+                  0,
+                  newBalance,
+                  0,
+                  recPrec,
+                  0, // pendingPadding is absorbed
+                );
+              }
               store<u32>(t_activeHeads + activeHeadsCount * 4, changetype<u32>(eofHead));
               activeHeadsCount++;
               debugLog(777, totalCost, inputLength as i32, getNodeByteLength(unwindCurr.astNode) as i32);

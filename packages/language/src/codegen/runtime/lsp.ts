@@ -11,7 +11,7 @@ import {
   getNodeType,
   setNodeFlags,
 } from "./arena";
-import { errorCount, getErrorEnd, getErrorStart } from "./engine";
+import { errorCount, getErrorEnd, getErrorStart, TOKEN_EOF } from "./engine";
 import { inputLength } from "./parser";
 
 // --- LSP Endpoints ---
@@ -103,14 +103,14 @@ function scanPaddingForErrors(start: u32, padLen: u32): void {
       if (errorStart != -1) {
         // If the upcoming token is valid (or EOF), close the error before the whitespace.
         // Otherwise, keep it open so it merges with the next invalid garbage token.
-        if (token == 0 || is_extra_token[token]) {
+        if (token == TOKEN_EOF || is_extra_token[token]) {
           allocDiagnostic(errorStart as u32, p, 0, 0);
           errorStart = -1;
         }
       }
     }
 
-    if (token == 0) break; // EOF
+    if (token == TOKEN_EOF) break; // EOF
 
     // Now consider the matched token
     if (is_extra_token[token]) {
@@ -249,6 +249,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           lo++;
           hi--;
         }
+      }
+
+      // Check if there is a gap between the end of the last child and the end of the parent node
+      if (currOffset < nodeEnd) {
+        scanPaddingForErrors(currOffset, nodeEnd - currOffset);
       }
     }
   }

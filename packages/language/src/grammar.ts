@@ -43,6 +43,7 @@ export class NormalizedGrammar {
 
   private nextId = 0;
   private syntheticCount = 0;
+  private syntheticCache = new Map<string, string>();
 
   symToInt = new Map<string, number>();
   localSyncTokens = new Set<string>();
@@ -262,8 +263,58 @@ export class NormalizedGrammar {
     }
   }
 
-  private nextSynthetic(): string {
-    return `_SYN_${this.syntheticCount++}`;
+  private getEBNF(rule: any): string {
+    if (typeof rule === "string") return rule;
+    if (rule instanceof RegExp) return `/${rule.source}/`;
+    if (!rule || !rule.type) return "unknown";
+
+    switch (rule.type.toUpperCase()) {
+      case "SYMBOL":
+        return rule.value as string;
+      case "TOKEN":
+        return typeof rule.value === "string"
+          ? `"${rule.value}"`
+          : rule.value instanceof RegExp
+            ? `/${rule.value.source}/`
+            : "token";
+      case "SEQ":
+        return `(${(rule.children || rule.args || []).map((c: any) => this.getEBNF(c)).join(" ")})`;
+      case "CHOICE":
+        return `(${(rule.children || rule.args || []).map((c: any) => this.getEBNF(c)).join(" | ")})`;
+      case "REPEAT":
+        return `${this.getEBNF((rule.children || rule.args || [])[0])}*`;
+      case "REPEAT1":
+        return `${this.getEBNF((rule.children || rule.args || [])[0])}+`;
+      case "OPTIONAL":
+        return `${this.getEBNF((rule.children || rule.args || [])[0])}?`;
+      case "PREC":
+      case "PREC_LEFT":
+      case "PREC_RIGHT":
+      case "PREC_DYNAMIC":
+      case "ALIAS":
+      case "FIELD":
+      case "RESERVED":
+      case "TOKEN_IMMEDIATE":
+        return this.getEBNF((rule.children || rule.args || [])[0]);
+      default:
+        return "unknown";
+    }
+  }
+
+  private nextSynthetic(ebnf: string, p: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number }): string {
+    const cacheKey = `${ebnf}#${p.prec}#${p.assoc}#${p.dynamicPrec}`;
+    if (this.syntheticCache.has(cacheKey)) {
+      return this.syntheticCache.get(cacheKey)!;
+    }
+
+    let symName = `_${ebnf}`;
+    let counter = 1;
+    while (this.nonTerminals.has(symName)) {
+      symName = `_${ebnf}_${counter++}`;
+    }
+
+    this.syntheticCache.set(cacheKey, symName);
+    return symName;
   }
 
   // Returns the symbol name representing this rule
@@ -301,7 +352,9 @@ export class NormalizedGrammar {
       }
 
       case "CHOICE": {
-        const choiceSym = this.nextSynthetic();
+        const choiceSym = this.nextSynthetic(this.getEBNF(rule), p);
+        if (this.nonTerminals.has(choiceSym)) return [{ sym: choiceSym }];
+
         for (const child of children) {
           const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
           const childSyms = this.flatten(contextName, child, childP);
@@ -314,7 +367,9 @@ export class NormalizedGrammar {
       case "REPEAT1": {
         const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
         const childSyms = this.flatten(contextName, children[0], childP);
-        const repeatSym = this.nextSynthetic();
+        const repeatSym = this.nextSynthetic(this.getEBNF(rule), p);
+
+        if (this.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
 
         // repeatSym -> repeatSym childSyms | epsilon
         this.addProduction(
@@ -330,32 +385,40 @@ export class NormalizedGrammar {
       }
 
       case "PREC": {
-        const precSym = this.nextSynthetic();
         const childP = { ...p, prec: rule.value || rule.precedence };
+        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
+        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
         const childSyms = this.flatten(contextName, children[0], childP);
         this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
         return [{ sym: precSym }];
       }
 
       case "PREC_LEFT": {
-        const precSym = this.nextSynthetic();
         const childP = { ...p, prec: rule.value || rule.precedence, assoc: "left" as const };
+        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
+        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
         const childSyms = this.flatten(contextName, children[0], childP);
         this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
         return [{ sym: precSym }];
       }
 
       case "PREC_RIGHT": {
-        const precSym = this.nextSynthetic();
         const childP = { ...p, prec: rule.value || rule.precedence, assoc: "right" as const };
+        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
+        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
         const childSyms = this.flatten(contextName, children[0], childP);
         this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
         return [{ sym: precSym }];
       }
 
       case "PREC_DYNAMIC": {
-        const precSym = this.nextSynthetic();
         const childP = { ...p, dynamicPrec: rule.value || rule.precedence };
+        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
+        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
         const childSyms = this.flatten(contextName, children[0], childP);
         this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
         return [{ sym: precSym }];
@@ -366,7 +429,9 @@ export class NormalizedGrammar {
         return this.flatten(contextName, rule.rule || children[0], p);
 
       case "OPTIONAL": {
-        const optSym = this.nextSynthetic();
+        const optSym = this.nextSynthetic(this.getEBNF(rule), p);
+        if (this.nonTerminals.has(optSym)) return [{ sym: optSym }];
+
         const childSyms = this.flatten(contextName, children[0], p);
         this.addProduction(optSym, childSyms, p.prec, p.assoc, false, (p as any).dynamicPrec);
         this.addProduction(optSym, [], undefined, undefined, true);

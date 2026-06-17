@@ -575,10 +575,6 @@ export class GLRTable {
 
     const formatRule = (s: string) => {
       if (s.startsWith('"') && s.endsWith('"')) return s.replace(/"/g, "'");
-      if (s.startsWith("_SYN_")) {
-        const parentProd = this.grammar.productions.find((p) => p.right.length === 1 && p.right[0] === s);
-        if (parentProd) return parentProd.left;
-      }
       return s;
     };
 

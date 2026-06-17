@@ -512,7 +512,7 @@ function getIndexHtml() {
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset });
                     
-                    let childOffset = parentOffset;
+                    let childOffset = currentOffset;
                     for (const childPtr of node.children || []) {
                         childOffset = flatten(childPtr, depth + 1, childOffset);
                     }

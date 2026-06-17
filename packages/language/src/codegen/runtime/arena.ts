@@ -81,11 +81,11 @@ export function S(): SharedState {
     let state = changetype<SharedState>(newPtr);
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
     state.arenaBuffer = atomicChunkAlloc(state.currentInputBufferSize);
-    state.gen1_chunks = atomicChunkAlloc(1024 * 4);
+    state.gen1_chunks = atomicChunkAlloc(8192 * 4);
     state.gen1_chunk_count = 1;
     store<u32>(state.gen1_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
 
-    state.gen0_chunks = atomicChunkAlloc(1024 * 4);
+    state.gen0_chunks = atomicChunkAlloc(8192 * 4);
     state.gen0_chunk_count = 1;
     store<u32>(state.gen0_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
 
@@ -225,8 +225,8 @@ export function getFatPaddingPtr(idx: u32): usize {
  * @param sizeBytes Expected initial size (unused currently).
  */
 export function initArena(sizeBytes: u32): void {
-  S().gen1_chunks = atomicChunkAlloc(1024 * 4); // Metadata array: up to 1024 chunks
-  S().gen0_chunks = atomicChunkAlloc(1024 * 4);
+  S().gen1_chunks = atomicChunkAlloc(8192 * 4); // Metadata array: up to 8192 chunks
+  S().gen0_chunks = atomicChunkAlloc(8192 * 4);
 
   // Initialize first chunk for Generation 1 (Persistent)
   let chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
@@ -305,14 +305,14 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       if (oldOffset == ptr + NODE_SIZE) {
         if (isGen0) {
           S().gen0_active_chunk++;
-          if (!usingRecycled) {
+          if (!usingRecycled && S().gen0_chunk_count < 8192) {
             store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
             S().gen0_chunk_count++;
           }
           S().gen0_endLimit = newChunk + AST_CHUNK_SIZE;
         } else {
           S().gen1_active_chunk++;
-          if (!usingRecycled) {
+          if (!usingRecycled && S().gen1_chunk_count < 8192) {
             store<u32>(S().gen1_chunks + S().gen1_chunk_count * 4, newChunk);
             S().gen1_chunk_count++;
           }
@@ -402,7 +402,7 @@ export function allocGen0(sizeBytes: u32): u32 {
     let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + sizeBytes, newChunk + sizeBytes);
     if (oldOffset == ptr + sizeBytes) {
       S().gen0_active_chunk++;
-      if (!usingRecycled && S().gen0_chunk_count < 1024) {
+      if (!usingRecycled && S().gen0_chunk_count < 8192) {
         store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
         S().gen0_chunk_count++;
       }
@@ -930,7 +930,12 @@ export function clearAstMarks(rootToKeep: u32): void {
   // --------------------------------------------------------------------------
   S().freeNodeHead = 0; // Reset free-list
 
-  for (let i: u32 = 0; i <= S().gen1_active_chunk; i++) {
+  let activeChunk = S().gen1_active_chunk;
+  if (activeChunk >= S().gen1_chunk_count) {
+    activeChunk = S().gen1_chunk_count - 1;
+  }
+
+  for (let i: u32 = 0; i <= activeChunk; i++) {
     let start = load<u32>(S().gen1_chunks + i * 4);
     let sweepEnd = i == S().gen1_active_chunk ? S().gen1_offset : start + AST_CHUNK_SIZE;
 

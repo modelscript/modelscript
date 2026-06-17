@@ -32,8 +32,15 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
     // Prepend if safeName starts with number
     if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
 
-    typeCode += `  ${safeName} = ${i},\n`;
-    emittedNames.add(safeName);
+    let finalName = safeName;
+    let suffix = 1;
+    while (emittedNames.has(finalName)) {
+      finalName = `${safeName}_${suffix}`;
+      suffix++;
+    }
+
+    typeCode += `  ${finalName} = ${i},\n`;
+    emittedNames.add(finalName);
   }
 
   // Fallbacks for CAD rules to prevent compilation errors in hardcoded LSP template CAD functions
