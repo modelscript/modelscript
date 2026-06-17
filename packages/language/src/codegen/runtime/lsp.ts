@@ -11,7 +11,7 @@ import {
   getNodeType,
   setNodeFlags,
 } from "./arena";
-import { errorCount, getErrorEnd, getErrorStart, TOKEN_EOF } from "./engine";
+import { errorCount, getErrorEnd, getErrorStart } from "./engine";
 import { inputLength } from "./parser";
 
 // --- LSP Endpoints ---
@@ -69,92 +69,6 @@ function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
-}
-
-import {
-  __LEX_FN__,
-  currentScannerState,
-  is_extra_token,
-  lexLen,
-  lexPos,
-  setCurrentScannerState,
-  setLexLen,
-  setLexPos,
-  setSrcLexPos,
-  srcLexPos,
-} from "./parser";
-
-function scanPaddingForErrors(start: u32, padLen: u32): void {
-  if (padLen == 0) return;
-  let end = start + padLen;
-  let p = start;
-  let errorStart: i32 = -1;
-
-  let savedLexLen = lexLen;
-  let savedLexPos = lexPos;
-  let savedSrcLexPos = srcLexPos;
-  let savedScannerState = currentScannerState;
-
-  // Guard: limit iterations to prevent runaway scanning on malformed input
-  let maxIterations: u32 = 100000;
-  let iterations: u32 = 0;
-
-  while (p < end && iterations < maxIterations) {
-    iterations++;
-    let token = __LEX_FN__(p);
-    let tokenStart = lexPos;
-    let tokenLen = lexLen > 0 ? lexLen : 2;
-
-    // If the token starts exactly at or after our padding end, we are done
-    // and should only report skipped spaces before this token if any.
-    if (tokenStart >= end) {
-      if (errorStart != -1 && (p as i32) > errorStart) {
-        allocDiagnostic(errorStart as u32, p, 0, 0);
-      }
-      errorStart = -1;
-      break;
-    }
-
-    // Check if lexer skipped any valid whitespace/comments BEFORE the token
-    if (tokenStart > p) {
-      if (errorStart != -1) {
-        // If the upcoming token is valid (or EOF), close the error before the whitespace.
-        // Otherwise, keep it open so it merges with the next invalid garbage token.
-        if (token == TOKEN_EOF || is_extra_token[token]) {
-          allocDiagnostic(errorStart as u32, p, 0, 0);
-          errorStart = -1;
-        }
-      }
-    }
-
-    if (token == TOKEN_EOF) break; // EOF
-
-    // Now consider the matched token
-    if (is_extra_token[token]) {
-      // Valid extra token
-      if (errorStart != -1) {
-        allocDiagnostic(errorStart as u32, tokenStart, 0, 0);
-        errorStart = -1;
-      }
-    } else {
-      // Invalid garbage inside padding!
-      if (errorStart == -1) {
-        errorStart = tokenStart as i32;
-      }
-    }
-
-    p = tokenStart + tokenLen;
-  }
-
-  if (errorStart != -1) {
-    allocDiagnostic(errorStart as u32, end, 0, 0);
-  }
-
-  // Always restore scanner state, even if the loop exited early
-  setLexLen(savedLexLen);
-  setLexPos(savedLexPos);
-  setSrcLexPos(savedSrcLexPos);
-  setCurrentScannerState(savedScannerState);
 }
 
 function lsp_clearVisited(): void {
@@ -247,16 +161,13 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     let isErrorNode = type == 0;
     let firstChild = getNodeFirstChild(node);
-    // 3. Mark the node as an error if it's explicitly typed as ERROR (0)
-    // We only emit diagnostics for LEAF error nodes to prevent squiggling
-    // valid syntax that was successfully shifted but wrapped in a fragmented root.
-    if (isErrorNode) {
-      // Ignore 0-length ERROR nodes to prevent the editor from squiggling the preceding valid word
-      if (firstChild == 0 && len > 0) {
-        allocDiagnostic(nodeStart, nodeEnd, 0, 0);
-      }
+
+    // Emit diagnostics for ERROR nodes.
+    // We report the full span of any ERROR node (leaf or parent) as a syntax error.
+    if (isErrorNode && len > 0) {
+      allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {
-      // Unlexed empty terminal (2 bytes for UTF-16)
+      // Missing terminal (ghost node inserted by error recovery)
       let dStart = nodeStart;
       let dEnd = nodeStart + 2;
       if (dEnd > inputLength) {
@@ -267,15 +178,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       allocDiagnostic(dStart, dEnd, type, 0);
     }
 
-    if (firstChild == 0) {
-      scanPaddingForErrors(start, pad);
-    } else {
-      let childPad = getNodePadding(firstChild);
-      if (pad > childPad) {
-        scanPaddingForErrors(start, pad - childPad);
-      }
-    }
-
+    // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
     if (child != 0) {
       // Count children first to check capacity
@@ -319,20 +222,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           hi--;
         }
       }
-
-      // Check if there is a gap between the end of the last child and the end of the parent node
-      if (currOffset < nodeEnd) {
-        scanPaddingForErrors(currOffset, nodeEnd - currOffset);
-      }
     }
-  }
-
-  let astRootEnd: u32 = 0;
-  if (astRoot != 0) {
-    astRootEnd = getNodePadding(astRoot) + getNodeByteLength(astRoot);
-  }
-  if (astRootEnd < inputLength) {
-    scanPaddingForErrors(astRootEnd, inputLength - astRootEnd);
   }
 
   lsp_clearVisited();

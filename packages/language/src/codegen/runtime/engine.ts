@@ -920,6 +920,107 @@ export let lastBestCost = 0;
 export let lastMaxHeads = 0;
 
 /**
+ * Tree-sitter-style trailing error wrapping.
+ * If the accepted node does not span the full input, the remaining unparsed
+ * bytes are wrapped in a NODE_TYPE_ERROR node and both the accepted node
+ * and the error node are linked under a new root.
+ *
+ * @param acceptedNode The accepted AST root.
+ * @returns The original acceptedNode if it covers the whole input,
+ *          or a new root wrapping acceptedNode + trailing ERROR.
+ */
+function wrapWithTrailingErrors(acceptedNode: u32): u32 {
+  let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
+  if (nodeSpan >= inputLength) return acceptedNode;
+
+  // There is unparsed input after the accepted node — lex it into an ERROR node
+  let trailingStart = nodeSpan;
+  let trailingLen = inputLength - trailingStart;
+
+  // Save scanner state
+  let savedLexPos = lexPos;
+  let savedLexLen = lexLen;
+  let savedSrcLexPos = srcLexPos;
+  let savedScannerState = currentScannerState;
+
+  // lex() internally skips whitespace/comments. After calling lex(pos),
+  // srcLexPos is where the real token starts (after extras), and lexLen is the token length.
+  let firstTok = lex(trailingStart);
+
+  // srcLexPos - trailingStart = whitespace between accepted node end and first error token
+  let errPad: u32 = srcLexPos > trailingStart ? srcLexPos - trailingStart : 0;
+
+  // Restore scanner state
+  lexPos = savedLexPos;
+  lexLen = savedLexLen;
+  srcLexPos = savedSrcLexPos;
+  currentScannerState = savedScannerState;
+
+  // If the first token is EOF, there's only trailing whitespace
+  if (firstTok == TOKEN_EOF) return acceptedNode;
+
+  let errByteLen = trailingLen > errPad ? trailingLen - errPad : 0;
+  if (errByteLen == 0) return acceptedNode;
+
+  let errorNode = allocNode(NODE_TYPE_ERROR, errPad, errByteLen, 0);
+
+  // Lex the error content into child tokens of the ERROR node for AST fidelity
+  let lastTokNode: u32 = 0;
+  let errContentStart = trailingStart + errPad;
+  let lexP = errContentStart;
+  let firstErrTokenStart: i32 = -1;
+  let lastErrTokenEnd: i32 = -1;
+
+  savedLexPos = lexPos;
+  savedLexLen = lexLen;
+  savedSrcLexPos = srcLexPos;
+  savedScannerState = currentScannerState;
+
+  while (lexP < inputLength) {
+    let tok = lex(lexP);
+    if (tok == TOKEN_EOF) break;
+    let tLen = lexLen;
+    if (tLen == 0) break;
+    let pad: u32 = srcLexPos > lexP ? srcLexPos - lexP : 0;
+
+    if (firstErrTokenStart == -1) {
+      firstErrTokenStart = srcLexPos as i32;
+    }
+    lastErrTokenEnd = (srcLexPos + tLen) as i32;
+
+    let tNode = allocNode(tok as u16, pad, tLen, 0);
+    if (lastTokNode == 0) setFirstChild(errorNode, tNode);
+    else setNextSibling(lastTokNode, tNode);
+    lastTokNode = tNode;
+
+    lexP = srcLexPos + tLen;
+  }
+
+  lexPos = savedLexPos;
+  lexLen = savedLexLen;
+  srcLexPos = savedSrcLexPos;
+  currentScannerState = savedScannerState;
+
+  // Report the error range covering non-whitespace content
+  if (firstErrTokenStart != -1 && lastErrTokenEnd != -1) {
+    reportError(firstErrTokenStart as u32, lastErrTokenEnd as u32);
+  }
+
+  // Create a new root wrapping the accepted node + trailing error
+  let acceptedPad = getNodePadding(acceptedNode);
+  let totalBytes = inputLength - acceptedPad;
+  let root = allocNode(NODE_TYPE_ERROR, acceptedPad, totalBytes, 0);
+
+  // Clone and link: accepted first, then error
+  let clonedAccepted = cloneNodeShallow(acceptedNode);
+  setNodePadding(clonedAccepted, 0); // Padding is on the root now
+  setFirstChild(root, clonedAccepted);
+  setNextSibling(clonedAccepted, errorNode);
+
+  return root;
+}
+
+/**
  * The main entrypoint for the GLR/LR(1) parser.
  * Executes incrementally by attempting to reuse nodes from the `oldTree` outside of the edit bounds.
  *
@@ -1728,7 +1829,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     if (acceptedNode != 0 && activeHeadsCount == 0) {
       debugLog(999, acceptedNode, bestAcceptedCost, getNodeByteLength(acceptedNode));
-      return acceptedNode;
+      return wrapWithTrailingErrors(acceptedNode);
     }
 
     if (!anyAction) {
@@ -2324,7 +2425,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   }
   if (acceptedNode != 0) {
     debugLog(999, bestAcceptedCost, getNodeByteLength(acceptedNode), 0);
-    return acceptedNode;
+    return wrapWithTrailingErrors(acceptedNode);
   }
   if (bestDyingHead != 0) {
     // ----------------------------------------------------------------------
