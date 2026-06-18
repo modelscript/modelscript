@@ -8,25 +8,36 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   const regexTokens = new Map<string, string>();
 
   function extractTokens(rule: Rule) {
-    if (rule.type === "TOKEN" && rule.value) {
+    if (!rule) return;
+    if (typeof rule === "string" || rule instanceof RegExp) {
+      rule = { type: "TOKEN", value: rule } as any;
+    }
+    const ruleType = (rule.type || "").toUpperCase();
+    const ruleValue = rule.value !== undefined ? rule.value : (rule as any).arg;
+    if (ruleType === "TOKEN" && ruleValue) {
       const isRegex =
-        rule.value instanceof RegExp ||
-        (typeof rule.value === "string" &&
-          rule.value.startsWith("/") &&
-          rule.value.endsWith("/") &&
-          rule.value.length > 1);
-      const key = rule.value.toString();
+        ruleValue instanceof RegExp ||
+        (typeof ruleValue === "string" && ruleValue.startsWith("/") && ruleValue.endsWith("/") && ruleValue.length > 1);
+      const key = ruleValue.toString();
 
       if (isRegex) {
         regexTokens.set(key, key);
       } else {
-        stringTokens.set(key, rule.value as string);
+        stringTokens.set(key, ruleValue as string);
       }
     }
-    if (rule.children) {
-      for (const child of rule.children) {
+    const children =
+      rule.children ||
+      (rule as any).args ||
+      ((rule as any).arg ? [(rule as any).arg] : []) ||
+      ((rule as any).rule ? [(rule as any).rule] : []);
+    if (children) {
+      for (const child of children) {
         extractTokens(child);
       }
+    }
+    if ((rule as any).rule) {
+      extractTokens((rule as any).rule);
     }
   }
 
@@ -55,8 +66,18 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         get: (target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
     );
-    const rule = toRule(grammar.rules[grammar.word](dummy$ as any));
-    if (rule.type === "TOKEN" && rule.value) {
+    let rule = toRule(grammar.rules[grammar.word](dummy$ as any));
+    let rType = (rule.type || "").toUpperCase();
+    if (rType === "DEF" || rType === "REF") {
+      rule =
+        (rule as any).rule ||
+        ((rule as any).args ? (rule as any).args[0] : null) ||
+        (rule.children ? rule.children[0] : null) ||
+        (rule as any).arg ||
+        rule;
+      rType = (rule.type || "").toUpperCase();
+    }
+    if (rType === "TOKEN" && rule.value) {
       let patternStr = "";
       if (rule.value instanceof RegExp) {
         patternStr = rule.value.source;
@@ -69,6 +90,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     }
   }
 
+  console.log("lexer.ts: stringTokens size =", stringTokens.size, Array.from(stringTokens.keys()));
   let lexerGlobals = `// DFA Lexer State Machine\n`;
   lexerGlobals += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns\n\n`;
 
@@ -79,7 +101,8 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   lexerCode += `export function initExtras(): void {\n`;
   if (normalized.extras) {
     for (const rule of normalized.extras) {
-      if (rule.type === "TOKEN") {
+      const rType = (rule.type || "").toUpperCase();
+      if (rType === "TOKEN") {
         let val = rule.value.toString();
         if (typeof rule.value === "string") val = `"${rule.value}"`;
         const mappedInt = normalized.symToInt.get(val);

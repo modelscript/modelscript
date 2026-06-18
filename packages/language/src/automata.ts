@@ -962,7 +962,13 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
             ranges.push([9, 9]);
             ranges.push([10, 10]);
             ranges.push([13, 13]);
-          } else ranges.push([esc.charCodeAt(0), esc.charCodeAt(0)]);
+          } else if (esc === "n") ranges.push([10, 10]);
+          else if (esc === "r") ranges.push([13, 13]);
+          else if (esc === "t") ranges.push([9, 9]);
+          else if (esc === "f") ranges.push([12, 12]);
+          else if (esc === "v") ranges.push([11, 11]);
+          else if (esc === "b") ranges.push([8, 8]);
+          else ranges.push([esc.charCodeAt(0), esc.charCodeAt(0)]);
         } else {
           const start = pattern.charCodeAt(pos++);
           if (pattern[pos] === "-" && pattern[pos + 1] !== "]") {
@@ -1019,6 +1025,12 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
           ],
           invert: false,
         };
+      if (esc === "n") return { type: "CHAR", char: 10 };
+      if (esc === "r") return { type: "CHAR", char: 13 };
+      if (esc === "t") return { type: "CHAR", char: 9 };
+      if (esc === "f") return { type: "CHAR", char: 12 };
+      if (esc === "v") return { type: "CHAR", char: 11 };
+      if (esc === "b") return { type: "CHAR", char: 8 };
       return { type: "CHAR", char: esc.charCodeAt(0) };
     } else if (ch === ".") {
       return {

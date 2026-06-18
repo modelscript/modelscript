@@ -268,6 +268,22 @@ export class NormalizedGrammar {
     if (rule instanceof RegExp) return `/${rule.source}/`;
     if (!rule || !rule.type) return "unknown";
 
+    const getChild = (r: any): any => {
+      if (!r) return null;
+      if (r.arg) return r.arg;
+      if (r.children && r.children.length > 0) return r.children[0];
+      if (r.args && r.args.length > 0) return r.args[0];
+      return null;
+    };
+
+    const getChildren = (r: any): any[] => {
+      if (!r) return [];
+      if (r.children) return r.children;
+      if (r.args) return r.args;
+      if (r.arg) return [r.arg];
+      return [];
+    };
+
     switch (rule.type.toUpperCase()) {
       case "SYMBOL":
         return rule.value as string;
@@ -278,15 +294,19 @@ export class NormalizedGrammar {
             ? `/${rule.value.source}/`
             : "token";
       case "SEQ":
-        return `(${(rule.children || rule.args || []).map((c: any) => this.getEBNF(c)).join(" ")})`;
+        return `(${getChildren(rule)
+          .map((c: any) => this.getEBNF(c))
+          .join(" ")})`;
       case "CHOICE":
-        return `(${(rule.children || rule.args || []).map((c: any) => this.getEBNF(c)).join(" | ")})`;
+        return `(${getChildren(rule)
+          .map((c: any) => this.getEBNF(c))
+          .join(" | ")})`;
       case "REPEAT":
-        return `${this.getEBNF((rule.children || rule.args || [])[0])}*`;
+        return `${this.getEBNF(getChild(rule))}*`;
       case "REPEAT1":
-        return `${this.getEBNF((rule.children || rule.args || [])[0])}+`;
+        return `${this.getEBNF(getChild(rule))}+`;
       case "OPTIONAL":
-        return `${this.getEBNF((rule.children || rule.args || [])[0])}?`;
+        return `${this.getEBNF(getChild(rule))}?`;
       case "PREC":
       case "PREC_LEFT":
       case "PREC_RIGHT":
@@ -295,7 +315,7 @@ export class NormalizedGrammar {
       case "FIELD":
       case "RESERVED":
       case "TOKEN_IMMEDIATE":
-        return this.getEBNF((rule.children || rule.args || [])[0]);
+        return this.getEBNF(getChild(rule));
       default:
         return "unknown";
     }
