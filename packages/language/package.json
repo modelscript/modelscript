@@ -52,7 +52,7 @@
     "watch": "tsc --watch"
   },
   "lint-staged": {
-    "*.ts": "eslint",
+    "*.ts": "eslint --no-warn-ignored",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "devDependencies": {

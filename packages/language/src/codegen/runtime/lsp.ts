@@ -131,7 +131,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     allocDiagnostic(getErrorStart(i), getErrorEnd(i), 0, 0);
   }
 
-  if (astRoot == 0) return lspBinaryLength;
+  if (astRoot == 0) return lspBinaryLength / 3;
 
   let stackTop: u32 = 0;
   store<u32>(t_lspTraverseStack + stackTop * 4, astRoot);
@@ -228,5 +228,5 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   }
 
   lsp_clearVisited();
-  return lspBinaryLength;
+  return lspBinaryLength / 3;
 }

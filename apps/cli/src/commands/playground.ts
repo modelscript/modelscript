@@ -847,7 +847,7 @@ self.addEventListener('message', async (e) => {
             const url = URL.createObjectURL(blob);
             const { LspFacade } = await import(url);
             
-            lspFacade = new LspFacade(instance.exports.memory, instance.exports);
+            lspFacade = new LspFacade(memory, instance.exports);
             currentTextLength = 0;  // Reset stale length from previous session
             
             lspFacade.addAstChangeListener({
