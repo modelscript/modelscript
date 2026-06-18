@@ -116,6 +116,42 @@ export class ChunkedArray<T> {
   public clear(): void {
     this.length = 0;
   }
+
+  @inline
+  public copyFrom(src: ChunkedArray<T>, count: u32): void {
+    if (count == 0) return;
+
+    if (count <= 128) {
+      let srcChunk = load<usize>(src.directory);
+      let destChunk = load<usize>(this.directory);
+      for (let i: u32 = 0; i < count; i++) {
+        store<T>(destChunk + i * sizeof<T>(), load<T>(srcChunk + i * sizeof<T>()));
+      }
+      if (count > this.length) {
+        this.length = count;
+      }
+      return;
+    }
+
+    let requiredChunks = (count + CHUNK_SIZE - 1) >> CHUNK_BITS;
+    while (this.allocatedChunks < requiredChunks) {
+      this.addChunk();
+    }
+
+    for (let i: u32 = 0; i < requiredChunks; i++) {
+      let srcChunk = load<usize>(src.directory + i * sizeof<usize>());
+      let destChunk = load<usize>(this.directory + i * sizeof<usize>());
+
+      let elementsRemaining = count - (i << CHUNK_BITS);
+      let copyElements = elementsRemaining < CHUNK_SIZE ? elementsRemaining : CHUNK_SIZE;
+
+      memory.copy(destChunk, srcChunk, copyElements * sizeof<T>());
+    }
+
+    if (count > this.length) {
+      this.length = count;
+    }
+  }
 }
 
 export class ChunkedUint32Array extends ChunkedArray<u32> {}

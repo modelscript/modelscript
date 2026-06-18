@@ -2,8 +2,8 @@
 // @ts-nocheck
 import { getNodeByteLength, getNodeFirstChild, getNodeNextSibling, getNodePadding } from "./arena";
 import { ChunkedUint32Array } from "./array";
-// TreeCursor State Machine for Persistent AST
 
+// TreeCursor State Machine for Persistent AST
 export const cursorNodeStack = new ChunkedUint32Array();
 export const cursorOffsetStack = new ChunkedUint32Array();
 
@@ -13,19 +13,19 @@ class TreeCursor {
   constructor(rootPtr: u32) {
     if (rootPtr != 0) {
       this.depth = 0;
-      cursorNodeStack.set(0, rootPtr);
-      cursorOffsetStack.set(0, 0);
+      cursorNodeStack[0] = rootPtr;
+      cursorOffsetStack[0] = 0;
     }
   }
 
   get currentNode(): u32 {
     if (this.depth < 0) return 0;
-    return cursorNodeStack.get(this.depth);
+    return cursorNodeStack[this.depth];
   }
 
   get startByte(): u32 {
     if (this.depth < 0) return 0;
-    return cursorOffsetStack.get(this.depth) + getNodePadding(this.currentNode);
+    return cursorOffsetStack[this.depth] + getNodePadding(this.currentNode);
   }
 
   get endByte(): u32 {
@@ -37,10 +37,10 @@ class TreeCursor {
     if (this.depth < 0) return false;
     let child = getNodeFirstChild(this.currentNode);
     if (child == 0) return false;
-    let absStart = cursorOffsetStack.get(this.depth); // First child starts exactly at parent's absolute offset
+    let absStart = cursorOffsetStack[this.depth]; // First child starts exactly at parent's absolute offset
     this.depth++;
-    cursorNodeStack.set(this.depth, child);
-    cursorOffsetStack.set(this.depth, absStart);
+    cursorNodeStack[this.depth] = child;
+    cursorOffsetStack[this.depth] = absStart;
     return true;
   }
 
@@ -49,8 +49,8 @@ class TreeCursor {
     let sibling = getNodeNextSibling(this.currentNode);
     if (sibling == 0) return false;
     let nextOffset = this.startByte + getNodeByteLength(this.currentNode);
-    cursorNodeStack.set(this.depth, sibling);
-    cursorOffsetStack.set(this.depth, nextOffset);
+    cursorNodeStack[this.depth] = sibling;
+    cursorOffsetStack[this.depth] = nextOffset;
     return true;
   }
 

@@ -439,10 +439,10 @@ const NODE_OFFSET_NEXT_SIBLING: u32 = 12;
 
 const MASK_TYPE: u32 = 0x03ff;
 const SHIFT_FLAGS: u32 = 10;
-const MASK_FLAGS: u32 = 0x3f;
-const SHIFT_PADDING: u32 = 16;
-const MASK_PADDING_W0_KEEP: u32 = 0x0000ffff;
-const MAX_PADDING: u32 = 0xffff; // 65535
+const MASK_FLAGS: u32 = 0xff; // 8 bits
+const SHIFT_PADDING: u32 = 18;
+const MASK_PADDING_W0_KEEP: u32 = 0x0003ffff;
+const MAX_PADDING: u32 = 0x3fff; // 16383
 
 const MASK_BYTE_LEN: u32 = 0x007fffff; // 8MB limit
 const MASK_W1_KEEP_UPPER: u32 = 0xff800000;
@@ -457,7 +457,8 @@ export const FLAG_EXTRACTED: u16 = 2;
 export const FLAG_INVISIBLE: u16 = 4;
 export const FLAG_LSP_VISITED: u16 = 8;
 export const FLAG_DIRTY: u16 = 16;
-export const FLAG_IS_LIST: u16 = 32; // Separate from FLAG_INVISIBLE to avoid collision
+export const FLAG_IS_LIST: u16 = 32;
+export const FLAG_LIST_BOUNDARY: u16 = 64;
 
 /**
  * Retrieves the 6-bit flag bitmask from an AST node.

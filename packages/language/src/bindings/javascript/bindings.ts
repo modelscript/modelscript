@@ -480,7 +480,7 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 18;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -576,7 +576,7 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 18;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -739,7 +739,7 @@ export class LspFacade {
         let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 16;
+        const rawPad = typeFlags >>> 18;
         const isFat = (envHashPadding >>> 23) & 1;
         const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
@@ -795,7 +795,7 @@ export class LspFacade {
       let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(newPtr + 4) / 4];
-      const pad = typeFlags >>> 16;
+      const pad = typeFlags >>> 18;
       const len = envHashPadding & 0x007fffff;
 
       const oldCh = getChildren(oldPtr);
@@ -861,7 +861,8 @@ export class SyntaxNode {
   }
 
   get text(): string {
-    return this.tree.sourceCode.substring(this.startIndex, this.endIndex);
+    // Convert byte offsets to character indices (UTF-16: 2 bytes per char)
+    return this.tree.sourceCode.substring(this.startIndex / 2, this.endIndex / 2);
   }
 
   get startIndex(): number {
@@ -883,26 +884,35 @@ export class SyntaxNode {
   get children(): SyntaxNode[] {
     const mem32 = this.tree.mem32;
     const kids: SyntaxNode[] = [];
-    let childOffset = this._startOffset;
-    let childPtr = mem32[(this.ptr + 8) / 4];
 
-    while (childPtr !== 0) {
-      const typeFlags = mem32[childPtr / 4];
-      const typeId = typeFlags & 0x03ff;
-      const envHashPadding = mem32[(childPtr + 4) / 4];
-      const rawPad = typeFlags >>> 16;
-      const isFat = (envHashPadding >>> 23) & 1;
-      const pad =
-        isFat && this.tree.facade.exports.getFatPaddingPtr
-          ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
-          : rawPad;
-      const len = envHashPadding & 0x007fffff;
+    const collect = (ptr: number, offset: number, parentNode: SyntaxNode) => {
+      let childOffset = offset;
+      let childPtr = mem32[(ptr + 8) / 4];
+      while (childPtr !== 0) {
+        const typeFlags = mem32[childPtr / 4];
+        const typeId = typeFlags & 0x03ff;
+        const name = SYNTAX_NAMES[typeId] || `node_${typeId}`;
+        const envHashPadding = mem32[(childPtr + 4) / 4];
+        const rawPad = typeFlags >>> 18;
+        const isFat = (envHashPadding >>> 23) & 1;
+        const pad =
+          isFat && this.tree.facade.exports.getFatPaddingPtr
+            ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
+            : rawPad;
+        const len = envHashPadding & 0x007fffff;
 
-      kids.push(new SyntaxNode(this.tree, childPtr, childOffset, this, pad, len, typeId));
+        if (name.startsWith("_")) {
+          collect(childPtr, childOffset, parentNode);
+        } else {
+          kids.push(new SyntaxNode(this.tree, childPtr, childOffset, parentNode, pad, len, typeId));
+        }
 
-      childOffset = childOffset + pad + len;
-      childPtr = mem32[(childPtr + 12) / 4];
-    }
+        childOffset = childOffset + pad + len;
+        childPtr = mem32[(childPtr + 12) / 4];
+      }
+    };
+
+    collect(this.ptr, this._startOffset, this);
     return kids;
   }
 
@@ -1043,9 +1053,11 @@ export class Tree {
     public readonly rootPtr: number,
     public readonly sourceCode: string,
   ) {
+    // Build lineStarts in byte offsets (UTF-16: 2 bytes per character)
+    // to match the WASM arena's byte-offset convention for node positions
     this.lineStarts = [0];
     for (let i = 0; i < sourceCode.length; i++) {
-      if (sourceCode[i] === "\n") this.lineStarts.push(i + 1);
+      if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
     }
     this.mem32 = new Uint32Array((facade as any).wasmMemory.buffer);
   }
@@ -1056,7 +1068,7 @@ export class Tree {
     const typeFlags = this.mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
     const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
-    const rawPad = typeFlags >>> 16;
+    const rawPad = typeFlags >>> 18;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr
@@ -1078,13 +1090,14 @@ export class Tree {
       const mid = (low + high) >> 1;
       if (this.lineStarts[mid] <= offset) {
         if (mid === this.lineStarts.length - 1 || this.lineStarts[mid + 1] > offset) {
-          return { row: mid, column: offset - this.lineStarts[mid] };
+          // Convert byte-based column to character column (UTF-16: 2 bytes per char)
+          return { row: mid, column: (offset - this.lineStarts[mid]) / 2 };
         }
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    return { row: 0, column: offset };
+    return { row: 0, column: offset / 2 };
   }
 }
