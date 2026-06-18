@@ -2567,8 +2567,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               currentScannerState = savedScannerState;
 
               let tokCost = token_insert_costs[nextToken == TOKEN_EOF ? 0 : nextToken];
-              a1DelCost += tokCost;
-              a1DroppedBytes += tokenDroppedLength;
 
               if (stateCanAccept(unwindCurr, recState, nextToken, 0)) {
                 let currChild: ParseHead | null = head;
@@ -2631,6 +2629,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 pushActiveHead(changetype<u32>(delHead));
                 break;
               }
+
+              a1DelCost += tokCost;
+              a1DroppedBytes += tokenDroppedLength;
 
               if (nextToken == TOKEN_EOF) break; // EOF
 

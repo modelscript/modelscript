@@ -496,8 +496,8 @@ export class LspFacade {
 
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
-
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
+      const isInvisible = (typeFlags & (1 << 12)) !== 0;
+      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
 
       let childStrs: string[] = [];
 
@@ -592,7 +592,8 @@ export class LspFacade {
 
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
 
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
+      const isInvisible = (typeFlags & (1 << 12)) !== 0;
+      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
 
       let renderedChildren = 0;
 
@@ -720,14 +721,29 @@ export class LspFacade {
     const getChildren = (ptr: number): number[] => {
       const children: number[] = [];
       if (!ptr) return children;
-      let childPtr = mem32[(ptr + 8) / 4];
-      let visited = new Set<number>();
-      while (childPtr) {
-        if (visited.has(childPtr)) break;
-        visited.add(childPtr);
-        children.push(childPtr);
-        childPtr = mem32[(childPtr + 12) / 4];
-      }
+
+      const collect = (p: number) => {
+        let childPtr = mem32[(p + 8) / 4];
+        let visited = new Set<number>();
+        while (childPtr) {
+          if (visited.has(childPtr)) break;
+          visited.add(childPtr);
+
+          const typeFlags = mem32[childPtr / 4];
+          const typeId = typeFlags & 0x03ff;
+          let typeName = SYNTAX_NAMES[typeId] || `node_${typeId}`;
+          const isInvisible = (typeFlags & (1 << 12)) !== 0;
+
+          if (typeName.startsWith("_") || isInvisible) {
+            collect(childPtr);
+          } else {
+            children.push(childPtr);
+          }
+          childPtr = mem32[(childPtr + 12) / 4];
+        }
+      };
+
+      collect(ptr);
       return children;
     };
 
@@ -903,8 +919,9 @@ export class SyntaxNode {
             ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
             : rawPad;
         const len = envHashPadding & 0x007fffff;
+        const isInvisible = (typeFlags & (1 << 12)) !== 0;
 
-        if (name.startsWith("_")) {
+        if (name.startsWith("_") || isInvisible) {
           collect(childPtr, childOffset, parentNode);
         } else {
           kids.push(new SyntaxNode(this.tree, childPtr, childOffset, parentNode, pad, len, typeId));
