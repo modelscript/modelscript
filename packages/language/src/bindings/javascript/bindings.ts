@@ -309,12 +309,15 @@ export class LspFacade {
 
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : oldTextPtr;
 
-    // Create new view AFTER potential memory growth
-    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, newTotalLength);
+    // Create new view AFTER potential memory growth, using max length to allow copyWithin shifting
+    const maxLen = Math.max(oldTotalLength, newTotalLength);
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
 
     // If the buffer was reallocated, copy the snapshot into the new buffer
     if (oldTextPtr !== textPtr && oldSnapshot) {
-      memArray16.set(oldSnapshot);
+      // Only copy up to the new bounds to avoid RangeError if new buffer is exactly newTotalLength
+      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
+      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
     }
 
     if (changeText.length !== rangeLength) {
