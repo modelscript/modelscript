@@ -1614,8 +1614,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       debugLog(7, qh.state, qh.errorCost, qh.pos);
     }
 
-    let allocStart = S().allocCount;
-
     pos = head.pos;
 
     currentScannerState = head.scannerState;
@@ -2571,7 +2569,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             // We scan forward up to 5 tokens to see if deleting them allows the state to recover.
             let a1NextScanPos = srcLexPos + lexLen;
             let a1DelCost = 0;
-            let a1DroppedBytes = 0;
 
             let maxSkips: u32 = 5;
             for (let skipCount: u32 = 1; skipCount <= maxSkips; skipCount++) {
@@ -2582,7 +2579,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
               let nextToken = __LEX_FN__(a1NextScanPos);
               let tokenEndPos = srcLexPos + lexLen;
-              let tokenDroppedLength = tokenEndPos - a1NextScanPos;
 
               lexPos = savedLexPos;
               lexLen = savedLexLen;
@@ -2654,7 +2650,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               }
 
               a1DelCost += tokCost;
-              a1DroppedBytes += tokenDroppedLength;
 
               if (nextToken == TOKEN_EOF) break; // EOF
 
