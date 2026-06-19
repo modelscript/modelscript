@@ -1343,11 +1343,23 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   if (child == 0) {
     setFirstChild(newRoot, errorNode);
   } else {
-    let lastChild = child;
-    while (getNodeNextSibling(lastChild) != 0) {
-      lastChild = getNodeNextSibling(lastChild);
+    // We must shallow-clone the entire child chain to avoid mutating shared nodes
+    // which might be reused in future incremental parses.
+    let oldChild = child;
+    let firstNewChild = cloneNodeShallow(oldChild);
+    setFirstChild(newRoot, firstNewChild);
+    
+    let currentNewChild = firstNewChild;
+    oldChild = getNodeNextSibling(oldChild);
+    
+    while (oldChild != 0) {
+      let nextNewChild = cloneNodeShallow(oldChild);
+      setNextSibling(currentNewChild, nextNewChild);
+      currentNewChild = nextNewChild;
+      oldChild = getNodeNextSibling(oldChild);
     }
-    setNextSibling(lastChild, errorNode);
+    
+    setNextSibling(currentNewChild, errorNode);
   }
 
   return newRoot;
@@ -2326,9 +2338,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               // HEAVILY penalize unparsed trailing garbage to prevent premature early accepts
               let trailingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
               if (trailingBytes > 0) {
-                // By multiplying by 2, we ensure that skipping trailing garbage is vastly more
-                // expensive than paying the local deletion cost of the erroneous tokens.
-                effectiveCost2 += (trailingBytes as i32) * 2;
+                // By adding a flat 100 penalty + multiplier, we ensure that skipping trailing garbage
+                // is vastly more expensive than paying the local deletion cost of the erroneous tokens.
+                effectiveCost2 += 100 + (trailingBytes as i32) * 2;
               }
 
               if (t_count2 <= 1) {
@@ -2488,6 +2500,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                         }
                         if (singleNode3 != 0) {
                           let effectiveCost3: i32 = head.errorCost;
+                          let trailingBytes3: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
+                          if (trailingBytes3 > 0) {
+                            effectiveCost3 += 100 + (trailingBytes3 as i32) * 2;
+                          }
                           if (acceptedNode == 0 || effectiveCost3 < bestAcceptedCost) {
                             acceptedNode = cloneNodeShallow(singleNode3);
                             bestAcceptedCost = effectiveCost3;

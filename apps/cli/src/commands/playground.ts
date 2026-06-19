@@ -318,12 +318,22 @@ function getIndexHtml() {
                 if (e.data.type === 'success') {
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active.";
                     window.syntaxNames = e.data.syntaxNames;
-                    lspWorker.postMessage({ 
-                        type: 'init', 
-                        wasm: e.data.wasm, 
-                        jsWrapper: e.data.jsWrapper,
-                        syntaxNames: e.data.syntaxNames 
-                    });
+                    if (window.codeEditor) {
+                        lspWorker.postMessage({ 
+                            type: 'init', 
+                            wasm: e.data.wasm, 
+                            jsWrapper: e.data.jsWrapper,
+                            syntaxNames: e.data.syntaxNames,
+                            initialText: window.codeEditor.getValue()
+                        });
+                    } else {
+                        lspWorker.postMessage({ 
+                            type: 'init', 
+                            wasm: e.data.wasm, 
+                            jsWrapper: e.data.jsWrapper,
+                            syntaxNames: e.data.syntaxNames 
+                        });
+                    }
                 } else if (e.data.type === 'error') {
                     document.getElementById('status').innerText = "Error: " + e.data.error;
                 }
@@ -424,7 +434,7 @@ function getIndexHtml() {
                 const handleMessage = (e) => {
                     const msg = e.data;
                     if (msg.type === 'astPatchBinary') {
-                        if (msg.generationId !== undefined && msg.generationId > currentGeneration) {
+                        if (msg.generationId !== undefined && msg.generationId !== currentGeneration) {
                             nodeMap.current.clear();
                             setCurrentGeneration(msg.generationId);
                         }
@@ -711,7 +721,7 @@ console.log("LSP Worker started");
 let lspFacade = null;
 let latestUri = undefined;
 let currentTextLength = 0;
-let currentGenerationId = 0;
+let currentGenerationId = Date.now();
 let pendingFullText = null;
 
 let patchBufferA = new ArrayBuffer(1024 * 1024 * 2);
@@ -858,6 +868,9 @@ self.addEventListener('message', async (e) => {
             });
 
             console.log("LspFacade successfully loaded inside worker.");
+            if (e.data.initialText !== undefined && e.data.initialText !== null) {
+                pendingFullText = e.data.initialText;
+            }
             if (pendingFullText !== null) {
                 triggerDiagnostics([{ text: pendingFullText }]);
                 pendingFullText = null;
