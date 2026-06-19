@@ -63,42 +63,65 @@ export interface FieldCursor {
   release(): void;
 }
 
-export interface SalsaDB<FieldName extends string = never, QueryName extends string = never> {
+export interface SalsaDB<
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
   getNodeType(nodePtr: u32): u16;
   getNodeFirstChild(nodePtr: u32): u32;
   getNodeNextSibling(nodePtr: u32): u32;
   runQuery(queryType: QueryName | (string & {}) | u32, queryArg: u32): u32;
   getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
-  modelAttribute(nodePtr: u32, attrName: string): u32;
+  modelAttribute<T extends keyof ModelAttrs = keyof ModelAttrs>(
+    nodePtr: u32,
+    attrName: Extract<keyof ModelAttrs[T], string> | (string & {}),
+  ): u32;
   diagnostic(targetNode: u32, contextNode?: u32): void;
 }
 
-export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> = (
-  db: SalsaDB<FieldName, QueryName>,
-  queryArg: u32,
-  $: Record<RuleName, u16>,
-) => u32 | boolean;
+export type ASTQueryFunction<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> = (db: SalsaDB<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => u32 | boolean;
 
-export interface CompilerLint<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
+export interface CompilerLint<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
   nodes?: NoInfer<RuleName>[];
-  query: string | ASTQueryFunction<RuleName, FieldName, QueryName>;
+  query: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   code?: string | number;
   message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
   severity: "error" | "warning" | "info";
 }
 
-export interface ModelAttribute<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
+export interface ModelAttribute<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
   type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool";
   default?: number;
-  compute?: string | ASTQueryFunction<RuleName, FieldName, QueryName>;
+  compute?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
 }
 
 /**
  * Configuration options for defining a ModelScript language grammar.
  * Modeled after Tree-sitter's Grammar API.
  */
-export interface LanguageOptions<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
+export interface LanguageOptions<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
 
@@ -146,13 +169,14 @@ export interface LanguageOptions<RuleName extends string = string, FieldName ext
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?: Record<string, ($: Record<RuleName, Rule<any>>) => Rule<any>[]>;
 
-  model?: Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName, QueryName>>>>;
+  model?: ModelAttrs &
+    Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName, QueryName, ModelAttrs>>>>;
 
   /** Queries (imperative AssemblyScript methods) */
-  queries?: Record<QueryName, string | ASTQueryFunction<RuleName, FieldName, QueryName>>;
+  queries?: Record<QueryName, string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>>;
 
   /** Diagnostic Rules (imperative AssemblyScript methods) */
-  lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName>>;
+  lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>>;
 }
 
 /**
@@ -161,9 +185,14 @@ export interface LanguageOptions<RuleName extends string = string, FieldName ext
  * @param options The language configuration object
  * @returns The unaltered configuration object (preserves types for downstream compilation)
  */
-export function language<RuleName extends string, FieldName extends string = never, QueryName extends string = never>(
-  options: LanguageOptions<RuleName, FieldName, QueryName>,
-): LanguageOptions<RuleName, FieldName, QueryName> {
+export function language<
+  RuleName extends string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+>(
+  options: LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs>,
+): LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> {
   return options;
 }
 

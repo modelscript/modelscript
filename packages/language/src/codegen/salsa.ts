@@ -52,7 +52,7 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
     }
 
     asQueryStr = asQueryStr.replace(
-      /db\.modelAttribute\(([^,]+),\s*(['"])([^'"]+)\2\)/g,
+      /db\.modelAttribute(?:<[^>]+>)?\(([^,]+),\s*(['"])([^'"]+)\2\)/g,
       (match, nodeArg, quote, attrName) => {
         let id = attrIdMap.get(attrName);
         if (id === undefined) throw new Error(`Model attribute ${attrName} is not defined in grammar.model`);
@@ -74,15 +74,12 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
         let id = queryIdMap.get(queryName);
         if (id === undefined) throw new Error(`Query ${queryName} is not defined in grammar.queries`);
         return `runQuery(${id}, ${queryArg})`;
-      }
+      },
     );
 
-    asQueryStr = asQueryStr.replace(
-      /db\.diagnostic\(([^,]+)(?:,\s*([^)]+))?\)/g,
-      (_, targetNode, contextNode) => {
-        return `lsp_allocDiagnostic(getNodeStartIndex(${targetNode}), getNodeEndIndex(${targetNode}), lintId, ${contextNode || targetNode})`;
-      }
-    );
+    asQueryStr = asQueryStr.replace(/db\.diagnostic\(([^,]+)(?:,\s*([^)]+))?\)/g, (_, targetNode, contextNode) => {
+      return `lsp_allocDiagnostic(getNodeStartIndex(${targetNode}), getNodeEndIndex(${targetNode}), lintId, ${contextNode || targetNode})`;
+    });
 
     asQueryStr = asQueryStr.replace(/\$\.([a-zA-Z0-9_]+)/g, (_, group) => `<u16>SyntaxType.${group.toUpperCase()}`);
     return asQueryStr;
