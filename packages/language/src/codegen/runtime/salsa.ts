@@ -3,6 +3,7 @@
 import { getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
+import { lsp_allocDiagnostic } from "./lsp";
 
 // Query Node (24 bytes):
 // +0: queryKey (u32) - (queryType << 16) | argId

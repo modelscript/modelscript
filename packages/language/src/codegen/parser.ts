@@ -224,6 +224,46 @@ export function generateParserTables(
   lspCodeTemplate = lspCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
   lspCodeTemplate = lspCodeTemplate.replace(/__MAX_TERMINAL_ID__/g, (grammar.terminals.size - 1).toString());
 
+  let lintSwitchStr = "switch (type) {\n";
+  if (originalGrammar.lints) {
+    let nextLintId = 2000;
+    const nodeLints = new Map<string, string[]>();
+    for (const [lintName, lint] of Object.entries(originalGrammar.lints)) {
+      const lintId = nextLintId++;
+      const fnName = `lint_${lintName}`;
+      for (const nodeName of lint.nodes || []) {
+        if (!nodeLints.has(nodeName)) nodeLints.set(nodeName, []);
+        nodeLints
+          .get(nodeName)!
+          .push(
+            `if (${fnName}(node, ${lintId}, nodeStart, nodeEnd)) { lsp_allocDiagnostic(nodeStart, nodeEnd, ${lintId}, node); }`,
+          );
+      }
+    }
+    for (const [nodeName, fnCalls] of nodeLints.entries()) {
+      lintSwitchStr += `  case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
+      for (const call of fnCalls) {
+        lintSwitchStr += `    ${call}\n`;
+      }
+      lintSwitchStr += `    break;\n`;
+    }
+  }
+  lintSwitchStr += "}\n";
+  lspCodeTemplate = lspCodeTemplate.replace(/__LSP_LINT_SWITCH__/g, lintSwitchStr);
+
+  let lspImports = `import { inputLength, SyntaxType } from "./parser";\n`;
+  if (originalGrammar.lints) {
+    let importedLints = new Set<string>();
+    for (const lintName of Object.keys(originalGrammar.lints)) {
+      importedLints.add(`lint_${lintName}`);
+    }
+    if (importedLints.size > 0) {
+      lspImports += `import { ${Array.from(importedLints).join(", ")} } from "./salsa";\n`;
+    }
+  }
+
+  lspCodeTemplate = lspCodeTemplate.replace('import { inputLength } from "./parser";', lspImports);
+
   return [
     { filename: "parser.ts", content: code },
     { filename: "array.ts", content: arrayCode },

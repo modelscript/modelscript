@@ -70,13 +70,23 @@ export interface SalsaDB<FieldName extends string = never> {
   runQuery(queryType: u32, queryArg: u32): u32;
   getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
+  modelAttribute(nodePtr: u32, attrName: string): u32;
+  diagnostic(nodePtr: u32, messageId?: u32, arg?: u32): void;
 }
 
 export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never> = (
   db: SalsaDB<FieldName>,
   queryArg: u32,
   $: Record<RuleName, u16>,
-) => u32;
+) => u32 | boolean;
+
+export interface CompilerLint<RuleName extends string = string, FieldName extends string = never> {
+  nodes?: NoInfer<RuleName>[];
+  query: string | ASTQueryFunction<RuleName, FieldName>;
+  code?: string | number;
+  message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
+  severity: "error" | "warning" | "info";
+}
 
 export interface ModelAttribute<RuleName extends string = string, FieldName extends string = never> {
   type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool";
@@ -136,11 +146,13 @@ export interface LanguageOptions<RuleName extends string = string, FieldName ext
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?: Record<string, ($: Record<RuleName, Rule<any>>) => Rule<any>[]>;
 
-  /** Demand-Driven Semantic AST Attributes (Models) */
-  models?: Record<string, ModelAttribute<RuleName, FieldName>>;
+  model?: Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName>>>>;
 
   /** Queries (imperative AssemblyScript methods) */
   queries?: Record<string, string | ASTQueryFunction<RuleName, FieldName>>;
+
+  /** Diagnostic Rules (imperative AssemblyScript methods) */
+  lints?: Record<string, CompilerLint<RuleName, FieldName>>;
 }
 
 /**

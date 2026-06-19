@@ -229,6 +229,18 @@ export interface Diagnostic {
 declare const __SYNTAX_NAMES_LITERAL__: string[];
 export const SYNTAX_NAMES: string[] = typeof __SYNTAX_NAMES_LITERAL__ !== "undefined" ? __SYNTAX_NAMES_LITERAL__ : [];
 
+declare const __LINT_MESSAGES_LITERAL__: Record<string, string>;
+export const LINT_MESSAGES: Record<string, string> =
+  typeof __LINT_MESSAGES_LITERAL__ !== "undefined" ? __LINT_MESSAGES_LITERAL__ : {};
+
+declare const __LINT_SEVERITIES_LITERAL__: Record<string, number>;
+export const LINT_SEVERITIES: Record<string, number> =
+  typeof __LINT_SEVERITIES_LITERAL__ !== "undefined" ? __LINT_SEVERITIES_LITERAL__ : {};
+
+declare const __FIELD_NAMES_LITERAL__: Record<string, number>;
+export const FIELD_NAMES: Record<string, number> =
+  typeof __FIELD_NAMES_LITERAL__ !== "undefined" ? __FIELD_NAMES_LITERAL__ : {};
+
 export interface AstChangeListener {
   onNodeRetained(ptr: number): void;
   onNodeInserted(ptr: number, typeId: number, typeName: string, pad: number, len: number, children: number[]): void;
@@ -413,19 +425,80 @@ export class LspFacade {
     const memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
-    for (let i = 0; i < numElements * 3; i += 3) {
+    for (let i = 0; i < numElements * 4; i += 4) {
       const startByte = memory[(dirPtr >> 2) + i];
       const endByte = memory[(dirPtr >> 2) + i + 1];
-
       const lintId = memory[(dirPtr >> 2) + i + 2];
+      const nodePtr = memory[(dirPtr >> 2) + i + 3];
 
       let msg = "Syntax Error";
-      if (lintId > 0 && lintId < this.syntaxNames.length) {
-        let name = this.syntaxNames[lintId];
-        if (name.startsWith('"') && name.endsWith('"')) {
-          name = name.slice(1, -1);
+      let severity = 1; // Default to Error
+      if (lintId > 0) {
+        if (lintId < this.syntaxNames.length) {
+          let name = this.syntaxNames[lintId];
+          if (name.startsWith('"') && name.endsWith('"')) {
+            name = name.slice(1, -1);
+          }
+          msg = `Expected '${name}'`;
+        } else if (LINT_MESSAGES[lintId.toString()]) {
+          if (LINT_SEVERITIES[lintId.toString()]) {
+            severity = LINT_SEVERITIES[lintId.toString()];
+          }
+          let msgVal = LINT_MESSAGES[lintId.toString()];
+          if (typeof msgVal === "function") {
+            const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
+            const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+            let chars = "";
+            for (let j = startByte / 2; j < endByte / 2; j++) {
+              if (j < lenChars) chars += String.fromCharCode(textBuffer[j]);
+            }
+
+            let syntaxNode: SyntaxNode | null = null;
+            console.log(
+              `[DEBUG Proxy] nodePtr=${nodePtr}, getChildByFieldId exists:`,
+              !!this.exports.getChildByFieldId,
+            );
+            if (nodePtr > 0 && this.exports.getChildByFieldId) {
+              const typeFlags = memory[nodePtr / 4];
+              const typeId = typeFlags & 0x03ff;
+              const pad = typeFlags >>> 18;
+              const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
+              const dummyTree = {
+                sourceCode: {
+                  substring: (start: number, end: number) => {
+                    let s = "";
+                    for (let j = start; j < end; j++) {
+                      if (j < lenChars) s += String.fromCharCode(textBuffer[j]);
+                    }
+                    return s;
+                  },
+                },
+                mem32: memory,
+                offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
+                facade: this,
+              };
+              syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, startByte - pad, null, pad, len, typeId);
+            }
+
+            const fieldsProxy = new Proxy(
+              {},
+              {
+                get: (target, prop: string) => {
+                  console.log(`[DEBUG Proxy] accessing prop: ${prop}, syntaxNode is null?`, !syntaxNode);
+                  if (prop === "text") return chars;
+                  if (!syntaxNode) return "";
+                  const val = syntaxNode.childText(prop);
+                  console.log(`[DEBUG Proxy] resolved ${prop} to: "${val}"`);
+                  return val;
+                },
+              },
+            );
+
+            msg = (msgVal as any)(fieldsProxy);
+          } else {
+            msg = msgVal;
+          }
         }
-        msg = `Expected '${name}'`;
       }
 
       diags.push({
@@ -434,11 +507,11 @@ export class LspFacade {
           end: this.offsetToPos(endByte, lineStarts),
         },
         message: msg,
-        severity: 1, // Error
+        severity: severity,
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
-    this._lastDiagBinaryLength = numElements * 3;
+    this._lastDiagBinaryLength = numElements * 4;
     return diags;
   }
 
@@ -978,6 +1051,34 @@ export class SyntaxNode {
 
   isMissing(): boolean {
     return this._cachedLen === 0 && this._cachedTypeId !== 0;
+  }
+
+  childForFieldName(name: string): SyntaxNode | null {
+    const fieldId = FIELD_NAMES[name];
+    if (fieldId === undefined) {
+      console.log(`[DEBUG] fieldId for ${name} is undefined. FIELD_NAMES=`, FIELD_NAMES);
+      return null;
+    }
+    if (!this.tree.facade.exports.getChildByFieldId) {
+      console.log(`[DEBUG] getChildByFieldId is missing from exports!`);
+      return null;
+    }
+    const childPtr = this.tree.facade.exports.getChildByFieldId(this.ptr, fieldId);
+    if (!childPtr) {
+      console.log(`[DEBUG] getChildByFieldId(${this.ptr}, ${fieldId}) returned 0`);
+      return null;
+    }
+    const kids = this.children;
+    for (const kid of kids) {
+      if (kid.ptr === childPtr) return kid;
+    }
+    console.log(`[DEBUG] childPtr ${childPtr} not found in kids list of length ${kids.length}`);
+    return null;
+  }
+
+  childText(name: string): string {
+    const child = this.childForFieldName(name);
+    return child ? child.text : "";
   }
 
   isNamed(): boolean {

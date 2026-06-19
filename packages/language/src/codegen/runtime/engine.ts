@@ -3407,6 +3407,7 @@ function fixNodeLength(node: u32): void {
  * Dynamically resolves a field by its ID by looking up the layout
  * of the node's type. This fully replaces the static models mapping.
  */
+@unmanaged
 export class FieldCursor {
   node: u32 = 0;
   fieldId: i32 = 0;

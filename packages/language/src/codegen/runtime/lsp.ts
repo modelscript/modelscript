@@ -39,7 +39,7 @@ export function lsp_getBinaryLength(): u32 {
 
 import { debugLog } from "./engine";
 
-function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
+export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
   debugLog(start, end, lintId, argPtr);
   if (lspBinaryLength > 0 && lintId == 0) {
     let lastLintId = load<u32>(t_lspBinaryBuffer + (lspBinaryLength - 1) * 4);
@@ -58,7 +58,7 @@ function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
       }
     }
   }
-  if (lspBinaryLength + 3 > lspBinaryCapacity) {
+  if (lspBinaryLength + 4 > lspBinaryCapacity) {
     // Grow the binary buffer dynamically instead of silently dropping diagnostics
     let newCapacity = lspBinaryCapacity * 2;
     let newBuffer = atomicChunkAlloc(newCapacity * 4);
@@ -69,6 +69,7 @@ function allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, start);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, end);
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, lintId);
+  store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, argPtr);
 }
 
 function lsp_clearVisited(): void {
@@ -128,10 +129,10 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   // 1. Add all engine-level syntax errors (from parse failures)
   for (let i: i32 = 0; i < errorCount; i++) {
-    allocDiagnostic(getErrorStart(i), getErrorEnd(i), 0, 0);
+    lsp_allocDiagnostic(getErrorStart(i), getErrorEnd(i), 0, 0);
   }
 
-  if (astRoot == 0) return lspBinaryLength / 3;
+  if (astRoot == 0) return lspBinaryLength / 4;
 
   let stackTop: u32 = 0;
   store<u32>(t_lspTraverseStack + stackTop * 4, astRoot);
@@ -167,11 +168,13 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // accepted content + trailing errors). Their error ranges are already
     // reported through engine-level reportError() calls.
     if (isErrorNode && firstChild == 0 && len > 0) {
-      allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+      lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {
       // Missing terminal (ghost node inserted by error recovery)
-      allocDiagnostic(nodeStart, nodeStart, type, 0);
+      lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
     }
+
+    __LSP_LINT_SWITCH__
 
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
@@ -221,5 +224,5 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   }
 
   lsp_clearVisited();
-  return lspBinaryLength / 3;
+  return lspBinaryLength / 4;
 }

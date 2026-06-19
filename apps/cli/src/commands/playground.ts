@@ -363,7 +363,10 @@ function getIndexHtml(dslLibStr = "") {
                         else resolve(msg.result);
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
                         const markers = msg.params.diagnostics.map(d => ({
-                            severity: d.severity === 1 ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+                            severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
+                                    : d.severity === 2 ? monaco.MarkerSeverity.Warning
+                                    : d.severity === 3 ? monaco.MarkerSeverity.Info
+                                    : monaco.MarkerSeverity.Hint,
                             startLineNumber: d.range.start.line + 1,
                             startColumn: d.range.start.character + 1,
                             endLineNumber: d.range.end.line + 1,
