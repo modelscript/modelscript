@@ -71,7 +71,7 @@ export interface SalsaDB<FieldName extends string = never> {
   getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
   modelAttribute(nodePtr: u32, attrName: string): u32;
-  diagnostic(nodePtr: u32, messageId?: u32, arg?: u32): void;
+  diagnostic(nodeWithSquiggle: u32, nodeWithFields?: u32): void;
 }
 
 export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never> = (

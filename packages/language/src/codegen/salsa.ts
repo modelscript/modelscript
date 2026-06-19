@@ -61,10 +61,10 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
     );
 
     asQueryStr = asQueryStr.replace(
-      /db\.diagnostic\(([^,]+)(?:,\s*([^,]+))?(?:,\s*([^)]+))?\)/g,
-      (_, nodeArg, codeArg, argPtr) => {
-        return `lsp_allocDiagnostic(getNodeStartIndex(${nodeArg}), getNodeEndIndex(${nodeArg}), ${codeArg || "lintId"}, ${argPtr || nodeArg})`;
-      },
+      /db\.diagnostic\(([^,]+)(?:,\s*([^)]+))?\)/g,
+      (_, nodeSquiggle, nodeFields) => {
+        return `lsp_allocDiagnostic(getNodeStartIndex(${nodeSquiggle}), getNodeEndIndex(${nodeSquiggle}), lintId, ${nodeFields || nodeSquiggle})`;
+      }
     );
 
     asQueryStr = asQueryStr.replace(/\$\.([a-zA-Z0-9_]+)/g, (_, group) => `<u16>SyntaxType.${group.toUpperCase()}`);
