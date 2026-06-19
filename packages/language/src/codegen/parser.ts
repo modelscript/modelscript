@@ -236,7 +236,7 @@ export function generateParserTables(
         nodeLints
           .get(nodeName)!
           .push(
-            `if (${fnName}(node, ${lintId}, nodeStart, nodeEnd)) { lsp_allocDiagnostic(nodeStart, nodeEnd, ${lintId}, node); }`,
+            `${fnName}(node, ${lintId}, nodeStart, nodeEnd);`,
           );
       }
     }

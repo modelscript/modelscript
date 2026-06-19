@@ -149,7 +149,7 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
     for (const [lintName, lint] of Object.entries(grammar.lints)) {
       let asQueryStr = transpileQuery((lint as any).query, true);
       if (!asQueryStr.startsWith("export function")) {
-        asQueryStr = `export function lint_${lintName}(node: u32, lintId: u32, nodeStart: u32, nodeEnd: u32): bool {\n${asQueryStr}\n  return false;\n}`;
+        asQueryStr = `export function lint_${lintName}(node: u32, lintId: u32, nodeStart: u32, nodeEnd: u32): void {\n${asQueryStr}\n}`;
       }
       customQueries += asQueryStr + "\n\n";
     }
