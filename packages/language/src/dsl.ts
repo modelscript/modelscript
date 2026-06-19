@@ -63,42 +63,42 @@ export interface FieldCursor {
   release(): void;
 }
 
-export interface SalsaDB<FieldName extends string = never> {
+export interface SalsaDB<FieldName extends string = never, QueryName extends string = never> {
   getNodeType(nodePtr: u32): u16;
   getNodeFirstChild(nodePtr: u32): u32;
   getNodeNextSibling(nodePtr: u32): u32;
-  runQuery(queryType: u32, queryArg: u32): u32;
+  runQuery(queryType: QueryName | (string & {}) | u32, queryArg: u32): u32;
   getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
   modelAttribute(nodePtr: u32, attrName: string): u32;
   diagnostic(targetNode: u32, contextNode?: u32): void;
 }
 
-export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never> = (
-  db: SalsaDB<FieldName>,
+export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> = (
+  db: SalsaDB<FieldName, QueryName>,
   queryArg: u32,
   $: Record<RuleName, u16>,
 ) => u32 | boolean;
 
-export interface CompilerLint<RuleName extends string = string, FieldName extends string = never> {
+export interface CompilerLint<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
   nodes?: NoInfer<RuleName>[];
-  query: string | ASTQueryFunction<RuleName, FieldName>;
+  query: string | ASTQueryFunction<RuleName, FieldName, QueryName>;
   code?: string | number;
   message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
   severity: "error" | "warning" | "info";
 }
 
-export interface ModelAttribute<RuleName extends string = string, FieldName extends string = never> {
+export interface ModelAttribute<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
   type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool";
   default?: number;
-  compute?: string | ASTQueryFunction<RuleName, FieldName>;
+  compute?: string | ASTQueryFunction<RuleName, FieldName, QueryName>;
 }
 
 /**
  * Configuration options for defining a ModelScript language grammar.
  * Modeled after Tree-sitter's Grammar API.
  */
-export interface LanguageOptions<RuleName extends string = string, FieldName extends string = never> {
+export interface LanguageOptions<RuleName extends string = string, FieldName extends string = never, QueryName extends string = never> {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
 
@@ -146,13 +146,13 @@ export interface LanguageOptions<RuleName extends string = string, FieldName ext
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?: Record<string, ($: Record<RuleName, Rule<any>>) => Rule<any>[]>;
 
-  model?: Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName>>>>;
+  model?: Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName, QueryName>>>>;
 
   /** Queries (imperative AssemblyScript methods) */
-  queries?: Record<string, string | ASTQueryFunction<RuleName, FieldName>>;
+  queries?: Record<QueryName, string | ASTQueryFunction<RuleName, FieldName, QueryName>>;
 
   /** Diagnostic Rules (imperative AssemblyScript methods) */
-  lints?: Record<string, CompilerLint<RuleName, FieldName>>;
+  lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName>>;
 }
 
 /**
@@ -161,9 +161,9 @@ export interface LanguageOptions<RuleName extends string = string, FieldName ext
  * @param options The language configuration object
  * @returns The unaltered configuration object (preserves types for downstream compilation)
  */
-export function language<RuleName extends string, FieldName extends string = never>(
-  options: LanguageOptions<RuleName, FieldName>,
-): LanguageOptions<RuleName, FieldName> {
+export function language<RuleName extends string, FieldName extends string = never, QueryName extends string = never>(
+  options: LanguageOptions<RuleName, FieldName, QueryName>,
+): LanguageOptions<RuleName, FieldName, QueryName> {
   return options;
 }
 

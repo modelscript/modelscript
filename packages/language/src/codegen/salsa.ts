@@ -19,6 +19,14 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
     }
   }
 
+  const queryIdMap = new Map<string, number>();
+  if (grammar.queries) {
+    let tempQueryIdx = 1;
+    for (const queryName of Object.keys(grammar.queries)) {
+      queryIdMap.set(queryName, tempQueryIdx++);
+    }
+  }
+
   function transpileQuery(queryFn: any, isLint: boolean = false): string {
     const queryStr = typeof queryFn === "function" ? queryFn.toString() : queryFn;
     let asQueryStr = queryStr as string;
@@ -58,6 +66,15 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
         let safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
         return `getChild${ren || ""}ByFieldId(${ptr}, FieldId.${safeName})`;
       },
+    );
+
+    asQueryStr = asQueryStr.replace(
+      /db\.runQuery\(\s*(['"])([^'"]+)\1\s*,\s*([^)]+)\)/g,
+      (_, quote, queryName, queryArg) => {
+        let id = queryIdMap.get(queryName);
+        if (id === undefined) throw new Error(`Query ${queryName} is not defined in grammar.queries`);
+        return `runQuery(${id}, ${queryArg})`;
+      }
     );
 
     asQueryStr = asQueryStr.replace(
