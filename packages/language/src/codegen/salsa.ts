@@ -62,8 +62,8 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
 
     asQueryStr = asQueryStr.replace(
       /db\.diagnostic\(([^,]+)(?:,\s*([^)]+))?\)/g,
-      (_, nodeSquiggle, nodeFields) => {
-        return `lsp_allocDiagnostic(getNodeStartIndex(${nodeSquiggle}), getNodeEndIndex(${nodeSquiggle}), lintId, ${nodeFields || nodeSquiggle})`;
+      (_, targetNode, contextNode) => {
+        return `lsp_allocDiagnostic(getNodeStartIndex(${targetNode}), getNodeEndIndex(${targetNode}), lintId, ${contextNode || targetNode})`;
       }
     );
 
