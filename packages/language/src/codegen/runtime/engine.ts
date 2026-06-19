@@ -1368,7 +1368,6 @@ export function testEntry(): void {
 }
 
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
-  debugLog(12345, oldTree, editStart, editOldEnd);
   globalIsCatastrophic = false;
   globalSearchIterations = 0;
 

@@ -141,17 +141,25 @@ export function resetGeneration(gen: u8): void {
     dirtyNodeStrings.clear(); // Prevent stale text entries from leaking across parses
     if (S().gen1_chunk_count > 0) {
       S().gen1_active_chunk = 0;
-      S().gen1_offset = load<u32>(S().gen1_chunks);
+      let startOffset = load<u32>(S().gen1_chunks);
+      let usedBytes = S().gen1_offset - startOffset;
+      S().gen1_offset = startOffset;
       S().arenaOffset = S().gen1_offset;
       S().gen1_endLimit = S().gen1_offset + AST_CHUNK_SIZE;
-      memory.fill(S().gen1_offset as usize, 0, AST_CHUNK_SIZE as usize);
+      if (usedBytes > 0) {
+        memory.fill(S().gen1_offset as usize, 0, usedBytes as usize);
+      }
     }
   } else if (gen == 0) {
     if (S().gen0_chunk_count > 0) {
       S().gen0_active_chunk = 0;
-      S().gen0_offset = load<u32>(S().gen0_chunks);
+      let startOffset = load<u32>(S().gen0_chunks);
+      let usedBytes = S().gen0_offset - startOffset;
+      S().gen0_offset = startOffset;
       S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
-      memory.fill(S().gen0_offset as usize, 0, AST_CHUNK_SIZE as usize);
+      if (usedBytes > 0) {
+        memory.fill(S().gen0_offset as usize, 0, usedBytes as usize);
+      }
     }
   }
 }
