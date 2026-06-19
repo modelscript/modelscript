@@ -2324,6 +2324,14 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               if (realBytes2 == 0) effectiveCost2 += 10000;
               effectiveCost2 += (firstPad2 as i32) * 3;
 
+              // HEAVILY penalize unparsed trailing garbage to prevent premature early accepts
+              let trailingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
+              if (trailingBytes > 0) {
+                // By multiplying by 2, we ensure that skipping trailing garbage is vastly more
+                // expensive than paying the local deletion cost of the erroneous tokens.
+                effectiveCost2 += (trailingBytes as i32) * 2;
+              }
+
               if (t_count2 <= 1) {
                 let singleNode2: u32 = 0;
                 let rc2: ParseHead | null = head;

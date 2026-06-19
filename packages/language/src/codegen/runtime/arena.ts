@@ -61,6 +61,7 @@ class SharedState {
   activeRootCount: u32;
   activeRootsPtr: u32;
   gcStackPtr: u32;
+  gcStackCapacity: u32;
 }
 
 const shared_state_ptr = memory.data<u32>([0]);
@@ -881,8 +882,22 @@ const GC_STACK_CAPACITY: u32 = 1000000;
 /** Initializes the linear memory stack used by the GC for iterative tree traversal. */
 function ensureGcStack(): void {
   if (S().gcStackPtr == 0) {
-    S().gcStackPtr = atomicChunkAlloc(GC_STACK_CAPACITY * 4);
+    S().gcStackCapacity = GC_STACK_CAPACITY;
+    S().gcStackPtr = atomicChunkAlloc(S().gcStackCapacity * 4);
   }
+}
+
+@inline
+function pushGcStack(val: u32, stackTop: u32): u32 {
+  if (stackTop >= S().gcStackCapacity) {
+    let newCap = S().gcStackCapacity * 2;
+    let newPtr = atomicChunkAlloc(newCap * 4);
+    memory.copy(newPtr as usize, S().gcStackPtr as usize, S().gcStackCapacity * 4);
+    S().gcStackPtr = newPtr;
+    S().gcStackCapacity = newCap;
+  }
+  store<u32>(S().gcStackPtr + stackTop * 4, val, 0);
+  return stackTop + 1;
 }
 
 /**
@@ -901,16 +916,12 @@ export function clearAstMarks(rootToKeep: u32): void {
 
   // Prime the stack with the explicitly retained root
   if (rootToKeep != 0) {
-    store<u32>(S().gcStackPtr + stackTop * 4, rootToKeep, 0);
-    stackTop++;
+    stackTop = pushGcStack(rootToKeep, stackTop);
   }
 
   // Prime the stack with all actively registered multi-roots
   for (let i: u32 = 0; i < S().activeRootCount; i++) {
-    if (stackTop < GC_STACK_CAPACITY) {
-      store<u32>(S().gcStackPtr + stackTop * 4, load<u32>(S().activeRootsPtr + i * 4, 0), 0);
-      stackTop++;
-    }
+    stackTop = pushGcStack(load<u32>(S().activeRootsPtr + i * 4, 0), stackTop);
   }
 
   // Iterative depth-first traversal
@@ -930,10 +941,7 @@ export function clearAstMarks(rootToKeep: u32): void {
       // Push all children to the stack
       let child = load<u32>(curr + 8, 0);
       while (child != 0) {
-        if (stackTop < GC_STACK_CAPACITY) {
-          store<u32>(S().gcStackPtr + stackTop * 4, child, 0);
-          stackTop++;
-        }
+        stackTop = pushGcStack(child, stackTop);
         child = load<u32>(child + 12, 0); // follow intrusive sibling linked list
       }
     }
