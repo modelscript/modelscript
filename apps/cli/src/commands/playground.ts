@@ -583,18 +583,7 @@ function getIndexHtml() {
                                     </div>
                                 );
                             })}
-                            {diagnostics.map((diag, i) => (
-                                <div key={"diag-" + i} className="ast-error" style={{ cursor: 'pointer', marginTop: '4px' }} onClick={() => {
-                                    if (window.highlightNode) {
-                                        window.highlightNode(diag.range.start.line, diag.range.start.character, diag.range.end.line, diag.range.end.character);
-                                    }
-                                }}>
-                                    <span className="hoverable-text" style={{ color: '#d73a49' }}>ERROR</span>
-                                    <span style={{ color: '#8b949e', marginLeft: '5px' }}>
-                                        {"[" + (diag.range.start.line + 1) + ", " + (diag.range.start.character + 1) + "] - [" + (diag.range.end.line + 1) + ", " + (diag.range.end.character + 1) + "]"}
-                                    </span>
-                                </div>
-                            ))}
+
                         </>
                     )}
                 </div>
