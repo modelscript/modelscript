@@ -170,14 +170,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {
       // Missing terminal (ghost node inserted by error recovery)
-      let dStart = nodeStart;
-      let dEnd = nodeStart + 2;
-      if (dEnd > inputLength) {
-        dEnd = inputLength;
-        if (dEnd > 0) dStart = dEnd - 2;
-        if (dStart < 0) dStart = 0;
-      }
-      allocDiagnostic(dStart, dEnd, type, 0);
+      allocDiagnostic(nodeStart, nodeStart, type, 0);
     }
 
     // Recurse into children (for both error and non-error nodes)

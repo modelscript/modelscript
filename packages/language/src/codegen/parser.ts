@@ -5,6 +5,7 @@ import { NormalizedGrammar } from "../grammar.js";
 
 import { arenaCode, arrayCode, cursorCode, engineCode, lspCode } from "../../build/src-gen/runtime-templates.js";
 import { generateLexer } from "./lexer.js";
+import { generateSalsaBridge } from "./salsa.js";
 import { generateTypes } from "./types.js";
 
 /**
@@ -173,6 +174,35 @@ export function generateParserTables(
     }
   }
 
+  const typeFields: number[] = new Array(symToInt.size + 1).fill(-1);
+  const typeFieldData: number[] = [];
+
+  for (let symId = 1; symId <= symToInt.size; symId++) {
+    const fieldsMap = new Map<number, Set<number>>();
+    for (const p of grammar.productions) {
+      if ((symToInt.get(p.left) || 0) === symId && p.fields) {
+        for (const f of p.fields) {
+          if (!fieldsMap.has(f.fieldId)) {
+            fieldsMap.set(f.fieldId, new Set<number>());
+          }
+          fieldsMap.get(f.fieldId)!.add(f.index);
+        }
+      }
+    }
+
+    if (fieldsMap.size > 0) {
+      typeFields[symId] = typeFieldData.length;
+      typeFieldData.push(fieldsMap.size);
+      for (const [fieldId, indices] of fieldsMap.entries()) {
+        typeFieldData.push(fieldId);
+        typeFieldData.push(indices.size);
+        for (const index of indices) {
+          typeFieldData.push(index);
+        }
+      }
+    }
+  }
+
   code += generateStaticArray(prodLengths, "prod_lengths");
   code += generateStaticArray(prodLhs, "prod_lhs");
   code += generateStaticArray(prodIsInvisible, "prod_is_invisible");
@@ -180,8 +210,10 @@ export function generateParserTables(
   code += generateStaticArray(prodDynamicPrec, "prod_dynamic_prec");
   code += generateStaticArray(prodAliases, "prod_aliases");
   code += generateStaticArray(aliasData.length > 0 ? aliasData : [0], "alias_data");
+  code += generateStaticArray(typeFields, "type_fields");
+  code += generateStaticArray(typeFieldData.length > 0 ? typeFieldData : [0], "type_field_data");
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./salsa";\n`;
 
   let engineCodeTemplate = engineCode;
 
@@ -199,5 +231,6 @@ export function generateParserTables(
     { filename: "cursor.ts", content: cursorCode },
     { filename: "engine.ts", content: engineCodeTemplate },
     { filename: "lsp.ts", content: lspCodeTemplate },
+    { filename: "salsa.ts", content: generateSalsaBridge(originalGrammar) },
   ];
 }

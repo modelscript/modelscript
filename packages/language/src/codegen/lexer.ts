@@ -7,7 +7,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   const stringTokens = new Map<string, string>();
   const regexTokens = new Map<string, string>();
 
-  function extractTokens(rule: Rule) {
+  function extractTokens(rule: Rule<any>) {
     if (!rule) return;
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule } as any;

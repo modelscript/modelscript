@@ -1,13 +1,14 @@
 /**
  * Represents a single rule in the grammar's AST representation.
  */
-export interface Rule {
+export interface Rule<F extends string = never> {
+  __fields?: F;
   /** The type of the rule (e.g., 'SEQ', 'CHOICE', 'TOKEN', 'FIELD', etc.) */
   type: string;
   /** Optional metadata or literal value for the rule (e.g., field name, regex string, precedence level) */
   value?: any;
   /** Child rules that this rule composes */
-  children?: Rule[];
+  children?: Rule<any>[];
 }
 
 /**
@@ -35,18 +36,59 @@ export interface ScannerPrimitives {
 /**
  * A type that accepts either a strict `Rule` object, a string literal, or a regular expression.
  */
-export type RuleLike = Rule | string | RegExp;
+export type RuleLike<F extends string = never> = Rule<F> | string | RegExp;
 
 /**
  * A function that takes a map of all grammar rules and returns a grammar definition rule.
  */
-type RuleBuilder<RuleName extends string> = ($: Record<RuleName, Rule>) => RuleLike;
+type RuleBuilder<RuleName extends string, FieldName extends string = never> = (
+  $: Record<RuleName, Rule<any>>,
+) => RuleLike<FieldName>;
+
+/**
+ * AssemblyScript type polyfills for TypeScript IDE compatibility
+ */
+export type u32 = number;
+export type u16 = number;
+export type u8 = number;
+export type i32 = number;
+export type i16 = number;
+export type i8 = number;
+export type f32 = number;
+export type f64 = number;
+
+export interface FieldCursor {
+  hasNext(): boolean;
+  next(): u32;
+  release(): void;
+}
+
+export interface SalsaDB<FieldName extends string = never> {
+  getNodeType(nodePtr: u32): u16;
+  getNodeFirstChild(nodePtr: u32): u32;
+  getNodeNextSibling(nodePtr: u32): u32;
+  runQuery(queryType: u32, queryArg: u32): u32;
+  getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
+  getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
+}
+
+export type ASTQueryFunction<RuleName extends string = string, FieldName extends string = never> = (
+  db: SalsaDB<FieldName>,
+  queryArg: u32,
+  $: Record<RuleName, u16>,
+) => u32;
+
+export interface ModelAttribute<RuleName extends string = string, FieldName extends string = never> {
+  type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool";
+  default?: number;
+  compute?: string | ASTQueryFunction<RuleName, FieldName>;
+}
 
 /**
  * Configuration options for defining a ModelScript language grammar.
  * Modeled after Tree-sitter's Grammar API.
  */
-export interface LanguageOptions<RuleName extends string = string> {
+export interface LanguageOptions<RuleName extends string = string, FieldName extends string = never> {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
 
@@ -60,18 +102,18 @@ export interface LanguageOptions<RuleName extends string = string> {
    * A dictionary of grammar rules defining the language's syntax.
    * Keys are rule names, values are functions that compose rules.
    */
-  rules: Record<RuleName, RuleBuilder<RuleName>>;
+  rules: Record<RuleName, RuleBuilder<RuleName, FieldName>>;
 
   /**
    * Tokens to skip automatically (e.g., whitespace, comments) everywhere in the grammar.
    */
-  extras?: ($: Record<RuleName, Rule>) => RuleLike[];
+  extras?: ($: Record<RuleName, Rule<any>>) => RuleLike<any>[];
 
   /** Composable Scanner Primitives (Phase 1) */
   primitives?: ScannerPrimitives;
 
   /** External Scanner (Context-Sensitive Lexing) */
-  externals?: ($: Record<RuleName, Rule>) => Rule[];
+  externals?: ($: Record<RuleName, Rule<any>>) => Rule<any>[];
 
   /** External scanner logic (WASM fallback). Not typically used directly in DSL. */
   scanner?: (currentPos: number, scannerState: number) => number;
@@ -80,19 +122,25 @@ export interface LanguageOptions<RuleName extends string = string> {
    * Tree-sitter Parity: Rules that serve as supertypes (interfaces/abstract classes)
    * in the generated AST. Useful for aliases and unifying node queries.
    */
-  supertypes?: ($: Record<RuleName, Rule>) => Rule[];
+  supertypes?: ($: Record<RuleName, Rule<any>>) => Rule<any>[];
 
   /** Rules that should be inlined directly into their parents during codegen to reduce AST depth. */
   inline?: RuleName[];
 
   /** Expected GLR conflicts. Specifies arrays of rule names that can legitimately conflict. */
-  conflicts?: (($: Record<RuleName, Rule>) => RuleLike[][]) | RuleName[][];
+  conflicts?: (($: Record<RuleName, Rule<any>>) => RuleLike<any>[][]) | RuleName[][];
 
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?: string[][];
 
   /** Reserved keywords to omit from generic identifier matching. */
-  reserved?: Record<string, ($: Record<RuleName, Rule>) => Rule[]>;
+  reserved?: Record<string, ($: Record<RuleName, Rule<any>>) => Rule<any>[]>;
+
+  /** Demand-Driven Semantic AST Attributes (Models) */
+  models?: Record<string, ModelAttribute<RuleName, FieldName>>;
+
+  /** Queries (imperative AssemblyScript methods) */
+  queries?: Record<string, string | ASTQueryFunction<RuleName, FieldName>>;
 }
 
 /**
@@ -101,88 +149,73 @@ export interface LanguageOptions<RuleName extends string = string> {
  * @param options The language configuration object
  * @returns The unaltered configuration object (preserves types for downstream compilation)
  */
-export function language<RuleName extends string>(options: LanguageOptions<RuleName>): LanguageOptions<RuleName> {
+export function language<RuleName extends string, FieldName extends string = never>(
+  options: LanguageOptions<RuleName, FieldName>,
+): LanguageOptions<RuleName, FieldName> {
   return options;
 }
+
+type ExtractF<T> = T extends Rule<infer F> ? (string extends F ? never : F) : never;
 
 /**
  * Coerces strings and RegExps into `token` rules, leaving existing `Rule` objects unchanged.
  */
-export function toRule(r: RuleLike): Rule {
-  return typeof r === "string" || r instanceof RegExp ? token(r) : r;
+export function toRule<F extends string>(r: RuleLike<F>): Rule<F> {
+  return typeof r === "string" || r instanceof RegExp ? token(r) : (r as Rule<F>);
 }
 
 /**
  * Matches a sequence of rules, one after the other.
  */
-export function seq(...rules: RuleLike[]): Rule {
+export function seq<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "SEQ", children: rules.map(toRule) };
 }
 
-/**
- * Matches exactly one of the provided rules (a branch/alternative).
- */
-export function choice(...rules: RuleLike[]): Rule {
+export function choice<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "CHOICE", children: rules.map(toRule) };
 }
 
-/**
- * Matches zero or more repetitions of the provided rule.
- */
-export function repeat(rule: RuleLike): Rule {
+export function repeat<F extends string>(rule: RuleLike<F>): Rule<F> {
   return { type: "REPEAT", children: [toRule(rule)] };
 }
 
-/**
- * Matches one or more repetitions of the provided rule.
- */
-export function repeat1(rule: RuleLike): Rule {
+export function repeat1<F extends string>(rule: RuleLike<F>): Rule<F> {
   return seq(rule, repeat(rule));
 }
 
-/**
- * Matches the provided rule zero or one time.
- */
-export function optional(rule: RuleLike): Rule {
+export function optional<F extends string>(rule: RuleLike<F>): Rule<F> {
   return choice(rule, seq());
 }
 
-/**
- * Matches a sequence of the provided rule, separated by the separator rule (one or more times).
- * Trailing separators are NOT allowed.
- */
-export function sepBy1(rule: RuleLike, separator: RuleLike): Rule {
+export function sepBy1<F1 extends string, F2 extends string>(
+  rule: RuleLike<F1>,
+  separator: RuleLike<F2>,
+): Rule<F1 | F2> {
   return seq(rule, repeat(seq(separator, rule)));
 }
 
-/**
- * Matches a sequence of the provided rule, separated by the separator rule (zero or more times).
- * Trailing separators are NOT allowed.
- */
-export function sepBy(rule: RuleLike, separator: RuleLike): Rule {
+export function sepBy<F1 extends string, F2 extends string>(
+  rule: RuleLike<F1>,
+  separator: RuleLike<F2>,
+): Rule<F1 | F2> {
   return optional(sepBy1(rule, separator));
 }
 
-/**
- * Matches a sequence of the provided rule, separated by the separator rule (one or more times).
- * Allows an optional trailing separator.
- */
-export function sepBy1Trailing(rule: RuleLike, separator: RuleLike): Rule {
+export function sepBy1Trailing<F1 extends string, F2 extends string>(
+  rule: RuleLike<F1>,
+  separator: RuleLike<F2>,
+): Rule<F1 | F2> {
   return seq(sepBy1(rule, separator), optional(separator));
 }
 
-/**
- * Matches a sequence of the provided rule, separated by the separator rule (zero or more times).
- * Allows an optional trailing separator.
- */
-export function sepByTrailing(rule: RuleLike, separator: RuleLike): Rule {
+export function sepByTrailing<F1 extends string, F2 extends string>(
+  rule: RuleLike<F1>,
+  separator: RuleLike<F2>,
+): Rule<F1 | F2> {
   return optional(sepBy1Trailing(rule, separator));
 }
 
-/**
- * Assigns a field name to a matched rule, making it accessible as an explicit property in the generated AST.
- */
-export function field(name: string, rule: RuleLike): Rule {
+export function field<F extends string>(name: F, rule: RuleLike<any>): Rule<F> {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
 
@@ -190,64 +223,43 @@ export function field(name: string, rule: RuleLike): Rule {
  * Defines a lexer token. For strings and RegExps, defines the match pattern.
  * For other rules, groups them into a single monolithic token in the lexer.
  */
-export function token(pattern: RuleLike): Rule {
+export function token<F extends string>(pattern: RuleLike<F>): Rule<F> {
   if (typeof pattern === "string" || pattern instanceof RegExp) {
     return { type: "TOKEN", value: pattern };
   }
   return { type: "TOKEN", children: [toRule(pattern)] };
 }
 
-/**
- * Defines a token that must immediately follow the previous token (no skipped `extras` like whitespace allowed in between).
- */
-token.immediate = function (rule: RuleLike): Rule {
+(token as any).immediate = function <F extends string>(rule: RuleLike<F>): Rule<F> {
   return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
 };
 
 /**
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
  */
-export function alias(rule: RuleLike, name: string | Rule): Rule {
+export function alias<F extends string>(rule: RuleLike<F>, name: string | Rule<any>): Rule<F> {
   const nameValue = typeof name === "string" ? name : name.value;
   return { type: "ALIAS", value: nameValue, children: [toRule(rule)] };
 }
 
-/**
- * Specifies that the provided rule is subject to the given reserved word list.
- */
-export function reserved(wordset: string, rule: RuleLike): Rule {
+export function reserved<F extends string>(wordset: string, rule: RuleLike<F>): Rule<F> {
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }
 
-/**
- * Assigns a generic precedence to a rule for conflict resolution. Higher values bind tighter.
- */
-export function prec(value: number, rule: Rule): Rule {
+export function prec<F extends string>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC", value, children: [rule] };
 }
 
-/**
- * Assigns left-associativity and precedence to a rule.
- * If no precedence is given, defaults to 0.
- */
-prec.left = function (value: number | Rule, rule?: Rule): Rule {
+(prec as any).left = function <F extends string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_LEFT", value: 0, children: [value] };
   return { type: "PREC_LEFT", value, children: [rule!] };
 };
 
-/**
- * Assigns right-associativity and precedence to a rule.
- * If no precedence is given, defaults to 0.
- */
-prec.right = function (value: number | Rule, rule?: Rule): Rule {
+(prec as any).right = function <F extends string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_RIGHT", value: 0, children: [value] };
   return { type: "PREC_RIGHT", value, children: [rule!] };
 };
 
-/**
- * Assigns dynamic precedence to a rule. Used at runtime during GLR parsing to prioritize
- * one successful parse branch over another.
- */
-prec.dynamic = function (value: number, rule: Rule): Rule {
+(prec as any).dynamic = function <F extends string>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC_DYNAMIC", value, children: [rule] };
 };

@@ -18,7 +18,13 @@ export const Playground: CommandModule = {
       if (urlPath === "/") {
         headers["Content-Type"] = "text/html";
         res.writeHead(200, headers);
-        res.end(getIndexHtml());
+
+        const dslPath = join(__dirname, "../../../../packages/language/src/dsl.ts");
+        let dslLibStr = "";
+        if (existsSync(dslPath)) {
+          dslLibStr = readFileSync(dslPath, "utf-8").replace(/^export\s+/gm, "");
+        }
+        res.end(getIndexHtml(dslLibStr));
       } else if (urlPath === "/worker-compiler.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
@@ -117,7 +123,7 @@ export const Playground: CommandModule = {
   },
 };
 
-function getIndexHtml() {
+function getIndexHtml(dslLibStr = "") {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -221,46 +227,11 @@ function getIndexHtml() {
         
         require.config({ paths: { 'vs': '/node_modules/monaco-editor/min/vs' }});
         require(['vs/editor/editor.main'], function() {
+            const dslLibStrRaw = \`${dslLibStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
             const dslLib = [
                 "export {};",
                 "declare global {",
-                "    interface Rule {}",
-                "    type RuleLike = Rule | string | RegExp;",
-                "    interface LanguageOptions {",
-                "        name: string;",
-                "        word?: string;",
-                "        rules: Record<string, ($: any) => RuleLike>;",
-                "        extras?: ($: any) => RuleLike[];",
-                "        primitives?: {",
-                "            nestedComment?: { open: string; close: string };",
-                "            lineComment?: string;",
-                "            escapedIdent?: { quote: string; escape?: string };",
-                "            stringLiteral?: { delim: string; escapes?: Record<string, number> };",
-                "            multiWordKeywords?: string[];",
-                "            layout?: { indent: string; dedent: string };",
-                "        };",
-                "        externals?: ($: any) => Rule[];",
-                "        scanner?: (currentPos: number, scannerState: number) => number;",
-                "        supertypes?: ($: any) => Rule[];",
-                "        inline?: string[];",
-                "        conflicts?: (($: any) => RuleLike[][]) | string[][];",
-                "        precedences?: string[][];",
-                "        reserved?: Record<string, ($: any) => Rule[]>;",
-                "    }",
-                "    function language(options: LanguageOptions): any;",
-                "    function seq(...rules: RuleLike[]): Rule;",
-                "    function choice(...rules: RuleLike[]): Rule;",
-                "    function repeat(rule: RuleLike): Rule;",
-                "    function repeat1(rule: RuleLike): Rule;",
-                "    function optional(rule: RuleLike): Rule;",
-                "    function sepBy1(rule: RuleLike, separator: RuleLike): Rule;",
-                "    function sepBy(rule: RuleLike, separator: RuleLike): Rule;",
-                "    function prec(level: number, rule: RuleLike): Rule;",
-                "    function precLeft(level: number, rule: RuleLike): Rule;",
-                "    function precRight(level: number, rule: RuleLike): Rule;",
-                "    function precDynamic(level: number, rule: RuleLike): Rule;",
-                "    function token(rule: RuleLike): Rule;",
-                "    function alias(rule: RuleLike, name: string): Rule;",
+                dslLibStrRaw,
                 "}"
             ].join("\\n");
             
@@ -269,6 +240,7 @@ function getIndexHtml() {
                 allowNonTsExtensions: true,
                 moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
                 module: monaco.languages.typescript.ModuleKind.CommonJS,
+                strict: true,
                 noEmit: true
             });
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');

@@ -53,5 +53,15 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
 
   typeCode += `}\n\n`;
 
+  typeCode += `export enum FieldId {\n`;
+  for (const [fieldName, id] of normalized.fieldToInt.entries()) {
+    if (typeof fieldName !== "string") continue;
+    // Convert camelCase or snake_case to CONSTANT_CASE
+    let safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+    safeName = safeName.replace(/[^A-Z0-9_]/g, "_");
+    typeCode += `  ${safeName} = ${id},\n`;
+  }
+  typeCode += `}\n\n`;
+
   return typeCode;
 }

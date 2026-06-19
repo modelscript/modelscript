@@ -25,6 +25,8 @@ export interface Production {
   isList: boolean;
   /** AST node renaming aliases assigned to specific RHS symbols. */
   aliases?: { index: number; target: string }[];
+  /** AST named fields assigned to specific RHS symbols. */
+  fields?: { index: number; fieldId: number }[];
 }
 
 /**
@@ -46,11 +48,12 @@ export class NormalizedGrammar {
   private syntheticCache = new Map<string, string>();
 
   symToInt = new Map<string, number>();
+  fieldToInt = new Map<string, number>();
   localSyncTokens = new Set<string>();
 
-  evaluatedRules: Record<string, Rule> = {};
+  evaluatedRules: Record<string, Rule<any>> = {};
   conflicts: string[][] = [];
-  extras: Rule[] = [];
+  extras: Rule<any>[] = [];
   inlineRules: string[] = [];
   supertypes = new Map<string, string[]>();
   globalPrecedences = new Map<string, number>();
@@ -126,7 +129,7 @@ export class NormalizedGrammar {
           const targetRule = this.evaluatedRules[stName];
           if (targetRule && targetRule.type === "CHOICE") {
             const subTypes: string[] = [];
-            const extractSymbols = (r: Rule) => {
+            const extractSymbols = (r: Rule<any>) => {
               if (r.type === "SYMBOL") {
                 subTypes.push(r.value as string);
               } else if (r.type === "CHOICE" && r.children) {
@@ -163,7 +166,7 @@ export class NormalizedGrammar {
       if (wordRegex) {
         const extractedKeywords: string[] = [];
 
-        function findKeywords(r: Rule) {
+        function findKeywords(r: Rule<any>) {
           if (r.type === "TOKEN" && r.value && typeof r.value === "string" && !r.value.startsWith("/")) {
             if (wordRegex!.test(r.value)) {
               if (!extractedKeywords.includes(r.value)) {
@@ -229,7 +232,7 @@ export class NormalizedGrammar {
 
   private addProduction(
     left: SymbolName,
-    right: { sym: SymbolName; alias?: string }[],
+    right: { sym: SymbolName; alias?: string; field?: string }[],
     prec?: number,
     assoc?: "left" | "right",
     isList = false,
@@ -239,6 +242,12 @@ export class NormalizedGrammar {
     const aliases = right.map((r, i) => (r.alias ? { index: i, target: r.alias } : null)).filter((a) => a !== null) as {
       index: number;
       target: string;
+    }[];
+    const fields = right
+      .map((r, i) => (r.field ? { index: i, fieldId: this.fieldToInt.get(r.field)! } : null))
+      .filter((a) => a !== null) as {
+      index: number;
+      fieldId: number;
     }[];
 
     this.productions.push({
@@ -251,6 +260,7 @@ export class NormalizedGrammar {
       isInvisible: left.startsWith("_") || this.inlineRules.includes(left),
       isList,
       aliases: aliases.length > 0 ? aliases : undefined,
+      fields: fields.length > 0 ? fields : undefined,
     });
     this.nonTerminals.add(left);
     for (const a of aliases) {
@@ -342,7 +352,7 @@ export class NormalizedGrammar {
     contextName: string,
     rule: Rule | any,
     p: { prec?: number; assoc?: "left" | "right" },
-  ): { sym: SymbolName; alias?: string }[] {
+  ): { sym: SymbolName; alias?: string; field?: string }[] {
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule };
     }
@@ -461,10 +471,22 @@ export class NormalizedGrammar {
       case "BLANK":
         return [];
 
-      case "FIELD":
+      case "FIELD": {
+        const fieldName = rule.value;
+        if (fieldName && !this.fieldToInt.has(fieldName)) {
+          this.fieldToInt.set(fieldName, this.fieldToInt.size + 1);
+        }
+        const res = this.flatten(contextName, children[0], p);
+        if (fieldName) {
+          for (const r of res) {
+            r.field = fieldName;
+          }
+        }
+        return res;
+      }
+
       case "RESERVED":
       case "TOKEN_IMMEDIATE": {
-        // Ignored for raw grammar parsing (used later for AST building)
         return this.flatten(contextName, children[0], p);
       }
 

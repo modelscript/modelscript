@@ -28,6 +28,7 @@ import {
   setNodePadding,
 } from "./arena";
 import { ChunkedUint32Array } from "./array";
+import { initQueryArena, resetQueryArena, clearDiagnostics } from "./salsa";
 import {
   action_data as _action_data,
   action_offsets as _action_offsets,
@@ -42,6 +43,8 @@ import {
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
   token_insert_costs as _token_insert_costs,
+  type_fields as _type_fields,
+  type_field_data as _type_field_data,
   currentScannerState,
   initExtras,
   inputLength,
@@ -99,6 +102,8 @@ const prod_is_list = changetype<StaticTable>(_prod_is_list);
 const prod_dynamic_prec = changetype<StaticTable>(_prod_dynamic_prec);
 const prod_aliases = changetype<StaticTable>(_prod_aliases);
 const alias_data = changetype<StaticTable>(_alias_data);
+const type_fields = changetype<StaticTable>(_type_fields);
+const type_field_data = changetype<StaticTable>(_type_field_data);
 
 import { cursorNodeStack, cursorOffsetStack } from "./cursor";
 const savedCursorNodeStack = new ChunkedUint32Array();
@@ -1392,6 +1397,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     t_tokenBufferLenArena = atomicChunkAlloc(ARENA_BUFFER_SIZE * 4);
     t_lrStateStack = atomicChunkAlloc(MAX_LR_STACK_DEPTH * 4);
     t_lrNodeStack = atomicChunkAlloc(MAX_LR_STACK_DEPTH * 4);
+    initQueryArena();
   }
 
   let pos: u32 = 0;
@@ -1407,6 +1413,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
     globalLoopGuard = 0;
     resetGeneration(0);
+    resetQueryArena();
+    clearDiagnostics();
     errorCount = 0;
     if (t_acceptCache == 0) {
       t_acceptCache = atomicChunkAlloc(ACCEPT_CACHE_CAPACITY * 12);
@@ -3395,6 +3403,172 @@ function fixNodeLength(node: u32): void {
 }
 
 // ----------------------------------------------------------------------------
+/** 
+ * Dynamically resolves a field by its ID by looking up the layout
+ * of the node's type. This fully replaces the static models mapping.
+ */
+export class FieldCursor {
+  node: u32 = 0;
+  fieldId: i32 = 0;
+
+  offset: i32 = -1;
+  indexCount: i32 = 0;
+  currentIdxPtr: i32 = 0;
+
+  stackDepth: i32 = 0;
+  stack0: u32 = 0; stack1: u32 = 0; stack2: u32 = 0; stack3: u32 = 0;
+  stack4: u32 = 0; stack5: u32 = 0; stack6: u32 = 0; stack7: u32 = 0;
+
+  currentChild: u32 = 0;
+  
+  private cachedNext: u32 = 0;
+  private hasCachedNext: boolean = false;
+
+  @inline
+  init(node: u32, fieldId: i32): void {
+    this.node = node;
+    this.fieldId = fieldId;
+    this.stackDepth = 0;
+    this.currentChild = 0;
+    this.cachedNext = 0;
+    this.hasCachedNext = false;
+    
+    let type = getNodeType(node);
+    let offset = type_fields[type];
+    if (offset == -1) {
+      this.offset = -1;
+      return;
+    }
+    
+    let fieldCount = type_field_data[offset];
+    let currentOffset = offset + 1;
+    
+    for (let i = 0; i < fieldCount; i++) {
+      let currentFieldId = type_field_data[currentOffset];
+      let indexCount = type_field_data[currentOffset + 1];
+      if (currentFieldId == fieldId && indexCount > 0) {
+        this.offset = currentOffset;
+        this.indexCount = indexCount;
+        this.currentIdxPtr = currentOffset + 2;
+        return;
+      }
+      currentOffset += 2 + indexCount;
+    }
+    this.offset = -1;
+  }
+
+  @inline
+  hasNext(): boolean {
+    if (this.hasCachedNext) return this.cachedNext != 0;
+    this.cachedNext = this._advance();
+    this.hasCachedNext = true;
+    return this.cachedNext != 0;
+  }
+
+  @inline
+  next(): u32 {
+    if (this.hasCachedNext) {
+      this.hasCachedNext = false;
+      return this.cachedNext;
+    }
+    return this._advance();
+  }
+
+  private _advance(): u32 {
+    if (this.offset == -1) return 0;
+
+    while (true) {
+      if (this.currentChild != 0) {
+        let child = this.currentChild;
+        this.currentChild = getNodeNextSibling(child);
+        
+        let flags = getNodeFlags(child);
+        if ((flags & FLAG_INVISIBLE) != 0) {
+          if (this.currentChild != 0) {
+             if (this.stackDepth == 0) this.stack0 = this.currentChild;
+             else if (this.stackDepth == 1) this.stack1 = this.currentChild;
+             else if (this.stackDepth == 2) this.stack2 = this.currentChild;
+             else if (this.stackDepth == 3) this.stack3 = this.currentChild;
+             else if (this.stackDepth == 4) this.stack4 = this.currentChild;
+             else if (this.stackDepth == 5) this.stack5 = this.currentChild;
+             else if (this.stackDepth == 6) this.stack6 = this.currentChild;
+             else if (this.stackDepth == 7) this.stack7 = this.currentChild;
+             this.stackDepth++;
+          }
+          this.currentChild = getNodeFirstChild(child);
+          continue;
+        }
+        return child;
+      }
+
+      if (this.stackDepth > 0) {
+        this.stackDepth--;
+        if (this.stackDepth == 0) this.currentChild = this.stack0;
+        else if (this.stackDepth == 1) this.currentChild = this.stack1;
+        else if (this.stackDepth == 2) this.currentChild = this.stack2;
+        else if (this.stackDepth == 3) this.currentChild = this.stack3;
+        else if (this.stackDepth == 4) this.currentChild = this.stack4;
+        else if (this.stackDepth == 5) this.currentChild = this.stack5;
+        else if (this.stackDepth == 6) this.currentChild = this.stack6;
+        else if (this.stackDepth == 7) this.currentChild = this.stack7;
+        continue;
+      }
+
+      if (this.indexCount == 0) {
+        this.offset = -1;
+        return 0;
+      }
+      
+      let logicalIndex = type_field_data[this.currentIdxPtr];
+      this.currentIdxPtr++;
+      this.indexCount--;
+      
+      let child = getNodeFirstChild(this.node);
+      for (let i = 0; i < logicalIndex; i++) {
+        if (child == 0) break;
+        child = getNodeNextSibling(child);
+      }
+      this.currentChild = child;
+    }
+  }
+
+  @inline
+  release(): void {
+    releaseFieldCursor(this);
+  }
+}
+
+const cursorPool = new Array<FieldCursor>(16);
+for (let i = 0; i < 16; i++) cursorPool[i] = new FieldCursor();
+let cursorPoolDepth: i32 = 16;
+
+export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
+  let cursor: FieldCursor;
+  if (cursorPoolDepth > 0) {
+    cursorPoolDepth--;
+    cursor = cursorPool[cursorPoolDepth];
+  } else {
+    cursor = new FieldCursor();
+  }
+  cursor.init(node, fieldId);
+  return cursor;
+}
+
+export function releaseFieldCursor(cursor: FieldCursor): void {
+  if (cursorPoolDepth < 16) {
+    cursorPool[cursorPoolDepth] = cursor;
+    cursorPoolDepth++;
+  }
+}
+
+export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
+  let cursor = getChildrenByFieldId(ptr, fieldId);
+  let child = cursor.next();
+  cursor.release();
+  return child;
+}
+
+// ----------------------------------------------------------------------------------------------------------
 // List Concatenation & Appending
 // ----------------------------------------------------------------------------
 
