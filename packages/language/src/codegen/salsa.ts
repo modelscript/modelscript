@@ -1,3 +1,4 @@
+import * as ts from "typescript";
 import { salsaCode } from "../../build/src-gen/runtime-templates.js";
 import { LanguageOptions } from "../dsl.js";
 
@@ -29,60 +30,143 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
 
   function transpileQuery(queryFn: any, isLint: boolean = false): string {
     const queryStr = typeof queryFn === "function" ? queryFn.toString() : queryFn;
-    let asQueryStr = queryStr as string;
-    let paramNames: string[] = [];
-    if (typeof queryFn === "function") {
-      let matchParams = asQueryStr.match(/(?:\(([^)]*)\)|([^\s=]+))\s*=>/);
-      if (matchParams) {
-        let pStr = matchParams[1] || matchParams[2];
-        paramNames = pStr.split(",").map((p) => p.trim());
+
+    // If it's already a string without arrow/function, just return it
+    if (typeof queryFn === "string" && !queryStr.includes("=>") && !queryStr.startsWith("function")) {
+      return queryStr;
+    }
+
+    const sourceFile = ts.createSourceFile("temp.ts", queryStr, ts.ScriptTarget.Latest, true);
+
+    const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+      const visit: ts.Visitor = (node) => {
+        // 1. $.RuleName -> <u16>SyntaxType.RULENAME
+        if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "$") {
+          const ruleName = node.name.getText().toUpperCase();
+          return ts.factory.createTypeAssertion(
+            ts.factory.createTypeReferenceNode("u16"),
+            ts.factory.createPropertyAccessExpression(
+              ts.factory.createIdentifier("SyntaxType"),
+              ts.factory.createIdentifier(ruleName),
+            ),
+          );
+        }
+
+        // 2. Call expressions: db.modelAttribute, db.getChildByFieldId, db.runQuery, db.diagnostic
+        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+          const expr = node.expression;
+          if (expr.expression.getText() === "db") {
+            const methodName = expr.name.getText();
+            const args = node.arguments;
+
+            if (methodName === "modelAttribute" && args.length >= 2) {
+              const nodeArg = args[0];
+              const attrArg = args[1];
+              if (ts.isStringLiteral(attrArg)) {
+                const attrName = attrArg.text;
+                const id = attrIdMap.get(attrName);
+                if (id === undefined) throw new Error(`Model attribute ${attrName} not defined`);
+                return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
+                  ts.factory.createNumericLiteral(id),
+                  visitNode(nodeArg),
+                ]);
+              }
+            }
+
+            if ((methodName === "getChildByFieldId" || methodName === "getChildrenByFieldId") && args.length >= 2) {
+              const nodeArg = args[0];
+              const fieldArg = args[1];
+              if (ts.isStringLiteral(fieldArg)) {
+                const fieldName = fieldArg.text;
+                const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                return ts.factory.createCallExpression(ts.factory.createIdentifier(methodName), undefined, [
+                  visitNode(nodeArg),
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("FieldId"),
+                    ts.factory.createIdentifier(safeName),
+                  ),
+                ]);
+              }
+            }
+
+            if (methodName === "runQuery" && args.length >= 2) {
+              const queryArg = args[0];
+              const targetArg = args[1];
+              if (ts.isStringLiteral(queryArg)) {
+                const queryName = queryArg.text;
+                const id = queryIdMap.get(queryName);
+                if (id === undefined) throw new Error(`Query ${queryName} not defined`);
+                return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
+                  ts.factory.createNumericLiteral(id),
+                  visitNode(targetArg),
+                ]);
+              }
+            }
+
+            if (methodName === "diagnostic" && args.length >= 1) {
+              const targetArg = args[0];
+              const contextArg = args.length > 1 ? args[1] : targetArg;
+              return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnostic"), undefined, [
+                ts.factory.createCallExpression(ts.factory.createIdentifier("getNodeStartIndex"), undefined, [
+                  visitNode(targetArg),
+                ]),
+                ts.factory.createCallExpression(ts.factory.createIdentifier("getNodeEndIndex"), undefined, [
+                  visitNode(targetArg),
+                ]),
+                ts.factory.createIdentifier("lintId"),
+                visitNode(contextArg),
+              ]);
+            }
+          }
+        }
+
+        return ts.visitEachChild(node, visit, context);
+      };
+
+      function visitNode(node: ts.Node): ts.Node {
+        return ts.visitNode(node, visit) as ts.Node;
       }
-      let matchBlock = asQueryStr.match(/^[^{]*\{([\s\S]*)\}\s*$/);
-      if (matchBlock) {
-        asQueryStr = matchBlock[1];
-      } else {
-        let matchExpr = asQueryStr.match(/=>\s*([\s\S]+)$/);
-        if (matchExpr) asQueryStr = `return ${matchExpr[1]};`;
+
+      return (node) => ts.visitNode(node, visit) as ts.SourceFile;
+    };
+
+    const result = ts.transform(sourceFile, [transformer]);
+    const printed = ts.createPrinter().printFile(result.transformed[0]);
+
+    // Parse again to extract body and parameters
+    const transformedSource = ts.createSourceFile("temp.ts", printed, ts.ScriptTarget.Latest, true);
+    let bodyStr = "";
+    let params: string[] = [];
+
+    ts.forEachChild(transformedSource, (node) => {
+      if (ts.isExpressionStatement(node)) {
+        if (ts.isArrowFunction(node.expression)) {
+          params = node.expression.parameters.map((p) => p.name.getText());
+          const body = node.expression.body;
+          if (ts.isBlock(body)) {
+            bodyStr = body.statements.map((s) => s.getText()).join("\n");
+          } else {
+            bodyStr = "return " + body.getText() + ";";
+          }
+        }
+      } else if (ts.isFunctionDeclaration(node)) {
+        params = node.parameters.map((p) => p.name.getText());
+        if (node.body) {
+          bodyStr = node.body.statements.map((s) => s.getText()).join("\n");
+        }
       }
+    });
+
+    if (bodyStr === "") {
+      bodyStr = printed;
     }
 
     const argName = isLint ? "node" : "queryArg";
-    if (paramNames.length >= 2 && paramNames[1] && paramNames[1] !== argName) {
-      asQueryStr = `let ${paramNames[1]} = ${argName};\n` + asQueryStr;
+    if (params.length >= 2 && params[1] && params[1] !== argName) {
+      bodyStr = `let ${params[1]} = ${argName};\n` + bodyStr;
     }
 
-    asQueryStr = asQueryStr.replace(
-      /db\.modelAttribute(?:<[^>]+>)?\(([^,]+),\s*(['"])([^'"]+)\2\)/g,
-      (match, nodeArg, quote, attrName) => {
-        let id = attrIdMap.get(attrName);
-        if (id === undefined) throw new Error(`Model attribute ${attrName} is not defined in grammar.model`);
-        return `runQuery(${id}, ${nodeArg})`;
-      },
-    );
-
-    asQueryStr = asQueryStr.replace(
-      /db\.getChild(ren)?ByFieldId\(([^,]+),\s*(['"])([^'"]+)\3\)/g,
-      (_, ren, ptr, quote, fieldName) => {
-        let safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
-        return `getChild${ren || ""}ByFieldId(${ptr}, FieldId.${safeName})`;
-      },
-    );
-
-    asQueryStr = asQueryStr.replace(
-      /db\.runQuery\(\s*(['"])([^'"]+)\1\s*,\s*([^)]+)\)/g,
-      (_, quote, queryName, queryArg) => {
-        let id = queryIdMap.get(queryName);
-        if (id === undefined) throw new Error(`Query ${queryName} is not defined in grammar.queries`);
-        return `runQuery(${id}, ${queryArg})`;
-      },
-    );
-
-    asQueryStr = asQueryStr.replace(/db\.diagnostic\(([^,]+)(?:,\s*([^)]+))?\)/g, (_, targetNode, contextNode) => {
-      return `lsp_allocDiagnostic(getNodeStartIndex(${targetNode}), getNodeEndIndex(${targetNode}), lintId, ${contextNode || targetNode})`;
-    });
-
-    asQueryStr = asQueryStr.replace(/\$\.([a-zA-Z0-9_]+)/g, (_, group) => `<u16>SyntaxType.${group.toUpperCase()}`);
-    return asQueryStr;
+    return bodyStr;
   }
 
   if (grammar.queries) {

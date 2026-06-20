@@ -283,6 +283,62 @@ export function alias<F extends string>(rule: RuleLike<F>, name: string | Rule<a
   return { type: "ALIAS", value: nameValue, children: [toRule(rule)] };
 }
 
+export type SemanticTokenType =
+  | "namespace"
+  | "type"
+  | "class"
+  | "enum"
+  | "interface"
+  | "struct"
+  | "typeParameter"
+  | "parameter"
+  | "variable"
+  | "property"
+  | "enumMember"
+  | "event"
+  | "function"
+  | "method"
+  | "macro"
+  | "keyword"
+  | "modifier"
+  | "comment"
+  | "string"
+  | "number"
+  | "regexp"
+  | "operator"
+  | "decorator";
+
+export type SemanticTokenModifier =
+  | "declaration"
+  | "definition"
+  | "readonly"
+  | "static"
+  | "deprecated"
+  | "abstract"
+  | "async"
+  | "modification"
+  | "documentation"
+  | "defaultLibrary";
+
+export function semanticToken<
+  F extends string,
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+>(
+  tokenType: SemanticTokenType | (string & {}),
+  rule: RuleLike<F>,
+  modifiers?:
+    | (SemanticTokenModifier | (string & {}))[]
+    | Record<
+        SemanticTokenModifier | (string & {}),
+        boolean | string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>
+      >,
+): Rule<F> {
+  return { type: "SEMANTIC", value: { type: tokenType, modifiers: modifiers || [] }, children: [toRule(rule)] };
+}
+
 export function reserved<F extends string>(wordset: string, rule: RuleLike<F>): Rule<F> {
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }

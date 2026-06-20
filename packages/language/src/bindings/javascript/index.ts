@@ -75,5 +75,30 @@ export function generateJavaScriptWrapper(
     .replace(/"__FIELD_NAMES_LITERAL__"/g, fieldNamesStr)
     .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr);
 
-  return { js, dts, syntaxNames };
+  const tokenTypesMap = new Map<string, number>();
+  const tokenModifiersMap = new Map<string, number>();
+
+  for (const p of normalized.productions) {
+    if (p.semantics) {
+      for (const s of p.semantics) {
+        if (!tokenTypesMap.has(s.type)) tokenTypesMap.set(s.type, tokenTypesMap.size);
+        const mods = Array.isArray(s.modifiers) ? s.modifiers : Object.keys(s.modifiers || {});
+        for (const m of mods) {
+          if (!tokenModifiersMap.has(m)) tokenModifiersMap.set(m, tokenModifiersMap.size);
+        }
+      }
+    }
+  }
+
+  const legend = {
+    tokenTypes: Array.from(tokenTypesMap.keys()),
+    tokenModifiers: Array.from(tokenModifiersMap.keys()),
+  };
+  const legendStr = JSON.stringify(legend);
+
+  // Add the legend exports manually to the generated wrapper code
+  const jsWithLegend = js + `\nexport const semanticLegend = ${legendStr};\n`;
+  const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[], tokenModifiers: string[] };\n`;
+
+  return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames };
 }

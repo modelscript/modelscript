@@ -203,6 +203,50 @@ export function generateParserTables(
     }
   }
 
+  const tokenTypesMap = new Map<string, number>();
+  const tokenModifiersMap = new Map<string, number>();
+
+  for (const p of sortedProds) {
+    if (p.semantics) {
+      for (const s of p.semantics) {
+        if (!tokenTypesMap.has(s.type)) tokenTypesMap.set(s.type, tokenTypesMap.size);
+        const mods = Array.isArray(s.modifiers) ? s.modifiers : Object.keys(s.modifiers || {});
+        for (const m of mods) {
+          if (!tokenModifiersMap.has(m)) tokenModifiersMap.set(m, tokenModifiersMap.size);
+        }
+      }
+    }
+  }
+
+  const typeSemantics: number[] = new Array(symToInt.size + 1).fill(-1);
+  const typeSemanticData: number[] = [];
+
+  for (let symId = 1; symId <= symToInt.size; symId++) {
+    const semanticsList = new Map<number, { type: number; bitmask: number }>();
+    for (const p of sortedProds) {
+      if ((symToInt.get(p.left) || 0) === symId && p.semantics) {
+        for (const s of p.semantics) {
+          let bitmask = 0;
+          const mods = Array.isArray(s.modifiers) ? s.modifiers : Object.keys(s.modifiers || {});
+          for (const m of mods) {
+            bitmask |= 1 << tokenModifiersMap.get(m)!;
+          }
+          semanticsList.set(s.index, { type: tokenTypesMap.get(s.type)!, bitmask });
+        }
+      }
+    }
+
+    if (semanticsList.size > 0) {
+      typeSemantics[symId] = typeSemanticData.length;
+      typeSemanticData.push(semanticsList.size);
+      for (const [index, sem] of semanticsList.entries()) {
+        typeSemanticData.push(index);
+        typeSemanticData.push(sem.type);
+        typeSemanticData.push(sem.bitmask);
+      }
+    }
+  }
+
   code += generateStaticArray(prodLengths, "prod_lengths");
   code += generateStaticArray(prodLhs, "prod_lhs");
   code += generateStaticArray(prodIsInvisible, "prod_is_invisible");
@@ -212,6 +256,8 @@ export function generateParserTables(
   code += generateStaticArray(aliasData.length > 0 ? aliasData : [0], "alias_data");
   code += generateStaticArray(typeFields, "type_fields");
   code += generateStaticArray(typeFieldData.length > 0 ? typeFieldData : [0], "type_field_data");
+  code += generateStaticArray(typeSemantics, "type_semantics");
+  code += generateStaticArray(typeSemanticData.length > 0 ? typeSemanticData : [0], "type_semantic_data");
 
   code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./salsa";\n`;
 
@@ -233,11 +279,7 @@ export function generateParserTables(
       const fnName = `lint_${lintName}`;
       for (const nodeName of lint.nodes || []) {
         if (!nodeLints.has(nodeName)) nodeLints.set(nodeName, []);
-        nodeLints
-          .get(nodeName)!
-          .push(
-            `${fnName}(node, ${lintId}, nodeStart, nodeEnd);`,
-          );
+        nodeLints.get(nodeName)!.push(`${fnName}(node, ${lintId}, nodeStart, nodeEnd);`);
       }
     }
     for (const [nodeName, fnCalls] of nodeLints.entries()) {
@@ -251,7 +293,7 @@ export function generateParserTables(
   lintSwitchStr += "}\n";
   lspCodeTemplate = lspCodeTemplate.replace(/__LSP_LINT_SWITCH__/g, lintSwitchStr);
 
-  let lspImports = `import { inputLength, SyntaxType } from "./parser";\n`;
+  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data } from "./parser";\n`;
   if (originalGrammar.lints) {
     let importedLints = new Set<string>();
     for (const lintName of Object.keys(originalGrammar.lints)) {

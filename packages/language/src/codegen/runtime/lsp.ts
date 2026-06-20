@@ -226,3 +226,125 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   lsp_clearVisited();
   return lspBinaryLength / 4;
 }
+
+export function lsp_semanticTokens_full(astRoot: u32): u32 {
+  if (t_lspBinaryBuffer == 0) {
+    t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
+    t_lspTraverseStack = atomicChunkAlloc(lspTraverseCapacity * 4);
+    t_lspOffsetStack = atomicChunkAlloc(lspTraverseCapacity * 4);
+    t_lspVisitedNodes = atomicChunkAlloc(lspVisitedCapacity * 4);
+  }
+
+  lspBinaryLength = 0;
+  lspVisitedCount = 0;
+
+  if (astRoot == 0) return 0;
+
+  let stackTop: u32 = 0;
+  store<u32>(t_lspTraverseStack + stackTop * 4, astRoot);
+  store<u32>(t_lspOffsetStack + stackTop * 4, 0);
+  stackTop++;
+
+  while (stackTop > 0) {
+    stackTop--;
+    let node = load<u32>(t_lspTraverseStack + stackTop * 4);
+    let start = load<u32>(t_lspOffsetStack + stackTop * 4);
+
+    let flags = getNodeFlags(node);
+    if ((flags & 8) != 0) continue;
+    setNodeFlags(node, flags | 8);
+
+    if (lspVisitedCount >= lspVisitedCapacity) {
+      growVisitedBuffer(lspVisitedCount + 1);
+    }
+    store<u32>(t_lspVisitedNodes + lspVisitedCount++ * 4, node);
+
+    let pad = getNodePadding(node);
+    let type = getNodeType(node);
+
+    let semOffset = load<i32>(type_semantics + type * 4);
+    if (semOffset != -1) {
+      let numSemantics = load<i32>(type_semantic_data + semOffset * 4);
+      for (let i = 0; i < numSemantics; i++) {
+        let childIdx = load<i32>(type_semantic_data + (semOffset + 1 + i * 3) * 4);
+        let tokenTypeId = load<i32>(type_semantic_data + (semOffset + 1 + i * 3 + 1) * 4);
+        let bitmask = load<i32>(type_semantic_data + (semOffset + 1 + i * 3 + 2) * 4);
+
+        let child = getNodeFirstChild(node);
+        let childCount = 0;
+        let targetChild: u32 = 0;
+        let currOffset = start + pad;
+        let childOffset = 0;
+
+        while (child != 0) {
+          let cPad = getNodePadding(child);
+          if (childCount == childIdx) {
+            targetChild = child;
+            childOffset = currOffset + cPad;
+            break;
+          }
+          currOffset += cPad + getNodeByteLength(child);
+          childCount++;
+          child = getNodeNextSibling(child);
+        }
+
+        if (targetChild != 0) {
+          if (lspBinaryLength + 4 > lspBinaryCapacity) {
+            let newCapacity = lspBinaryCapacity * 2;
+            let newBuffer = atomicChunkAlloc(newCapacity * 4);
+            memory.copy(newBuffer, t_lspBinaryBuffer, lspBinaryLength * 4);
+            t_lspBinaryBuffer = newBuffer;
+            lspBinaryCapacity = newCapacity;
+          }
+          store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, childOffset);
+          store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, getNodeByteLength(targetChild));
+          store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, tokenTypeId);
+          store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, bitmask);
+        }
+      }
+    }
+
+    let child = getNodeFirstChild(node);
+    if (child != 0) {
+      let childCount: u32 = 0;
+      let countChild = child;
+      while (countChild != 0) {
+        childCount++;
+        countChild = getNodeNextSibling(countChild);
+      }
+
+      if (stackTop + childCount > lspTraverseCapacity) {
+        growTraverseStacks(stackTop + childCount, stackTop);
+      }
+
+      let currOffset = start + pad - getNodePadding(child);
+      let pushStart = stackTop;
+      while (child != 0) {
+        let padVal = getNodePadding(child);
+        let cLen = padVal + getNodeByteLength(child);
+        store<u32>(t_lspTraverseStack + stackTop * 4, child);
+        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
+        currOffset += cLen;
+        child = getNodeNextSibling(child);
+        stackTop++;
+      }
+      if (stackTop > pushStart) {
+        let lo = pushStart;
+        let hi = stackTop - 1;
+        while (lo < hi) {
+          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
+          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
+          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
+          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
+          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
+          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
+          lo++;
+          hi--;
+        }
+      }
+    }
+  }
+
+  lsp_clearVisited();
+  return lspBinaryLength / 4;
+}

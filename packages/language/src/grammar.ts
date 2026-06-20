@@ -27,6 +27,8 @@ export interface Production {
   aliases?: { index: number; target: string }[];
   /** AST named fields assigned to specific RHS symbols. */
   fields?: { index: number; fieldId: number }[];
+  /** Semantic token assignments applied to specific RHS symbols. */
+  semantics?: { index: number; type: string; modifiers: any }[];
 }
 
 /**
@@ -232,7 +234,7 @@ export class NormalizedGrammar {
 
   private addProduction(
     left: SymbolName,
-    right: { sym: SymbolName; alias?: string; field?: string }[],
+    right: { sym: SymbolName; alias?: string; field?: string; semantic?: { type: string; modifiers: any } }[],
     prec?: number,
     assoc?: "left" | "right",
     isList = false,
@@ -249,6 +251,13 @@ export class NormalizedGrammar {
       index: number;
       fieldId: number;
     }[];
+    const semantics = right
+      .map((r, i) => (r.semantic ? { index: i, type: r.semantic.type, modifiers: r.semantic.modifiers } : null))
+      .filter((a) => a !== null) as {
+      index: number;
+      type: string;
+      modifiers: any;
+    }[];
 
     this.productions.push({
       id: this.nextId++,
@@ -261,6 +270,7 @@ export class NormalizedGrammar {
       isList,
       aliases: aliases.length > 0 ? aliases : undefined,
       fields: fields.length > 0 ? fields : undefined,
+      semantics: semantics.length > 0 ? semantics : undefined,
     });
     this.nonTerminals.add(left);
     for (const a of aliases) {
@@ -323,6 +333,7 @@ export class NormalizedGrammar {
       case "PREC_DYNAMIC":
       case "ALIAS":
       case "FIELD":
+      case "SEMANTIC":
       case "RESERVED":
       case "TOKEN_IMMEDIATE":
         return this.getEBNF(getChild(rule));
@@ -352,7 +363,7 @@ export class NormalizedGrammar {
     contextName: string,
     rule: Rule | any,
     p: { prec?: number; assoc?: "left" | "right" },
-  ): { sym: SymbolName; alias?: string; field?: string }[] {
+  ): { sym: SymbolName; alias?: string; field?: string; semantic?: { type: string; modifiers: any } }[] {
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule };
     }
@@ -494,6 +505,14 @@ export class NormalizedGrammar {
         const res = this.flatten(contextName, children[0], p);
         if (res.length === 1) {
           res[0].alias = rule.value;
+        }
+        return res;
+      }
+
+      case "SEMANTIC": {
+        const res = this.flatten(contextName, children[0], p);
+        if (res.length === 1) {
+          res[0].semantic = rule.value;
         }
         return res;
       }
