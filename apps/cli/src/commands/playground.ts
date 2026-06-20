@@ -37,7 +37,23 @@ export const Playground: CommandModule = {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
         const browserJsPath = join(__dirname, "../../../../packages/language/dist/browser.js");
-        res.end(existsSync(browserJsPath) ? readFileSync(browserJsPath) : "");
+        if (existsSync(browserJsPath)) {
+          let content = readFileSync(browserJsPath, "utf-8");
+          content = content.replace(
+            /import\s*\*\s*as\s*([a-zA-Z0-9_]+)\s*from\s*["']typescript["']/g,
+            'import $1 from "/typescript.mjs"',
+          );
+          // Fallback if there's any other "typescript" imports left
+          content = content.replace(/from\s*["']typescript["']/g, 'from "/typescript.mjs"');
+          res.end(content);
+        } else {
+          res.end("");
+        }
+      } else if (urlPath === "/typescript.mjs") {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
+        const tsJsPath = join(__dirname, "../../../../packages/language/dist/typescript.mjs");
+        res.end(existsSync(tsJsPath) ? readFileSync(tsJsPath) : "");
       } else if (urlPath?.startsWith("/node_modules/")) {
         const rootNodeModules = join(__dirname, "../../../../node_modules");
         const cliNodeModules = join(__dirname, "../../node_modules");
@@ -287,25 +303,20 @@ function getIndexHtml(dslLibStr = "") {
             };
             
             compilerWorker.onmessage = (e) => {
-                if (e.data.type === 'success') {
-                    document.getElementById('status').innerText = "Compiled successfully! LSP is active.";
+                if (e.data.type === 'progress') {
+                    document.getElementById('status').innerText = e.data.message;
+                } else if (e.data.type === 'success') {
+                    const kb = (e.data.wasm.byteLength / 1024).toFixed(1);
+                    document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
                     window.syntaxNames = e.data.syntaxNames;
-                    if (window.codeEditor) {
-                        lspWorker.postMessage({ 
-                            type: 'init', 
-                            wasm: e.data.wasm, 
-                            jsWrapper: e.data.jsWrapper,
-                            syntaxNames: e.data.syntaxNames,
-                            initialText: window.codeEditor.getValue()
-                        });
-                    } else {
-                        lspWorker.postMessage({ 
-                            type: 'init', 
-                            wasm: e.data.wasm, 
-                            jsWrapper: e.data.jsWrapper,
-                            syntaxNames: e.data.syntaxNames 
-                        });
-                    }
+                    lspWorker.postMessage({ 
+                        type: 'init', 
+                        wasm: e.data.wasm, 
+                        jsWrapper: e.data.jsWrapper,
+                        syntaxNames: e.data.syntaxNames,
+                        langName: e.data.langName,
+                        initialText: window.codeEditor ? window.codeEditor.getValue() : null
+                    });
                 } else if (e.data.type === 'error') {
                     document.getElementById('status').innerText = "Error: " + e.data.error;
                 }
@@ -372,7 +383,8 @@ function getIndexHtml(dslLibStr = "") {
                             endLineNumber: d.range.end.line + 1,
                             endColumn: d.range.end.character + 1,
                             message: d.message,
-                            source: 'ModelScript DSL LSP'
+                            code: d.code ? String(d.code) : undefined,
+                            source: d.source
                         }));
                         console.log("Client received diagnostics:", markers);
                         monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
@@ -606,6 +618,7 @@ self.onmessage = async (e) => {
     if (e.data.type === 'compile') {
         try {
             console.log("Evaluating DSL definition...");
+            self.postMessage({ type: 'progress', message: 'Evaluating DSL definition...' });
             
             // 1. Evaluate the grammar definition
             // Support ES module syntax by transforming 'export default' into 'return'
@@ -623,6 +636,7 @@ self.onmessage = async (e) => {
             }
             
             console.log("Building parser artifacts...");
+            self.postMessage({ type: 'progress', message: 'Building parser artifacts...' });
             // 2. Generate AssemblyScript files
             const result = Language.buildParser(grammarDef);
             
@@ -633,6 +647,7 @@ self.onmessage = async (e) => {
             }
             
             console.log("Compiling to WASM with asc...");
+            self.postMessage({ type: 'progress', message: 'Compiling to WASM with asc...' });
             // 4. Compile with asc
             const ascResult = await asc.main([
                 "parser.ts",
@@ -667,7 +682,8 @@ self.onmessage = async (e) => {
                 type: 'success', 
                 wasm: vfs['parser.wasm'], 
                 jsWrapper: result.javascriptWrapper.js,
-                syntaxNames: result.javascriptWrapper.syntaxNames
+                syntaxNames: result.javascriptWrapper.syntaxNames,
+                langName: grammarDef.name
             });
         } catch (err) {
             self.postMessage({ type: 'error', error: err.message });
@@ -687,6 +703,7 @@ let latestUri = undefined;
 let currentTextLength = 0;
 let currentGenerationId = Date.now();
 let pendingFullText = null;
+let currentLangName = "ModelScript DSL";
 
 let patchBufferA = new ArrayBuffer(1024 * 1024 * 2);
 let patchBufferB = new ArrayBuffer(1024 * 1024 * 2);
@@ -758,7 +775,8 @@ function triggerDiagnostics(changes = null) {
             severity: d.severity,
             range: d.range,
             message: d.message,
-            source: 'ModelScript DSL'
+            code: d.code,
+            source: currentLangName
         }));
         
         self.postMessage({
@@ -773,7 +791,8 @@ function triggerDiagnostics(changes = null) {
 self.addEventListener('message', async (e) => {
     if (e.data.type === 'init') {
         console.log("LSP initialized with new WASM parser");
-        const { wasm, jsWrapper } = e.data;
+        const { wasm, jsWrapper, langName } = e.data;
+        if (langName) currentLangName = langName;
         
         try {
             const memory = new WebAssembly.Memory({ initial: 4000, maximum: 4000, shared: true });

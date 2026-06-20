@@ -68,7 +68,7 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
                 if (id === undefined) throw new Error(`Model attribute ${attrName} not defined`);
                 return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
                   ts.factory.createNumericLiteral(id),
-                  visitNode(nodeArg),
+                  visitNode(nodeArg) as ts.Expression,
                 ]);
               }
             }
@@ -80,7 +80,7 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
                 const fieldName = fieldArg.text;
                 const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
                 return ts.factory.createCallExpression(ts.factory.createIdentifier(methodName), undefined, [
-                  visitNode(nodeArg),
+                  visitNode(nodeArg) as ts.Expression,
                   ts.factory.createPropertyAccessExpression(
                     ts.factory.createIdentifier("FieldId"),
                     ts.factory.createIdentifier(safeName),
@@ -98,7 +98,7 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
                 if (id === undefined) throw new Error(`Query ${queryName} not defined`);
                 return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
                   ts.factory.createNumericLiteral(id),
-                  visitNode(targetArg),
+                  visitNode(targetArg) as ts.Expression,
                 ]);
               }
             }
@@ -107,14 +107,10 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
               const targetArg = args[0];
               const contextArg = args.length > 1 ? args[1] : targetArg;
               return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnostic"), undefined, [
-                ts.factory.createCallExpression(ts.factory.createIdentifier("getNodeStartIndex"), undefined, [
-                  visitNode(targetArg),
-                ]),
-                ts.factory.createCallExpression(ts.factory.createIdentifier("getNodeEndIndex"), undefined, [
-                  visitNode(targetArg),
-                ]),
+                ts.factory.createIdentifier("nodeStart"),
+                ts.factory.createIdentifier("nodeEnd"),
                 ts.factory.createIdentifier("lintId"),
-                visitNode(contextArg),
+                visitNode(contextArg) as ts.Expression,
               ]);
             }
           }
@@ -146,7 +142,16 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
           if (ts.isBlock(body)) {
             bodyStr = body.statements.map((s) => s.getText()).join("\n");
           } else {
-            bodyStr = "return " + body.getText() + ";";
+            if (
+              isLint &&
+              ts.isCallExpression(body) &&
+              ts.isIdentifier(body.expression) &&
+              body.expression.getText() === "lsp_allocDiagnostic"
+            ) {
+              bodyStr = body.getText() + ";";
+            } else {
+              bodyStr = "return " + body.getText() + ";";
+            }
           }
         }
       } else if (ts.isFunctionDeclaration(node)) {

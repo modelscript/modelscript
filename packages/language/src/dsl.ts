@@ -88,6 +88,13 @@ export type ASTQueryFunction<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > = (db: SalsaDB<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => u32 | boolean;
 
+export type ASTLintFunction<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> = (db: SalsaDB<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => void;
+
 export interface CompilerLint<
   RuleName extends string = string,
   FieldName extends string = never,
@@ -95,7 +102,7 @@ export interface CompilerLint<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
-  query: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+  query: string | ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   code?: string | number;
   message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
   severity: "error" | "warning" | "info";

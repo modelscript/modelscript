@@ -23,6 +23,8 @@ export function generateJavaScriptWrapper(
 
   let lintMessagesStr = "{";
   let lintSeveritiesStr = "{";
+  let lintCodesStr = "{";
+
   if (grammarDef.lints) {
     let nextLintId = 2000;
     let first = true;
@@ -31,6 +33,7 @@ export function generateJavaScriptWrapper(
       if (!first) {
         lintMessagesStr += ",";
         lintSeveritiesStr += ",";
+        lintCodesStr += ",";
       }
       first = false;
 
@@ -46,10 +49,18 @@ export function generateJavaScriptWrapper(
       if (sev === "warning") sevNum = 2;
       else if (sev === "info") sevNum = 3;
       lintSeveritiesStr += `"${lintId}": ${sevNum}`;
+
+      const customCode = (lint as any).code;
+      if (customCode !== undefined) {
+        lintCodesStr += `"${lintId}": ${JSON.stringify(customCode)}`;
+      } else {
+        lintCodesStr += `"${lintId}": undefined`;
+      }
     }
   }
   lintMessagesStr += "}";
   lintSeveritiesStr += "}";
+  lintCodesStr += "}";
 
   // Replace the placeholders in the bundled JavaScript
   const js = bindingsTemplateJsCode
@@ -60,6 +71,8 @@ export function generateJavaScriptWrapper(
     .replace(/__LINT_MESSAGES_LITERAL__/g, lintMessagesStr)
     .replace(/"__LINT_SEVERITIES_LITERAL__"/g, lintSeveritiesStr)
     .replace(/__LINT_SEVERITIES_LITERAL__/g, lintSeveritiesStr)
+    .replace(/"__LINT_CODES_LITERAL__"/g, lintCodesStr)
+    .replace(/__LINT_CODES_LITERAL__/g, lintCodesStr)
     .replace(/"__FIELD_NAMES_LITERAL__"/g, fieldNamesStr)
     .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr);
 

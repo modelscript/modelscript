@@ -224,6 +224,7 @@ export interface Diagnostic {
   range: Range;
   message: string;
   severity: number;
+  code?: number | string;
 }
 
 declare const __SYNTAX_NAMES_LITERAL__: string[];
@@ -236,6 +237,10 @@ export const LINT_MESSAGES: Record<string, string> =
 declare const __LINT_SEVERITIES_LITERAL__: Record<string, number>;
 export const LINT_SEVERITIES: Record<string, number> =
   typeof __LINT_SEVERITIES_LITERAL__ !== "undefined" ? __LINT_SEVERITIES_LITERAL__ : {};
+
+declare const __LINT_CODES_LITERAL__: Record<string, string | number>;
+export const LINT_CODES: Record<string, string | number> =
+  typeof __LINT_CODES_LITERAL__ !== "undefined" ? __LINT_CODES_LITERAL__ : {};
 
 declare const __FIELD_NAMES_LITERAL__: Record<string, number>;
 export const FIELD_NAMES: Record<string, number> =
@@ -433,6 +438,8 @@ export class LspFacade {
 
       let msg = "Syntax Error";
       let severity = 1; // Default to Error
+      let codeStr: number | string | undefined = lintId > 0 ? lintId : undefined;
+
       if (lintId > 0) {
         if (lintId < this.syntaxNames.length) {
           let name = this.syntaxNames[lintId];
@@ -498,6 +505,10 @@ export class LspFacade {
           } else {
             msg = msgVal;
           }
+
+          if (LINT_CODES[lintId.toString()] !== undefined) {
+            codeStr = LINT_CODES[lintId.toString()];
+          }
         }
       }
 
@@ -508,6 +519,7 @@ export class LspFacade {
         },
         message: msg,
         severity: severity,
+        code: codeStr,
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling

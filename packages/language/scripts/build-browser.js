@@ -28,6 +28,15 @@ esbuild
       outfile: "dist/typescript.mjs",
       format: "esm",
       platform: "browser",
+      alias: {
+        os: "./scripts/os-polyfill.js",
+        fs: "./scripts/fs-polyfill.js",
+      },
+      define: {
+        __filename: '"/"',
+        __dirname: '"/"',
+      },
+      inject: ["./scripts/process-polyfill.js"],
     });
   })
   .then(() => {
