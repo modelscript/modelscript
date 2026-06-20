@@ -160,6 +160,8 @@ export class ChunkedInt32Array extends ChunkedArray<i32> {}
 
 export class ChunkedFloat64Array extends ChunkedArray<f64> {}
 
+export class ChunkedUint8Array extends ChunkedArray<u8> {}
+
 export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint32Array {
   let ptr = atomicChunkAlloc(offsetof<ChunkedUint32Array>());
   let arr = changetype<ChunkedUint32Array>(ptr);

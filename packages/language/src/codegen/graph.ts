@@ -113,6 +113,62 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
                 visitNode(contextArg) as ts.Expression,
               ]);
             }
+
+            if (methodName === "createNode" && args.length >= 1) {
+              const typeArg = args[0];
+              if (ts.isStringLiteral(typeArg)) {
+                let typeName = typeArg.text.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+                if (/^[0-9]/.test(typeName)) typeName = "_" + typeName;
+
+                return ts.factory.createCallExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier("createNode"),
+                  ),
+                  undefined,
+                  [
+                    ts.factory.createTypeAssertion(
+                      ts.factory.createTypeReferenceNode("u16"),
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("SyntaxType"),
+                        ts.factory.createIdentifier(typeName),
+                      ),
+                    ),
+                  ],
+                );
+              }
+            }
+
+            if (
+              (methodName === "setNodeFlag" || methodName === "clearNodeFlag" || methodName === "hasNodeFlag") &&
+              args.length >= 2
+            ) {
+              const nodeArg = args[0];
+              const flagArg = args[1];
+              if (ts.isStringLiteral(flagArg)) {
+                let flagName = flagArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                flagName = flagName.replace(/[^A-Z0-9_]/g, "_");
+                if (/^[0-9]/.test(flagName)) flagName = "_" + flagName;
+
+                return ts.factory.createCallExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier(methodName),
+                  ),
+                  undefined,
+                  [
+                    visitNode(nodeArg) as ts.Expression,
+                    ts.factory.createTypeAssertion(
+                      ts.factory.createTypeReferenceNode("u32"),
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("NodeFlag"),
+                        ts.factory.createIdentifier(flagName),
+                      ),
+                    ),
+                  ],
+                );
+              }
+            }
           }
         }
 

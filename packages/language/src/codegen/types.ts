@@ -43,14 +43,45 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
     emittedNames.add(finalName);
   }
 
-  // Fallbacks for CAD rules to prevent compilation errors in hardcoded LSP template CAD functions
-  if (!emittedNames.has("CAD_CUBE")) typeCode += `  CAD_CUBE = 9999,\n`;
-  if (!emittedNames.has("CAD_SPHERE")) typeCode += `  CAD_SPHERE = 9998,\n`;
-  if (!emittedNames.has("CAD_CYLINDER")) typeCode += `  CAD_CYLINDER = 9997,\n`;
-  if (!emittedNames.has("CAD_TRANSLATE")) typeCode += `  CAD_TRANSLATE = 9996,\n`;
-  if (!emittedNames.has("CAD_DIFFERENCE")) typeCode += `  CAD_DIFFERENCE = 9995,\n`;
-  if (!emittedNames.has("CAD_UNION")) typeCode += `  CAD_UNION = 9994,\n`;
+  // Automatically generate shadow SyntaxTypes for any types defined in `model` but not in `rules`
+  if (grammar.model) {
+    // Start shadow types at a high offset to avoid collision with standard rules
+    let shadowIdx = 10000;
+    for (const modelName of Object.keys(grammar.model)) {
+      let safeName = modelName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+      if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
+      if (!emittedNames.has(safeName)) {
+        typeCode += `  ${safeName} = ${shadowIdx},\n`;
+        emittedNames.add(safeName);
+        shadowIdx++;
+      }
+    }
+  }
 
+  typeCode += `}\n\n`;
+
+  // Synthesize NodeFlag bitmask from `type: "flag"` attributes in the model
+  let flagBits = 0;
+  let flagMap = new Map<string, number>();
+  typeCode += `export enum NodeFlag {\n`;
+  if (grammar.model) {
+    for (const modelKey of Object.keys(grammar.model)) {
+      const attrs = (grammar.model as any)[modelKey];
+      for (const attrKey of Object.keys(attrs)) {
+        if (attrs[attrKey]?.type === "flag") {
+          let safeName = attrKey.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+          safeName = safeName.replace(/[^A-Z0-9_]/g, "_");
+          if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
+
+          if (!flagMap.has(safeName)) {
+            flagMap.set(safeName, 1 << flagBits);
+            typeCode += `  ${safeName} = 1 << ${flagBits},\n`;
+            flagBits++;
+          }
+        }
+      }
+    }
+  }
   typeCode += `}\n\n`;
 
   typeCode += `export enum FieldId {\n`;

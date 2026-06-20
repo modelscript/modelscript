@@ -56,6 +56,21 @@ export type i16 = number;
 export type i8 = number;
 export type f32 = number;
 export type f64 = number;
+export type i64 = bigint;
+export type u64 = bigint;
+export type FieldId = u16;
+export type SyntaxId = u16;
+export type TensorHandle = u32;
+
+export enum TensorType {
+  Float64 = 0,
+  Int32 = 1,
+  Boolean = 2,
+  Float32 = 3,
+  Float16 = 4,
+  Int64 = 5,
+  Int16 = 6,
+}
 
 export interface FieldCursor {
   hasNext(): boolean;
@@ -64,6 +79,7 @@ export interface FieldCursor {
 }
 
 export interface CodeGraph<
+  RuleName extends string = never,
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
@@ -79,6 +95,64 @@ export interface CodeGraph<
     attrName: Extract<keyof ModelAttrs[T], string> | (string & {}),
   ): u32;
   diagnostic(targetNode: u32, contextNode?: u32): void;
+
+  // --- Mutator API ---
+  createNode(type: RuleName | Extract<keyof ModelAttrs, string> | (string & {}) | u16): u32;
+  cloneNode(nodeId: u32, deep: boolean): u32;
+  appendChild(parentId: u32, childId: u32): void;
+  insertSibling(targetId: u32, siblingId: u32): void;
+  setFirstChild(parentId: u32, childId: u32): void;
+  setNextSibling(nodeId: u32, siblingId: u32): void;
+  replaceNode(parentId: u32, oldChildId: u32, newChildId: u32): void;
+  setLiteralString(nodeId: u32, value: string): void;
+  setLiteralFloat(nodeId: u32, value: f64): void;
+  setLiteralInt(nodeId: u32, value: i32): void;
+  getLiteralString(nodeId: u32, absoluteStart?: u32): string;
+  getLiteralFloat(nodeId: u32, absoluteStart?: u32): f64;
+  getLiteralInt(nodeId: u32, absoluteStart?: u32): i32;
+
+  setLiteralNodeRef(nodeId: u32, targetId: u32): void;
+  getLiteralNodeRef(nodeId: u32): u32;
+
+  setNodeFlag<FlagName extends string = never>(
+    nodeId: u32,
+    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+  ): void;
+  clearNodeFlag<FlagName extends string = never>(
+    nodeId: u32,
+    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+  ): void;
+  hasNodeFlag<FlagName extends string = never>(
+    nodeId: u32,
+    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+  ): boolean;
+
+  getProvenance(nodeId: u32): u32;
+
+  // --- Zero-GC Tensor API ---
+  createTensor1D(type: TensorType, size: u32): TensorHandle;
+  createTensor2D(type: TensorType, rows: u32, cols: u32): TensorHandle;
+  createTensor3D(type: TensorType, d0: u32, d1: u32, d2: u32): TensorHandle;
+
+  setTensorFloat(handle: TensorHandle, flatIndex: u32, val: f64): void;
+  getTensorFloat(handle: TensorHandle, flatIndex: u32): f64;
+  setTensorFloat32(handle: TensorHandle, flatIndex: u32, val: f32): void;
+  getTensorFloat32(handle: TensorHandle, flatIndex: u32): f32;
+  setTensorFloat16Raw(handle: TensorHandle, flatIndex: u32, val: u16): void;
+  getTensorFloat16Raw(handle: TensorHandle, flatIndex: u32): u16;
+
+  setTensorInt(handle: TensorHandle, flatIndex: u32, val: i32): void;
+  getTensorInt(handle: TensorHandle, flatIndex: u32): i32;
+  setTensorInt64(handle: TensorHandle, flatIndex: u32, val: i64): void;
+  getTensorInt64(handle: TensorHandle, flatIndex: u32): i64;
+  setTensorInt16(handle: TensorHandle, flatIndex: u32, val: i16): void;
+  getTensorInt16(handle: TensorHandle, flatIndex: u32): i16;
+
+  setTensorBool(handle: TensorHandle, flatIndex: u32, val: boolean): void;
+  getTensorBool(handle: TensorHandle, flatIndex: u32): boolean;
+
+  setLiteralTensor(nodeId: u32, handle: TensorHandle): void;
+  getLiteralTensor(nodeId: u32): TensorHandle;
 }
 
 export type ASTQueryFunction<
@@ -86,14 +160,18 @@ export type ASTQueryFunction<
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (graph: CodeGraph<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => u32 | boolean;
+> = (
+  graph: CodeGraph<RuleName, FieldName, QueryName, ModelAttrs>,
+  queryArg: u32,
+  $: Record<RuleName, u16>,
+) => u32 | boolean;
 
 export type ASTLintFunction<
   RuleName extends string = string,
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (graph: CodeGraph<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => void;
+> = (graph: CodeGraph<RuleName, FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => void;
 
 export interface CompilerLint<
   RuleName extends string = string,
@@ -114,7 +192,7 @@ export interface ModelAttribute<
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool";
+  type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool" | "flag";
   default?: number;
   compute?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
 }

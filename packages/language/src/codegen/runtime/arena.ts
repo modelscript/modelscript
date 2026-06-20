@@ -2,6 +2,8 @@
 // @ts-nocheck
 // @ts-ignore
 
+import { inputEncoding } from "./parser";
+
 /**
  * Arena Allocator for AST Nodes (Persistent / Structural Sharing)
  *
@@ -668,6 +670,89 @@ export function ast_insertSibling(targetPtr: u32, newSiblingPtr: u32): void {
 }
 
 /**
+ * Replaces an old child node with a new child node in a parent's children list.
+ * @param parentPtr The parent node.
+ * @param oldChildPtr The node to be replaced.
+ * @param newChildPtr The new node to insert.
+ */
+export function replaceNode(parentPtr: u32, oldChildPtr: u32, newChildPtr: u32): void {
+  if (parentPtr == 0 || oldChildPtr == 0 || newChildPtr == 0) return;
+
+  let current = getNodeFirstChild(parentPtr);
+  if (current == oldChildPtr) {
+    setFirstChild(parentPtr, newChildPtr);
+    setNextSibling(newChildPtr, getNodeNextSibling(oldChildPtr));
+    return;
+  }
+
+  while (current != 0) {
+    let next = getNodeNextSibling(current);
+    if (next == oldChildPtr) {
+      setNextSibling(current, newChildPtr);
+      setNextSibling(newChildPtr, getNodeNextSibling(oldChildPtr));
+      return;
+    }
+    current = next;
+  }
+}
+
+/**
+ * Recursively clones an AST subtree.
+ * @param nodeId The root of the subtree to clone.
+ * @param deep If true, recursively clones all children.
+ * @returns The pointer to the new cloned node.
+ */
+export function cloneNode(nodeId: u32, deep: boolean): u32 {
+  if (nodeId == 0) return 0;
+  
+  let type = getNodeType(nodeId);
+  let padding = getNodePadding(nodeId);
+  let byteLen = getNodeByteLength(nodeId);
+  let envHash = getNodeEnvHash(nodeId);
+  
+  let newPtr = allocNode(type, padding, byteLen, envHash);
+  
+  // Mark it as a shadow/extracted node so it doesn't get cleared by incremental GC
+  markExtracted(newPtr);
+  
+  // Map origin provenance for accurate diagnostics
+  let origin = ast_getProvenance(nodeId);
+  nodeProvenance.set(newPtr, origin != 0 ? origin : nodeId);
+
+  let typeOverride = nodeOverrideType.get(nodeId);
+  if (typeOverride != OVERRIDE_NONE) {
+    nodeOverrideType.set(newPtr, typeOverride);
+    if (typeOverride == OVERRIDE_STRING) nodeOverrideStrings.set(newPtr, nodeOverrideStrings.get(nodeId));
+    else if (typeOverride == OVERRIDE_FLOAT) nodeOverrideFloats.set(newPtr, nodeOverrideFloats.get(nodeId));
+    else if (typeOverride == OVERRIDE_INT) nodeOverrideInts.set(newPtr, nodeOverrideInts.get(nodeId));
+    else if (typeOverride == OVERRIDE_TENSOR) nodeTensorHandles.set(newPtr, nodeTensorHandles.get(nodeId));
+    else if (typeOverride == OVERRIDE_NODEREF) nodeOverrideRefs.set(newPtr, nodeOverrideRefs.get(nodeId));
+  }
+  
+  let currentFlags = nodeFlags.get(nodeId);
+  if (currentFlags != 0) {
+    nodeFlags.set(newPtr, currentFlags);
+  }
+  
+  if (deep) {
+    let child = getNodeFirstChild(nodeId);
+    let prevNewChild: u32 = 0;
+    while (child != 0) {
+      let newChild = cloneNode(child, true);
+      if (prevNewChild == 0) {
+        setFirstChild(newPtr, newChild);
+      } else {
+        setNextSibling(prevNewChild, newChild);
+      }
+      prevNewChild = newChild;
+      child = getNodeNextSibling(child);
+    }
+  }
+  
+  return newPtr;
+}
+
+/**
  * Flags a node as dirty, signaling that it has been manually mutated
  * and needs to be re-evaluated or re-emitted by the unparser.
  * @param ptr The node to flag.
@@ -678,32 +763,173 @@ export function ast_markDirty(ptr: u32): void {
   if (ptr != 0) markDirty(ptr);
 }
 
-/** Map storing custom string literals that have been manually mutated. */
-export const dirtyNodeStrings = new Map<u32, string>();
+export const OVERRIDE_NONE = 0;
+export const OVERRIDE_STRING = 1;
+export const OVERRIDE_FLOAT = 2;
+export const OVERRIDE_INT = 3;
+export const OVERRIDE_TENSOR = 4;
+export const OVERRIDE_NODEREF = 5;
+
+export const nodeOverrideType = new ChunkedUint8Array();
+export const nodeOverrideStrings = new ChunkedUint32Array();
+export const nodeOverrideFloats = new ChunkedFloat64Array();
+export const nodeOverrideInts = new ChunkedInt32Array();
+export const nodeOverrideRefs = new ChunkedUint32Array();
+
+export const nodeFlags = new ChunkedUint32Array();
+export const nodeProvenance = new ChunkedUint32Array();
+
+export function ast_getProvenance(nodeId: u32): u32 {
+  if (nodeId == 0) return 0;
+  let origin = nodeProvenance.get(nodeId);
+  return origin != 0 ? origin : nodeId;
+}
+
+export function ast_setNodeFlag(nodeId: u32, flag: u32): void {
+  if (nodeId != 0) {
+    nodeFlags.set(nodeId, nodeFlags.get(nodeId) | flag);
+    ast_markDirty(nodeId);
+  }
+}
+
+export function ast_clearNodeFlag(nodeId: u32, flag: u32): void {
+  if (nodeId != 0) {
+    nodeFlags.set(nodeId, nodeFlags.get(nodeId) & ~flag);
+    ast_markDirty(nodeId);
+  }
+}
+
+export function ast_hasNodeFlag(nodeId: u32, flag: u32): boolean {
+  if (nodeId == 0) return false;
+  return (nodeFlags.get(nodeId) & flag) !== 0;
+}
+
+export function ast_setLiteralNodeRef(ptr: u32, targetId: u32): void {
+  if (ptr != 0) {
+    nodeOverrideRefs.set(ptr, targetId);
+    nodeOverrideType.set(ptr, OVERRIDE_NODEREF);
+    ast_markDirty(ptr);
+  }
+}
+
+export function ast_getLiteralNodeRef(ptr: u32): u32 {
+  if (nodeOverrideType.get(ptr) != OVERRIDE_NODEREF) return 0;
+  return nodeOverrideRefs.get(ptr);
+}
+
+let stringArenaPtr: usize = 0;
+let stringArenaOffset: u32 = 0;
+let stringArenaCapacity: u32 = 1024 * 1024; // 1MB
+
+function ensureStringArena(bytesNeeded: u32): void {
+  if (stringArenaPtr == 0) {
+    stringArenaPtr = atomicChunkAlloc(stringArenaCapacity);
+  }
+  if (stringArenaOffset + bytesNeeded > stringArenaCapacity) {
+    let newCapacity = stringArenaCapacity * 2;
+    while (stringArenaOffset + bytesNeeded > newCapacity) newCapacity *= 2;
+    let newPtr = atomicChunkAlloc(newCapacity);
+    memory.copy(newPtr, stringArenaPtr, stringArenaOffset);
+    stringArenaPtr = newPtr;
+    stringArenaCapacity = newCapacity;
+  }
+}
 
 /**
- * Overrides the string value of a leaf node (e.g., an identifier or literal).
- * Also automatically flags the node as dirty so the unparser picks up the change.
+ * Overrides the string value of a leaf node using Zero-GC unmanaged memory.
  * @param ptr The target node.
  * @param val The new string literal value.
  */
 export function ast_setLiteralString(ptr: u32, val: string): void {
   if (ptr != 0) {
-    dirtyNodeStrings.set(ptr, val);
+    let lenBytes = val.length << 1;
+    let byteSize = 4 + lenBytes;
+    ensureStringArena(byteSize);
+    
+    let handle = stringArenaOffset;
+    store<u32>(stringArenaPtr + handle, lenBytes);
+    memory.copy(stringArenaPtr + handle + 4, changetype<usize>(val), lenBytes);
+    stringArenaOffset += byteSize;
+    
+    nodeOverrideStrings.set(ptr, handle);
+    nodeOverrideType.set(ptr, OVERRIDE_STRING);
+    ast_markDirty(ptr);
+  }
+}
+
+export function ast_setLiteralFloat(ptr: u32, val: f64): void {
+  if (ptr != 0) {
+    nodeOverrideFloats.set(ptr, val);
+    nodeOverrideType.set(ptr, OVERRIDE_FLOAT);
+    ast_markDirty(ptr);
+  }
+}
+
+export function ast_setLiteralInt(ptr: u32, val: i32): void {
+  if (ptr != 0) {
+    nodeOverrideInts.set(ptr, val);
+    nodeOverrideType.set(ptr, OVERRIDE_INT);
     ast_markDirty(ptr);
   }
 }
 
 /**
+ * Reads the direct AST string from the source buffer given an absolute offset.
+ */
+export function readNodeTextAt(nodeId: u32, absoluteStart: u32): string {
+  if (nodeId == 0) return "";
+  let len = getNodeByteLength(nodeId);
+  if (len == 0) return "";
+  let ptr = getInputBuffer() + absoluteStart;
+  if (inputEncoding == 1) {
+    return String.UTF16.decodeUnsafe(ptr, len);
+  }
+  return String.UTF8.decodeUnsafe(ptr, len);
+}
+
+/**
  * Retrieves the custom mutated string for a node, if one exists.
  * @param ptr The target node.
- * @returns The mutated string, or a placeholder if missing.
+ * @param absoluteStart Optional absolute byte offset for reading direct AST.
  */
-export function ast_getLiteralString(ptr: u32): string {
-  if (dirtyNodeStrings.has(ptr)) {
-    return dirtyNodeStrings.get(ptr);
+export function ast_getLiteralString(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): string {
+  let type = nodeOverrideType.get(ptr);
+  
+  if (type == OVERRIDE_STRING) {
+    let handle = nodeOverrideStrings.get(ptr);
+    let lenBytes = load<u32>(stringArenaPtr + handle);
+    return String.UTF16.decodeUnsafe(stringArenaPtr + handle + 4, lenBytes);
+  }
+  if (type == OVERRIDE_FLOAT) {
+    return nodeOverrideFloats.get(ptr).toString();
+  }
+  if (type == OVERRIDE_INT) {
+    return nodeOverrideInts.get(ptr).toString();
+  }
+  if (absoluteStart != 0xFFFFFFFF) {
+    return readNodeTextAt(ptr, absoluteStart);
   }
   return "/* missing_literal */";
+}
+
+export function ast_getLiteralFloat(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 {
+  let type = nodeOverrideType.get(ptr);
+  if (type == OVERRIDE_FLOAT) return nodeOverrideFloats.get(ptr);
+  if (type == OVERRIDE_INT) return <f64>nodeOverrideInts.get(ptr);
+
+  let str = ast_getLiteralString(ptr, absoluteStart);
+  if (str == "/* missing_literal */" || str == "") return 0.0;
+  return parseFloat(str);
+}
+
+export function ast_getLiteralInt(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 {
+  let type = nodeOverrideType.get(ptr);
+  if (type == OVERRIDE_INT) return nodeOverrideInts.get(ptr);
+  if (type == OVERRIDE_FLOAT) return <i32>nodeOverrideFloats.get(ptr);
+
+  let str = ast_getLiteralString(ptr, absoluteStart);
+  if (str == "/* missing_literal */" || str == "") return 0;
+  return parseInt(str) as i32;
 }
 
 /**
@@ -744,7 +970,12 @@ function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): voi
   if (child == 0 && getNodeByteLength(nodeId) > 0) {
     let ptr = getInputBuffer() + absoluteStart;
     let len = getNodeByteLength(nodeId);
-    let str = String.UTF8.decodeUnsafe(ptr, len);
+    let str = "";
+    if (inputEncoding == 1) {
+      str = String.UTF16.decodeUnsafe(ptr, len);
+    } else {
+      str = String.UTF8.decodeUnsafe(ptr, len);
+    }
     dirtyNodeStrings.set(nodeId, str);
   }
 
@@ -1003,4 +1234,242 @@ export function getNthChild(node: u32, n: u32): u32 {
     child = getNodeNextSibling(child);
   }
   return child;
+}
+
+// ----------------------------------------------------------------------------
+// Zero-GC Tensor Arena (Linear Bump Allocator)
+// ----------------------------------------------------------------------------
+
+let tensorArenaPtr: usize = 0;
+let tensorArenaOffset: u32 = 0;
+let tensorArenaCapacity: u32 = 1024 * 1024; // 1MB initial allocation
+
+/**
+ * Ensures the linear tensor memory block has enough capacity.
+ */
+function ensureTensorArena(bytesNeeded: u32): void {
+  if (tensorArenaPtr == 0) {
+    tensorArenaPtr = atomicChunkAlloc(tensorArenaCapacity);
+  }
+  if (tensorArenaOffset + bytesNeeded > tensorArenaCapacity) {
+    let newCapacity = tensorArenaCapacity * 2;
+    while (tensorArenaOffset + bytesNeeded > newCapacity) {
+      newCapacity *= 2;
+    }
+    let newPtr = atomicChunkAlloc(newCapacity);
+    memory.copy(newPtr, tensorArenaPtr, tensorArenaOffset);
+    tensorArenaPtr = newPtr;
+    tensorArenaCapacity = newCapacity;
+  }
+}
+
+// Chunked array mapping nodeId (index) to Tensor Arena handle (offset)
+export const nodeTensorHandles = new ChunkedUint32Array();
+
+export enum TensorType {
+  Float64 = 0,
+  Int32 = 1,
+  Boolean = 2,
+  Float32 = 3,
+  Float16 = 4,
+  Int64 = 5,
+  Int16 = 6,
+}
+
+function getElementSize(type: u32): u32 {
+  if (type == TensorType.Float64) return 8;
+  if (type == TensorType.Int64) return 8;
+  if (type == TensorType.Float32) return 4;
+  if (type == TensorType.Int32) return 4;
+  if (type == TensorType.Float16) return 2;
+  if (type == TensorType.Int16) return 2;
+  return 1; // Boolean
+}
+
+/** 1D Tensor Allocation */
+export function ast_createTensor1D(type: u32, size: u32): u32 {
+  // align offset to 8 bytes for safe Float64 storage
+  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
+  let handle = tensorArenaOffset;
+  
+  let elementSize = getElementSize(type);
+  let byteSize = 12 + 4 + (size * elementSize); // (type, dims, count), shape[0], elements
+  ensureTensorArena(byteSize);
+  
+  store<u32>(tensorArenaPtr + handle, type);
+  store<u32>(tensorArenaPtr + handle + 4, 1);
+  store<u32>(tensorArenaPtr + handle + 8, size);
+  store<u32>(tensorArenaPtr + handle + 12, size);
+  
+  tensorArenaOffset += byteSize;
+  return handle;
+}
+
+/** 2D Tensor Allocation */
+export function ast_createTensor2D(type: u32, rows: u32, cols: u32): u32 {
+  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
+  let handle = tensorArenaOffset;
+  
+  let elementCount = rows * cols;
+  let elementSize = getElementSize(type);
+  let byteSize = 12 + 8 + (elementCount * elementSize);
+  ensureTensorArena(byteSize);
+
+  store<u32>(tensorArenaPtr + handle, type);
+  store<u32>(tensorArenaPtr + handle + 4, 2);
+  store<u32>(tensorArenaPtr + handle + 8, elementCount);
+  store<u32>(tensorArenaPtr + handle + 12, rows);
+  store<u32>(tensorArenaPtr + handle + 16, cols);
+  
+  tensorArenaOffset += byteSize;
+  return handle;
+}
+
+/** 3D Tensor Allocation */
+export function ast_createTensor3D(type: u32, d0: u32, d1: u32, d2: u32): u32 {
+  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
+  let handle = tensorArenaOffset;
+  
+  let elementCount = d0 * d1 * d2;
+  let elementSize = getElementSize(type);
+  let byteSize = 12 + 12 + (elementCount * elementSize);
+  ensureTensorArena(byteSize);
+
+  store<u32>(tensorArenaPtr + handle, type);
+  store<u32>(tensorArenaPtr + handle + 4, 3);
+  store<u32>(tensorArenaPtr + handle + 8, elementCount);
+  store<u32>(tensorArenaPtr + handle + 12, d0);
+  store<u32>(tensorArenaPtr + handle + 16, d1);
+  store<u32>(tensorArenaPtr + handle + 20, d2);
+  
+  tensorArenaOffset += byteSize;
+  return handle;
+}
+
+/** Float64 Accessors */
+export function ast_setTensorFloat(handle: u32, flatIndex: u32, val: f64): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  store<f64>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorFloat(handle: u32, flatIndex: u32): f64 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  return load<f64>(tensorArenaPtr + dataOffset);
+}
+
+/** Float32 Accessors */
+export function ast_setTensorFloat32(handle: u32, flatIndex: u32, val: f32): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  store<f32>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorFloat32(handle: u32, flatIndex: u32): f32 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  return load<f32>(tensorArenaPtr + dataOffset);
+}
+
+/** Float16 (Raw) Accessors */
+export function ast_setTensorFloat16Raw(handle: u32, flatIndex: u32, val: u16): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  store<u16>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorFloat16Raw(handle: u32, flatIndex: u32): u16 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  return load<u16>(tensorArenaPtr + dataOffset);
+}
+
+/** Int32 Accessors */
+export function ast_setTensorInt(handle: u32, flatIndex: u32, val: i32): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  store<i32>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorInt(handle: u32, flatIndex: u32): i32 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  return load<i32>(tensorArenaPtr + dataOffset);
+}
+
+/** Int64 Accessors */
+export function ast_setTensorInt64(handle: u32, flatIndex: u32, val: i64): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  store<i64>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorInt64(handle: u32, flatIndex: u32): i64 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  return load<i64>(tensorArenaPtr + dataOffset);
+}
+
+/** Int16 Accessors */
+export function ast_setTensorInt16(handle: u32, flatIndex: u32, val: i16): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  store<i16>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorInt16(handle: u32, flatIndex: u32): i16 {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  return load<i16>(tensorArenaPtr + dataOffset);
+}
+
+/** Boolean (i8) Accessors */
+export function ast_setTensorBool(handle: u32, flatIndex: u32, val: boolean): void {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + flatIndex;
+  store<u8>(tensorArenaPtr + dataOffset, val ? 1 : 0);
+}
+export function ast_getTensorBool(handle: u32, flatIndex: u32): boolean {
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  let dataOffset = handle + 12 + (dims * 4) + flatIndex;
+  return load<u8>(tensorArenaPtr + dataOffset) !== 0;
+}
+
+/** Binds a Tensor Handle to an AST Node using the O(1) side-table */
+export function ast_setLiteralTensor(nodeId: u32, handle: u32): void {
+  if (nodeId != 0) {
+    nodeTensorHandles.set(nodeId, handle);
+    nodeOverrideType.set(nodeId, OVERRIDE_TENSOR);
+    ast_markDirty(nodeId);
+  }
+}
+
+/** Retrieves the Tensor Handle bound to an AST Node, or 0 if none */
+export function ast_getLiteralTensor(nodeId: u32): u32 {
+  if (nodeOverrideType.get(nodeId) != OVERRIDE_TENSOR) return 0;
+  return nodeTensorHandles.get(nodeId);
+}
+
+// ----------------------------------------------------------------------------
+// Host Bridge (JS/TS Frontend Accessors)
+// ----------------------------------------------------------------------------
+
+export function ast_getTensorType(nodeId: u32): u32 {
+  let handle = nodeTensorHandles.get(nodeId);
+  if (handle == 0) return 0; // defaults to Float64
+  return load<u32>(tensorArenaPtr + handle);
+}
+
+export function ast_getTensorDimensions(nodeId: u32): u32 {
+  let handle = nodeTensorHandles.get(nodeId);
+  if (handle == 0) return 0;
+  return load<u32>(tensorArenaPtr + handle + 4);
+}
+
+export function ast_getTensorShapePtr(nodeId: u32): usize {
+  let handle = nodeTensorHandles.get(nodeId);
+  if (handle == 0) return 0;
+  return tensorArenaPtr + handle + 12;
+}
+
+export function ast_getTensorDataPtr(nodeId: u32): usize {
+  let handle = nodeTensorHandles.get(nodeId);
+  if (handle == 0) return 0;
+  let dims = load<u32>(tensorArenaPtr + handle + 4);
+  return tensorArenaPtr + handle + 12 + (dims * 4);
 }

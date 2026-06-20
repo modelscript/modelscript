@@ -1,6 +1,23 @@
 // True CodeGraph Incremental Database and LSP Bridge
 // Pure Arena Implementation (Zero-GC, Integer-based)
-import { getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";
+import { 
+  getNodeType, getNodeFirstChild, getNodeNextSibling, 
+  ast_createNode, ast_appendChild, ast_insertSibling, 
+  ast_setLiteralString, ast_setLiteralFloat, ast_setLiteralInt,
+  ast_getLiteralString, ast_getLiteralFloat, ast_getLiteralInt,
+  cloneNode, replaceNode, setFirstChild, setNextSibling,
+  ast_createTensor1D, ast_createTensor2D, ast_createTensor3D,
+  ast_setTensorFloat, ast_getTensorFloat,
+  ast_setTensorFloat32, ast_getTensorFloat32,
+  ast_setTensorFloat16Raw, ast_getTensorFloat16Raw,
+  ast_setTensorInt, ast_getTensorInt,
+  ast_setTensorInt64, ast_getTensorInt64,
+  ast_setTensorInt16, ast_getTensorInt16,
+  ast_setTensorBool, ast_getTensorBool,
+  ast_setLiteralTensor, ast_getLiteralTensor,
+  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
+  ast_setLiteralNodeRef, ast_getLiteralNodeRef, ast_getProvenance
+} from "./arena";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
@@ -326,6 +343,50 @@ class CodeGraph {
     @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor {
         return getChildrenByFieldId(nodeId, fieldId);
     }
+    @inline createNode(type: u16): u32 { return ast_createNode(type); }
+    @inline cloneNode(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
+    @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
+    @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
+    @inline setFirstChild(parentId: u32, childId: u32): void { setFirstChild(parentId, childId); }
+    @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
+    @inline replaceNode(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
+    @inline setLiteralString(nodeId: u32, value: string): void { ast_setLiteralString(nodeId, value); }
+    @inline setLiteralFloat(nodeId: u32, value: f64): void { ast_setLiteralFloat(nodeId, value); }
+    @inline setLiteralInt(nodeId: u32, value: i32): void { ast_setLiteralInt(nodeId, value); }
+    @inline getLiteralString(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): string { return ast_getLiteralString(nodeId, absoluteStart); }
+    @inline getLiteralFloat(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 { return ast_getLiteralFloat(nodeId, absoluteStart); }
+    @inline getLiteralInt(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 { return ast_getLiteralInt(nodeId, absoluteStart); }
+    
+    @inline setLiteralNodeRef(nodeId: u32, targetId: u32): void { ast_setLiteralNodeRef(nodeId, targetId); }
+    @inline getLiteralNodeRef(nodeId: u32): u32 { return ast_getLiteralNodeRef(nodeId); }
+    
+    @inline setNodeFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
+    @inline clearNodeFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
+    @inline hasNodeFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
+    
+    @inline getProvenance(nodeId: u32): u32 { return ast_getProvenance(nodeId); }
+
+    @inline createTensor1D(type: u32, size: u32): u32 { return ast_createTensor1D(type, size); }
+    @inline createTensor2D(type: u32, rows: u32, cols: u32): u32 { return ast_createTensor2D(type, rows, cols); }
+    @inline createTensor3D(type: u32, d0: u32, d1: u32, d2: u32): u32 { return ast_createTensor3D(type, d0, d1, d2); }
+    @inline setTensorFloat(handle: u32, flatIndex: u32, val: f64): void { ast_setTensorFloat(handle, flatIndex, val); }
+    @inline getTensorFloat(handle: u32, flatIndex: u32): f64 { return ast_getTensorFloat(handle, flatIndex); }
+    @inline setTensorFloat32(handle: u32, flatIndex: u32, val: f32): void { ast_setTensorFloat32(handle, flatIndex, val); }
+    @inline getTensorFloat32(handle: u32, flatIndex: u32): f32 { return ast_getTensorFloat32(handle, flatIndex); }
+    @inline setTensorFloat16Raw(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorFloat16Raw(handle, flatIndex, val); }
+    @inline getTensorFloat16Raw(handle: u32, flatIndex: u32): u16 { return ast_getTensorFloat16Raw(handle, flatIndex); }
+    
+    @inline setTensorInt(handle: u32, flatIndex: u32, val: i32): void { ast_setTensorInt(handle, flatIndex, val); }
+    @inline getTensorInt(handle: u32, flatIndex: u32): i32 { return ast_getTensorInt(handle, flatIndex); }
+    @inline setTensorInt64(handle: u32, flatIndex: u32, val: i64): void { ast_setTensorInt64(handle, flatIndex, val); }
+    @inline getTensorInt64(handle: u32, flatIndex: u32): i64 { return ast_getTensorInt64(handle, flatIndex); }
+    @inline setTensorInt16(handle: u32, flatIndex: u32, val: i16): void { ast_setTensorInt16(handle, flatIndex, val); }
+    @inline getTensorInt16(handle: u32, flatIndex: u32): i16 { return ast_getTensorInt16(handle, flatIndex); }
+    
+    @inline setTensorBool(handle: u32, flatIndex: u32, val: boolean): void { ast_setTensorBool(handle, flatIndex, val); }
+    @inline getTensorBool(handle: u32, flatIndex: u32): boolean { return ast_getTensorBool(handle, flatIndex); }
+    @inline setLiteralTensor(nodeId: u32, handle: u32): void { ast_setLiteralTensor(nodeId, handle); }
+    @inline getLiteralTensor(nodeId: u32): u32 { return ast_getLiteralTensor(nodeId); }
 }
 export const graph = new CodeGraph();
 
