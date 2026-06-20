@@ -1,4 +1,4 @@
-// True Salsa-style Incremental Database and LSP Bridge
+// True CodeGraph Incremental Database and LSP Bridge
 // Pure Arena Implementation (Zero-GC, Integer-based)
 import { getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
@@ -299,7 +299,7 @@ export function runQuery(queryType: u32, queryArg: u32): u32 {
       // For parse, queryArg is fileId. 
       // result = parse();
    }
-   __SALSA_SWITCH_CODE__
+   __GRAPH_SWITCH_CODE__
    
    activeQueryDepth--;
    store<u32>(nodePtr + 12, result, 0);
@@ -313,21 +313,21 @@ __CUSTOM_QUERIES__
 __OUTLINE_QUERY_WRAPPER__
 
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
-class SalsaDB {
-    @inline getNodeType(ptr: u32): u16 { return getNodeType(ptr); }
-    @inline getNodeFirstChild(ptr: u32): u32 { return getNodeFirstChild(ptr); }
-    @inline getNodeNextSibling(ptr: u32): u32 { return getNodeNextSibling(ptr); }
+class CodeGraph {
+    @inline getNodeType(nodeId: u32): u16 { return getNodeType(nodeId); }
+    @inline getNodeFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+    @inline getNodeNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
         return runQuery(queryType, queryArg);
     }
-    @inline getChildByFieldId(ptr: u32, fieldId: i32): u32 {
-        return getChildByFieldId(ptr, fieldId);
+    @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 {
+        return getChildByFieldId(nodeId, fieldId);
     }
-    @inline getChildrenByFieldId(ptr: u32, fieldId: i32): FieldCursor {
-        return getChildrenByFieldId(ptr, fieldId);
+    @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor {
+        return getChildrenByFieldId(nodeId, fieldId);
     }
 }
-export const db = new SalsaDB();
+export const graph = new CodeGraph();
 
 export function packOutline(nameNode: u32, children: boolean): u32 {
     if (nameNode == 0) return 0;

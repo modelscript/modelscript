@@ -4,8 +4,8 @@ import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
 import { arenaCode, arrayCode, cursorCode, engineCode, lspCode } from "../../build/src-gen/runtime-templates.js";
+import { generateCodeGraphBridge } from "./graph.js";
 import { generateLexer } from "./lexer.js";
-import { generateSalsaBridge } from "./salsa.js";
 import { generateTypes } from "./types.js";
 
 /**
@@ -259,7 +259,7 @@ export function generateParserTables(
   code += generateStaticArray(typeSemantics, "type_semantics");
   code += generateStaticArray(typeSemanticData.length > 0 ? typeSemanticData : [0], "type_semantic_data");
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./salsa";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\n`;
 
   let engineCodeTemplate = engineCode;
 
@@ -300,7 +300,7 @@ export function generateParserTables(
       importedLints.add(`lint_${lintName}`);
     }
     if (importedLints.size > 0) {
-      lspImports += `import { ${Array.from(importedLints).join(", ")} } from "./salsa";\n`;
+      lspImports += `import { ${Array.from(importedLints).join(", ")} } from "./graph";\n`;
     }
   }
 
@@ -313,6 +313,6 @@ export function generateParserTables(
     { filename: "cursor.ts", content: cursorCode },
     { filename: "engine.ts", content: engineCodeTemplate },
     { filename: "lsp.ts", content: lspCodeTemplate },
-    { filename: "salsa.ts", content: generateSalsaBridge(originalGrammar) },
+    { filename: "graph.ts", content: generateCodeGraphBridge(originalGrammar) },
   ];
 }

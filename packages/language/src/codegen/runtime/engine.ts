@@ -28,7 +28,7 @@ import {
   setNodePadding,
 } from "./arena";
 import { ChunkedUint32Array } from "./array";
-import { initQueryArena, resetQueryArena, clearDiagnostics } from "./salsa";
+import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 import {
   action_data as _action_data,
   action_offsets as _action_offsets,

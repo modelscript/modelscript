@@ -63,19 +63,19 @@ export interface FieldCursor {
   release(): void;
 }
 
-export interface SalsaDB<
+export interface CodeGraph<
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  getNodeType(nodePtr: u32): u16;
-  getNodeFirstChild(nodePtr: u32): u32;
-  getNodeNextSibling(nodePtr: u32): u32;
+  getNodeType(nodeId: u32): u16;
+  getNodeFirstChild(nodeId: u32): u32;
+  getNodeNextSibling(nodeId: u32): u32;
   runQuery(queryType: QueryName | (string & {}) | u32, queryArg: u32): u32;
-  getChildByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): u32;
-  getChildrenByFieldId(ptr: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
+  getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
+  getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
   modelAttribute<T extends keyof ModelAttrs = keyof ModelAttrs>(
-    nodePtr: u32,
+    nodeId: u32,
     attrName: Extract<keyof ModelAttrs[T], string> | (string & {}),
   ): u32;
   diagnostic(targetNode: u32, contextNode?: u32): void;
@@ -86,14 +86,14 @@ export type ASTQueryFunction<
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (db: SalsaDB<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => u32 | boolean;
+> = (graph: CodeGraph<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => u32 | boolean;
 
 export type ASTLintFunction<
   RuleName extends string = string,
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (db: SalsaDB<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => void;
+> = (graph: CodeGraph<FieldName, QueryName, ModelAttrs>, queryArg: u32, $: Record<RuleName, u16>) => void;
 
 export interface CompilerLint<
   RuleName extends string = string,

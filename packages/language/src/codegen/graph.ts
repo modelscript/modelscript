@@ -1,8 +1,8 @@
 import * as ts from "typescript";
-import { salsaCode } from "../../build/src-gen/runtime-templates.js";
+import { graphCode } from "../../build/src-gen/runtime-templates.js";
 import { LanguageOptions } from "../dsl.js";
 
-export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
+export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   let switchCode = "";
   let customQueries = "";
   let outlineQueryWrapper = "";
@@ -52,10 +52,10 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
           );
         }
 
-        // 2. Call expressions: db.modelAttribute, db.getChildByFieldId, db.runQuery, db.diagnostic
+        // 2. Call expressions: graph.modelAttribute, graph.getChildByFieldId, graph.runQuery, graph.diagnostic
         if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
           const expr = node.expression;
-          if (expr.expression.getText() === "db") {
+          if (expr.expression.getText() === "graph") {
             const methodName = expr.name.getText();
             const args = node.arguments;
 
@@ -244,9 +244,9 @@ export function generateSalsaBridge(grammar: LanguageOptions<any>): string {
     }
   }
 
-  let code = salsaCode;
+  let code = graphCode;
 
-  code = code.replace(/__SALSA_SWITCH_CODE__/g, switchCode);
+  code = code.replace(/__GRAPH_SWITCH_CODE__/g, switchCode);
   code = code.replace(/__CUSTOM_QUERIES__/g, customQueries);
   code = code.replace(/__OUTLINE_QUERY_WRAPPER__/g, outlineQueryWrapper);
   code = code.replace(/__MODEL_ACCESSORS__/g, "");
