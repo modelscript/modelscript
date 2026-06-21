@@ -6,17 +6,24 @@ import {
   ast_setLiteralString, ast_setLiteralFloat, ast_setLiteralInt,
   ast_getLiteralString, ast_getLiteralFloat, ast_getLiteralInt,
   cloneNode, replaceNode, setFirstChild, setNextSibling,
-  ast_createTensor1D, ast_createTensor2D, ast_createTensor3D,
+  ast_createTensor, ast_setTensorShape, ast_getTensorShape,
   ast_setTensorFloat, ast_getTensorFloat,
   ast_setTensorFloat32, ast_getTensorFloat32,
   ast_setTensorFloat16Raw, ast_getTensorFloat16Raw,
   ast_setTensorInt, ast_getTensorInt,
+  ast_setTensorUint32, ast_getTensorUint32,
   ast_setTensorInt64, ast_getTensorInt64,
+  ast_setTensorUint64, ast_getTensorUint64,
   ast_setTensorInt16, ast_getTensorInt16,
+  ast_setTensorUint16, ast_getTensorUint16,
+  ast_setTensorInt8, ast_getTensorInt8,
+  ast_setTensorUint8, ast_getTensorUint8,
   ast_setTensorBool, ast_getTensorBool,
   ast_setLiteralTensor, ast_getLiteralTensor,
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
-  ast_setLiteralNodeRef, ast_getLiteralNodeRef, ast_getProvenance
+  ast_setLiteralNodeRef, ast_getLiteralNodeRef, ast_getProvenance,
+  ast_createList, ast_listLength, ast_bindChildName, ast_resolveChildByName,
+  ast_removeNode
 } from "./arena";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
@@ -329,64 +336,98 @@ export function runQuery(queryType: u32, queryArg: u32): u32 {
 __CUSTOM_QUERIES__
 __OUTLINE_QUERY_WRAPPER__
 
+
+export class TensorAPI {
+  @inline create(type: u32, rank: u32, elementCount: u32): u32 { return ast_createTensor(type, rank, elementCount); }
+  @inline setShape(handle: u32, dimIndex: u32, size: u32): void { ast_setTensorShape(handle, dimIndex, size); }
+  @inline getShape(handle: u32, dimIndex: u32): u32 { return ast_getTensorShape(handle, dimIndex); }
+
+  @inline setFloat(handle: u32, flatIndex: u32, val: f64): void { ast_setTensorFloat(handle, flatIndex, val); }
+  @inline getFloat(handle: u32, flatIndex: u32): f64 { return ast_getTensorFloat(handle, flatIndex); }
+  @inline setFloat32(handle: u32, flatIndex: u32, val: f32): void { ast_setTensorFloat32(handle, flatIndex, val); }
+  @inline getFloat32(handle: u32, flatIndex: u32): f32 { return ast_getTensorFloat32(handle, flatIndex); }
+  @inline setFloat16Raw(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorFloat16Raw(handle, flatIndex, val); }
+  @inline getFloat16Raw(handle: u32, flatIndex: u32): u16 { return ast_getTensorFloat16Raw(handle, flatIndex); }
+  
+  @inline setInt(handle: u32, flatIndex: u32, val: i32): void { ast_setTensorInt(handle, flatIndex, val); }
+  @inline getInt(handle: u32, flatIndex: u32): i32 { return ast_getTensorInt(handle, flatIndex); }
+  @inline setUint32(handle: u32, flatIndex: u32, val: u32): void { ast_setTensorUint32(handle, flatIndex, val); }
+  @inline getUint32(handle: u32, flatIndex: u32): u32 { return ast_getTensorUint32(handle, flatIndex); }
+  @inline setInt64(handle: u32, flatIndex: u32, val: i64): void { ast_setTensorInt64(handle, flatIndex, val); }
+  @inline getInt64(handle: u32, flatIndex: u32): i64 { return ast_getTensorInt64(handle, flatIndex); }
+  @inline setUint64(handle: u32, flatIndex: u32, val: u64): void { ast_setTensorUint64(handle, flatIndex, val); }
+  @inline getUint64(handle: u32, flatIndex: u32): u64 { return ast_getTensorUint64(handle, flatIndex); }
+  @inline setInt16(handle: u32, flatIndex: u32, val: i16): void { ast_setTensorInt16(handle, flatIndex, val); }
+  @inline getInt16(handle: u32, flatIndex: u32): i16 { return ast_getTensorInt16(handle, flatIndex); }
+  @inline setUint16(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorUint16(handle, flatIndex, val); }
+  @inline getUint16(handle: u32, flatIndex: u32): u16 { return ast_getTensorUint16(handle, flatIndex); }
+  @inline setInt8(handle: u32, flatIndex: u32, val: i8): void { ast_setTensorInt8(handle, flatIndex, val); }
+  @inline getInt8(handle: u32, flatIndex: u32): i8 { return ast_getTensorInt8(handle, flatIndex); }
+  @inline setUint8(handle: u32, flatIndex: u32, val: u8): void { ast_setTensorUint8(handle, flatIndex, val); }
+  @inline getUint8(handle: u32, flatIndex: u32): u8 { return ast_getTensorUint8(handle, flatIndex); }
+  
+  @inline setBool(handle: u32, flatIndex: u32, val: boolean): void { ast_setTensorBool(handle, flatIndex, val); }
+  @inline getBool(handle: u32, flatIndex: u32): boolean { return ast_getTensorBool(handle, flatIndex); }
+}
+
+export class ModelAPI {
+  @inline create(type: u16): u32 { return createNode(type); }
+  @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
+  @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
+
+  @inline getProperty<T>(nodeId: u32, propId: u32): T { return 0 as T; } // Stubbed until Arena layout finalized
+  @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void { } // Stubbed until Arena layout finalized
+  
+  @inline bind(parentId: u32, name: string, childId: u32): void { ast_bindChildName(parentId, name, childId); }
+  @inline resolve(parentId: u32, name: string): u32 { return ast_resolveChildByName(parentId, name); }
+
+  @inline setFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
+  @inline clearFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
+  @inline hasFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
+
+  @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
+  @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
+  @inline setFirstChild(parentId: u32, childId: u32): void { setFirstChild(parentId, childId); }
+  @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
+  @inline replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
+  @inline removeChild(parentId: u32, childId: u32): void { ast_removeNode(parentId, childId); }
+}
+
+export class AstAPI {
+  @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
+  @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
+
+  @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
+  @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+  @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
+
+  @inline getLiteralString(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): string { return ast_getLiteralString(nodeId, absoluteStart); }
+  @inline getLiteralFloat(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 { return ast_getLiteralFloat(nodeId, absoluteStart); }
+  @inline getLiteralInt(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 { return ast_getLiteralInt(nodeId, absoluteStart); }
+
+  @inline getLiteralNodeRef(nodeId: u32): u32 { return ast_getLiteralNodeRef(nodeId); }
+  @inline getProvenance(nodeId: u32): u32 { return ast_getProvenance(nodeId); }
+  @inline getLiteralTensor(nodeId: u32): u32 { return ast_getLiteralTensor(nodeId); }
+}
+
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
 class CodeGraph {
-    @inline getNodeType(nodeId: u32): u16 { return getNodeType(nodeId); }
-    @inline getNodeFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
-    @inline getNodeNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+    tensor: TensorAPI;
+    ast: AstAPI;
+    model: ModelAPI;
+
+    constructor() {
+      this.tensor = new TensorAPI();
+      this.ast = new AstAPI();
+      this.model = new ModelAPI();
+    }
+
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
         return runQuery(queryType, queryArg);
     }
-    @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 {
-        return getChildByFieldId(nodeId, fieldId);
-    }
-    @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor {
-        return getChildrenByFieldId(nodeId, fieldId);
-    }
-    @inline createNode(type: u16): u32 { return ast_createNode(type); }
-    @inline cloneNode(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
-    @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
-    @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
-    @inline setFirstChild(parentId: u32, childId: u32): void { setFirstChild(parentId, childId); }
-    @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
-    @inline replaceNode(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
-    @inline setLiteralString(nodeId: u32, value: string): void { ast_setLiteralString(nodeId, value); }
-    @inline setLiteralFloat(nodeId: u32, value: f64): void { ast_setLiteralFloat(nodeId, value); }
-    @inline setLiteralInt(nodeId: u32, value: i32): void { ast_setLiteralInt(nodeId, value); }
-    @inline getLiteralString(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): string { return ast_getLiteralString(nodeId, absoluteStart); }
-    @inline getLiteralFloat(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 { return ast_getLiteralFloat(nodeId, absoluteStart); }
-    @inline getLiteralInt(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 { return ast_getLiteralInt(nodeId, absoluteStart); }
-    
-    @inline setLiteralNodeRef(nodeId: u32, targetId: u32): void { ast_setLiteralNodeRef(nodeId, targetId); }
-    @inline getLiteralNodeRef(nodeId: u32): u32 { return ast_getLiteralNodeRef(nodeId); }
-    
-    @inline setNodeFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
-    @inline clearNodeFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
-    @inline hasNodeFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
-    
-    @inline getProvenance(nodeId: u32): u32 { return ast_getProvenance(nodeId); }
-
-    @inline createTensor1D(type: u32, size: u32): u32 { return ast_createTensor1D(type, size); }
-    @inline createTensor2D(type: u32, rows: u32, cols: u32): u32 { return ast_createTensor2D(type, rows, cols); }
-    @inline createTensor3D(type: u32, d0: u32, d1: u32, d2: u32): u32 { return ast_createTensor3D(type, d0, d1, d2); }
-    @inline setTensorFloat(handle: u32, flatIndex: u32, val: f64): void { ast_setTensorFloat(handle, flatIndex, val); }
-    @inline getTensorFloat(handle: u32, flatIndex: u32): f64 { return ast_getTensorFloat(handle, flatIndex); }
-    @inline setTensorFloat32(handle: u32, flatIndex: u32, val: f32): void { ast_setTensorFloat32(handle, flatIndex, val); }
-    @inline getTensorFloat32(handle: u32, flatIndex: u32): f32 { return ast_getTensorFloat32(handle, flatIndex); }
-    @inline setTensorFloat16Raw(handle: u32, flatIndex: u32, val: u16): void { ast_setTensorFloat16Raw(handle, flatIndex, val); }
-    @inline getTensorFloat16Raw(handle: u32, flatIndex: u32): u16 { return ast_getTensorFloat16Raw(handle, flatIndex); }
-    
-    @inline setTensorInt(handle: u32, flatIndex: u32, val: i32): void { ast_setTensorInt(handle, flatIndex, val); }
-    @inline getTensorInt(handle: u32, flatIndex: u32): i32 { return ast_getTensorInt(handle, flatIndex); }
-    @inline setTensorInt64(handle: u32, flatIndex: u32, val: i64): void { ast_setTensorInt64(handle, flatIndex, val); }
-    @inline getTensorInt64(handle: u32, flatIndex: u32): i64 { return ast_getTensorInt64(handle, flatIndex); }
-    @inline setTensorInt16(handle: u32, flatIndex: u32, val: i16): void { ast_setTensorInt16(handle, flatIndex, val); }
-    @inline getTensorInt16(handle: u32, flatIndex: u32): i16 { return ast_getTensorInt16(handle, flatIndex); }
-    
-    @inline setTensorBool(handle: u32, flatIndex: u32, val: boolean): void { ast_setTensorBool(handle, flatIndex, val); }
-    @inline getTensorBool(handle: u32, flatIndex: u32): boolean { return ast_getTensorBool(handle, flatIndex); }
-    @inline setLiteralTensor(nodeId: u32, handle: u32): void { ast_setLiteralTensor(nodeId, handle); }
-    @inline getLiteralTensor(nodeId: u32): u32 { return ast_getLiteralTensor(nodeId); }
+    @inline diagnostic(targetNode: u32, contextNode: u32 = targetNode): void { /* Handled by TS Macro */ }
 }
 export const graph = new CodeGraph();
 

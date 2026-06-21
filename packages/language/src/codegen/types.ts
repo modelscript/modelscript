@@ -58,6 +58,7 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
     }
   }
 
+  typeCode += `  LIST = 99999,\n`;
   typeCode += `}\n\n`;
 
   // Synthesize NodeFlag bitmask from `type: "flag"` attributes in the model

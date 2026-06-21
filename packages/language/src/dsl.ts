@@ -78,81 +78,105 @@ export interface FieldCursor {
   release(): void;
 }
 
+export interface TensorAPI {
+  create1D(type: TensorType, size: u32): TensorHandle;
+  create2D(type: TensorType, rows: u32, cols: u32): TensorHandle;
+  create3D(type: TensorType, d0: u32, d1: u32, d2: u32): TensorHandle;
+
+  setFloat(handle: TensorHandle, flatIndex: u32, val: f64): void;
+  getFloat(handle: TensorHandle, flatIndex: u32): f64;
+  setFloat32(handle: TensorHandle, flatIndex: u32, val: f32): void;
+  getFloat32(handle: TensorHandle, flatIndex: u32): f32;
+  setFloat16Raw(handle: TensorHandle, flatIndex: u32, val: u16): void;
+  getFloat16Raw(handle: TensorHandle, flatIndex: u32): u16;
+
+  setInt(handle: TensorHandle, flatIndex: u32, val: i32): void;
+  getInt(handle: TensorHandle, flatIndex: u32): i32;
+  setInt64(handle: TensorHandle, flatIndex: u32, val: i64): void;
+  getInt64(handle: TensorHandle, flatIndex: u32): i64;
+  setInt16(handle: TensorHandle, flatIndex: u32, val: i16): void;
+  getInt16(handle: TensorHandle, flatIndex: u32): i16;
+
+  setBool(handle: TensorHandle, flatIndex: u32, val: boolean): void;
+  getBool(handle: TensorHandle, flatIndex: u32): boolean;
+}
+
 export interface CodeGraph<
-  RuleName extends string = never,
+  RuleName extends string = string,
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
-  getNodeType(nodeId: u32): u16;
-  getNodeFirstChild(nodeId: u32): u32;
-  getNodeNextSibling(nodeId: u32): u32;
+  tensor: TensorAPI;
+
+  ast: AstAPI<RuleName, FieldName>;
+  model: ModelAPI<ModelAttrs>;
+
   runQuery(queryType: QueryName | (string & {}) | u32, queryArg: u32): u32;
+  diagnostic(targetNode: u32, contextNode?: u32): void;
+}
+
+export interface AstAPI<RuleName extends string, FieldName extends string = never> {
   getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
-  modelAttribute<T extends keyof ModelAttrs = keyof ModelAttrs>(
-    nodeId: u32,
-    attrName: Extract<keyof ModelAttrs[T], string> | (string & {}),
-  ): u32;
-  diagnostic(targetNode: u32, contextNode?: u32): void;
 
-  // --- Mutator API ---
-  createNode(type: RuleName | Extract<keyof ModelAttrs, string> | (string & {}) | u16): u32;
-  cloneNode(nodeId: u32, deep: boolean): u32;
-  appendChild(parentId: u32, childId: u32): void;
-  insertSibling(targetId: u32, siblingId: u32): void;
-  setFirstChild(parentId: u32, childId: u32): void;
-  setNextSibling(nodeId: u32, siblingId: u32): void;
-  replaceNode(parentId: u32, oldChildId: u32, newChildId: u32): void;
-  setLiteralString(nodeId: u32, value: string): void;
-  setLiteralFloat(nodeId: u32, value: f64): void;
-  setLiteralInt(nodeId: u32, value: i32): void;
+  getType(nodeId: u32): u16;
+  getByteLength(nodeId: u32): u32;
+  getFirstChild(nodeId: u32): u32;
+  getNextSibling(nodeId: u32): u32;
+  getChildCount(nodeId: u32): u32;
+
   getLiteralString(nodeId: u32, absoluteStart?: u32): string;
   getLiteralFloat(nodeId: u32, absoluteStart?: u32): f64;
   getLiteralInt(nodeId: u32, absoluteStart?: u32): i32;
 
-  setLiteralNodeRef(nodeId: u32, targetId: u32): void;
   getLiteralNodeRef(nodeId: u32): u32;
+  getProvenance(nodeId: u32): u32;
+  getLiteralTensor(nodeId: u32): TensorHandle;
+}
 
-  setNodeFlag<FlagName extends string = never>(
+export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>> {
+  create(type: Extract<keyof ModelAttrs, string> | (string & {}) | u16): u32;
+  clone(nodeId: u32, deep: boolean): u32;
+
+  compute<T extends keyof ModelAttrs = keyof ModelAttrs>(
     nodeId: u32,
-    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+    attrName: Extract<keyof ModelAttrs[T], string> | (string & {}),
+  ): u32;
+
+  getProperty<RetType = number, T extends keyof ModelAttrs = keyof ModelAttrs>(
+    nodeId: u32,
+    propName: Extract<keyof ModelAttrs[T], string> | (string & {}),
+  ): RetType;
+
+  setProperty<ValType = number, T extends keyof ModelAttrs = keyof ModelAttrs>(
+    nodeId: u32,
+    propName: Extract<keyof ModelAttrs[T], string> | (string & {}),
+    value: ValType,
   ): void;
-  clearNodeFlag<FlagName extends string = never>(
+
+  bind(scopeNodeId: u32, name: string, targetId: u32): void;
+  resolve(scopeNodeId: u32, name: string): u32;
+
+  setFlag<T extends keyof ModelAttrs = keyof ModelAttrs>(
     nodeId: u32,
-    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+    flag: Extract<keyof ModelAttrs[T], string> | (string & {}),
   ): void;
-  hasNodeFlag<FlagName extends string = never>(
+  clearFlag<T extends keyof ModelAttrs = keyof ModelAttrs>(
     nodeId: u32,
-    flag: FlagName | Extract<keyof ModelAttrs, string> | (string & {}),
+    flag: Extract<keyof ModelAttrs[T], string> | (string & {}),
+  ): void;
+  hasFlag<T extends keyof ModelAttrs = keyof ModelAttrs>(
+    nodeId: u32,
+    flag: Extract<keyof ModelAttrs[T], string> | (string & {}),
   ): boolean;
 
-  getProvenance(nodeId: u32): u32;
-
-  // --- Zero-GC Tensor API ---
-  createTensor1D(type: TensorType, size: u32): TensorHandle;
-  createTensor2D(type: TensorType, rows: u32, cols: u32): TensorHandle;
-  createTensor3D(type: TensorType, d0: u32, d1: u32, d2: u32): TensorHandle;
-
-  setTensorFloat(handle: TensorHandle, flatIndex: u32, val: f64): void;
-  getTensorFloat(handle: TensorHandle, flatIndex: u32): f64;
-  setTensorFloat32(handle: TensorHandle, flatIndex: u32, val: f32): void;
-  getTensorFloat32(handle: TensorHandle, flatIndex: u32): f32;
-  setTensorFloat16Raw(handle: TensorHandle, flatIndex: u32, val: u16): void;
-  getTensorFloat16Raw(handle: TensorHandle, flatIndex: u32): u16;
-
-  setTensorInt(handle: TensorHandle, flatIndex: u32, val: i32): void;
-  getTensorInt(handle: TensorHandle, flatIndex: u32): i32;
-  setTensorInt64(handle: TensorHandle, flatIndex: u32, val: i64): void;
-  getTensorInt64(handle: TensorHandle, flatIndex: u32): i64;
-  setTensorInt16(handle: TensorHandle, flatIndex: u32, val: i16): void;
-  getTensorInt16(handle: TensorHandle, flatIndex: u32): i16;
-
-  setTensorBool(handle: TensorHandle, flatIndex: u32, val: boolean): void;
-  getTensorBool(handle: TensorHandle, flatIndex: u32): boolean;
-
-  setLiteralTensor(nodeId: u32, handle: TensorHandle): void;
-  getLiteralTensor(nodeId: u32): TensorHandle;
+  appendChild(parentId: u32, childId: u32): void;
+  insertSibling(targetId: u32, siblingId: u32): void;
+  setFirstChild(parentId: u32, childId: u32): void;
+  setNextSibling(nodeId: u32, siblingId: u32): void;
+  replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void;
+  removeChild(parentId: u32, childId: u32): void;
 }
 
 export type ASTQueryFunction<
@@ -180,21 +204,15 @@ export interface CompilerLint<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
-  query: string | ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+  query: ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   code?: string | number;
   message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
   severity: "error" | "warning" | "info";
 }
 
-export interface ModelAttribute<
-  RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
-  ModelAttrs extends Record<string, Record<string, any>> = any,
-> {
-  type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool" | "flag";
-  default?: number;
-  compute?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+export interface ModelProperty {
+  type: "u8" | "u16" | "u32" | "i32" | "f32" | "f64" | "bool" | "flag" | "string" | "ref" | "tensor";
+  default?: number | boolean | string;
 }
 
 /**
@@ -254,11 +272,15 @@ export interface LanguageOptions<
   /** Reserved keywords to omit from generic identifier matching. */
   reserved?: Record<string, ($: Record<RuleName, Rule<any>>) => Rule<any>[]>;
 
-  model?: ModelAttrs &
-    Partial<Record<NoInfer<RuleName>, Record<string, ModelAttribute<RuleName, FieldName, QueryName, ModelAttrs>>>>;
+  model?: Partial<
+    Record<
+      NoInfer<RuleName>,
+      Record<string, ModelProperty | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>>
+    >
+  >;
 
   /** Queries (imperative AssemblyScript methods) */
-  queries?: Record<QueryName, string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>>;
+  queries?: Record<QueryName, ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>>;
 
   /** Diagnostic Rules (imperative AssemblyScript methods) */
   lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>>;

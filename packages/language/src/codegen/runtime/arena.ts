@@ -697,6 +697,32 @@ export function replaceNode(parentPtr: u32, oldChildPtr: u32, newChildPtr: u32):
 }
 
 /**
+ * Removes a child node from a parent's children list.
+ * @param parentPtr The parent node.
+ * @param childPtr The node to remove.
+ */
+export function ast_removeNode(parentPtr: u32, childPtr: u32): void {
+  if (parentPtr == 0 || childPtr == 0) return;
+
+  let current = getNodeFirstChild(parentPtr);
+  if (current == childPtr) {
+    setFirstChild(parentPtr, getNodeNextSibling(childPtr));
+    setNextSibling(childPtr, 0); // clear the removed node's sibling pointer
+    return;
+  }
+
+  while (current != 0) {
+    let next = getNodeNextSibling(current);
+    if (next == childPtr) {
+      setNextSibling(current, getNodeNextSibling(childPtr));
+      setNextSibling(childPtr, 0); // clear the removed node's sibling pointer
+      return;
+    }
+    current = next;
+  }
+}
+
+/**
  * Recursively clones an AST subtree.
  * @param nodeId The root of the subtree to clone.
  * @param deep If true, recursively clones all children.
@@ -1274,159 +1300,200 @@ export enum TensorType {
   Float16 = 4,
   Int64 = 5,
   Int16 = 6,
+  Int8 = 7,
+  Uint8 = 8,
+  Uint16 = 9,
+  Uint32 = 10,
+  Uint64 = 11,
 }
 
 function getElementSize(type: u32): u32 {
   if (type == TensorType.Float64) return 8;
   if (type == TensorType.Int64) return 8;
+  if (type == TensorType.Uint64) return 8;
   if (type == TensorType.Float32) return 4;
   if (type == TensorType.Int32) return 4;
+  if (type == TensorType.Uint32) return 4;
   if (type == TensorType.Float16) return 2;
   if (type == TensorType.Int16) return 2;
-  return 1; // Boolean
+  if (type == TensorType.Uint16) return 2;
+  return 1; // Boolean, Int8, Uint8
 }
 
-/** 1D Tensor Allocation */
-export function ast_createTensor1D(type: u32, size: u32): u32 {
-  // align offset to 8 bytes for safe Float64 storage
-  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
+/** Universal N-Dimensional Tensor Allocation */
+export function ast_createTensor(type: u32, rank: u32, elementCount: u32): u32 {
+  // align base handle to 16 bytes for safe WebGPU and SIMD access
+  tensorArenaOffset = (tensorArenaOffset + 15) & ~15;
   let handle = tensorArenaOffset;
   
+  // Calculate header size: 16 bytes for metadata (type, rank, count, dataOffset) + shape array
+  let headerSize = 16 + (rank * 4);
+  
+  // Align data payload start to 16 bytes (critical for WebGPU Uniform/Storage buffers)
+  let alignedHeaderSize = (headerSize + 15) & ~15;
+  
   let elementSize = getElementSize(type);
-  let byteSize = 12 + 4 + (size * elementSize); // (type, dims, count), shape[0], elements
+  let byteSize = alignedHeaderSize + (elementCount * elementSize);
   ensureTensorArena(byteSize);
   
   store<u32>(tensorArenaPtr + handle, type);
-  store<u32>(tensorArenaPtr + handle + 4, 1);
-  store<u32>(tensorArenaPtr + handle + 8, size);
-  store<u32>(tensorArenaPtr + handle + 12, size);
-  
-  tensorArenaOffset += byteSize;
-  return handle;
-}
-
-/** 2D Tensor Allocation */
-export function ast_createTensor2D(type: u32, rows: u32, cols: u32): u32 {
-  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
-  let handle = tensorArenaOffset;
-  
-  let elementCount = rows * cols;
-  let elementSize = getElementSize(type);
-  let byteSize = 12 + 8 + (elementCount * elementSize);
-  ensureTensorArena(byteSize);
-
-  store<u32>(tensorArenaPtr + handle, type);
-  store<u32>(tensorArenaPtr + handle + 4, 2);
+  store<u32>(tensorArenaPtr + handle + 4, rank);
   store<u32>(tensorArenaPtr + handle + 8, elementCount);
-  store<u32>(tensorArenaPtr + handle + 12, rows);
-  store<u32>(tensorArenaPtr + handle + 16, cols);
+  store<u32>(tensorArenaPtr + handle + 12, alignedHeaderSize); // Store data payload offset
   
   tensorArenaOffset += byteSize;
   return handle;
 }
 
-/** 3D Tensor Allocation */
-export function ast_createTensor3D(type: u32, d0: u32, d1: u32, d2: u32): u32 {
-  tensorArenaOffset = (tensorArenaOffset + 7) & ~7;
-  let handle = tensorArenaOffset;
-  
-  let elementCount = d0 * d1 * d2;
-  let elementSize = getElementSize(type);
-  let byteSize = 12 + 12 + (elementCount * elementSize);
-  ensureTensorArena(byteSize);
+export function ast_setTensorShape(handle: u32, dimIndex: u32, size: u32): void {
+  store<u32>(tensorArenaPtr + handle + 16 + (dimIndex * 4), size);
+}
 
-  store<u32>(tensorArenaPtr + handle, type);
-  store<u32>(tensorArenaPtr + handle + 4, 3);
-  store<u32>(tensorArenaPtr + handle + 8, elementCount);
-  store<u32>(tensorArenaPtr + handle + 12, d0);
-  store<u32>(tensorArenaPtr + handle + 16, d1);
-  store<u32>(tensorArenaPtr + handle + 20, d2);
-  
-  tensorArenaOffset += byteSize;
-  return handle;
+export function ast_getTensorShape(handle: u32, dimIndex: u32): u32 {
+  return load<u32>(tensorArenaPtr + handle + 16 + (dimIndex * 4));
 }
 
 /** Float64 Accessors */
 export function ast_setTensorFloat(handle: u32, flatIndex: u32, val: f64): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
   store<f64>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorFloat(handle: u32, flatIndex: u32): f64 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
   return load<f64>(tensorArenaPtr + dataOffset);
 }
 
 /** Float32 Accessors */
 export function ast_setTensorFloat32(handle: u32, flatIndex: u32, val: f32): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
   store<f32>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorFloat32(handle: u32, flatIndex: u32): f32 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
   return load<f32>(tensorArenaPtr + dataOffset);
 }
 
 /** Float16 (Raw) Accessors */
 export function ast_setTensorFloat16Raw(handle: u32, flatIndex: u32, val: u16): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
   store<u16>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorFloat16Raw(handle: u32, flatIndex: u32): u16 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
   return load<u16>(tensorArenaPtr + dataOffset);
 }
 
 /** Int32 Accessors */
 export function ast_setTensorInt(handle: u32, flatIndex: u32, val: i32): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
   store<i32>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorInt(handle: u32, flatIndex: u32): i32 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 4);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
   return load<i32>(tensorArenaPtr + dataOffset);
+}
+
+/** Uint32 Accessors */
+export function ast_setTensorUint32(handle: u32, flatIndex: u32, val: u32): void {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
+  store<u32>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorUint32(handle: u32, flatIndex: u32): u32 {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 4);
+  return load<u32>(tensorArenaPtr + dataOffset);
 }
 
 /** Int64 Accessors */
 export function ast_setTensorInt64(handle: u32, flatIndex: u32, val: i64): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
   store<i64>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorInt64(handle: u32, flatIndex: u32): i64 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 8);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
   return load<i64>(tensorArenaPtr + dataOffset);
+}
+
+/** Uint64 Accessors */
+export function ast_setTensorUint64(handle: u32, flatIndex: u32, val: u64): void {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
+  store<u64>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorUint64(handle: u32, flatIndex: u32): u64 {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 8);
+  return load<u64>(tensorArenaPtr + dataOffset);
 }
 
 /** Int16 Accessors */
 export function ast_setTensorInt16(handle: u32, flatIndex: u32, val: i16): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
   store<i16>(tensorArenaPtr + dataOffset, val);
 }
 export function ast_getTensorInt16(handle: u32, flatIndex: u32): i16 {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + (flatIndex * 2);
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
   return load<i16>(tensorArenaPtr + dataOffset);
+}
+
+/** Uint16 Accessors */
+export function ast_setTensorUint16(handle: u32, flatIndex: u32, val: u16): void {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
+  store<u16>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorUint16(handle: u32, flatIndex: u32): u16 {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + (flatIndex * 2);
+  return load<u16>(tensorArenaPtr + dataOffset);
+}
+
+/** Int8 Accessors */
+export function ast_setTensorInt8(handle: u32, flatIndex: u32, val: i8): void {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
+  store<i8>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorInt8(handle: u32, flatIndex: u32): i8 {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
+  return load<i8>(tensorArenaPtr + dataOffset);
+}
+
+/** Uint8 Accessors */
+export function ast_setTensorUint8(handle: u32, flatIndex: u32, val: u8): void {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
+  store<u8>(tensorArenaPtr + dataOffset, val);
+}
+export function ast_getTensorUint8(handle: u32, flatIndex: u32): u8 {
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
+  return load<u8>(tensorArenaPtr + dataOffset);
 }
 
 /** Boolean (i8) Accessors */
 export function ast_setTensorBool(handle: u32, flatIndex: u32, val: boolean): void {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + flatIndex;
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
   store<u8>(tensorArenaPtr + dataOffset, val ? 1 : 0);
 }
 export function ast_getTensorBool(handle: u32, flatIndex: u32): boolean {
-  let dims = load<u32>(tensorArenaPtr + handle + 4);
-  let dataOffset = handle + 12 + (dims * 4) + flatIndex;
+  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
+  let dataOffset = handle + headerSize + flatIndex;
   return load<u8>(tensorArenaPtr + dataOffset) !== 0;
 }
 
@@ -1472,4 +1539,156 @@ export function ast_getTensorDataPtr(nodeId: u32): usize {
   if (handle == 0) return 0;
   let dims = load<u32>(tensorArenaPtr + handle + 4);
   return tensorArenaPtr + handle + 12 + (dims * 4);
+}
+
+// ----------------------------------------------------------------------------
+/** Computes the number of children of a node by traversing nextSibling edges. */
+export function ast_getChildCount(nodeId: u32): u32 {
+  if (nodeId == 0) return 0;
+  let count: u32 = 0;
+  let child = getNodeFirstChild(nodeId);
+  while (child != 0) {
+    count++;
+    child = getNodeNextSibling(child);
+  }
+  return count;
+}
+
+// ----------------------------------------------------------------------------
+// O(1) Zero-GC Symbol Hash Table
+// ----------------------------------------------------------------------------
+
+export const nodeScopes = new ChunkedUint32Array();
+
+// FNV-1a hash function for strings
+export function hashString(str: string): u32 {
+  let hash: u32 = 2166136261;
+  for (let i = 0, len = str.length; i < len; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash;
+}
+
+let scopeArenaPtr: usize = 0;
+let scopeArenaOffset: u32 = 0;
+let scopeArenaCapacity: u32 = 1024 * 1024; // 1MB
+
+function ensureScopeArena(bytesNeeded: u32): void {
+  if (scopeArenaPtr == 0) {
+    scopeArenaPtr = atomicChunkAlloc(scopeArenaCapacity);
+  }
+  if (scopeArenaOffset + bytesNeeded > scopeArenaCapacity) {
+    let newCapacity = scopeArenaCapacity * 2;
+    while (scopeArenaOffset + bytesNeeded > newCapacity) newCapacity *= 2;
+    let newPtr = atomicChunkAlloc(newCapacity);
+    memory.copy(newPtr, scopeArenaPtr, scopeArenaOffset);
+    scopeArenaPtr = newPtr;
+    scopeArenaCapacity = newCapacity;
+  }
+}
+
+/** Binds a child node to a specific string identifier in the parent's symbol table. */
+export function ast_bindChildName(parentId: u32, name: string, childId: u32): void {
+  if (parentId == 0 || childId == 0) return;
+  
+  let hash = hashString(name);
+  if (hash == 0) hash = 1; // Reserve 0 for empty slot
+  
+  let tableOffset = nodeScopes.get(parentId);
+  if (tableOffset == 0) {
+    let cap = 8;
+    let byteSize = 8 + (cap * 8);
+    ensureScopeArena(byteSize);
+    tableOffset = scopeArenaOffset;
+    store<u32>(scopeArenaPtr + tableOffset, cap);
+    store<u32>(scopeArenaPtr + tableOffset + 4, 0);
+    memory.fill(scopeArenaPtr + tableOffset + 8, 0, cap * 8);
+    scopeArenaOffset += byteSize;
+    nodeScopes.set(parentId, tableOffset);
+  }
+  
+  let capacity = load<u32>(scopeArenaPtr + tableOffset);
+  let count = load<u32>(scopeArenaPtr + tableOffset + 4);
+  
+  // Resize if load factor >= 0.75
+  if (count * 4 >= capacity * 3) {
+    let newCap = capacity * 2;
+    let newByteSize = 8 + (newCap * 8);
+    ensureScopeArena(newByteSize);
+    let newTableOffset = scopeArenaOffset;
+    store<u32>(scopeArenaPtr + newTableOffset, newCap);
+    store<u32>(scopeArenaPtr + newTableOffset + 4, count);
+    memory.fill(scopeArenaPtr + newTableOffset + 8, 0, newCap * 8);
+    scopeArenaOffset += newByteSize;
+    
+    // Rehash
+    for (let i: u32 = 0; i < capacity; i++) {
+      let oldSlot = tableOffset + 8 + (i * 8);
+      let h = load<u32>(scopeArenaPtr + oldSlot);
+      if (h != 0) {
+        let nId = load<u32>(scopeArenaPtr + oldSlot + 4);
+        let mask = newCap - 1;
+        let idx = h & mask;
+        while (true) {
+          let slot = newTableOffset + 8 + (idx * 8);
+          if (load<u32>(scopeArenaPtr + slot) == 0) {
+            store<u32>(scopeArenaPtr + slot, h);
+            store<u32>(scopeArenaPtr + slot + 4, nId);
+            break;
+          }
+          idx = (idx + 1) & mask;
+        }
+      }
+    }
+    tableOffset = newTableOffset;
+    nodeScopes.set(parentId, tableOffset);
+    capacity = newCap;
+  }
+  
+  // Insert
+  let mask = capacity - 1;
+  let idx = hash & mask;
+  while (true) {
+    let slot = tableOffset + 8 + (idx * 8);
+    let slotHash = load<u32>(scopeArenaPtr + slot);
+    if (slotHash == 0 || slotHash == hash) {
+      if (slotHash == 0) {
+        store<u32>(scopeArenaPtr + tableOffset + 4, count + 1);
+      }
+      store<u32>(scopeArenaPtr + slot, hash);
+      store<u32>(scopeArenaPtr + slot + 4, childId);
+      break;
+    }
+    idx = (idx + 1) & mask;
+  }
+}
+
+/** Resolves a child node by its exact string identifier in O(1) time. */
+export function ast_resolveChildByName(parentId: u32, name: string): u32 {
+  if (parentId == 0) return 0;
+  let tableOffset = nodeScopes.get(parentId);
+  if (tableOffset == 0) return 0;
+  
+  let hash = hashString(name);
+  if (hash == 0) hash = 1;
+  
+  let capacity = load<u32>(scopeArenaPtr + tableOffset);
+  let mask = capacity - 1;
+  let idx = hash & mask;
+  
+  while (true) {
+    let slot = tableOffset + 8 + (idx * 8);
+    let slotHash = load<u32>(scopeArenaPtr + slot);
+    if (slotHash == 0) return 0; // Not found
+    
+    if (slotHash == hash) {
+      let nodeId = load<u32>(scopeArenaPtr + slot + 4);
+      // Double-check string to handle rare collisions
+      if (ast_getLiteralString(nodeId) == name) {
+        return nodeId;
+      }
+    }
+    idx = (idx + 1) & mask;
+  }
 }

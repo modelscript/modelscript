@@ -59,36 +59,6 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
             const methodName = expr.name.getText();
             const args = node.arguments;
 
-            if (methodName === "modelAttribute" && args.length >= 2) {
-              const nodeArg = args[0];
-              const attrArg = args[1];
-              if (ts.isStringLiteral(attrArg)) {
-                const attrName = attrArg.text;
-                const id = attrIdMap.get(attrName);
-                if (id === undefined) throw new Error(`Model attribute ${attrName} not defined`);
-                return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
-                  ts.factory.createNumericLiteral(id),
-                  visitNode(nodeArg) as ts.Expression,
-                ]);
-              }
-            }
-
-            if ((methodName === "getChildByFieldId" || methodName === "getChildrenByFieldId") && args.length >= 2) {
-              const nodeArg = args[0];
-              const fieldArg = args[1];
-              if (ts.isStringLiteral(fieldArg)) {
-                const fieldName = fieldArg.text;
-                const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
-                return ts.factory.createCallExpression(ts.factory.createIdentifier(methodName), undefined, [
-                  visitNode(nodeArg) as ts.Expression,
-                  ts.factory.createPropertyAccessExpression(
-                    ts.factory.createIdentifier("FieldId"),
-                    ts.factory.createIdentifier(safeName),
-                  ),
-                ]);
-              }
-            }
-
             if (methodName === "runQuery" && args.length >= 2) {
               const queryArg = args[0];
               const targetArg = args[1];
@@ -113,60 +83,220 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
                 visitNode(contextArg) as ts.Expression,
               ]);
             }
+          } else if (
+            ts.isPropertyAccessExpression(expr.expression) &&
+            ts.isIdentifier(expr.expression.expression) &&
+            expr.expression.expression.text === "graph"
+          ) {
+            const obj = expr.expression;
+            const namespace = obj.name.text;
+            const methodName = expr.name.text;
+            const args = node.arguments;
 
-            if (methodName === "createNode" && args.length >= 1) {
-              const typeArg = args[0];
-              if (ts.isStringLiteral(typeArg)) {
-                let typeName = typeArg.text.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
-                if (/^[0-9]/.test(typeName)) typeName = "_" + typeName;
+            if (namespace === "model") {
+              if (methodName === "create" && args.length >= 1) {
+                const typeArg = args[0];
+                if (ts.isStringLiteral(typeArg)) {
+                  let typeName = typeArg.text.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+                  if (/^[0-9]/.test(typeName)) typeName = "_" + typeName;
 
-                return ts.factory.createCallExpression(
-                  ts.factory.createPropertyAccessExpression(
-                    ts.factory.createIdentifier("graph"),
-                    ts.factory.createIdentifier("createNode"),
-                  ),
-                  undefined,
-                  [
-                    ts.factory.createTypeAssertion(
-                      ts.factory.createTypeReferenceNode("u16"),
+                  return ts.factory.createCallExpression(
+                    ts.factory.createPropertyAccessExpression(
                       ts.factory.createPropertyAccessExpression(
-                        ts.factory.createIdentifier("SyntaxType"),
-                        ts.factory.createIdentifier(typeName),
+                        ts.factory.createIdentifier("graph"),
+                        ts.factory.createIdentifier("model"),
                       ),
+                      ts.factory.createIdentifier("create"),
                     ),
-                  ],
-                );
-              }
-            }
+                    undefined,
+                    [
+                      ts.factory.createTypeAssertion(
+                        ts.factory.createTypeReferenceNode("u16"),
+                        ts.factory.createPropertyAccessExpression(
+                          ts.factory.createIdentifier("SyntaxType"),
+                          ts.factory.createIdentifier(typeName),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              } else if (methodName === "compute" && args.length >= 2) {
+                const nodeArg = args[0];
+                const attrArg = args[1];
+                if (ts.isStringLiteral(attrArg)) {
+                  const attrName = attrArg.text;
+                  const id = attrIdMap.get(attrName);
+                  if (id === undefined) throw new Error(`Model attribute ${attrName} not defined`);
+                  return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
+                    ts.factory.createNumericLiteral(id),
+                    visitNode(nodeArg) as ts.Expression,
+                  ]);
+                }
+              } else if ((methodName === "getProperty" || methodName === "setProperty") && args.length >= 2) {
+                const nodeArg = args[0];
+                const propArg = args[1];
+                if (ts.isStringLiteral(propArg)) {
+                  let propName = propArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                  propName = propName.replace(/[^A-Z0-9_]/g, "_");
+                  if (/^[0-9]/.test(propName)) propName = "_" + propName;
 
-            if (
-              (methodName === "setNodeFlag" || methodName === "clearNodeFlag" || methodName === "hasNodeFlag") &&
-              args.length >= 2
-            ) {
-              const nodeArg = args[0];
-              const flagArg = args[1];
-              if (ts.isStringLiteral(flagArg)) {
-                let flagName = flagArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
-                flagName = flagName.replace(/[^A-Z0-9_]/g, "_");
-                if (/^[0-9]/.test(flagName)) flagName = "_" + flagName;
-
-                return ts.factory.createCallExpression(
-                  ts.factory.createPropertyAccessExpression(
-                    ts.factory.createIdentifier("graph"),
-                    ts.factory.createIdentifier(methodName),
-                  ),
-                  undefined,
-                  [
+                  const callArgs: ts.Expression[] = [
                     visitNode(nodeArg) as ts.Expression,
                     ts.factory.createTypeAssertion(
                       ts.factory.createTypeReferenceNode("u32"),
                       ts.factory.createPropertyAccessExpression(
-                        ts.factory.createIdentifier("NodeFlag"),
-                        ts.factory.createIdentifier(flagName),
+                        ts.factory.createIdentifier("Property"),
+                        ts.factory.createIdentifier(propName),
                       ),
                     ),
-                  ],
-                );
+                  ];
+                  if (args.length > 2) callArgs.push(visitNode(args[2]) as ts.Expression);
+
+                  return ts.factory.createCallExpression(
+                    ts.factory.createPropertyAccessExpression(
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("graph"),
+                        ts.factory.createIdentifier("model"),
+                      ),
+                      ts.factory.createIdentifier(methodName),
+                    ),
+                    undefined,
+                    callArgs,
+                  );
+                }
+              } else if (
+                (methodName === "setFlag" || methodName === "clearFlag" || methodName === "hasFlag") &&
+                args.length >= 2
+              ) {
+                const nodeArg = args[0];
+                const flagArg = args[1];
+                if (ts.isStringLiteral(flagArg)) {
+                  let flagName = flagArg.text.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                  flagName = flagName.replace(/[^A-Z0-9_]/g, "_");
+                  if (/^[0-9]/.test(flagName)) flagName = "_" + flagName;
+
+                  return ts.factory.createCallExpression(
+                    ts.factory.createPropertyAccessExpression(
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("graph"),
+                        ts.factory.createIdentifier("model"),
+                      ),
+                      ts.factory.createIdentifier(methodName),
+                    ),
+                    undefined,
+                    [
+                      visitNode(nodeArg) as ts.Expression,
+                      ts.factory.createTypeAssertion(
+                        ts.factory.createTypeReferenceNode("u32"),
+                        ts.factory.createPropertyAccessExpression(
+                          ts.factory.createIdentifier("NodeFlag"),
+                          ts.factory.createIdentifier(flagName),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              }
+            } else if (namespace === "ast") {
+              if ((methodName === "getChildByFieldId" || methodName === "getChildrenByFieldId") && args.length >= 2) {
+                const nodeArg = args[0];
+                const fieldArg = args[1];
+                if (ts.isStringLiteral(fieldArg)) {
+                  const fieldName = fieldArg.text;
+                  const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                  return ts.factory.createCallExpression(
+                    ts.factory.createPropertyAccessExpression(
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("graph"),
+                        ts.factory.createIdentifier("ast"),
+                      ),
+                      ts.factory.createIdentifier(methodName),
+                    ),
+                    undefined,
+                    [
+                      visitNode(nodeArg) as ts.Expression,
+                      ts.factory.createPropertyAccessExpression(
+                        ts.factory.createIdentifier("FieldId"),
+                        ts.factory.createIdentifier(safeName),
+                      ),
+                    ],
+                  );
+                }
+              }
+            } else if (namespace === "tensor") {
+              if (methodName === "create" && args.length === 2) {
+                const typeArg = args[0];
+                const dimsArg = args[1];
+                if (ts.isArrayLiteralExpression(dimsArg)) {
+                  const rank = dimsArg.elements.length;
+
+                  let totalElementsExpr: ts.Expression = dimsArg.elements[0] || ts.factory.createNumericLiteral("0");
+                  for (let i = 1; i < rank; i++) {
+                    totalElementsExpr = ts.factory.createBinaryExpression(
+                      totalElementsExpr,
+                      ts.SyntaxKind.AsteriskToken,
+                      dimsArg.elements[i],
+                    );
+                  }
+
+                  const handleVar = ts.factory.createIdentifier("_t");
+
+                  const createCall = ts.factory.createVariableStatement(
+                    undefined,
+                    ts.factory.createVariableDeclarationList(
+                      [
+                        ts.factory.createVariableDeclaration(
+                          handleVar,
+                          undefined,
+                          ts.factory.createTypeReferenceNode("u32"),
+                          ts.factory.createCallExpression(
+                            ts.factory.createPropertyAccessExpression(
+                              ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier("graph"), "tensor"),
+                              "create",
+                            ),
+                            undefined,
+                            [typeArg, ts.factory.createNumericLiteral(rank.toString()), totalElementsExpr],
+                          ),
+                        ),
+                      ],
+                      ts.NodeFlags.Let,
+                    ),
+                  );
+
+                  const setShapeStatements = dimsArg.elements.map((dimExpr, index) =>
+                    ts.factory.createExpressionStatement(
+                      ts.factory.createCallExpression(
+                        ts.factory.createPropertyAccessExpression(
+                          ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier("graph"), "tensor"),
+                          "setShape",
+                        ),
+                        undefined,
+                        [handleVar, ts.factory.createNumericLiteral(index.toString()), dimExpr as ts.Expression],
+                      ),
+                    ),
+                  );
+
+                  const returnStatement = ts.factory.createReturnStatement(handleVar);
+
+                  const iifeBody = ts.factory.createBlock([createCall, ...setShapeStatements, returnStatement], true);
+
+                  const iife = ts.factory.createCallExpression(
+                    ts.factory.createParenthesizedExpression(
+                      ts.factory.createArrowFunction(
+                        undefined,
+                        undefined,
+                        [],
+                        ts.factory.createTypeReferenceNode("u32"),
+                        ts.factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+                        iifeBody,
+                      ),
+                    ),
+                    undefined,
+                    [],
+                  );
+
+                  return iife;
+                }
               }
             }
           }
