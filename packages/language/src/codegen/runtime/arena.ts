@@ -900,62 +900,28 @@ export function ast_setLiteralInt(ptr: u32, val: i32): void {
 }
 
 /**
- * Reads the direct AST string from the source buffer given an absolute offset.
+ * Retrieves the raw text span of a node.
+ * Returns a 64-bit integer packing the memory pointer (high 32) and the byte length (low 32).
  */
-export function readNodeTextAt(nodeId: u32, absoluteStart: u32): string {
-  if (nodeId == 0) return "";
-  let len = getNodeByteLength(nodeId);
-  if (len == 0) return "";
-  let ptr = getInputBuffer() + absoluteStart;
-  if (inputEncoding == 1) {
-    return String.UTF16.decodeUnsafe(ptr, len);
-  }
-  return String.UTF8.decodeUnsafe(ptr, len);
-}
-
-/**
- * Retrieves the custom mutated string for a node, if one exists.
- * @param ptr The target node.
- * @param absoluteStart Optional absolute byte offset for reading direct AST.
- */
-export function ast_getLiteralString(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): string {
-  let type = nodeOverrideType.get(ptr);
+export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 {
+  if (ptr == 0) return 0;
   
+  let type = nodeOverrideType.get(ptr);
   if (type == OVERRIDE_STRING) {
     let handle = nodeOverrideStrings.get(ptr);
     let lenBytes = load<u32>(stringArenaPtr + handle);
-    return String.UTF16.decodeUnsafe(stringArenaPtr + handle + 4, lenBytes);
+    let start = stringArenaPtr + handle + 4;
+    return (u64(start) << 32) | u64(lenBytes);
   }
-  if (type == OVERRIDE_FLOAT) {
-    return nodeOverrideFloats.get(ptr).toString();
-  }
-  if (type == OVERRIDE_INT) {
-    return nodeOverrideInts.get(ptr).toString();
-  }
+  
   if (absoluteStart != 0xFFFFFFFF) {
-    return readNodeTextAt(ptr, absoluteStart);
+    let len = getNodeByteLength(ptr);
+    if (len == 0) return 0;
+    let start = getInputBuffer() + absoluteStart;
+    return (u64(start) << 32) | u64(len);
   }
-  return "/* missing_literal */";
-}
-
-export function ast_getLiteralFloat(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 {
-  let type = nodeOverrideType.get(ptr);
-  if (type == OVERRIDE_FLOAT) return nodeOverrideFloats.get(ptr);
-  if (type == OVERRIDE_INT) return <f64>nodeOverrideInts.get(ptr);
-
-  let str = ast_getLiteralString(ptr, absoluteStart);
-  if (str == "/* missing_literal */" || str == "") return 0.0;
-  return parseFloat(str);
-}
-
-export function ast_getLiteralInt(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 {
-  let type = nodeOverrideType.get(ptr);
-  if (type == OVERRIDE_INT) return nodeOverrideInts.get(ptr);
-  if (type == OVERRIDE_FLOAT) return <i32>nodeOverrideFloats.get(ptr);
-
-  let str = ast_getLiteralString(ptr, absoluteStart);
-  if (str == "/* missing_literal */" || str == "") return 0;
-  return parseInt(str) as i32;
+  
+  return 0;
 }
 
 /**
@@ -1560,14 +1526,75 @@ export function ast_getChildCount(nodeId: u32): u32 {
 
 export const nodeScopes = new ChunkedUint32Array();
 
-// FNV-1a hash function for strings
-export function hashString(str: string): u32 {
-  let hash: u32 = 2166136261;
-  for (let i = 0, len = str.length; i < len; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
+// FNV-1a hash functions for memory spans
+export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
+  if (span == 0) return hash;
+  let ptr = (span >> 32) as u32;
+  let len = (span & 0xFFFFFFFF) as u32;
+  
+  let isOverride = (ptr >= stringArenaPtr && ptr < stringArenaPtr + stringArenaCapacity);
+  let encoding = isOverride ? 1 : inputEncoding;
+
+  if (encoding == 0) {
+    let i: u32 = 0;
+    while (i < len) {
+      let b1 = load<u8>(ptr + i);
+      let cp: u32 = 0;
+      if (b1 < 0x80) {
+        cp = b1;
+        i++;
+      } else if ((b1 & 0xE0) == 0xC0) {
+        if (i + 1 >= len) break;
+        let b2 = load<u8>(ptr + i + 1);
+        cp = ((b1 & 0x1F) << 6) | (b2 & 0x3F);
+        i += 2;
+      } else if ((b1 & 0xF0) == 0xE0) {
+        if (i + 2 >= len) break;
+        let b2 = load<u8>(ptr + i + 1);
+        let b3 = load<u8>(ptr + i + 2);
+        cp = ((b1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
+        i += 3;
+      } else {
+        if (i + 3 >= len) break;
+        let b2 = load<u8>(ptr + i + 1);
+        let b3 = load<u8>(ptr + i + 2);
+        let b4 = load<u8>(ptr + i + 3);
+        cp = ((b1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F);
+        i += 4;
+      }
+      hash ^= cp;
+      hash = Math.imul(hash, 16777619);
+    }
+  } else if (encoding == 1) {
+    let i: u32 = 0;
+    while (i < len) {
+      let u1 = load<u16>(ptr + i);
+      let cp: u32 = u1;
+      i += 2;
+      if (u1 >= 0xD800 && u1 <= 0xDBFF && i < len) {
+        let u2 = load<u16>(ptr + i);
+        if (u2 >= 0xDC00 && u2 <= 0xDFFF) {
+          cp = 0x10000 + (((u1 & 0x3FF) << 10) | (u2 & 0x3FF));
+          i += 2;
+        }
+      }
+      hash ^= cp;
+      hash = Math.imul(hash, 16777619);
+    }
+  } else {
+    for (let i: u32 = 0; i < len; i += 4) {
+      let cp = load<u32>(ptr + i);
+      hash ^= cp;
+      hash = Math.imul(hash, 16777619);
+    }
   }
+  
   return hash;
+}
+
+export function ast_hashByte(byte: u8, hash: u32 = 2166136261): u32 {
+  hash ^= byte;
+  return Math.imul(hash, 16777619);
 }
 
 let scopeArenaPtr: usize = 0;
@@ -1588,11 +1615,10 @@ function ensureScopeArena(bytesNeeded: u32): void {
   }
 }
 
-/** Binds a child node to a specific string identifier in the parent's symbol table. */
-export function ast_bindChildName(parentId: u32, name: string, childId: u32): void {
+/** Binds a child node to a specific 32-bit hash in the parent's symbol table. */
+export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void {
   if (parentId == 0 || childId == 0) return;
   
-  let hash = hashString(name);
   if (hash == 0) hash = 1; // Reserve 0 for empty slot
   
   let tableOffset = nodeScopes.get(parentId);
@@ -1664,13 +1690,17 @@ export function ast_bindChildName(parentId: u32, name: string, childId: u32): vo
   }
 }
 
-/** Resolves a child node by its exact string identifier in O(1) time. */
-export function ast_resolveChildByName(parentId: u32, name: string): u32 {
+/** Convenience wrapper to bind by a node's text span */
+export function ast_bindChildNode(parentId: u32, nameNodeId: u32, childId: u32, absoluteStart: u32 = 0xFFFFFFFF): void {
+  ast_bindChildHash(parentId, ast_hashSpan(ast_getTextSpan(nameNodeId, absoluteStart)), childId);
+}
+
+/** Resolves a child node by its exact 32-bit hash in O(1) time. */
+export function ast_resolveChildByHash(parentId: u32, hash: u32): u32 {
   if (parentId == 0) return 0;
   let tableOffset = nodeScopes.get(parentId);
   if (tableOffset == 0) return 0;
   
-  let hash = hashString(name);
   if (hash == 0) hash = 1;
   
   let capacity = load<u32>(scopeArenaPtr + tableOffset);
@@ -1683,12 +1713,13 @@ export function ast_resolveChildByName(parentId: u32, name: string): u32 {
     if (slotHash == 0) return 0; // Not found
     
     if (slotHash == hash) {
-      let nodeId = load<u32>(scopeArenaPtr + slot + 4);
-      // Double-check string to handle rare collisions
-      if (ast_getLiteralString(nodeId) == name) {
-        return nodeId;
-      }
+      return load<u32>(scopeArenaPtr + slot + 4);
     }
     idx = (idx + 1) & mask;
   }
+}
+
+/** Convenience wrapper to resolve by a node's text span */
+export function ast_resolveChildNode(parentId: u32, nameNodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u32 {
+  return ast_resolveChildByHash(parentId, ast_hashSpan(ast_getTextSpan(nameNodeId, absoluteStart)));
 }

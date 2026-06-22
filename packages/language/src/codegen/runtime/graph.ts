@@ -4,7 +4,7 @@ import {
   getNodeType, getNodeFirstChild, getNodeNextSibling, 
   ast_createNode, ast_appendChild, ast_insertSibling, 
   ast_setLiteralString, ast_setLiteralFloat, ast_setLiteralInt,
-  ast_getLiteralString, ast_getLiteralFloat, ast_getLiteralInt,
+  ast_getTextSpan, ast_hashSpan, ast_hashByte,
   cloneNode, replaceNode, setFirstChild, setNextSibling,
   ast_createTensor, ast_setTensorShape, ast_getTensorShape,
   ast_setTensorFloat, ast_getTensorFloat,
@@ -19,11 +19,9 @@ import {
   ast_setTensorInt8, ast_getTensorInt8,
   ast_setTensorUint8, ast_getTensorUint8,
   ast_setTensorBool, ast_getTensorBool,
-  ast_setLiteralTensor, ast_getLiteralTensor,
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
-  ast_setLiteralNodeRef, ast_getLiteralNodeRef, ast_getProvenance,
-  ast_createList, ast_listLength, ast_bindChildName, ast_resolveChildByName,
-  ast_removeNode
+  ast_createList, ast_listLength, ast_bindChildNode, ast_resolveChildNode, ast_bindChildHash, ast_resolveChildByHash,
+  ast_removeNode, ast_getChildCount
 } from "./arena";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
@@ -378,12 +376,19 @@ export class ModelAPI {
   @inline getProperty<T>(nodeId: u32, propId: u32): T { return 0 as T; } // Stubbed until Arena layout finalized
   @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void { } // Stubbed until Arena layout finalized
   
-  @inline bind(parentId: u32, name: string, childId: u32): void { ast_bindChildName(parentId, name, childId); }
-  @inline resolve(parentId: u32, name: string): u32 { return ast_resolveChildByName(parentId, name); }
+  @inline bind(parentId: u32, nameNodeId: u32, childId: u32): void { ast_bindChildNode(parentId, nameNodeId, childId); }
+  @inline resolve(parentId: u32, nameNodeId: u32): u32 { return ast_resolveChildNode(parentId, nameNodeId); }
+  @inline bindHash(parentId: u32, hash: u32, childId: u32): void { ast_bindChildHash(parentId, hash, childId); }
+  @inline resolveHash(parentId: u32, hash: u32): u32 { return ast_resolveChildByHash(parentId, hash); }
 
   @inline setFlag(nodeId: u32, flag: u32): void { ast_setNodeFlag(nodeId, flag); }
   @inline clearFlag(nodeId: u32, flag: u32): void { ast_clearNodeFlag(nodeId, flag); }
   @inline hasFlag(nodeId: u32, flag: u32): boolean { return ast_hasNodeFlag(nodeId, flag); }
+
+  @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
+  @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
+  @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
+  @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
 
   @inline appendChild(parentId: u32, childId: u32): void { ast_appendChild(parentId, childId); }
   @inline insertSibling(targetId: u32, siblingId: u32): void { ast_insertSibling(targetId, siblingId); }
@@ -393,33 +398,34 @@ export class ModelAPI {
   @inline removeChild(parentId: u32, childId: u32): void { ast_removeNode(parentId, childId); }
 }
 
+export class HashAPI {
+  @inline init(): u32 { return 2166136261; }
+  @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
+  @inline byte(currentHash: u32, byte: u8): u32 { return ast_hashByte(byte, currentHash); }
+}
+
 export class AstAPI {
   @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
   @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
 
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
-  @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
 
-  @inline getLiteralString(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): string { return ast_getLiteralString(nodeId, absoluteStart); }
-  @inline getLiteralFloat(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): f64 { return ast_getLiteralFloat(nodeId, absoluteStart); }
-  @inline getLiteralInt(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): i32 { return ast_getLiteralInt(nodeId, absoluteStart); }
-
-  @inline getLiteralNodeRef(nodeId: u32): u32 { return ast_getLiteralNodeRef(nodeId); }
-  @inline getProvenance(nodeId: u32): u32 { return ast_getProvenance(nodeId); }
-  @inline getLiteralTensor(nodeId: u32): u32 { return ast_getLiteralTensor(nodeId); }
+  @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { return ast_getTextSpan(nodeId, absoluteStart); }
 }
 
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
 class CodeGraph {
     tensor: TensorAPI;
+    hash: HashAPI;
     ast: AstAPI;
     model: ModelAPI;
 
     constructor() {
       this.tensor = new TensorAPI();
+      this.hash = new HashAPI();
       this.ast = new AstAPI();
       this.model = new ModelAPI();
     }

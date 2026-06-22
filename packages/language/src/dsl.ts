@@ -108,6 +108,7 @@ export interface CodeGraph<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   tensor: TensorAPI;
+  hash: HashAPI;
 
   ast: AstAPI<RuleName, FieldName>;
   model: ModelAPI<ModelAttrs>;
@@ -121,18 +122,22 @@ export interface AstAPI<RuleName extends string, FieldName extends string = neve
   getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
 
   getType(nodeId: u32): u16;
-  getByteLength(nodeId: u32): u32;
   getFirstChild(nodeId: u32): u32;
   getNextSibling(nodeId: u32): u32;
   getChildCount(nodeId: u32): u32;
 
-  getLiteralString(nodeId: u32, absoluteStart?: u32): string;
-  getLiteralFloat(nodeId: u32, absoluteStart?: u32): f64;
-  getLiteralInt(nodeId: u32, absoluteStart?: u32): i32;
+  getTextSpan(nodeId: u32, absoluteStart?: u32): u64;
+}
 
-  getLiteralNodeRef(nodeId: u32): u32;
-  getProvenance(nodeId: u32): u32;
-  getLiteralTensor(nodeId: u32): TensorHandle;
+export interface HashAPI {
+  /** Returns the FNV-1a 32-bit offset basis (2166136261) */
+  init(): u32;
+
+  /** Incrementally hashes a memory span */
+  span(currentHash: u32, span: u64): u32;
+
+  /** Incrementally hashes a single 8-bit byte */
+  byte(currentHash: u32, byte: u8): u32;
 }
 
 export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>> {
@@ -155,8 +160,11 @@ export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>
     value: ValType,
   ): void;
 
-  bind(scopeNodeId: u32, name: string, targetId: u32): void;
-  resolve(scopeNodeId: u32, name: string): u32;
+  bind(scopeNodeId: u32, nameNodeId: u32, targetId: u32): void;
+  resolve(scopeNodeId: u32, nameNodeId: u32): u32;
+
+  bindHash(scopeNodeId: u32, nameHash: u32, targetId: u32): void;
+  resolveHash(scopeNodeId: u32, nameHash: u32): u32;
 
   setFlag<T extends keyof ModelAttrs = keyof ModelAttrs>(
     nodeId: u32,
@@ -170,6 +178,11 @@ export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>
     nodeId: u32,
     flag: Extract<keyof ModelAttrs[T], string> | (string & {}),
   ): boolean;
+
+  getType(nodeId: u32): u16;
+  getFirstChild(nodeId: u32): u32;
+  getNextSibling(nodeId: u32): u32;
+  getChildCount(nodeId: u32): u32;
 
   appendChild(parentId: u32, childId: u32): void;
   insertSibling(targetId: u32, siblingId: u32): void;
