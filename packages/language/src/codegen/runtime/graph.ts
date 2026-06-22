@@ -113,41 +113,7 @@ export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextP
   return ptr;
 }
 
-function hashQueryKey(key: u32): u32 {
-   let x = key;
-   x = ((x >> 16) ^ x) * 0x45d9f3b;
-   x = ((x >> 16) ^ x) * 0x45d9f3b;
-   x = (x >> 16) ^ x;
-   return x & (HASH_TABLE_CAPACITY - 1);
-}
-
-export function getQueryNode(queryKey: u32): u32 {
-   let idx = hashQueryKey(queryKey);
-   let ptr = load<u32>(queryHashTableOffset + idx * 4, 0);
-   while (ptr != 0) {
-      if (load<u32>(ptr, 0) == queryKey) return ptr;
-      ptr = load<u32>(ptr + 20, 0); // nextHashBucketPtr
-   }
-   return 0;
-}
-
-export function allocQueryNode(queryKey: u32): u32 {
-  let ptr = heap.alloc(24) as u32;
-  store<u32>(ptr, queryKey, 0);
-  store<u32>(ptr + 4, 0, 0); // revision
-  store<u32>(ptr + 8, 0, 0); // value
-  store<u32>(ptr + 12, 0, 0); // firstDependency
-  store<u32>(ptr + 16, 0, 0); // firstSubscriber
-  store<u32>(ptr + 20, 0, 0); // nextHashBucketPtr
-  
-  // Insert into hash table
-  let idx = hashQueryKey(queryKey);
-  let head = load<u32>(queryHashTableOffset + idx * 4, 0);
-  store<u32>(ptr + 20, head, 0);
-  store<u32>(queryHashTableOffset + idx * 4, ptr, 0);
-  
-  return ptr;
-}
+// Removed legacy 1-key functions: hashQueryKey, getQueryNode, allocQueryNode
 
 export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
   let ptr = heap.alloc(8) as u32;
@@ -247,74 +213,78 @@ export function allocQueryNode2(queryType: u32, queryArg: u32): u32 {
   return ptr;
 }
 
-export let globalRevision: u32 = 0;
+export let globalRevision: u32 = 1;
 
-export function invalidateQuery(queryKey: u32): void {
-  // Note: Original invalidateQuery requires re-implementation 
-  // if you want to support the 2-field key fully.
-  // Using simplified logic here as placeholder.
-  let queryType = queryKey >>> 16;
-  let argId = queryKey & 0xFFFF;
-  let fileId = (queryType == 0) ? argId : (argId >> 10);
-  
-  if (fileId < 1024 && dirtyFilesBitsetOffset != 0) {
-      let wordIdx = fileId >> 5;
-      let bitIdx = fileId & 31;
-      let ptr = dirtyFilesBitsetOffset + (wordIdx << 2);
-      let current = load<u32>(ptr, 0);
-      store<u32>(ptr, current | (1 << bitIdx), 0);
-  }
-
-  let nodePtr = getQueryNode(queryKey);
+export function invalidateNode(nodePtr: u32): void {
   if (nodePtr == 0) return;
   
-  store<u32>(nodePtr + 4, globalRevision, 0); // update revision
+  let currentRev = load<u32>(nodePtr + 8, 0);
+  if (currentRev == 0) return; // 0 means already dirty/invalidated
   
-  let edgePtr = load<u32>(nodePtr + 16, 0); // firstSubscriberEdge
+  store<u32>(nodePtr + 8, 0, 0); // Mark as dirty
+  
+  // A PARSE query (queryType == 0) affects the dirty file bitset
+  let queryType = load<u32>(nodePtr, 0);
+  if (queryType == 0 && dirtyFilesBitsetOffset != 0) {
+      let fileId = load<u32>(nodePtr + 4, 0);
+      if (fileId < 1024) {
+          let wordIdx = fileId >> 5;
+          let bitIdx = fileId & 31;
+          let ptr = dirtyFilesBitsetOffset + (wordIdx << 2);
+          let current = load<u32>(ptr, 0);
+          store<u32>(ptr, current | (1 << bitIdx), 0);
+      }
+  }
+
+  let edgePtr = load<u32>(nodePtr + 20, 0); // firstSubscriberEdge
   while (edgePtr != 0) {
      let targetPtr = load<u32>(edgePtr, 0);
-     let targetKey = load<u32>(targetPtr, 0);
-     invalidateQuery(targetKey);
+     invalidateNode(targetPtr);
      edgePtr = load<u32>(edgePtr + 4, 0);
   }
+}
+
+export function incrementGlobalRevision(): void {
+  globalRevision++;
 }
 
 // 1024 stack depth max
 export const activeQueryStack = new Uint32Array(1024);
 export let activeQueryDepth: i32 = 0;
 
+export function addEdgeIfMissing(headPtrOffset: u32, targetPtr: u32): void {
+    let head = load<u32>(headPtrOffset, 0);
+    let curr = head;
+    while (curr != 0) {
+        if (load<u32>(curr, 0) == targetPtr) return;
+        curr = load<u32>(curr + 4, 0);
+    }
+    let newEdge = allocEdge(targetPtr, head);
+    store<u32>(headPtrOffset, newEdge, 0);
+}
+
 export function runQuery(queryType: u32, queryArg: u32): u32 {
-   // Use the 2-field key system that preserves full 32-bit argument range
    let nodePtr = getQueryNode2(queryType, queryArg);
    if (nodePtr == 0) {
       nodePtr = allocQueryNode2(queryType, queryArg);
    } else {
       let rev = load<u32>(nodePtr + 8, 0);
-      if (rev == globalRevision) return load<u32>(nodePtr + 12, 0);
+      if (rev > 0 && rev == globalRevision) return load<u32>(nodePtr + 12, 0);
    }
    
    if (activeQueryDepth > 0) {
-      let parentQueryKey = activeQueryStack[activeQueryDepth - 1];
-      // For now, parent tracking uses the old single-key system for the stack
-      // In a future refactor, the stack should store nodePtr directly
-      let parentPtr = getQueryNode(parentQueryKey);
-      
+      let parentPtr = activeQueryStack[activeQueryDepth - 1];
       if (parentPtr != 0) {
         // Link parent -> dependency (child)
-        let pDepHead = load<u32>(parentPtr + 12, 0);
-        let newDepEdge = allocEdge(nodePtr, pDepHead);
-        store<u32>(parentPtr + 12, newDepEdge, 0);
+        addEdgeIfMissing(parentPtr + 16, nodePtr);
         
         // Link child -> subscriber (parent)
-        let cSubHead = load<u32>(nodePtr + 20, 0);
-        let newSubEdge = allocEdge(parentPtr, cSubHead);
-        store<u32>(nodePtr + 20, newSubEdge, 0);
+        addEdgeIfMissing(nodePtr + 20, parentPtr);
       }
    }
    
-   // Push onto stack using packed key for backward compat with invalidateQuery
-   let queryKey = (queryType << 16) | (queryArg & 0xFFFF);
-   activeQueryStack[activeQueryDepth++] = queryKey;
+   // Push nodePtr directly onto stack
+   activeQueryStack[activeQueryDepth++] = nodePtr;
    let result: u32 = 0;
    
    if (queryType == 0) { // PARSE
