@@ -67,6 +67,7 @@ class SharedState {
   activeRootsPtr: u32;
   gcStackPtr: u32;
   gcStackCapacity: u32;
+  allocLock: u32; // Used for thread-safe spinlocking during chunk rollovers
 }
 
 const shared_state_ptr = memory.data<u32>([0]);
@@ -112,11 +113,9 @@ export function S(): SharedState {
  */
 
 export function atomicChunkAlloc(size: u32): u32 {
-  // Use the built-in AssemblyScript allocator to avoid colliding with
-  // the stub runtime's internal bump pointer (which is used for Error strings, etc.)
+  // Use the unmanaged heap allocator for zero-GC memory allocation
   // Allocate an extra 16 bytes to guarantee we can 16-byte align the pointer
-  let buffer = new ArrayBuffer(size + 16);
-  let ptr = changetype<usize>(buffer);
+  let ptr = heap.alloc(size + 16);
 
   // Ensure 16-byte alignment
   let rem = ptr % 16;
@@ -139,13 +138,10 @@ export function setActiveGeneration(gen: u8): void {
  * and resetting the offset back to the beginning of the generation.
  * @param gen The generation to reset (0 or 1).
  */
-export const dirtyNodeStrings = new Map<u32, string>();
-
 export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
-    dirtyNodeStrings.clear(); // Prevent stale text entries from leaking across parses
     if (S().gen1_chunk_count > 0) {
       S().gen1_active_chunk = 0;
       let startOffset = load<u32>(S().gen1_chunks);
@@ -299,35 +295,38 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       (s.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : s.gen1_endLimit;
 
-    // Atomically claim a 16-byte slot
+    // Atomically claim a 16-byte slot (guaranteed 16-byte aligned by chunk allocators)
     ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
-
-    // Ensure 16-byte alignment if somehow misaligned
-    let rem = ptr % 16;
-    if (rem != 0) {
-      atomic.add<u32>(ptrLoc, 16 - rem);
-      ptr += 16 - rem;
-    }
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
     if (ptr + NODE_SIZE > endLimit) {
       let isGen0 = s.activeGeneration == 0;
-      let activeChunk = isGen0 ? s.gen0_active_chunk : s.gen1_active_chunk;
-      let chunkCount = isGen0 ? s.gen0_chunk_count : s.gen1_chunk_count;
+      let lockLoc = changetype<usize>(s) + offsetof<SharedState>("allocLock");
+      
+      // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
+      // If multiple threads exhaust the chunk concurrently, only one thread handles the reallocation.
+      while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
+      
+      // Re-read ptrLoc and endLimit inside the lock to check if another thread already rolled over
+      let currentPtrLoc = atomic.load<u32>(ptrLoc);
+      let currentEndLimit = isGen0 ? s.gen0_endLimit : s.gen1_endLimit;
+      
+      if (currentPtrLoc + NODE_SIZE > currentEndLimit) {
+        // 3.2 Chunk is genuinely exhausted, we must allocate a new one
+        let activeChunk = isGen0 ? s.gen0_active_chunk : s.gen1_active_chunk;
+        let chunkCount = isGen0 ? s.gen0_chunk_count : s.gen1_chunk_count;
 
-      let newChunk: u32 = 0;
-      let usingRecycled = false;
+        let newChunk: u32 = 0;
+        let usingRecycled = false;
 
-      if (activeChunk + 1 < chunkCount) {
-        let chunkArray = isGen0 ? s.gen0_chunks : s.gen1_chunks;
-        newChunk = load<u32>(chunkArray + (activeChunk + 1) * 4);
-        usingRecycled = true;
-      } else {
-        newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
-      }
+        if (activeChunk + 1 < chunkCount) {
+          let chunkArray = isGen0 ? s.gen0_chunks : s.gen1_chunks;
+          newChunk = load<u32>(chunkArray + (activeChunk + 1) * 4);
+          usingRecycled = true;
+        } else {
+          newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
+        }
 
-      let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + NODE_SIZE, newChunk + NODE_SIZE);
-      if (oldOffset == ptr + NODE_SIZE) {
         if (isGen0) {
           s.gen0_active_chunk++;
           if (!usingRecycled && s.gen0_chunk_count < 8192) {
@@ -343,10 +342,16 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
           }
           s.gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
+        atomic.store<u32>(ptrLoc, newChunk + NODE_SIZE);
         ptr = newChunk;
       } else {
+        // 3.3 Another thread already rolled over the chunk while we were spinning.
+        // The old `ptrLoc` is now pointing safely inside the NEW chunk. Claim a slot from it.
         ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
       }
+      
+      // 3.4 Release spinlock
+      atomic.store<u32>(lockLoc, 0);
     }
 
     if (s.activeGeneration != 0) {
@@ -413,33 +418,43 @@ export function allocGen0(sizeBytes: u32): u32 {
 
   // Request a new chunk if the current Gen0 chunk is exhausted
   if (ptr + sizeBytes > S().gen0_endLimit) {
-    let allocSize = sizeBytes > AST_CHUNK_SIZE ? sizeBytes : AST_CHUNK_SIZE;
+    let lockLoc = changetype<usize>(S()) + offsetof<SharedState>("allocLock");
+    
+    // Acquire spinlock to handle rollover safely across threads
+    while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
+    
+    let currentPtrLoc = atomic.load<u32>(ptrLoc);
+    
+    if (currentPtrLoc + sizeBytes > S().gen0_endLimit) {
+      let allocSize = sizeBytes > AST_CHUNK_SIZE ? sizeBytes : AST_CHUNK_SIZE;
 
-    let activeChunk = S().gen0_active_chunk;
-    let chunkCount = S().gen0_chunk_count;
+      let activeChunk = S().gen0_active_chunk;
+      let chunkCount = S().gen0_chunk_count;
 
-    let newChunk: u32 = 0;
-    let usingRecycled = false;
+      let newChunk: u32 = 0;
+      let usingRecycled = false;
 
-    if (activeChunk + 1 < chunkCount && allocSize <= AST_CHUNK_SIZE) {
-      newChunk = load<u32>(S().gen0_chunks + (activeChunk + 1) * 4);
-      usingRecycled = true;
-    } else {
-      newChunk = atomicChunkAlloc(allocSize);
-    }
+      if (activeChunk + 1 < chunkCount && allocSize <= AST_CHUNK_SIZE) {
+        newChunk = load<u32>(S().gen0_chunks + (activeChunk + 1) * 4);
+        usingRecycled = true;
+      } else {
+        newChunk = atomicChunkAlloc(allocSize);
+      }
 
-    let oldOffset = atomic.cmpxchg<u32>(ptrLoc, ptr + sizeBytes, newChunk + sizeBytes);
-    if (oldOffset == ptr + sizeBytes) {
       S().gen0_active_chunk++;
       if (!usingRecycled && S().gen0_chunk_count < 8192) {
         store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
         S().gen0_chunk_count++;
       }
       S().gen0_endLimit = newChunk + allocSize;
+      atomic.store<u32>(ptrLoc, newChunk + sizeBytes);
       ptr = newChunk;
     } else {
+      // Another thread successfully rolled over the chunk. Grab a new slot.
       ptr = atomic.add<u32>(ptrLoc, sizeBytes);
     }
+    
+    atomic.store<u32>(lockLoc, 0); // Release spinlock
   }
 
   return ptr;
@@ -896,6 +911,24 @@ function ensureStringArena(bytesNeeded: u32): void {
   }
 }
 
+export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u32, encoding: u8): void {
+  if (ptr != 0 && nodeOverrideType.get(ptr) != OVERRIDE_STRING) {
+    let byteSize = 4 + lenBytes;
+    ensureStringArena(byteSize);
+    
+    let handle = stringArenaOffset;
+    // Set the highest bit to 1 if encoding == 0 (UTF-8), otherwise 0 (UTF-16)
+    let headerLen = encoding == 0 ? (lenBytes | 0x80000000) : lenBytes;
+    store<u32>(stringArenaPtr + handle, headerLen);
+    memory.copy(stringArenaPtr + handle + 4, sourcePtr, lenBytes);
+    stringArenaOffset += byteSize;
+    
+    nodeOverrideStrings.set(ptr, handle);
+    nodeOverrideType.set(ptr, OVERRIDE_STRING);
+    ast_markDirty(ptr);
+  }
+}
+
 /**
  * Overrides the string value of a leaf node using Zero-GC unmanaged memory.
  * @param ptr The target node.
@@ -908,7 +941,7 @@ export function ast_setLiteralString(ptr: u32, val: string): void {
     ensureStringArena(byteSize);
     
     let handle = stringArenaOffset;
-    store<u32>(stringArenaPtr + handle, lenBytes);
+    store<u32>(stringArenaPtr + handle, lenBytes); // UTF-16 from JS string, highest bit is 0
     memory.copy(stringArenaPtr + handle + 4, changetype<usize>(val), lenBytes);
     stringArenaOffset += byteSize;
     
@@ -944,7 +977,7 @@ export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 
   let type = nodeOverrideType.get(ptr);
   if (type == OVERRIDE_STRING) {
     let handle = nodeOverrideStrings.get(ptr);
-    let lenBytes = load<u32>(stringArenaPtr + handle);
+    let lenBytes = load<u32>(stringArenaPtr + handle) & 0x7FFFFFFF;
     let start = stringArenaPtr + handle + 4;
     return (u64(start) << 32) | u64(lenBytes);
   }
@@ -969,18 +1002,7 @@ export function ast_setLiteralValue(ptr: u32, valueStringPtr: u32): void {
   ast_markDirty(ptr);
 }
 
-const cacheVisited = new Set<u32>();
-
-/**
- * Recursively extracts and caches the raw UTF-8 string values of all leaf nodes in a subtree.
- * This is primarily used to preserve string data when extracting a branch of the AST
- * before a structural mutation invalidates the original buffer offsets.
- *
- * @param nodeId The root node of the subtree to cache.
- * @param absoluteStart The absolute byte offset of the node in the input buffer.
- */
 export function cacheNodeStrings(nodeId: u32, absoluteStart: u32): void {
-  cacheVisited.clear();
   cacheNodeStringsInner(nodeId, absoluteStart, 0);
 }
 
@@ -988,8 +1010,8 @@ export function cacheNodeStrings(nodeId: u32, absoluteStart: u32): void {
 function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): void {
   // Guard against circular references and maximum recursion limits
   if (nodeId == 0 || depth > 200) return;
-  if (cacheVisited.has(nodeId)) return;
-  cacheVisited.add(nodeId);
+  if (isExtracted(nodeId)) return;
+  markExtracted(nodeId);
 
   let child = getNodeFirstChild(nodeId);
 
@@ -997,13 +1019,7 @@ function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): voi
   if (child == 0 && getNodeByteLength(nodeId) > 0) {
     let ptr = getInputBuffer() + absoluteStart;
     let len = getNodeByteLength(nodeId);
-    let str = "";
-    if (inputEncoding == 1) {
-      str = String.UTF16.decodeUnsafe(ptr, len);
-    } else {
-      str = String.UTF8.decodeUnsafe(ptr, len);
-    }
-    dirtyNodeStrings.set(nodeId, str);
+    ast_extractLiteralString(nodeId, ptr, len, inputEncoding);
   }
 
   // 2. Compute offset distribution for children
@@ -1036,17 +1052,8 @@ function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): voi
  */
 export function hashNodeTextAt(nodeId: u32, absoluteStart: u32): u32 {
   if (nodeId == 0) return 0;
-  let len = getNodeByteLength(nodeId);
-  if (len == 0) return 0;
-
-  let ptr = getInputBuffer() + absoluteStart;
-  let hash: u32 = 0x811c9dc5; // FNV offset basis
-
-  for (let i: u32 = 0; i < len; i++) {
-    hash ^= load<u8>(ptr + i) as u32;
-    hash = (hash * 0x01000193) >>> 0; // FNV prime
-  }
-  return hash;
+  let span = ast_getTextSpan(nodeId, absoluteStart);
+  return ast_hashSpan(span);
 }
 
 /**
@@ -1075,12 +1082,16 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
   if (nodeA == nodeB) return true;
   if (nodeA == 0 || nodeB == 0) return false;
 
-  let lenA = getNodeByteLength(nodeA);
-  let lenB = getNodeByteLength(nodeB);
+  let spanA = ast_getTextSpan(nodeA, absoluteStartA);
+  let spanB = ast_getTextSpan(nodeB, absoluteStartB);
+  if (spanA == 0 || spanB == 0) return false;
+
+  let lenA = (spanA & 0xFFFFFFFF) as u32;
+  let lenB = (spanB & 0xFFFFFFFF) as u32;
   if (lenA != lenB) return false;
 
-  let ptrA = getInputBuffer() + absoluteStartA;
-  let ptrB = getInputBuffer() + absoluteStartB;
+  let ptrA = (spanA >> 32) as u32;
+  let ptrB = (spanB >> 32) as u32;
 
   for (let i: u32 = 0; i < lenA; i++) {
     if (load<u8>(ptrA + i) != load<u8>(ptrB + i)) return false;
@@ -1180,6 +1191,7 @@ export function clearAstMarks(rootToKeep: u32): void {
   let stackTop: u32 = 0;
   let gcHighWaterMark: u32 = 0; // Tracks the highest physical memory address containing a live node
 
+  // 1. Mark Phase: Depth-first traversal using a zero-alloc explicit linear memory stack
   // Prime the stack with the explicitly retained root
   if (rootToKeep != 0) {
     stackTop = pushGcStack(rootToKeep, stackTop);
@@ -1354,149 +1366,46 @@ export function ast_getTensorShape(handle: u32, dimIndex: u32): u32 {
   return load<u32>(tensorArenaPtr + handle + 16 + (dimIndex * 4));
 }
 
-/** Float64 Accessors */
-export function ast_setTensorFloat(handle: u32, flatIndex: u32, val: f64): void {
+@inline function getTensorDataPtr(handle: u32, flatIndex: u32, elementSize: u32): usize {
   let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  store<f64>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorFloat(handle: u32, flatIndex: u32): f64 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  return load<f64>(tensorArenaPtr + dataOffset);
+  return tensorArenaPtr + handle + headerSize + (flatIndex * elementSize);
 }
 
-/** Float32 Accessors */
-export function ast_setTensorFloat32(handle: u32, flatIndex: u32, val: f32): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  store<f32>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorFloat32(handle: u32, flatIndex: u32): f32 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  return load<f32>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorFloat(h: u32, i: u32, v: f64): void { store<f64>(getTensorDataPtr(h, i, 8), v); }
+export function ast_getTensorFloat(h: u32, i: u32): f64 { return load<f64>(getTensorDataPtr(h, i, 8)); }
 
-/** Float16 (Raw) Accessors */
-export function ast_setTensorFloat16Raw(handle: u32, flatIndex: u32, val: u16): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  store<u16>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorFloat16Raw(handle: u32, flatIndex: u32): u16 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  return load<u16>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorFloat32(h: u32, i: u32, v: f32): void { store<f32>(getTensorDataPtr(h, i, 4), v); }
+export function ast_getTensorFloat32(h: u32, i: u32): f32 { return load<f32>(getTensorDataPtr(h, i, 4)); }
 
-/** Int32 Accessors */
-export function ast_setTensorInt(handle: u32, flatIndex: u32, val: i32): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  store<i32>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorInt(handle: u32, flatIndex: u32): i32 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  return load<i32>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorFloat16Raw(h: u32, i: u32, v: u16): void { store<u16>(getTensorDataPtr(h, i, 2), v); }
+export function ast_getTensorFloat16Raw(h: u32, i: u32): u16 { return load<u16>(getTensorDataPtr(h, i, 2)); }
 
-/** Uint32 Accessors */
-export function ast_setTensorUint32(handle: u32, flatIndex: u32, val: u32): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  store<u32>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorUint32(handle: u32, flatIndex: u32): u32 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 4);
-  return load<u32>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorInt(h: u32, i: u32, v: i32): void { store<i32>(getTensorDataPtr(h, i, 4), v); }
+export function ast_getTensorInt(h: u32, i: u32): i32 { return load<i32>(getTensorDataPtr(h, i, 4)); }
 
-/** Int64 Accessors */
-export function ast_setTensorInt64(handle: u32, flatIndex: u32, val: i64): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  store<i64>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorInt64(handle: u32, flatIndex: u32): i64 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  return load<i64>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorUint32(h: u32, i: u32, v: u32): void { store<u32>(getTensorDataPtr(h, i, 4), v); }
+export function ast_getTensorUint32(h: u32, i: u32): u32 { return load<u32>(getTensorDataPtr(h, i, 4)); }
 
-/** Uint64 Accessors */
-export function ast_setTensorUint64(handle: u32, flatIndex: u32, val: u64): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  store<u64>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorUint64(handle: u32, flatIndex: u32): u64 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 8);
-  return load<u64>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorInt64(h: u32, i: u32, v: i64): void { store<i64>(getTensorDataPtr(h, i, 8), v); }
+export function ast_getTensorInt64(h: u32, i: u32): i64 { return load<i64>(getTensorDataPtr(h, i, 8)); }
 
-/** Int16 Accessors */
-export function ast_setTensorInt16(handle: u32, flatIndex: u32, val: i16): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  store<i16>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorInt16(handle: u32, flatIndex: u32): i16 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  return load<i16>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorUint64(h: u32, i: u32, v: u64): void { store<u64>(getTensorDataPtr(h, i, 8), v); }
+export function ast_getTensorUint64(h: u32, i: u32): u64 { return load<u64>(getTensorDataPtr(h, i, 8)); }
 
-/** Uint16 Accessors */
-export function ast_setTensorUint16(handle: u32, flatIndex: u32, val: u16): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  store<u16>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorUint16(handle: u32, flatIndex: u32): u16 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + (flatIndex * 2);
-  return load<u16>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorInt16(h: u32, i: u32, v: i16): void { store<i16>(getTensorDataPtr(h, i, 2), v); }
+export function ast_getTensorInt16(h: u32, i: u32): i16 { return load<i16>(getTensorDataPtr(h, i, 2)); }
 
-/** Int8 Accessors */
-export function ast_setTensorInt8(handle: u32, flatIndex: u32, val: i8): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  store<i8>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorInt8(handle: u32, flatIndex: u32): i8 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  return load<i8>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorUint16(h: u32, i: u32, v: u16): void { store<u16>(getTensorDataPtr(h, i, 2), v); }
+export function ast_getTensorUint16(h: u32, i: u32): u16 { return load<u16>(getTensorDataPtr(h, i, 2)); }
 
-/** Uint8 Accessors */
-export function ast_setTensorUint8(handle: u32, flatIndex: u32, val: u8): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  store<u8>(tensorArenaPtr + dataOffset, val);
-}
-export function ast_getTensorUint8(handle: u32, flatIndex: u32): u8 {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  return load<u8>(tensorArenaPtr + dataOffset);
-}
+export function ast_setTensorInt8(h: u32, i: u32, v: i8): void { store<i8>(getTensorDataPtr(h, i, 1), v); }
+export function ast_getTensorInt8(h: u32, i: u32): i8 { return load<i8>(getTensorDataPtr(h, i, 1)); }
 
-/** Boolean (i8) Accessors */
-export function ast_setTensorBool(handle: u32, flatIndex: u32, val: boolean): void {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  store<u8>(tensorArenaPtr + dataOffset, val ? 1 : 0);
-}
-export function ast_getTensorBool(handle: u32, flatIndex: u32): boolean {
-  let headerSize = load<u32>(tensorArenaPtr + handle + 12);
-  let dataOffset = handle + headerSize + flatIndex;
-  return load<u8>(tensorArenaPtr + dataOffset) !== 0;
-}
+export function ast_setTensorUint8(h: u32, i: u32, v: u8): void { store<u8>(getTensorDataPtr(h, i, 1), v); }
+export function ast_getTensorUint8(h: u32, i: u32): u8 { return load<u8>(getTensorDataPtr(h, i, 1)); }
+
+export function ast_setTensorBool(h: u32, i: u32, v: boolean): void { store<u8>(getTensorDataPtr(h, i, 1), v ? 1 : 0); }
+export function ast_getTensorBool(h: u32, i: u32): boolean { return load<u8>(getTensorDataPtr(h, i, 1)) !== 0; }
 
 /** Binds a Tensor Handle to an AST Node using the O(1) side-table */
 export function ast_setLiteralTensor(nodeId: u32, handle: u32): void {
@@ -1568,7 +1477,12 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   let len = (span & 0xFFFFFFFF) as u32;
   
   let isOverride = (ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
-  let encoding = isOverride ? 1 : inputEncoding;
+  let encoding = inputEncoding;
+  
+  if (isOverride) {
+    let rawLen = load<u32>(ptr - 4);
+    encoding = (rawLen & 0x80000000) != 0 ? 0 : 1;
+  }
 
   if (encoding == 0) {
     let i: u32 = 0;
@@ -1658,6 +1572,11 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
   
   let tableOffset = nodeScopes.get(parentId);
   if (tableOffset == 0) {
+    // Initialize a new linear open-addressing hash table for this parent.
+    // Memory layout: 
+    // offset + 0: capacity (u32)
+    // offset + 4: count (u32)
+    // offset + 8: slots array (capacity * 8 bytes). Each slot is [hash(u32), childId(u32)]
     let cap = 8;
     let byteSize = 8 + (cap * 8);
     ensureScopeArena(byteSize);

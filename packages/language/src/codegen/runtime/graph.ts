@@ -18,7 +18,10 @@ import {
   ast_setTensorUint16, ast_getTensorUint16,
   ast_setTensorInt8, ast_getTensorInt8,
   ast_removeNode, ast_getChildCount, nodeList,
-  ast_hashSpan
+  ast_setTensorBool, ast_getTensorBool,
+  ast_bindChildNode, ast_resolveChildNode,
+  ast_bindChildHash, ast_resolveChildByHash,
+  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
 } from "./arena";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
@@ -51,11 +54,16 @@ const FQN_HASH_TABLE_CAPACITY = 4096;
 // +8: argPtr (u32) - Pointer to WASM string or extra u32 data
 // +12: nextDiagPtr (u32)
 
+export let diagArenaStart: u32 = 0;
 export let diagArenaOffset: u32 = 0;
-export let diagArenaEnd: u32 = 0;
 export let firstDiagnostic: u32 = 0;
 export let lastDiagnostic: u32 = 0;
+const DIAG_ARENA_CAPACITY = 65536; // 64KB (allows ~4096 simultaneous diagnostics)
 
+/**
+ * Initializes the zero-GC memory arenas for the incremental query engine.
+ * Allocates hash tables for query keys, FQN symbols, and the dirty file bitset.
+ */
 export function initQueryArena(): void {
   // Allocate hash table
   queryHashTableOffset = heap.alloc(HASH_TABLE_CAPACITY * 4) as u32;
@@ -69,6 +77,10 @@ export function initQueryArena(): void {
   resetQueryArena();
 }
 
+/**
+ * Resets the query engine state by zeroing out the hash tables and dirty file bitsets.
+ * Existing query nodes remain in linear memory but become unreachable until re-evaluated.
+ */
 export function resetQueryArena(): void {
   if (queryHashTableOffset != 0) {
       memory.fill(queryHashTableOffset as usize, 0, HASH_TABLE_CAPACITY * 4);
@@ -81,11 +93,22 @@ export function resetQueryArena(): void {
   }
 }
 
+/**
+ * Clears the diagnostic linked list and resets the bump allocator.
+ * Must be called before each incremental parse to prevent memory leaks from old squiggles.
+ */
 export function clearDiagnostics(): void {
   firstDiagnostic = 0;
   lastDiagnostic = 0;
+  if (diagArenaStart != 0) {
+    diagArenaOffset = diagArenaStart;
+  }
 }
 
+/**
+ * Clears the 1024-bit dirty file bitset.
+ * Called at the start of a new parse phase before any queries mark themselves as dirty.
+ */
 export function clearDirtyFilesBitset(): void {
   if (dirtyFilesBitsetOffset == 0) return;
   for (let i = 0; i < 32; i++) {
@@ -93,8 +116,28 @@ export function clearDirtyFilesBitset(): void {
   }
 }
 
+/**
+ * Allocates a new 16-byte diagnostic node from the dedicated 64KB bump arena.
+ * Diagnostics form a linked list and are strictly ephemeral per-parse.
+ * @param startByte Absolute start byte offset.
+ * @param endByte Absolute end byte offset.
+ * @param argPtr Pointer to supplemental argument string/data.
+ * @param nextPtr Pointer to the next diagnostic in the chain.
+ * @returns The pointer to the new diagnostic node.
+ */
 export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextPtr: u32): u32 {
-  let ptr = heap.alloc(16) as u32;
+  if (diagArenaStart == 0) {
+    diagArenaStart = heap.alloc(DIAG_ARENA_CAPACITY) as u32;
+    diagArenaOffset = diagArenaStart;
+  }
+  // Drop diagnostic if we overflow the 64KB limit
+  if (diagArenaOffset + 16 > diagArenaStart + DIAG_ARENA_CAPACITY) {
+    return 0; 
+  }
+  
+  let ptr = diagArenaOffset;
+  diagArenaOffset += 16;
+  
   store<u32>(ptr, startByte, 0);
   store<u32>(ptr + 4, endByte, 0);
   store<u32>(ptr + 8, argPtr, 0);
@@ -113,6 +156,11 @@ export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextP
 
 // Removed legacy 1-key functions: hashQueryKey, getQueryNode, allocQueryNode
 
+/**
+ * Allocates an 8-byte edge node to link query dependencies.
+ * @param targetPtr Pointer to the target query node.
+ * @param nextPtr Pointer to the next edge in the linked list.
+ */
 export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
   let ptr = heap.alloc(8) as u32;
   store<u32>(ptr, targetPtr, 0);
@@ -120,6 +168,12 @@ export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
   return ptr;
 }
 
+/**
+ * Exports a Fully Qualified Name (FQN) to the global symbol table.
+ * Uses linear open-addressing hash chains to store symbols incrementally.
+ * @param fqnHash The 32-bit FNV-1a hash of the FQN.
+ * @param nodeId The target node pointer in the AST.
+ */
 export function exportSymbol(fqnHash: u32, nodeId: u32): void {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
   let ptr = heap.alloc(12) as u32;
@@ -131,6 +185,11 @@ export function exportSymbol(fqnHash: u32, nodeId: u32): void {
   store<u32>(fqnHashTableOffset + idx * 4, ptr, 0);
 }
 
+/**
+ * Resolves an FQN hash back to its AST node pointer.
+ * @param fqnHash The hash to look up.
+ * @returns The target node pointer, or 0 if unresolved.
+ */
 export function resolveFqnSymbol(fqnHash: u32): u32 {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
   let ptr = load<u32>(fqnHashTableOffset + idx * 4, 0);
@@ -143,6 +202,12 @@ export function resolveFqnSymbol(fqnHash: u32): u32 {
 
 export let scopedImportHead: u32 = 0;
 
+/**
+ * Registers a scoped module import during query evaluation.
+ * @param scopeId The node pointer of the enclosing scope.
+ * @param moduleHash The hash of the target module being imported.
+ * @param visibility Optional visibility modifier (0 = public, 1 = private).
+ */
 export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: u8 = 0): void {
   // Phase 6B: Added visibility (0=public, 1=private)
   // Allocate 16 bytes to fit u8 properly with alignment, or just 12 and pack. We'll use 16.
@@ -170,6 +235,10 @@ export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: 
 // +32: nextHash  (u32)   — hash bucket chain
 
 // Combines queryType and arguments into a hash table index.
+/**
+ * Combines a query type and three arbitrary 32-bit arguments into a single 32-bit hash.
+ * Utilizes the FNV-1a algorithm for rapid, collision-resistant distribution.
+ */
 function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    let h: u32 = 0x811c9dc5;
    h ^= queryType;
@@ -183,6 +252,11 @@ function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    return h & (HASH_TABLE_CAPACITY - 1);
 }
 
+/**
+ * Looks up an existing query node in the incremental database.
+ * If found, it indicates that the query has been evaluated previously.
+ * @returns The query node pointer, or 0 if not found.
+ */
 export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    let idx = combineQueryKey(queryType, arg1, arg2, arg3);
    let ptr = load<u32>(queryHashTableOffset + idx * 4, 0);
@@ -196,6 +270,11 @@ export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): 
    return 0;
 }
 
+/**
+ * Allocates a new 36-byte query node from linear memory and inserts it into the
+ * open-addressing hash table. This node will track its execution state, cached value,
+ * and dependency edges for future incremental runs.
+ */
 export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
   let ptr = heap.alloc(36) as u32;
   store<u32>(ptr, queryType, 0);
@@ -218,6 +297,12 @@ export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32)
 
 export let globalRevision: u32 = 1;
 
+/**
+ * Invalidates a query node by resetting its revision to 0 (dirty state).
+ * This will recursively cascade to all subscriber edges, dirtying any queries
+ * that depended on this value. If it's a PARSE query, it sets the dirty bitset.
+ * @param nodePtr The query node pointer to invalidate.
+ */
 export function invalidateNode(nodePtr: u32): void {
   if (nodePtr == 0) return;
   
@@ -255,6 +340,12 @@ export function incrementGlobalRevision(): void {
 export const activeQueryStack = new Uint32Array(1024);
 export let activeQueryDepth: i32 = 0;
 
+/**
+ * Ensures a directed edge is established between two query nodes.
+ * Walks the edge list to prevent duplicate edges from being allocated.
+ * @param headPtrOffset The offset of the linked list head within the query node.
+ * @param targetPtr The target node to link to.
+ */
 export function addEdgeIfMissing(headPtrOffset: u32, targetPtr: u32): void {
     let head = load<u32>(headPtrOffset, 0);
     let curr = head;
@@ -266,6 +357,12 @@ export function addEdgeIfMissing(headPtrOffset: u32, targetPtr: u32): void {
     store<u32>(headPtrOffset, newEdge, 0);
 }
 
+/**
+ * The core execution engine for incremental graph queries.
+ * Checks if a query is already cached and valid for the current global revision.
+ * If not, it executes the query via the generated `__GRAPH_SWITCH_CODE__` logic,
+ * establishes dependency edges automatically via the `activeQueryStack`, and caches the result.
+ */
 export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0): u32 {
    let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3);
    if (nodePtr == 0) {
@@ -342,7 +439,7 @@ export class TensorAPI {
 }
 
 export class ModelAPI {
-  @inline create(type: u16): u32 { return createNode(type); }
+  @inline create(type: u16): u32 { return ast_createNode(type); }
   @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
   @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
 
@@ -418,6 +515,11 @@ class CodeGraph {
 }
 export const graph = new CodeGraph();
 
+/**
+ * Utility to bit-pack an outline flag directly into an aligned node pointer.
+ * Since node pointers are 16-byte aligned, the lowest 4 bits are mathematically guaranteed to be 0,
+ * making them perfect for stuffing tiny boolean flags.
+ */
 export function packOutline(nameNode: u32, children: boolean): u32 {
     if (nameNode == 0) return 0;
     // nameNode is a 16-byte aligned arena pointer, so lowest 4 bits are always 0.

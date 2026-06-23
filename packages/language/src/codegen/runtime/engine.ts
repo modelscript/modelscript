@@ -1108,19 +1108,11 @@ function stateCanAccept(
 
   debugLog(999100, state, tok, depth);
 
-  // Only memoize at the top-level (depth 0) where the head state is stable
-  let cacheKey: u64 = 0;
-  if (depth == 0) {
-    cacheKey = ((<u64>state) << 16) | (<u64>tok);
-    let cached = acceptCacheGet(cacheKey);
-    if (cached != -1) {
-      return cached == 1;
-    }
-  }
-
+  // Cache removed: stateCanAccept depends on the GSS stack (`head.prev`) for reduction GOTO simulation.
+  // Memoizing strictly by `state` and `tok` causes false negatives during error recovery.
+  
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset >= action_data.length) {
-    if (depth == 0) acceptCacheSet(cacheKey, false);
     return false;
   }
 
@@ -1128,7 +1120,6 @@ function stateCanAccept(
   let idx = actionOffset + 1;
   for (let i = 0; i < actionCount; i++) {
     if (idx < 0 || idx + 1 >= action_data.length) {
-      if (depth == 0) acceptCacheSet(cacheKey, false);
       return false;
     }
     let sym = action_data[idx];
@@ -1139,7 +1130,6 @@ function stateCanAccept(
         let type = action_data[actIdx++];
         let target = action_data[actIdx++];
         if (type == ACTION_SHIFT || type == ACTION_ACCEPT) {
-          if (depth == 0) acceptCacheSet(cacheKey, true);
           return true;
         }
         if (type == ACTION_REDUCE) {
@@ -1240,7 +1230,6 @@ function stateCanAccept(
                 ns9,
               )
             ) {
-              if (depth == 0) acceptCacheSet(cacheKey, true);
               return true;
             }
           }
@@ -1249,7 +1238,6 @@ function stateCanAccept(
     }
     idx += 2 + actCount * 2;
   }
-  if (depth == 0) acceptCacheSet(cacheKey, false);
   return false;
 }
 
@@ -1465,6 +1453,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   let bestAcceptingHead: u32 = 0;
   let acceptedNode: u32 = 0;
   let bestAcceptedCost: i32 = INFINITE_COST;
+  let bestAcceptedRealBytes: u32 = 0; // Track amount of input consumed (more is better)
   let bestAcceptedCount: u32 = 0xffffffff; // Track GSS fragmentation (fewer is better)
   let bestAcceptedPad: u32 = 0xffffffff; // Track leftmost match padding (smaller is better)
   lastBestCost = INFINITE_COST;
@@ -2193,13 +2182,15 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             if (
               acceptedNode == 0 ||
               effectiveCost < bestAcceptedCost ||
-              (effectiveCost == bestAcceptedCost && firstPad < bestAcceptedPad) ||
-              (effectiveCost == bestAcceptedCost && firstPad == bestAcceptedPad && t_count < bestAcceptedCount)
+              (effectiveCost == bestAcceptedCost && realBytes > bestAcceptedRealBytes) ||
+              (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad < bestAcceptedPad) ||
+              (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad == bestAcceptedPad && t_count < bestAcceptedCount)
             ) {
               if (t_count <= 1) {
                   // Single root node — accept directly
                   bestAcceptingHead = changetype<u32>(head);
                   bestAcceptedCost = effectiveCost;
+                  bestAcceptedRealBytes = realBytes;
                 bestAcceptedCount = t_count;
                 bestAcceptedPad = firstPad;
                 lastBestCost = bestAcceptedCost;
@@ -2232,6 +2223,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 // Multiple nodes in GSS — try to find a proper root
                   bestAcceptingHead = changetype<u32>(head);
                   bestAcceptedCost = effectiveCost;
+                  bestAcceptedRealBytes = realBytes;
                 bestAcceptedCount = t_count;
                 bestAcceptedPad = firstPad;
                 lastBestCost = bestAcceptedCost;
@@ -2670,8 +2662,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               currentScannerState = savedScannerState;
 
               let tokCost = token_insert_costs[nextToken == TOKEN_EOF ? 0 : nextToken];
+              
+              let canAccept = stateCanAccept(unwindCurr, recState, nextToken, 0);
+              debugLog(60100, recState, nextToken, canAccept ? 1 : 0);
 
-              if (stateCanAccept(unwindCurr, recState, nextToken, 0)) {
+              if (canAccept) {
                 let currChild: ParseHead | null = head;
                 let childCount = 0;
                 while (currChild != null && currChild != unwindCurr) {
@@ -2713,7 +2708,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   p = lexPos + tLen;
                 }
 
-                let merged = concatLists(unwindCurr.astNode, errNode, NODE_TYPE_ERROR, newBalance & 0xff);
+                let merged = concatLists(unwindCurr.astNode, errNode, getNodeType(unwindCurr.astNode), newBalance & 0xff);
 
                 let delHead = allocParseHead(
                   recState,
@@ -2881,7 +2876,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     newTail = pushDiagnostic(newTail, uPos, head.pos);
                 }
 
-                let merged = concatLists(unwindCurr.astNode, errNode, NODE_TYPE_ERROR, newBalance & 0xff);
+                let merged = concatLists(unwindCurr.astNode, errNode, getNodeType(unwindCurr.astNode), newBalance & 0xff);
 
                 let retroHead = allocParseHead(
                   recState,
@@ -2914,14 +2909,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               idx2 = aOffset + 1;
               count2 = action_data[aOffset];
 
-              let bestTarget1: i32 = -1;
-              let bestSym1: i32 = -1;
-              let bestCost1: i32 = 999999;
-
-              let bestTarget2: i32 = -1;
-              let bestSym2: i32 = -1;
-              let bestCost2: i32 = 999999;
-
               for (let i = 0; i < count2; i++) {
                 if (idx2 < 0 || idx2 + 1 >= action_data.length) {
                   throw new Error("BAD idx2 in error B");
@@ -2937,93 +2924,78 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     }
 
                     let baseCost = token_insert_costs[sym == TOKEN_EOF ? 0 : sym];
-                    let debt = mrd_data[target];
                     let uPos = unwindCurr.pos;
                     let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
                     let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + (bDropped as i32);
-                    let insCost = baseCost + debt + retroCost;
+                    let actualCost = baseCost + retroCost;
+                    
+                    let candidateViable = false;
+                    let laScanPos = head.pos;
+                    
+                    let savedLexPosB = lexPos;
+                    let savedLexLenB = lexLen;
+                    let savedSrcLexPosB = srcLexPos;
+                    let savedScannerStateB = currentScannerState;
 
-                    if (insCost < bestCost1) {
-                      bestCost2 = bestCost1;
-                      bestSym2 = bestSym1;
-                      bestTarget2 = bestTarget1;
+                    for (let skip = 0; skip <= 3; skip++) {
+                      if (laScanPos >= inputLength) {
+                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0)) {
+                           candidateViable = true;
+                        }
+                        break;
+                      }
+                      
+                      lexPos = laScanPos;
+                      let laTok = __LEX_FN__(laScanPos);
+                      let laEnd = srcLexPos + lexLen;
+                      
+                      if (stateCanAccept(unwindCurr, target, laTok, 0)) {
+                        candidateViable = true;
+                        break;
+                      }
+                      
+                      if (laTok == TOKEN_EOF) break;
+                      laScanPos = laEnd;
+                    }
 
-                      bestCost1 = insCost;
-                      bestSym1 = sym;
-                      bestTarget1 = target;
-                    } else if (insCost < bestCost2) {
-                      bestCost2 = insCost;
-                      bestSym2 = sym;
-                      bestTarget2 = target;
+                    lexPos = savedLexPosB;
+                    lexLen = savedLexLenB;
+                    srcLexPos = savedSrcLexPosB;
+                    currentScannerState = savedScannerStateB;
+
+                    if (candidateViable) {
+                        let pCount = unwindDepth;
+                        let uCurr: ParseHead | null = head;
+                        let newBalance = head.balanceHash;
+                        for (let u = 0; u < pCount; u++) {
+                          if (uCurr != null) {
+                            newBalance = uCurr.balanceHash;
+                            uCurr = uCurr.prev;
+                          }
+                        }
+                        let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
+                        
+                        let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
+                        let insHead = allocParseHead(
+                          target,
+                          virtualLeaf,
+                          unwindCurr,
+                          head.pos,
+                          currentScannerState,
+                          head.errorCost + actualCost,
+                          0,
+                          newBalance,
+                          head.consecutiveInsertions + 1,
+                          recPrec,
+                          uPadding + bDropped,
+                          head.errorTail
+                        );
+                        
+                        if (target != head.state) {
+                          pushActiveHead(changetype<u32>(insHead));
+                        }
                     }
                   }
-                }
-              }
-              if (bestSym1 != -1) {
-                let pCount = unwindDepth;
-                let uCurr: ParseHead | null = head;
-                let newBalance = head.balanceHash;
-                for (let u = 0; u < pCount; u++) {
-                  if (uCurr != null) {
-                    newBalance = uCurr.balanceHash;
-                    uCurr = uCurr.prev;
-                  }
-                }
-                let uPos: u32 = uCurr ? uCurr.pos : 0;
-                let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
-                let droppedBytes: u32 = head.pos > uPos ? head.pos - uPos : 0;
-
-                let virtualLeaf = allocNode(bestSym1 as u16, 0, 0, newBalance & 0xff);
-                let insHead = allocParseHead(
-                  bestTarget1,
-                  virtualLeaf,
-                  unwindCurr,
-                  head.pos,
-                  currentScannerState,
-                  head.errorCost + bestCost1,
-                  0,
-                  newBalance,
-                  head.consecutiveInsertions + 1,
-                  recPrec,
-                  uPadding + droppedBytes,
-                );
-
-                if (bestTarget1 != head.state) {
-                  pushActiveHead(changetype<u32>(insHead));
-                }
-              }
-
-              if (bestSym2 != -1) {
-                let pCount = unwindDepth;
-                let uCurr: ParseHead | null = head;
-                let newBalance = head.balanceHash;
-                for (let u = 0; u < pCount; u++) {
-                  if (uCurr != null) {
-                    newBalance = uCurr.balanceHash;
-                    uCurr = uCurr.prev;
-                  }
-                }
-                let uPos: u32 = uCurr ? uCurr.pos : 0;
-                let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
-                let droppedBytes: u32 = head.pos > uPos ? head.pos - uPos : 0;
-
-                let virtualLeaf = allocNode(bestSym2 as u16, 0, 0, newBalance & 0xff);
-                let insHead = allocParseHead(
-                  bestTarget2,
-                  virtualLeaf,
-                  unwindCurr,
-                  head.pos,
-                  currentScannerState,
-                  head.errorCost + bestCost2,
-                  0,
-                  newBalance,
-                  head.consecutiveInsertions + 1,
-                  recPrec,
-                  uPadding + droppedBytes,
-                );
-
-                if (bestTarget2 != head.state) {
-                  pushActiveHead(changetype<u32>(insHead));
                 }
               }
             }
@@ -3108,52 +3080,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             }
             debugLog(60003, foundTarget, gssDepth, resumePos);
 
-            // Fallback: if the GSS walk found nothing, try ALL parser states.
-            // This handles mid-block recovery when incremental reuse consumed
-            // the inner-block states (e.g., finding "}" when only top-level states remain).
-            if (foundTarget == -1 && tok != TOKEN_EOF) {
-              let numStates = action_offsets.length;
-              for (let si: i32 = 0; si < numStates; si++) {
-                // Skip states already in the GSS (already checked above)
-                let inGss = false;
-                let gp: ParseHead | null = head;
-                while (gp != null) {
-                  if (gp.state == si) { inGss = true; break; }
-                  gp = gp.prev;
-                }
-                if (inGss) continue;
-
-                // Check if state si has a direct SHIFT action for tok
-                let aOff = action_offsets[si];
-                if (aOff < 0 || aOff >= action_data.length) continue;
-                let aCnt = action_data[aOff];
-                let aIdx = aOff + 1;
-                let canShift = false;
-                for (let ai: i32 = 0; ai < aCnt; ai++) {
-                  if (aIdx < 0 || aIdx + 1 >= action_data.length) break;
-                  let aSym = action_data[aIdx];
-                  let aActCnt = action_data[aIdx + 1];
-                  if (aSym == tok) {
-                    let aActIdx = aIdx + 2;
-                    for (let aj: i32 = 0; aj < aActCnt; aj++) {
-                      let aType = action_data[aActIdx++];
-                      let _aTarget = action_data[aActIdx++];
-                      if (aType == ACTION_SHIFT) { canShift = true; break; }
-                    }
-                  }
-                  aIdx += 2 + aActCnt * 2;
-                  if (canShift) break;
-                }
-                if (canShift) {
-                  foundTarget = si;
-                  resumePos = searchPos;
-                  // Use head itself as currPop (detached island)
-                  currPop = head;
-                  debugLog(60030, si, tok, resumePos);
-                  break;
-                }
-              }
-            }
+            // (Brute-force fallback removed: it was too aggressive and matched invalid states for Identifier, causing infinite recovery loops. The GSS walk is sufficient now that stateCanAccept cache is fixed.)
 
             if (foundTarget != -1) break; // We found a recovery anchor!
             // If the sync token wasn't useful, consume it and keep scanning forward
@@ -3237,7 +3164,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             // We use head.errorCost + 1 to shield it from being instantly culled
             // by greedy local insertion branches.
             let islandHead = allocParseHead(
-              currPop.state,
+              foundTarget,
               islandLeaf,
               currPop,
               resumePos,
@@ -3251,7 +3178,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               newTail,
             );
             pushActiveHead(changetype<u32>(islandHead));
-            debugLog(6, currPop.state, islandCost, resumePos);
+            debugLog(6, foundTarget, islandCost, resumePos);
           }
         }
 
@@ -3783,11 +3710,11 @@ function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32):
     return cloneNodeShallow(leftNode);
   }
 
-  if (getNodeByteLength(leftNode) == 0) {
+  if (getNodeByteLength(leftNode) == 0 && getNodeType(leftNode) > __MAX_TERMINAL_ID__) {
     _listRecurDepth--;
     return cloneNodeShallow(rightNode);
   }
-  if (getNodeByteLength(rightNode) == 0) {
+  if (getNodeByteLength(rightNode) == 0 && getNodeType(rightNode) > __MAX_TERMINAL_ID__) {
     _listRecurDepth--;
     return cloneNodeShallow(leftNode);
   }

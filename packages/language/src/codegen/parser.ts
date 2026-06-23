@@ -283,6 +283,7 @@ export function generateParserTables(
 
   engineCodeTemplate = engineCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
   engineCodeTemplate = engineCodeTemplate.replace(/__PREPROCESSOR_HOOK__/g, preprocessorHook);
+  engineCodeTemplate = engineCodeTemplate.replace(/__MAX_TERMINAL_ID__/g, (grammar.terminals.size - 1).toString());
 
   let lspCodeTemplate = lspCode;
   lspCodeTemplate = lspCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);

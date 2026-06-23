@@ -3,8 +3,13 @@
 // Chunked Array for Zero-GC Memory Growth
 import { atomicChunkAlloc } from "./arena";
 
+// 2^12 = 4096. Used for fast division to find the chunk index.
 @inline function CHUNK_BITS(): u32 { return 12; }
+
+// The fixed number of elements per chunk (page size).
 @inline function CHUNK_SIZE(): u32 { return 4096; }
+
+// 4095 (0xFFF). Used for fast modulo operation to find the local offset within a chunk.
 @inline function CHUNK_MASK(): u32 { return 4095; }
 
 /**
@@ -18,16 +23,19 @@ import { atomicChunkAlloc } from "./arena";
  * This is crucial for performance because the built-in AssemblyScript `Array<T>`
  * uses standard malloc/realloc which fragments memory and triggers GC pauses.
  */
+@unmanaged
 export class ChunkedArray<T> {
   public directory: usize;
   private dirCapacity: u32;
   private allocatedChunks: u32;
   public length: u32;
 
-  constructor(initialElements: u32 = 0) {
-    this.init(initialElements);
-  }
+  // Unmanaged classes cannot have a standard constructor, they are instantiated via changetype.
 
+  /**
+   * Initializes the array directory and pre-allocates chunks based on the requested initial capacity.
+   * @param initialElements The expected number of elements, used to eagerly allocate chunks.
+   */
   public init(initialElements: u32 = 0): void {
     this.dirCapacity = 1024;
     this.directory = atomicChunkAlloc(this.dirCapacity * sizeof<usize>());
@@ -41,6 +49,11 @@ export class ChunkedArray<T> {
     }
   }
 
+  /**
+   * Appends a new 4096-element chunk to the array.
+   * If the directory (page table) is full, it dynamically doubles the directory size
+   * via an unmanaged allocation and copies the old pointers over.
+   */
   @inline
   private addChunk(): void {
     if (this.allocatedChunks >= this.dirCapacity) {
@@ -57,6 +70,11 @@ export class ChunkedArray<T> {
     this.allocatedChunks++;
   }
 
+  /**
+   * Appends a single value to the end of the array.
+   * Automatically provisions a new chunk if the array crosses a 4096-element boundary.
+   * @param value The value to append.
+   */
   @inline
   public push(value: T): void {
     let chunkIdx = this.length >> CHUNK_BITS();
@@ -69,6 +87,12 @@ export class ChunkedArray<T> {
     this.length++;
   }
 
+  /**
+   * Retrieves an element at the specified index.
+   * Returns 0 (or null equivalent) if the index points to an unallocated chunk.
+   * @param index The global array index.
+   * @returns The value at the index.
+   */
   @inline
   public get(index: u32): T {
     let chunkIdx = index >> CHUNK_BITS();
@@ -78,12 +102,24 @@ export class ChunkedArray<T> {
     return load<T>(chunkPtr + localOffset * sizeof<T>());
   }
 
+  /**
+   * Operator overload for bracket read access (e.g., `arr[idx]`).
+   * Safely traps negative indices to prevent bounds wrapping and memory violations.
+   */
   @inline
   @operator("[]")
   public __get(index: i32): T {
+    if (index < 0) return 0 as T;
     return this.get(index as u32);
   }
 
+  /**
+   * Mutates the element at the specified index.
+   * If the index exceeds currently allocated bounds, it sequentially allocates
+   * new chunks until the index is reachable.
+   * @param index The global array index.
+   * @param value The new value to set.
+   */
   @inline
   public set(index: u32, value: T): void {
     let chunkIdx = index >> CHUNK_BITS();
@@ -98,12 +134,22 @@ export class ChunkedArray<T> {
     }
   }
 
+  /**
+   * Operator overload for bracket write access (e.g., `arr[idx] = val`).
+   * Safely traps negative indices. Without this guard, `arr[-1]` would wrap to
+   * `4,294,967,295`, triggering the allocation of >16GB of chunks and immediately OOM crashing.
+   */
   @inline
   @operator("[]=")
   public __set(index: i32, value: T): void {
+    if (index < 0) return; // Prevent OOM loops when index wraps to a massive u32
     this.set(index as u32, value);
   }
 
+  /**
+   * Removes and returns the last element of the array.
+   * Does not deallocate chunks (memory remains provisioned for future growth).
+   */
   @inline
   public pop(): T {
     if (this.length == 0) return 0 as T;
@@ -111,15 +157,27 @@ export class ChunkedArray<T> {
     return this.get(this.length);
   }
 
+  /**
+   * Resets the array length to 0.
+   * Previously allocated chunks are preserved for zero-allocation reuse.
+   */
   @inline
   public clear(): void {
     this.length = 0;
   }
 
+  /**
+   * Bulk-copies elements from a source ChunkedArray.
+   * Extremely optimized for zero-GC mass array cloning (e.g., AST stack duplication).
+   * @param src The source array to copy from.
+   * @param count The number of elements to copy starting from index 0.
+   */
   @inline
   public copyFrom(src: ChunkedArray<T>, count: u32): void {
     if (count == 0) return;
 
+    // Fast-path: Small copies (<= 128 elements) are sequentially looped from the first chunk.
+    // Avoids the overhead of chunk math and memory.copy intrinsics for trivial payload sizes.
     if (count <= 128) {
       let srcChunk = load<usize>(src.directory);
       let destChunk = load<usize>(this.directory);
@@ -132,15 +190,20 @@ export class ChunkedArray<T> {
       return;
     }
 
+    // Slow-path: Mass memory duplication.
+    // 1. Ensure the destination has enough chunks provisioned.
     let requiredChunks = (count + CHUNK_SIZE() - 1) >> CHUNK_BITS();
     while (this.allocatedChunks < requiredChunks) {
       this.addChunk();
     }
 
+    // 2. Perform bulk `memory.copy` per chunk.
     for (let i: u32 = 0; i < requiredChunks; i++) {
       let srcChunk = load<usize>(src.directory + i * sizeof<usize>());
       let destChunk = load<usize>(this.directory + i * sizeof<usize>());
 
+      // Calculate how many elements remain to be copied.
+      // If it's the last chunk, it might not be completely full.
       let elementsRemaining = count - (i << CHUNK_BITS());
       let copyElements = elementsRemaining < CHUNK_SIZE() ? elementsRemaining : CHUNK_SIZE();
 
@@ -153,14 +216,23 @@ export class ChunkedArray<T> {
   }
 }
 
+@unmanaged
 export class ChunkedUint32Array extends ChunkedArray<u32> {}
 
+@unmanaged
 export class ChunkedInt32Array extends ChunkedArray<i32> {}
 
+@unmanaged
 export class ChunkedFloat64Array extends ChunkedArray<f64> {}
 
+@unmanaged
 export class ChunkedUint8Array extends ChunkedArray<u8> {}
 
+/**
+ * Factory function to safely instantiate an unmanaged `ChunkedUint32Array`.
+ * Bypasses the `new` keyword to allocate directly from the `atomicChunkAlloc` linear arena.
+ * @param initialElements The number of elements to pre-allocate chunks for.
+ */
 export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint32Array {
   let ptr = atomicChunkAlloc(offsetof<ChunkedUint32Array>());
   let arr = changetype<ChunkedUint32Array>(ptr);
@@ -168,6 +240,11 @@ export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint3
   return arr;
 }
 
+/**
+ * Factory function to safely instantiate an unmanaged `ChunkedInt32Array`.
+ * Bypasses the `new` keyword to allocate directly from the `atomicChunkAlloc` linear arena.
+ * @param initialElements The number of elements to pre-allocate chunks for.
+ */
 export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32Array {
   let ptr = atomicChunkAlloc(offsetof<ChunkedInt32Array>());
   let arr = changetype<ChunkedInt32Array>(ptr);

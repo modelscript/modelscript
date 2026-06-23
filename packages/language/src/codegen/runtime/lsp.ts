@@ -44,6 +44,11 @@ export function lsp_getBinaryLength(): u32 {
 
 import { debugLog } from "./engine";
 
+/**
+ * Allocates an unmanaged diagnostic token into the binary buffer for LSP transfer.
+ * Includes logic to merge adjacent or overlapping diagnostics with the same `lintId`.
+ * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
+ */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
   debugLog(start, end, lintId, argPtr);
   if (lspBinaryLength > 0 && lintId == 0) {
@@ -77,6 +82,10 @@ export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u
   store<u32>(t_lspBinaryBuffer + lspBinaryLength++ * 4, argPtr);
 }
 
+/**
+ * Clears the `FLAG_LSP_VISITED` bit on all AST nodes that were touched during the current traversal.
+ * Essential for resetting cycle-detection state before the next incremental parse or LSP query.
+ */
 function lsp_clearVisited(): void {
   for (let i: u32 = 0; i < lspVisitedCount; i++) {
     let node = load<u32>(t_lspVisitedNodes + i * 4);
@@ -121,6 +130,12 @@ function growVisitedBuffer(required: u32): void {
   lspVisitedCapacity = newCapacity;
 }
 
+/**
+ * Extracts and serializes all syntax and grammar diagnostics into a flat `u32` buffer.
+ * Traverses the AST looking for injected error nodes and missing ghost nodes.
+ * @param astRoot The root node pointer of the parsed tree.
+ * @returns The number of `u32` records inside `t_lspBinaryBuffer` (4 u32s per diagnostic).
+ */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
     t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
@@ -152,8 +167,8 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let start = load<u32>(t_lspOffsetStack + stackTop * 4);
 
     let flags = getNodeFlags(node);
-    if ((flags & 8) != 0) continue;
-    setNodeFlags(node, flags | 8);
+    if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     // Grow visited buffer if needed
     if (lspVisitedCount >= lspVisitedCapacity) {
@@ -176,7 +191,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // reported through engine-level reportError() calls.
     if (isErrorNode && firstChild == 0 && len > 0) {
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
-    } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__ && type != 1023 && type != 47 && type != 36) {
+    } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__) {
       // Missing terminal (ghost node inserted by error recovery)
       lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
     }
@@ -199,34 +214,19 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         growTraverseStacks(stackTop + childCount, stackTop);
       }
 
-      // Single-pass: push children in forward order, then reverse the range
-      // on the stack to achieve in-order traversal via LIFO pop.
+      // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
       let currOffset = start;
-      let pushStart = stackTop;
+      let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
-        store<u32>(t_lspTraverseStack + stackTop * 4, child);
-        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
+        store<u32>(t_lspTraverseStack + writeIdx * 4, child);
+        store<u32>(t_lspOffsetStack + writeIdx * 4, currOffset);
+        writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
-        stackTop++;
       }
-      // Reverse the range [pushStart, stackTop) so last child is popped first
-      if (stackTop > pushStart) {
-        let lo = pushStart;
-        let hi = stackTop - 1;
-        while (lo < hi) {
-          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
-          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
-          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
-          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
-          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
-          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
-          lo++;
-          hi--;
-        }
-      }
+      stackTop += childCount;
     }
   }
 
@@ -234,6 +234,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   return lspBinaryLength / 4;
 }
 
+/**
+ * Extracts and serializes Semantic Tokens for syntax highlighting.
+ * Operates purely on the unmanaged heap to format tokens strictly ordered by byte offset.
+ * Uses static semantic maps (`type_semantics`) embedded by the code generator.
+ * @returns The number of semantic token primitives inside `t_lspBinaryBuffer`.
+ */
 export function lsp_semanticTokens_full(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
     t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
@@ -259,8 +265,8 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let start = load<u32>(t_lspOffsetStack + stackTop * 4);
 
     let flags = getNodeFlags(node);
-    if ((flags & 8) != 0) continue;
-    setNodeFlags(node, flags | 8);
+    if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     if (lspVisitedCount >= lspVisitedCapacity) {
       growVisitedBuffer(lspVisitedCount + 1);
@@ -326,30 +332,17 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
       }
 
       let currOffset = start;
-      let pushStart = stackTop;
+      let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
-        store<u32>(t_lspTraverseStack + stackTop * 4, child);
-        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
+        store<u32>(t_lspTraverseStack + writeIdx * 4, child);
+        store<u32>(t_lspOffsetStack + writeIdx * 4, currOffset);
+        writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
-        stackTop++;
       }
-      if (stackTop > pushStart) {
-        let lo = pushStart;
-        let hi = stackTop - 1;
-        while (lo < hi) {
-          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
-          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
-          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
-          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
-          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
-          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
-          lo++;
-          hi--;
-        }
-      }
+      stackTop += childCount;
     }
   }
 
@@ -357,6 +350,11 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
   return lspBinaryLength / 4;
 }
 
+/**
+ * Extracts all foldable block ranges from the AST.
+ * Filters nodes based on the generated `type_is_folding` boolean map.
+ * @returns The number of folding records inside `t_lspBinaryBuffer` (2 u32s per range).
+ */
 export function lsp_getFoldingRanges(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
     t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
@@ -382,8 +380,8 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     let start = load<u32>(t_lspOffsetStack + stackTop * 4);
 
     let flags = getNodeFlags(node);
-    if ((flags & 8) != 0) continue;
-    setNodeFlags(node, flags | 8);
+    if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     if (lspVisitedCount >= lspVisitedCapacity) {
       growVisitedBuffer(lspVisitedCount + 1);
@@ -422,30 +420,17 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
       }
 
       let currOffset = start;
-      let pushStart = stackTop;
+      let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
-        store<u32>(t_lspTraverseStack + stackTop * 4, child);
-        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
+        store<u32>(t_lspTraverseStack + writeIdx * 4, child);
+        store<u32>(t_lspOffsetStack + writeIdx * 4, currOffset);
+        writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
-        stackTop++;
       }
-      if (stackTop > pushStart) {
-        let lo = pushStart;
-        let hi = stackTop - 1;
-        while (lo < hi) {
-          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
-          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
-          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
-          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
-          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
-          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
-          lo++;
-          hi--;
-        }
-      }
+      stackTop += childCount;
     }
   }
 
@@ -453,6 +438,11 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
   return lspBinaryLength / 2;
 }
 
+/**
+ * Extracts Document Symbols (Outline view) from the AST.
+ * Filters nodes based on the generated `type_is_outline` map.
+ * @returns The number of outline records inside `t_lspBinaryBuffer` (4 u32s per symbol).
+ */
 export function lsp_getDocumentSymbols(astRoot: u32): u32 {
   if (t_lspBinaryBuffer == 0) {
     t_lspBinaryBuffer = atomicChunkAlloc(lspBinaryCapacity * 4);
@@ -478,8 +468,8 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
     let start = load<u32>(t_lspOffsetStack + stackTop * 4);
 
     let flags = getNodeFlags(node);
-    if ((flags & 8) != 0) continue;
-    setNodeFlags(node, flags | 8);
+    if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     if (lspVisitedCount >= lspVisitedCapacity) {
       growVisitedBuffer(lspVisitedCount + 1);
@@ -520,30 +510,17 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
       }
 
       let currOffset = start;
-      let pushStart = stackTop;
+      let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
-        store<u32>(t_lspTraverseStack + stackTop * 4, child);
-        store<u32>(t_lspOffsetStack + stackTop * 4, currOffset);
+        store<u32>(t_lspTraverseStack + writeIdx * 4, child);
+        store<u32>(t_lspOffsetStack + writeIdx * 4, currOffset);
+        writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
-        stackTop++;
       }
-      if (stackTop > pushStart) {
-        let lo = pushStart;
-        let hi = stackTop - 1;
-        while (lo < hi) {
-          let tmpNode = load<u32>(t_lspTraverseStack + lo * 4);
-          let tmpOff = load<u32>(t_lspOffsetStack + lo * 4);
-          store<u32>(t_lspTraverseStack + lo * 4, load<u32>(t_lspTraverseStack + hi * 4));
-          store<u32>(t_lspOffsetStack + lo * 4, load<u32>(t_lspOffsetStack + hi * 4));
-          store<u32>(t_lspTraverseStack + hi * 4, tmpNode);
-          store<u32>(t_lspOffsetStack + hi * 4, tmpOff);
-          lo++;
-          hi--;
-        }
-      }
+      stackTop += childCount;
     }
   }
 
@@ -553,6 +530,14 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
 export let lspLastNodeOffset: u32 = 0;
 
+/**
+ * Performs a deep depth-first search to find the most specific terminal or AST node
+ * spanning the given `targetOffset`. Favors structurally significant rules over raw tokens
+ * if multiple nodes share the exact same boundaries.
+ * @param rootNode The starting AST node.
+ * @param targetOffset The absolute byte offset the cursor is hovering over.
+ * @returns The target node pointer, or 0 if not found.
+ */
 export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
   if (rootNode == 0) return 0;
   lspLastNodeOffset = 0;
@@ -626,6 +611,11 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
   return bestMatch;
 }
 
+/**
+ * Performs a brute-force traversal to calculate the absolute byte offset of a target node
+ * by accumulating the padding and lengths of all preceding sibling chains.
+ * @returns The absolute `startByte`, or -1 if the target node is disconnected from the root.
+ */
 export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
    if (rootNode == targetNode) return 0;
    
@@ -686,6 +676,11 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
    return -1;
 }
 
+/**
+ * Triggers a `Go to Definition` LSP request.
+ * Locates the node under the cursor, queries the graph for its definition,
+ * and serializes the target's start and end byte offsets.
+ */
 export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    let node = lsp_getNodeAtByteOffset(rootNode, targetOffset);
    if (node == 0) return 0;
@@ -711,6 +706,11 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    return 2;
 }
 
+/**
+ * Triggers a `Find All References` LSP request.
+ * Resolves the definition for the node under the cursor, then scans the entire AST
+ * to find all identifiers with identical text spans that point back to the exact same definition node.
+ */
 export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    let node = lsp_getNodeAtByteOffset(rootNode, targetOffset);
    if (node == 0) return 0;

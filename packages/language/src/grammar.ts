@@ -407,8 +407,7 @@ export class NormalizedGrammar {
         return [{ sym: choiceSym }];
       }
 
-      case "REPEAT":
-      case "REPEAT1": {
+      case "REPEAT": {
         const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
         const childSyms = this.flatten(contextName, children[0], childP);
         const repeatSym = this.nextSynthetic(this.getEBNF(rule), p);
@@ -428,8 +427,29 @@ export class NormalizedGrammar {
         return [{ sym: repeatSym }];
       }
 
+      case "REPEAT1": {
+        const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
+        const childSyms = this.flatten(contextName, children[0], childP);
+        const repeatSym = this.nextSynthetic(this.getEBNF(rule), p);
+
+        if (this.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
+
+        // repeatSym -> childSyms
+        this.addProduction(repeatSym, childSyms, childP.prec, childP.assoc, true, childP.dynamicPrec);
+        // repeatSym -> repeatSym childSyms
+        this.addProduction(
+          repeatSym,
+          [{ sym: repeatSym }, ...childSyms],
+          childP.prec,
+          childP.assoc,
+          true,
+          childP.dynamicPrec,
+        );
+        return [{ sym: repeatSym }];
+      }
+
       case "PREC": {
-        const childP = { ...p, prec: rule.value || rule.precedence };
+        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
         const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
         if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
 
@@ -439,7 +459,7 @@ export class NormalizedGrammar {
       }
 
       case "PREC_LEFT": {
-        const childP = { ...p, prec: rule.value || rule.precedence, assoc: "left" as const };
+        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
         const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
         if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
 
@@ -449,7 +469,7 @@ export class NormalizedGrammar {
       }
 
       case "PREC_RIGHT": {
-        const childP = { ...p, prec: rule.value || rule.precedence, assoc: "right" as const };
+        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
         const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
         if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
 
@@ -459,7 +479,7 @@ export class NormalizedGrammar {
       }
 
       case "PREC_DYNAMIC": {
-        const childP = { ...p, dynamicPrec: rule.value || rule.precedence };
+        const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
         const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
         if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
 
