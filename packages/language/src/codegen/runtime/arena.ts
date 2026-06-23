@@ -2,6 +2,9 @@
 // @ts-nocheck
 // @ts-ignore
 
+import {
+  ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array
+} from "./array";
 import { inputEncoding } from "./parser";
 
 /**
@@ -136,6 +139,8 @@ export function setActiveGeneration(gen: u8): void {
  * and resetting the offset back to the beginning of the generation.
  * @param gen The generation to reset (0 or 1).
  */
+export const dirtyNodeStrings = new Map<u32, string>();
+
 export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
@@ -657,6 +662,36 @@ export function ast_appendChild(parentPtr: u32, childPtr: u32): void {
 }
 
 /**
+ * Zero-GC variadic wrapper to create a linked list of node pointers.
+ * Uses a dummy AST node (type 0xFFFF) to hold the children.
+ */
+export function nodeList(
+  n0: u32 = 0, n1: u32 = 0, n2: u32 = 0, n3: u32 = 0,
+  n4: u32 = 0, n5: u32 = 0, n6: u32 = 0, n7: u32 = 0,
+  n8: u32 = 0, n9: u32 = 0, n10: u32 = 0, n11: u32 = 0,
+  n12: u32 = 0, n13: u32 = 0, n14: u32 = 0, n15: u32 = 0
+): u32 {
+  let listPtr = ast_createNode(0xFFFF);
+  if (n0 != 0) ast_appendChild(listPtr, n0);
+  if (n1 != 0) ast_appendChild(listPtr, n1);
+  if (n2 != 0) ast_appendChild(listPtr, n2);
+  if (n3 != 0) ast_appendChild(listPtr, n3);
+  if (n4 != 0) ast_appendChild(listPtr, n4);
+  if (n5 != 0) ast_appendChild(listPtr, n5);
+  if (n6 != 0) ast_appendChild(listPtr, n6);
+  if (n7 != 0) ast_appendChild(listPtr, n7);
+  if (n8 != 0) ast_appendChild(listPtr, n8);
+  if (n9 != 0) ast_appendChild(listPtr, n9);
+  if (n10 != 0) ast_appendChild(listPtr, n10);
+  if (n11 != 0) ast_appendChild(listPtr, n11);
+  if (n12 != 0) ast_appendChild(listPtr, n12);
+  if (n13 != 0) ast_appendChild(listPtr, n13);
+  if (n14 != 0) ast_appendChild(listPtr, n14);
+  if (n15 != 0) ast_appendChild(listPtr, n15);
+  return listPtr;
+}
+
+/**
  * Inserts a new sibling node immediately after a target node.
  * Automatically wires up the linked list to preserve downstream siblings.
  * @param targetPtr The existing node in the list.
@@ -790,9 +825,9 @@ export function ast_markDirty(ptr: u32): void {
 }
 
 export const OVERRIDE_NONE = 0;
-export const OVERRIDE_STRING = 1;
-export const OVERRIDE_FLOAT = 2;
-export const OVERRIDE_INT = 3;
+export const OVERRIDE_STRING: u8 = 1;
+export const OVERRIDE_FLOAT: u8 = 2;
+export const OVERRIDE_INT: u8 = 3;
 export const OVERRIDE_TENSOR = 4;
 export const OVERRIDE_NODEREF = 5;
 
@@ -833,7 +868,7 @@ export function ast_hasNodeFlag(nodeId: u32, flag: u32): boolean {
 export function ast_setLiteralNodeRef(ptr: u32, targetId: u32): void {
   if (ptr != 0) {
     nodeOverrideRefs.set(ptr, targetId);
-    nodeOverrideType.set(ptr, OVERRIDE_NODEREF);
+    nodeOverrideType.set(ptr, <u8>OVERRIDE_NODEREF);
     ast_markDirty(ptr);
   }
 }
@@ -1467,7 +1502,7 @@ export function ast_getTensorBool(handle: u32, flatIndex: u32): boolean {
 export function ast_setLiteralTensor(nodeId: u32, handle: u32): void {
   if (nodeId != 0) {
     nodeTensorHandles.set(nodeId, handle);
-    nodeOverrideType.set(nodeId, OVERRIDE_TENSOR);
+    nodeOverrideType.set(nodeId, <u8>OVERRIDE_TENSOR);
     ast_markDirty(nodeId);
   }
 }
@@ -1532,7 +1567,7 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   let ptr = (span >> 32) as u32;
   let len = (span & 0xFFFFFFFF) as u32;
   
-  let isOverride = (ptr >= stringArenaPtr && ptr < stringArenaPtr + stringArenaCapacity);
+  let isOverride = (ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
   let encoding = isOverride ? 1 : inputEncoding;
 
   if (encoding == 0) {
@@ -1563,7 +1598,7 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
         i += 4;
       }
       hash ^= cp;
-      hash = Math.imul(hash, 16777619);
+      hash = hash * 16777619;
     }
   } else if (encoding == 1) {
     let i: u32 = 0;
@@ -1579,13 +1614,13 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
         }
       }
       hash ^= cp;
-      hash = Math.imul(hash, 16777619);
+      hash = hash * 16777619;
     }
   } else {
     for (let i: u32 = 0; i < len; i += 4) {
       let cp = load<u32>(ptr + i);
       hash ^= cp;
-      hash = Math.imul(hash, 16777619);
+      hash = hash * 16777619;
     }
   }
   
@@ -1594,7 +1629,7 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
 
 export function ast_hashByte(byte: u8, hash: u32 = 2166136261): u32 {
   hash ^= byte;
-  return Math.imul(hash, 16777619);
+  return hash * 16777619;
 }
 
 let scopeArenaPtr: usize = 0;

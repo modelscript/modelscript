@@ -259,7 +259,25 @@ export function generateParserTables(
   code += generateStaticArray(typeSemantics, "type_semantics");
   code += generateStaticArray(typeSemanticData.length > 0 ? typeSemanticData : [0], "type_semantic_data");
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\n`;
+  const typeIsFolding: number[] = new Array(symToInt.size + 1).fill(0);
+  if (originalGrammar.lsp && originalGrammar.lsp.folding) {
+    for (const f of originalGrammar.lsp.folding) {
+      const id = symToInt.get(f) || symToInt.get(`"${f}"`);
+      if (id !== undefined) typeIsFolding[id] = 1;
+    }
+  }
+  code += generateStaticArray(typeIsFolding, "type_is_folding");
+
+  const typeIsOutline: number[] = new Array(symToInt.size + 1).fill(0);
+  if (originalGrammar.lsp && originalGrammar.lsp.outline) {
+    for (const f of originalGrammar.lsp.outline) {
+      const id = symToInt.get(f) || symToInt.get(`"${f}"`);
+      if (id !== undefined) typeIsOutline[id] = 1;
+    }
+  }
+  code += generateStaticArray(typeIsOutline, "type_is_outline");
+
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\n`;
 
   let engineCodeTemplate = engineCode;
 
@@ -293,15 +311,17 @@ export function generateParserTables(
   lintSwitchStr += "}\n";
   lspCodeTemplate = lspCodeTemplate.replace(/__LSP_LINT_SWITCH__/g, lintSwitchStr);
 
-  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data } from "./parser";\n`;
+  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline } from "./parser";\n`;
+  let importedLints = new Set<string>();
   if (originalGrammar.lints) {
-    let importedLints = new Set<string>();
     for (const lintName of Object.keys(originalGrammar.lints)) {
       importedLints.add(`lint_${lintName}`);
     }
-    if (importedLints.size > 0) {
-      lspImports += `import { ${Array.from(importedLints).join(", ")} } from "./graph";\n`;
-    }
+  }
+  if (importedLints.size > 0) {
+    lspImports += `import { ${Array.from(importedLints).join(", ")}, lsp_invokeDefinition } from "./graph";\n`;
+  } else {
+    lspImports += `import { lsp_invokeDefinition } from "./graph";\n`;
   }
 
   lspCodeTemplate = lspCodeTemplate.replace('import { inputLength } from "./parser";', lspImports);

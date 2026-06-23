@@ -90,6 +90,9 @@ export class NormalizedGrammar {
 
     if (grammar.extras) {
       this.extras = grammar.extras(dummy$ as any).map(toRule);
+      for (const rule of this.extras) {
+        this.flatten("_extras", rule, {});
+      }
     }
 
     if (grammar.precedences) {

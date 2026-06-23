@@ -220,7 +220,14 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     for (const rule of normalized.extras) {
       if (rule.type === "TOKEN") {
         let val = rule.value.toString();
-        if (val === "/\\s/" || val === "/\\s+/" || val === "/[ \\t\\n\\r]+/" || val === "/[ \\t\\n\\r]/") {
+        if (
+          val === "/\\s/" ||
+          val === "/\\s+/" ||
+          val === "/[\\s]/" ||
+          val === "/[\\s]+/" ||
+          val === "/[ \\t\\n\\r]+/" ||
+          val === "/[ \\t\\n\\r]/"
+        ) {
           hasWhitespaceExtra = true;
         }
       }

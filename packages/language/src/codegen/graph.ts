@@ -28,15 +28,31 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     }
   }
 
-  function transpileQuery(queryFn: any, isLint: boolean = false): string {
+  function transpileQuery(
+    queryFn: any,
+    context: "query" | "lint" | "lsp" = "query",
+  ): { body: string; params: string[] } {
     const queryStr = typeof queryFn === "function" ? queryFn.toString() : queryFn;
 
     // If it's already a string without arrow/function, just return it
     if (typeof queryFn === "string" && !queryStr.includes("=>") && !queryStr.startsWith("function")) {
-      return queryStr;
+      return { body: queryStr, params: ["queryArg"] };
     }
 
     const sourceFile = ts.createSourceFile("temp.ts", queryStr, ts.ScriptTarget.Latest, true);
+
+    let dbName = "graph";
+    let originalParams: string[] = [];
+    ts.forEachChild(sourceFile, (node) => {
+      if (ts.isExpressionStatement(node) && ts.isArrowFunction(node.expression)) {
+        originalParams = node.expression.parameters.map((p) => p.name.getText());
+      } else if (ts.isFunctionDeclaration(node)) {
+        originalParams = node.parameters.map((p) => p.name.getText());
+      }
+    });
+    if (originalParams.length > 0) {
+      dbName = originalParams[0];
+    }
 
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
       const visit: ts.Visitor = (node) => {
@@ -55,21 +71,23 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         // 2. Call expressions: graph.modelAttribute, graph.getChildByFieldId, graph.runQuery, graph.diagnostic
         if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
           const expr = node.expression;
-          if (expr.expression.getText() === "graph") {
+          if (expr.expression.getText() === dbName || expr.expression.getText() === "graph") {
             const methodName = expr.name.getText();
             const args = node.arguments;
 
             if (methodName === "runQuery" && args.length >= 2) {
               const queryArg = args[0];
-              const targetArg = args[1];
               if (ts.isStringLiteral(queryArg)) {
                 const queryName = queryArg.text;
                 const id = queryIdMap.get(queryName);
                 if (id === undefined) throw new Error(`Query ${queryName} not defined`);
-                return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, [
-                  ts.factory.createNumericLiteral(id),
-                  visitNode(targetArg) as ts.Expression,
-                ]);
+
+                const callArgs: ts.Expression[] = [ts.factory.createNumericLiteral(id)];
+                for (let i = 1; i < args.length; i++) {
+                  callArgs.push(visitNode(args[i]) as ts.Expression);
+                }
+
+                return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, callArgs);
               }
             }
 
@@ -86,7 +104,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
           } else if (
             ts.isPropertyAccessExpression(expr.expression) &&
             ts.isIdentifier(expr.expression.expression) &&
-            expr.expression.expression.text === "graph"
+            (expr.expression.expression.text === dbName || expr.expression.expression.text === "graph")
           ) {
             const obj = expr.expression;
             const namespace = obj.name.text;
@@ -222,6 +240,18 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
                     ],
                   );
                 }
+              } else {
+                return ts.factory.createCallExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createPropertyAccessExpression(
+                      ts.factory.createIdentifier("graph"),
+                      ts.factory.createIdentifier("ast"),
+                    ),
+                    ts.factory.createIdentifier(methodName),
+                  ),
+                  undefined,
+                  args.map((a) => visitNode(a) as ts.Expression),
+                );
               }
             } else if (namespace === "tensor") {
               if (methodName === "create" && args.length === 2) {
@@ -329,7 +359,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
             bodyStr = body.statements.map((s) => s.getText()).join("\n");
           } else {
             if (
-              isLint &&
+              context === "lint" &&
               ts.isCallExpression(body) &&
               ts.isIdentifier(body.expression) &&
               body.expression.getText() === "lsp_allocDiagnostic"
@@ -352,23 +382,44 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       bodyStr = printed;
     }
 
-    const argName = isLint ? "node" : "queryArg";
+    const argName = context === "query" ? "queryArg" : "node";
     if (params.length >= 2 && params[1] && params[1] !== argName) {
       bodyStr = `let ${params[1]} = ${argName};\n` + bodyStr;
     }
 
-    return bodyStr;
+    return { body: bodyStr, params };
   }
 
   if (grammar.queries) {
     for (const [queryName, queryFn] of Object.entries(grammar.queries)) {
-      let asQueryStr = transpileQuery(queryFn);
+      let queryInfo = transpileQuery(queryFn);
+      let asQueryStr = queryInfo.body;
+      let signatureArgs = "queryArg: u32";
+      if (queryInfo.params.length > 2) {
+        let extraParams = queryInfo.params
+          .slice(2)
+          .filter((p) => p !== "$")
+          .map((p) => p + ": u32")
+          .join(", ");
+        if (extraParams) {
+          signatureArgs += ", " + extraParams;
+        }
+      }
+
       if (!asQueryStr.startsWith("export function")) {
-        asQueryStr = `export function ${queryName}(queryArg: u32): u32 {\n${asQueryStr}\n}`;
+        asQueryStr = `export function ${queryName}(${signatureArgs}): u32 {\n${asQueryStr}\n}`;
       }
       customQueries += asQueryStr + "\n\n";
 
-      let callExpr = queryName === "lsp_outline_query" ? `${queryName}(queryArg)` : `${queryName}(queryArg)`;
+      let extraCallArgs =
+        queryInfo.params.length > 2
+          ? queryInfo.params
+              .slice(2)
+              .filter((p) => p !== "$")
+              .map((_, idx) => "arg" + (idx + 2))
+              .join(", ")
+          : "";
+      let callExpr = `${queryName}(arg1${extraCallArgs ? ", " + extraCallArgs : ""})`;
       switchCode += `
    else if (queryType == ${queryTypeIdx}) {
       result = ${callExpr};
@@ -398,7 +449,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         let asQueryStr = "";
         let attrConfig = config as any;
         if (attrConfig.compute) {
-          asQueryStr = transpileQuery(attrConfig.compute);
+          asQueryStr = transpileQuery(attrConfig.compute).body;
         } else if (attrConfig.default !== undefined) {
           asQueryStr = `return ${attrConfig.default};`;
         } else {
@@ -415,19 +466,39 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
 
       switchCode += `
    else if (queryType == ${attrId}) {
-      result = compute_attr_${attrName}(queryArg);
+      result = compute_attr_${attrName}(arg1);
    }`;
     }
   }
 
   if (grammar.lints) {
     for (const [lintName, lint] of Object.entries(grammar.lints)) {
-      let asQueryStr = transpileQuery((lint as any).query, true);
+      let asQueryStr = transpileQuery((lint as any).query, "lint").body;
       if (!asQueryStr.startsWith("export function")) {
         asQueryStr = `export function lint_${lintName}(node: u32, lintId: u32, nodeStart: u32, nodeEnd: u32): void {\n${asQueryStr}\n}`;
       }
       customQueries += asQueryStr + "\n\n";
     }
+  }
+
+  if (grammar.lsp && grammar.lsp.definition) {
+    let asQueryStr = "";
+    if (typeof grammar.lsp.definition === "string") {
+      let attrId = attrIdMap.get(grammar.lsp.definition);
+      if (attrId !== undefined) {
+        asQueryStr = `return compute_attr_${grammar.lsp.definition}(node);`;
+      } else {
+        let queryId = queryIdMap.get(grammar.lsp.definition);
+        if (queryId !== undefined) {
+          asQueryStr = `return ${grammar.lsp.definition}(node);`;
+        }
+      }
+    } else {
+      asQueryStr = transpileQuery(grammar.lsp.definition, "lsp").body;
+    }
+    customQueries += `export function lsp_invokeDefinition(node: u32): u32 {\n${asQueryStr}\n}\n`;
+  } else {
+    customQueries += `export function lsp_invokeDefinition(node: u32): u32 { return 0; }\n`;
   }
 
   let code = graphCode;

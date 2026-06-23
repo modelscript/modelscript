@@ -3,10 +3,9 @@
 // Chunked Array for Zero-GC Memory Growth
 import { atomicChunkAlloc } from "./arena";
 
-const CHUNK_BITS: u32 = 12;
-const CHUNK_SIZE: u32 = 1 << CHUNK_BITS;
-const CHUNK_MASK: u32 = CHUNK_SIZE - 1;
-const CHUNK_BYTE_SIZE: u32 = CHUNK_SIZE * 4;
+@inline function CHUNK_BITS(): u32 { return 12; }
+@inline function CHUNK_SIZE(): u32 { return 4096; }
+@inline function CHUNK_MASK(): u32 { return 4095; }
 
 /**
  * A zero-GC, linear-memory array implementation.
@@ -35,7 +34,7 @@ export class ChunkedArray<T> {
     this.allocatedChunks = 0;
     this.length = 0;
 
-    let initialChunks = (initialElements + CHUNK_SIZE - 1) >> CHUNK_BITS;
+    let initialChunks = (initialElements + CHUNK_SIZE() - 1) >> CHUNK_BITS();
     if (initialChunks == 0) initialChunks = 1;
     for (let i: u32 = 0; i < initialChunks; i++) {
       this.addChunk();
@@ -51,7 +50,7 @@ export class ChunkedArray<T> {
       this.directory = newDirectory;
       this.dirCapacity = newDirCapacity;
     }
-    let chunkBytes = CHUNK_SIZE * sizeof<T>();
+    let chunkBytes = CHUNK_SIZE() * sizeof<T>();
     let newChunk = atomicChunkAlloc(chunkBytes);
     memory.fill(newChunk, 0, chunkBytes);
     store<usize>(this.directory + this.allocatedChunks * sizeof<usize>(), newChunk);
@@ -60,22 +59,22 @@ export class ChunkedArray<T> {
 
   @inline
   public push(value: T): void {
-    let chunkIdx = this.length >> CHUNK_BITS;
+    let chunkIdx = this.length >> CHUNK_BITS();
     if (chunkIdx >= this.allocatedChunks) {
       this.addChunk();
     }
     let chunkPtr = load<usize>(this.directory + chunkIdx * sizeof<usize>());
-    let localOffset = this.length & CHUNK_MASK;
+    let localOffset = this.length & CHUNK_MASK();
     store<T>(chunkPtr + localOffset * sizeof<T>(), value);
     this.length++;
   }
 
   @inline
   public get(index: u32): T {
-    let chunkIdx = index >> CHUNK_BITS;
+    let chunkIdx = index >> CHUNK_BITS();
     if (chunkIdx >= this.allocatedChunks) return 0 as T;
     let chunkPtr = load<usize>(this.directory + chunkIdx * sizeof<usize>());
-    let localOffset = index & CHUNK_MASK;
+    let localOffset = index & CHUNK_MASK();
     return load<T>(chunkPtr + localOffset * sizeof<T>());
   }
 
@@ -87,12 +86,12 @@ export class ChunkedArray<T> {
 
   @inline
   public set(index: u32, value: T): void {
-    let chunkIdx = index >> CHUNK_BITS;
+    let chunkIdx = index >> CHUNK_BITS();
     while (chunkIdx >= this.allocatedChunks) {
       this.addChunk();
     }
     let chunkPtr = load<usize>(this.directory + chunkIdx * sizeof<usize>());
-    let localOffset = index & CHUNK_MASK;
+    let localOffset = index & CHUNK_MASK();
     store<T>(chunkPtr + localOffset * sizeof<T>(), value);
     if (index >= this.length) {
       this.length = index + 1;
@@ -133,7 +132,7 @@ export class ChunkedArray<T> {
       return;
     }
 
-    let requiredChunks = (count + CHUNK_SIZE - 1) >> CHUNK_BITS;
+    let requiredChunks = (count + CHUNK_SIZE() - 1) >> CHUNK_BITS();
     while (this.allocatedChunks < requiredChunks) {
       this.addChunk();
     }
@@ -142,8 +141,8 @@ export class ChunkedArray<T> {
       let srcChunk = load<usize>(src.directory + i * sizeof<usize>());
       let destChunk = load<usize>(this.directory + i * sizeof<usize>());
 
-      let elementsRemaining = count - (i << CHUNK_BITS);
-      let copyElements = elementsRemaining < CHUNK_SIZE ? elementsRemaining : CHUNK_SIZE;
+      let elementsRemaining = count - (i << CHUNK_BITS());
+      let copyElements = elementsRemaining < CHUNK_SIZE() ? elementsRemaining : CHUNK_SIZE();
 
       memory.copy(destChunk, srcChunk, copyElements * sizeof<T>());
     }

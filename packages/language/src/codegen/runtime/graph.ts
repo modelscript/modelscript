@@ -17,12 +17,10 @@ import {
   ast_setTensorInt16, ast_getTensorInt16,
   ast_setTensorUint16, ast_getTensorUint16,
   ast_setTensorInt8, ast_getTensorInt8,
-  ast_setTensorUint8, ast_getTensorUint8,
-  ast_setTensorBool, ast_getTensorBool,
-  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
-  ast_createList, ast_listLength, ast_bindChildNode, ast_resolveChildNode, ast_bindChildHash, ast_resolveChildByHash,
-  ast_removeNode, ast_getChildCount
+  ast_removeNode, ast_getChildCount, nodeList,
+  ast_hashSpan
 } from "./arena";
+import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
@@ -160,54 +158,59 @@ export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: 
 // Section 2: Query Execution & Dependency Tracking (v2 — Full 32-bit Keys)
 // =====================================================================
 
-// Query Node Layout (28 bytes):
+// Query Node Layout (36 bytes):
 // +0:  queryType (u32)   — discriminator for the compute function
-// +4:  queryArg  (u32)   — full 32-bit argument (node pointer, etc.)
-// +8:  revision  (u32)   — last-computed revision
-// +12: value     (u32)   — cached result
-// +16: firstDep  (u32)   — linked list of dependency edges
-// +20: firstSub  (u32)   — linked list of subscriber edges
-// +24: nextHash  (u32)   — hash bucket chain
+// +4:  arg1      (u32)   — primary argument (e.g. node pointer)
+// +8:  arg2      (u32)   — optional argument 2
+// +12: arg3      (u32)   — optional argument 3
+// +16: revision  (u32)   — last-computed revision
+// +20: value     (u32)   — cached result
+// +24: firstDep  (u32)   — linked list of dependency edges
+// +28: firstSub  (u32)   — linked list of subscriber edges
+// +32: nextHash  (u32)   — hash bucket chain
 
-// Combines queryType and queryArg into a hash table index.
-// The full (queryType, queryArg) pair is stored in the node for exact matching.
-function combineQueryKey(queryType: u32, queryArg: u32): u32 {
-   // FNV-1a style mixing of both values
+// Combines queryType and arguments into a hash table index.
+function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    let h: u32 = 0x811c9dc5;
    h ^= queryType;
    h = (h * 0x01000193) >>> 0;
-   h ^= queryArg;
+   h ^= arg1;
    h = (h * 0x01000193) >>> 0;
-   h ^= (queryType >> 16);
+   h ^= arg2;
    h = (h * 0x01000193) >>> 0;
-   h ^= (queryArg >> 16);
+   h ^= arg3;
    h = (h * 0x01000193) >>> 0;
    return h & (HASH_TABLE_CAPACITY - 1);
 }
 
-export function getQueryNode2(queryType: u32, queryArg: u32): u32 {
-   let idx = combineQueryKey(queryType, queryArg);
+export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
+   let idx = combineQueryKey(queryType, arg1, arg2, arg3);
    let ptr = load<u32>(queryHashTableOffset + idx * 4, 0);
    while (ptr != 0) {
-      if (load<u32>(ptr, 0) == queryType && load<u32>(ptr + 4, 0) == queryArg) return ptr;
-      ptr = load<u32>(ptr + 24, 0); // nextHashBucketPtr
+      if (load<u32>(ptr, 0) == queryType && 
+          load<u32>(ptr + 4, 0) == arg1 && 
+          load<u32>(ptr + 8, 0) == arg2 && 
+          load<u32>(ptr + 12, 0) == arg3) return ptr;
+      ptr = load<u32>(ptr + 32, 0); // nextHashBucketPtr
    }
    return 0;
 }
 
-export function allocQueryNode2(queryType: u32, queryArg: u32): u32 {
-  let ptr = heap.alloc(28) as u32;
+export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
+  let ptr = heap.alloc(36) as u32;
   store<u32>(ptr, queryType, 0);
-  store<u32>(ptr + 4, queryArg, 0);
-  store<u32>(ptr + 8, 0, 0);  // revision
-  store<u32>(ptr + 12, 0, 0); // value
-  store<u32>(ptr + 16, 0, 0); // firstDependency
-  store<u32>(ptr + 20, 0, 0); // firstSubscriber
-  store<u32>(ptr + 24, 0, 0); // nextHashBucketPtr
+  store<u32>(ptr + 4, arg1, 0);
+  store<u32>(ptr + 8, arg2, 0);
+  store<u32>(ptr + 12, arg3, 0);
+  store<u32>(ptr + 16, 0, 0);  // revision
+  store<u32>(ptr + 20, 0, 0); // value
+  store<u32>(ptr + 24, 0, 0); // firstDependency
+  store<u32>(ptr + 28, 0, 0); // firstSubscriber
+  store<u32>(ptr + 32, 0, 0); // nextHashBucketPtr
   
-  let idx = combineQueryKey(queryType, queryArg);
+  let idx = combineQueryKey(queryType, arg1, arg2, arg3);
   let head = load<u32>(queryHashTableOffset + idx * 4, 0);
-  store<u32>(ptr + 24, head, 0);
+  store<u32>(ptr + 32, head, 0);
   store<u32>(queryHashTableOffset + idx * 4, ptr, 0);
   
   return ptr;
@@ -218,10 +221,10 @@ export let globalRevision: u32 = 1;
 export function invalidateNode(nodePtr: u32): void {
   if (nodePtr == 0) return;
   
-  let currentRev = load<u32>(nodePtr + 8, 0);
+  let currentRev = load<u32>(nodePtr + 16, 0);
   if (currentRev == 0) return; // 0 means already dirty/invalidated
   
-  store<u32>(nodePtr + 8, 0, 0); // Mark as dirty
+  store<u32>(nodePtr + 16, 0, 0); // Mark as dirty
   
   // A PARSE query (queryType == 0) affects the dirty file bitset
   let queryType = load<u32>(nodePtr, 0);
@@ -236,7 +239,7 @@ export function invalidateNode(nodePtr: u32): void {
       }
   }
 
-  let edgePtr = load<u32>(nodePtr + 20, 0); // firstSubscriberEdge
+  let edgePtr = load<u32>(nodePtr + 28, 0); // firstSubscriberEdge
   while (edgePtr != 0) {
      let targetPtr = load<u32>(edgePtr, 0);
      invalidateNode(targetPtr);
@@ -263,23 +266,23 @@ export function addEdgeIfMissing(headPtrOffset: u32, targetPtr: u32): void {
     store<u32>(headPtrOffset, newEdge, 0);
 }
 
-export function runQuery(queryType: u32, queryArg: u32): u32 {
-   let nodePtr = getQueryNode2(queryType, queryArg);
+export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0): u32 {
+   let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3);
    if (nodePtr == 0) {
-      nodePtr = allocQueryNode2(queryType, queryArg);
+      nodePtr = allocQueryNode2(queryType, arg1, arg2, arg3);
    } else {
-      let rev = load<u32>(nodePtr + 8, 0);
-      if (rev > 0 && rev == globalRevision) return load<u32>(nodePtr + 12, 0);
+      let rev = load<u32>(nodePtr + 16, 0);
+      if (rev > 0 && rev == globalRevision) return load<u32>(nodePtr + 20, 0);
    }
    
    if (activeQueryDepth > 0) {
       let parentPtr = activeQueryStack[activeQueryDepth - 1];
       if (parentPtr != 0) {
         // Link parent -> dependency (child)
-        addEdgeIfMissing(parentPtr + 16, nodePtr);
+        addEdgeIfMissing(parentPtr + 24, nodePtr);
         
         // Link child -> subscriber (parent)
-        addEdgeIfMissing(nodePtr + 20, parentPtr);
+        addEdgeIfMissing(nodePtr + 28, parentPtr);
       }
    }
    
@@ -288,14 +291,14 @@ export function runQuery(queryType: u32, queryArg: u32): u32 {
    let result: u32 = 0;
    
    if (queryType == 0) { // PARSE
-      // For parse, queryArg is fileId. 
+      // For parse, arg1 is fileId. 
       // result = parse();
    }
    __GRAPH_SWITCH_CODE__
    
    activeQueryDepth--;
-   store<u32>(nodePtr + 12, result, 0);
-   store<u32>(nodePtr + 8, globalRevision, 0);
+   store<u32>(nodePtr + 20, result, 0);
+   store<u32>(nodePtr + 16, globalRevision, 0);
    
    return result;
 }
@@ -383,7 +386,15 @@ export class AstAPI {
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
 
-  @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { return ast_getTextSpan(nodeId, absoluteStart); }
+  @inline getRootNode(): u32 { return globalAstRoot; }
+  @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
+    if (absoluteStart == 0xFFFFFFFF) {
+        let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+        if (offset >= 0) absoluteStart = offset as u32;
+    }
+    return ast_getTextSpan(nodeId, absoluteStart); 
+  }
+  @inline hashSpan(span: u64): u32 { return ast_hashSpan(span); }
 }
 
 // --- Typed DB Wrapper for TypeScript IDE Completion ---

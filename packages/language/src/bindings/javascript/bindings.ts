@@ -527,6 +527,86 @@ export class LspFacade {
     return diags;
   }
 
+  getSemanticTokens(astRoot: number): Uint32Array {
+    if (!this.exports.lsp_semanticTokens_full || !this.exports.lsp_getBinaryBuffer) return new Uint32Array();
+    const numElements = this.exports.lsp_semanticTokens_full(astRoot);
+    if (numElements === 0) return new Uint32Array();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const result = new Uint32Array(numElements * 4);
+    result.set(mem32.subarray(dirPtr >> 2, (dirPtr >> 2) + numElements * 4));
+    return result;
+  }
+
+  getFoldingRanges(astRoot: number): { start: Position; end: Position }[] {
+    if (!this.exports.lsp_getFoldingRanges || !this.exports.lsp_getBinaryBuffer) return [];
+    const lineStarts = this.getLineStarts();
+    const numElements = this.exports.lsp_getFoldingRanges(astRoot);
+    const ranges: { start: Position; end: Position }[] = [];
+    if (numElements === 0) return ranges;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    for (let i = 0; i < numElements * 2; i += 2) {
+      ranges.push({
+        start: this.offsetToPos(mem32[(dirPtr >> 2) + i], lineStarts),
+        end: this.offsetToPos(mem32[(dirPtr >> 2) + i + 1], lineStarts),
+      });
+    }
+    return ranges;
+  }
+
+  getDocumentSymbols(astRoot: number): { start: Position; end: Position; typeId: number; nodePtr: number }[] {
+    if (!this.exports.lsp_getDocumentSymbols || !this.exports.lsp_getBinaryBuffer) return [];
+    const lineStarts = this.getLineStarts();
+    const numElements = this.exports.lsp_getDocumentSymbols(astRoot);
+    const symbols: { start: Position; end: Position; typeId: number; nodePtr: number }[] = [];
+    if (numElements === 0) return symbols;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    for (let i = 0; i < numElements * 4; i += 4) {
+      symbols.push({
+        start: this.offsetToPos(mem32[(dirPtr >> 2) + i], lineStarts),
+        end: this.offsetToPos(mem32[(dirPtr >> 2) + i + 1], lineStarts),
+        typeId: mem32[(dirPtr >> 2) + i + 2],
+        nodePtr: mem32[(dirPtr >> 2) + i + 3],
+      });
+    }
+    return symbols;
+  }
+
+  getDefinition(astRoot: number, targetOffset: number): { start: number; end: number } | null {
+    if (!this.exports.lsp_getDefinition || !this.exports.lsp_getBinaryBuffer) return null;
+    const numElements = this.exports.lsp_getDefinition(astRoot, targetOffset);
+    if (numElements < 2) return null;
+
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    return {
+      start: mem32[dirPtr >> 2],
+      end: mem32[(dirPtr >> 2) + 1],
+    };
+  }
+
+  getReferences(astRoot: number, targetOffset: number): { start: number; end: number }[] {
+    if (!this.exports.lsp_getReferences || !this.exports.lsp_getBinaryBuffer) return [];
+    console.log(`[getReferences] calling WASM with root=${astRoot}, targetOffset=${targetOffset}`);
+    const numElements = this.exports.lsp_getReferences(astRoot, targetOffset);
+    console.log(`[getReferences] WASM returned numElements=${numElements}`);
+    const references: { start: number; end: number }[] = [];
+    if (numElements === 0) return references;
+
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    for (let i = 0; i < numElements * 2; i += 2) {
+      references.push({
+        start: mem32[(dirPtr >> 2) + i],
+        end: mem32[(dirPtr >> 2) + i + 1],
+      });
+    }
+    console.log(`[getReferences] final refs:`, references);
+    return references;
+  }
+
   private _lastDiagBinaryLength: number = 0;
 
   /**

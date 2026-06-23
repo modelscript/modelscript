@@ -268,15 +268,78 @@ function getIndexHtml(dslLibStr = "") {
                 monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
             });
 
+            const exampleDSL = \`export default language({
+  name: 'MyLang',
+  rules: {
+    Program: $ => repeat($.Block),
+    Block: $ => seq('scope', '{', repeat(choice($.Decl, $.Usage)), '}'),
+    Decl: $ => seq('let', field('name', $.Identifier), '=', $.Number, ';'),
+    Usage: $ => seq('print', field('target', $.Identifier), ';'),
+    Identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    Number: $ => /[0-9]+/
+  },
+  extras: $ => [/\\\\s/],
+  lsp: {
+    folding: ['Block'],
+    outline: ['Decl'],
+    definition: (db, node, $) => {
+        let type = db.ast.getType(node);
+        if (type == $.Identifier) {
+           return db.runQuery("resolveVar", node);
+        }
+        return 0;
+    }
+  },
+  queries: {
+      resolveVar: (db, node, $) => {
+          let root = db.ast.getRootNode();
+          let targetHash = db.ast.hashSpan(db.ast.getTextSpan(node));
+          return db.runQuery("searchHash", root, targetHash);
+      },
+      searchHash: (db, node, targetHash, $) => {
+          if (db.ast.getType(node) == $.Decl) {
+              let nameNode = db.ast.getChildByFieldId(node, 'name');
+              if (db.ast.hashSpan(db.ast.getTextSpan(nameNode)) == targetHash) {
+                  return nameNode; // Found definition!
+              }
+          }
+          let child = db.ast.getFirstChild(node);
+          while (child != 0) {
+              let result = db.runQuery("searchHash", child, targetHash);
+              if (result != 0) return result;
+              child = db.ast.getNextSibling(child);
+          }
+          return 0;
+      }
+  }
+});\`;
+
+            const exampleCode = \`scope {
+  let velocity = 100;
+  let mass = 50;
+  
+  print velocity;
+}
+
+scope {
+  let gravity = 9;
+  
+  print mass;
+  print gravity;
+}\`;
+
+            let latestUri = 'inmemory://example.mo';
             window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {
-                value: "export default language({\\n  name: 'MyLang',\\n  rules: {\\n    Main: $ => $.Identifier,\\n    Identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/\\n  },\\n  extras: $ => [/\\\\s/]\\n});",
+                value: exampleDSL,
                 language: 'typescript',
-                theme: editorTheme
+                theme: editorTheme,
+                minimap: { enabled: false }
             });
             window.codeEditor = monaco.editor.create(document.getElementById('code-editor'), {
-                value: "test code",
+                value: exampleCode,
                 language: 'plaintext',
-                theme: editorTheme
+                theme: editorTheme,
+                minimap: { enabled: false }
             });
 
             window.addEventListener('resize', () => {
@@ -398,6 +461,116 @@ function getIndexHtml(dslLibStr = "") {
             
             // Start the client
             const languageClient = new SimpleMonacoLanguageClient(lspWorker, window.codeEditor);
+
+            monaco.languages.registerDefinitionProvider('plaintext', {
+                provideDefinition: async (model, position, token) => {
+                    const result = await languageClient.sendRequest('textDocument/definition', {
+                        textDocument: { uri: model.uri.toString() },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 }
+                    });
+                    if (result && result.range) {
+                        return {
+                            uri: model.uri,
+                            range: new monaco.Range(
+                                result.range.start.line + 1,
+                                result.range.start.character + 1,
+                                result.range.end.line + 1,
+                                result.range.end.character + 1
+                            )
+                        };
+                    }
+                    return null;
+                }
+            });
+
+            monaco.languages.registerReferenceProvider('plaintext', {
+                provideReferences: async (model, position, context, token) => {
+                    const result = await languageClient.sendRequest('textDocument/references', {
+                        textDocument: { uri: model.uri.toString() },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 }
+                    });
+                    if (result && result.length > 0) {
+                        return result.map(loc => ({
+                            uri: model.uri,
+                            range: new monaco.Range(
+                                loc.range.start.line + 1,
+                                loc.range.start.character + 1,
+                                loc.range.end.line + 1,
+                                loc.range.end.character + 1
+                            )
+                        }));
+                    }
+                    return null;
+                }
+            });
+
+            monaco.languages.registerFoldingRangeProvider('plaintext', {
+                provideFoldingRanges: async (model, context, token) => {
+                    const result = await languageClient.sendRequest('textDocument/foldingRange', {
+                        textDocument: { uri: model.uri.toString() }
+                    });
+                    if (result && result.length > 0) {
+                        return result.map(f => ({
+                            start: f.startLine + 1,
+                            end: f.endLine + 1,
+                            kind: monaco.languages.FoldingRangeKind.Region
+                        }));
+                    }
+                    return null;
+                }
+            });
+
+            monaco.languages.registerDocumentSymbolProvider('plaintext', {
+                provideDocumentSymbols: async (model, token) => {
+                    const result = await languageClient.sendRequest('textDocument/documentSymbol', {
+                        textDocument: { uri: model.uri.toString() }
+                    });
+                    if (result && result.length > 0) {
+                        return result.map(s => ({
+                            name: s.name,
+                            detail: s.detail || '',
+                            kind: s.kind || monaco.languages.SymbolKind.Class,
+                            range: new monaco.Range(s.range.start.line + 1, s.range.start.character + 1, s.range.end.line + 1, s.range.end.character + 1),
+                            selectionRange: new monaco.Range(s.selectionRange.start.line + 1, s.selectionRange.start.character + 1, s.selectionRange.end.line + 1, s.selectionRange.end.character + 1),
+                            tags: []
+                        }));
+                    }
+                    return null;
+                }
+            });
+
+            monaco.languages.registerRenameProvider('plaintext', {
+                provideRenameEdits: async (model, position, newName, token) => {
+                    const result = await languageClient.sendRequest('textDocument/rename', {
+                        textDocument: { uri: model.uri.toString() },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 },
+                        newName: newName
+                    });
+                    
+                    if (result && result.changes) {
+                        const edits = [];
+                        for (const uri in result.changes) {
+                            for (const change of result.changes[uri]) {
+                                edits.push({
+                                    resource: monaco.Uri.parse(uri),
+                                    textEdit: {
+                                        range: new monaco.Range(
+                                            change.range.start.line + 1,
+                                            change.range.start.character + 1,
+                                            change.range.end.line + 1,
+                                            change.range.end.character + 1
+                                        ),
+                                        text: change.newText
+                                    },
+                                    versionId: undefined
+                                });
+                            }
+                        }
+                        return { edits };
+                    }
+                    return null;
+                }
+            });
         });
     </script>
 
@@ -704,6 +877,7 @@ let currentTextLength = 0;
 let currentGenerationId = Date.now();
 let pendingFullText = null;
 let currentLangName = "ModelScript DSL";
+let globalAstRoot = 0;
 
 let patchBufferA = new ArrayBuffer(1024 * 1024 * 2);
 let patchBufferB = new ArrayBuffer(1024 * 1024 * 2);
@@ -742,17 +916,17 @@ function triggerDiagnostics(changes = null) {
         for (const change of changes) {
             if (change.rangeOffset !== undefined) {
                 const newTotalLength = currentTextLength - change.rangeLength + change.text.length;
-                astRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
+                globalAstRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
                 currentTextLength = newTotalLength;
             } else {
                 currentTextLength = change.text.length;
                 currentGenerationId++;
-                astRoot = lspFacade.parseIncremental(change.text, 0, 0, currentTextLength);
+                globalAstRoot = lspFacade.parseIncremental(change.text, 0, 0, currentTextLength);
             }
         }
         
-        const rawDiags = lspFacade.getDiagnostics(astRoot);
-        console.log('DIAGS:', JSON.stringify(rawDiags), 'root:', astRoot, 'inputLen:', lspFacade.exports.inputLength?.value);
+        const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
+        console.log('DIAGS:', JSON.stringify(rawDiags), 'root:', globalAstRoot, 'inputLen:', lspFacade.exports.inputLength?.value);
         const lineStarts = lspFacade.getLineStarts();
         
         // Double-buffer swap: transfer the current buffer and switch to the other
@@ -765,7 +939,7 @@ function triggerDiagnostics(changes = null) {
         self.postMessage({ 
             type: 'astPatchBinary', 
             buffer: transferBuffer, 
-            rootId: astRoot, 
+            rootId: globalAstRoot, 
             diagnostics: rawDiags,
             lineStarts: lineStarts,
             generationId: currentGenerationId
@@ -884,6 +1058,102 @@ self.addEventListener('message', async (e) => {
         } else {
             triggerDiagnostics(params.contentChanges);
         }
+    } else if (e.data.method === 'textDocument/definition') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const pos = e.data.params.position;
+        // offset from pos logic might need lineStarts check, lspFacade provides offsetToPos, but we need posToOffset
+        const lineStarts = lspFacade.getLineStarts();
+        let offset = 0;
+        if (pos.line < lineStarts.length) {
+            offset = lineStarts[pos.line] + (pos.character * 2);
+        }
+        const def = lspFacade.getDefinition(globalAstRoot, offset);
+        if (def) {
+            const startPos = lspFacade.offsetToPos(def.start, lineStarts);
+            const endPos = lspFacade.offsetToPos(def.end, lineStarts);
+            self.postMessage({
+                jsonrpc: '2.0',
+                id: e.data.id,
+                result: { uri: latestUri, range: { start: startPos, end: endPos } }
+            });
+        } else {
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        }
+    } else if (e.data.method === 'textDocument/references') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
+        const pos = e.data.params.position;
+        const lineStarts = lspFacade.getLineStarts();
+        let offset = 0;
+        if (pos.line < lineStarts.length) {
+            offset = lineStarts[pos.line] + (pos.character * 2);
+        }
+        const refs = lspFacade.getReferences(globalAstRoot, offset);
+        const result = refs.map(ref => ({
+            uri: latestUri,
+            range: {
+                start: lspFacade.offsetToPos(ref.start, lineStarts),
+                end: lspFacade.offsetToPos(ref.end, lineStarts)
+            }
+        }));
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/foldingRange') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
+        const ranges = lspFacade.getFoldingRanges(globalAstRoot);
+        const result = ranges.map(r => ({
+            startLine: r.start.line,
+            startCharacter: r.start.character,
+            endLine: r.end.line,
+            endCharacter: r.end.character
+        }));
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/documentSymbol') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
+        const symbols = lspFacade.getDocumentSymbols(globalAstRoot);
+        const result = symbols.map(s => {
+            const typeName = self.syntaxNames ? self.syntaxNames[s.typeId] : "Symbol";
+            return {
+                name: typeName,
+                detail: "",
+                kind: 5, // monaco.languages.SymbolKind.Class
+                range: { start: s.start, end: s.end },
+                selectionRange: { start: s.start, end: s.end }
+            };
+        });
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/rename') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const pos = e.data.params.position;
+        const newName = e.data.params.newName;
+        const lineStarts = lspFacade.getLineStarts();
+        let offset = 0;
+        if (pos.line < lineStarts.length) {
+            offset = lineStarts[pos.line] + (pos.character * 2);
+        }
+        
+        // Find all references
+        const refs = lspFacade.getReferences(globalAstRoot, offset);
+        
+        // getReferences already finds the definition identifier itself because it evaluates all nodes
+        // with the matching hash, avoiding the need to explicitly include getDefinition() which would return
+        // the entire statement.
+        let changes = [];
+        
+        for (const ref of refs) {
+             changes.push({
+                 range: {
+                     start: lspFacade.offsetToPos(ref.start, lineStarts),
+                     end: lspFacade.offsetToPos(ref.end, lineStarts)
+                 },
+                 newText: newName
+             });
+        }
+        
+        const result = {
+            changes: {
+                [latestUri]: changes
+            }
+        };
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
     }
 });
 `;
