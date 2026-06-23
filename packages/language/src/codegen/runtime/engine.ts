@@ -195,16 +195,7 @@ function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void {
   store<u32>(slot + 4, mergeGeneration);
 }
 
-/**
- * Safely pushes a new head onto the active heads buffer.
- * Returns true if successful, false if the buffer is full.
- */
-function pushActiveHead(headPtr: u32): boolean {
-  if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
-  store<u32>(t_activeHeads + activeHeadsCount * 4, headPtr);
-  activeHeadsCount++;
-  return true;
-}
+
 
 export function getErrorStart(index: i32): u32 {
   return load<u32>(t_errorStarts + index * 4);
@@ -319,320 +310,20 @@ export function clearTokenBuffer(): void {
 }
 
 // ----------------------------------------------------------------------------
-// Global Tree Traversal Cursor
 // ----------------------------------------------------------------------------
-
-let lastReusedNode: u32 = 0;
-let globalCursorDepth: i32 = -1;
-
-/**
- * Initializes the global structural cursor at the given AST root.
- * This cursor is used by the incremental parser to traverse the old tree
- * and locate reusable branches during recompilation.
- * @param rootPtr The root AST node of the old parse tree.
- */
-export function initGlobalCursor(rootPtr: u32): void {
-  if (rootPtr != 0) {
-    globalCursorDepth = 0;
-    cursorNodeStack[0] = rootPtr;
-    cursorOffsetStack[0] = 0; // Absolute offset is always 0 at the root
-  } else {
-    globalCursorDepth = -1;
-  }
-}
-
-/** Returns the node currently focused by the global cursor. */
-export function globalCursorCurrentNode(): u32 {
-  if (globalCursorDepth < 0) return 0;
-  return cursorNodeStack[globalCursorDepth];
-}
-
-/**
- * Steps the global cursor down into the first child of the current node.
- * Automatically computes and tracks the absolute offset of the new child.
- * @returns True if successful, false if there are no children.
- */
-export function globalCursorGotoFirstChild(): boolean {
-  if (globalCursorDepth < 0 || globalCursorDepth >= MAX_CURSOR_DEPTH) return false;
-
-  let cPtr = cursorNodeStack[globalCursorDepth];
-  let child = getNodeFirstChild(cPtr);
-  if (child == 0) return false;
-
-  // Calculate new absolute start by considering parent padding
-  let parentStart = cursorOffsetStack[globalCursorDepth] + getNodePadding(cPtr);
-  let childPad = getNodePadding(child);
-  // Saturating subtraction to prevent underflow if child padding engulfs parent start
-  let absStart: u32 = parentStart >= childPad ? parentStart - childPad : 0;
-
-  globalCursorDepth++;
-  cursorNodeStack[globalCursorDepth] = child;
-  cursorOffsetStack[globalCursorDepth] = absStart;
-  return true;
-}
-
-/**
- * Steps the global cursor horizontally to the next sibling.
- * Automatically computes the sibling's absolute starting offset.
- * @returns True if successful, false if it's the last sibling.
- */
-export function globalCursorGotoNextSibling(): boolean {
-  if (globalCursorDepth < 0) return false;
-
-  let cPtr = cursorNodeStack[globalCursorDepth];
-  let sibling = getNodeNextSibling(cPtr);
-  if (sibling == 0) return false;
-
-  // Sibling offset = Current Offset + Current Padding + Current Byte Length
-  let nextOffset = cursorOffsetStack[globalCursorDepth] + getNodePadding(cPtr) + getNodeByteLength(cPtr);
-
-  cursorNodeStack[globalCursorDepth] = sibling;
-  cursorOffsetStack[globalCursorDepth] = nextOffset;
-  return true;
-}
-
-/**
- * Steps the global cursor upward to the parent node.
- * @returns True if successful, false if already at the root.
- */
-export function globalCursorGotoParent(): boolean {
-  if (globalCursorDepth <= 0) return false;
-  globalCursorDepth--;
-  return true;
-}
-
-/**
- * Attempts to locate a structurally identical branch from the previous parse tree that can be reused
- * in the current incremental parsing phase.
- *
- * The algorithm:
- * 1. Restores the global cursor context and walks the tree forward.
- * 2. Prunes subtrees that lie completely behind or beyond the current scan position.
- * 3. Rejects nodes that intersect the user's text edit boundary.
- * 4. Validates that the node is a legal transition (SHIFT or GOTO) for the current parser state.
- *
- * @param targetOldPos The previous parse iteration's cursor position.
- * @param targetSrcOldPos The absolute byte offset in the old source buffer.
- * @param currentState The active parser state (LR stack top).
- * @param envHash The expected structural hash environment (e.g. brace depth).
- * @param editStart The byte offset where the user's edit began.
- * @param editOldEnd The byte offset where the old replaced text ended.
- * @param headSym The symbol ID of the current GSS parse head.
- * @param expectedPadding The exact whitespace/comment padding length required to match.
- * @returns The pointer to the reusable node, or 0 if none is found.
- */
-export function findReusableNode(
-  targetOldPos: u32,
-  targetSrcOldPos: u32,
-  currentState: i32,
-  envHash: u32,
-  editStart: u32,
-  editOldEnd: u32,
-  headSym: u32,
-  expectedPadding: u32,
-): u32 {
-  if (globalCursorDepth < 0) return 0;
-
-  // 1. Validate cursor position. If the global cursor is already ahead of the target,
-  // it means the target is in a gap (e.g., whitespace or skipped tokens) and hasn't caught up.
-  // We can immediately return 0 in O(1) time instead of rescanning from the root.
-  let startNode = cursorNodeStack[globalCursorDepth];
-  let startSrc = cursorOffsetStack[globalCursorDepth] + getNodePadding(startNode);
-  if (startSrc > targetSrcOldPos) {
-    return 0;
-  }
-
-  // Save global cursor state variables (deferred copy)
-  let savedDepth = globalCursorDepth;
-  let copyCount = (savedDepth + 1) as u32;
-  let stackSaved = false;
-
-  let searching = true;
-  let guard = 0;
-
-  // 3. Tree Traversal Loop
-  while (searching && guard++ < 200000) {
-    globalSearchIterations++;
-    let cPtr = cursorNodeStack[globalCursorDepth];
-    let cSrcStart = cursorOffsetStack[globalCursorDepth] + getNodePadding(cPtr);
-    let cStart = cSrcStart - getNodePadding(cPtr);
-    let cEnd = cSrcStart + getNodeByteLength(cPtr);
-    let cEnvHash = getNodeEnvHash(cPtr);
-
-
-
-    // Break early if we've moved past the target origin point
-    if (cSrcStart > targetSrcOldPos) {
-      break;
-    }
-
-    // Check if the current node encloses the target position
-    if (cSrcStart <= targetSrcOldPos && cEnd > targetSrcOldPos) {
-      // A node cannot be reused if the user's edit overlaps with its span
-      let intersects = !(cEnd < editStart || cStart > editOldEnd);
-      let isValid = false;
-      let nodeFlags = getNodeFlags(cPtr);
-
-      // Strict matching: must not intersect, must have exact start, non-empty, and matching environment
-      if (
-        cPtr != cursorNodeStack[0] &&
-        !intersects &&
-        cSrcStart == targetSrcOldPos &&
-        cEnvHash == envHash &&
-        cEnd > cSrcStart
-      ) {
-        if (expectedPadding == getNodePadding(cPtr)) {
-          let nodeSym = getNodeType(cPtr) as i32;
-
-          // Internal list chunks are generated by appendToList and may not end at valid rule boundaries.
-          // Therefore, we NEVER directly shift an internal list chunk. We always validate against the GOTO table.
-          // The parser will step down and reuse the safe, complete children (e.g. Row, FunctionDecl) instead.
-          let gOffset = goto_offsets[currentState];
-            let gCount = goto_data[gOffset];
-            let gIdx = gOffset + 1;
-            for (let i = 0; i < gCount; i++) {
-              if (goto_data[gIdx++] == nodeSym) {
-                isValid = true;
-                break;
-              } else {
-                gIdx++;
-              }
-            }
-
-            // If not a valid GOTO, check if the state can eventually accept this token
-            if (!isValid) {
-              isValid = stateCanAccept(null, currentState, nodeSym as i32);
-            }
-          if (targetSrcOldPos == 312) debugLog(999914, nodeSym, currentState, isValid ? 1 : 0);
-          debugLog(777777, nodeSym, currentState, (expectedPadding == getNodePadding(cPtr) ? 1 : 0) | (isValid ? 2 : 0));
-        }
-      }
-
-      if (isValid) {
-        return cPtr;
-      }
-
-      // Step down into children if node wasn't perfectly reusable but encloses the target
-      let hasChildren = getNodeFirstChild(cPtr) != 0;
-      if (hasChildren) {
-        if (!stackSaved) {
-          savedCursorNodeStack.copyFrom(cursorNodeStack, copyCount);
-          savedCursorOffsetStack.copyFrom(cursorOffsetStack, copyCount);
-          stackSaved = true;
-        }
-        if (globalCursorGotoFirstChild()) {
-          continue;
-        }
-      }
-    }
-
-    // 4. Backtrack / Sibling Advance
-    let advanced = false;
-    let upGuard = 0;
-    while (!advanced && upGuard++ < MAX_UPWARD_STEPS) {
-      if (!stackSaved) {
-        savedCursorNodeStack.copyFrom(cursorNodeStack, copyCount);
-        savedCursorOffsetStack.copyFrom(cursorOffsetStack, copyCount);
-        stackSaved = true;
-      }
-      if (globalCursorGotoNextSibling()) {
-        advanced = true;
-      } else {
-        if (!globalCursorGotoParent()) {
-          searching = false;
-          break;
-        }
-      }
-    }
-  }
-
-  // Restore global cursor state before returning 0 (only if we mutated it)
-  if (stackSaved) {
-    globalCursorDepth = savedDepth;
-    cursorNodeStack.copyFrom(savedCursorNodeStack, copyCount);
-    cursorOffsetStack.copyFrom(savedCursorOffsetStack, copyCount);
-  }
-
-  return 0;
-}
-
+// GSS Logic Extracted to gss.ts
 // ----------------------------------------------------------------------------
-// GLR Data Structures
-// ----------------------------------------------------------------------------
-
-/**
- * Represents a single concurrent parse state (head) in the Graph-Structured Stack (GSS).
- * This class is `@unmanaged`, meaning it is allocated in Generation 0 (short-lived)
- * memory and is manually collected during garbage collection sweeps.
- */
-@unmanaged
-class ParseHead {
-  /** The LR state ID of this head. */
-  state: i32;
-  /** Pointer to the AST node parsed immediately before entering this state. */
-  astNode: u32;
-  /** Pointer to the predecessor head in the GSS. */
-  prev: ParseHead | null;
-  /** The absolute byte offset in the input buffer where this head currently is. */
-  pos: u32;
-  /** The active scanner state (e.g. tracking multiline comments or strings). */
-  scannerState: u32;
-  /** Accumulated error recovery penalty cost. Lower is better. 0 means valid syntax. */
-  errorCost: i32;
-  /** Counter used to decay errorCost after successfully shifting N valid tokens. */
-  successfulShifts: i32;
-  /** Structural environment hash (tracks brace/bracket/parenthesis depth). */
-  balanceHash: u32;
-  /** Penalizes consecutive inserted tokens to prevent runaway recovery loops. */
-  consecutiveInsertions: i32;
-  /** Dynamic precedence score used to resolve shift/reduce conflicts globally. */
-  dynamicPrec: i32;
-  /** Whitespace/comments accumulating before the next valid syntax node. */
-  pendingPadding: u32;
-  errorTail: u32;
-}
-
-/**
- * Represents a suspended alternative parse path created during error recovery.
- * Error branches are explored iteratively based on their cost threshold.
- */
-@unmanaged
-class ErrorBranch {
-  head: u32;
-  cost: i32;
-  lexPos: u32;
-  token: i32;
-  lexLen: u32;
-  threshold: i32;
-  errStart: u32;
-  errEnd: u32;
-  scannerState: u32;
-}
-
-function allocErrorBranch(
-  head: u32,
-  cost: i32,
-  lexPos: u32,
-  token: i32,
-  lexLen: u32,
-  threshold: i32,
-  errStart: u32,
-  errEnd: u32,
-  scannerState: u32,
-): u32 {
-  let ptr = allocGen0(36);
-  let b = changetype<ErrorBranch>(ptr);
-  b.head = head;
-  b.cost = cost;
-  b.lexPos = lexPos;
-  b.token = token;
-  b.lexLen = lexLen;
-  b.threshold = threshold;
-  b.errStart = errStart;
-  b.errEnd = errEnd;
-  b.scannerState = scannerState;
-  return ptr;
-}
+export {
+  t_activeHeads,
+  activeHeadsCount,
+  pushActiveHead,
+  ParseHead,
+  allocParseHead,
+  ErrorBranch,
+  allocErrorBranch,
+  initGlobalCursor,
+  findReusableNode
+} from "./gss";
 
 // ----------------------------------------------------------------------------
 // Legacy Imports / Globals
@@ -655,12 +346,7 @@ export let globalToken: i32 = -1;
 
 // ----------------------------------------------------------------------------
 // GLR Execution Context
-// ----------------------------------------------------------------------------
 
-let t_activeHeads: u32 = 0;
-let activeHeadsCount: u32 = 0;
-
-let currentParserMode: i32 = 0;
 const MODE_LR: i32 = 0;
 const MODE_GLR: i32 = 1;
 
@@ -969,41 +655,6 @@ function updateExpectedTokens(): void {
 // Pre-allocated buffer for REDUCE child collection (avoids per-reduction GC allocation)
 let t_globalReduceCollected: u32 = 0;
 
-/**
- * Allocates a new ParseHead struct in Generation 0 memory.
- * Gen0 is cleared at the start of every parse pass, providing zero-overhead GC.
- */
-function allocParseHead(
-  state: i32,
-  astNode: u32,
-  prev: ParseHead | null,
-  pos: u32,
-  scannerState: u32,
-  errorCost: i32 = 0,
-  successfulShifts: i32 = 0,
-  balanceHash: u32 = 0,
-  consecutiveInsertions: i32 = 0,
-  dynamicPrec: i32 = 0,
-  pendingPadding: u32 = 0,
-  errorTail: u32 = 0,
-): ParseHead {
-  let ptr = allocGen0(48);
-  assert(ptr % 4 == 0, "Unaligned ptr in allocParseHead");
-  let h = changetype<ParseHead>(ptr);
-  h.state = state;
-  h.astNode = astNode;
-  h.prev = prev;
-  h.pos = pos;
-  h.scannerState = scannerState;
-  h.errorCost = errorCost;
-  h.successfulShifts = successfulShifts;
-  h.balanceHash = balanceHash;
-  h.consecutiveInsertions = consecutiveInsertions;
-  h.dynamicPrec = dynamicPrec;
-  h.pendingPadding = pendingPadding;
-  h.errorTail = errorTail;
-  return h;
-}
 
 let globalLoopIterations = 0;
 

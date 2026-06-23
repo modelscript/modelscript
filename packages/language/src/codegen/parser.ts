@@ -3,7 +3,15 @@ import { GLRTable, LRAutomaton } from "../automata.js";
 import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
-import { arenaCode, arrayCode, cursorCode, engineCode, lspCode } from "../../build/src-gen/runtime-templates.js";
+import {
+  arenaCode,
+  arrayCode,
+  cursorCode,
+  engineCode,
+  gssCode,
+  lspCode,
+  recoveryCode,
+} from "../../build/src-gen/runtime-templates.js";
 import { generateCodeGraphBridge } from "./graph.js";
 import { generateLexer } from "./lexer.js";
 import { generateTypes } from "./types.js";
@@ -331,5 +339,7 @@ export function generateParserTables(
     { filename: "engine.ts", content: engineCodeTemplate },
     { filename: "lsp.ts", content: lspCodeTemplate },
     { filename: "graph.ts", content: generateCodeGraphBridge(originalGrammar) },
+    { filename: "gss.ts", content: gssCode },
+    { filename: "recovery.ts", content: recoveryCode },
   ];
 }
