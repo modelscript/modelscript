@@ -23,6 +23,35 @@ import { inputEncoding } from "./parser";
 const NODE_SIZE: u32 = 16;
 const GLOBAL_BUMP_PTR: usize = 0;
 
+@unmanaged
+export class ASTNode {
+  word0: u32;
+  word1: u32;
+  firstChild: u32;
+  nextSibling: u32;
+
+  @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
+  @inline set type(t: u16) { this.word0 = (this.word0 & ~0x03ff) | (t as u32 & 0x03ff); }
+
+  @inline get flags(): u16 { return ((this.word0 >> 10) & 0xff) as u16; }
+  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0xff << 10)) | ((f as u32 & 0xff) << 10); }
+
+  @inline get paddingLength(): u32 { return this.word0 >> 18; }
+  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x0003ffff) | (pad << 18); }
+
+  @inline get byteLength(): u32 { return this.word1 & 0x007fffff; }
+  @inline set byteLength(len: u32) { this.word1 = (this.word1 & 0xff800000) | (len & 0x007fffff); }
+
+  @inline get isFatPadding(): boolean { return ((this.word1 >> 23) & 1) == 1; }
+  @inline set isFatPadding(val: boolean) {
+    if (val) this.word1 |= (1 << 23);
+    else this.word1 &= ~(1 << 23);
+  }
+
+  @inline get envHash(): u32 { return this.word1 >> 24; }
+  @inline set envHash(hash: u32) { this.word1 = (this.word1 & ~(0xff << 24)) | ((hash & 0xff) << 24); }
+}
+
 /**
  * Gen 2 / Static / Input Buffer
  * This buffer stores the raw source code text. It must match INPUT_BUFFER_SIZE in arena_layout.ts.
@@ -378,22 +407,15 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
 
   // 5. Clamp lengths to fit within bit-packed limits
-  if (byteLength > MASK_BYTE_LEN) byteLength = MASK_BYTE_LEN;
+  if (byteLength > 0x007fffff) byteLength = 0x007fffff;
   if (envHash > 255) envHash = 255;
 
-  // 6. Assemble and store the bit-packed words
-  // Word 0: type uses bits 0-9, flags=0, paddingLength uses bits 16-31
-  store<u32>(ptr, (type as u32 & MASK_TYPE) | (paddingLength << SHIFT_PADDING), NODE_OFFSET_W0);
-  // Word 1: byteLength uses bits 0-22, fatFlag at bit 23, envHash at bits 24-31
-  store<u32>(
-    ptr + NODE_OFFSET_W1,
-    (byteLength & MASK_BYTE_LEN) | (fatFlag << SHIFT_FAT_FLAG) | (envHash << SHIFT_ENV_HASH),
-    0,
-  );
-
-  // Initialize children and sibling pointers to 0
-  store<u32>(ptr + NODE_OFFSET_FIRST_CHILD, 0, 0);
-  store<u32>(ptr + NODE_OFFSET_NEXT_SIBLING, 0, 0);
+  // 6. Assemble using the unmanaged wrapper
+  let node = changetype<ASTNode>(ptr);
+  node.word0 = (type as u32 & 0x03ff) | (paddingLength << 18);
+  node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
+  node.firstChild = 0;
+  node.nextSibling = 0;
 
   return ptr;
 }
@@ -461,28 +483,9 @@ export function allocGen0(sizeBytes: u32): u32 {
 }
 
 // ----------------------------------------------------------------------------
-// AST Node Memory Layout Bitmasks & Offsets
+// AST Node Field Accessors (Legacy wrappers using @unmanaged ASTNode)
 // ----------------------------------------------------------------------------
-const NODE_OFFSET_W0: usize = 0;
-const NODE_OFFSET_W1: u32 = 4;
-const NODE_OFFSET_FIRST_CHILD: u32 = 8;
-const NODE_OFFSET_NEXT_SIBLING: u32 = 12;
 
-const MASK_TYPE: u32 = 0x03ff;
-const SHIFT_FLAGS: u32 = 10;
-const MASK_FLAGS: u32 = 0xff; // 8 bits
-const SHIFT_PADDING: u32 = 18;
-const MASK_PADDING_W0_KEEP: u32 = 0x0003ffff;
-const MAX_PADDING: u32 = 0x3fff; // 16383
-
-const MASK_BYTE_LEN: u32 = 0x007fffff; // 8MB limit
-const MASK_W1_KEEP_UPPER: u32 = 0xff800000;
-const SHIFT_FAT_FLAG: u32 = 23;
-const SHIFT_ENV_HASH: u32 = 24;
-
-// ----------------------------------------------------------------------------
-// Node Flag Definitions
-// ----------------------------------------------------------------------------
 export const FLAG_GC_MARK: u16 = 1;
 export const FLAG_EXTRACTED: u16 = 2;
 export const FLAG_INVISIBLE: u16 = 4;
@@ -491,14 +494,14 @@ export const FLAG_DIRTY: u16 = 16;
 export const FLAG_IS_LIST: u16 = 32;
 export const FLAG_LIST_BOUNDARY: u16 = 64;
 
-/**
- * Retrieves the 6-bit flag bitmask from an AST node.
- * @param ptr Pointer to the AST node.
- * @returns The flags packed as a u16.
- */
 export function getNodeFlags(ptr: u32): u16 {
-  return ((load<u32>(ptr, NODE_OFFSET_W0) >> SHIFT_FLAGS) & MASK_FLAGS) as u16;
+  return changetype<ASTNode>(ptr).flags;
 }
+
+export function setNodeFlags(ptr: u32, flags: u16): void {
+  changetype<ASTNode>(ptr).flags = flags;
+}
+
 let saved_gen_offset: u32 = 0;
 let saved_freeNodeHead: u32 = 0;
 let saved_gen_active_chunk: u32 = 0;
@@ -530,116 +533,72 @@ export function rollbackMemory(): void {
   S().freeNodeHead = saved_freeNodeHead;
 }
 
-/**
- * Mutates the 6-bit flag bitmask on an AST node.
- * @param ptr Pointer to the AST node.
- * @param flags The new flag bitmask.
- */
-export function setNodeFlags(ptr: u32, flags: u16): void {
-  let val = load<u32>(ptr, NODE_OFFSET_W0);
-  store<u32>(ptr, (val & ~(MASK_FLAGS << SHIFT_FLAGS)) | ((flags as u32 & MASK_FLAGS) << SHIFT_FLAGS), NODE_OFFSET_W0);
-}
-
-/** Adds the GC mark flag to the node. */
 export function markNode(ptr: u32): void {
-  setNodeFlags(ptr, getNodeFlags(ptr) | FLAG_GC_MARK);
+  changetype<ASTNode>(ptr).flags |= FLAG_GC_MARK;
 }
-/** Removes the GC mark flag from the node. */
 export function unmarkNode(ptr: u32): void {
-  setNodeFlags(ptr, getNodeFlags(ptr) & ~FLAG_GC_MARK);
+  changetype<ASTNode>(ptr).flags &= ~FLAG_GC_MARK;
 }
-/** Checks if the node is currently marked for GC survival. */
 export function isNodeMarked(ptr: u32): boolean {
-  return (getNodeFlags(ptr) & FLAG_GC_MARK) != 0;
+  return (changetype<ASTNode>(ptr).flags & FLAG_GC_MARK) != 0;
 }
 
-/** Flags the node as extracted during incremental reparsing. */
 export function markExtracted(ptr: u32): void {
-  setNodeFlags(ptr, getNodeFlags(ptr) | FLAG_EXTRACTED);
+  changetype<ASTNode>(ptr).flags |= FLAG_EXTRACTED;
 }
-/** Checks if the node has been extracted. */
 export function isExtracted(ptr: u32): boolean {
-  return (getNodeFlags(ptr) & FLAG_EXTRACTED) != 0;
+  return (changetype<ASTNode>(ptr).flags & FLAG_EXTRACTED) != 0;
 }
 
-/** Marks the node as structurally dirty, requiring re-evaluation. */
 export function markDirty(ptr: u32): void {
-  setNodeFlags(ptr, getNodeFlags(ptr) | FLAG_DIRTY);
+  changetype<ASTNode>(ptr).flags |= FLAG_DIRTY;
 }
-/** Checks if the node is flagged as dirty. */
 export function isDirty(ptr: u32): boolean {
-  return (getNodeFlags(ptr) & FLAG_DIRTY) != 0;
+  return (changetype<ASTNode>(ptr).flags & FLAG_DIRTY) != 0;
 }
 
-/**
- * Links a child node into the `firstChild` slot of a parent.
- * Overwrites any existing first child.
- */
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
-  store<u32>(parentPtr + NODE_OFFSET_FIRST_CHILD, childPtr, 0);
+  changetype<ASTNode>(parentPtr).firstChild = childPtr;
 }
 
-/**
- * Links a sibling node into the `nextSibling` slot of an existing sibling.
- * Forms the intrusive linked list of children.
- */
 export function setNextSibling(siblingPtr: u32, nextPtr: u32): void {
   if (siblingPtr == 0) return;
-  store<u32>(siblingPtr + NODE_OFFSET_NEXT_SIBLING, nextPtr, 0);
+  changetype<ASTNode>(siblingPtr).nextSibling = nextPtr;
 }
 
-// ----------------------------------------------------------------------------
-// AST Node Field Accessors
-// ----------------------------------------------------------------------------
-
-/** Retrieves the grammar production type ID from the node. */
 export function getNodeType(ptr: u32): u16 {
-  return (load<u32>(ptr, NODE_OFFSET_W0) & MASK_TYPE) as u16;
+  return changetype<ASTNode>(ptr).type;
 }
 
-/**
- * Retrieves the byte padding (whitespace/comments) preceding this node.
- * Automatically resolves fat padding if the inline 16-bit field overflowed.
- */
 export function getNodePadding(ptr: u32): u32 {
-  let p = load<u32>(ptr, NODE_OFFSET_W0) >> SHIFT_PADDING;
-  let isFat = (load<u32>(ptr + NODE_OFFSET_W1, 0) >> SHIFT_FAT_FLAG) & 1;
-  if (isFat != 0) return load<u32>(S().fatPaddingArenaPtr + p * 4, 0);
-  return p;
+  let node = changetype<ASTNode>(ptr);
+  if (node.isFatPadding) return load<u32>(S().fatPaddingArenaPtr + node.paddingLength * 4, 0);
+  return node.paddingLength;
 }
 
-/** Mutates the padding of an existing node (clamped to 64KB inline limit). */
 export function setNodePadding(ptr: u32, pad: u32): void {
-  if (pad > MAX_PADDING) pad = MAX_PADDING;
-  let val = load<u32>(ptr, NODE_OFFSET_W0);
-  store<u32>(ptr, (val & MASK_PADDING_W0_KEEP) | (pad << SHIFT_PADDING), NODE_OFFSET_W0);
+  if (pad > 0x3fff) pad = 0x3fff; // MAX_PADDING
+  changetype<ASTNode>(ptr).paddingLength = pad;
 }
 
-/** Retrieves the total byte length of the source text spanning this node. */
 export function getNodeByteLength(ptr: u32): u32 {
-  return load<u32>(ptr + NODE_OFFSET_W1, 0) & MASK_BYTE_LEN;
+  return changetype<ASTNode>(ptr).byteLength;
 }
 
-/** Mutates the byte length of an existing node (clamped to 8MB). */
 export function setNodeByteLength(ptr: u32, len: u32): void {
-  if (len > MASK_BYTE_LEN) len = MASK_BYTE_LEN;
-  let val = load<u32>(ptr + NODE_OFFSET_W1, 0);
-  store<u32>(ptr + NODE_OFFSET_W1, (val & MASK_W1_KEEP_UPPER) | len, 0);
+  changetype<ASTNode>(ptr).byteLength = len;
 }
 
-/** Retrieves the 8-bit structural hash environment signature of this node. */
 export function getNodeEnvHash(ptr: u32): u32 {
-  return load<u32>(ptr + NODE_OFFSET_W1, 0) >> SHIFT_ENV_HASH;
+  return changetype<ASTNode>(ptr).envHash;
 }
 
-/** Retrieves the arena pointer to the first child of this node. */
 export function getNodeFirstChild(ptr: u32): u32 {
-  return load<u32>(ptr + NODE_OFFSET_FIRST_CHILD, 0);
+  return changetype<ASTNode>(ptr).firstChild;
 }
 
-/** Retrieves the arena pointer to the next sibling of this node. */
 export function getNodeNextSibling(ptr: u32): u32 {
-  return load<u32>(ptr + NODE_OFFSET_NEXT_SIBLING, 0);
+  return changetype<ASTNode>(ptr).nextSibling;
 }
 
 // ----------------------------------------------------------------------------

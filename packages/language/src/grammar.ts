@@ -367,6 +367,12 @@ export class NormalizedGrammar {
     rule: Rule | any,
     p: { prec?: number; assoc?: "left" | "right" },
   ): { sym: SymbolName; alias?: string; field?: string; semantic?: { type: string; modifiers: any } }[] {
+    if (!rule) {
+      throw new Error(
+        `Invalid grammar rule encountered in context '${contextName}'. This usually means an array contains undefined or a referenced rule is missing.`,
+      );
+    }
+
     if (typeof rule === "string" || rule instanceof RegExp) {
       rule = { type: "TOKEN", value: rule };
     }
