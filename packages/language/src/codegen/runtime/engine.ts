@@ -49,7 +49,8 @@ import {
   initExtras,
   inputLength,
   is_extra_token,
-  lex,
+  invokeLexer,
+  MAX_TERMINAL_ID,
   lexLen,
   lexPos,
   setCurrentScannerState,
@@ -749,11 +750,11 @@ function parseLR(): u32 {
   lrStackDepth = 1;
   
   updateExpectedTokens();
-  token = __LEX_FN__(pos);
+  token = invokeLexer(pos);
   while (is_extra_token[token]) {
     pendingPadding += lexLen;
     pos += lexLen;
-    token = __LEX_FN__(pos);
+    token = invokeLexer(pos);
   }
   
   while (currentParserMode == MODE_LR) {
@@ -780,11 +781,11 @@ function parseLR(): u32 {
       pendingPadding = 0;
       
       updateExpectedTokens();
-      token = __LEX_FN__(pos);
+      token = invokeLexer(pos);
       while (is_extra_token[token]) {
         pendingPadding += lexLen;
         pos += lexLen;
-        token = __LEX_FN__(pos);
+        token = invokeLexer(pos);
       }
       
     } else if (type == ACTION_REDUCE) {
@@ -1436,10 +1437,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       activeHeadsCount = 1;
 
       updateExpectedTokens();
-      token = __LEX_FN__(pos);
+      token = invokeLexer(pos);
       while (is_extra_token[token]) {
         pos += lexLen;
-        token = __LEX_FN__(pos);
+        token = invokeLexer(pos);
       }
       debugLog(8, 0, token, pos);
     }
@@ -1654,11 +1655,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           }
         }
       }
-      token = __LEX_FN__(pos);
+      token = invokeLexer(pos);
       while (is_extra_token[token]) {
         head.pendingPadding += lexLen;
         pos += lexLen;
-        token = __LEX_FN__(pos);
+        token = invokeLexer(pos);
       }
       debugLog(8, head.errorCost, token, pos * 1000 + lexLen);
       if (tokenBufferReadIdx < tokenBufferWriteIdx) {
@@ -1783,11 +1784,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         );
         pushActiveHead(changetype<u32>(head));
         pos = newPos;
-        token = __LEX_FN__(pos);
+        token = invokeLexer(pos);
         while (is_extra_token[token]) {
           head.pendingPadding += lexLen;
           pos += lexLen;
-          token = __LEX_FN__(pos);
+          token = invokeLexer(pos);
         }
         debugLog(8, currentState, token, pos);
         continue; // Yield to the next GSS iteration
@@ -1820,11 +1821,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         );
         pushActiveHead(changetype<u32>(head));
         pos = newPos;
-        token = __LEX_FN__(pos);
+        token = invokeLexer(pos);
         while (is_extra_token[token]) {
           head.pendingPadding += lexLen;
           pos += lexLen;
-          token = __LEX_FN__(pos);
+          token = invokeLexer(pos);
         }
         debugLog(8, currentState, token, pos);
         continue; // Yield to the next GSS iteration
@@ -2653,7 +2654,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               let savedSrcLexPos = srcLexPos;
               let savedScannerState = currentScannerState;
 
-              let nextToken = __LEX_FN__(a1NextScanPos);
+              let nextToken = invokeLexer(a1NextScanPos);
               let tokenEndPos = srcLexPos + lexLen;
 
               lexPos = savedLexPos;
@@ -2694,7 +2695,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 let p = head.pos;
                 let newTail = head.errorTail;
                 while (p < a1NextScanPos) {
-                  let tok = __LEX_FN__(p);
+                  let tok = invokeLexer(p);
                   if (tok == -1) break;
                   let pad = lexPos - p;
                   let token = lex(p);
@@ -2790,7 +2791,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 let p = head.pos;
                 let newTail = head.errorTail;
                 while (p < inputLength) {
-                  let tok = __LEX_FN__(p);
+                  let tok = invokeLexer(p);
                   if (tok == -1) break;
                   let pad = lexPos - p;
                   let token = lex(p);
@@ -2946,7 +2947,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                       }
                       
                       lexPos = laScanPos;
-                      let laTok = __LEX_FN__(laScanPos);
+                      let laTok = invokeLexer(laScanPos);
                       let laEnd = srcLexPos + lexLen;
                       
                       if (stateCanAccept(unwindCurr, target, laTok, 0)) {
@@ -3035,7 +3036,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let tokenLen = 0;
 
             if (searchPos < inputLength) {
-              tok = __LEX_FN__(searchPos);
+              tok = invokeLexer(searchPos);
               if (tok == -1) break;
               tokenLen = lexLen;
               if (tokenLen == 0) break;
@@ -3051,7 +3052,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let savedPanicLexPos = lexPos;
             let savedPanicSrcLexPos = srcLexPos;
             let savedPanicScannerState = currentScannerState;
-            let nextTok = __LEX_FN__(nextPos); // lookahead token after the sync token
+            let nextTok = invokeLexer(nextPos); // lookahead token after the sync token
             // Restore lexer state so tokenLen stays valid for subsequent iterations
             setLexLen(savedPanicLexLen);
             setLexPos(savedPanicLexPos);
@@ -3140,7 +3141,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             let p = head.pos;
             let newTail = currPop != null ? currPop.errorTail : 0;
             while (p < (resumePos as u32)) {
-              let tok = __LEX_FN__(p);
+              let tok = invokeLexer(p);
               if (tok == -1) break;
               let pad = lexPos - p;
               let token = lex(p);
@@ -3324,7 +3325,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let missingPadding = changetype<ParseHead>(bestDyingHead).pendingPadding;
       let p = changetype<ParseHead>(bestDyingHead).pos;
       let firstPad: u32 = missingPadding;
-      let peekTok = __LEX_FN__(p);
+      let peekTok = invokeLexer(p);
       if (peekTok != -1) {
         firstPad += lexPos - p;
       }
@@ -3336,7 +3337,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       expected_tokens.fill(1);
 
       while (p < inputLength) {
-        let tok = __LEX_FN__(p);
+        let tok = invokeLexer(p);
         if (tok == -1) break;
         let pad = lexPos - p;
         let token = lex(p);
@@ -3710,11 +3711,11 @@ function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32):
     return cloneNodeShallow(leftNode);
   }
 
-  if (getNodeByteLength(leftNode) == 0 && getNodeType(leftNode) > __MAX_TERMINAL_ID__) {
+  if (getNodeByteLength(leftNode) == 0 && getNodeType(leftNode) > MAX_TERMINAL_ID) {
     _listRecurDepth--;
     return cloneNodeShallow(rightNode);
   }
-  if (getNodeByteLength(rightNode) == 0 && getNodeType(rightNode) > __MAX_TERMINAL_ID__) {
+  if (getNodeByteLength(rightNode) == 0 && getNodeType(rightNode) > MAX_TERMINAL_ID) {
     _listRecurDepth--;
     return cloneNodeShallow(leftNode);
   }

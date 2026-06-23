@@ -191,12 +191,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // reported through engine-level reportError() calls.
     if (isErrorNode && firstChild == 0 && len > 0) {
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
-    } else if (firstChild == 0 && len == 0 && type <= __MAX_TERMINAL_ID__) {
+    } else if (firstChild == 0 && len == 0 && type <= MAX_TERMINAL_ID) {
       // Missing terminal (ghost node inserted by error recovery)
       lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
     }
 
-    __LSP_LINT_SWITCH__
+    executeLints(type, node, nodeStart, nodeEnd);
 
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);

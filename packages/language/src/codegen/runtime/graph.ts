@@ -28,17 +28,39 @@ import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 
-// Query Node (24 bytes):
-// +0: queryKey (u32) - (queryType << 16) | argId
-// +4: revision (u32)
-// +8: value (u32)
-// +12: firstDependencyEdge (u32)
-// +16: firstSubscriberEdge (u32)
-// +20: nextHashBucketPtr (u32) - collision resolution
+@unmanaged
+export class QueryNode {
+  queryType: u32;             // +0
+  arg1: u32;                  // +4
+  arg2: u32;                  // +8
+  arg3: u32;                  // +12
+  revision: u32;              // +16
+  value: u32;                 // +20
+  firstDependencyEdge: u32;   // +24
+  firstSubscriberEdge: u32;   // +28
+  nextHashBucketPtr: u32;     // +32
+}
 
-// Edge Node (8 bytes):
-// +0: targetQueryNodePtr (u32)
-// +4: nextEdgePtr (u32)
+@unmanaged
+export class EdgeNode {
+  targetPtr: u32;             // +0
+  nextEdgePtr: u32;           // +4
+}
+
+@unmanaged
+export class FqnSymbol {
+  hash: u32;                  // +0
+  nodeId: u32;                // +4
+  next: u32;                  // +8
+}
+
+@unmanaged
+export class DiagnosticNode {
+  startByte: u32;             // +0
+  endByte: u32;               // +4
+  argPtr: u32;                // +8
+  nextDiagPtr: u32;           // +12
+}
 
 export let queryArenaOffset: u32 = 0;
 export let queryArenaEnd: u32 = 0;
@@ -138,16 +160,17 @@ export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextP
   let ptr = diagArenaOffset;
   diagArenaOffset += 16;
   
-  store<u32>(ptr, startByte, 0);
-  store<u32>(ptr + 4, endByte, 0);
-  store<u32>(ptr + 8, argPtr, 0);
-  store<u32>(ptr + 12, nextPtr, 0);
+  let node = changetype<DiagnosticNode>(ptr);
+  node.startByte = startByte;
+  node.endByte = endByte;
+  node.argPtr = argPtr;
+  node.nextDiagPtr = nextPtr;
   
   // Link globally
   if (firstDiagnostic == 0) {
     firstDiagnostic = ptr;
   } else {
-    store<u32>(lastDiagnostic + 12, ptr, 0);
+    changetype<DiagnosticNode>(lastDiagnostic).nextDiagPtr = ptr;
   }
   lastDiagnostic = ptr;
   
@@ -163,8 +186,9 @@ export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextP
  */
 export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
   let ptr = heap.alloc(8) as u32;
-  store<u32>(ptr, targetPtr, 0);
-  store<u32>(ptr + 4, nextPtr, 0);
+  let edge = changetype<EdgeNode>(ptr);
+  edge.targetPtr = targetPtr;
+  edge.nextEdgePtr = nextPtr;
   return ptr;
 }
 
@@ -177,11 +201,10 @@ export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
 export function exportSymbol(fqnHash: u32, nodeId: u32): void {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
   let ptr = heap.alloc(12) as u32;
-  store<u32>(ptr, fqnHash, 0);
-  store<u32>(ptr + 4, nodeId, 0);
-  
-  let head = load<u32>(fqnHashTableOffset + idx * 4, 0);
-  store<u32>(ptr + 8, head, 0); // next
+  let sym = changetype<FqnSymbol>(ptr);
+  sym.hash = fqnHash;
+  sym.nodeId = nodeId;
+  sym.next = load<u32>(fqnHashTableOffset + idx * 4, 0);
   store<u32>(fqnHashTableOffset + idx * 4, ptr, 0);
 }
 
@@ -194,8 +217,9 @@ export function resolveFqnSymbol(fqnHash: u32): u32 {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
   let ptr = load<u32>(fqnHashTableOffset + idx * 4, 0);
   while (ptr != 0) {
-     if (load<u32>(ptr, 0) == fqnHash) return load<u32>(ptr + 4, 0);
-     ptr = load<u32>(ptr + 8, 0);
+     let sym = changetype<FqnSymbol>(ptr);
+     if (sym.hash == fqnHash) return sym.nodeId;
+     ptr = sym.next;
   }
   return 0;
 }
@@ -261,11 +285,12 @@ export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): 
    let idx = combineQueryKey(queryType, arg1, arg2, arg3);
    let ptr = load<u32>(queryHashTableOffset + idx * 4, 0);
    while (ptr != 0) {
-      if (load<u32>(ptr, 0) == queryType && 
-          load<u32>(ptr + 4, 0) == arg1 && 
-          load<u32>(ptr + 8, 0) == arg2 && 
-          load<u32>(ptr + 12, 0) == arg3) return ptr;
-      ptr = load<u32>(ptr + 32, 0); // nextHashBucketPtr
+      let node = changetype<QueryNode>(ptr);
+      if (node.queryType == queryType && 
+          node.arg1 == arg1 && 
+          node.arg2 == arg2 && 
+          node.arg3 == arg3) return ptr;
+      ptr = node.nextHashBucketPtr;
    }
    return 0;
 }
@@ -277,19 +302,18 @@ export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): 
  */
 export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
   let ptr = heap.alloc(36) as u32;
-  store<u32>(ptr, queryType, 0);
-  store<u32>(ptr + 4, arg1, 0);
-  store<u32>(ptr + 8, arg2, 0);
-  store<u32>(ptr + 12, arg3, 0);
-  store<u32>(ptr + 16, 0, 0);  // revision
-  store<u32>(ptr + 20, 0, 0); // value
-  store<u32>(ptr + 24, 0, 0); // firstDependency
-  store<u32>(ptr + 28, 0, 0); // firstSubscriber
-  store<u32>(ptr + 32, 0, 0); // nextHashBucketPtr
+  let node = changetype<QueryNode>(ptr);
+  node.queryType = queryType;
+  node.arg1 = arg1;
+  node.arg2 = arg2;
+  node.arg3 = arg3;
+  node.revision = 0;
+  node.value = 0;
+  node.firstDependencyEdge = 0;
+  node.firstSubscriberEdge = 0;
   
   let idx = combineQueryKey(queryType, arg1, arg2, arg3);
-  let head = load<u32>(queryHashTableOffset + idx * 4, 0);
-  store<u32>(ptr + 32, head, 0);
+  node.nextHashBucketPtr = load<u32>(queryHashTableOffset + idx * 4, 0);
   store<u32>(queryHashTableOffset + idx * 4, ptr, 0);
   
   return ptr;
@@ -306,15 +330,14 @@ export let globalRevision: u32 = 1;
 export function invalidateNode(nodePtr: u32): void {
   if (nodePtr == 0) return;
   
-  let currentRev = load<u32>(nodePtr + 16, 0);
-  if (currentRev == 0) return; // 0 means already dirty/invalidated
+  let node = changetype<QueryNode>(nodePtr);
+  if (node.revision == 0) return; // 0 means already dirty/invalidated
   
-  store<u32>(nodePtr + 16, 0, 0); // Mark as dirty
+  node.revision = 0; // Mark as dirty
   
   // A PARSE query (queryType == 0) affects the dirty file bitset
-  let queryType = load<u32>(nodePtr, 0);
-  if (queryType == 0 && dirtyFilesBitsetOffset != 0) {
-      let fileId = load<u32>(nodePtr + 4, 0);
+  if (node.queryType == 0 && dirtyFilesBitsetOffset != 0) {
+      let fileId = node.arg1;
       if (fileId < 1024) {
           let wordIdx = fileId >> 5;
           let bitIdx = fileId & 31;
@@ -324,11 +347,11 @@ export function invalidateNode(nodePtr: u32): void {
       }
   }
 
-  let edgePtr = load<u32>(nodePtr + 28, 0); // firstSubscriberEdge
+  let edgePtr = node.firstSubscriberEdge;
   while (edgePtr != 0) {
-     let targetPtr = load<u32>(edgePtr, 0);
-     invalidateNode(targetPtr);
-     edgePtr = load<u32>(edgePtr + 4, 0);
+     let edge = changetype<EdgeNode>(edgePtr);
+     invalidateNode(edge.targetPtr);
+     edgePtr = edge.nextEdgePtr;
   }
 }
 
@@ -346,15 +369,26 @@ export let activeQueryDepth: i32 = 0;
  * @param headPtrOffset The offset of the linked list head within the query node.
  * @param targetPtr The target node to link to.
  */
-export function addEdgeIfMissing(headPtrOffset: u32, targetPtr: u32): void {
-    let head = load<u32>(headPtrOffset, 0);
-    let curr = head;
+export function addDependencyEdgeIfMissing(parentPtr: u32, targetPtr: u32): void {
+    let parent = changetype<QueryNode>(parentPtr);
+    let curr = parent.firstDependencyEdge;
     while (curr != 0) {
-        if (load<u32>(curr, 0) == targetPtr) return;
-        curr = load<u32>(curr + 4, 0);
+        let edge = changetype<EdgeNode>(curr);
+        if (edge.targetPtr == targetPtr) return;
+        curr = edge.nextEdgePtr;
     }
-    let newEdge = allocEdge(targetPtr, head);
-    store<u32>(headPtrOffset, newEdge, 0);
+    parent.firstDependencyEdge = allocEdge(targetPtr, parent.firstDependencyEdge);
+}
+
+export function addSubscriberEdgeIfMissing(childPtr: u32, parentPtr: u32): void {
+    let child = changetype<QueryNode>(childPtr);
+    let curr = child.firstSubscriberEdge;
+    while (curr != 0) {
+        let edge = changetype<EdgeNode>(curr);
+        if (edge.targetPtr == parentPtr) return;
+        curr = edge.nextEdgePtr;
+    }
+    child.firstSubscriberEdge = allocEdge(parentPtr, child.firstSubscriberEdge);
 }
 
 /**
@@ -368,18 +402,15 @@ export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0
    if (nodePtr == 0) {
       nodePtr = allocQueryNode2(queryType, arg1, arg2, arg3);
    } else {
-      let rev = load<u32>(nodePtr + 16, 0);
-      if (rev > 0 && rev == globalRevision) return load<u32>(nodePtr + 20, 0);
+      let rev = changetype<QueryNode>(nodePtr).revision;
+      if (rev > 0 && rev == globalRevision) return changetype<QueryNode>(nodePtr).value;
    }
    
    if (activeQueryDepth > 0) {
       let parentPtr = activeQueryStack[activeQueryDepth - 1];
       if (parentPtr != 0) {
-        // Link parent -> dependency (child)
-        addEdgeIfMissing(parentPtr + 24, nodePtr);
-        
-        // Link child -> subscriber (parent)
-        addEdgeIfMissing(nodePtr + 28, parentPtr);
+        addDependencyEdgeIfMissing(parentPtr, nodePtr);
+        addSubscriberEdgeIfMissing(nodePtr, parentPtr);
       }
    }
    
@@ -394,8 +425,9 @@ export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0
    __GRAPH_SWITCH_CODE__
    
    activeQueryDepth--;
-   store<u32>(nodePtr + 20, result, 0);
-   store<u32>(nodePtr + 16, globalRevision, 0);
+   let qnode = changetype<QueryNode>(nodePtr);
+   qnode.value = result;
+   qnode.revision = globalRevision;
    
    return result;
 }

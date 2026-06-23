@@ -277,19 +277,10 @@ export function generateParserTables(
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\n`;
+  code += `\nexport const MAX_TERMINAL_ID = ${grammar.terminals.size - 1};\n`;
+  code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
-  let engineCodeTemplate = engineCode;
-
-  engineCodeTemplate = engineCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
-  engineCodeTemplate = engineCodeTemplate.replace(/__PREPROCESSOR_HOOK__/g, preprocessorHook);
-  engineCodeTemplate = engineCodeTemplate.replace(/__MAX_TERMINAL_ID__/g, (grammar.terminals.size - 1).toString());
-
-  let lspCodeTemplate = lspCode;
-  lspCodeTemplate = lspCodeTemplate.replace(/__LEX_FN__/g, LEX_FN);
-  lspCodeTemplate = lspCodeTemplate.replace(/__MAX_TERMINAL_ID__/g, (grammar.terminals.size - 1).toString());
-
-  let lintSwitchStr = "switch (type) {\n";
+  let lintSwitchStr = `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
   if (originalGrammar.lints) {
     let nextLintId = 2000;
     const nodeLints = new Map<string, string[]>();
@@ -302,17 +293,22 @@ export function generateParserTables(
       }
     }
     for (const [nodeName, fnCalls] of nodeLints.entries()) {
-      lintSwitchStr += `  case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
+      lintSwitchStr += `    case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
       for (const call of fnCalls) {
-        lintSwitchStr += `    ${call}\n`;
+        lintSwitchStr += `      ${call}\n`;
       }
-      lintSwitchStr += `    break;\n`;
+      lintSwitchStr += `      break;\n`;
     }
   }
-  lintSwitchStr += "}\n";
-  lspCodeTemplate = lspCodeTemplate.replace(/__LSP_LINT_SWITCH__/g, lintSwitchStr);
+  lintSwitchStr += "  }\n}\n";
+  code += lintSwitchStr;
 
-  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline } from "./parser";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\n`;
+
+  let engineCodeTemplate = engineCode;
+  let lspCodeTemplate = lspCode;
+
+  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {
