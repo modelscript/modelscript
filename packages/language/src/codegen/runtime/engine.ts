@@ -1623,6 +1623,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     pos = head.pos;
+    debugLog(60021, head.state, head.errorCost, pos as i32);
 
     currentScannerState = head.scannerState;
     lexPos = pos;
@@ -1630,7 +1631,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     // Token Buffer Arena Consumption
     // Advance buffer read index only if we have moved past the previous buffer token
     if (pos > tokenBufferLastPos && tokenBufferReadIdx < tokenBufferWriteIdx) {
-      tokenBufferReadIdx++;
+      // If position jumped forward (e.g., island recovery), invalidate the buffer
+      // to prevent serving stale tokens from the old position.
+      if (pos > tokenBufferLastPos + 4) {
+        tokenBufferReadIdx = tokenBufferWriteIdx; // flush buffer
+      } else {
+        tokenBufferReadIdx++;
+      }
     }
 
     if (tokenBufferReadIdx < tokenBufferWriteIdx) {
@@ -1640,6 +1647,24 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       tokenBufferLastPos = pos;
     } else {
       updateExpectedTokens();
+      // Also include the current head's expected tokens.
+      // The head was popped from activeHeads, so updateExpectedTokens() doesn't
+      // see it. Without this, island recovery heads that are the sole remaining
+      // head get empty expected_tokens, causing keywords to lex as identifiers.
+      {
+        let hState = head.state;
+        let hOff = action_offsets[hState];
+        if (hOff >= 0) {
+          let hCount = action_data[hOff];
+          let hIdx = hOff + 1;
+          for (let hj = 0; hj < hCount; hj++) {
+            let hSym = action_data[hIdx++];
+            if (hSym < 2048) expected_tokens[hSym] = 1;
+            let hActCount = action_data[hIdx++];
+            hIdx += hActCount * 2;
+          }
+        }
+      }
       token = __LEX_FN__(pos);
       while (is_extra_token[token]) {
         head.pendingPadding += lexLen;
@@ -2164,6 +2189,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             // earlier-in-file parses are strongly preferred.
             effectiveCost += (firstPad as i32) * 3;
             debugLog(888, effectiveCost, realBytes as i32, firstPad as i32);
+            debugLog(60010, t_count as i32, effectiveCost, bestAcceptedCost);
             if (
               acceptedNode == 0 ||
               effectiveCost < bestAcceptedCost ||
@@ -2191,11 +2217,19 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
                 if (singleNode != 0) {
                   acceptedNode = cloneNodeShallow(singleNode);
+                  // When the parser reached EOF via island recovery, the Program node's
+                  // byte length may not cover the full input because reduction calculations
+                  // don't account for error recovery gaps. Extend to cover all input.
+                  let accPad = getNodePadding(acceptedNode);
+                  let accSpan = accPad + getNodeByteLength(acceptedNode);
+                  if (accSpan < inputLength && head.pos >= inputLength) {
+                    setNodeByteLength(acceptedNode, inputLength - accPad);
+                  }
                 } else {
                   acceptedNode = head.astNode;
                 }
               } else {
-                // Multiple nodes in GSS — wrap in an error root
+                // Multiple nodes in GSS — try to find a proper root
                   bestAcceptingHead = changetype<u32>(head);
                   bestAcceptedCost = effectiveCost;
                 bestAcceptedCount = t_count;
@@ -2206,30 +2240,71 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
                 // Collect children backwards from the GSS
                 t_curr = head; // Reset — t_curr is null after the counting loop above
+                // Also search for a non-ERROR root node
+                let bestRoot: u32 = 0;
+                let bestRootBytes: u32 = 0;
                 while (t_curr) {
                   if (t_curr.astNode != 0) {
                     let cType = getNodeType(t_curr.astNode);
                     let cLen = getNodeByteLength(t_curr.astNode);
                     if (cType != TOKEN_EOF && (cLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
                       store<i32>(t_globalChildren + c_idx-- * 4, t_curr.astNode);
+                      // Track the largest non-ERROR node as the candidate root
+                      if (cType != NODE_TYPE_ERROR && cLen > bestRootBytes) {
+                        bestRoot = t_curr.astNode;
+                        bestRootBytes = cLen;
+                      }
                     }
                   }
                   t_curr = t_curr.prev;
                 }
 
-                let root = allocNode(NODE_TYPE_ERROR, firstPad, t_bytes - firstPad, 0);
+                if (bestRoot != 0) {
+                  // We found a proper non-ERROR root node (e.g., Program).
+                  // Clone it and attach any ERROR/extra nodes as additional children.
+                  let newRoot = cloneNodeShallow(bestRoot);
+                  let acceptedPad2 = getNodePadding(bestRoot);
+                  setNodeByteLength(newRoot, (t_bytes > acceptedPad2 ? t_bytes - acceptedPad2 : t_bytes));
 
-                // Link them linearly into the new error root
-                let lastC = 0;
-                for (let i: u32 = 0; i < t_count; i++) {
-                  let c = load<i32>(t_globalChildren + i * 4);
-                  if (c == 0) continue;
-                  let clone = cloneNodeShallow(c);
-                  if (lastC == 0) setFirstChild(root, clone);
-                  else setNextSibling(lastC, clone);
-                  lastC = clone;
+                  // Clone the existing child chain of the root
+                  let existChild = getNodeFirstChild(newRoot);
+                  let lastC2: u32 = 0;
+                  let firstCloned: u32 = 0;
+                  let oc = existChild;
+                  while (oc != 0) {
+                    let cloned = cloneNodeShallow(oc);
+                    if (firstCloned == 0) firstCloned = cloned;
+                    if (lastC2 != 0) setNextSibling(lastC2, cloned);
+                    lastC2 = cloned;
+                    oc = getNodeNextSibling(oc);
+                  }
+                  if (firstCloned != 0) setFirstChild(newRoot, firstCloned);
+
+                  // Append non-root collected nodes (ERROR nodes from recovery) as extra children
+                  for (let i: u32 = 0; i < t_count; i++) {
+                    let c = load<i32>(t_globalChildren + i * 4);
+                    if (c == 0 || c == bestRoot) continue;
+                    let clone = cloneNodeShallow(c);
+                    if (lastC2 == 0) { setFirstChild(newRoot, clone); firstCloned = clone; }
+                    else setNextSibling(lastC2, clone);
+                    lastC2 = clone;
+                  }
+                  acceptedNode = newRoot;
+                } else {
+                  // No proper root found — fallback to ERROR wrapping
+                  let root = allocNode(NODE_TYPE_ERROR, firstPad, t_bytes - firstPad, 0);
+
+                  let lastC = 0;
+                  for (let i: u32 = 0; i < t_count; i++) {
+                    let c = load<i32>(t_globalChildren + i * 4);
+                    if (c == 0) continue;
+                    let clone = cloneNodeShallow(c);
+                    if (lastC == 0) setFirstChild(root, clone);
+                    else setNextSibling(lastC, clone);
+                    lastC = clone;
+                  }
+                  acceptedNode = root;
                 }
-                acceptedNode = root;
               }
             }
             anyAction = true;
@@ -2243,6 +2318,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     if (acceptedNode != 0 && activeHeadsCount == 0) {
       debugLog(999, acceptedNode, bestAcceptedCost, getNodeByteLength(acceptedNode));
+      debugLog(60011, getNodeType(acceptedNode) as i32, getNodePadding(acceptedNode) as i32, activeHeadsCount as i32);
       commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
       return wrapWithTrailingErrors(acceptedNode);
     }
@@ -2956,8 +3032,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
         }
+      } // close if (!reduced) — Branches A & B only
 
-        // --------------------------------------------------------------------
+      // --------------------------------------------------------------------
         // ERROR BRANCH D: Island Parsing (Panic Mode)
         // --------------------------------------------------------------------
         // If local insertions/deletions fail, we fallback to a coarse panic mode.
@@ -2972,7 +3049,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           let currPop: ParseHead | null = null;
           let resumePos = 0;
 
-          // Step 1: Scan forward for a synchronization point (capped to prevent O(N²))
+           // Step 1: Scan forward for a synchronization point (capped to prevent O(N²))
+          // Enable all tokens so the lexer can match any keyword/symbol during scanning.
+          // Without this, keywords may be mis-lexed as identifiers when the current head's
+          // expected_tokens bitmap has been cleared, preventing stateCanAccept from finding
+          // a valid recovery anchor.
+          expected_tokens.fill(1);
+          debugLog(60000, head.state, head.pos, head.consecutiveInsertions);
           let panicScanCount: u32 = 0;
           while (searchPos <= inputLength && panicScanCount < MAX_PANIC_SCAN_TOKENS) {
             panicScanCount++;
@@ -2985,6 +3068,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               tokenLen = lexLen;
               if (tokenLen == 0) break;
             }
+
+            debugLog(60001, tok, searchPos, tokenLen);
 
             // We treat EVERY token as a potential synchronization point (like Tree-sitter's ERROR pseudo-node).
             // We rely on `stateCanAccept` to contextually determine if the popped state can resume here.
@@ -3002,19 +3087,72 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             setCurrentScannerState(savedPanicScannerState);
 
             currPop = head;
+            let gssDepth: i32 = 0;
             while (currPop != null) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
-              if (stateCanAccept(currPop, currPop.state, tok)) {
+              let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
+              let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
+              debugLog(60002, currPop.state, canAcceptTok ? 1 : 0, canAcceptNext ? 1 : 0);
+              if (canAcceptTok) {
                 foundTarget = currPop.state;
                 resumePos = searchPos;
                 break;
-              } else if (stateCanAccept(currPop, currPop.state, nextTok)) {
+              } else if (canAcceptNext) {
                 foundTarget = currPop.state;
                 resumePos = nextPos;
                 break;
               }
               currPop = currPop.prev; // Pop stack
+              gssDepth++;
+            }
+            debugLog(60003, foundTarget, gssDepth, resumePos);
+
+            // Fallback: if the GSS walk found nothing, try ALL parser states.
+            // This handles mid-block recovery when incremental reuse consumed
+            // the inner-block states (e.g., finding "}" when only top-level states remain).
+            if (foundTarget == -1 && tok != TOKEN_EOF) {
+              let numStates = action_offsets.length;
+              for (let si: i32 = 0; si < numStates; si++) {
+                // Skip states already in the GSS (already checked above)
+                let inGss = false;
+                let gp: ParseHead | null = head;
+                while (gp != null) {
+                  if (gp.state == si) { inGss = true; break; }
+                  gp = gp.prev;
+                }
+                if (inGss) continue;
+
+                // Check if state si has a direct SHIFT action for tok
+                let aOff = action_offsets[si];
+                if (aOff < 0 || aOff >= action_data.length) continue;
+                let aCnt = action_data[aOff];
+                let aIdx = aOff + 1;
+                let canShift = false;
+                for (let ai: i32 = 0; ai < aCnt; ai++) {
+                  if (aIdx < 0 || aIdx + 1 >= action_data.length) break;
+                  let aSym = action_data[aIdx];
+                  let aActCnt = action_data[aIdx + 1];
+                  if (aSym == tok) {
+                    let aActIdx = aIdx + 2;
+                    for (let aj: i32 = 0; aj < aActCnt; aj++) {
+                      let aType = action_data[aActIdx++];
+                      let _aTarget = action_data[aActIdx++];
+                      if (aType == ACTION_SHIFT) { canShift = true; break; }
+                    }
+                  }
+                  aIdx += 2 + aActCnt * 2;
+                  if (canShift) break;
+                }
+                if (canShift) {
+                  foundTarget = si;
+                  resumePos = searchPos;
+                  // Use head itself as currPop (detached island)
+                  currPop = head;
+                  debugLog(60030, si, tok, resumePos);
+                  break;
+                }
+              }
             }
 
             if (foundTarget != -1) break; // We found a recovery anchor!
@@ -3023,9 +3161,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             searchPos = nextPos;
             syncCost += 1; // +1 penalty for every token skipped during panic mode
           }
+          debugLog(60004, foundTarget, panicScanCount as i32, resumePos);
 
           // Step 3: Apply the Panic Mode Recovery
-          if (foundTarget != -1 && currPop != null) {
+          // Skip recovery at EOF — wrapping the entire remaining file as ERROR
+          // and accepting with an empty parse is never useful.
+          if (foundTarget != -1 && currPop != null && (resumePos as u32) < inputLength) {
             // Calculate the true penalty for Panic Mode
             let poppedDepth = 0;
             let tempPop: ParseHead | null = head;
@@ -3113,7 +3254,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             debugLog(6, currPop.state, islandCost, resumePos);
           }
         }
-      } // close if (!reduced)
 
       // --------------------------------------------------------------------
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
@@ -3128,17 +3268,27 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           if (ah.errorCost < bestCost) bestCost = ah.errorCost;
         }
 
-        // Primary Culling: Kill any head whose error cost is more than 15 points
-        // worse than the best available option, or strictly worse than an already accepted path.
+        // Primary Culling: Kill any head whose error cost is too far from the best option.
+        // Island recovery heads (at positions ahead of current) get a larger margin since
+        // their costs reflect legitimate recovery penalties, not parsing degradation.
+        let bestPos: u32 = 0;
+        for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
+          let ah = changetype<ParseHead>(load<u32>(t_activeHeads + i * 4));
+          if (ah.errorCost == bestCost && ah.pos > bestPos) bestPos = ah.pos;
+        }
         let writeIdx = 0;
         for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
           let ah = changetype<ParseHead>(load<u32>(t_activeHeads + i * 4));
-          if (ah.errorCost <= bestCost + 15 && ah.errorCost <= bestAcceptedCost) {
+          // Heads ahead of the best-cost head's position are island recovery heads —
+          // give them a large margin so they aren't killed prematurely.
+          let margin: i32 = ah.pos > bestPos ? 1000 : 15;
+          if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
             store<u32>(t_activeHeads + writeIdx++ * 4, changetype<u32>(ah));
           }
         }
         activeHeadsCount = writeIdx;
         activeHeadsTrimCount = activeHeadsCount;
+        debugLog(60020, activeHeadsCount as i32, bestCost, bestAcceptedCost);
 
         // Normalize error costs so they don't overflow during long panic modes
         // Clamp to >= 0 to prevent underflow from breaking INFINITE_COST comparisons

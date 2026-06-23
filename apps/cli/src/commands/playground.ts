@@ -982,7 +982,7 @@ self.addEventListener('message', async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(state, cost, pos, padding) { } },
+                engine: { debugLog: function(cat, v1, v2, v3) { if ((cat >= 60000 && cat <= 60021) || cat === 778 || cat === 888 || cat === 999 || cat === 6 || cat === 8) console.log('DBG', cat, v1, v2, v3); } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},
