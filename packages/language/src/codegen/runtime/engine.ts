@@ -59,6 +59,7 @@ import {
   setSrcLexPos,
   srcLexPos,
 } from "./parser";
+import { ParseHead, activeHeadsCount, t_activeHeads } from "./gss";
 export function getInputBuffer(): usize {
   return _getInputBuffer();
 }
@@ -106,10 +107,6 @@ export const alias_data = changetype<StaticTable>(_alias_data);
 export const type_fields = changetype<StaticTable>(_type_fields);
 export const type_field_data = changetype<StaticTable>(_type_field_data);
 
-
-import {
-    FieldCursor
-} from "./parser-loop";
 
 import { cursorNodeStack, cursorOffsetStack } from "./cursor";
 const savedCursorNodeStack = new ChunkedUint32Array();
@@ -359,8 +356,8 @@ export let currentParserMode: i32 = 0;
 export let t_lrStateStack: u32 = 0;
 export let t_lrNodeStack: u32 = 0;
 export let lrStackDepth: i32 = 0;
-const MAX_LR_STACK_DEPTH: i32 = 65536;
-const tempActions = new StaticArray<u32>(16);
+export const MAX_LR_STACK_DEPTH: i32 = 65536;
+export const tempActions = new StaticArray<u32>(16);
 
 
 
@@ -392,7 +389,7 @@ export const expected_tokens = new StaticArray<u8>(2048);
 export let t_globalReduceCollected: u32 = 0;
 
 
-let globalLoopIterations = 0;
+export let globalLoopIterations = 0;
 
 /** Retrieves the total number of LR state transitions evaluated in the last parse. */
 export function getLoopIterations(): u32 {
@@ -475,6 +472,137 @@ export function getBestErrorCost(): u32 {
   return 0;
 }
 
+export class FieldCursor {
+  node: u32 = 0;
+  fieldId: i32 = 0;
+
+  offset: i32 = -1;
+  indexCount: i32 = 0;
+  currentIdxPtr: i32 = 0;
+
+  stackDepth: i32 = 0;
+  stack0: u32 = 0; stack1: u32 = 0; stack2: u32 = 0; stack3: u32 = 0;
+  stack4: u32 = 0; stack5: u32 = 0; stack6: u32 = 0; stack7: u32 = 0;
+
+  currentChild: u32 = 0;
+  
+  private cachedNext: u32 = 0;
+  private hasCachedNext: boolean = false;
+
+  @inline
+  init(node: u32, fieldId: i32): void {
+    this.node = node;
+    this.fieldId = fieldId;
+    this.stackDepth = 0;
+    this.currentChild = 0;
+    this.cachedNext = 0;
+    this.hasCachedNext = false;
+    
+    let type = getNodeType(node);
+    let offset = type_fields[type];
+    if (offset == -1) {
+      this.offset = -1;
+      return;
+    }
+    
+    let fieldCount = type_field_data[offset];
+    let currentOffset = offset + 1;
+    
+    for (let i = 0; i < fieldCount; i++) {
+      let currentFieldId = type_field_data[currentOffset];
+      let indexCount = type_field_data[currentOffset + 1];
+      if (currentFieldId == fieldId && indexCount > 0) {
+        this.offset = currentOffset;
+        this.indexCount = indexCount;
+        this.currentIdxPtr = currentOffset + 2;
+        return;
+      }
+      currentOffset += 2 + indexCount;
+    }
+    this.offset = -1;
+  }
+
+  @inline
+  hasNext(): boolean {
+    if (this.hasCachedNext) return this.cachedNext != 0;
+    this.cachedNext = this._advance();
+    this.hasCachedNext = true;
+    return this.cachedNext != 0;
+  }
+
+  @inline
+  next(): u32 {
+    if (this.hasCachedNext) {
+      this.hasCachedNext = false;
+      return this.cachedNext;
+    }
+    return this._advance();
+  }
+
+  private _advance(): u32 {
+    if (this.offset == -1) return 0;
+
+    while (true) {
+      if (this.currentChild != 0) {
+        let child = this.currentChild;
+        this.currentChild = getNodeNextSibling(child);
+        
+        let flags = getNodeFlags(child);
+        if ((flags & FLAG_INVISIBLE) != 0) {
+          if (this.currentChild != 0) {
+             if (this.stackDepth == 0) this.stack0 = this.currentChild;
+             else if (this.stackDepth == 1) this.stack1 = this.currentChild;
+             else if (this.stackDepth == 2) this.stack2 = this.currentChild;
+             else if (this.stackDepth == 3) this.stack3 = this.currentChild;
+             else if (this.stackDepth == 4) this.stack4 = this.currentChild;
+             else if (this.stackDepth == 5) this.stack5 = this.currentChild;
+             else if (this.stackDepth == 6) this.stack6 = this.currentChild;
+             else if (this.stackDepth == 7) this.stack7 = this.currentChild;
+             this.stackDepth++;
+          }
+          this.currentChild = getNodeFirstChild(child);
+          continue;
+        }
+        return child;
+      }
+
+      if (this.stackDepth > 0) {
+        this.stackDepth--;
+        if (this.stackDepth == 0) this.currentChild = this.stack0;
+        else if (this.stackDepth == 1) this.currentChild = this.stack1;
+        else if (this.stackDepth == 2) this.currentChild = this.stack2;
+        else if (this.stackDepth == 3) this.currentChild = this.stack3;
+        else if (this.stackDepth == 4) this.currentChild = this.stack4;
+        else if (this.stackDepth == 5) this.currentChild = this.stack5;
+        else if (this.stackDepth == 6) this.currentChild = this.stack6;
+        else if (this.stackDepth == 7) this.currentChild = this.stack7;
+        continue;
+      }
+
+      if (this.indexCount == 0) {
+        this.offset = -1;
+        return 0;
+      }
+      
+      let logicalIndex = type_field_data[this.currentIdxPtr];
+      this.currentIdxPtr++;
+      this.indexCount--;
+      
+      let child = getNodeFirstChild(this.node);
+      for (let i = 0; i < logicalIndex; i++) {
+        if (child == 0) break;
+        child = getNodeNextSibling(child);
+      }
+      this.currentChild = child;
+    }
+  }
+
+  @inline
+  release(): void {
+    releaseFieldCursor(this);
+  }
+}
+
 const cursorPool = new Array<FieldCursor>(16);
 for (let i = 0; i < 16; i++) cursorPool[i] = new FieldCursor();
 let cursorPoolDepth: i32 = 16;
@@ -504,3 +632,4 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   cursor.release();
   return child;
 }
+export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID } from "./parser";

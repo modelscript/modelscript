@@ -25,7 +25,7 @@ import {
 } from "./arena";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId } from "./engine";
-import { FieldCursor } from "./parser-loop";
+import { FieldCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 

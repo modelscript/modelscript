@@ -191,7 +191,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // reported through engine-level reportError() calls.
     if (isErrorNode && firstChild == 0 && len > 0) {
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
-    } else if (firstChild == 0 && len == 0 && type <= MAX_TERMINAL_ID) {
+    } else if (firstChild == 0 && len == 0 && type <= (MAX_TERMINAL_ID as u16)) {
       // Missing terminal (ghost node inserted by error recovery)
       lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
     }
@@ -573,7 +573,7 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
           if (tokenStart == lspLastNodeOffset && len == bestLen) {
              let bestType = getNodeType(bestMatch);
              let nodeType = getNodeType(node);
-             if (bestType > __MAX_TERMINAL_ID__ && nodeType <= __MAX_TERMINAL_ID__) {
+             if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
                 update = false;
              }
           }

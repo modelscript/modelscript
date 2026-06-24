@@ -312,7 +312,7 @@ export function generateParserTables(
   lintSwitchStr += "  }\n}\n";
   code += lintSwitchStr;
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\n`;
 
   let engineCodeTemplate = engineCode;
   let lspCodeTemplate = lspCode;

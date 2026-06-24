@@ -1,8 +1,11 @@
 
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
-import { debugLog, pushDiagnostic, MAX_ERRORS, stateCanAccept, MAX_CHILD_NODES, t_globalChildNodes } from "./engine";
+import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes,
+  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
+  NODE_TYPE_ERROR
+} from "./engine";
+import { stateCanAccept, cloneNodeShallow, concatLists } from "./parser-loop";
 import { 
-  cloneNodeShallow, 
   getNodePadding, 
   getNodeByteLength, 
   setNodeByteLength, 
@@ -10,9 +13,7 @@ import {
   setFirstChild, 
   setNextSibling,
   getNodeType,
-  concatLists,
   allocNode,
-  NODE_TYPE_ERROR,
   getInputBuffer
 } from "./arena";
 import {
@@ -23,7 +24,6 @@ import {
   invokeLexer,
   lex,
   expected_tokens,
-  token_insert_costs,
   setLexPos,
   setLexLen,
   setSrcLexPos,
@@ -362,8 +362,8 @@ export function recoverUnwindAndMutate(
           if (head.consecutiveInsertions < 8) {
             let aOffset = action_offsets[recState];
             if (aOffset >= 0 && aOffset < action_data.length) {
-              idx2 = aOffset + 1;
-              count2 = action_data[aOffset];
+              let idx2 = aOffset + 1;
+              let count2 = action_data[aOffset];
 
               for (let i = 0; i < count2; i++) {
                 if (idx2 < 0 || idx2 + 1 >= action_data.length) {

@@ -1,12 +1,14 @@
 
-import { 
-    ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead
+import {
+    ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead,
+    findReusableNode
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY,
-    getNodeEnvHash, getInputBuffer
+    getNodeEnvHash, getInputBuffer,
+    atomicChunkAlloc, resetGeneration, S
 } from "./arena";
 import {
     lexPos, lexLen, srcLexPos, currentScannerState, invokeLexer, is_extra_token, inputLength,
@@ -30,8 +32,23 @@ import {
     expected_tokens,
     findMergeCandidate, registerMergeCandidate,
     incrementalStartOffset,
-    TOKEN_SUSPEND
+    TOKEN_SUSPEND, releaseFieldCursor,
+    globalIsCatastrophic, commitDiagnostics,
+    lastBestCost, lastIterCount, lastMaxHeads,
+    tokenBufferReadIdx, tokenBufferWriteIdx,
+    isSuspended, tokenBufferLastPos,
+    globalLoopIterations, globalLoopGuard,
+    globalSearchIterations, mergeGeneration,
+    tempActions, mergeTableInit, initGlobalCursor, errorCount,
+    MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID
 } from "./engine";
+
+const ACCEPT_CACHE_CAPACITY: u32 = 16384;
+const ACCEPT_CACHE_MASK: u32 = 16383;
+const ACCEPT_CACHE_PROBE_LIMIT: u32 = 8;
+let t_acceptCache: u32 = 0;
+import { recoverUnwindAndMutate, recoverIslandMode } from "./recovery";
+import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
 function lookupActions(state: i32, token: i32): i32 {
   let actionOffset = action_offsets[state];
@@ -68,6 +85,14 @@ function lookupActions(state: i32, token: i32): i32 {
     tempActions[i * 2 + 1] = action_data[actPtr + i * 2 + 1];
   }
   return count;
+}
+
+function actionLookupFnBool(state: i32, token: i32): boolean {
+  return lookupActions(state, token) != 0;
+}
+
+function stateCanAcceptFnBool(state: i32, token: i32): boolean {
+  return stateCanAccept(null, state, token, 0);
 }
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   let prevHead: ParseHead | null = null;
@@ -572,7 +597,7 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
 
   return newRoot;
 }
-function cloneNodeShallow(gc: u32): u32 {
+export function cloneNodeShallow(gc: u32): u32 {
   let clone = allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc));
   setNodeFlags(clone, getNodeFlags(gc) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); // Clear GC mark and LSP visited
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
@@ -621,136 +646,6 @@ function fixNodeLength(node: u32): void {
   setNodePadding(node, firstPad);
   setNodeByteLength(node, totalLen);
 }
-export class FieldCursor {
-  node: u32 = 0;
-  fieldId: i32 = 0;
-
-  offset: i32 = -1;
-  indexCount: i32 = 0;
-  currentIdxPtr: i32 = 0;
-
-  stackDepth: i32 = 0;
-  stack0: u32 = 0; stack1: u32 = 0; stack2: u32 = 0; stack3: u32 = 0;
-  stack4: u32 = 0; stack5: u32 = 0; stack6: u32 = 0; stack7: u32 = 0;
-
-  currentChild: u32 = 0;
-  
-  private cachedNext: u32 = 0;
-  private hasCachedNext: boolean = false;
-
-  @inline
-  init(node: u32, fieldId: i32): void {
-    this.node = node;
-    this.fieldId = fieldId;
-    this.stackDepth = 0;
-    this.currentChild = 0;
-    this.cachedNext = 0;
-    this.hasCachedNext = false;
-    
-    let type = getNodeType(node);
-    let offset = type_fields[type];
-    if (offset == -1) {
-      this.offset = -1;
-      return;
-    }
-    
-    let fieldCount = type_field_data[offset];
-    let currentOffset = offset + 1;
-    
-    for (let i = 0; i < fieldCount; i++) {
-      let currentFieldId = type_field_data[currentOffset];
-      let indexCount = type_field_data[currentOffset + 1];
-      if (currentFieldId == fieldId && indexCount > 0) {
-        this.offset = currentOffset;
-        this.indexCount = indexCount;
-        this.currentIdxPtr = currentOffset + 2;
-        return;
-      }
-      currentOffset += 2 + indexCount;
-    }
-    this.offset = -1;
-  }
-
-  @inline
-  hasNext(): boolean {
-    if (this.hasCachedNext) return this.cachedNext != 0;
-    this.cachedNext = this._advance();
-    this.hasCachedNext = true;
-    return this.cachedNext != 0;
-  }
-
-  @inline
-  next(): u32 {
-    if (this.hasCachedNext) {
-      this.hasCachedNext = false;
-      return this.cachedNext;
-    }
-    return this._advance();
-  }
-
-  private _advance(): u32 {
-    if (this.offset == -1) return 0;
-
-    while (true) {
-      if (this.currentChild != 0) {
-        let child = this.currentChild;
-        this.currentChild = getNodeNextSibling(child);
-        
-        let flags = getNodeFlags(child);
-        if ((flags & FLAG_INVISIBLE) != 0) {
-          if (this.currentChild != 0) {
-             if (this.stackDepth == 0) this.stack0 = this.currentChild;
-             else if (this.stackDepth == 1) this.stack1 = this.currentChild;
-             else if (this.stackDepth == 2) this.stack2 = this.currentChild;
-             else if (this.stackDepth == 3) this.stack3 = this.currentChild;
-             else if (this.stackDepth == 4) this.stack4 = this.currentChild;
-             else if (this.stackDepth == 5) this.stack5 = this.currentChild;
-             else if (this.stackDepth == 6) this.stack6 = this.currentChild;
-             else if (this.stackDepth == 7) this.stack7 = this.currentChild;
-             this.stackDepth++;
-          }
-          this.currentChild = getNodeFirstChild(child);
-          continue;
-        }
-        return child;
-      }
-
-      if (this.stackDepth > 0) {
-        this.stackDepth--;
-        if (this.stackDepth == 0) this.currentChild = this.stack0;
-        else if (this.stackDepth == 1) this.currentChild = this.stack1;
-        else if (this.stackDepth == 2) this.currentChild = this.stack2;
-        else if (this.stackDepth == 3) this.currentChild = this.stack3;
-        else if (this.stackDepth == 4) this.currentChild = this.stack4;
-        else if (this.stackDepth == 5) this.currentChild = this.stack5;
-        else if (this.stackDepth == 6) this.currentChild = this.stack6;
-        else if (this.stackDepth == 7) this.currentChild = this.stack7;
-        continue;
-      }
-
-      if (this.indexCount == 0) {
-        this.offset = -1;
-        return 0;
-      }
-      
-      let logicalIndex = type_field_data[this.currentIdxPtr];
-      this.currentIdxPtr++;
-      this.indexCount--;
-      
-      let child = getNodeFirstChild(this.node);
-      for (let i = 0; i < logicalIndex; i++) {
-        if (child == 0) break;
-        child = getNodeNextSibling(child);
-      }
-      this.currentChild = child;
-    }
-  }
-
-  @inline
-  release(): void {
-    releaseFieldCursor(this);
-  }
-}
 export function getListDepth(node: u32, listSym: u16): u32 {
   let depth: u32 = 0;
   let curr = node;
@@ -790,11 +685,11 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     return cloneNodeShallow(leftNode);
   }
 
-  if (getNodeByteLength(leftNode) == 0 && getNodeType(leftNode) > MAX_TERMINAL_ID) {
+  if (getNodeByteLength(leftNode) == 0 && getNodeType(leftNode) > (MAX_TERMINAL_ID as u16)) {
     _listRecurDepth--;
     return cloneNodeShallow(rightNode);
   }
-  if (getNodeByteLength(rightNode) == 0 && getNodeType(rightNode) > MAX_TERMINAL_ID) {
+  if (getNodeByteLength(rightNode) == 0 && getNodeType(rightNode) > (MAX_TERMINAL_ID as u16)) {
     _listRecurDepth--;
     return cloneNodeShallow(leftNode);
   }
@@ -1475,7 +1370,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   let bestAcceptedPad: u32 = 0xffffffff; // Track leftmost match padding (smaller is better)
   lastBestCost = INFINITE_COST;
   lastIterCount = 0;
-  lastReusedNode = 0;
   globalLoopIterations = 0;
 
   let maxHeads: u32 = 0;
@@ -1734,6 +1628,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         editOldEnd,
         headSym,
         expectedPadding,
+        stateCanAcceptFnBool,
+        actionLookupFnBool
       );
       if (reusedNode != 0) {
         debugLog(1, reusedNode, pos, oldSrcLexPos);
@@ -2618,6 +2514,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         // ----------------------------------------------------------------
         recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
         recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
+      }
 
       // --------------------------------------------------------------------
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
@@ -2837,7 +2734,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     return root;
   }
   return 0;
-}
 }
 
 // ----------------------------------------------------------------------------
