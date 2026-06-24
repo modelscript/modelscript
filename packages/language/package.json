@@ -56,6 +56,7 @@
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
   "devDependencies": {
+    "@as-pect/cli": "^9.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.2",
     "esbuild": "^0.28.1",

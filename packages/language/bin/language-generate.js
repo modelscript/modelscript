@@ -19,7 +19,7 @@ async function main() {
   const module = await import(pathToFileURL(absoluteEntry).href);
 
   // Find the language export
-  const languageDef = Object.values(module).find((val) => val && val.name && val.syntax);
+  const languageDef = Object.values(module).find((val) => val && val.name && val.rules);
 
   if (!languageDef) {
     console.error("Error: Could not find a valid language export in the entry file.");

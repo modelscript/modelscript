@@ -347,8 +347,129 @@ function acceptCacheClear(): void {
     memory.fill(t_acceptCache as usize, 0, (ACCEPT_CACHE_CAPACITY * 12) as usize);
   }
 }
-function stateCanAccept(
+export function stateCanAccept(
   head: ParseHead | null,
+  state: i32,
+  tok: i32,
+  depth: i32 = 0,
+  simCount: i32 = 0,
+  sim0: i32 = 0,
+  sim1: i32 = 0,
+  sim2: i32 = 0,
+  sim3: i32 = 0,
+  sim4: i32 = 0,
+  sim5: i32 = 0,
+  sim6: i32 = 0,
+  sim7: i32 = 0,
+  sim8: i32 = 0,
+  sim9: i32 = 0,
+): boolean {
+  if (depth > MAX_LOOKAHEAD_DEPTH) return false;
+  if (state < 0 || state >= action_offsets.length) return false;
+
+  debugLog(999100, state, tok, depth);
+
+  let actionOffset = action_offsets[state];
+  if (actionOffset < 0 || actionOffset >= action_data.length) {
+    return false;
+  }
+
+  let actionCount = action_data[actionOffset];
+  let idx = actionOffset + 1;
+  for (let i = 0; i < actionCount; i++) {
+    if (idx < 0 || idx + 1 >= action_data.length) {
+      return false;
+    }
+    let sym = action_data[idx];
+    let actCount = action_data[idx + 1];
+    let actIdx = idx + 2;
+    if (sym == tok || sym == 0) {
+      for (let j = 0; j < actCount; j++) {
+        let type = action_data[actIdx++];
+        let target = action_data[actIdx++];
+        if (type == ACTION_SHIFT || type == ACTION_ACCEPT) {
+          return true;
+        }
+        if (type == ACTION_REDUCE) {
+          let ruleLen = prod_lengths[target];
+          let ruleLHS = prod_lhs[target];
+
+          let rem = ruleLen;
+          let newSimCount = simCount;
+          let pHead = head;
+
+          if (newSimCount >= rem) {
+            newSimCount -= rem;
+            rem = 0;
+          } else {
+            rem -= newSimCount;
+            newSimCount = 0;
+          }
+
+          for (let u = 0; u < rem; u++) {
+            if (pHead != null) pHead = pHead.prev;
+          }
+
+          let topState = -1;
+          if (newSimCount > 0) {
+            if (newSimCount == 1) topState = sim0;
+            else if (newSimCount == 2) topState = sim1;
+            else if (newSimCount == 3) topState = sim2;
+            else if (newSimCount == 4) topState = sim3;
+            else if (newSimCount == 5) topState = sim4;
+            else if (newSimCount == 6) topState = sim5;
+            else if (newSimCount == 7) topState = sim6;
+            else if (newSimCount == 8) topState = sim7;
+            else if (newSimCount == 9) topState = sim8;
+            else if (newSimCount == 10) topState = sim9;
+          } else {
+            if (pHead != null) topState = pHead.state;
+          }
+
+          let nextState = -1;
+          if (topState != -1) {
+            let gOffset = goto_offsets[topState];
+            if (gOffset >= 0 && gOffset < goto_data.length) {
+              let gCount = goto_data[gOffset];
+              let gIdx = gOffset + 1;
+              for (let k = 0; k < gCount; k++) {
+                if (goto_data[gIdx++] == ruleLHS) {
+                  nextState = goto_data[gIdx++];
+                  break;
+                } else {
+                  gIdx++;
+                }
+              }
+            }
+          }
+
+          if (nextState != -1) {
+            let ns0 = sim0, ns1 = sim1, ns2 = sim2, ns3 = sim3, ns4 = sim4, ns5 = sim5, ns6 = sim6, ns7 = sim7, ns8 = sim8, ns9 = sim9;
+            let nextSimCount = newSimCount + 1;
+            if (newSimCount == 0) ns0 = nextState;
+            else if (newSimCount == 1) ns1 = nextState;
+            else if (newSimCount == 2) ns2 = nextState;
+            else if (newSimCount == 3) ns3 = nextState;
+            else if (newSimCount == 4) ns4 = nextState;
+            else if (newSimCount == 5) ns5 = nextState;
+            else if (newSimCount == 6) ns6 = nextState;
+            else if (newSimCount == 7) ns7 = nextState;
+            else if (newSimCount == 8) ns8 = nextState;
+            else if (newSimCount == 9) ns9 = nextState;
+
+            debugLog(999101, nextState, tok, depth);
+
+            if (stateCanAccept(pHead, nextState, tok, depth + 1, nextSimCount, ns0, ns1, ns2, ns3, ns4, ns5, ns6, ns7, ns8, ns9)) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    idx += 2 + actCount * 2;
+  }
+  return false;
+}
 function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
   if (nodeSpan >= inputLength) return acceptedNode;
@@ -652,7 +773,7 @@ function getListChildCount(node: u32, listSym: u16): u32 {
   }
   return count;
 }
-function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
+export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
   _listRecurDepth++;
   // Cycle detection guard
   if (_listRecurDepth > 50) {
@@ -1267,13 +1388,6 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   }
 }
 
-export {
-    parse,
-    lookupActions, transitionToGlr, parseLR, updateExpectedTokens, acceptCacheHash, acceptCacheGet,
-    acceptCacheSet, acceptCacheClear, stateCanAccept, wrapWithTrailingErrors, cloneNodeShallow,
-    isPureErrorNode, copyChildren, fixNodeLength, getListDepth, getListChildCount, concatLists,
-    isMutable, appendToList
-};
 
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
   globalIsCatastrophic = false;
@@ -2724,6 +2838,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   }
   return 0;
 }
+}
 
 // ----------------------------------------------------------------------------
 // AST Tree Manipulation & Cloning
@@ -2754,41 +2869,7 @@ export let globalLastLen: u32 = 0;
  */
 
 // ----------------------------------------------------------------------------
-/** 
- * Dynamically resolves a field by its ID by looking up the layout
- * of the node's type. This fully replaces the static models mapping.
- */
-@unmanaged
 
-const cursorPool = new Array<FieldCursor>(16);
-for (let i = 0; i < 16; i++) cursorPool[i] = new FieldCursor();
-let cursorPoolDepth: i32 = 16;
-
-export function getChildrenByFieldId_old(node: u32, fieldId: i32): FieldCursor {
-  let cursor: FieldCursor;
-  if (cursorPoolDepth > 0) {
-    cursorPoolDepth--;
-    cursor = cursorPool[cursorPoolDepth];
-  } else {
-    cursor = new FieldCursor();
-  }
-  cursor.init(node, fieldId);
-  return cursor;
-}
-
-export function releaseFieldCursor_old(cursor: FieldCursor): void {
-  if (cursorPoolDepth < 16) {
-    cursorPool[cursorPoolDepth] = cursor;
-    cursorPoolDepth++;
-  }
-}
-
-export function getChildByFieldId_old(ptr: u32, fieldId: i32): u32 {
-  let cursor = getChildrenByFieldId(ptr, fieldId);
-  let child = cursor.next();
-  cursor.release();
-  return child;
-}
 
 // ----------------------------------------------------------------------------------------------------------
 // List Concatenation & Appending

@@ -24,7 +24,8 @@ import {
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
 } from "./arena";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
-import { getChildByFieldId, getChildrenByFieldId, FieldCursor } from "./engine";
+import { getChildByFieldId, getChildrenByFieldId } from "./engine";
+import { FieldCursor } from "./parser-loop";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 
