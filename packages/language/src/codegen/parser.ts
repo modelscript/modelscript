@@ -10,6 +10,7 @@ import {
   engineCode,
   gssCode,
   lspCode,
+  parserLoopCode,
   recoveryCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateCodeGraphBridge } from "./graph.js";
@@ -339,6 +340,7 @@ export function generateParserTables(
     { filename: "engine.ts", content: engineCodeTemplate },
     { filename: "lsp.ts", content: lspCodeTemplate },
     { filename: "graph.ts", content: generateCodeGraphBridge(originalGrammar) },
+    { filename: "parser-loop.ts", content: parserLoopCode },
     { filename: "gss.ts", content: gssCode },
     { filename: "recovery.ts", content: recoveryCode },
   ];

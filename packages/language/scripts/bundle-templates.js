@@ -18,7 +18,9 @@ for (const file of files) {
     .replace(/\\/g, "\\\\")
     .replace(/\`/g, "\\`")
     .replace(/\$/g, "\\$");
-  const varName = file.replace(".ts", "Code");
+  const varName = file.replace(".ts", "Code").replace(/-([a-z])/g, function (g) {
+    return g[1].toUpperCase();
+  });
   out += `export const ${varName} = \`${cleaned}\`;\n\n`;
   dtsOut += `export declare const ${varName}: string;\n`;
 }

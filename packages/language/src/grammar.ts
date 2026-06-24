@@ -31,6 +31,181 @@ export interface Production {
   semantics?: { index: number; type: string; modifiers: any }[];
 }
 
+export interface FlattenContext {
+  prec?: number;
+  assoc?: "left" | "right";
+  dynamicPrec?: number;
+}
+
+export interface FlattenResult {
+  sym: SymbolName;
+  alias?: string;
+  field?: string;
+  semantic?: { type: string; modifiers: any };
+}
+
+type VisitorFn = (
+  grammar: NormalizedGrammar,
+  contextName: string,
+  rule: any,
+  children: any[],
+  p: FlattenContext,
+) => FlattenResult[];
+
+const FLATTEN_VISITOR: Record<string, VisitorFn> = {
+  SYMBOL: (g, ctx, rule, children, p) => [{ sym: rule.value }],
+
+  TOKEN: (g, ctx, rule, children, p) => {
+    const val = rule.value !== undefined ? rule.value : rule.arg;
+    let tokenName = val.toString();
+    if (typeof val === "string") {
+      tokenName = `"${val}"`;
+    }
+    g.terminals.add(tokenName);
+    return [{ sym: tokenName }];
+  },
+
+  SEQ: (g, ctx, rule, children, p) => {
+    const seqSyms: FlattenResult[] = [];
+    for (const child of children) {
+      seqSyms.push(...g.flatten(ctx, child, { ...p }));
+    }
+    return seqSyms;
+  },
+
+  CHOICE: (g, ctx, rule, children, p) => {
+    const choiceSym = g.nextSynthetic(g.getEBNF(rule), p);
+    if (g.nonTerminals.has(choiceSym)) return [{ sym: choiceSym }];
+
+    for (const child of children) {
+      const childP: FlattenContext = { ...p };
+      const childSyms = g.flatten(ctx, child, childP);
+      g.addProduction(choiceSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    }
+    return [{ sym: choiceSym }];
+  },
+
+  REPEAT: (g, ctx, rule, children, p) => {
+    const childP: FlattenContext = { ...p };
+    const childSyms = g.flatten(ctx, children[0], childP);
+    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p);
+
+    if (g.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
+
+    g.addProduction(repeatSym, [{ sym: repeatSym }, ...childSyms], childP.prec, childP.assoc, true, childP.dynamicPrec);
+    g.addProduction(repeatSym, [], undefined, undefined, true);
+    return [{ sym: repeatSym }];
+  },
+
+  REPEAT1: (g, ctx, rule, children, p) => {
+    const childP: FlattenContext = { ...p };
+    const childSyms = g.flatten(ctx, children[0], childP);
+    const repeatSym = g.nextSynthetic(g.getEBNF(rule), p);
+
+    if (g.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
+
+    g.addProduction(repeatSym, childSyms, childP.prec, childP.assoc, true, childP.dynamicPrec);
+    g.addProduction(repeatSym, [{ sym: repeatSym }, ...childSyms], childP.prec, childP.assoc, true, childP.dynamicPrec);
+    return [{ sym: repeatSym }];
+  },
+
+  PREC: (g, ctx, rule, children, p) => {
+    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
+    if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
+    const childSyms = g.flatten(ctx, children[0], childP);
+    g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    return [{ sym: precSym }];
+  },
+
+  PREC_LEFT: (g, ctx, rule, children, p) => {
+    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
+    if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
+    const childSyms = g.flatten(ctx, children[0], childP);
+    g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    return [{ sym: precSym }];
+  },
+
+  PREC_RIGHT: (g, ctx, rule, children, p) => {
+    const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
+    if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
+    const childSyms = g.flatten(ctx, children[0], childP);
+    g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    return [{ sym: precSym }];
+  },
+
+  PREC_DYNAMIC: (g, ctx, rule, children, p) => {
+    const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
+    const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
+    if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
+
+    const childSyms = g.flatten(ctx, children[0], childP);
+    g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    return [{ sym: precSym }];
+  },
+
+  DEF: (g, ctx, rule, children, p) => g.flatten(ctx, rule.rule || children[0], p),
+  REF: (g, ctx, rule, children, p) => g.flatten(ctx, rule.rule || children[0], p),
+
+  OPTIONAL: (g, ctx, rule, children, p) => {
+    const optSym = g.nextSynthetic(g.getEBNF(rule), p);
+    if (g.nonTerminals.has(optSym)) return [{ sym: optSym }];
+
+    const childSyms = g.flatten(ctx, children[0], p);
+    g.addProduction(optSym, childSyms, p.prec, p.assoc, false, p.dynamicPrec);
+    g.addProduction(optSym, [], undefined, undefined, true);
+    return [{ sym: optSym }];
+  },
+
+  BLANK: () => [],
+
+  FIELD: (g, ctx, rule, children, p) => {
+    const fieldName = rule.value;
+    if (fieldName && !g.fieldToInt.has(fieldName)) {
+      g.fieldToInt.set(fieldName, g.fieldToInt.size + 1);
+    }
+    const res = g.flatten(ctx, children[0], p);
+    if (fieldName) {
+      for (const r of res) {
+        r.field = fieldName;
+      }
+    }
+    return res;
+  },
+
+  RESERVED: (g, ctx, rule, children, p) => g.flatten(ctx, children[0], p),
+  TOKEN_IMMEDIATE: (g, ctx, rule, children, p) => g.flatten(ctx, children[0], p),
+
+  ALIAS: (g, ctx, rule, children, p) => {
+    const res = g.flatten(ctx, children[0], p);
+    if (res.length === 1) {
+      res[0].alias = rule.value;
+    }
+    return res;
+  },
+
+  SEMANTIC: (g, ctx, rule, children, p) => {
+    const res = g.flatten(ctx, children[0], p);
+    if (res.length === 1) {
+      res[0].semantic = rule.value;
+    }
+    return res;
+  },
+
+  SYNC: (g, ctx, rule, children, p) => {
+    const tokens = rule.value as string[];
+    for (const t of tokens) {
+      g.localSyncTokens.add(t);
+    }
+    return g.flatten(ctx, children[0], p);
+  },
+};
+
 /**
  * Converts nested Tree-sitter style DSL rule trees into a flat list of formal BNF-style
  * productions. It handles extracting terminals, synthesizing hidden rules for repetitions
@@ -235,7 +410,7 @@ export class NormalizedGrammar {
     this.symToInt.set("EOF", 1023);
   }
 
-  private addProduction(
+  addProduction(
     left: SymbolName,
     right: { sym: SymbolName; alias?: string; field?: string; semantic?: { type: string; modifiers: any } }[],
     prec?: number,
@@ -286,7 +461,7 @@ export class NormalizedGrammar {
     }
   }
 
-  private getEBNF(rule: any): string {
+  getEBNF(rule: any): string {
     if (typeof rule === "string") return rule;
     if (rule instanceof RegExp) return `/${rule.source}/`;
     if (!rule || !rule.type) return "unknown";
@@ -345,7 +520,7 @@ export class NormalizedGrammar {
     }
   }
 
-  private nextSynthetic(ebnf: string, p: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number }): string {
+  nextSynthetic(ebnf: string, p: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number }): string {
     const cacheKey = `${ebnf}#${p.prec}#${p.assoc}#${p.dynamicPrec}`;
     if (this.syntheticCache.has(cacheKey)) {
       return this.syntheticCache.get(cacheKey)!;
@@ -362,11 +537,7 @@ export class NormalizedGrammar {
   }
 
   // Returns the symbol name representing this rule
-  private flatten(
-    contextName: string,
-    rule: Rule | any,
-    p: { prec?: number; assoc?: "left" | "right" },
-  ): { sym: SymbolName; alias?: string; field?: string; semantic?: { type: string; modifiers: any } }[] {
+  flatten(contextName: string, rule: Rule | any, p: FlattenContext): FlattenResult[] {
     if (!rule) {
       throw new Error(
         `Invalid grammar rule encountered in context '${contextName}'. This usually means an array contains undefined or a referenced rule is missing.`,
@@ -378,185 +549,13 @@ export class NormalizedGrammar {
     }
     const ruleType = (rule.type || "").toUpperCase();
     const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
-    switch (ruleType) {
-      case "SYMBOL":
-        return [{ sym: rule.value }];
 
-      case "TOKEN": {
-        const val = rule.value !== undefined ? rule.value : rule.arg;
-        let tokenName = val.toString();
-        if (typeof val === "string") {
-          tokenName = `"${val}"`;
-        }
-        this.terminals.add(tokenName);
-        return [{ sym: tokenName }];
-      }
-
-      case "SEQ": {
-        const seqSyms: { sym: SymbolName; alias?: string }[] = [];
-        for (const child of children) {
-          const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
-          seqSyms.push(...this.flatten(contextName, child, childP));
-        }
-        return seqSyms;
-      }
-
-      case "CHOICE": {
-        const choiceSym = this.nextSynthetic(this.getEBNF(rule), p);
-        if (this.nonTerminals.has(choiceSym)) return [{ sym: choiceSym }];
-
-        for (const child of children) {
-          const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
-          const childSyms = this.flatten(contextName, child, childP);
-          this.addProduction(choiceSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
-        }
-        return [{ sym: choiceSym }];
-      }
-
-      case "REPEAT": {
-        const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
-        const childSyms = this.flatten(contextName, children[0], childP);
-        const repeatSym = this.nextSynthetic(this.getEBNF(rule), p);
-
-        if (this.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
-
-        // repeatSym -> repeatSym childSyms | epsilon
-        this.addProduction(
-          repeatSym,
-          [{ sym: repeatSym }, ...childSyms],
-          childP.prec,
-          childP.assoc,
-          true,
-          childP.dynamicPrec,
-        );
-        this.addProduction(repeatSym, [], undefined, undefined, true); // Epsilon production
-        return [{ sym: repeatSym }];
-      }
-
-      case "REPEAT1": {
-        const childP: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number } = { ...p };
-        const childSyms = this.flatten(contextName, children[0], childP);
-        const repeatSym = this.nextSynthetic(this.getEBNF(rule), p);
-
-        if (this.nonTerminals.has(repeatSym)) return [{ sym: repeatSym }];
-
-        // repeatSym -> childSyms
-        this.addProduction(repeatSym, childSyms, childP.prec, childP.assoc, true, childP.dynamicPrec);
-        // repeatSym -> repeatSym childSyms
-        this.addProduction(
-          repeatSym,
-          [{ sym: repeatSym }, ...childSyms],
-          childP.prec,
-          childP.assoc,
-          true,
-          childP.dynamicPrec,
-        );
-        return [{ sym: repeatSym }];
-      }
-
-      case "PREC": {
-        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
-        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
-        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
-
-        const childSyms = this.flatten(contextName, children[0], childP);
-        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
-        return [{ sym: precSym }];
-      }
-
-      case "PREC_LEFT": {
-        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
-        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
-        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
-
-        const childSyms = this.flatten(contextName, children[0], childP);
-        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
-        return [{ sym: precSym }];
-      }
-
-      case "PREC_RIGHT": {
-        const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
-        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
-        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
-
-        const childSyms = this.flatten(contextName, children[0], childP);
-        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
-        return [{ sym: precSym }];
-      }
-
-      case "PREC_DYNAMIC": {
-        const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
-        const precSym = this.nextSynthetic(this.getEBNF(rule), childP);
-        if (this.nonTerminals.has(precSym)) return [{ sym: precSym }];
-
-        const childSyms = this.flatten(contextName, children[0], childP);
-        this.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, (childP as any).dynamicPrec);
-        return [{ sym: precSym }];
-      }
-
-      case "DEF":
-      case "REF":
-        return this.flatten(contextName, rule.rule || children[0], p);
-
-      case "OPTIONAL": {
-        const optSym = this.nextSynthetic(this.getEBNF(rule), p);
-        if (this.nonTerminals.has(optSym)) return [{ sym: optSym }];
-
-        const childSyms = this.flatten(contextName, children[0], p);
-        this.addProduction(optSym, childSyms, p.prec, p.assoc, false, (p as any).dynamicPrec);
-        this.addProduction(optSym, [], undefined, undefined, true);
-        return [{ sym: optSym }];
-      }
-
-      case "BLANK":
-        return [];
-
-      case "FIELD": {
-        const fieldName = rule.value;
-        if (fieldName && !this.fieldToInt.has(fieldName)) {
-          this.fieldToInt.set(fieldName, this.fieldToInt.size + 1);
-        }
-        const res = this.flatten(contextName, children[0], p);
-        if (fieldName) {
-          for (const r of res) {
-            r.field = fieldName;
-          }
-        }
-        return res;
-      }
-
-      case "RESERVED":
-      case "TOKEN_IMMEDIATE": {
-        return this.flatten(contextName, children[0], p);
-      }
-
-      case "ALIAS": {
-        const res = this.flatten(contextName, children[0], p);
-        if (res.length === 1) {
-          res[0].alias = rule.value;
-        }
-        return res;
-      }
-
-      case "SEMANTIC": {
-        const res = this.flatten(contextName, children[0], p);
-        if (res.length === 1) {
-          res[0].semantic = rule.value;
-        }
-        return res;
-      }
-
-      case "SYNC": {
-        const tokens = rule.value as string[];
-        for (const t of tokens) {
-          this.localSyncTokens.add(t);
-        }
-        return this.flatten(contextName, children[0], p);
-      }
-
-      default:
-        console.error("UNKNOWN RULE:", rule);
-        throw new Error(`Unknown rule type: ${rule.type}`);
+    const visitor = FLATTEN_VISITOR[ruleType];
+    if (visitor) {
+      return visitor(this, contextName, rule, children, p);
     }
+
+    console.error("UNKNOWN RULE:", rule);
+    throw new Error(`Unknown rule type: ${rule.type}`);
   }
 }
