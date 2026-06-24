@@ -83,3 +83,4 @@ packages/ide/vscode-web/
 Couenne/
 ThirdParty/
 f2ctmp/
+packages/language/tests/wasm/src-gen/

@@ -3,7 +3,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  { ignores: ["**/.react-router/**", "packages/language/src/codegen/runtime/**"] },
+  { ignores: ["**/.react-router/**", "packages/language/src/codegen/runtime/**", "packages/language/tests/wasm/**"] },
   eslint.configs.recommended,
   tseslint.configs.strict,
   tseslint.configs.stylistic,

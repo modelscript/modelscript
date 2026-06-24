@@ -46,6 +46,7 @@ const CHAR_RBRACKET: u8 = 93;
 const CHAR_LPAREN: u8 = 40;
 const CHAR_RPAREN: u8 = 41;
 const PENALTY_UNWIND_NODE: i32 = 5;
+const PENALTY_SYNC_TOKEN: i32 = 10;
 
 @inline
 export function recoverUnwindAndMutate(
@@ -111,10 +112,10 @@ export function recoverUnwindAndMutate(
               let nextToken = invokeLexer(a1NextScanPos);
               let tokenEndPos = srcLexPos + lexLen;
 
-              lexPos = savedLexPos;
-              lexLen = savedLexLen;
-              srcLexPos = savedSrcLexPos;
-              currentScannerState = savedScannerState;
+              setLexPos(savedLexPos);
+              setLexLen(savedLexLen);
+              setSrcLexPos(savedSrcLexPos);
+              setCurrentScannerState(savedScannerState);
 
               let tokCost = token_insert_costs[nextToken == TOKEN_EOF ? 0 : nextToken];
               
@@ -400,7 +401,7 @@ export function recoverUnwindAndMutate(
                         break;
                       }
                       
-                      lexPos = laScanPos;
+                      setLexPos(laScanPos);
                       let laTok = invokeLexer(laScanPos);
                       let laEnd = srcLexPos + lexLen;
                       
@@ -413,10 +414,10 @@ export function recoverUnwindAndMutate(
                       laScanPos = laEnd;
                     }
 
-                    lexPos = savedLexPosB;
-                    lexLen = savedLexLenB;
-                    srcLexPos = savedSrcLexPosB;
-                    currentScannerState = savedScannerStateB;
+                    setLexPos(savedLexPosB);
+                    setLexLen(savedLexLenB);
+                    setSrcLexPos(savedSrcLexPosB);
+                    setCurrentScannerState(savedScannerStateB);
 
                     if (candidateViable) {
                         let pCount = unwindDepth;
@@ -459,11 +460,7 @@ export function recoverUnwindAndMutate(
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
         }
-      } // close if (!reduced) — Branches A & B only
-
-      // --------------------------------------------------------------------
 }
-
 @inline
 export function recoverIslandMode(
   head: ParseHead,
