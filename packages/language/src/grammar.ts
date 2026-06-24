@@ -44,18 +44,22 @@ export interface FlattenResult {
   semantic?: { type: string; modifiers: any };
 }
 
-type VisitorFn = (
-  grammar: NormalizedGrammar,
-  contextName: string,
-  rule: any,
-  children: any[],
-  p: FlattenContext,
-) => FlattenResult[];
+export interface RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[];
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: (r: any) => any, getChildren: (r: any) => any[]): string;
+}
 
-const FLATTEN_VISITOR: Record<string, VisitorFn> = {
-  SYMBOL: (g, ctx, rule, children, p) => [{ sym: rule.value }],
+export class SymbolNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+    return [{ sym: rule.value }];
+  }
+  getEBNF(g: NormalizedGrammar, rule: any): string {
+    return rule.value as string;
+  }
+}
 
-  TOKEN: (g, ctx, rule, children, p) => {
+export class TokenNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const val = rule.value !== undefined ? rule.value : rule.arg;
     let tokenName = val.toString();
     if (typeof val === "string") {
@@ -63,17 +67,33 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     }
     g.terminals.add(tokenName);
     return [{ sym: tokenName }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any): string {
+    return typeof rule.value === "string"
+      ? `"${rule.value}"`
+      : rule.value instanceof RegExp
+        ? `/${rule.value.source}/`
+        : "token";
+  }
+}
 
-  SEQ: (g, ctx, rule, children, p) => {
+export class SeqNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const seqSyms: FlattenResult[] = [];
     for (const child of children) {
       seqSyms.push(...g.flatten(ctx, child, { ...p }));
     }
     return seqSyms;
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any, getChildren: any): string {
+    return `(${getChildren(rule)
+      .map((c: any) => g.getEBNF(c))
+      .join(" ")})`;
+  }
+}
 
-  CHOICE: (g, ctx, rule, children, p) => {
+export class ChoiceNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const choiceSym = g.nextSynthetic(g.getEBNF(rule), p);
     if (g.nonTerminals.has(choiceSym)) return [{ sym: choiceSym }];
 
@@ -83,9 +103,16 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
       g.addProduction(choiceSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     }
     return [{ sym: choiceSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any, getChildren: any): string {
+    return `(${getChildren(rule)
+      .map((c: any) => g.getEBNF(c))
+      .join(" | ")})`;
+  }
+}
 
-  REPEAT: (g, ctx, rule, children, p) => {
+export class RepeatNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p);
@@ -95,9 +122,14 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     g.addProduction(repeatSym, [{ sym: repeatSym }, ...childSyms], childP.prec, childP.assoc, true, childP.dynamicPrec);
     g.addProduction(repeatSym, [], undefined, undefined, true);
     return [{ sym: repeatSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return `${g.getEBNF(getChild(rule))}*`;
+  }
+}
 
-  REPEAT1: (g, ctx, rule, children, p) => {
+export class Repeat1Normalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p);
@@ -107,9 +139,14 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     g.addProduction(repeatSym, childSyms, childP.prec, childP.assoc, true, childP.dynamicPrec);
     g.addProduction(repeatSym, [{ sym: repeatSym }, ...childSyms], childP.prec, childP.assoc, true, childP.dynamicPrec);
     return [{ sym: repeatSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return `${g.getEBNF(getChild(rule))}+`;
+  }
+}
 
-  PREC: (g, ctx, rule, children, p) => {
+export class PrecNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
     const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
@@ -117,9 +154,14 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     const childSyms = g.flatten(ctx, children[0], childP);
     g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     return [{ sym: precSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  PREC_LEFT: (g, ctx, rule, children, p) => {
+export class PrecLeftNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
     const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
@@ -127,9 +169,14 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     const childSyms = g.flatten(ctx, children[0], childP);
     g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     return [{ sym: precSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  PREC_RIGHT: (g, ctx, rule, children, p) => {
+export class PrecRightNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
     const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
@@ -137,9 +184,14 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     const childSyms = g.flatten(ctx, children[0], childP);
     g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     return [{ sym: precSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  PREC_DYNAMIC: (g, ctx, rule, children, p) => {
+export class PrecDynamicNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
     const precSym = g.nextSynthetic(g.getEBNF(rule), childP);
     if (g.nonTerminals.has(precSym)) return [{ sym: precSym }];
@@ -147,12 +199,23 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     const childSyms = g.flatten(ctx, children[0], childP);
     g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     return [{ sym: precSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  DEF: (g, ctx, rule, children, p) => g.flatten(ctx, rule.rule || children[0], p),
-  REF: (g, ctx, rule, children, p) => g.flatten(ctx, rule.rule || children[0], p),
+export class DefRefNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+    return g.flatten(ctx, rule.rule || children[0], p);
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  OPTIONAL: (g, ctx, rule, children, p) => {
+export class OptionalNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const optSym = g.nextSynthetic(g.getEBNF(rule), p);
     if (g.nonTerminals.has(optSym)) return [{ sym: optSym }];
 
@@ -160,11 +223,23 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
     g.addProduction(optSym, childSyms, p.prec, p.assoc, false, p.dynamicPrec);
     g.addProduction(optSym, [], undefined, undefined, true);
     return [{ sym: optSym }];
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return `${g.getEBNF(getChild(rule))}?`;
+  }
+}
 
-  BLANK: () => [],
+export class BlankNormalizer implements RuleNormalizer {
+  normalize(): FlattenResult[] {
+    return [];
+  }
+  getEBNF(): string {
+    return "blank";
+  }
+}
 
-  FIELD: (g, ctx, rule, children, p) => {
+export class FieldNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const fieldName = rule.value;
     if (fieldName && !g.fieldToInt.has(fieldName)) {
       g.fieldToInt.set(fieldName, g.fieldToInt.size + 1);
@@ -176,34 +251,72 @@ const FLATTEN_VISITOR: Record<string, VisitorFn> = {
       }
     }
     return res;
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  RESERVED: (g, ctx, rule, children, p) => g.flatten(ctx, children[0], p),
-  TOKEN_IMMEDIATE: (g, ctx, rule, children, p) => g.flatten(ctx, children[0], p),
-
-  ALIAS: (g, ctx, rule, children, p) => {
+export class AliasNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
     if (res.length === 1) {
       res[0].alias = rule.value;
     }
     return res;
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  SEMANTIC: (g, ctx, rule, children, p) => {
+export class SemanticNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
     if (res.length === 1) {
       res[0].semantic = rule.value;
     }
     return res;
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
 
-  SYNC: (g, ctx, rule, children, p) => {
+export class SyncNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const tokens = rule.value as string[];
     for (const t of tokens) {
       g.localSyncTokens.add(t);
     }
     return g.flatten(ctx, children[0], p);
-  },
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
+
+export const RULE_NORMALIZERS: Record<string, RuleNormalizer> = {
+  SYMBOL: new SymbolNormalizer(),
+  TOKEN: new TokenNormalizer(),
+  SEQ: new SeqNormalizer(),
+  CHOICE: new ChoiceNormalizer(),
+  REPEAT: new RepeatNormalizer(),
+  REPEAT1: new Repeat1Normalizer(),
+  PREC: new PrecNormalizer(),
+  PREC_LEFT: new PrecLeftNormalizer(),
+  PREC_RIGHT: new PrecRightNormalizer(),
+  PREC_DYNAMIC: new PrecDynamicNormalizer(),
+  DEF: new DefRefNormalizer(),
+  REF: new DefRefNormalizer(),
+  OPTIONAL: new OptionalNormalizer(),
+  BLANK: new BlankNormalizer(),
+  FIELD: new FieldNormalizer(),
+  RESERVED: new DefRefNormalizer(),
+  TOKEN_IMMEDIATE: new DefRefNormalizer(),
+  ALIAS: new AliasNormalizer(),
+  SEMANTIC: new SemanticNormalizer(),
+  SYNC: new SyncNormalizer(),
 };
 
 /**
@@ -482,42 +595,11 @@ export class NormalizedGrammar {
       return [];
     };
 
-    switch (rule.type.toUpperCase()) {
-      case "SYMBOL":
-        return rule.value as string;
-      case "TOKEN":
-        return typeof rule.value === "string"
-          ? `"${rule.value}"`
-          : rule.value instanceof RegExp
-            ? `/${rule.value.source}/`
-            : "token";
-      case "SEQ":
-        return `(${getChildren(rule)
-          .map((c: any) => this.getEBNF(c))
-          .join(" ")})`;
-      case "CHOICE":
-        return `(${getChildren(rule)
-          .map((c: any) => this.getEBNF(c))
-          .join(" | ")})`;
-      case "REPEAT":
-        return `${this.getEBNF(getChild(rule))}*`;
-      case "REPEAT1":
-        return `${this.getEBNF(getChild(rule))}+`;
-      case "OPTIONAL":
-        return `${this.getEBNF(getChild(rule))}?`;
-      case "PREC":
-      case "PREC_LEFT":
-      case "PREC_RIGHT":
-      case "PREC_DYNAMIC":
-      case "ALIAS":
-      case "FIELD":
-      case "SEMANTIC":
-      case "RESERVED":
-      case "TOKEN_IMMEDIATE":
-        return this.getEBNF(getChild(rule));
-      default:
-        return "unknown";
+    const normalizer = RULE_NORMALIZERS[rule.type.toUpperCase()];
+    if (normalizer) {
+      return normalizer.getEBNF(this, rule, getChild, getChildren);
     }
+    return "unknown";
   }
 
   nextSynthetic(ebnf: string, p: { prec?: number; assoc?: "left" | "right"; dynamicPrec?: number }): string {
@@ -550,9 +632,9 @@ export class NormalizedGrammar {
     const ruleType = (rule.type || "").toUpperCase();
     const children = rule.children || rule.args || (rule.arg ? [rule.arg] : []);
 
-    const visitor = FLATTEN_VISITOR[ruleType];
-    if (visitor) {
-      return visitor(this, contextName, rule, children, p);
+    const normalizer = RULE_NORMALIZERS[ruleType];
+    if (normalizer) {
+      return normalizer.normalize(this, contextName, rule, children, p);
     }
 
     console.error("UNKNOWN RULE:", rule);
