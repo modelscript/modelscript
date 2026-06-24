@@ -617,7 +617,7 @@ scope {
                                     children.push(ints[i++]);
                                 }
 
-                                const typeName = typeId === 65535 ? "ERROR" : (window.syntaxNames ? window.syntaxNames[typeId] : "UNKNOWN");
+                                const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
                                 
                                 if (op === 1) { // INSERT
                                     nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, children });
@@ -665,7 +665,7 @@ scope {
                 const nodes = [];
                 const visited = new Set();
                 
-                const flatten = (ptr, depth, parentOffset) => {
+                const flatten = (ptr, depth, parentOffset, isFirstChild) => {
                     if (nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
                         nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
@@ -676,20 +676,22 @@ scope {
                     const node = nodeMap.current.get(ptr);
                     if (!node) return parentOffset;
                     
-                    const currentOffset = parentOffset + (node.pad || 0);
+                    const currentOffset = isFirstChild ? parentOffset : parentOffset + (node.pad || 0);
                     const isError = node.typeName === "ERROR";
                     const isGhost = node.len === 0 && !isError;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset });
                     
                     let childOffset = currentOffset;
+                    let isFirst = true;
                     for (const childPtr of node.children || []) {
-                        childOffset = flatten(childPtr, depth + 1, childOffset);
+                        childOffset = flatten(childPtr, depth + 1, childOffset, isFirst);
+                        isFirst = false;
                     }
                     return currentOffset + (node.len || 0);
                 };
                 
-                if (rootId) flatten(rootId, 0, 0);
+                if (rootId) flatten(rootId, 0, 0, false);
                 return nodes;
             }, [updateTick, rootId]);
 
@@ -887,13 +889,20 @@ let patchOffset = 0;
 
 function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     if (patchOffset + 10 + (children ? children.length : 0) > patchInt32.length) {
-        const old = patchInt32;
-        patchBuffer = new ArrayBuffer(patchBuffer.byteLength * 2);
-        patchInt32 = new Int32Array(patchBuffer);
-        patchInt32.set(old);
-        // Keep both buffers in sync size-wise
-        if (patchBuffer === patchBufferA) patchBufferA = patchBuffer;
-        else patchBufferB = patchBuffer;
+        try {
+            const newSize = Math.min(patchBuffer.byteLength * 2, 64 * 1024 * 1024);
+            if (newSize <= patchBuffer.byteLength) return; // Cannot grow further
+            const old = patchInt32;
+            const grown = new ArrayBuffer(newSize);
+            patchInt32 = new Int32Array(grown);
+            patchInt32.set(old);
+            patchBuffer = grown;
+            patchBufferA = grown;
+            patchBufferB = new ArrayBuffer(newSize);
+        } catch (e) {
+            console.warn("pushPatch: buffer grow failed", e);
+            return;
+        }
     }
     patchInt32[patchOffset++] = op;
     patchInt32[patchOffset++] = ptr;

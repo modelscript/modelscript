@@ -251,3 +251,56 @@ export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32A
   arr.init(initialElements);
   return arr;
 }
+
+@unmanaged
+export class UnmanagedInt32Array {
+  @inline @operator("[]") get(index: i32): i32 {
+    return load<i32>(changetype<usize>(this) + ((index as u32) << 2));
+  }
+  @inline @operator("[]=") set(index: i32, value: i32): void {
+    store<i32>(changetype<usize>(this) + ((index as u32) << 2), value);
+  }
+}
+
+@unmanaged
+export class UnmanagedUint32Array {
+  @inline @operator("[]") get(index: i32): u32 {
+    return load<u32>(changetype<usize>(this) + ((index as u32) << 2));
+  }
+  @inline @operator("[]=") set(index: i32, value: u32): void {
+    store<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
+  }
+  @inline atomicGet(index: i32): u32 {
+    return atomic.load<u32>(changetype<usize>(this) + ((index as u32) << 2));
+  }
+  @inline atomicSet(index: i32, value: u32): void {
+    atomic.store<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
+  }
+  @inline atomicCmpxchg(index: i32, expected: u32, replacement: u32): u32 {
+    return atomic.cmpxchg<u32>(changetype<usize>(this) + ((index as u32) << 2), expected, replacement);
+  }
+  @inline atomicAdd(index: i32, value: u32): u32 {
+    return atomic.add<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
+  }
+}
+
+
+@unmanaged
+export class UnmanagedUint16Array {
+  @inline @operator("[]") get(index: i32): u16 {
+    return load<u16>(changetype<usize>(this) + ((index as u32) << 1));
+  }
+  @inline @operator("[]=") set(index: i32, value: u16): void {
+    store<u16>(changetype<usize>(this) + ((index as u32) << 1), value);
+  }
+}
+
+@unmanaged
+export class UnmanagedUint8Array {
+  @inline @operator("[]") get(index: i32): u8 {
+    return load<u8>(changetype<usize>(this) + (index as u32));
+  }
+  @inline @operator("[]=") set(index: i32, value: u8): void {
+    store<u8>(changetype<usize>(this) + (index as u32), value);
+  }
+}

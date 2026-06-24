@@ -524,6 +524,10 @@ export class LspFacade {
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
     this._lastDiagBinaryLength = numElements * 4;
+    diags.sort((a, b) => {
+      if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
+      return a.range.start.character - b.range.start.character;
+    });
     return diags;
   }
 
@@ -952,7 +956,30 @@ export class LspFacade {
       }
     };
 
+    let opsCount = 0;
+    const MAX_DIFF_OPS = 10000;
+
     const diffNodes = (oldPtr: number, newPtr: number): void => {
+      if (opsCount >= MAX_DIFF_OPS) {
+        // Fallback: tree changed too much, just delete old and insert new
+        if (oldPtr) listener.onNodeDeleted(oldPtr);
+        if (newPtr) {
+          const typeFlags = mem32[newPtr / 4];
+          const typeId = typeFlags & 0x03ff;
+          let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+          if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+          const envHashPadding = mem32[(newPtr + 4) / 4];
+          const rawPad = typeFlags >>> 18;
+          const isFat = (envHashPadding >>> 23) & 1;
+          const pad =
+            isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+          const len = envHashPadding & 0x007fffff;
+          const children = getChildren(newPtr);
+          listener.onNodeInserted(newPtr, typeId, typeName, pad, len, children);
+        }
+        opsCount++;
+        return;
+      }
       if (oldPtr === newPtr) {
         listener.onNodeRetained(newPtr);
         return;
@@ -979,13 +1006,16 @@ export class LspFacade {
       let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(newPtr + 4) / 4];
-      const pad = typeFlags >>> 18;
+      const rawPad = typeFlags >>> 18;
+      const isFat = (envHashPadding >>> 23) & 1;
+      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
       const oldCh = getChildren(oldPtr);
       const newCh = getChildren(newPtr);
 
       listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, newCh);
+      opsCount++;
 
       let start = 0;
       while (start < oldCh.length && start < newCh.length && oldCh[start] === newCh[start]) {

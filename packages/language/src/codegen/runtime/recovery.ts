@@ -16,6 +16,7 @@ import {
   allocNode,
   getInputBuffer
 } from "./arena";
+import { UnmanagedUint16Array, UnmanagedUint8Array } from "./array";
 import {
   lexPos,
   lexLen,
@@ -28,7 +29,8 @@ import {
   setLexLen,
   setSrcLexPos,
   setCurrentScannerState,
-  TOKEN_EOF
+  TOKEN_EOF,
+  TOKEN_UNKNOWN
 } from "./parser";
 
 export let errorQueueHead: u32 = 0;
@@ -57,6 +59,8 @@ export function recoverUnwindAndMutate(
 ): void {
         // ERROR BRANCH A & B: Unwind and Mutate
         // ----------------------------------------------------------------
+        let initialScannerState = currentScannerState;
+        
         // If forced reduction didn't work, we iteratively pop (unwind) states from the GSS
         // up to a depth of 5. For each popped state, we attempt:
         // Branch A: Deleting the current token (skip)
@@ -68,6 +72,26 @@ export function recoverUnwindAndMutate(
           let recPrev = unwindCurr.prev;
           let recBalance = unwindCurr.balanceHash;
           let recPrec = unwindCurr.dynamicPrec;
+
+          // Hard-stop: never unwind past scope-closing tokens.
+          // If the dropped byte range [unwindCurr.pos, head.pos) contains a
+          // '}', ')' or ']', the recovery has crossed a scope boundary.
+          // Breaking here forces island mode to handle inter-block garbage,
+          // preventing the Unwind/Mutate branches from creating heads with
+          // inflated byte lengths on nodes that precede the error.
+          let uPos_shared: u32 = unwindCurr.pos;
+          let hasScopeBoundary: bool = false;
+          for (let bi: u32 = uPos_shared; bi < head.pos; bi += 2) {
+            let ch = changetype<UnmanagedUint16Array>(getInputBuffer())[bi >> 1];
+            if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
+              hasScopeBoundary = true;
+              break;
+            }
+          }
+          if (hasScopeBoundary) {
+            debugLog(60300, unwindDepth, uPos_shared, head.pos);
+            break;
+          }
 
           // ------------------------------------------------------------
           // Branch A: Deletion (Skip Token)
@@ -87,9 +111,9 @@ export function recoverUnwindAndMutate(
             let droppedBytes: u32 = head.pos > uPos ? head.pos - uPos : 0;
 
             let baseDelCost =
-              token_insert_costs[token == TOKEN_EOF ? 0 : token] + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes; // Token-specific deletion cost + unwind penalty
+              token_insert_costs[token == TOKEN_EOF ? 0 : token] + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
             if (lexLen == 1) {
-              let c = load<u8>(getInputBuffer() + lexPos);
+              let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
               if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
               else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
                 newBalance--;
@@ -128,19 +152,33 @@ export function recoverUnwindAndMutate(
                 let currChild: ParseHead | null = head;
                 let childCount = 0;
                 while (currChild != null && currChild != unwindCurr) {
-                  if (childCount < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+                  if (childCount < MAX_CHILD_NODES) t_globalChildNodes[childCount] = currChild.astNode;
                   childCount++;
                   currChild = currChild.prev;
                 }
                 if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
                 let errPad = uPadding;
-                let errLen = droppedBytes + (a1NextScanPos - head.pos);
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, errLen, newBalance & 0xff);
+                if (childCount > 0) {
+                  let firstChildId = t_globalChildNodes[childCount - 1];
+                  errPad = getNodePadding(firstChildId);
+                } else if (head.pos < a1NextScanPos) {
+                  let savedLexPos = lexPos;
+                  let savedLexLen = lexLen;
+                  let savedSrcLexPos = srcLexPos;
+                  let savedScannerState = currentScannerState;
+                  invokeLexer(head.pos);
+                  errPad = lexPos > head.pos ? lexPos - head.pos : 0;
+                  setLexLen(savedLexLen);
+                  setLexPos(savedLexPos);
+                  setSrcLexPos(savedSrcLexPos);
+                  setCurrentScannerState(savedScannerState);
+                }
 
+                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff);
                 let lastChild = 0;
                 for (let k = childCount - 1; k >= 0; k--) {
-                  let child = load<i32>(t_globalChildNodes + k * 4);
+                  let child = t_globalChildNodes[k];
                   if (child == 0) continue;
                   let clone = cloneNodeShallow(child);
                   if (lastChild == 0) setFirstChild(errNode, clone);
@@ -165,6 +203,9 @@ export function recoverUnwindAndMutate(
                   lastChild = tNode;
                   p = lexPos + tLen;
                 }
+                
+                let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
+                setNodeByteLength(errNode, errByteLen);
 
                 let merged = concatLists(unwindCurr.astNode, errNode, getNodeType(unwindCurr.astNode), newBalance & 0xff);
 
@@ -173,7 +214,7 @@ export function recoverUnwindAndMutate(
                   merged,
                   unwindCurr.prev,
                   a1NextScanPos,
-                  currentScannerState,
+                  initialScannerState,
                   head.errorCost + baseDelCost + a1DelCost,
                   0,
                   newBalance,
@@ -223,7 +264,7 @@ export function recoverUnwindAndMutate(
               let childCount = 0;
               while (currChild != null && currChild != unwindCurr) {
                 if (childCount < MAX_CHILD_NODES) {
-                  store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+                  t_globalChildNodes[childCount] = currChild.astNode;
                 }
                 childCount++;
                 currChild = currChild.prev;
@@ -232,10 +273,26 @@ export function recoverUnwindAndMutate(
 
               let eofHead: ParseHead;
               if (childCount > 0 || errLen > 0) {
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, errLen, newBalance & 0xff);
+                let errPad = uPadding;
+                if (childCount > 0) {
+                  let firstChildId = t_globalChildNodes[childCount - 1];
+                  errPad = getNodePadding(firstChildId);
+                } else if (head.pos < inputLength) {
+                  let savedLexPos = lexPos;
+                  let savedLexLen = lexLen;
+                  let savedSrcLexPos = srcLexPos;
+                  let savedScannerState = currentScannerState;
+                  invokeLexer(head.pos);
+                  errPad = lexPos > head.pos ? lexPos - head.pos : 0;
+                  setLexLen(savedLexLen);
+                  setLexPos(savedLexPos);
+                  setSrcLexPos(savedSrcLexPos);
+                  setCurrentScannerState(savedScannerState);
+                }
+                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff);
                 let lastChild = 0;
                 for (let k = childCount - 1; k >= 0; k--) {
-                  let child = load<i32>(t_globalChildNodes + k * 4);
+                  let child = t_globalChildNodes[k];
                   if (child == 0) continue;
                   let clone = cloneNodeShallow(child);
                   if (lastChild == 0) setFirstChild(errNode, clone);
@@ -265,6 +322,9 @@ export function recoverUnwindAndMutate(
 
                   p = lexPos + tLen;
                 }
+                
+                let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
+                setNodeByteLength(errNode, errByteLen);
 
                 eofHead = allocParseHead(
                   recState,
@@ -309,7 +369,7 @@ export function recoverUnwindAndMutate(
                 let currChild: ParseHead | null = head;
                 let childCount = 0;
                 while (currChild != null && currChild != unwindCurr) {
-                  if (childCount < MAX_CHILD_NODES) store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+                  if (childCount < MAX_CHILD_NODES) t_globalChildNodes[childCount] = currChild.astNode;
                   childCount++;
                   currChild = currChild.prev;
                 }
@@ -321,7 +381,7 @@ export function recoverUnwindAndMutate(
 
                 let lastChild = 0;
                 for (let k = childCount - 1; k >= 0; k--) {
-                  let child = load<i32>(t_globalChildNodes + k * 4);
+                  let child = t_globalChildNodes[k];
                   if (child == 0) continue;
                   let clone = cloneNodeShallow(child);
                   if (lastChild == 0) setFirstChild(errNode, clone);
@@ -341,7 +401,7 @@ export function recoverUnwindAndMutate(
                   merged,
                   unwindCurr.prev,
                   head.pos,
-                  currentScannerState,
+                  initialScannerState,
                   head.errorCost + retroCost,
                   0,
                   newBalance,
@@ -361,7 +421,29 @@ export function recoverUnwindAndMutate(
           // ------------------------------------------------------------
           // Search the action table for any valid SHIFT out of the unwound state.
           // Create a zero-length virtual AST node for that expected token.
-          if (head.consecutiveInsertions < 8) {
+          //
+          // Guard: At depth=0, skip insertions if the last significant character
+          // before head.pos is a scope closer (}, ), ]). This means the parser
+          // just completed a scope-closing reduction and any insertion here would
+          // absorb inter-scope garbage into the preceding node's byte length.
+          // Island mode will handle the garbage correctly instead.
+          let skipBranchB = false;
+          if (unwindDepth == 0 && head.pos >= 2) {
+            // Scan backwards past whitespace to find the last significant character
+            let scanBack: u32 = head.pos - 2;
+            while (scanBack >= 2) {
+              let ch = changetype<UnmanagedUint16Array>(getInputBuffer())[scanBack >> 1];
+              if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {  // not space/tab/LF/CR
+                if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
+                  skipBranchB = true;
+                }
+                debugLog(90000, head.pos, ch, skipBranchB ? 1 : 0);
+                break;
+              }
+              scanBack -= 2;
+            }
+          }
+          if (!skipBranchB && head.consecutiveInsertions < 8) {
             let aOffset = action_offsets[recState];
             if (aOffset >= 0 && aOffset < action_data.length) {
               let idx2 = aOffset + 1;
@@ -383,6 +465,7 @@ export function recoverUnwindAndMutate(
                     debugLog(60200, sym, target, recState);
 
                     let baseCost = token_insert_costs[sym == TOKEN_EOF ? 0 : sym];
+                    if (baseCost <= 0) baseCost = 10; // Prevent infinite loops from 0-cost insertions
                     let uPos = unwindCurr.pos;
                     let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
                     let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + (bDropped as i32);
@@ -447,7 +530,7 @@ export function recoverUnwindAndMutate(
                           virtualLeaf,
                           unwindCurr,
                           head.pos,
-                          currentScannerState,
+                          initialScannerState,
                           head.errorCost + actualCost,
                           0,
                           newBalance,
@@ -520,7 +603,7 @@ export function recoverIslandMode(
 
             // We treat EVERY token as a potential synchronization point (like Tree-sitter's ERROR pseudo-node).
             // We rely on `stateCanAccept` to contextually determine if the popped state can resume here.
-            let nextPos = searchPos < inputLength ? lexPos + tokenLen : searchPos;
+            let nextPos = searchPos < inputLength ? srcLexPos + tokenLen : searchPos;
             // Save lexer state before lookahead to prevent clobbering tok's lexLen
             let savedPanicLexLen = lexLen;
             let savedPanicLexPos = lexPos;
@@ -587,21 +670,39 @@ export function recoverIslandMode(
             let childCount = 0;
             while (currChild != null && currChild != currPop) {
               if (childCount < MAX_CHILD_NODES) {
-                store<i32>(t_globalChildNodes + childCount * 4, currChild.astNode);
+                t_globalChildNodes[childCount] = currChild.astNode;
               }
               childCount++;
               currChild = currChild.prev;
             }
             if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
-            // Allocate a monolithic ERROR leaf that spans the entire discarded section
-            let islandLeaf = allocNode(NODE_TYPE_ERROR, 0, resumePos - currPop.pos, head.balanceHash & 0xff);
+            let islandPad: u32 = 0;
+            let islandScannerState = currentScannerState;
+            if (childCount > 0) {
+              let firstChildId = t_globalChildNodes[childCount - 1];
+              islandPad = getNodePadding(firstChildId);
+            } else if (head.pos < (resumePos as u32)) {
+              let savedLexPos = lexPos;
+              let savedSrcLexPos = srcLexPos;
+              let savedLexLen = lexLen;
+              let savedScannerState = currentScannerState;
+              invokeLexer(head.pos);
+              islandPad = srcLexPos > head.pos ? srcLexPos - head.pos : 0;
+              setLexLen(savedLexLen);
+              setLexPos(savedLexPos);
+              setSrcLexPos(savedSrcLexPos);
+              setCurrentScannerState(savedScannerState);
+            }
+
+            // Allocate a monolithic ERROR leaf with length 0, we'll update it later
+            let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff);
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
             let lastChild = 0;
             for (let k = childCount - 1; k >= 0; k--) {
-              let child = load<i32>(t_globalChildNodes + k * 4);
+              let child = t_globalChildNodes[k];
               if (child == 0) continue;
               let clone = cloneNodeShallow(child);
               if (lastChild == 0) setFirstChild(islandLeaf, clone);
@@ -617,21 +718,21 @@ export function recoverIslandMode(
             while (p < (resumePos as u32)) {
               let tok = invokeLexer(p);
               if (tok == -1) break;
-              let pad = lexPos - p;
-              let token = lex(p);
               let tLen = lexLen;
               if (tLen == 0) break; // prevent infinite loop
+              let pad = srcLexPos > p ? srcLexPos - p : 0;
 
-              // Report each garbage token individually so spaces don't get squiggled
-              newTail = pushDiagnostic(newTail, lexPos as u32, (lexPos + tLen) as u32);
-
-              let tNode = allocNode(token as u16, pad, tLen, 0);
+              let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
               if (lastChild == 0) setFirstChild(islandLeaf, tNode);
               else setNextSibling(lastChild, tNode);
               lastChild = tNode;
 
-              p = lexPos + tLen;
+              p = srcLexPos + tLen;
             }
+
+            // Set the exact byte length based on the last parsed token, excluding trailing whitespace
+            let islandByteLen = p > currPop.pos + islandPad ? p - currPop.pos - islandPad : 0;
+            setNodeByteLength(islandLeaf, islandByteLen);
 
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.
             // We give it an artificially low errorCost so it ALWAYS survives the
@@ -643,7 +744,7 @@ export function recoverIslandMode(
               islandLeaf,
               currPop,
               resumePos,
-              currentScannerState,
+              islandScannerState,
               islandCost,
               0,
               foundBalance,

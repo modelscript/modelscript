@@ -12,31 +12,31 @@ import {
   getNodeFlags,
 } from "./arena";
 
-import { ChunkedUint32Array } from "./array";
+import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
 import { debugLog } from "./engine";
 
 const ARENA_BUFFER_SIZE: i32 = 16384;
 const MAX_CURSOR_DEPTH: i32 = 999999;
 
-export let t_activeHeads: u32 = 0;
+export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeHeadsCount: u32 = 0;
 
 export function initGSS(): void {
-  if (t_activeHeads == 0) {
-    t_activeHeads = atomicChunkAlloc(ARENA_BUFFER_SIZE * 4);
+  if (changetype<usize>(t_activeHeads) == 0) {
+    t_activeHeads = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
   }
   activeHeadsCount = 0;
 }
 
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
-  store<u32>(t_activeHeads + activeHeadsCount * 4, headPtr);
+  t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   return true;
 }
 
 export function getActiveHead(index: u32): u32 {
-  return load<u32>(t_activeHeads + index * 4);
+  return t_activeHeads[index];
 }
 
 export function setActiveHeadsCount(count: u32): void {
@@ -249,7 +249,7 @@ export function findReusableNode(
 
     if (absContentStart == targetOldPos && absContentEnd > targetOldPos) {
       if (
-        absContentEnd <= editStart ||
+        absContentEnd < editStart ||
         absContentStart >= editOldEnd
       ) {
         let isError = nodeType == 0;

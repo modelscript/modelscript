@@ -3,7 +3,7 @@
 // @ts-ignore
 
 import {
-  ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array
+  ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array
 } from "./array";
 import { inputEncoding } from "./parser";
 
@@ -74,13 +74,13 @@ const AST_CHUNK_SIZE: u32 = 256 * 1024; // 256 KB incremental chunks
  */
 @unmanaged
 class SharedState {
-  gen1_chunks: u32;
+  gen1_chunks: UnmanagedUint32Array;
   gen1_chunk_count: u32;
   gen1_active_chunk: u32;
   gen1_offset: u32;
   gen1_endLimit: u32;
   arenaOffset: u32;
-  gen0_chunks: u32;
+  gen0_chunks: UnmanagedUint32Array;
   gen0_chunk_count: u32;
   gen0_active_chunk: u32;
   gen0_offset: u32;
@@ -88,45 +88,79 @@ class SharedState {
   activeGeneration: u8;
   allocCount: u32;
   freeNodeHead: u32;
-  fatPaddingArenaPtr: u32;
+  fatPaddingArenaPtr: UnmanagedUint32Array;
   fatPaddingCount: u32;
   arenaBuffer: u32;
   currentInputBufferSize: u32;
   activeRootCount: u32;
-  activeRootsPtr: u32;
-  gcStackPtr: u32;
+  activeRootsPtr: UnmanagedUint32Array;
+  gcStackPtr: UnmanagedUint32Array;
   gcStackCapacity: u32;
   allocLock: u32; // Used for thread-safe spinlocking during chunk rollovers
+
+  @inline atomicAddOffset(amount: u32): u32 {
+    let ptrLoc = changetype<usize>(this) + (this.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
+    return atomic.add<u32>(ptrLoc, amount);
+  }
+
+  @inline atomicLoadOffset(): u32 {
+    let ptrLoc = changetype<usize>(this) + (this.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
+    return atomic.load<u32>(ptrLoc);
+  }
+
+  @inline atomicStoreOffset(val: u32): void {
+    let ptrLoc = changetype<usize>(this) + (this.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
+    atomic.store<u32>(ptrLoc, val);
+  }
+
+  @inline atomicAddInputBuffer(amount: u32): u32 {
+    let ptrLoc = changetype<usize>(this) + offsetof<SharedState>("currentInputBufferSize");
+    return atomic.add<u32>(ptrLoc, amount);
+  }
+
+  @inline atomicLoadInputBuffer(): u32 {
+    let ptrLoc = changetype<usize>(this) + offsetof<SharedState>("currentInputBufferSize");
+    return atomic.load<u32>(ptrLoc);
+  }
+
+  @inline acquireLock(): void {
+    let lockLoc = changetype<usize>(this) + offsetof<SharedState>("allocLock");
+    while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
+  }
+
+  @inline releaseLock(): void {
+    let lockLoc = changetype<usize>(this) + offsetof<SharedState>("allocLock");
+    atomic.store<u32>(lockLoc, 0);
+  }
 }
 
-const shared_state_ptr = memory.data<u32>([0]);
+const shared_state_ptr = changetype<UnmanagedUint32Array>(memory.data<u32>([0]));
 
 /**
  * Retrieves the shared cross-worker memory state.
  * Thread-safe initialization using an atomic compare-and-exchange lock.
  */
 export function S(): SharedState {
-  let ptrLocation = changetype<usize>(shared_state_ptr);
-  let ptr = atomic.load<u32>(ptrLocation);
+  let ptr = shared_state_ptr.atomicGet(0);
   if (ptr == 0) {
     let newPtr = atomicChunkAlloc(256); // Allocate 256 bytes for global state
     memory.fill(newPtr as usize, 0, 256);
-    let old = atomic.cmpxchg<u32>(ptrLocation, 0, newPtr);
+    let old = shared_state_ptr.atomicCmpxchg(0, 0, newPtr);
     if (old != 0) return changetype<SharedState>(old);
 
     let state = changetype<SharedState>(newPtr);
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
     state.arenaBuffer = atomicChunkAlloc(state.currentInputBufferSize);
-    state.gen1_chunks = atomicChunkAlloc(8192 * 4);
+    state.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen1_chunk_count = 1;
-    store<u32>(state.gen1_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
+    state.gen1_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
 
-    state.gen0_chunks = atomicChunkAlloc(8192 * 4);
+    state.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen0_chunk_count = 1;
-    store<u32>(state.gen0_chunks, atomicChunkAlloc(AST_CHUNK_SIZE));
+    state.gen0_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
 
     state.activeGeneration = 1;
-    state.activeRootsPtr = atomicChunkAlloc(100 * 4); // Up to 100 roots
+    state.activeRootsPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(100 * 4)); // Up to 100 roots
     return state;
   }
   return changetype<SharedState>(ptr);
@@ -173,7 +207,7 @@ export function resetGeneration(gen: u8): void {
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
     if (S().gen1_chunk_count > 0) {
       S().gen1_active_chunk = 0;
-      let startOffset = load<u32>(S().gen1_chunks);
+      let startOffset = S().gen1_chunks[0];
       let usedBytes = S().gen1_offset - startOffset;
       S().gen1_offset = startOffset;
       S().arenaOffset = S().gen1_offset;
@@ -185,7 +219,7 @@ export function resetGeneration(gen: u8): void {
   } else if (gen == 0) {
     if (S().gen0_chunk_count > 0) {
       S().gen0_active_chunk = 0;
-      let startOffset = load<u32>(S().gen0_chunks);
+      let startOffset = S().gen0_chunks[0];
       let usedBytes = S().gen0_offset - startOffset;
       S().gen0_offset = startOffset;
       S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
@@ -227,7 +261,7 @@ export function getInputBuffer(): usize {
  * @returns The base pointer of Generation 1.
  */
 export function getNodeArenaStart(): u32 {
-  return S().gen1_chunk_count > 0 ? load<u32>(S().gen1_chunks) : 0;
+  return S().gen1_chunk_count > 0 ? S().gen1_chunks[0] : 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -245,9 +279,9 @@ let fatPaddingCapacity: u32 = 100000; // Grows dynamically if exhausted
  * Fat padding holds large offsets or 64-bit literals that don't fit inside a standard 16-byte AST node.
  */
 function ensureFatPaddingArena(): void {
-  if (S().fatPaddingArenaPtr == 0) {
-    S().fatPaddingArenaPtr = atomicChunkAlloc(fatPaddingCapacity * 4);
-    memory.fill(S().fatPaddingArenaPtr as usize, 0, fatPaddingCapacity * 4);
+  if (changetype<u32>(S().fatPaddingArenaPtr) == 0) {
+    S().fatPaddingArenaPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(fatPaddingCapacity * 4));
+    memory.fill(changetype<usize>(S().fatPaddingArenaPtr), 0, fatPaddingCapacity * 4);
   }
 }
 
@@ -262,7 +296,7 @@ function ensureFatPaddingArena(): void {
  * @returns The physical memory pointer to the 8-byte padding/literal slot.
  */
 export function getFatPaddingPtr(idx: u32): usize {
-  return S().fatPaddingArenaPtr + (idx << 3); // 8 bytes per f64 literal slot
+  return changetype<usize>(S().fatPaddingArenaPtr) + (idx << 3); // 8 bytes per f64 literal slot
 }
 
 /**
@@ -271,12 +305,12 @@ export function getFatPaddingPtr(idx: u32): usize {
  */
 export function initArena(sizeBytes: u32): void {
   let s = S();
-  s.gen1_chunks = atomicChunkAlloc(8192 * 4); // Metadata array: up to 8192 chunks
-  s.gen0_chunks = atomicChunkAlloc(8192 * 4);
+  s.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4)); // Metadata array: up to 8192 chunks
+  s.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
 
   // Initialize first chunk for Generation 1 (Persistent)
   let chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  store<u32>(s.gen1_chunks, chunk1);
+  s.gen1_chunks[0] = chunk1;
   s.gen1_chunk_count = 1;
   s.gen1_active_chunk = 0;
   s.gen1_offset = chunk1;
@@ -284,7 +318,7 @@ export function initArena(sizeBytes: u32): void {
 
   // Initialize first chunk for Generation 0 (Transient)
   let chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  store<u32>(s.gen0_chunks, chunk0);
+  s.gen0_chunks[0] = chunk0;
   s.gen0_chunk_count = 1;
   s.gen0_active_chunk = 0;
   s.gen0_offset = chunk0;
@@ -316,28 +350,23 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   // 1. Attempt to reclaim memory from the free list (structural sharing)
   if (s.freeNodeHead != 0) {
     ptr = s.freeNodeHead;
-    s.freeNodeHead = load<u32>(ptr + 8, 0); // The 'firstChild' slot is overloaded as the 'next' pointer
+    s.freeNodeHead = changetype<ASTNode>(ptr).firstChild; // The 'firstChild' slot is overloaded as the 'next' pointer
   } else {
     // 2. Perform atomic bump allocation in the currently active generation
-    let ptrLoc: usize =
-      changetype<usize>(s) +
-      (s.activeGeneration == 0 ? offsetof<SharedState>("gen0_offset") : offsetof<SharedState>("gen1_offset"));
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : s.gen1_endLimit;
 
     // Atomically claim a 16-byte slot (guaranteed 16-byte aligned by chunk allocators)
-    ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
+    ptr = s.atomicAddOffset(NODE_SIZE);
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
     if (ptr + NODE_SIZE > endLimit) {
       let isGen0 = s.activeGeneration == 0;
-      let lockLoc = changetype<usize>(s) + offsetof<SharedState>("allocLock");
-      
       // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
       // If multiple threads exhaust the chunk concurrently, only one thread handles the reallocation.
-      while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
+      s.acquireLock();
       
       // Re-read ptrLoc and endLimit inside the lock to check if another thread already rolled over
-      let currentPtrLoc = atomic.load<u32>(ptrLoc);
+      let currentPtrLoc = s.atomicLoadOffset();
       let currentEndLimit = isGen0 ? s.gen0_endLimit : s.gen1_endLimit;
       
       if (currentPtrLoc + NODE_SIZE > currentEndLimit) {
@@ -350,7 +379,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
         if (activeChunk + 1 < chunkCount) {
           let chunkArray = isGen0 ? s.gen0_chunks : s.gen1_chunks;
-          newChunk = load<u32>(chunkArray + (activeChunk + 1) * 4);
+          newChunk = chunkArray[activeChunk + 1];
           usingRecycled = true;
         } else {
           newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
@@ -359,28 +388,28 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
         if (isGen0) {
           s.gen0_active_chunk++;
           if (!usingRecycled && s.gen0_chunk_count < 8192) {
-            store<u32>(s.gen0_chunks + s.gen0_chunk_count * 4, newChunk);
+            s.gen0_chunks[s.gen0_chunk_count] = newChunk;
             s.gen0_chunk_count++;
           }
           s.gen0_endLimit = newChunk + AST_CHUNK_SIZE;
         } else {
           s.gen1_active_chunk++;
           if (!usingRecycled && s.gen1_chunk_count < 8192) {
-            store<u32>(s.gen1_chunks + s.gen1_chunk_count * 4, newChunk);
+            s.gen1_chunks[s.gen1_chunk_count] = newChunk;
             s.gen1_chunk_count++;
           }
           s.gen1_endLimit = newChunk + AST_CHUNK_SIZE;
         }
-        atomic.store<u32>(ptrLoc, newChunk + NODE_SIZE);
+        s.atomicStoreOffset(newChunk + NODE_SIZE);
         ptr = newChunk;
       } else {
         // 3.3 Another thread already rolled over the chunk while we were spinning.
         // The old `ptrLoc` is now pointing safely inside the NEW chunk. Claim a slot from it.
-        ptr = atomic.add<u32>(ptrLoc, NODE_SIZE);
+        ptr = s.atomicAddOffset(NODE_SIZE);
       }
       
       // 3.4 Release spinlock
-      atomic.store<u32>(lockLoc, 0);
+      s.releaseLock();
     }
 
     if (s.activeGeneration != 0) {
@@ -396,11 +425,11 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       // Grow the fat padding arena dynamically
       let newCapacity = fatPaddingCapacity * 2;
       let newPtr = atomicChunkAlloc(newCapacity * 4);
-      memory.copy(newPtr, s.fatPaddingArenaPtr, fatPaddingCapacity * 4);
-      s.fatPaddingArenaPtr = newPtr;
+      memory.copy(newPtr, changetype<usize>(s.fatPaddingArenaPtr), fatPaddingCapacity * 4);
+      s.fatPaddingArenaPtr = changetype<UnmanagedUint32Array>(newPtr);
       fatPaddingCapacity = newCapacity;
     }
-    store<u32>(s.fatPaddingArenaPtr + s.fatPaddingCount * 4, paddingLength, 0);
+    s.fatPaddingArenaPtr[s.fatPaddingCount] = paddingLength;
     paddingLength = s.fatPaddingCount;
     s.fatPaddingCount++;
     fatFlag = 1;
@@ -457,7 +486,7 @@ export function allocGen0(sizeBytes: u32): u32 {
       let usingRecycled = false;
 
       if (activeChunk + 1 < chunkCount && allocSize <= AST_CHUNK_SIZE) {
-        newChunk = load<u32>(S().gen0_chunks + (activeChunk + 1) * 4);
+        newChunk = S().gen0_chunks[activeChunk + 1];
         usingRecycled = true;
       } else {
         newChunk = atomicChunkAlloc(allocSize);
@@ -465,7 +494,7 @@ export function allocGen0(sizeBytes: u32): u32 {
 
       S().gen0_active_chunk++;
       if (!usingRecycled && S().gen0_chunk_count < 8192) {
-        store<u32>(S().gen0_chunks + S().gen0_chunk_count * 4, newChunk);
+        S().gen0_chunks[S().gen0_chunk_count] = newChunk;
         S().gen0_chunk_count++;
       }
       S().gen0_endLimit = newChunk + allocSize;
@@ -572,7 +601,7 @@ export function getNodeType(ptr: u32): u16 {
 
 export function getNodePadding(ptr: u32): u32 {
   let node = changetype<ASTNode>(ptr);
-  if (node.isFatPadding) return load<u32>(S().fatPaddingArenaPtr + node.paddingLength * 4, 0);
+  if (node.isFatPadding) return S().fatPaddingArenaPtr[node.paddingLength];
   return node.paddingLength;
 }
 
@@ -1052,8 +1081,11 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
   let ptrA = (spanA >> 32) as u32;
   let ptrB = (spanB >> 32) as u32;
 
+  let ptrA_arr = changetype<UnmanagedUint8Array>(ptrA);
+  let ptrB_arr = changetype<UnmanagedUint8Array>(ptrB);
+
   for (let i: u32 = 0; i < lenA; i++) {
-    if (load<u8>(ptrA + i) != load<u8>(ptrB + i)) return false;
+    if (ptrA_arr[i] != ptrB_arr[i]) return false;
   }
   return true;
 }
@@ -1093,7 +1125,7 @@ export function getArenaEnd(): u32 {
  */
 export function registerRoot(rootPtr: u32): void {
   if (S().activeRootCount < 100) {
-    store<u32>(S().activeRootsPtr + S().activeRootCount++ * 4, rootPtr, 0);
+    S().activeRootsPtr[S().activeRootCount++] = rootPtr;
   }
 }
 
@@ -1103,8 +1135,8 @@ export function registerRoot(rootPtr: u32): void {
  */
 export function dropRoot(rootPtr: u32): void {
   for (let i: u32 = 0; i < S().activeRootCount; i++) {
-    if (load<u32>(S().activeRootsPtr + i * 4, 0) == rootPtr) {
-      store<u32>(S().activeRootsPtr + i * 4, load<u32>(S().activeRootsPtr + (S().activeRootCount - 1) * 4, 0), 0); // Fast remove by swapping tail
+    if (S().activeRootsPtr[i] == rootPtr) {
+      S().activeRootsPtr[i] = S().activeRootsPtr[S().activeRootCount - 1]; // Fast remove by swapping tail
       S().activeRootCount--;
       return;
     }
@@ -1117,9 +1149,9 @@ const GC_STACK_CAPACITY: u32 = 1000000;
 
 /** Initializes the linear memory stack used by the GC for iterative tree traversal. */
 function ensureGcStack(): void {
-  if (S().gcStackPtr == 0) {
+  if (changetype<usize>(S().gcStackPtr) == 0) {
     S().gcStackCapacity = GC_STACK_CAPACITY;
-    S().gcStackPtr = atomicChunkAlloc(S().gcStackCapacity * 4);
+    S().gcStackPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(S().gcStackCapacity * 4));
   }
 }
 
@@ -1128,11 +1160,11 @@ function pushGcStack(val: u32, stackTop: u32): u32 {
   if (stackTop >= S().gcStackCapacity) {
     let newCap = S().gcStackCapacity * 2;
     let newPtr = atomicChunkAlloc(newCap * 4);
-    memory.copy(newPtr as usize, S().gcStackPtr as usize, S().gcStackCapacity * 4);
-    S().gcStackPtr = newPtr;
+    memory.copy(newPtr as usize, changetype<usize>(S().gcStackPtr), S().gcStackCapacity * 4);
+    S().gcStackPtr = changetype<UnmanagedUint32Array>(newPtr);
     S().gcStackCapacity = newCap;
   }
-  store<u32>(S().gcStackPtr + stackTop * 4, val, 0);
+  S().gcStackPtr[stackTop] = val;
   return stackTop + 1;
 }
 
@@ -1158,28 +1190,28 @@ export function clearAstMarks(rootToKeep: u32): void {
 
   // Prime the stack with all actively registered multi-roots
   for (let i: u32 = 0; i < S().activeRootCount; i++) {
-    stackTop = pushGcStack(load<u32>(S().activeRootsPtr + i * 4, 0), stackTop);
+    stackTop = pushGcStack(S().activeRootsPtr[i], stackTop);
   }
 
   // Iterative depth-first traversal
   while (stackTop > 0) {
     stackTop--;
-    let curr = load<u32>(S().gcStackPtr + stackTop * 4, 0);
+    let curr = S().gcStackPtr[stackTop];
     if (curr == 0) continue;
 
-    let flags = (load<u32>(curr, 0) >> 10) & 0x3f;
-    if ((flags & FLAG_GC_MARK) == 0) {
+    let currNode = changetype<ASTNode>(curr);
+
+    if ((currNode.flags & FLAG_GC_MARK) == 0) {
       // Mark this node as live
-      let val = load<u32>(curr, 0);
-      store<u32>(curr, val | (FLAG_GC_MARK << 10), 0);
+      currNode.flags |= FLAG_GC_MARK;
 
       if (curr > gcHighWaterMark) gcHighWaterMark = curr;
 
       // Push all children to the stack
-      let child = load<u32>(curr + 8, 0);
+      let child = currNode.firstChild;
       while (child != 0) {
         stackTop = pushGcStack(child, stackTop);
-        child = load<u32>(child + 12, 0); // follow intrusive sibling linked list
+        child = changetype<ASTNode>(child).nextSibling; // follow intrusive sibling linked list
       }
     }
   }
@@ -1195,24 +1227,23 @@ export function clearAstMarks(rootToKeep: u32): void {
   }
 
   for (let i: u32 = 0; i <= activeChunk; i++) {
-    let start = load<u32>(S().gen1_chunks + i * 4);
+    let start = S().gen1_chunks[i];
     let sweepEnd = i == S().gen1_active_chunk ? S().gen1_offset : start + AST_CHUNK_SIZE;
 
     let lastLivePtr: u32 = start;
 
     // Sweep sequentially through the chunk's memory block
     for (let ptr = start; ptr < sweepEnd; ptr += NODE_SIZE) {
-      let val = load<u32>(ptr, 0);
-      let flags = (val >> 10) & 0x3f;
+      let node = changetype<ASTNode>(ptr);
 
-      if ((flags & FLAG_GC_MARK) == 0) {
+      if ((node.flags & FLAG_GC_MARK) == 0) {
         // Node is dead: add to free-list using the firstChild slot
-        store<u32>(ptr + 8, S().freeNodeHead, 0);
+        node.firstChild = S().freeNodeHead;
         S().freeNodeHead = ptr;
       } else {
         // Node is live: clear the GC and LSP flags for the next cycle
         lastLivePtr = ptr + NODE_SIZE;
-        store<u32>(ptr, val & ~((<u32>(FLAG_GC_MARK | FLAG_LSP_VISITED)) << 10), 0);
+        node.flags &= ~(FLAG_GC_MARK | FLAG_LSP_VISITED);
       }
     }
   }
@@ -1444,29 +1475,30 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   }
 
   if (encoding == 0) {
+    let u8Arr = changetype<UnmanagedUint8Array>(ptr);
     let i: u32 = 0;
     while (i < len) {
-      let b1 = load<u8>(ptr + i);
+      let b1 = u8Arr[i];
       let cp: u32 = 0;
       if (b1 < 0x80) {
         cp = b1;
         i++;
       } else if ((b1 & 0xE0) == 0xC0) {
         if (i + 1 >= len) break;
-        let b2 = load<u8>(ptr + i + 1);
+        let b2 = u8Arr[i + 1];
         cp = ((b1 & 0x1F) << 6) | (b2 & 0x3F);
         i += 2;
       } else if ((b1 & 0xF0) == 0xE0) {
         if (i + 2 >= len) break;
-        let b2 = load<u8>(ptr + i + 1);
-        let b3 = load<u8>(ptr + i + 2);
+        let b2 = u8Arr[i + 1];
+        let b3 = u8Arr[i + 2];
         cp = ((b1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F);
         i += 3;
       } else {
         if (i + 3 >= len) break;
-        let b2 = load<u8>(ptr + i + 1);
-        let b3 = load<u8>(ptr + i + 2);
-        let b4 = load<u8>(ptr + i + 3);
+        let b2 = u8Arr[i + 1];
+        let b3 = u8Arr[i + 2];
+        let b4 = u8Arr[i + 3];
         cp = ((b1 & 0x07) << 18) | ((b2 & 0x3F) << 12) | ((b3 & 0x3F) << 6) | (b4 & 0x3F);
         i += 4;
       }
@@ -1474,13 +1506,14 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
       hash = hash * 16777619;
     }
   } else if (encoding == 1) {
+    let u16Arr = changetype<UnmanagedUint16Array>(ptr);
     let i: u32 = 0;
     while (i < len) {
-      let u1 = load<u16>(ptr + i);
+      let u1 = u16Arr[i >> 1];
       let cp: u32 = u1;
       i += 2;
       if (u1 >= 0xD800 && u1 <= 0xDBFF && i < len) {
-        let u2 = load<u16>(ptr + i);
+        let u2 = u16Arr[i >> 1];
         if (u2 >= 0xDC00 && u2 <= 0xDFFF) {
           cp = 0x10000 + (((u1 & 0x3FF) << 10) | (u2 & 0x3FF));
           i += 2;
@@ -1490,8 +1523,9 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
       hash = hash * 16777619;
     }
   } else {
+    let u32Arr = changetype<UnmanagedUint32Array>(ptr);
     for (let i: u32 = 0; i < len; i += 4) {
-      let cp = load<u32>(ptr + i);
+      let cp = u32Arr[i >> 2];
       hash ^= cp;
       hash = hash * 16777619;
     }
@@ -1505,20 +1539,20 @@ export function ast_hashByte(byte: u8, hash: u32 = 2166136261): u32 {
   return hash * 16777619;
 }
 
-let scopeArenaPtr: usize = 0;
+let scopeArenaPtr: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let scopeArenaOffset: u32 = 0;
 let scopeArenaCapacity: u32 = 1024 * 1024; // 1MB
 
 function ensureScopeArena(bytesNeeded: u32): void {
-  if (scopeArenaPtr == 0) {
-    scopeArenaPtr = atomicChunkAlloc(scopeArenaCapacity);
+  if (changetype<usize>(scopeArenaPtr) == 0) {
+    scopeArenaPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(scopeArenaCapacity));
   }
   if (scopeArenaOffset + bytesNeeded > scopeArenaCapacity) {
     let newCapacity = scopeArenaCapacity * 2;
     while (scopeArenaOffset + bytesNeeded > newCapacity) newCapacity *= 2;
     let newPtr = atomicChunkAlloc(newCapacity);
-    memory.copy(newPtr, scopeArenaPtr, scopeArenaOffset);
-    scopeArenaPtr = newPtr;
+    memory.copy(newPtr as usize, changetype<usize>(scopeArenaPtr), scopeArenaOffset);
+    scopeArenaPtr = changetype<UnmanagedUint32Array>(newPtr);
     scopeArenaCapacity = newCapacity;
   }
 }
@@ -1540,15 +1574,15 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
     let byteSize = 8 + (cap * 8);
     ensureScopeArena(byteSize);
     tableOffset = scopeArenaOffset;
-    store<u32>(scopeArenaPtr + tableOffset, cap);
-    store<u32>(scopeArenaPtr + tableOffset + 4, 0);
-    memory.fill(scopeArenaPtr + tableOffset + 8, 0, cap * 8);
+    scopeArenaPtr[(tableOffset) >> 2] = cap;
+    scopeArenaPtr[(tableOffset + 4) >> 2] = 0;
+    memory.fill(changetype<usize>(scopeArenaPtr) + tableOffset + 8, 0, cap * 8);
     scopeArenaOffset += byteSize;
     nodeScopes.set(parentId, tableOffset);
   }
   
-  let capacity = load<u32>(scopeArenaPtr + tableOffset);
-  let count = load<u32>(scopeArenaPtr + tableOffset + 4);
+  let capacity = scopeArenaPtr[(tableOffset) >> 2];
+  let count = scopeArenaPtr[(tableOffset + 4) >> 2];
   
   // Resize if load factor >= 0.75
   if (count * 4 >= capacity * 3) {
@@ -1556,24 +1590,24 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
     let newByteSize = 8 + (newCap * 8);
     ensureScopeArena(newByteSize);
     let newTableOffset = scopeArenaOffset;
-    store<u32>(scopeArenaPtr + newTableOffset, newCap);
-    store<u32>(scopeArenaPtr + newTableOffset + 4, count);
-    memory.fill(scopeArenaPtr + newTableOffset + 8, 0, newCap * 8);
+    scopeArenaPtr[(newTableOffset) >> 2] = newCap;
+    scopeArenaPtr[(newTableOffset + 4) >> 2] = count;
+    memory.fill(changetype<usize>(scopeArenaPtr) + newTableOffset + 8, 0, newCap * 8);
     scopeArenaOffset += newByteSize;
     
     // Rehash
     for (let i: u32 = 0; i < capacity; i++) {
       let oldSlot = tableOffset + 8 + (i * 8);
-      let h = load<u32>(scopeArenaPtr + oldSlot);
+      let h = scopeArenaPtr[(oldSlot) >> 2];
       if (h != 0) {
-        let nId = load<u32>(scopeArenaPtr + oldSlot + 4);
+        let nId = scopeArenaPtr[(oldSlot + 4) >> 2];
         let mask = newCap - 1;
         let idx = h & mask;
         while (true) {
           let slot = newTableOffset + 8 + (idx * 8);
-          if (load<u32>(scopeArenaPtr + slot) == 0) {
-            store<u32>(scopeArenaPtr + slot, h);
-            store<u32>(scopeArenaPtr + slot + 4, nId);
+          if (scopeArenaPtr[(slot) >> 2] == 0) {
+            scopeArenaPtr[(slot) >> 2] = h;
+            scopeArenaPtr[(slot + 4) >> 2] = nId;
             break;
           }
           idx = (idx + 1) & mask;
@@ -1590,13 +1624,13 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
   let idx = hash & mask;
   while (true) {
     let slot = tableOffset + 8 + (idx * 8);
-    let slotHash = load<u32>(scopeArenaPtr + slot);
+    let slotHash = scopeArenaPtr[(slot) >> 2];
     if (slotHash == 0 || slotHash == hash) {
       if (slotHash == 0) {
-        store<u32>(scopeArenaPtr + tableOffset + 4, count + 1);
+        scopeArenaPtr[(tableOffset + 4) >> 2] = count + 1;
       }
-      store<u32>(scopeArenaPtr + slot, hash);
-      store<u32>(scopeArenaPtr + slot + 4, childId);
+      scopeArenaPtr[(slot) >> 2] = hash;
+      scopeArenaPtr[(slot + 4) >> 2] = childId;
       break;
     }
     idx = (idx + 1) & mask;
@@ -1616,17 +1650,17 @@ export function ast_resolveChildByHash(parentId: u32, hash: u32): u32 {
   
   if (hash == 0) hash = 1;
   
-  let capacity = load<u32>(scopeArenaPtr + tableOffset);
+  let capacity = scopeArenaPtr[(tableOffset) >> 2];
   let mask = capacity - 1;
   let idx = hash & mask;
   
   while (true) {
     let slot = tableOffset + 8 + (idx * 8);
-    let slotHash = load<u32>(scopeArenaPtr + slot);
+    let slotHash = scopeArenaPtr[(slot) >> 2];
     if (slotHash == 0) return 0; // Not found
     
     if (slotHash == hash) {
-      return load<u32>(scopeArenaPtr + slot + 4);
+      return scopeArenaPtr[(slot + 4) >> 2];
     }
     idx = (idx + 1) & mask;
   }

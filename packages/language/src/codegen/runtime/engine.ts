@@ -27,7 +27,7 @@ import {
   setNodeFlags,
   setNodePadding,
 } from "./arena";
-import { ChunkedUint32Array } from "./array";
+import { ChunkedUint32Array, UnmanagedInt32Array, UnmanagedUint32Array } from "./array";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 import {
   action_data as _action_data,
@@ -122,8 +122,8 @@ let stackPtr: u32 = 0;
 // Diagnostics & Error Reporting
 // ----------------------------------------------------------------------------
 export let errorCount: i32 = 0;
-export let t_errorStarts: u32 = 0;
-export let t_errorEnds: u32 = 0;
+export let t_errorStarts: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_errorEnds: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 export const MAX_ERRORS: i32 = 10000;
 export const MAX_PARALLEL_HEADS: u32 = 32;
@@ -147,12 +147,12 @@ export const PENALTY_SYNC_TOKEN: i32 = 5;
 const MERGE_TABLE_SIZE: u32 = 256;
 const MERGE_TABLE_MASK: u32 = MERGE_TABLE_SIZE - 1;
 const MERGE_PROBE_LIMIT: u32 = 4;
-let t_mergeTable: u32 = 0; // pointer to raw memory: MERGE_TABLE_SIZE * 8 bytes
+let t_mergeTable: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0); // pointer to raw memory: MERGE_TABLE_SIZE * 8 bytes
 export let mergeGeneration: u32 = 0;
 
 export function mergeTableInit(): void {
-  if (t_mergeTable == 0) {
-    t_mergeTable = atomicChunkAlloc(MERGE_TABLE_SIZE * 8);
+  if (changetype<usize>(t_mergeTable) == 0) {
+    t_mergeTable = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MERGE_TABLE_SIZE * 8));
   }
 }
 
@@ -161,14 +161,14 @@ export function mergeTableInit(): void {
  * Returns the index into t_activeHeads, or -1 if not found.
  */
 export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null): i32 {
-  if (t_mergeTable == 0) return -1;
+  if (changetype<usize>(t_mergeTable) == 0) return -1;
   let h = ((pos ^ ((state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
   for (let i: u32 = 0; i < MERGE_PROBE_LIMIT; i++) {
-    let slot = t_mergeTable + ((h + i) & MERGE_TABLE_MASK) * 8;
-    if (load<u32>(slot + 4) != mergeGeneration) continue;
-    let idx = load<u32>(slot);
+    let slotIdx = ((h + i) & MERGE_TABLE_MASK) << 1;
+    if (t_mergeTable[slotIdx + 1] != mergeGeneration) continue;
+    let idx = t_mergeTable[slotIdx];
     if (idx < activeHeadsCount) {
-      let ah = changetype<ParseHead>(load<u32>(t_activeHeads + idx * 4));
+      let ah = changetype<ParseHead>(t_activeHeads[idx]);
       if (ah.pos == pos && ah.state == state && ah.prev == prev) {
         return idx as i32;
       }
@@ -181,29 +181,29 @@ export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null)
  * Register a newly pushed head in the merge hash index.
  */
 export function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void {
-  if (t_mergeTable == 0) return;
+  if (changetype<usize>(t_mergeTable) == 0) return;
   let h = ((pos ^ ((state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
   for (let i: u32 = 0; i < MERGE_PROBE_LIMIT; i++) {
-    let slot = t_mergeTable + ((h + i) & MERGE_TABLE_MASK) * 8;
-    if (load<u32>(slot + 4) != mergeGeneration) {
-      store<u32>(slot, headIdx);
-      store<u32>(slot + 4, mergeGeneration);
+    let slotIdx = ((h + i) & MERGE_TABLE_MASK) << 1;
+    if (t_mergeTable[slotIdx + 1] != mergeGeneration) {
+      t_mergeTable[slotIdx] = headIdx;
+      t_mergeTable[slotIdx + 1] = mergeGeneration;
       return;
     }
   }
   // All probe slots occupied -> evict the first one
-  let slot = t_mergeTable + h * 8;
-  store<u32>(slot, headIdx);
-  store<u32>(slot + 4, mergeGeneration);
+  let slotIdx = h << 1;
+  t_mergeTable[slotIdx] = headIdx;
+  t_mergeTable[slotIdx + 1] = mergeGeneration;
 }
 
 
 
 export function getErrorStart(index: i32): u32 {
-  return load<u32>(t_errorStarts + index * 4);
+  return t_errorStarts[index];
 }
 export function getErrorEnd(index: i32): u32 {
-  return load<u32>(t_errorEnds + index * 4);
+  return t_errorEnds[index];
 }
 
 /**
@@ -212,23 +212,30 @@ export function getErrorEnd(index: i32): u32 {
  * @param end The absolute byte offset of the syntax error end.
  */
 export function reportGlobalError(start: u32, end: u32): void {
-  if (t_errorStarts == 0) {
-    t_errorStarts = atomicChunkAlloc(MAX_ERRORS * 4);
-    t_errorEnds = atomicChunkAlloc(MAX_ERRORS * 4);
+  if (changetype<u32>(t_errorStarts) == 0) {
+    t_errorStarts = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
+    t_errorEnds = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_ERRORS * 4));
   }
   if (errorCount < MAX_ERRORS) {
-    store<u32>(t_errorStarts + errorCount * 4, start);
-    store<u32>(t_errorEnds + errorCount * 4, end);
+    t_errorStarts[errorCount] = start;
+    t_errorEnds[errorCount] = end;
     errorCount++;
   }
 }
 
+@unmanaged
+export class DiagnosticNode {
+  next: u32;
+  start: u32;
+  end: u32;
+}
+
 export function pushDiagnostic(tailPtr: u32, start: u32, end: u32): u32 {
-  let node = allocGen0(12);
-  store<u32>(node, tailPtr);
-  store<u32>(node + 4, start);
-  store<u32>(node + 8, end);
-  return node;
+  let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
+  node.next = tailPtr;
+  node.start = start;
+  node.end = end;
+  return changetype<u32>(node);
 }
 
 export function commitDiagnostics(tailPtr: u32): void {
@@ -236,21 +243,21 @@ export function commitDiagnostics(tailPtr: u32): void {
   let curr = tailPtr;
   while (curr != 0 && count < MAX_ERRORS) {
     count++;
-    curr = load<u32>(curr);
+    curr = changetype<DiagnosticNode>(curr).next;
   }
   
   if (count == 0) return;
 
-  let arr = allocGen0(count * 4);
+  let arr = changetype<UnmanagedUint32Array>(allocGen0(count * 4));
   curr = tailPtr;
   for (let i = count - 1; i >= 0; i--) {
-    store<u32>(arr + i * 4, curr);
-    curr = load<u32>(curr);
+    arr[i] = curr;
+    curr = changetype<DiagnosticNode>(curr).next;
   }
 
   for (let i = 0; i < count; i++) {
-    let n = load<u32>(arr + i * 4);
-    reportGlobalError(load<u32>(n + 4), load<u32>(n + 8));
+    let n = changetype<DiagnosticNode>(arr[i]);
+    reportGlobalError(n.start, n.end);
   }
 }
 
@@ -287,8 +294,8 @@ export function abortSuspend(): void {
 }
 
 // Token Buffer Arena - Used for caching tokens emitted by the scanner
-export let t_tokenBufferArena: u32 = 0;
-export let t_tokenBufferLenArena: u32 = 0;
+export let t_tokenBufferArena: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+export let t_tokenBufferLenArena: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let tokenBufferWriteIdx: u32 = 0;
 export let tokenBufferReadIdx: u32 = 0;
 export let tokenBufferLastPos: u32 = 0;
@@ -300,8 +307,8 @@ export let tokenBufferLastPos: u32 = 0;
  */
 export function pushTokenToBuffer(tok: i32, len: u32): void {
   let idx = tokenBufferWriteIdx & (ARENA_BUFFER_SIZE - 1);
-  store<i32>(t_tokenBufferArena + idx * 4, tok);
-  store<u32>(t_tokenBufferLenArena + idx * 4, len);
+  t_tokenBufferArena[idx] = tok;
+  t_tokenBufferLenArena[idx] = len;
   tokenBufferWriteIdx++;
 }
 
@@ -353,8 +360,8 @@ export const MODE_LR: i32 = 0;
 export const MODE_GLR: i32 = 1;
 export let currentParserMode: i32 = 0;
 
-export let t_lrStateStack: u32 = 0;
-export let t_lrNodeStack: u32 = 0;
+export let t_lrStateStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_lrNodeStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let lrStackDepth: i32 = 0;
 export const MAX_LR_STACK_DEPTH: i32 = 65536;
 export const tempActions = new StaticArray<u32>(16);
@@ -362,8 +369,8 @@ export const tempActions = new StaticArray<u32>(16);
 
 
 
-export let t_globalChildNodes: u32 = 0;
-export let t_globalChildren: u32 = 0;
+export let t_globalChildNodes: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
+export let t_globalChildren: UnmanagedInt32Array = changetype<UnmanagedInt32Array>(0);
 
 export let globalIsCatastrophic: boolean = false;
 /** Returns true if the parser encountered an unrecoverable syntax error. */
@@ -386,7 +393,7 @@ export const expected_tokens = new StaticArray<u8>(2048);
  */
 
 // Pre-allocated buffer for REDUCE child collection (avoids per-reduction GC allocation)
-export let t_globalReduceCollected: u32 = 0;
+export let t_globalReduceCollected: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 
 export let globalLoopIterations = 0;
@@ -464,7 +471,7 @@ export function getBestErrorCost(): u32 {
   if (activeHeadsTrimCount > 0) {
     let bestCost = INFINITE_COST;
     for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
-      let ah = changetype<ParseHead>(load<u32>(t_activeHeads + i * 4));
+      let ah = changetype<ParseHead>(t_activeHeads[i]);
       if (ah.errorCost < bestCost) bestCost = ah.errorCost;
     }
     return bestCost;

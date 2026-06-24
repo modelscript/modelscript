@@ -23,6 +23,7 @@ import {
   ast_bindChildHash, ast_resolveChildByHash,
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
 } from "./arena";
+import { UnmanagedUint32Array } from "./array";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId } from "./engine";
 import { FieldCursor } from "./engine";
@@ -65,9 +66,9 @@ export class DiagnosticNode {
 
 export let queryArenaOffset: u32 = 0;
 export let queryArenaEnd: u32 = 0;
-export let queryHashTableOffset: u32 = 0;
-export let fqnHashTableOffset: u32 = 0;
-export let dirtyFilesBitsetOffset: u32 = 0;
+export let queryHashTableOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let fqnHashTableOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let dirtyFilesBitsetOffset: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 const HASH_TABLE_CAPACITY = 4096;
 const FQN_HASH_TABLE_CAPACITY = 4096;
 
@@ -89,13 +90,13 @@ const DIAG_ARENA_CAPACITY = 65536; // 64KB (allows ~4096 simultaneous diagnostic
  */
 export function initQueryArena(): void {
   // Allocate hash table
-  queryHashTableOffset = heap.alloc(HASH_TABLE_CAPACITY * 4) as u32;
+  queryHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(HASH_TABLE_CAPACITY * 4));
   
   // Allocate FQN hash table
-  fqnHashTableOffset = heap.alloc(FQN_HASH_TABLE_CAPACITY * 4) as u32;
+  fqnHashTableOffset = changetype<UnmanagedUint32Array>(heap.alloc(FQN_HASH_TABLE_CAPACITY * 4));
   
   // Allocate 128-byte dirty files bitset (for up to 1024 file IDs)
-  dirtyFilesBitsetOffset = heap.alloc(128) as u32;
+  dirtyFilesBitsetOffset = changetype<UnmanagedUint32Array>(heap.alloc(128));
   
   resetQueryArena();
 }
@@ -105,14 +106,14 @@ export function initQueryArena(): void {
  * Existing query nodes remain in linear memory but become unreachable until re-evaluated.
  */
 export function resetQueryArena(): void {
-  if (queryHashTableOffset != 0) {
-      memory.fill(queryHashTableOffset as usize, 0, HASH_TABLE_CAPACITY * 4);
+  if (changetype<usize>(queryHashTableOffset) != 0) {
+      memory.fill(changetype<usize>(queryHashTableOffset), 0, HASH_TABLE_CAPACITY * 4);
   }
-  if (fqnHashTableOffset != 0) {
-      memory.fill(fqnHashTableOffset as usize, 0, FQN_HASH_TABLE_CAPACITY * 4);
+  if (changetype<usize>(fqnHashTableOffset) != 0) {
+      memory.fill(changetype<usize>(fqnHashTableOffset), 0, FQN_HASH_TABLE_CAPACITY * 4);
   }
-  if (dirtyFilesBitsetOffset != 0) {
-      memory.fill(dirtyFilesBitsetOffset as usize, 0, 128);
+  if (changetype<usize>(dirtyFilesBitsetOffset) != 0) {
+      memory.fill(changetype<usize>(dirtyFilesBitsetOffset), 0, 128);
   }
 }
 
@@ -133,9 +134,9 @@ export function clearDiagnostics(): void {
  * Called at the start of a new parse phase before any queries mark themselves as dirty.
  */
 export function clearDirtyFilesBitset(): void {
-  if (dirtyFilesBitsetOffset == 0) return;
+  if (changetype<usize>(dirtyFilesBitsetOffset) == 0) return;
   for (let i = 0; i < 32; i++) {
-     store<u32>(dirtyFilesBitsetOffset + i * 4, 0, 0);
+    dirtyFilesBitsetOffset[i] = 0;
   }
 }
 
@@ -205,8 +206,8 @@ export function exportSymbol(fqnHash: u32, nodeId: u32): void {
   let sym = changetype<FqnSymbol>(ptr);
   sym.hash = fqnHash;
   sym.nodeId = nodeId;
-  sym.next = load<u32>(fqnHashTableOffset + idx * 4, 0);
-  store<u32>(fqnHashTableOffset + idx * 4, ptr, 0);
+  sym.next = fqnHashTableOffset[idx];
+  fqnHashTableOffset[idx] = ptr;
 }
 
 /**
@@ -216,13 +217,21 @@ export function exportSymbol(fqnHash: u32, nodeId: u32): void {
  */
 export function resolveFqnSymbol(fqnHash: u32): u32 {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
-  let ptr = load<u32>(fqnHashTableOffset + idx * 4, 0);
+  let ptr = fqnHashTableOffset[idx];
   while (ptr != 0) {
      let sym = changetype<FqnSymbol>(ptr);
      if (sym.hash == fqnHash) return sym.nodeId;
      ptr = sym.next;
   }
   return 0;
+}
+
+@unmanaged
+export class ScopedImport {
+  scopeId: u32;
+  moduleHash: u32;
+  next: u32;
+  visibility: u8;
 }
 
 export let scopedImportHead: u32 = 0;
@@ -237,10 +246,11 @@ export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: 
   // Phase 6B: Added visibility (0=public, 1=private)
   // Allocate 16 bytes to fit u8 properly with alignment, or just 12 and pack. We'll use 16.
   let ptr = heap.alloc(16) as u32;
-  store<u32>(ptr, scopeId, 0);
-  store<u32>(ptr + 4, moduleHash, 0);
-  store<u32>(ptr + 8, scopedImportHead, 0);
-  store<u8>(ptr + 12, visibility, 0);
+  let imp = changetype<ScopedImport>(ptr);
+  imp.scopeId = scopeId;
+  imp.moduleHash = moduleHash;
+  imp.next = scopedImportHead;
+  imp.visibility = visibility;
   scopedImportHead = ptr;
 }
 
@@ -284,7 +294,7 @@ function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
  */
 export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    let idx = combineQueryKey(queryType, arg1, arg2, arg3);
-   let ptr = load<u32>(queryHashTableOffset + idx * 4, 0);
+   let ptr = queryHashTableOffset[idx];
    while (ptr != 0) {
       let node = changetype<QueryNode>(ptr);
       if (node.queryType == queryType && 
@@ -314,8 +324,8 @@ export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32)
   node.firstSubscriberEdge = 0;
   
   let idx = combineQueryKey(queryType, arg1, arg2, arg3);
-  node.nextHashBucketPtr = load<u32>(queryHashTableOffset + idx * 4, 0);
-  store<u32>(queryHashTableOffset + idx * 4, ptr, 0);
+  node.nextHashBucketPtr = queryHashTableOffset[idx];
+  queryHashTableOffset[idx] = ptr;
   
   return ptr;
 }
@@ -337,14 +347,13 @@ export function invalidateNode(nodePtr: u32): void {
   node.revision = 0; // Mark as dirty
   
   // A PARSE query (queryType == 0) affects the dirty file bitset
-  if (node.queryType == 0 && dirtyFilesBitsetOffset != 0) {
+  if (node.queryType == 0 && changetype<usize>(dirtyFilesBitsetOffset) != 0) {
       let fileId = node.arg1;
       if (fileId < 1024) {
           let wordIdx = fileId >> 5;
           let bitIdx = fileId & 31;
-          let ptr = dirtyFilesBitsetOffset + (wordIdx << 2);
-          let current = load<u32>(ptr, 0);
-          store<u32>(ptr, current | (1 << bitIdx), 0);
+          let current = dirtyFilesBitsetOffset[wordIdx];
+          dirtyFilesBitsetOffset[wordIdx] = current | (1 << bitIdx);
       }
   }
 
