@@ -2266,6 +2266,19 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let reduced = false;
 
       // --------------------------------------------------------------------
+      // ERROR BRANCH A & B: Token Deletion / Insertion (via Unwind & Mutate)
+      // --------------------------------------------------------------------
+      // Try inserting/deleting tokens FIRST before forced reductions, because
+      // insertion preserves more of the parse tree (e.g., inserting a missing
+      // Number before `;` in `let x = ;` completes the Decl properly).
+      recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
+      recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
+      // Restore expected_tokens after recovery — the recovery functions call
+      // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
+      // the main parse loop needs the correct filtered set.
+      updateExpectedTokens();
+
+      // --------------------------------------------------------------------
       // ERROR BRANCH C: Forced Default Reduction
       // --------------------------------------------------------------------
       // When the current token doesn't match any lookahead in the action table,
@@ -2508,12 +2521,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             }
           }
         }
-      }
-
-      if (!reduced) {
-        // ----------------------------------------------------------------
-        recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
-        recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
       }
 
       // --------------------------------------------------------------------

@@ -915,7 +915,7 @@ function triggerDiagnostics(changes = null) {
         
         for (const change of changes) {
             if (change.rangeOffset !== undefined) {
-                const newTotalLength = currentTextLength - change.rangeLength + change.text.length;
+                const newTotalLength = Math.max(0, currentTextLength - change.rangeLength + change.text.length);
                 globalAstRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
                 currentTextLength = newTotalLength;
             } else {
@@ -982,7 +982,7 @@ self.addEventListener('message', async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) { if ((cat >= 60000 && cat <= 60021) || cat === 778 || cat === 888 || cat === 999 || cat === 6 || cat === 8) console.log('DBG', cat, v1, v2, v3); } },
+                engine: { debugLog: function(cat, v1, v2, v3) { if ((cat >= 60000 && cat <= 60210) || cat === 778 || cat === 888 || cat === 999 || cat === 6 || cat === 8) console.log('DBG', cat, v1, v2, v3); } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},
@@ -1015,7 +1015,6 @@ self.addEventListener('message', async (e) => {
             const { LspFacade } = await import(url);
             
             lspFacade = new LspFacade(memory, instance.exports);
-            currentTextLength = 0;  // Reset stale length from previous session
             
             lspFacade.addAstChangeListener({
                 onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),

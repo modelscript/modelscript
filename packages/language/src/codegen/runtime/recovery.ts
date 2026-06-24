@@ -103,6 +103,8 @@ export function recoverUnwindAndMutate(
             let a1DelCost = 0;
 
             let maxSkips: u32 = 5;
+            // Force lexer to recognize all tokens during recovery forward scan
+            expected_tokens.fill(1);
             for (let skipCount: u32 = 1; skipCount <= maxSkips; skipCount++) {
               let savedLexPos = lexPos;
               let savedLexLen = lexLen;
@@ -378,6 +380,7 @@ export function recoverUnwindAndMutate(
                     if (sym == TOKEN_EOF && token != TOKEN_EOF) {
                       continue;
                     }
+                    debugLog(60200, sym, target, recState);
 
                     let baseCost = token_insert_costs[sym == TOKEN_EOF ? 0 : sym];
                     let uPos = unwindCurr.pos;
@@ -393,19 +396,26 @@ export function recoverUnwindAndMutate(
                     let savedSrcLexPosB = srcLexPos;
                     let savedScannerStateB = currentScannerState;
 
+                    // Force lexer to recognize ANY token during lookahead.
+                    // Without this, the lexer filters tokens via expected_tokens
+                    // (set for current active heads), missing tokens the TARGET
+                    // state needs (e.g., `;` after virtual Number insertion).
+                    expected_tokens.fill(1);
+
                     for (let skip = 0; skip <= 3; skip++) {
                       if (laScanPos >= inputLength) {
-                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0)) {
+                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0, 1)) {
                            candidateViable = true;
                         }
                         break;
                       }
                       
                       setLexPos(laScanPos);
-                      let laTok = invokeLexer(laScanPos);
+                      let laTok = lex(laScanPos);
                       let laEnd = srcLexPos + lexLen;
-                      
-                      if (stateCanAccept(unwindCurr, target, laTok, 0)) {
+                      let canAcceptLA = stateCanAccept(unwindCurr, target, laTok, 0, 1);
+                      debugLog(60201, laTok, target, canAcceptLA ? 1 : 0);
+                      if (canAcceptLA) {
                         candidateViable = true;
                         break;
                       }
@@ -447,8 +457,12 @@ export function recoverUnwindAndMutate(
                           head.errorTail
                         );
                         
+                        debugLog(60202, sym, target, head.state);
                         if (target != head.state) {
                           pushActiveHead(changetype<u32>(insHead));
+                          debugLog(60203, sym, target, head.errorCost + actualCost);
+                        } else {
+                          debugLog(60204, sym, target, 0); // DROPPED: target == head.state
                         }
                     }
                   }
