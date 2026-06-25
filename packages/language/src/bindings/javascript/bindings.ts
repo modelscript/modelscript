@@ -672,14 +672,14 @@ export class LspFacade {
 
       let childOffset = currentOffset;
       let childPtr = mem32[(ptr + 8) / 4];
-      let visited = new Set<number>();
+      let slowPtr = childPtr;
+      let step = 0;
 
       while (childPtr) {
-        if (visited.has(childPtr)) {
+        if (step !== 0 && childPtr === slowPtr) {
           childStrs.push("(CYCLE)");
           break;
         }
-        visited.add(childPtr);
 
         const childResult = toSExpr(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
         for (const s of childResult.strs) {
@@ -688,6 +688,8 @@ export class LspFacade {
         childOffset = childResult.nextOffset;
 
         childPtr = mem32[(childPtr + 12) / 4];
+        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+        step++;
       }
 
       if (!shouldPrint) {
@@ -768,7 +770,8 @@ export class LspFacade {
 
       let childOffset = currentOffset;
       let childPtr = mem32[(ptr + 8) / 4];
-      let visited = new Set<number>();
+      let slowPtr = childPtr;
+      let step = 0;
 
       let nodeIndex = -1;
       if (shouldPrint) {
@@ -781,16 +784,17 @@ export class LspFacade {
       }
 
       while (childPtr) {
-        if (visited.has(childPtr)) {
+        if (step !== 0 && childPtr === slowPtr) {
           if (shouldPrint) {
             lines.push(`<div style="margin-left: ${(depth + 1) * 20}px; color: #8c959f; margin-top: 4px;">CYCLE</div>`);
           }
           break;
         }
-        visited.add(childPtr);
         childOffset = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
         renderedChildren++;
         childPtr = mem32[(childPtr + 12) / 4];
+        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+        step++;
       }
 
       if (shouldPrint && nodeIndex !== -1 && len === 0 && renderedChildren === 0 && typeName !== "ERROR") {
@@ -886,6 +890,8 @@ export class LspFacade {
 
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let opsCount = 0;
+    const MAX_DIFF_OPS = 10000;
 
     const getChildren = (ptr: number): number[] => {
       const children: number[] = [];
@@ -893,10 +899,11 @@ export class LspFacade {
 
       const collect = (p: number) => {
         let childPtr = mem32[(p + 8) / 4];
-        let visited = new Set<number>();
+        let slowPtr = childPtr;
+        let step = 0;
+
         while (childPtr) {
-          if (visited.has(childPtr)) break;
-          visited.add(childPtr);
+          if (step !== 0 && childPtr === slowPtr) break;
 
           const typeFlags = mem32[childPtr / 4];
           const typeId = typeFlags & 0x03ff;
@@ -909,6 +916,8 @@ export class LspFacade {
             children.push(childPtr);
           }
           childPtr = mem32[(childPtr + 12) / 4];
+          if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+          step++;
         }
       };
 
@@ -920,6 +929,8 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
+        if (opsCount >= MAX_DIFF_OPS) return;
+        opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
         const typeFlags = mem32[ptr / 4];
@@ -946,6 +957,8 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
+        if (opsCount >= MAX_DIFF_OPS) return;
+        opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
         listener.onNodeDeleted(ptr);
@@ -955,9 +968,6 @@ export class LspFacade {
         }
       }
     };
-
-    let opsCount = 0;
-    const MAX_DIFF_OPS = 10000;
 
     const diffNodes = (oldPtr: number, newPtr: number): void => {
       if (opsCount >= MAX_DIFF_OPS) {

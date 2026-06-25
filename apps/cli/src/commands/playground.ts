@@ -383,6 +383,9 @@ scope {
                                 return e.data.semanticLegend;
                             },
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
+                                await new Promise(r => setTimeout(r, 150));
+                                if (token.isCancellationRequested) return null;
+
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/full', {
                                     textDocument: { uri: model.uri.toString() }
                                 });
@@ -532,6 +535,9 @@ scope {
 
             monaco.languages.registerFoldingRangeProvider('plaintext', {
                 provideFoldingRanges: async (model, context, token) => {
+                    await new Promise(r => setTimeout(r, 150));
+                    if (token.isCancellationRequested) return null;
+
                     const result = await languageClient.sendRequest('textDocument/foldingRange', {
                         textDocument: { uri: model.uri.toString() }
                     });
@@ -548,6 +554,9 @@ scope {
 
             monaco.languages.registerDocumentSymbolProvider('plaintext', {
                 provideDocumentSymbols: async (model, token) => {
+                    await new Promise(r => setTimeout(r, 150));
+                    if (token.isCancellationRequested) return null;
+
                     const result = await languageClient.sendRequest('textDocument/documentSymbol', {
                         textDocument: { uri: model.uri.toString() }
                     });
@@ -945,11 +954,24 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     }
 }
 
+let pendingChanges = [];
+let diagnosticTimeout = null;
+
 function triggerDiagnostics(changes = null) {
-    if (latestUri && lspFacade && changes && changes.length > 0) {
+    if (changes && changes.length > 0) {
+        pendingChanges.push(...changes);
+    }
+    
+    if (diagnosticTimeout) {
+        clearTimeout(diagnosticTimeout);
+    }
+    
+    diagnosticTimeout = setTimeout(() => {
+        if (pendingChanges.length === 0 || !lspFacade || !latestUri) return;
+        
         let astRoot = 0;
         
-        for (const change of changes) {
+        for (const change of pendingChanges) {
             if (change.rangeOffset !== undefined) {
                 const newTotalLength = Math.max(0, currentTextLength - change.rangeLength + change.text.length);
                 globalAstRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
@@ -994,7 +1016,9 @@ function triggerDiagnostics(changes = null) {
             method: 'textDocument/publishDiagnostics',
             params: { uri: latestUri, diagnostics }
         });
-    }
+        
+        pendingChanges = [];
+    }, 50);
 }
 
 // Listen for custom init message containing the WASM binary and generated JS
@@ -1018,7 +1042,7 @@ self.addEventListener('message', async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) { if ((cat >= 60000 && cat <= 60210) || cat === 778 || cat === 888 || cat === 999 || cat === 6 || cat === 8) console.log('DBG', cat, v1, v2, v3); } },
+                engine: { debugLog: function(cat, v1, v2, v3) { /* no-op */ } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},

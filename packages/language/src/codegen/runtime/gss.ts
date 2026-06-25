@@ -213,10 +213,6 @@ export function findReusableNode(
     return 0;
   }
 
-  let savedDepth = globalCursorDepth;
-  let copyCount = (savedDepth + 1) as u32;
-  let stackSaved = false;
-
   let searching = true;
   while (searching) {
     let cPtr = cursorNodeStack[globalCursorDepth];
@@ -266,12 +262,6 @@ export function findReusableNode(
       }
     }
 
-    if (!stackSaved) {
-      savedCursorNodeStack.copyFrom(cursorNodeStack, copyCount);
-      savedCursorOffsetStack.copyFrom(cursorOffsetStack, copyCount);
-      stackSaved = true;
-    }
-
     if (!globalCursorGotoFirstChild()) {
       if (!globalCursorGotoNextSibling()) {
         if (!globalCursorGotoParent()) searching = false;
@@ -286,12 +276,5 @@ export function findReusableNode(
       }
     }
   }
-
-  if (stackSaved) {
-    globalCursorDepth = savedDepth;
-    cursorNodeStack.copyFrom(savedCursorNodeStack, copyCount);
-    cursorOffsetStack.copyFrom(savedCursorOffsetStack, copyCount);
-  }
-
   return 0;
 }

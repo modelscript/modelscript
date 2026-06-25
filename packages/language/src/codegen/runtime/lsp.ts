@@ -52,6 +52,9 @@ import { debugLog } from "./engine";
  * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
  */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
+  // Cap at 250 diagnostics (4 u32s per diagnostic) to prevent Editor UI freezes
+  if (lspBinaryLength >= 1000) return;
+
   if (lspBinaryLength > 0 && lintId == 0) {
     let lastLintId = t_lspBinaryBuffer[lspBinaryLength - 2];
     if (lastLintId == 0) {
