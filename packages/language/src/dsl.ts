@@ -41,7 +41,9 @@ export type RuleLike<F extends string = never> = Rule<F> | string | RegExp;
 /**
  * A function that takes a map of all grammar rules and returns a grammar definition rule.
  */
-export type RuleBuilder<RuleName extends string, FieldName extends string = never> = ($: any) => RuleLike<FieldName>;
+export type RuleBuilder<RuleName extends string, FieldName extends string = never> = (
+  $: Record<RuleName | (string & {}), RuleLike<never>>,
+) => RuleLike<FieldName>;
 
 /**
  * AssemblyScript type polyfills for TypeScript IDE compatibility
@@ -251,13 +253,13 @@ export interface LanguageOptions<
   /**
    * Tokens to skip automatically (e.g., whitespace, comments) everywhere in the grammar.
    */
-  extras?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[];
+  extras?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => RuleLike<any>[];
 
   /** Composable Scanner Primitives (Phase 1) */
   primitives?: ScannerPrimitives;
 
   /** External Scanner (Context-Sensitive Lexing) */
-  externals?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[];
+  externals?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[];
 
   /** External scanner logic (WASM fallback). Not typically used directly in DSL. */
   scanner?: (currentPos: number, scannerState: number) => number;
@@ -266,21 +268,21 @@ export interface LanguageOptions<
    * Tree-sitter Parity: Rules that serve as supertypes (interfaces/abstract classes)
    * in the generated AST. Useful for aliases and unifying node queries.
    */
-  supertypes?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[];
+  supertypes?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[];
 
   /** Rules that should be inlined directly into their parents during codegen to reduce AST depth. */
   inline?: NoInfer<RuleName>[];
 
   /** Expected GLR conflicts. Specifies arrays of rule names that can legitimately conflict. */
   conflicts?:
-    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[][])
+    | (($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => RuleLike<any>[][])
     | NoInfer<RuleName>[][];
 
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?: string[][];
 
   /** Reserved keywords to omit from generic identifier matching. */
-  reserved?: Record<string, ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]>;
+  reserved?: Record<string, ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[]>;
 
   model?: Partial<
     Record<
@@ -328,7 +330,7 @@ type ExtractF<T> = T extends Rule<infer F> ? (string extends F ? never : F) : ne
 /**
  * Coerces strings and RegExps into `token` rules, leaving existing `Rule` objects unchanged.
  */
-export function toRule<F extends string>(r: RuleLike<F>): Rule<F> {
+export function toRule<F extends string = never>(r: RuleLike<F>): Rule<F> {
   return typeof r === "string" || r instanceof RegExp ? token(r) : (r as Rule<F>);
 }
 
@@ -343,15 +345,15 @@ export function choice<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[
   return { type: "CHOICE", children: rules.map(toRule) };
 }
 
-export function repeat<F extends string>(rule: RuleLike<F>): Rule<F> {
+export function repeat<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return { type: "REPEAT", children: [toRule(rule)] };
 }
 
-export function repeat1<F extends string>(rule: RuleLike<F>): Rule<F> {
+export function repeat1<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return seq(rule, repeat(rule));
 }
 
-export function optional<F extends string>(rule: RuleLike<F>): Rule<F> {
+export function optional<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return choice(rule, seq());
 }
 
@@ -383,7 +385,7 @@ export function sepByTrailing<F1 extends string, F2 extends string>(
   return optional(sepBy1Trailing(rule, separator));
 }
 
-export function field<F extends string>(name: F, rule: RuleLike<any>): Rule<F> {
+export function field<F extends string = never>(name: F, rule: RuleLike<any>): Rule<F> {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
 
@@ -391,21 +393,21 @@ export function field<F extends string>(name: F, rule: RuleLike<any>): Rule<F> {
  * Defines a lexer token. For strings and RegExps, defines the match pattern.
  * For other rules, groups them into a single monolithic token in the lexer.
  */
-export function token<F extends string>(pattern: RuleLike<F>): Rule<F> {
+export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
   if (typeof pattern === "string" || pattern instanceof RegExp) {
     return { type: "TOKEN", value: pattern };
   }
   return { type: "TOKEN", children: [toRule(pattern)] };
 }
 
-(token as any).immediate = function <F extends string>(rule: RuleLike<F>): Rule<F> {
+(token as any).immediate = function <F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
 };
 
 /**
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
  */
-export function alias<F extends string>(rule: RuleLike<F>, name: string | Rule<any>): Rule<F> {
+export function alias<F extends string = never>(rule: RuleLike<F>, name: string | Rule<never>): Rule<F> {
   const nameValue = typeof name === "string" ? name : name.value;
   return { type: "ALIAS", value: nameValue, children: [toRule(rule)] };
 }
@@ -448,7 +450,7 @@ export type SemanticTokenModifier =
   | "defaultLibrary";
 
 export function semanticToken<
-  F extends string,
+  F extends string = never,
   RuleName extends string = string,
   FieldName extends string = never,
   QueryName extends string = never,
@@ -466,24 +468,24 @@ export function semanticToken<
   return { type: "SEMANTIC", value: { type: tokenType, modifiers: modifiers || [] }, children: [toRule(rule)] };
 }
 
-export function reserved<F extends string>(wordset: string, rule: RuleLike<F>): Rule<F> {
+export function reserved<F extends string = never>(wordset: string, rule: RuleLike<F>): Rule<F> {
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }
 
-export function prec<F extends string>(value: number, rule: Rule<F>): Rule<F> {
+export function prec<F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC", value, children: [rule] };
 }
 
-(prec as any).left = function <F extends string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+(prec as any).left = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_LEFT", value: 0, children: [value] };
   return { type: "PREC_LEFT", value, children: [rule!] };
 };
 
-(prec as any).right = function <F extends string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+(prec as any).right = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_RIGHT", value: 0, children: [value] };
   return { type: "PREC_RIGHT", value, children: [rule!] };
 };
 
-(prec as any).dynamic = function <F extends string>(value: number, rule: Rule<F>): Rule<F> {
+(prec as any).dynamic = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC_DYNAMIC", value, children: [rule] };
 };
