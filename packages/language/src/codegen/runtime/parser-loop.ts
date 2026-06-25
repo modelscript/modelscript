@@ -98,15 +98,21 @@ function stateCanAcceptFnBool(state: i32, token: i32): boolean {
 }
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   let prevHead: ParseHead | null = null;
+  let currentPos: u32 = 0;
   for (let i = 0; i < lrStackDepth; i++) {
     let state = t_lrStateStack[i] as i32;
     let node = t_lrNodeStack[i];
+    
+    if (node != 0) {
+      currentPos += getNodePadding(node) + getNodeByteLength(node);
+    }
+    debugLog(9996, i, node, currentPos);
     
     let head = allocParseHead(
       state,
       node,
       prevHead,
-      i == lrStackDepth - 1 ? pos : 0,
+      currentPos,
       scannerState,
       0,
       0,
@@ -525,22 +531,21 @@ function sanitizeTree(root: u32): void {
 
     let prevChild: u32 = 0;
     let child = getNodeFirstChild(node);
+    let modified = false;
 
     while (child != 0 && child >= 65536) {
       let childType = getNodeType(child);
       let nextSib = getNodeNextSibling(child);
 
       if (childType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
-        // Corrupt node: replace with a clean ERROR node
-        let pad = getNodePadding(child);
-        let len = getNodeByteLength(child);
-        let replacement = allocNode(NODE_TYPE_ERROR, pad, len, 0);
-        setNextSibling(replacement, nextSib);
-
-        if (prevChild == 0) setFirstChild(node, replacement);
-        else setNextSibling(prevChild, replacement);
-
-        prevChild = replacement;
+        // Corrupt node: REMOVE it by unlinking from the chain.
+        // GLR shared-state corruption can produce nodes with invalid types
+        // (e.g., dangling pointer reads). Replacing them with ERROR inflates the
+        // tree and creates phantom diagnostics. Unlinking is safer.
+        if (prevChild == 0) setFirstChild(node, nextSib);
+        else setNextSibling(prevChild, nextSib);
+        modified = true;
+        // Don't advance prevChild — it stays the same
       } else {
         // Valid child: push to stack for recursive sanitization
         if (stackTop < 1024) {
@@ -550,6 +555,11 @@ function sanitizeTree(root: u32): void {
       }
 
       child = nextSib;
+    }
+
+    // Recalculate the parent node's length if children were removed
+    if (modified) {
+      fixNodeLength(node);
     }
 
     // Also fix children pointing below memoryBase (corrupted pointers)
@@ -628,46 +638,10 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  // Clone acceptedNode to extend its length and append the error node
-  let newRoot = cloneNodeShallow(acceptedNode);
-  let acceptedPad = getNodePadding(acceptedNode);
-  let totalBytes = inputLength - acceptedPad;
-  setNodeByteLength(newRoot, totalBytes);
-
-  let child = getNodeFirstChild(newRoot);
-  if (child == 0) {
-    setFirstChild(newRoot, errorNode);
-  } else {
-    // We must shallow-clone the entire child chain to avoid mutating shared nodes
-    // which might be reused in future incremental parses.
-    let oldChild = child;
-    let firstNewChild = cloneNodeShallow(oldChild);
-    // Sanitize: if GLR corruption produced an invalid type, replace with ERROR
-    if (getNodeType(firstNewChild) > (SYMBOL_COUNT as u16) && getNodeType(firstNewChild) != TOKEN_EOF) {
-      let pad = getNodePadding(firstNewChild);
-      let len = getNodeByteLength(firstNewChild);
-      firstNewChild = allocNode(NODE_TYPE_ERROR, pad, len, 0);
-    }
-    setFirstChild(newRoot, firstNewChild);
-    
-    let currentNewChild = firstNewChild;
-    oldChild = getNodeNextSibling(oldChild);
-    
-    while (oldChild != 0) {
-      let nextNewChild = cloneNodeShallow(oldChild);
-      // Sanitize corrupt nodes
-      if (getNodeType(nextNewChild) > (SYMBOL_COUNT as u16) && getNodeType(nextNewChild) != TOKEN_EOF) {
-        let pad = getNodePadding(nextNewChild);
-        let len = getNodeByteLength(nextNewChild);
-        nextNewChild = allocNode(NODE_TYPE_ERROR, pad, len, 0);
-      }
-      setNextSibling(currentNewChild, nextNewChild);
-      currentNewChild = nextNewChild;
-      oldChild = getNodeNextSibling(oldChild);
-    }
-    
-    setNextSibling(currentNewChild, errorNode);
-  }
+  let newRoot = allocNode(getNodeType(acceptedNode), 0, inputLength, 0);
+  setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
+  setFirstChild(newRoot, acceptedNode);
+  setNextSibling(acceptedNode, errorNode);
 
   return newRoot;
 }
@@ -997,6 +971,10 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   }
 }
 function isMutable(ptr: u32): boolean {
+  // In GLR mode (multiple active heads), never mutate in-place:
+  // shared list nodes can be referenced by multiple heads, and
+  // mutating one corrupts the others' trees.
+  if (activeHeadsCount > 1) return false;
   return ptr >= incrementalStartOffset;
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
@@ -1922,15 +1900,27 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
             let c_idx = 99999;
             let needed = popCount;
+            let foundFirstGrammar = false;
 
             while (needed > 0 && curr != null) {
               if (c_idx <= 0) break; // Prevent underflow on t_globalReduceCollected
+              
+              let isPure = curr.astNode != 0 && isPureErrorNode(curr.astNode);
+              debugLog(9998, curr.astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
+              
               if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
-                // type 0 == Error node
-                t_globalReduceCollected[c_idx--] = curr.astNode;
+                if (foundFirstGrammar) {
+                  // Error node interspersed between grammar nodes — include as passenger
+                  t_globalReduceCollected[c_idx--] = curr.astNode;
+                  debugLog(9999, curr.astNode, 1, 0);
+                }
+                // Otherwise skip: leading error nodes above the first grammar node
+                // are left in the GSS for a higher-level reduction.
               } else {
+                foundFirstGrammar = true;
                 t_globalReduceCollected[c_idx--] = curr.astNode;
                 needed--;
+                debugLog(9999, curr.astNode, 0, needed);
               }
               curr = curr.prev;
             }
@@ -1987,28 +1977,14 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 debugLog(9997, isListAppend ? 1 : 0, 0, 0);
 
                 if (isListAppend) {
-                  if (popCount == 2) {
+                  parentNode = t_globalChildNodes[0];
+                  for (let i = 1; i < actualCount; i++) {
                     parentNode = appendToList(
-                      t_globalChildNodes[0],
-                      t_globalChildNodes[1],
+                      parentNode,
+                      t_globalChildNodes[i],
                       lhsSym as u16,
                       currentScannerState,
-                      true
-                    );
-                  } else {
-                    let temp = appendToList(
-                      t_globalChildNodes[0],
-                      t_globalChildNodes[1],
-                      lhsSym as u16,
-                      currentScannerState,
-                      false
-                    );
-                    parentNode = appendToList(
-                      temp,
-                      t_globalChildNodes[2],
-                      lhsSym as u16,
-                      currentScannerState,
-                      true
+                      i == actualCount - 1
                     );
                   }
                 } else {

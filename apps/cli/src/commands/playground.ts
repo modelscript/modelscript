@@ -273,10 +273,10 @@ function getIndexHtml(dslLibStr = "") {
   rules: {
     Program: $ => repeat($.Block),
     Block: $ => seq('scope', '{', repeat(choice($.Decl, $.Usage)), '}'),
-    Decl: $ => seq('let', field('name', $.Identifier), '=', $.Number, ';'),
-    Usage: $ => seq('print', field('target', $.Identifier), ';'),
-    Identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
-    Number: $ => /[0-9]+/
+    Decl: $ => seq(semanticToken('keyword', 'let'), field('name', $.Identifier), '=', $.Number, ';'),
+    Usage: $ => seq(semanticToken('keyword', 'print'), field('target', $.Identifier), ';'),
+    Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
+    Number: $ => semanticToken('number', /[0-9]+/)
   },
   extras: $ => [/\\\\s/],
   lsp: {
@@ -339,7 +339,8 @@ scope {
                 value: exampleCode,
                 language: 'plaintext',
                 theme: editorTheme,
-                minimap: { enabled: false }
+                minimap: { enabled: false },
+                'semanticHighlighting.enabled': true
             });
 
             window.addEventListener('resize', () => {
@@ -372,6 +373,31 @@ scope {
                     const kb = (e.data.wasm.byteLength / 1024).toFixed(1);
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
                     window.syntaxNames = e.data.syntaxNames;
+                    
+                    if (window.semanticTokensProvider) {
+                        window.semanticTokensProvider.dispose();
+                    }
+                    if (e.data.semanticLegend) {
+                        window.semanticTokensProvider = monaco.languages.registerDocumentSemanticTokensProvider('plaintext', {
+                            getLegend: function () {
+                                return e.data.semanticLegend;
+                            },
+                            provideDocumentSemanticTokens: async (model, lastResultId, token) => {
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', {
+                                    textDocument: { uri: model.uri.toString() }
+                                });
+                                if (result && result.data) {
+                                    return {
+                                        data: new Uint32Array(result.data),
+                                        resultId: null
+                                    };
+                                }
+                                return null;
+                            },
+                            releaseDocumentSemanticTokens: function (resultId) { }
+                        });
+                    }
+
                     lspWorker.postMessage({ 
                         type: 'init', 
                         wasm: e.data.wasm, 
@@ -858,6 +884,7 @@ self.onmessage = async (e) => {
                 wasm: vfs['parser.wasm'], 
                 jsWrapper: result.javascriptWrapper.js,
                 syntaxNames: result.javascriptWrapper.syntaxNames,
+                semanticLegend: result.javascriptWrapper.semanticLegend,
                 langName: grammarDef.name
             });
         } catch (err) {
@@ -1162,6 +1189,66 @@ self.addEventListener('message', async (e) => {
             }
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/semanticTokens/full') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const tokensArray = lspFacade.getSemanticTokens(globalAstRoot);
+        if (!tokensArray || tokensArray.length === 0) {
+            return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        }
+        
+        const lineStarts = lspFacade.getLineStarts();
+        const rawTokens = [];
+        
+        for (let i = 0; i < tokensArray.length; i += 4) {
+            rawTokens.push({
+                offset: tokensArray[i],
+                length: tokensArray[i+1],
+                tokenType: tokensArray[i+2],
+                tokenModifiers: tokensArray[i+3]
+            });
+        }
+        
+        // Sort tokens by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
+        rawTokens.sort((a, b) => a.offset - b.offset);
+        
+        const data = [];
+        let prevLine = 0;
+        let prevChar = 0;
+        
+        for (const token of rawTokens) {
+            const offset = token.offset;
+            const length = token.length;
+            const tokenType = token.tokenType;
+            const tokenModifiers = token.tokenModifiers;
+            
+            let line = 0;
+            let low = 0;
+            let high = lineStarts.length - 1;
+            while (low <= high) {
+                let mid = (low + high) >> 1;
+                if (lineStarts[mid] <= offset) {
+                    line = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            const charOffset = (offset - lineStarts[line]) / 2;
+            const pos = { line: line, character: charOffset };
+            
+            const charLength = length / 2;
+            
+            const deltaLine = pos.line - prevLine;
+            const deltaChar = deltaLine === 0 ? pos.character - prevChar : pos.character;
+            
+            data.push(deltaLine, deltaChar, charLength, tokenType, tokenModifiers);
+            
+            prevLine = pos.line;
+            prevChar = pos.character;
+        }
+        
+        console.log("Semantic Tokens computed:", data.length / 5, "tokens");
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: data } });
     }
 });
 `;

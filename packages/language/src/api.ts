@@ -27,7 +27,12 @@ export interface BuildResult {
   /** The generated AssemblyScript files (action/goto tables, automata, grammar) to be compiled to WASM. */
   assemblyScriptFiles: GeneratedFile[];
   /** The generated JavaScript wrapper code and TypeScript typings to interface with the WASM parser. */
-  javascriptWrapper: { js: string; dts: string };
+  javascriptWrapper: {
+    js: string;
+    dts: string;
+    syntaxNames?: string[];
+    semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
+  };
 }
 
 /**

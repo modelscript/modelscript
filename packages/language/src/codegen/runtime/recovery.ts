@@ -110,6 +110,8 @@ export function recoverUnwindAndMutate(
             let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
             let droppedBytes: u32 = head.pos > uPos ? head.pos - uPos : 0;
 
+            debugLog(9995, head.pos, uPos, changetype<usize>(uCurr) as u32);
+
             let baseDelCost =
               token_insert_costs[token == TOKEN_EOF ? 0 : token] + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
             if (lexLen == 1) {
@@ -123,13 +125,18 @@ export function recoverUnwindAndMutate(
 
             // A1. Standard Deletion: Discard current token(s) and advance scanner
             // We scan forward up to 5 tokens to see if deleting them allows the state to recover.
-            let a1NextScanPos = srcLexPos + lexLen;
-            let a1DelCost = 0;
-
+            // If unwindDepth > 0, we also try skipCount=0 (just unwinding without dropping the current token).
             let maxSkips: u32 = 5;
+            let startSkip: u32 = unwindDepth == 0 ? 1 : 0;
+            let a1NextScanPos = startSkip == 1 ? (srcLexPos + lexLen) : srcLexPos;
+            
+            // baseDelCost includes the cost of dropping 'token'. If we do startSkip=0,
+            // we are NOT dropping 'token', so we refund its cost in a1DelCost.
+            let a1DelCost = startSkip == 0 ? -token_insert_costs[token == TOKEN_EOF ? 0 : token] : 0;
+
             // Force lexer to recognize all tokens during recovery forward scan
             expected_tokens.fill(1);
-            for (let skipCount: u32 = 1; skipCount <= maxSkips; skipCount++) {
+            for (let skipCount: u32 = startSkip; skipCount <= maxSkips; skipCount++) {
               let savedLexPos = lexPos;
               let savedLexLen = lexLen;
               let savedSrcLexPos = srcLexPos;
@@ -149,6 +156,57 @@ export function recoverUnwindAndMutate(
               debugLog(60100, recState, nextToken, canAccept ? 1 : 0);
 
               if (canAccept) {
+                // ── 2-token lookahead validation ──
+                // After finding that nextToken can be accepted from recState,
+                // check whether the SECOND token ahead can also be processed
+                // from the state we'd reach AFTER shifting nextToken.
+                // This prevents shallow recoveries that match one token but
+                // immediately fail (e.g., "let <skip print> velocity ;" where
+                // velocity matches Identifier but ';' doesn't match '=').
+                let weakRecovery: bool = false;
+                if (tokenEndPos < inputLength) {
+                  let sv2_lp = lexPos, sv2_ll = lexLen, sv2_sp = srcLexPos, sv2_ss = currentScannerState;
+                  expected_tokens.fill(1);
+                  let secondToken = invokeLexer(tokenEndPos);
+                  setLexPos(sv2_lp); setLexLen(sv2_ll); setSrcLexPos(sv2_sp); setCurrentScannerState(sv2_ss);
+
+                  if (secondToken != TOKEN_EOF && secondToken != TOKEN_UNKNOWN) {
+                    // Find the shift target state for nextToken from recState
+                    let shiftTarget: i32 = -1;
+                    let ao = action_offsets[recState];
+                    if (ao >= 0 && ao < action_data.length) {
+                      let ac = action_data[ao];
+                      let aidx = ao + 1;
+                      for (let ai: i32 = 0; ai < ac; ai++) {
+                        if (aidx < 0 || aidx + 1 >= action_data.length) break;
+                        let asym = action_data[aidx];
+                        let aactCount = action_data[aidx + 1];
+                        if (asym == nextToken || asym == 0) {
+                          let aactIdx = aidx + 2;
+                          for (let aj: i32 = 0; aj < aactCount; aj++) {
+                            let atype = action_data[aactIdx++];
+                            let atarget = action_data[aactIdx++];
+                            if (atype == ACTION_SHIFT) {
+                              shiftTarget = atarget;
+                              break;
+                            }
+                          }
+                          if (shiftTarget != -1) break;
+                        }
+                        aidx += 2 + aactCount * 2;
+                      }
+                    }
+
+                    if (shiftTarget != -1) {
+                      // Check if secondToken can be accepted from the shifted state
+                      let canAccept2 = stateCanAccept(unwindCurr, shiftTarget, secondToken, 0);
+                      if (!canAccept2) {
+                        weakRecovery = true;
+                      }
+                    }
+                  }
+                }
+
                 let currChild: ParseHead | null = head;
                 let childCount = 0;
                 while (currChild != null && currChild != unwindCurr) {
@@ -192,6 +250,7 @@ export function recoverUnwindAndMutate(
                 while (p < a1NextScanPos) {
                   let tok = invokeLexer(p);
                   if (tok == -1) break;
+                  if (lexPos >= a1NextScanPos) break;
                   let pad = lexPos - p;
                   let token = lex(p);
                   let tLen = lexLen;
@@ -207,6 +266,15 @@ export function recoverUnwindAndMutate(
                 let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
                 setNodeByteLength(errNode, errByteLen);
 
+                // Weak recovery penalty: if the 2-token check showed the path
+                // will fail right after resumption, inflate the cost so deeper
+                // unwind paths that genuinely recover can compete.
+                let weakPenalty: i32 = weakRecovery ? 50 : 0;
+
+                let delHeadCost = head.errorCost + baseDelCost + a1DelCost + weakPenalty;
+                debugLog(9992, unwindDepth, skipCount, delHeadCost);
+                debugLog(9993, head.errorCost, baseDelCost, a1DelCost);
+                debugLog(9994, weakPenalty, 0, 0);
                 // Push the ERROR node as a separate GSS entry above the anchor.
                 // Do NOT use concatLists here — it would corrupt non-list anchor
                 // nodes (e.g., turning a terminal "}" into a list).
@@ -216,7 +284,7 @@ export function recoverUnwindAndMutate(
                   unwindCurr,
                   a1NextScanPos,
                   initialScannerState,
-                  head.errorCost + baseDelCost + a1DelCost,
+                  delHeadCost,
                   0,
                   newBalance,
                   0,

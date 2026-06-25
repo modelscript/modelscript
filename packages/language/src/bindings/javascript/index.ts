@@ -4,7 +4,12 @@ import { NormalizedGrammar } from "../../grammar.js";
 export function generateJavaScriptWrapper(
   grammarDef: any,
   normalized: NormalizedGrammar,
-): { js: string; dts: string; syntaxNames: string[] } {
+): {
+  js: string;
+  dts: string;
+  syntaxNames: string[];
+  semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
+} {
   const langName = grammarDef.name;
 
   // Create an array mapping from symbol ID to symbol Name (like the C enum)
@@ -113,5 +118,5 @@ export function generateJavaScriptWrapper(
   const jsWithLegend = js + `\nexport const semanticLegend = ${legendStr};\n`;
   const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[], tokenModifiers: string[] };\n`;
 
-  return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames };
+  return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames, semanticLegend: legend };
 }
