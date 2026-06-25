@@ -52,19 +52,18 @@ import { debugLog } from "./engine";
  * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
  */
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
-  debugLog(start, end, lintId, argPtr);
   if (lspBinaryLength > 0 && lintId == 0) {
-    let lastLintId = t_lspBinaryBuffer[lspBinaryLength - 1];
+    let lastLintId = t_lspBinaryBuffer[lspBinaryLength - 2];
     if (lastLintId == 0) {
-      let lastEnd = t_lspBinaryBuffer[lspBinaryLength - 2];
-      let lastStart = t_lspBinaryBuffer[lspBinaryLength - 3];
+      let lastEnd = t_lspBinaryBuffer[lspBinaryLength - 3];
+      let lastStart = t_lspBinaryBuffer[lspBinaryLength - 4];
       // Merge if adjacent or overlapping
       if (start <= lastEnd) {
         if (end > lastEnd) {
-          t_lspBinaryBuffer[lspBinaryLength - 2] = end;
+          t_lspBinaryBuffer[lspBinaryLength - 3] = end;
         }
         if (start < lastStart) {
-          t_lspBinaryBuffer[lspBinaryLength - 3] = start;
+          t_lspBinaryBuffer[lspBinaryLength - 4] = start;
         }
         return;
       }

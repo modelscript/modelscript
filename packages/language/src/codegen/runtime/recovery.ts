@@ -207,12 +207,13 @@ export function recoverUnwindAndMutate(
                 let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
                 setNodeByteLength(errNode, errByteLen);
 
-                let merged = concatLists(unwindCurr.astNode, errNode, getNodeType(unwindCurr.astNode), newBalance & 0xff);
-
+                // Push the ERROR node as a separate GSS entry above the anchor.
+                // Do NOT use concatLists here — it would corrupt non-list anchor
+                // nodes (e.g., turning a terminal "}" into a list).
                 let delHead = allocParseHead(
                   recState,
-                  merged,
-                  unwindCurr.prev,
+                  errNode,
+                  unwindCurr,
                   a1NextScanPos,
                   initialScannerState,
                   head.errorCost + baseDelCost + a1DelCost,
