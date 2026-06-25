@@ -440,8 +440,13 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   if (envHash > 255) envHash = 255;
 
   // 6. Assemble using the unmanaged wrapper
+  let initialFlags: u32 = 0;
+  if (type == 0) { // 0 is NODE_TYPE_ERROR
+    initialFlags = (FLAG_HAS_ERROR as u32) << 10;
+  }
+
   let node = changetype<ASTNode>(ptr);
-  node.word0 = (type as u32 & 0x03ff) | (paddingLength << 18);
+  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 18);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
   node.firstChild = 0;
   node.nextSibling = 0;
@@ -522,6 +527,7 @@ export const FLAG_LSP_VISITED: u16 = 8;
 export const FLAG_DIRTY: u16 = 16;
 export const FLAG_IS_LIST: u16 = 32;
 export const FLAG_LIST_BOUNDARY: u16 = 64;
+export const FLAG_HAS_ERROR: u16 = 128;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;

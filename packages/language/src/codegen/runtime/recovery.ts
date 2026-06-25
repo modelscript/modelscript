@@ -360,60 +360,7 @@ export function recoverUnwindAndMutate(
               debugLog(777, totalCost, inputLength as i32, getNodeByteLength(unwindCurr.astNode) as i32);
             }
 
-            // A2. Retrospective Deletion: Unwind state but keep the current token
-            // E.g., we shifted a token prematurely, so we pop the state but leave the scanner where it is
-            if (unwindDepth > 0) {
-              if (stateCanAccept(unwindCurr, recState, token, 0)) {
-                let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + droppedBytes;
-                
-                let currChild: ParseHead | null = head;
-                let childCount = 0;
-                while (currChild != null && currChild != unwindCurr) {
-                  if (childCount < MAX_CHILD_NODES) t_globalChildNodes[childCount] = currChild.astNode;
-                  childCount++;
-                  currChild = currChild.prev;
-                }
-                if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
-
-                let errPad = uPadding;
-                let errLen = droppedBytes;
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, errLen, newBalance & 0xff);
-
-                let lastChild = 0;
-                for (let k = childCount - 1; k >= 0; k--) {
-                  let child = t_globalChildNodes[k];
-                  if (child == 0) continue;
-                  let clone = cloneNodeShallow(child);
-                  if (lastChild == 0) setFirstChild(errNode, clone);
-                  else setNextSibling(lastChild, clone);
-                  lastChild = clone;
-                }
-
-                let newTail = head.errorTail;
-                if (droppedBytes > 0) {
-                    newTail = pushDiagnostic(newTail, uPos, head.pos);
-                }
-
-                let merged = concatLists(unwindCurr.astNode, errNode, getNodeType(unwindCurr.astNode), newBalance & 0xff);
-
-                let retroHead = allocParseHead(
-                  recState,
-                  merged,
-                  unwindCurr.prev,
-                  head.pos,
-                  initialScannerState,
-                  head.errorCost + retroCost,
-                  0,
-                  newBalance,
-                  0,
-                  recPrec,
-                  0,
-                  newTail
-                );
-                pushActiveHead(changetype<u32>(retroHead));
-                debugLog(5, recState, head.errorCost + retroCost, head.pos);
-              }
-            }
+            // A2 has been removed to prevent AST corruption via concatLists on non-list nodes.
           }
 
           // ------------------------------------------------------------

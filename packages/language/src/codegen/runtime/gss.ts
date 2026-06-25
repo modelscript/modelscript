@@ -1,5 +1,4 @@
 import {
-  allocGen0,
   atomicChunkAlloc,
   getNodeFirstChild,
   getNodeNextSibling,
@@ -9,6 +8,7 @@ import {
   setNodeFlags,
   FLAG_LSP_VISITED,
   FLAG_INVISIBLE,
+  FLAG_HAS_ERROR,
   getNodeFlags,
 } from "./arena";
 
@@ -73,7 +73,7 @@ export function allocParseHead(
   pendingPadding: u32 = 0,
   errorTail: u32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(48);
+  let ptr = atomicChunkAlloc(48);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -115,7 +115,7 @@ export function allocErrorBranch(
   errEnd: u32,
   scannerState: u32,
 ): u32 {
-  let ptr = allocGen0(40);
+  let ptr = atomicChunkAlloc(40);
   let b = changetype<ErrorBranch>(ptr);
   b.head = head;
   b.cost = cost;
@@ -252,7 +252,7 @@ export function findReusableNode(
         absContentEnd < editStart ||
         absContentStart >= editOldEnd
       ) {
-        let isError = nodeType == 0;
+        let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
         let hasErrorPadding = pad > expectedPadding && (pad - expectedPadding) > 0;
         

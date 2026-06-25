@@ -7,7 +7,7 @@ import {
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR,
     getNodeEnvHash, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode
 } from "./arena";
@@ -433,8 +433,15 @@ export function stateCanAccept(
             newSimCount = 0;
           }
 
-          for (let u = 0; u < rem; u++) {
-            if (pHead != null) pHead = pHead.prev;
+          let remCounter = rem;
+          while (remCounter > 0 && pHead != null) {
+            if (pHead.astNode != 0 && getNodeType(pHead.astNode) == 0) {
+              // Skip pure error nodes, just like real reduce does not decrement 'needed'
+              pHead = pHead.prev;
+            } else {
+              pHead = pHead.prev;
+              remCounter--;
+            }
           }
 
           let topState = -1;
@@ -736,6 +743,7 @@ function getListChildCount(node: u32, listSym: u16): u32 {
   return count;
 }
 export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
+  debugLog(5679, leftNode, rightNode, listSym);
   _listRecurDepth++;
   // Cycle detection guard
   if (_listRecurDepth > 50) {
@@ -763,11 +771,12 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
 
   let lFlags = getNodeFlags(leftNode);
   let rFlags = getNodeFlags(rightNode);
+  let combinedErrorFlag = (lFlags | rFlags) & FLAG_HAS_ERROR;
 
   // If the left node is not already a list, wrap it in an invisible list node
   if ((lFlags & FLAG_IS_LIST) == 0) {
     let p = allocNode(listSym, getNodePadding(leftNode), getNodeByteLength(leftNode), envHash);
-    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneLeft = cloneNodeShallow(leftNode);
     setFirstChild(p, cloneLeft);
     setNextSibling(cloneLeft, 0);
@@ -778,7 +787,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   // If the right node is not already a list, wrap it in an invisible list node
   if ((rFlags & FLAG_IS_LIST) == 0) {
     let p = allocNode(listSym, getNodePadding(rightNode), getNodeByteLength(rightNode), envHash);
-    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneRight = cloneNodeShallow(rightNode);
     setFirstChild(p, cloneRight);
     setNextSibling(cloneRight, 0);
@@ -800,7 +809,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   if (lDepth < rDepth) {
     while (lDepth < rDepth) {
       let wrap = allocNode(listSym, getNodePadding(leftNode), getNodeByteLength(leftNode), envHash);
-      setNodeFlags(wrap, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(wrap, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       let cloneLeft = cloneNodeShallow(leftNode);
       setFirstChild(wrap, cloneLeft);
       setNextSibling(cloneLeft, 0);
@@ -824,7 +833,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     // Strategy A: If merging keeps the child count under the threshold, merge them flat
     if (lDirectChildCount + rDirectChildCount < LIST_MAX_CHILDREN) {
       let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       let lastChild = copyChildren(p, leftNode);
       let rc = getNodeFirstChild(rightNode);
       while (rc != 0) {
@@ -841,13 +850,13 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     } else {
       // Strategy B: Over threshold. Split the children evenly into two new sibling list nodes.
       let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let cloneLeft = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-      setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let cloneRight = allocNode(listSym, getNodePadding(rightNode), 0, envHash);
-      setNodeFlags(cloneRight, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(cloneRight, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let total = lDirectChildCount + rDirectChildCount;
       let leftHalf = total / 2;
@@ -932,16 +941,16 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       else setNextSibling(lastChild, c1);
       setNextSibling(c1, c2);
       setNextSibling(c2, 0);
-      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       fixNodeLength(p);
       _listRecurDepth--;
       return p;
     } else {
       let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-      setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let newRightChunk = allocNode(listSym, getNodePadding(origC2), 0, envHash);
-      setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let gc2 = getNodeFirstChild(leftNode);
       let lastChild2 = 0;
@@ -981,7 +990,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     if (lastChild == 0) setFirstChild(p, newRightMost);
     else setNextSibling(lastChild, newRightMost);
     setNextSibling(newRightMost, 0);
-    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     fixNodeLength(p);
     _listRecurDepth--;
     return p;
@@ -991,6 +1000,7 @@ function isMutable(ptr: u32): boolean {
   return ptr >= incrementalStartOffset;
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
+  let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & FLAG_HAS_ERROR;
   appendListCalls++;
   _listRecurDepth++;
   if (_listRecurDepth > 50) {
@@ -1009,7 +1019,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   let leftFlags = getNodeFlags(leftNode);
   if ((leftFlags & FLAG_IS_LIST) == 0) {
     let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+    setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneLeft = isMutable(leftNode) ? leftNode : cloneNodeShallow(leftNode);
     setFirstChild(p, cloneLeft);
     setNextSibling(cloneLeft, leaf);
@@ -1042,12 +1052,13 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
           setNextSibling(curr, leaf);
         }
         setNextSibling(leaf, 0);
+        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
         fixNodeLength(leftNode);
         _listRecurDepth--;
         return leftNode;
       } else {
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         let lastChild = copyChildren(p, leftNode);
         if (lastChild == 0) setFirstChild(p, leaf);
         else setNextSibling(lastChild, leaf);
@@ -1069,10 +1080,11 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         
         let splitHead = getNodeNextSibling(splitTail);
         setNextSibling(splitTail, 0); // truncate leftNode
+        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
         fixNodeLength(leftNode);
 
         let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         setFirstChild(rightChunk, splitHead);
 
         // Find the last child of rightChunk
@@ -1086,7 +1098,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
         // We still need to return a new parent p containing [leftNode, rightChunk]
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         setFirstChild(p, leftNode);
         setNextSibling(leftNode, rightChunk);
         setNextSibling(rightChunk, 0);
@@ -1096,13 +1108,13 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         return p;
       } else {
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let cloneLeft = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let rightChunk = allocNode(listSym, getNodePadding(leaf), 0, envHash);
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let gc = getNodeFirstChild(leftNode);
         let splitTail = gc;
@@ -1184,6 +1196,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         else setNextSibling(prevOfRightMost, c1);
         setNextSibling(c1, c2);
         setNextSibling(c2, 0);
+        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
         fixNodeLength(leftNode);
         _listRecurDepth--;
         return leftNode;
@@ -1200,10 +1213,11 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
         let splitHead = getNodeNextSibling(splitTail);
         setNextSibling(splitTail, 0); // truncate leftNode
+        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
         fixNodeLength(leftNode);
 
         let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         setFirstChild(rightChunk, splitHead);
 
         // Find the node before rightMost in the rightChunk sublist
@@ -1224,7 +1238,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   
 
         let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         setFirstChild(superP, leftNode);
         setNextSibling(leftNode, rightChunk);
         setNextSibling(rightChunk, 0);
@@ -1237,6 +1251,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
       if (prevOfRightMost == 0) setFirstChild(leftNode, newRightMost);
       else setNextSibling(prevOfRightMost, newRightMost);
       setNextSibling(newRightMost, 0);
+      setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
       fixNodeLength(leftNode);
       _listRecurDepth--;
       return leftNode;
@@ -1270,16 +1285,16 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         else setNextSibling(lastChild, c1);
         setNextSibling(c1, c2);
         setNextSibling(c2, 0);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         fixNodeLength(p);
         _listRecurDepth--;
         return p;
       } else {
         let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let newRightChunk = allocNode(listSym, getNodePadding(origC2), 0, envHash);
-        setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE);
+        setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let gc2 = getNodeFirstChild(leftNode);
         let splitTail = gc2;
@@ -1342,7 +1357,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
       if (lastChild == 0) setFirstChild(p, newRightMost);
       else setNextSibling(lastChild, newRightMost);
       setNextSibling(newRightMost, 0);
-      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE);
+      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       fixNodeLength(p);
       _listRecurDepth--;
       return p;
@@ -1448,7 +1463,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   // Main GSS Processing Loop
   // --------------------------------------------------------------------------
   while (true) {
-    debugLog(123456, iterGuard, activeHeadsCount, 0);
     lastIterCount = iterGuard;
     mergeGeneration++; // Invalidate all merge index entries from previous iteration
     let inputLen: u32 = inputLength;
@@ -1703,7 +1717,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       if (reusedNode != 0) {
         debugLog(1, reusedNode, pos, oldSrcLexPos);
       } else {
-        if (pos == 312) debugLog(999912, pos, currentState, oldSrcLexPos);
       }
     }
 
@@ -1824,7 +1837,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       idx = actionOffset + 1;
     }
     
-    debugLog(999905, currentState, actionOffset, actionCount);
 
     let anyAction = false;
     for (let i = 0; i < actionCount; i++) {
@@ -1835,15 +1847,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let sym = action_data[idx++];
       let actCount = action_data[idx++];
       
-      debugLog(999904, currentState, sym, token);
 
       // Match the exact token, or token 0 (which signifies a wildcard/default action)
       if (sym == token || sym == 0) {
-        debugLog(999906, actCount, idx, 0);
         for (let j = 0; j < actCount; j++) {
           let type = action_data[idx++];
           let target = action_data[idx++];
-          debugLog(999907, type, target, idx);
           // --------------------------------------------------------------------
           // TYPE 0: SHIFT ACTION
           // --------------------------------------------------------------------
@@ -1858,7 +1867,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
             // Allocate the leaf node for the shifted token
             let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
-            debugLog(999901, paddingLength, srcLexPos, pos);
             let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
 
             let nPos = srcLexPos + lexLen;
@@ -1899,7 +1907,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             anyAction = true;
 
           } else if (type == ACTION_REDUCE) {
-            debugLog(999911, target, 0, 0);
             let reduceProd = target;
             if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
               throw new Error("BAD reduceProd: " + reduceProd.toString());
@@ -1927,7 +1934,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               }
               curr = curr.prev;
             }
-            debugLog(999912, needed, curr ? curr.state : -99, c_idx);
             if (curr == null && needed > 0) {
               debugLog(3, currentState, 0, pos);
               continue; // Invalid reduction path
@@ -1941,7 +1947,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
             // 2. Create the Parent Node
             if (curr) {
-              debugLog(999913, actualCount, 0, 0);
               let totalByteLength: u32 = 0;
               let firstChildPadding: u32 = 0;
               if (actualCount > 0) {
@@ -1954,7 +1959,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   else totalByteLength += cPadding + cLen;
                 }
               }
-              debugLog(999902, firstChildPadding, 0, 0);
               let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, head.balanceHash & 0xff);
 
               // Apply grammar-defined visibility and list flags
@@ -1980,6 +1984,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   let leftSym = getNodeType(t_globalChildNodes[0]);
                   if (leftSym == lhsSym) isListAppend = true;
                 }
+                debugLog(9997, isListAppend ? 1 : 0, 0, 0);
 
                 if (isListAppend) {
                   if (popCount == 2) {
@@ -2043,6 +2048,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     if (lastChild == 0) setFirstChild(parentNode, clone);
                     else setNextSibling(lastChild, clone);
                     lastChild = clone;
+                    if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+                      setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
+                    }
                   }
                   let pFlags = getNodeFlags(parentNode);
                   setNodeFlags(parentNode, pFlags);
@@ -2072,7 +2080,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 }
               }
 
-              debugLog(999914, nextState, 0, 0);
 
               // If a valid GOTO transition exists, create a new head
               if (nextState != -1) {
@@ -2105,9 +2112,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 }
                 anyAction = true;
               }
-              debugLog(999903, type, target, nextState);
             } else {
-              debugLog(999915, 0, 0, 0);
             }
           } else if (type == ACTION_ACCEPT) {
             debugLog(778, head.state, head.errorCost, head.pos);
@@ -2261,6 +2266,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   }
                   if (firstCloned != 0) setFirstChild(newRoot, firstCloned);
 
+                  let appendedError = false;
                   // Append non-root collected nodes (ERROR nodes from recovery) as extra children
                   for (let i: u32 = 0; i < t_count; i++) {
                     let c = t_globalChildren[i];
@@ -2269,6 +2275,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     if (lastC2 == 0) { setFirstChild(newRoot, clone); firstCloned = clone; }
                     else setNextSibling(lastC2, clone);
                     lastC2 = clone;
+                    if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+                      appendedError = true;
+                    }
+                  }
+                  if (appendedError) {
+                    setNodeFlags(newRoot, getNodeFlags(newRoot) | FLAG_HAS_ERROR);
                   }
                   acceptedNode = newRoot;
                 } else {
@@ -2501,6 +2513,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                   );
                   if (isList) setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
                   let lastC: u32 = 0;
+                  let appendedError = false;
                   for (let k: u32 = 0; k < actualCount; k++) {
                     let c = t_globalChildNodes[k];
                     if (c == 0) continue;
@@ -2511,6 +2524,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     if (lastC == 0) setFirstChild(parentNode, clone);
                     else setNextSibling(lastC, clone);
                     lastC = clone;
+                    if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+                      appendedError = true;
+                    }
+                  }
+                  if (appendedError) {
+                    setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
                   }
                 }
 

@@ -3,13 +3,13 @@
 import {
   ensureInputBuffer as _ensureInputBuffer,
   getInputBuffer as _getInputBuffer,
-  allocGen0,
   allocNode,
   atomicChunkAlloc,
   FLAG_GC_MARK,
   FLAG_INVISIBLE,
   FLAG_IS_LIST,
   FLAG_LIST_BOUNDARY,
+  FLAG_HAS_ERROR,
   FLAG_LSP_VISITED,
   getNodeByteLength,
   getNodeEnvHash,
@@ -231,7 +231,7 @@ export class DiagnosticNode {
 }
 
 export function pushDiagnostic(tailPtr: u32, start: u32, end: u32): u32 {
-  let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
+  let node = changetype<DiagnosticNode>(atomicChunkAlloc(offsetof<DiagnosticNode>()));
   node.next = tailPtr;
   node.start = start;
   node.end = end;
@@ -248,7 +248,7 @@ export function commitDiagnostics(tailPtr: u32): void {
   
   if (count == 0) return;
 
-  let arr = changetype<UnmanagedUint32Array>(allocGen0(count * 4));
+  let arr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(count * 4));
   curr = tailPtr;
   for (let i = count - 1; i >= 0; i--) {
     arr[i] = curr;
