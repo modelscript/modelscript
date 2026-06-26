@@ -12,7 +12,7 @@ import {
   getNodeFlags,
 } from "./arena";
 
-import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
+import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
 import { debugLog } from "./engine";
 
 const ARENA_BUFFER_SIZE: i32 = 16384;
@@ -134,10 +134,10 @@ export function allocErrorBranch(
 // Global Tree Traversal Cursor
 // ----------------------------------------------------------------------------
 
-export const cursorNodeStack = new ChunkedUint32Array();
-export const cursorOffsetStack = new ChunkedUint32Array();
-export const savedCursorNodeStack = new ChunkedUint32Array();
-export const savedCursorOffsetStack = new ChunkedUint32Array();
+export const cursorNodeStack = createChunkedUint32Array();
+export const cursorOffsetStack = createChunkedUint32Array();
+export const savedCursorNodeStack = createChunkedUint32Array();
+export const savedCursorOffsetStack = createChunkedUint32Array();
 
 let globalCursorDepth: i32 = -1;
 

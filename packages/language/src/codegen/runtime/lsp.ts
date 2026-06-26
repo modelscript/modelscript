@@ -9,6 +9,7 @@ import {
   getNodeNextSibling,
   getNodePadding,
   getNodeType,
+  nodeHasError,
   setNodeFlags,
   ast_getTextSpan,
   ast_hashSpan,
@@ -311,13 +312,15 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
         while (child != 0) {
           let cPad = getNodePadding(child);
-          if (childCount == childIdx) {
-            targetChild = child;
-            childOffset = currOffset + cPad;
-            break;
+          if (getNodeType(child) != 0 /* NODE_TYPE_ERROR */) {
+            if (childCount == childIdx) {
+              targetChild = child;
+              childOffset = currOffset + cPad;
+              break;
+            }
+            childCount++;
           }
           currOffset += cPad + getNodeByteLength(child);
-          childCount++;
           child = getNodeNextSibling(child);
         }
 

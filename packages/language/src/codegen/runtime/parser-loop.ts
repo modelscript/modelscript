@@ -94,7 +94,7 @@ function actionLookupFnBool(state: i32, token: i32): boolean {
 }
 
 function stateCanAcceptFnBool(state: i32, token: i32): boolean {
-  return stateCanAccept(null, state, token, 0);
+  return stateCanAccept(null, state, token, 0) > 0;
 }
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   let prevHead: ParseHead | null = null;
@@ -396,22 +396,22 @@ export function stateCanAccept(
   sim7: i32 = 0,
   sim8: i32 = 0,
   sim9: i32 = 0,
-): boolean {
-  if (depth > MAX_LOOKAHEAD_DEPTH) return false;
-  if (state < 0 || state >= action_offsets.length) return false;
+): i32 {
+  if (depth > MAX_LOOKAHEAD_DEPTH) return 0;
+  if (state < 0 || state >= action_offsets.length) return 0;
 
   debugLog(999100, state, tok, depth);
 
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset >= action_data.length) {
-    return false;
+    return 0;
   }
 
   let actionCount = action_data[actionOffset];
   let idx = actionOffset + 1;
   for (let i = 0; i < actionCount; i++) {
     if (idx < 0 || idx + 1 >= action_data.length) {
-      return false;
+      return 0;
     }
     let sym = action_data[idx];
     let actCount = action_data[idx + 1];
@@ -420,8 +420,11 @@ export function stateCanAccept(
       for (let j = 0; j < actCount; j++) {
         let type = action_data[actIdx++];
         let target = action_data[actIdx++];
-        if (type == ACTION_SHIFT || type == ACTION_ACCEPT) {
-          return true;
+        if (type == ACTION_SHIFT) {
+          return target + 1;
+        }
+        if (type == ACTION_ACCEPT) {
+          return 1;
         }
         if (type == ACTION_REDUCE) {
           let ruleLen = prod_lengths[target];
@@ -499,8 +502,9 @@ export function stateCanAccept(
 
             debugLog(999101, nextState, tok, depth);
 
-            if (stateCanAccept(pHead, nextState, tok, depth + 1, nextSimCount, ns0, ns1, ns2, ns3, ns4, ns5, ns6, ns7, ns8, ns9)) {
-              return true;
+            let res = stateCanAccept(pHead, nextState, tok, depth + 1, nextSimCount, ns0, ns1, ns2, ns3, ns4, ns5, ns6, ns7, ns8, ns9);
+            if (res > 0) {
+              return res;
             }
           }
         }
@@ -508,7 +512,7 @@ export function stateCanAccept(
     }
     idx += 2 + actCount * 2;
   }
-  return false;
+  return 0;
 }
 
 /**
@@ -1909,13 +1913,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               debugLog(9998, curr.astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
               
               if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
-                if (foundFirstGrammar) {
-                  // Error node interspersed between grammar nodes — include as passenger
-                  t_globalReduceCollected[c_idx--] = curr.astNode;
-                  debugLog(9999, curr.astNode, 1, 0);
-                }
-                // Otherwise skip: leading error nodes above the first grammar node
-                // are left in the GSS for a higher-level reduction.
+                // Error node interspersed between grammar nodes, or leading on top of the stack.
+                // We MUST include them as passengers so they are not orphaned from the AST!
+                t_globalReduceCollected[c_idx--] = curr.astNode;
+                debugLog(9999, curr.astNode, 1, 0);
               } else {
                 foundFirstGrammar = true;
                 t_globalReduceCollected[c_idx--] = curr.astNode;
@@ -2748,6 +2749,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, remainingLen - (firstPad - missingPadding), 0);
       let lastTokNode = 0;
 
+      // Report a single monolithic error for the entire unparsed remainder
+      // instead of creating a squiggle for every individual garbage token.
+      if (inputLength > p) {
+        reportGlobalError(p as u32, inputLength as u32);
+      }
+
       // Force lexer to accept any token during garbage collection
       expected_tokens.fill(1);
 
@@ -2758,9 +2765,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         let token = lex(p);
         let tLen = lexLen;
         if (tLen == 0) break; // prevent infinite loop
-
-        // Report each garbage token individually so spaces don't get squiggled
-        reportGlobalError(lexPos as u32, (lexPos + tLen) as u32);
 
         let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
         if (lastTokNode == 0) setFirstChild(unparsedNode, tNode);

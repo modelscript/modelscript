@@ -27,7 +27,7 @@ import {
   setNodeFlags,
   setNodePadding,
 } from "./arena";
-import { ChunkedUint32Array, UnmanagedInt32Array, UnmanagedUint32Array } from "./array";
+import { ChunkedUint32Array, UnmanagedInt32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 import {
   action_data as _action_data,
@@ -109,13 +109,13 @@ export const type_field_data = changetype<StaticTable>(_type_field_data);
 
 
 import { cursorNodeStack, cursorOffsetStack } from "./cursor";
-const savedCursorNodeStack = new ChunkedUint32Array();
-const savedCursorOffsetStack = new ChunkedUint32Array();
+const savedCursorNodeStack = createChunkedUint32Array();
+const savedCursorOffsetStack = createChunkedUint32Array();
 
 // GSS Head Structure (Simplified LR stack for this skeleton)
 let stackHead: u32 = 0; // Pointer to current state
-let stackBuffer = new ChunkedUint32Array(); // state stack
-let astBuffer = new ChunkedUint32Array(); // ast node stack
+let stackBuffer = createChunkedUint32Array(); // state stack
+let astBuffer = createChunkedUint32Array(); // ast node stack
 let stackPtr: u32 = 0;
 
 // ----------------------------------------------------------------------------
@@ -136,7 +136,7 @@ export const ARENA_BUFFER_SIZE: i32 = 16384;
 export const MAX_LOOKAHEAD_DEPTH: i32 = 10;
 export const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
 export const LOOP_MULTIPLIER_LIMIT: u32 = 100;
-export const MAX_PANIC_SCAN_TOKENS: u32 = 500;
+export const MAX_PANIC_SCAN_TOKENS: u32 = 10000;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;
 export const PENALTY_SYNC_TOKEN: i32 = 5;
@@ -378,8 +378,8 @@ export function lsp_isCatastrophicError(): boolean {
   return globalIsCatastrophic;
 }
 
-let globalSavedCursorNodeStack = new ChunkedUint32Array();
-let globalSavedCursorOffsetStack = new ChunkedUint32Array();
+let globalSavedCursorNodeStack = createChunkedUint32Array();
+let globalSavedCursorOffsetStack = createChunkedUint32Array();
 
 /**
  * A bitmap of tokens that are valid transitions from the current active GLR heads.

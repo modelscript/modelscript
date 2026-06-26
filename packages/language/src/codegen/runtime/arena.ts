@@ -3,7 +3,8 @@
 // @ts-ignore
 
 import {
-  ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array
+  ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array,
+  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array
 } from "./array";
 import { inputEncoding } from "./parser";
 
@@ -206,26 +207,32 @@ export function resetGeneration(gen: u8): void {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
     if (S().gen1_chunk_count > 0) {
+      // Zero out all chunks up to the active chunk
+      for (let i: u32 = 0; i <= S().gen1_active_chunk; i++) {
+        let chunkStart = S().gen1_chunks[i];
+        let fillBytes = (i == S().gen1_active_chunk) ? (S().gen1_offset - chunkStart) : AST_CHUNK_SIZE;
+        if (fillBytes > 0 && fillBytes <= AST_CHUNK_SIZE) {
+          memory.fill(chunkStart as usize, 0, fillBytes as usize);
+        }
+      }
       S().gen1_active_chunk = 0;
-      let startOffset = S().gen1_chunks[0];
-      let usedBytes = S().gen1_offset - startOffset;
-      S().gen1_offset = startOffset;
+      S().gen1_offset = S().gen1_chunks[0];
       S().arenaOffset = S().gen1_offset;
       S().gen1_endLimit = S().gen1_offset + AST_CHUNK_SIZE;
-      if (usedBytes > 0) {
-        memory.fill(S().gen1_offset as usize, 0, usedBytes as usize);
-      }
     }
   } else if (gen == 0) {
     if (S().gen0_chunk_count > 0) {
-      S().gen0_active_chunk = 0;
-      let startOffset = S().gen0_chunks[0];
-      let usedBytes = S().gen0_offset - startOffset;
-      S().gen0_offset = startOffset;
-      S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
-      if (usedBytes > 0) {
-        memory.fill(S().gen0_offset as usize, 0, usedBytes as usize);
+      // Zero out all chunks up to the active chunk
+      for (let i: u32 = 0; i <= S().gen0_active_chunk; i++) {
+        let chunkStart = S().gen0_chunks[i];
+        let fillBytes = (i == S().gen0_active_chunk) ? (S().gen0_offset - chunkStart) : AST_CHUNK_SIZE;
+        if (fillBytes > 0 && fillBytes <= AST_CHUNK_SIZE) {
+          memory.fill(chunkStart as usize, 0, fillBytes as usize);
+        }
       }
+      S().gen0_active_chunk = 0;
+      S().gen0_offset = S().gen0_chunks[0];
+      S().gen0_endLimit = S().gen0_offset + AST_CHUNK_SIZE;
     }
   }
 }
@@ -441,7 +448,10 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
 
   // 6. Assemble using the unmanaged wrapper
   let initialFlags: u32 = 0;
-  if (type == 0) { // 0 is NODE_TYPE_ERROR
+  let isMutated = (type & 0x8000) != 0;
+  type = type & 0x7FFF;
+  
+  if (type == 0 || isMutated) { // 0 is NODE_TYPE_ERROR
     initialFlags = (FLAG_HAS_ERROR as u32) << 10;
   }
 
@@ -588,8 +598,14 @@ export function isExtracted(ptr: u32): boolean {
 export function markDirty(ptr: u32): void {
   changetype<ASTNode>(ptr).flags |= FLAG_DIRTY;
 }
+@inline
 export function isDirty(ptr: u32): boolean {
   return (changetype<ASTNode>(ptr).flags & FLAG_DIRTY) != 0;
+}
+
+@inline
+export function nodeHasError(ptr: u32): boolean {
+  return (changetype<ASTNode>(ptr).flags & FLAG_HAS_ERROR) != 0;
 }
 
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
@@ -840,14 +856,14 @@ export const OVERRIDE_INT: u8 = 3;
 export const OVERRIDE_TENSOR = 4;
 export const OVERRIDE_NODEREF = 5;
 
-export const nodeOverrideType = new ChunkedUint8Array();
-export const nodeOverrideStrings = new ChunkedUint32Array();
-export const nodeOverrideFloats = new ChunkedFloat64Array();
-export const nodeOverrideInts = new ChunkedInt32Array();
-export const nodeOverrideRefs = new ChunkedUint32Array();
+export const nodeOverrideType = createChunkedUint8Array();
+export const nodeOverrideStrings = createChunkedUint32Array();
+export const nodeOverrideFloats = createChunkedFloat64Array();
+export const nodeOverrideInts = createChunkedInt32Array();
+export const nodeOverrideRefs = createChunkedUint32Array();
 
-export const nodeFlags = new ChunkedUint32Array();
-export const nodeProvenance = new ChunkedUint32Array();
+export const nodeFlags = createChunkedUint32Array();
+export const nodeProvenance = createChunkedUint32Array();
 
 export function ast_getProvenance(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
@@ -1299,7 +1315,7 @@ function ensureTensorArena(bytesNeeded: u32): void {
 }
 
 // Chunked array mapping nodeId (index) to Tensor Arena handle (offset)
-export const nodeTensorHandles = new ChunkedUint32Array();
+export const nodeTensorHandles = createChunkedUint32Array();
 
 export enum TensorType {
   Float64 = 0,
@@ -1464,7 +1480,7 @@ export function ast_getChildCount(nodeId: u32): u32 {
 // O(1) Zero-GC Symbol Hash Table
 // ----------------------------------------------------------------------------
 
-export const nodeScopes = new ChunkedUint32Array();
+export const nodeScopes = createChunkedUint32Array();
 
 // FNV-1a hash functions for memory spans
 export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {

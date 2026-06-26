@@ -1,6 +1,6 @@
 
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
-import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes,
+import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
   NODE_TYPE_ERROR
 } from "./engine";
@@ -176,30 +176,23 @@ export function recoverUnwindAndMutate(
                     let ao = action_offsets[recState];
                     if (ao >= 0 && ao < action_data.length) {
                       let ac = action_data[ao];
-                      let aidx = ao + 1;
                       for (let ai: i32 = 0; ai < ac; ai++) {
-                        if (aidx < 0 || aidx + 1 >= action_data.length) break;
-                        let asym = action_data[aidx];
-                        let aactCount = action_data[aidx + 1];
-                        if (asym == nextToken || asym == 0) {
-                          let aactIdx = aidx + 2;
-                          for (let aj: i32 = 0; aj < aactCount; aj++) {
-                            let atype = action_data[aactIdx++];
-                            let atarget = action_data[aactIdx++];
-                            if (atype == ACTION_SHIFT) {
-                              shiftTarget = atarget;
-                              break;
-                            }
+                        let sym = action_data[ao + 1 + ai * 2];
+                        if (sym == nextToken || sym == 0) {
+                          let action = action_data[ao + 1 + ai * 2 + 1];
+                          let atype = action & 0x03;
+                          let atarget = action >> 2;
+                          if (atype == ACTION_SHIFT) {
+                            shiftTarget = atarget;
+                            break;
                           }
-                          if (shiftTarget != -1) break;
                         }
-                        aidx += 2 + aactCount * 2;
                       }
                     }
 
                     if (shiftTarget != -1) {
                       // Check if secondToken can be accepted from the shifted state
-                      let canAccept2 = stateCanAccept(unwindCurr, shiftTarget, secondToken, 0);
+                      let canAccept2 = stateCanAccept(unwindCurr, shiftTarget, secondToken, 0, 1, shiftTarget) > 0;
                       if (!canAccept2) {
                         weakRecovery = true;
                       }
@@ -250,17 +243,16 @@ export function recoverUnwindAndMutate(
                 while (p < a1NextScanPos) {
                   let tok = invokeLexer(p);
                   if (tok == -1) break;
-                  if (lexPos >= a1NextScanPos) break;
-                  let pad = lexPos - p;
-                  let token = lex(p);
+                  if (srcLexPos >= a1NextScanPos) break;
                   let tLen = lexLen;
                   if (tLen == 0) break;
-                  newTail = pushDiagnostic(newTail, lexPos as u32, (lexPos + tLen) as u32);
-                  let tNode = allocNode(token as u16, pad, tLen, 0);
+                  let pad = srcLexPos > p ? srcLexPos - p : 0;
+                  newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
+                  let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
                   if (lastChild == 0) setFirstChild(errNode, tNode);
                   else setNextSibling(lastChild, tNode);
                   lastChild = tNode;
-                  p = lexPos + tLen;
+                  p = srcLexPos + tLen;
                 }
                 
                 let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
@@ -303,131 +295,7 @@ export function recoverUnwindAndMutate(
               a1NextScanPos = tokenEndPos;
             }
 
-            // A3. Skip-to-EOF: If the max skip window was exhausted without finding a
-            // resumable token, but the state can accept EOF, scan all remaining tokens
-            // to EOF. This prevents valid early parses from dying because there are too
-            // many trailing garbage tokens.
-            let canAcceptEof = stateCanAccept(unwindCurr, recState, TOKEN_EOF, 0);
-            debugLog(776, recState, canAcceptEof ? 1 : 0, unwindDepth);
-            if (canAcceptEof) {
-              // Instead of manually lexing up to 1000 tokens, approximate the cost in O(1).
-              // This prevents an O(N) slowdown where every error branch rescans trailing garbage.
-              let remainingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
-              let approxTokens = remainingBytes / 5;
-              let eofDelCost = approxTokens * 20;
-
-              // Cap the total cost so trailing garbage doesn't exceed MAX_ERRORS and kill the parse.
-              let totalCost = head.errorCost + baseDelCost + eofDelCost;
-              if (totalCost > MAX_ERRORS - 50) {
-                totalCost = MAX_ERRORS - 50;
-              }
-
-              let errPad = uPadding;
-              let errLen = droppedBytes + remainingBytes;
-              if (unwindDepth == 0 && srcLexPos > head.pos) {
-                errPad += srcLexPos - head.pos;
-                errLen = inputLength > srcLexPos ? inputLength - srcLexPos : 0;
-              }
-              // Collect dropped children between `head` and `unwindCurr`
-              let currChild: ParseHead | null = head;
-              let childCount = 0;
-              while (currChild != null && currChild != unwindCurr) {
-                if (childCount < MAX_CHILD_NODES) {
-                  t_globalChildNodes[childCount] = currChild.astNode;
-                }
-                childCount++;
-                currChild = currChild.prev;
-              }
-              if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
-
-              let eofHead: ParseHead;
-              if (childCount > 0 || errLen > 0) {
-                let errPad = uPadding;
-                if (childCount > 0) {
-                  let firstChildId = t_globalChildNodes[childCount - 1];
-                  errPad = getNodePadding(firstChildId);
-                } else if (head.pos < inputLength) {
-                  let savedLexPos = lexPos;
-                  let savedLexLen = lexLen;
-                  let savedSrcLexPos = srcLexPos;
-                  let savedScannerState = currentScannerState;
-                  invokeLexer(head.pos);
-                  errPad = lexPos > head.pos ? lexPos - head.pos : 0;
-                  setLexLen(savedLexLen);
-                  setLexPos(savedLexPos);
-                  setSrcLexPos(savedSrcLexPos);
-                  setCurrentScannerState(savedScannerState);
-                }
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff);
-                let lastChild = 0;
-                for (let k = childCount - 1; k >= 0; k--) {
-                  let child = t_globalChildNodes[k];
-                  if (child == 0) continue;
-                  let clone = cloneNodeShallow(child);
-                  if (lastChild == 0) setFirstChild(errNode, clone);
-                  else setNextSibling(lastChild, clone);
-                  lastChild = clone;
-                }
-
-                // Force lexer to accept any token during error node construction
-                expected_tokens.fill(1);
-                let p = head.pos;
-                let newTail = head.errorTail;
-                while (p < inputLength) {
-                  let tok = invokeLexer(p);
-                  if (tok == -1) break;
-                  let pad = lexPos - p;
-                  let token = lex(p);
-                  let tLen = lexLen;
-                  if (tLen == 0) break; // prevent infinite loop
-
-                  // Report each garbage token individually so spaces don't get squiggled
-                  newTail = pushDiagnostic(newTail, lexPos as u32, (lexPos + tLen) as u32);
-
-                  let tNode = allocNode(token as u16, pad, tLen, 0);
-                  if (lastChild == 0) setFirstChild(errNode, tNode);
-                  else setNextSibling(lastChild, tNode);
-                  lastChild = tNode;
-
-                  p = lexPos + tLen;
-                }
-                
-                let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
-                setNodeByteLength(errNode, errByteLen);
-
-                eofHead = allocParseHead(
-                  recState,
-                  errNode,
-                  unwindCurr,
-                  inputLength,
-                  0, // Reset scanner state for EOF
-                  totalCost,
-                  0,
-                  newBalance,
-                  0,
-                  recPrec,
-                  0, // pendingPadding is absorbed
-                  newTail,
-                );
-              } else {
-                eofHead = allocParseHead(
-                  recState,
-                  unwindCurr.astNode,
-                  unwindCurr.prev,
-                  inputLength,
-                  0, // Reset scanner state for EOF
-                  totalCost,
-                  0,
-                  newBalance,
-                  0,
-                  recPrec,
-                  0, // pendingPadding is absorbed
-                  head.errorTail,
-                );
-              }
-              pushActiveHead(changetype<u32>(eofHead));
-              debugLog(777, totalCost, inputLength as i32, getNodeByteLength(unwindCurr.astNode) as i32);
-            }
+            // A3. Skip-to-EOF has been removed. Island Mode handles this fallback significantly better.
 
             // A2 has been removed to prevent AST corruption via concatLists on non-list nodes.
           }
@@ -460,25 +328,17 @@ export function recoverUnwindAndMutate(
             }
           }
           if (!skipBranchB && head.consecutiveInsertions < 8) {
-            let aOffset = action_offsets[recState];
-            if (aOffset >= 0 && aOffset < action_data.length) {
-              let idx2 = aOffset + 1;
-              let count2 = action_data[aOffset];
+            for (let sym = 1; sym <= MAX_TERMINAL_ID; sym++) {
+              let res = stateCanAccept(unwindCurr, recState, sym, 0);
+              if (res > 0) {
+                let target = res - 1;
+                let type = ACTION_SHIFT; // Logically, we consider this a shift
 
-              for (let i = 0; i < count2; i++) {
-                if (idx2 < 0 || idx2 + 1 >= action_data.length) {
-                  throw new Error("BAD idx2 in error B");
-                }
-                let sym = action_data[idx2++];
-                let actCount = action_data[idx2++];
-                for (let j = 0; j < actCount; j++) {
-                  let type = action_data[idx2++];
-                  let target = action_data[idx2++];
-                  if (type == ACTION_SHIFT) {
-                    if (sym == TOKEN_EOF && token != TOKEN_EOF) {
-                      continue;
-                    }
-                    debugLog(60200, sym, target, recState);
+                if (type == ACTION_SHIFT) {
+                  if (sym == TOKEN_EOF && token != TOKEN_EOF) {
+                    continue;
+                  }
+                  debugLog(60200, sym, target, recState);
 
                     let baseCost = token_insert_costs[sym == TOKEN_EOF ? 0 : sym];
                     if (baseCost <= 0) baseCost = 10; // Prevent infinite loops from 0-cost insertions
@@ -503,7 +363,7 @@ export function recoverUnwindAndMutate(
 
                     for (let skip = 0; skip <= 3; skip++) {
                       if (laScanPos >= inputLength) {
-                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0, 1)) {
+                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0, 1, target) > 0) {
                            candidateViable = true;
                         }
                         break;
@@ -512,7 +372,7 @@ export function recoverUnwindAndMutate(
                       setLexPos(laScanPos);
                       let laTok = lex(laScanPos);
                       let laEnd = srcLexPos + lexLen;
-                      let canAcceptLA = stateCanAccept(unwindCurr, target, laTok, 0, 1);
+                      let canAcceptLA = stateCanAccept(unwindCurr, target, laTok, 0, 1, target) > 0;
                       debugLog(60201, laTok, target, canAcceptLA ? 1 : 0);
                       if (canAcceptLA) {
                         candidateViable = true;
@@ -565,7 +425,6 @@ export function recoverUnwindAndMutate(
                         }
                     }
                   }
-                }
               }
             }
           }
@@ -731,6 +590,11 @@ export function recoverIslandMode(
             expected_tokens.fill(1);
             let p = head.pos;
             let newTail = currPop != null ? currPop.errorTail : 0;
+            
+            if ((resumePos as u32) > head.pos) {
+              newTail = pushDiagnostic(newTail, head.pos as u32, resumePos as u32);
+            }
+
             while (p < (resumePos as u32)) {
               let tok = invokeLexer(p);
               if (tok == -1) break;

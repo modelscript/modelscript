@@ -252,6 +252,20 @@ export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32A
   return arr;
 }
 
+export function createChunkedFloat64Array(initialElements: u32 = 0): ChunkedFloat64Array {
+  let ptr = atomicChunkAlloc(offsetof<ChunkedFloat64Array>());
+  let arr = changetype<ChunkedFloat64Array>(ptr);
+  arr.init(initialElements);
+  return arr;
+}
+
+export function createChunkedUint8Array(initialElements: u32 = 0): ChunkedUint8Array {
+  let ptr = atomicChunkAlloc(offsetof<ChunkedUint8Array>());
+  let arr = changetype<ChunkedUint8Array>(ptr);
+  arr.init(initialElements);
+  return arr;
+}
+
 @unmanaged
 export class UnmanagedInt32Array {
   @inline @operator("[]") get(index: i32): i32 {
