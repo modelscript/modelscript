@@ -493,7 +493,8 @@ export function recoverIslandMode(
 
             currPop = head;
             let gssDepth: i32 = 0;
-            while (currPop != null) {
+            // Constrain Island Mode to only pop 1 level deep to prevent catastrophic destruction of entire outer blocks.
+            while (currPop != null && gssDepth < 2) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
               let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
@@ -598,6 +599,7 @@ export function recoverIslandMode(
             while (p < (resumePos as u32)) {
               let tok = invokeLexer(p);
               if (tok == -1) break;
+              if (srcLexPos >= (resumePos as u32)) break;
               let tLen = lexLen;
               if (tLen == 0) break; // prevent infinite loop
               let pad = srcLexPos > p ? srcLexPos - p : 0;

@@ -293,6 +293,7 @@ export class LspFacade {
   }
 
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
+    console.log("Called JS parseIncremental", newTotalLength);
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
@@ -303,8 +304,8 @@ export class LspFacade {
 
     // Fast path for empty input (e.g., clearing the editor)
     if (newTotalLength <= 0) {
-      if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-      if (this.exports.setInputLength) this.exports.setInputLength(0);
+      if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+      if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
       if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
@@ -350,8 +351,8 @@ export class LspFacade {
       memArray16[rangeOffset + i] = changeText.charCodeAt(i);
     }
 
-    if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-    if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+    if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
 
     let editStart = rangeOffset * 2;
     let editOldEnd = (rangeOffset + rangeLength) * 2;
@@ -842,6 +843,8 @@ export class LspFacade {
   }
 
   parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
+    console.log("Called JS parse(text)", text.length, "setInputLength:", !!this.exports.setInputLength);
+    console.log(Object.keys(this.exports).join(", "));
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
@@ -857,8 +860,8 @@ export class LspFacade {
       memArray16[i] = text.charCodeAt(i);
     }
 
-    if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
-    if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+    if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
 
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = lenBytes;

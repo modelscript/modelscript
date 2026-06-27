@@ -74,7 +74,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\ndeclare function logInt(val: i32): void;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\n`;
 
   // Lexer, Types, etc.
   code += generateTypes(originalGrammar, grammar);

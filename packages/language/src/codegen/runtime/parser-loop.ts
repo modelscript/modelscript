@@ -7,14 +7,14 @@ import {
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED,
     getNodeEnvHash, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode
 } from "./arena";
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array } from "./array";
 import {
     lexPos, lexLen, srcLexPos, currentScannerState, invokeLexer, is_extra_token, inputLength,
-    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT
+    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt
 } from "./parser";
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
@@ -145,6 +145,7 @@ function parseLR(): u32 {
   
   updateExpectedTokens();
   token = invokeLexer(pos);
+  logInt(token);
   while (is_extra_token[token]) {
     pendingPadding += lexLen;
     pos += lexLen;
@@ -316,23 +317,40 @@ function parseLR(): u32 {
 }
 function updateExpectedTokens(): void {
   expected_tokens.fill(0);
-  for (let i: u32 = 0; i < activeHeadsCount; i++) {
-    let head = changetype<ParseHead>(t_activeHeads[i]);
-    let state = head.state;
-    let actionOffset = action_offsets[state];
-    let actionCount = 0;
-    let idx = 0;
-
-    if (actionOffset >= 0) {
-      actionCount = action_data[actionOffset];
-      idx = actionOffset + 1;
+  if (currentParserMode == MODE_LR) {
+    if (lrStackDepth > 0) {
+      let state = t_lrStateStack[lrStackDepth - 1] as i32;
+      let actionOffset = action_offsets[state];
+      if (actionOffset >= 0) {
+        let actionCount = action_data[actionOffset];
+        let idx = actionOffset + 1;
+        for (let j = 0; j < actionCount; j++) {
+          let sym = action_data[idx++];
+          if (sym < 2048) expected_tokens[sym] = 1;
+          let actCount = action_data[idx++];
+          idx += actCount * 2;
+        }
+      }
     }
-
-    for (let j = 0; j < actionCount; j++) {
-      let sym = action_data[idx++];
-      if (sym < 2048) expected_tokens[sym] = 1;
-      let actCount = action_data[idx++];
-      idx += actCount * 2;
+  } else {
+    for (let i: u32 = 0; i < activeHeadsCount; i++) {
+      let head = changetype<ParseHead>(t_activeHeads[i]);
+      let state = head.state;
+      let actionOffset = action_offsets[state];
+      let actionCount = 0;
+      let idx = 0;
+  
+      if (actionOffset >= 0) {
+        actionCount = action_data[actionOffset];
+        idx = actionOffset + 1;
+      }
+  
+      for (let j = 0; j < actionCount; j++) {
+        let sym = action_data[idx++];
+        if (sym < 2048) expected_tokens[sym] = 1;
+        let actCount = action_data[idx++];
+        idx += actCount * 2;
+      }
     }
   }
 }
@@ -444,7 +462,9 @@ export function stateCanAccept(
 
           let remCounter = rem;
           while (remCounter > 0 && pHead != null) {
-            if (pHead.astNode != 0 && getNodeType(pHead.astNode) == 0) {
+            let pNode = pHead.astNode;
+            let pIsInserted = pNode != 0 ? (getNodeFlags(pNode) & FLAG_IS_INSERTED) != 0 : false;
+            if (pNode != 0 && isPureErrorNode(pNode) && !pIsInserted) {
               // Skip pure error nodes, just like real reduce does not decrement 'needed'
               pHead = pHead.prev;
             } else {
@@ -1908,20 +1928,21 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
             while (needed > 0 && curr != null) {
               if (c_idx <= 0) break; // Prevent underflow on t_globalReduceCollected
+              let astNode = curr.astNode;
+              let isInserted = astNode != 0 ? (getNodeFlags(astNode) & FLAG_IS_INSERTED) != 0 : false;
+              let isPure = astNode != 0 && isPureErrorNode(astNode);
+              debugLog(9998, astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
               
-              let isPure = curr.astNode != 0 && isPureErrorNode(curr.astNode);
-              debugLog(9998, curr.astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
-              
-              if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
+              if (isPure && !isInserted) {
                 // Error node interspersed between grammar nodes, or leading on top of the stack.
                 // We MUST include them as passengers so they are not orphaned from the AST!
-                t_globalReduceCollected[c_idx--] = curr.astNode;
-                debugLog(9999, curr.astNode, 1, 0);
+                t_globalReduceCollected[c_idx--] = astNode;
+                debugLog(9999, astNode, 1, 0);
               } else {
                 foundFirstGrammar = true;
-                t_globalReduceCollected[c_idx--] = curr.astNode;
+                t_globalReduceCollected[c_idx--] = astNode;
                 needed--;
-                debugLog(9999, curr.astNode, 0, needed);
+                debugLog(9999, astNode, 0, needed);
               }
               curr = curr.prev;
             }
@@ -2825,21 +2846,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 // ----------------------------------------------------------------------------
 // AST Tree Manipulation & Cloning
 // ----------------------------------------------------------------------------
-
-/**
- * Creates a shallow copy of an AST node in the arena.
- * Clears the GC mark and LSP visited flags to ensure the clone is recognized as "new"
- * and properly evaluated during subsequent passes.
- * Retains the original `firstChild` pointer, so children are structurally shared.
- */
-
-
-/**
- * Deeply copies the children of `leftNode` and attaches them to parent `p`.
- * Performs shallow clones on each immediate child, breaking the top-level
- * sibling chain but preserving deeper subtree sharing.
- * @returns The pointer to the last cloned child appended.
- */
 
 export let currentLspNodeStart: u32 = 0;
 export let currentLspNodeEnd: u32 = 0;

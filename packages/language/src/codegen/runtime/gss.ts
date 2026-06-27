@@ -1,5 +1,6 @@
 import {
   atomicChunkAlloc,
+  allocGen0,
   getNodeFirstChild,
   getNodeNextSibling,
   getNodePadding,
@@ -73,7 +74,7 @@ export function allocParseHead(
   pendingPadding: u32 = 0,
   errorTail: u32 = 0,
 ): ParseHead {
-  let ptr = atomicChunkAlloc(48);
+  let ptr = allocGen0(48);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -115,7 +116,7 @@ export function allocErrorBranch(
   errEnd: u32,
   scannerState: u32,
 ): u32 {
-  let ptr = atomicChunkAlloc(40);
+  let ptr = allocGen0(40);
   let b = changetype<ErrorBranch>(ptr);
   b.head = head;
   b.cost = cost;

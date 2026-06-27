@@ -201,7 +201,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   lexerCode += `  lexPos = pos;
 `;
   lexerCode += `  if (lexPos >= inputLength) { srcLexPos = lexPos; return 1023; } // EOF
-
 `;
 
   // Inject External Scanner Custom State/Functions

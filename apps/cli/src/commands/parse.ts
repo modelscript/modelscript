@@ -85,7 +85,14 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       parser: {
         logInt: (val: any) => console.log("DEBUG_INT:", val),
       },
-      engine: {},
+      engine: new Proxy(
+        {},
+        {
+          get(target, prop) {
+            return () => {};
+          },
+        },
+      ),
     });
 
     const runtime = new WasmRuntime(wasmInstance.exports, exportedMemory);

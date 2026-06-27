@@ -538,6 +538,7 @@ export const FLAG_DIRTY: u16 = 16;
 export const FLAG_IS_LIST: u16 = 32;
 export const FLAG_LIST_BOUNDARY: u16 = 64;
 export const FLAG_HAS_ERROR: u16 = 128;
+export const FLAG_IS_INSERTED: u16 = 256;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;

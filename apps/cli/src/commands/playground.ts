@@ -867,7 +867,7 @@ self.onmessage = async (e) => {
                 "--exportRuntime",
                 "--importMemory",
                 "--sharedMemory",
-                "--maximumMemory", "4000",
+                "--maximumMemory", "16384",
                 "--memoryBase", "65536",
                 "--outFile", "parser.wasm",
                 "--textFile", "parser.wat"
@@ -1029,7 +1029,7 @@ self.addEventListener('message', async (e) => {
         if (langName) currentLangName = langName;
         
         try {
-            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 4000, shared: true });
+            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 16384, shared: true });
             const baseImports = { 
                 env: { memory, emitTextEdit: function(a,b,c,d) {}, abort: function(msg, file, line, col) {
                     let str = "unknown";

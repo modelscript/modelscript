@@ -5,6 +5,7 @@ import {
   getInputBuffer as _getInputBuffer,
   allocNode,
   atomicChunkAlloc,
+  allocGen0,
   FLAG_GC_MARK,
   FLAG_INVISIBLE,
   FLAG_IS_LIST,
@@ -231,7 +232,7 @@ export class DiagnosticNode {
 }
 
 export function pushDiagnostic(tailPtr: u32, start: u32, end: u32): u32 {
-  let node = changetype<DiagnosticNode>(atomicChunkAlloc(offsetof<DiagnosticNode>()));
+  let node = changetype<DiagnosticNode>(allocGen0(offsetof<DiagnosticNode>()));
   node.next = tailPtr;
   node.start = start;
   node.end = end;
@@ -248,7 +249,7 @@ export function commitDiagnostics(tailPtr: u32): void {
   
   if (count == 0) return;
 
-  let arr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(count * 4));
+  let arr = changetype<UnmanagedUint32Array>(allocGen0(count * 4));
   curr = tailPtr;
   for (let i = count - 1; i >= 0; i--) {
     arr[i] = curr;
@@ -639,4 +640,21 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   cursor.release();
   return child;
 }
-export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID } from "./parser";
+
+import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, logInt } from "./parser";
+export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID };
+
+export function lsp_setInputLength(len: u32): void {
+  logInt(99999);
+  logInt(len);
+  setInputLength(len);
+  logInt(inputLength);
+}
+export function lsp_setInputEncoding(encoding: u8): void {
+  setInputEncoding(encoding);
+}
+
+
+
+
+
