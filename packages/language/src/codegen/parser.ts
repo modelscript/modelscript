@@ -315,6 +315,15 @@ export function generateParserTables(
   code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\n`;
 
   let engineCodeTemplate = engineCode;
+
+  const hasToken = (str: string) => Array.from(symToInt.keys()).includes(`"${str}"`);
+  engineCodeTemplate = engineCodeTemplate
+    .replace("export const CHAR_LBRACE: u8 = 123;", `export const CHAR_LBRACE: u8 = ${hasToken("{") ? 123 : 0};`)
+    .replace("export const CHAR_RBRACE: u8 = 125;", `export const CHAR_RBRACE: u8 = ${hasToken("}") ? 125 : 0};`)
+    .replace("export const CHAR_LBRACKET: u8 = 91;", `export const CHAR_LBRACKET: u8 = ${hasToken("[") ? 91 : 0};`)
+    .replace("export const CHAR_RBRACKET: u8 = 93;", `export const CHAR_RBRACKET: u8 = ${hasToken("]") ? 93 : 0};`)
+    .replace("export const CHAR_LPAREN: u8 = 40;", `export const CHAR_LPAREN: u8 = ${hasToken("(") ? 40 : 0};`)
+    .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
   let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;

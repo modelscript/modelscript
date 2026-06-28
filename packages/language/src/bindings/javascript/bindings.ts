@@ -266,7 +266,7 @@ export class LspFacade {
   private wasmMemory: WebAssembly.Memory;
   public exports: any;
   private lastAstRoot: number = 0;
-  private _cachedLineStarts: number[] | null = null;
+  private _cachedLineStarts: Uint32Array | null = null;
   private _childTailCache = new Map<number, number>();
 
   constructor(wasmMemoryOrInstance: any, exports?: any) {
@@ -387,22 +387,33 @@ export class LspFacade {
     return this.lastAstRoot;
   }
 
-  public getLineStarts(): number[] {
+  public getLineStarts(): Uint32Array {
     if (this._cachedLineStarts) return this._cachedLineStarts;
     const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
     const lenChars = lenBytes / 2;
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
-    const lineStarts = [0];
+
+    // First pass: count lines
+    let lineCount = 1;
+    for (let i = 0; i < lenChars; i++) {
+      if (textBuffer[i] === 10) lineCount++;
+    }
+
+    // Second pass: fill array
+    const lineStarts = new Uint32Array(lineCount);
+    lineStarts[0] = 0;
+    let lineIdx = 1;
     for (let i = 0; i < lenChars; i++) {
       if (textBuffer[i] === 10) {
-        lineStarts.push((i + 1) * 2);
+        lineStarts[lineIdx++] = (i + 1) * 2;
       }
     }
+
     this._cachedLineStarts = lineStarts;
     return lineStarts;
   }
 
-  private offsetToPos(offset: number, lineStarts: number[]): Position {
+  private offsetToPos(offset: number, lineStarts: Uint32Array): Position {
     let low = 0;
     let high = lineStarts.length - 1;
     let line = 0;
@@ -444,7 +455,7 @@ export class LspFacade {
       if (lintId > 0) {
         if (lintId < this.syntaxNames.length) {
           let name = this.syntaxNames[lintId];
-          if (name.startsWith('"') && name.endsWith('"')) {
+          if (name && name.startsWith('"') && name.endsWith('"')) {
             name = name.slice(1, -1);
           }
           msg = `Expected '${name}'`;
@@ -513,23 +524,88 @@ export class LspFacade {
         }
       }
 
+      let startPos = this.offsetToPos(startByte, lineStarts);
+      let endPos = this.offsetToPos(endByte, lineStarts);
+
+      // Clamp diagnostic ranges to a single line to prevent Monaco UI freezes
+      // when dealing with unclosed blocks or runaway string literals spanning 100k lines.
+      if (endPos.line > startPos.line) {
+        endPos = { line: startPos.line, character: startPos.character + 1 };
+      }
+
       diags.push({
         range: {
-          start: this.offsetToPos(startByte, lineStarts),
-          end: this.offsetToPos(endByte, lineStarts),
+          start: startPos,
+          end: endPos,
         },
         message: msg,
         severity: severity,
         code: codeStr,
-      });
+        _startByte: startByte,
+        _endByte: endByte,
+      } as any);
     }
+    // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
     this._lastDiagBinaryLength = numElements * 4;
     diags.sort((a, b) => {
       if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
       return a.range.start.character - b.range.start.character;
     });
-    return diags;
+
+    const mergedDiags: Diagnostic[] = [];
+    for (let i = 0; i < diags.length; i++) {
+      const current = diags[i];
+      if (current.message.startsWith("Expected '")) {
+        let merged = false;
+        for (let j = i + 1; j < Math.min(diags.length, i + 3); j++) {
+          const next = diags[j];
+          if (
+            next.message === "Syntax Error" &&
+            next.range.start.line === current.range.start.line &&
+            Math.abs(next.range.start.character - current.range.start.character) <= 1
+          ) {
+            // Reconstruct the bad text if possible
+            const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
+            let gotText = "invalid syntax";
+
+            if (lenChars > 0 && this.exports.getInputBuffer) {
+              const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+              const s = (next as any)._startByte / 2;
+              const e = (next as any)._endByte / 2;
+              if (e > s && s < lenChars) {
+                let chars = "";
+                for (let k = s; k < e && k < s + 10; k++) {
+                  chars += String.fromCharCode(textBuffer[k]);
+                }
+                if (e - s > 10) chars += "...";
+                if (chars.trim().length > 0) gotText = `'${chars.trim()}'`;
+              }
+            }
+
+            mergedDiags.push({
+              range: next.range, // Use the syntax error's range since it covers the bad token
+              message: `${current.message} but got ${gotText}`,
+              severity: Math.max(current.severity, next.severity),
+              code: current.code,
+            });
+            diags.splice(j, 1);
+            merged = true;
+            break;
+          }
+        }
+        if (!merged) mergedDiags.push(current);
+      } else {
+        mergedDiags.push(current);
+      }
+    }
+
+    for (let diag of mergedDiags) {
+      delete (diag as any)._startByte;
+      delete (diag as any)._endByte;
+    }
+
+    return mergedDiags;
   }
 
   getSemanticTokens(astRoot: number): Uint32Array {

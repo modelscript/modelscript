@@ -82,12 +82,20 @@ export let incrementalStartOffset: u32 = 0;
 @unmanaged
 class StaticTable {
   /** Reads a 32-bit integer at the given logical index. */
-  @inline @operator("[]") get(index: u32): i32 {
-    return load<i32>(changetype<usize>(this) + (index << 2));
+  @inline @operator("[]") get(index: i32): i32 {
+    let ptr = changetype<usize>(this);
+    if (ptr == 0) return 0;
+    let len = load<i32>(ptr - 4);
+    if (index < 0 || index >= len) {
+      return 0;
+    }
+    return load<i32>(ptr + ((index as usize) << 2));
   }
   /** Retrieves the encoded array length from the preceding 4-byte header. */
   @inline get length(): i32 {
-    return load<i32>(changetype<usize>(this) - 4);
+    let ptr = changetype<usize>(this);
+    if (ptr == 0) return 0;
+    return load<i32>(ptr - 4);
   }
 }
 
@@ -109,15 +117,9 @@ export const type_fields = changetype<StaticTable>(_type_fields);
 export const type_field_data = changetype<StaticTable>(_type_field_data);
 
 
-import { cursorNodeStack, cursorOffsetStack } from "./cursor";
-const savedCursorNodeStack = createChunkedUint32Array();
-const savedCursorOffsetStack = createChunkedUint32Array();
 
 // GSS Head Structure (Simplified LR stack for this skeleton)
-let stackHead: u32 = 0; // Pointer to current state
-let stackBuffer = createChunkedUint32Array(); // state stack
-let astBuffer = createChunkedUint32Array(); // ast node stack
-let stackPtr: u32 = 0;
+
 
 // ----------------------------------------------------------------------------
 // Diagnostics & Error Reporting
@@ -201,9 +203,11 @@ export function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void
 
 
 export function getErrorStart(index: i32): u32 {
+  if (index < 0 || index >= errorCount) return 0;
   return t_errorStarts[index];
 }
 export function getErrorEnd(index: i32): u32 {
+  if (index < 0 || index >= errorCount) return 0;
   return t_errorEnds[index];
 }
 
@@ -379,8 +383,7 @@ export function lsp_isCatastrophicError(): boolean {
   return globalIsCatastrophic;
 }
 
-let globalSavedCursorNodeStack = createChunkedUint32Array();
-let globalSavedCursorOffsetStack = createChunkedUint32Array();
+
 
 /**
  * A bitmap of tokens that are valid transitions from the current active GLR heads.
@@ -480,35 +483,52 @@ export function getBestErrorCost(): u32 {
   return 0;
 }
 
+@unmanaged
 export class FieldCursor {
-  node: u32 = 0;
-  fieldId: i32 = 0;
+  node: u32;
+  fieldId: i32;
 
-  offset: i32 = -1;
-  indexCount: i32 = 0;
-  currentIdxPtr: i32 = 0;
+  offset: i32;
+  indexCount: i32;
+  currentIdxPtr: i32;
 
-  stackDepth: i32 = 0;
-  stack0: u32 = 0; stack1: u32 = 0; stack2: u32 = 0; stack3: u32 = 0;
-  stack4: u32 = 0; stack5: u32 = 0; stack6: u32 = 0; stack7: u32 = 0;
+  stackDepth: i32;
+  stack0: u32; stack1: u32; stack2: u32; stack3: u32;
+  stack4: u32; stack5: u32; stack6: u32; stack7: u32;
 
-  currentChild: u32 = 0;
+  currentChild: u32;
   
-  private cachedNext: u32 = 0;
-  private hasCachedNext: boolean = false;
+  private cachedNext: u32;
+  private hasCachedNext: boolean;
+  isActive: boolean;
 
   @inline
   init(node: u32, fieldId: i32): void {
     this.node = node;
     this.fieldId = fieldId;
+    this.offset = -1;
+    this.indexCount = 0;
+    this.currentIdxPtr = 0;
     this.stackDepth = 0;
+    this.stack0 = 0; this.stack1 = 0; this.stack2 = 0; this.stack3 = 0;
+    this.stack4 = 0; this.stack5 = 0; this.stack6 = 0; this.stack7 = 0;
     this.currentChild = 0;
     this.cachedNext = 0;
     this.hasCachedNext = false;
+    this.isActive = true;
     
     let type = getNodeType(node);
+    if (type >= (type_fields.length as u16)) {
+      this.offset = -1;
+      return;
+    }
     let offset = type_fields[type];
     if (offset == -1) {
+      this.offset = -1;
+      return;
+    }
+    
+    if (offset < 0 || offset >= type_field_data.length) {
       this.offset = -1;
       return;
     }
@@ -517,6 +537,9 @@ export class FieldCursor {
     let currentOffset = offset + 1;
     
     for (let i = 0; i < fieldCount; i++) {
+      if (currentOffset + 1 >= type_field_data.length) {
+        break;
+      }
       let currentFieldId = type_field_data[currentOffset];
       let indexCount = type_field_data[currentOffset + 1];
       if (currentFieldId == fieldId && indexCount > 0) {
@@ -558,15 +581,17 @@ export class FieldCursor {
         let flags = getNodeFlags(child);
         if ((flags & FLAG_INVISIBLE) != 0) {
           if (this.currentChild != 0) {
-             if (this.stackDepth == 0) this.stack0 = this.currentChild;
-             else if (this.stackDepth == 1) this.stack1 = this.currentChild;
-             else if (this.stackDepth == 2) this.stack2 = this.currentChild;
-             else if (this.stackDepth == 3) this.stack3 = this.currentChild;
-             else if (this.stackDepth == 4) this.stack4 = this.currentChild;
-             else if (this.stackDepth == 5) this.stack5 = this.currentChild;
-             else if (this.stackDepth == 6) this.stack6 = this.currentChild;
-             else if (this.stackDepth == 7) this.stack7 = this.currentChild;
-             this.stackDepth++;
+             if (this.stackDepth < 8) {
+               if (this.stackDepth == 0) this.stack0 = this.currentChild;
+               else if (this.stackDepth == 1) this.stack1 = this.currentChild;
+               else if (this.stackDepth == 2) this.stack2 = this.currentChild;
+               else if (this.stackDepth == 3) this.stack3 = this.currentChild;
+               else if (this.stackDepth == 4) this.stack4 = this.currentChild;
+               else if (this.stackDepth == 5) this.stack5 = this.currentChild;
+               else if (this.stackDepth == 6) this.stack6 = this.currentChild;
+               else if (this.stackDepth == 7) this.stack7 = this.currentChild;
+               this.stackDepth++;
+             }
           }
           this.currentChild = getNodeFirstChild(child);
           continue;
@@ -592,6 +617,10 @@ export class FieldCursor {
         return 0;
       }
       
+      if (this.currentIdxPtr < 0 || this.currentIdxPtr >= type_field_data.length) {
+        this.offset = -1;
+        return 0;
+      }
       let logicalIndex = type_field_data[this.currentIdxPtr];
       this.currentIdxPtr++;
       this.indexCount--;
@@ -607,12 +636,19 @@ export class FieldCursor {
 
   @inline
   release(): void {
+    if (!this.isActive) return;
+    this.isActive = false;
     releaseFieldCursor(this);
   }
 }
 
 const cursorPool = new Array<FieldCursor>(16);
-for (let i = 0; i < 16; i++) cursorPool[i] = new FieldCursor();
+for (let i = 0; i < 16; i++) {
+  let ptr = heap.alloc(offsetof<FieldCursor>());
+  let cursor = changetype<FieldCursor>(ptr);
+  cursor.isActive = false;
+  cursorPool[i] = cursor;
+}
 let cursorPoolDepth: i32 = 16;
 
 export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
@@ -621,7 +657,8 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
     cursorPoolDepth--;
     cursor = cursorPool[cursorPoolDepth];
   } else {
-    cursor = new FieldCursor();
+    let ptr = heap.alloc(offsetof<FieldCursor>());
+    cursor = changetype<FieldCursor>(ptr);
   }
   cursor.init(node, fieldId);
   return cursor;
@@ -631,6 +668,8 @@ export function releaseFieldCursor(cursor: FieldCursor): void {
   if (cursorPoolDepth < 16) {
     cursorPool[cursorPoolDepth] = cursor;
     cursorPoolDepth++;
+  } else {
+    heap.free(changetype<usize>(cursor));
   }
 }
 

@@ -34,11 +34,11 @@ export class ASTNode {
   @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
   @inline set type(t: u16) { this.word0 = (this.word0 & ~0x03ff) | (t as u32 & 0x03ff); }
 
-  @inline get flags(): u16 { return ((this.word0 >> 10) & 0xff) as u16; }
-  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0xff << 10)) | ((f as u32 & 0xff) << 10); }
+  @inline get flags(): u16 { return ((this.word0 >> 10) & 0x1ff) as u16; }
+  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0x1ff << 10)) | ((f as u32 & 0x1ff) << 10); }
 
-  @inline get paddingLength(): u32 { return this.word0 >> 18; }
-  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x0003ffff) | (pad << 18); }
+  @inline get paddingLength(): u32 { return this.word0 >> 19; }
+  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x0007ffff) | (pad << 19); }
 
   @inline get byteLength(): u32 { return this.word1 & 0x007fffff; }
   @inline set byteLength(len: u32) { this.word1 = (this.word1 & 0xff800000) | (len & 0x007fffff); }
@@ -312,20 +312,30 @@ export function getFatPaddingPtr(idx: u32): usize {
  */
 export function initArena(sizeBytes: u32): void {
   let s = S();
-  s.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4)); // Metadata array: up to 8192 chunks
-  s.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+  if (changetype<usize>(s.gen1_chunks) == 0) {
+    s.gen1_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4)); // Metadata array: up to 8192 chunks
+  }
+  if (changetype<usize>(s.gen0_chunks) == 0) {
+    s.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+  }
 
   // Initialize first chunk for Generation 1 (Persistent)
-  let chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  s.gen1_chunks[0] = chunk1;
+  let chunk1 = s.gen1_chunks[0];
+  if (chunk1 == 0) {
+    chunk1 = atomicChunkAlloc(AST_CHUNK_SIZE);
+    s.gen1_chunks[0] = chunk1;
+  }
   s.gen1_chunk_count = 1;
   s.gen1_active_chunk = 0;
   s.gen1_offset = chunk1;
   s.gen1_endLimit = chunk1 + AST_CHUNK_SIZE;
 
   // Initialize first chunk for Generation 0 (Transient)
-  let chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
-  s.gen0_chunks[0] = chunk0;
+  let chunk0 = s.gen0_chunks[0];
+  if (chunk0 == 0) {
+    chunk0 = atomicChunkAlloc(AST_CHUNK_SIZE);
+    s.gen0_chunks[0] = chunk0;
+  }
   s.gen0_chunk_count = 1;
   s.gen0_active_chunk = 0;
   s.gen0_offset = chunk0;
@@ -427,7 +437,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   // 4. Handle values that exceed the 16-bit inline padding limit
   // Fat padding arena is eagerly initialized in initArena(), no null check needed here
   let fatFlag: u32 = 0;
-  if (paddingLength >= 0xffff) {
+  if (paddingLength >= 0x1fff) {
     if (s.fatPaddingCount >= fatPaddingCapacity) {
       // Grow the fat padding arena dynamically
       let newCapacity = fatPaddingCapacity * 2;
@@ -456,7 +466,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
 
   let node = changetype<ASTNode>(ptr);
-  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 18);
+  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 19);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
   node.firstChild = 0;
   node.nextSibling = 0;
@@ -1174,7 +1184,7 @@ const GC_STACK_CAPACITY: u32 = 1000000;
 function ensureGcStack(): void {
   if (changetype<usize>(S().gcStackPtr) == 0) {
     S().gcStackCapacity = GC_STACK_CAPACITY;
-    S().gcStackPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(S().gcStackCapacity * 4));
+    S().gcStackPtr = changetype<UnmanagedUint32Array>(heap.alloc(S().gcStackCapacity * 4));
   }
 }
 
@@ -1182,8 +1192,11 @@ function ensureGcStack(): void {
 function pushGcStack(val: u32, stackTop: u32): u32 {
   if (stackTop >= S().gcStackCapacity) {
     let newCap = S().gcStackCapacity * 2;
-    let newPtr = atomicChunkAlloc(newCap * 4);
-    memory.copy(newPtr as usize, changetype<usize>(S().gcStackPtr), S().gcStackCapacity * 4);
+    let newPtr = heap.alloc(newCap * 4);
+    memory.copy(newPtr, changetype<usize>(S().gcStackPtr), S().gcStackCapacity * 4);
+    if (changetype<usize>(S().gcStackPtr) != 0) {
+      heap.free(changetype<usize>(S().gcStackPtr));
+    }
     S().gcStackPtr = changetype<UnmanagedUint32Array>(newPtr);
     S().gcStackCapacity = newCap;
   }

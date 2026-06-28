@@ -37,6 +37,7 @@ export function pushActiveHead(headPtr: u32): boolean {
 }
 
 export function getActiveHead(index: u32): u32 {
+  if (index >= activeHeadsCount) return 0;
   return t_activeHeads[index];
 }
 
@@ -224,7 +225,7 @@ export function findReusableNode(
     let absContentEnd = absContentStart + byteLen;
     let nodeType = getNodeType(cPtr);
 
-    if (absContentEnd <= targetOldPos) {
+    if (absContentEnd <= targetSrcOldPos) {
       if (!globalCursorGotoNextSibling()) {
         if (!globalCursorGotoParent()) searching = false;
         else {
@@ -239,12 +240,12 @@ export function findReusableNode(
       continue;
     }
 
-    if (absContentStart > targetOldPos) {
+    if (absContentStart > targetSrcOldPos) {
       searching = false;
       continue;
     }
 
-    if (absContentStart == targetOldPos && absContentEnd > targetOldPos) {
+    if (absContentStart == targetSrcOldPos && absContentEnd > targetSrcOldPos) {
       if (
         absContentEnd < editStart ||
         absContentStart >= editOldEnd

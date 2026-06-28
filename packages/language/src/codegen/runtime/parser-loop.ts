@@ -261,6 +261,10 @@ function parseLR(): u32 {
             
             let clone = isMutable(child) ? child : cloneNodeShallow(child);
             
+            if (k == 0) {
+              setNodePadding(clone, 0);
+            }
+            
             if (aliasPtr >= 0) {
               for (let a = 0; a < aliasCount; a++) {
                 let aIndex = alias_data[aliasPtr + 1 + a * 2];
@@ -707,15 +711,13 @@ function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
 
-  let firstPad = getNodePadding(gc);
-  let totalLen = getNodeByteLength(gc);
+  let totalLen = getNodePadding(gc) + getNodeByteLength(gc);
   gc = getNodeNextSibling(gc);
 
   while (gc != 0) {
     totalLen += getNodePadding(gc) + getNodeByteLength(gc);
     gc = getNodeNextSibling(gc);
   }
-  setNodePadding(node, firstPad);
   setNodeByteLength(node, totalLen);
 }
 export function getListDepth(node: u32, listSym: u16): u32 {
@@ -740,6 +742,10 @@ function getListChildCount(node: u32, listSym: u16): u32 {
   }
   return count;
 }
+
+let _listRecurDepth: u32 = 0;
+let appendListCalls = 0;
+
 export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
   debugLog(5679, leftNode, rightNode, listSym);
   _listRecurDepth++;
@@ -776,6 +782,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     let p = allocNode(listSym, getNodePadding(leftNode), getNodeByteLength(leftNode), envHash);
     setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneLeft = cloneNodeShallow(leftNode);
+    setNodePadding(cloneLeft, 0);
     setFirstChild(p, cloneLeft);
     setNextSibling(cloneLeft, 0);
     leftNode = p;
@@ -787,6 +794,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     let p = allocNode(listSym, getNodePadding(rightNode), getNodeByteLength(rightNode), envHash);
     setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneRight = cloneNodeShallow(rightNode);
+    setNodePadding(cloneRight, 0);
     setFirstChild(p, cloneRight);
     setNextSibling(cloneRight, 0);
     rightNode = p;
@@ -809,6 +817,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       let wrap = allocNode(listSym, getNodePadding(leftNode), getNodeByteLength(leftNode), envHash);
       setNodeFlags(wrap, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       let cloneLeft = cloneNodeShallow(leftNode);
+      setNodePadding(cloneLeft, 0);
       setFirstChild(wrap, cloneLeft);
       setNextSibling(cloneLeft, 0);
       leftNode = wrap;
@@ -834,10 +843,20 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
       let lastChild = copyChildren(p, leftNode);
       let rc = getNodeFirstChild(rightNode);
+      let isFirstRightChild = true;
       while (rc != 0) {
         let clone = cloneNodeShallow(rc);
-        if (lastChild == 0) setFirstChild(p, clone);
-        else setNextSibling(lastChild, clone);
+        if (isFirstRightChild) {
+           setNodePadding(clone, getNodePadding(clone) + getNodePadding(rightNode));
+           isFirstRightChild = false;
+        }
+        if (lastChild == 0) {
+           setNodePadding(p, getNodePadding(p) + getNodePadding(clone));
+           setNodePadding(clone, 0);
+           setFirstChild(p, clone);
+        } else {
+           setNextSibling(lastChild, clone);
+        }
         setNextSibling(clone, 0);
         lastChild = clone;
         rc = getNodeNextSibling(rc);
@@ -850,7 +869,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
       setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
-      let cloneLeft = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
+      let cloneLeft = allocNode(listSym, 0, 0, envHash);
       setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let cloneRight = allocNode(listSym, getNodePadding(rightNode), 0, envHash);
@@ -891,6 +910,11 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
           rc = getNodeNextSibling(rc);
         }
         let clone = cloneNodeShallow(curr);
+        if (i == leftHalf && cloneRight != 0 && curr == rc) {
+           // If the first child of cloneRight came from rightNode, it might need rightNode's padding!
+           // But cloneRight already has rightNode's padding! So clone gets pad=0.
+           // Actually, if it's the first child, it shouldn't have double padding.
+        }
         if (lastChild == 0) setFirstChild(cloneRight, clone);
         else setNextSibling(lastChild, clone);
         setNextSibling(clone, 0);
@@ -949,6 +973,9 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
 
       let newRightChunk = allocNode(listSym, getNodePadding(origC2), 0, envHash);
       setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+      
+      // p is the first child of superP, so it should not duplicate superP's padding!
+      setNodePadding(p, 0);
 
       let gc2 = getNodeFirstChild(leftNode);
       let lastChild2 = 0;
@@ -1023,6 +1050,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
     let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
     setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
     let cloneLeft = isMutable(leftNode) ? leftNode : cloneNodeShallow(leftNode);
+    setNodePadding(cloneLeft, 0);
     setFirstChild(p, cloneLeft);
     setNextSibling(cloneLeft, leaf);
     fixNodeLength(p);
@@ -1101,6 +1129,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         // We still need to return a new parent p containing [leftNode, rightChunk]
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
         setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+        setNodePadding(leftNode, 0); // Avoid double padding!
         setFirstChild(p, leftNode);
         setNextSibling(leftNode, rightChunk);
         setNextSibling(rightChunk, 0);
@@ -1112,7 +1141,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
         setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
-        let cloneLeft = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
+        let cloneLeft = allocNode(listSym, 0, 0, envHash); // Avoid double padding!
         setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let rightChunk = allocNode(listSym, getNodePadding(leaf), 0, envHash);
@@ -1702,8 +1731,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     // Structural Node Reuse (Incremental Parsing Phase)
     // ------------------------------------------------------------------------
     let reusedNode: u32 = 0;
+    let expectedPadding: u32 = srcLexPos > pos ? srcLexPos - pos : 0;
     if (oldSrcLexPos != 0xffffffff) {
-      let expectedPadding = srcLexPos > pos ? srcLexPos - pos : 0;
       reusedNode = findReusableNode(
         oldPos,
         oldSrcLexPos,
@@ -1753,7 +1782,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         // Shallow clone the reused node so we can mutate its links without affecting the old tree
         let cloneReused = allocNode(
           nodeSym as u16,
-          getNodePadding(reusedNode) + head.pendingPadding,
+          expectedPadding + head.pendingPadding,
           getNodeByteLength(reusedNode),
           getNodeEnvHash(reusedNode),
         );
@@ -1762,7 +1791,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
         // Splice it into the GSS head
         let merged = concatLists(head.astNode, cloneReused, nodeSym as u16, currentScannerState);
-        let newPos = pos + getNodePadding(reusedNode) + head.pendingPadding + getNodeByteLength(reusedNode);
+        let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           head.state,
@@ -1791,15 +1820,15 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       } else if (nextState != -1) {
         // Standard GOTO shift over the reused subtree
         let clone = allocNode(
-          getNodeType(reusedNode),
-          getNodePadding(reusedNode) + head.pendingPadding,
+          getNodeType(reusedNode) as u16,
+          expectedPadding + head.pendingPadding,
           getNodeByteLength(reusedNode),
           getNodeEnvHash(reusedNode),
         );
         setNodeFlags(clone, getNodeFlags(reusedNode) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(clone, getNodeFirstChild(reusedNode));
 
-        let newPos = pos + getNodePadding(reusedNode) + head.pendingPadding + getNodeByteLength(reusedNode);
+        let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           nextState,
@@ -2010,6 +2039,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                     );
                   }
                 } else {
+                  debugLog(777, 999, 999, 999);
                   let lastChild = 0;
                   let logicalChildIndex = 0;
 
@@ -2024,6 +2054,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
                     // Shallow clone the child to avoid modifying shared references in the GLR forest
                     let clone = cloneNodeShallow(child);
+                    if (k == 0) {
+                      setNodePadding(clone, 0);
+                      debugLog(777, clone, getNodePadding(clone), 0);
+                    }
 
                     let isError = getNodeType(child) == NODE_TYPE_ERROR;
                     if (!isError && aliasPtr >= 0) {
@@ -2505,7 +2539,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
                 } else {
                   parentNode = allocNode(
                     lhsSym as u16,
-                    firstChildPadding + head.pendingPadding,
+                    firstChildPadding,
                     totalByteLength,
                     head.balanceHash & 0xff,
                   );
@@ -2764,10 +2798,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let firstPad: u32 = missingPadding;
       let peekTok = invokeLexer(p);
       if (peekTok != -1) {
-        firstPad += lexPos - p;
+        let errLen = inputLength > p + firstPad ? inputLength - p - firstPad : 0;
+        unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
+      } else {
+        unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, remainingLen - (firstPad - missingPadding), 0);
       }
-
-      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, remainingLen - (firstPad - missingPadding), 0);
       let lastTokNode = 0;
 
       // Report a single monolithic error for the entire unparsed remainder
@@ -2842,61 +2877,3 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   }
   return 0;
 }
-
-// ----------------------------------------------------------------------------
-// AST Tree Manipulation & Cloning
-// ----------------------------------------------------------------------------
-
-export let currentLspNodeStart: u32 = 0;
-export let currentLspNodeEnd: u32 = 0;
-export let globalLastLen: u32 = 0;
-
-/**
- * Recalculates and updates the `padding` and `byteLength` of a parent node
- * based on the cumulative sizes of its newly attached children.
- */
-
-// ----------------------------------------------------------------------------
-
-
-// ----------------------------------------------------------------------------------------------------------
-// List Concatenation & Appending
-// ----------------------------------------------------------------------------
-
-/**
- * Calculates the depth of a left-recursive list tree.
- * Used to limit deep recursion during list flattening.
- */
-
-/** Returns the number of immediate children a list node has. */
-
-let _listRecurDepth: u32 = 0;
-
-/**
- * Concatenates two list nodes of the same grammar symbol type.
- * Ensures the resulting tree structure remains balanced and properly flagged.
- * List flattening relies on this to optimize deep recursive rules like:
- * `statements -> statements statement`
- *
- * @param leftNode - The left-hand AST node
- * @param rightNode - The right-hand AST node
- * @param listSym - The grammar symbol ID representing this list type
- * @param envHash - Environment state hash for the newly allocated parent
- * @returns A pointer to the concatenated root node
- */
-
-let appendListCalls = 0;
-
-/**
- * Fast-path optimization for left-recursive grammar rules.
- * Instead of creating a new binary tree node for every appended element,
- * this function attempts to flatten the new element into the existing list node
- * up to `LIST_MAX_CHILDREN`. If the node is full, it splits it.
- *
- * @param leftNode - The existing list node
- * @param leafOrig - The new child node to append
- * @param listSym - The list's grammar symbol
- * @param envHash - Environment state hash
- * @returns The updated list root
- */
-

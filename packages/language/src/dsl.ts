@@ -62,7 +62,7 @@ export type FieldId = u16;
 export type SyntaxId = u16;
 export type TensorHandle = u32;
 
-export enum TensorType {
+export const enum TensorType {
   Float64 = 0,
   Int32 = 1,
   Boolean = 2,

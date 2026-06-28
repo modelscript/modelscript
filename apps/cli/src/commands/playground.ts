@@ -623,7 +623,7 @@ scope {
 
             const [currentGeneration, setCurrentGeneration] = useState(0);
 
-            const [lineStarts, setLineStarts] = useState([0]);
+            const [lineStarts, setLineStarts] = useState(new Uint32Array([0]));
 
             useEffect(() => {
                 const handleMessage = (e) => {
@@ -1221,29 +1221,24 @@ self.addEventListener('message', async (e) => {
         }
         
         const lineStarts = lspFacade.getLineStarts();
-        const rawTokens = [];
+        const count = tokensArray.length / 4;
+        const indices = new Int32Array(count);
+        for (let i = 0; i < count; i++) indices[i] = i;
         
-        for (let i = 0; i < tokensArray.length; i += 4) {
-            rawTokens.push({
-                offset: tokensArray[i],
-                length: tokensArray[i+1],
-                tokenType: tokensArray[i+2],
-                tokenModifiers: tokensArray[i+3]
-            });
-        }
+        // Sort indices by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
+        indices.sort((a, b) => tokensArray[a * 4] - tokensArray[b * 4]);
         
-        // Sort tokens by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
-        rawTokens.sort((a, b) => a.offset - b.offset);
-        
-        const data = [];
+        const data = new Uint32Array(count * 5);
+        let dataIdx = 0;
         let prevLine = 0;
         let prevChar = 0;
         
-        for (const token of rawTokens) {
-            const offset = token.offset;
-            const length = token.length;
-            const tokenType = token.tokenType;
-            const tokenModifiers = token.tokenModifiers;
+        for (let i = 0; i < count; i++) {
+            const baseIdx = indices[i] * 4;
+            const offset = tokensArray[baseIdx];
+            const length = tokensArray[baseIdx + 1];
+            const tokenType = tokensArray[baseIdx + 2];
+            const tokenModifiers = tokensArray[baseIdx + 3];
             
             let line = 0;
             let low = 0;
@@ -1258,21 +1253,24 @@ self.addEventListener('message', async (e) => {
                 }
             }
             const charOffset = (offset - lineStarts[line]) / 2;
-            const pos = { line: line, character: charOffset };
-            
             const charLength = length / 2;
             
-            const deltaLine = pos.line - prevLine;
-            const deltaChar = deltaLine === 0 ? pos.character - prevChar : pos.character;
+            const deltaLine = line - prevLine;
+            const deltaChar = deltaLine === 0 ? charOffset - prevChar : charOffset;
             
-            data.push(deltaLine, deltaChar, charLength, tokenType, tokenModifiers);
+            data[dataIdx++] = deltaLine;
+            data[dataIdx++] = deltaChar;
+            data[dataIdx++] = charLength;
+            data[dataIdx++] = tokenType;
+            data[dataIdx++] = tokenModifiers;
             
-            prevLine = pos.line;
-            prevChar = pos.character;
+            prevLine = line;
+            prevChar = charOffset;
         }
         
-        console.log("Semantic Tokens computed:", data.length / 5, "tokens");
-        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: data } });
+        console.log("Semantic Tokens computed:", count, "tokens");
+        // Transfer the buffer directly to avoid structured cloning overhead
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: data.buffer } }, [data.buffer]);
     }
 });
 `;

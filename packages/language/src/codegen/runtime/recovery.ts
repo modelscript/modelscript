@@ -2,7 +2,7 @@
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
-  NODE_TYPE_ERROR
+  NODE_TYPE_ERROR, goto_offsets, goto_data
 } from "./engine";
 import { stateCanAccept, cloneNodeShallow, concatLists } from "./parser-loop";
 import { 
@@ -14,7 +14,9 @@ import {
   setNextSibling,
   getNodeType,
   allocNode,
-  getInputBuffer
+  getInputBuffer,
+  ASTNode,
+  FLAG_IS_INSERTED
 } from "./arena";
 import { UnmanagedUint16Array, UnmanagedUint8Array } from "./array";
 import {
@@ -30,7 +32,8 @@ import {
   setSrcLexPos,
   setCurrentScannerState,
   TOKEN_EOF,
-  TOKEN_UNKNOWN
+  TOKEN_UNKNOWN,
+  SYMBOL_COUNT
 } from "./parser";
 
 export let errorQueueHead: u32 = 0;
@@ -49,6 +52,12 @@ const CHAR_LPAREN: u8 = 40;
 const CHAR_RPAREN: u8 = 41;
 const PENALTY_UNWIND_NODE: i32 = 5;
 const PENALTY_SYNC_TOKEN: i32 = 10;
+
+@inline
+function getInsertCost(tok: i32): i32 {
+  if (tok < 0 || tok >= token_insert_costs.length) return 10;
+  return token_insert_costs[tok];
+}
 
 @inline
 export function recoverUnwindAndMutate(
@@ -113,13 +122,13 @@ export function recoverUnwindAndMutate(
             debugLog(9995, head.pos, uPos, changetype<usize>(uCurr) as u32);
 
             let baseDelCost =
-              token_insert_costs[token == TOKEN_EOF ? 0 : token] + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
-            if (lexLen == 1) {
+              getInsertCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
+            if (lexLen == 1 && lexPos < inputLength) {
               let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
               if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
               else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
                 newBalance--;
-                baseDelCost = token_insert_costs[token] + (unwindDepth as i32);
+                baseDelCost = getInsertCost(token) + (unwindDepth as i32);
               }
             }
 
@@ -132,7 +141,7 @@ export function recoverUnwindAndMutate(
             
             // baseDelCost includes the cost of dropping 'token'. If we do startSkip=0,
             // we are NOT dropping 'token', so we refund its cost in a1DelCost.
-            let a1DelCost = startSkip == 0 ? -token_insert_costs[token == TOKEN_EOF ? 0 : token] : 0;
+            let a1DelCost = startSkip == 0 ? -getInsertCost(token == TOKEN_EOF ? 0 : token) : 0;
 
             // Force lexer to recognize all tokens during recovery forward scan
             expected_tokens.fill(1);
@@ -150,7 +159,7 @@ export function recoverUnwindAndMutate(
               setSrcLexPos(savedSrcLexPos);
               setCurrentScannerState(savedScannerState);
 
-              let tokCost = token_insert_costs[nextToken == TOKEN_EOF ? 0 : nextToken];
+              let tokCost = getInsertCost(nextToken == TOKEN_EOF ? 0 : nextToken);
               
               let canAccept = stateCanAccept(unwindCurr, recState, nextToken, 0);
               debugLog(60100, recState, nextToken, canAccept ? 1 : 0);
@@ -173,18 +182,23 @@ export function recoverUnwindAndMutate(
                   if (secondToken != TOKEN_EOF && secondToken != TOKEN_UNKNOWN) {
                     // Find the shift target state for nextToken from recState
                     let shiftTarget: i32 = -1;
-                    let ao = action_offsets[recState];
+                    let ao: i32 = -1;
+                    if (recState >= 0 && recState < action_offsets.length) {
+                      ao = action_offsets[recState];
+                    }
                     if (ao >= 0 && ao < action_data.length) {
                       let ac = action_data[ao];
-                      for (let ai: i32 = 0; ai < ac; ai++) {
-                        let sym = action_data[ao + 1 + ai * 2];
-                        if (sym == nextToken || sym == 0) {
-                          let action = action_data[ao + 1 + ai * 2 + 1];
-                          let atype = action & 0x03;
-                          let atarget = action >> 2;
-                          if (atype == ACTION_SHIFT) {
-                            shiftTarget = atarget;
-                            break;
+                      if (ao + 1 + ac * 2 <= action_data.length) {
+                        for (let ai: i32 = 0; ai < ac; ai++) {
+                          let sym = action_data[ao + 1 + ai * 2];
+                          if (sym == nextToken || sym == 0) {
+                            let action = action_data[ao + 1 + ai * 2 + 1];
+                            let atype = action & 0x03;
+                            let atarget = action >> 2;
+                            if (atype == ACTION_SHIFT) {
+                              shiftTarget = atarget;
+                              break;
+                            }
                           }
                         }
                       }
@@ -328,19 +342,38 @@ export function recoverUnwindAndMutate(
             }
           }
           if (!skipBranchB && head.consecutiveInsertions < 8) {
-            for (let sym = 1; sym <= MAX_TERMINAL_ID; sym++) {
-              let res = stateCanAccept(unwindCurr, recState, sym, 0);
-              if (res > 0) {
-                let target = res - 1;
-                let type = ACTION_SHIFT; // Logically, we consider this a shift
+            for (let sym = 1; sym <= SYMBOL_COUNT; sym++) {
+              let target = -1;
+              
+              if (sym <= MAX_TERMINAL_ID) {
+                let res = stateCanAccept(unwindCurr, recState, sym, 0);
+                if (res > 0) {
+                  target = res - 1;
+                }
+              } else {
+                // Non-terminal hallucination: look up the GOTO table
+                let gOffset = goto_offsets[recState];
+                if (gOffset >= 0 && gOffset < goto_data.length) {
+                  let gCount = goto_data[gOffset];
+                  let gIdx = gOffset + 1;
+                  for (let i = 0; i < gCount; i++) {
+                    if (goto_data[gIdx++] == sym) {
+                      target = goto_data[gIdx];
+                      break;
+                    } else {
+                      gIdx++;
+                    }
+                  }
+                }
+              }
 
-                if (type == ACTION_SHIFT) {
+              if (target != -1) {
                   if (sym == TOKEN_EOF && token != TOKEN_EOF) {
                     continue;
                   }
                   debugLog(60200, sym, target, recState);
 
-                    let baseCost = token_insert_costs[sym == TOKEN_EOF ? 0 : sym];
+                    let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
                     if (baseCost <= 0) baseCost = 10; // Prevent infinite loops from 0-cost insertions
                     let uPos = unwindCurr.pos;
                     let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
@@ -401,6 +434,8 @@ export function recoverUnwindAndMutate(
                         let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
                         
                         let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
+                        let ptr = virtualLeaf as usize;
+                        changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
                         let insHead = allocParseHead(
                           target,
                           virtualLeaf,
@@ -425,7 +460,6 @@ export function recoverUnwindAndMutate(
                         }
                     }
                   }
-              }
             }
           }
 
@@ -573,6 +607,8 @@ export function recoverIslandMode(
 
             // Allocate a monolithic ERROR leaf with length 0, we'll update it later
             let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff);
+            let ptr = islandLeaf as usize;
+            changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
@@ -605,6 +641,7 @@ export function recoverIslandMode(
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
               let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+              // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) setFirstChild(islandLeaf, tNode);
               else setNextSibling(lastChild, tNode);
               lastChild = tNode;
@@ -612,8 +649,9 @@ export function recoverIslandMode(
               p = srcLexPos + tLen;
             }
 
-            // Set the exact byte length based on the last parsed token, excluding trailing whitespace
-            let islandByteLen = p > currPop.pos + islandPad ? p - currPop.pos - islandPad : 0;
+            // Set the exact byte length based on the resume position, so the ERROR node absorbs trailing whitespace
+            // and the AST remains perfectly contiguous for LSP offset traversal.
+            let islandByteLen = (resumePos as u32) > currPop.pos + islandPad ? (resumePos as u32) - currPop.pos - islandPad : 0;
             setNodeByteLength(islandLeaf, islandByteLen);
 
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.
