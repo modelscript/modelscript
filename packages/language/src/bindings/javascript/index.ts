@@ -96,7 +96,8 @@ export function generateJavaScriptWrapper(
   const tokenTypesMap = new Map<string, number>();
   const tokenModifiersMap = new Map<string, number>();
 
-  for (const p of normalized.productions) {
+  const sortedProds = [...normalized.productions].sort((a, b) => a.id - b.id);
+  for (const p of sortedProds) {
     if (p.semantics) {
       for (const s of p.semantics) {
         if (!tokenTypesMap.has(s.type)) tokenTypesMap.set(s.type, tokenTypesMap.size);

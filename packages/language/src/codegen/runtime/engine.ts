@@ -44,6 +44,7 @@ import {
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
   token_insert_costs as _token_insert_costs,
+  sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
   currentScannerState,
@@ -105,6 +106,7 @@ export const goto_offsets = changetype<StaticTable>(_goto_offsets);
 export const goto_data = changetype<StaticTable>(_goto_data);
 export const mrd_data = changetype<StaticTable>(_mrd_data);
 export const token_insert_costs = changetype<StaticTable>(_token_insert_costs);
+export const sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
 
 export const prod_lengths = changetype<StaticTable>(_prod_lengths);
 export const prod_lhs = changetype<StaticTable>(_prod_lhs);
@@ -159,6 +161,24 @@ export function mergeTableInit(): void {
   }
 }
 
+export function rebuildMergeTable(activeHeadsCount: u32, t_activeHeads: UnmanagedUint32Array): void {
+  if (changetype<usize>(t_mergeTable) == 0) return;
+  mergeGeneration++;
+  for (let i: u32 = 0; i < activeHeadsCount; i++) {
+    let h = changetype<ParseHead>(t_activeHeads[i]);
+    // Inline registerMergeCandidate to avoid circular imports or just use the same logic
+    let hash = ((h.pos ^ ((h.state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
+    for (let j: u32 = 0; j < MERGE_PROBE_LIMIT; j++) {
+      let slotIdx = ((hash + j) & MERGE_TABLE_MASK) << 1;
+      if (t_mergeTable[slotIdx + 1] != mergeGeneration) {
+        t_mergeTable[slotIdx] = i;
+        t_mergeTable[slotIdx + 1] = mergeGeneration;
+        break;
+      }
+    }
+  }
+}
+
 /**
  * Find a merge candidate in the active heads matching (pos, state, prev).
  * Returns the index into t_activeHeads, or -1 if not found.
@@ -172,7 +192,7 @@ export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null)
     let idx = t_mergeTable[slotIdx];
     if (idx < activeHeadsCount) {
       let ah = changetype<ParseHead>(t_activeHeads[idx]);
-      if (ah.pos == pos && ah.state == state && ah.prev == prev) {
+      if (ah.pos == pos && ah.state == state) {
         return idx as i32;
       }
     }

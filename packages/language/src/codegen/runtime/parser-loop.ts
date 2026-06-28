@@ -1115,6 +1115,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
         let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
         setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+        setNodePadding(splitHead, 0); // Avoid double padding!
         setFirstChild(rightChunk, splitHead);
 
         // Find the last child of rightChunk
@@ -1143,9 +1144,6 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
         let cloneLeft = allocNode(listSym, 0, 0, envHash); // Avoid double padding!
         setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        let rightChunk = allocNode(listSym, getNodePadding(leaf), 0, envHash);
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
         let gc = getNodeFirstChild(leftNode);
         let splitTail = gc;
@@ -1180,11 +1178,19 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         }
         fixNodeLength(cloneLeft);
 
+        let splitHead = gc;
+        let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
+        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+
         lastChild = 0;
         while (gc != 0) {
           let clone = cloneNodeShallow(gc);
-          if (lastChild == 0) setFirstChild(rightChunk, clone);
-          else setNextSibling(lastChild, clone);
+          if (lastChild == 0) {
+            setNodePadding(clone, 0); // Avoid double padding!
+            setFirstChild(rightChunk, clone);
+          } else {
+            setNextSibling(lastChild, clone);
+          }
           setNextSibling(clone, 0);
           lastChild = clone;
           gc = getNodeNextSibling(gc);
@@ -1249,6 +1255,7 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
         let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
         setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+        setNodePadding(splitHead, 0); // Avoid double padding!
         setFirstChild(rightChunk, splitHead);
 
         // Find the node before rightMost in the rightChunk sublist
@@ -1324,9 +1331,6 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
         setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
-        let newRightChunk = allocNode(listSym, getNodePadding(origC2), 0, envHash);
-        setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
         let gc2 = getNodeFirstChild(leftNode);
         let splitTail = gc2;
         for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
@@ -1360,11 +1364,19 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         }
         fixNodeLength(p);
 
+        let splitHead = gc2;
+        let newRightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
+        setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
+
         lastChild2 = 0;
         while (gc2 != rightMost && gc2 != 0) {
           let clone = cloneNodeShallow(gc2);
-          if (lastChild2 == 0) setFirstChild(newRightChunk, clone);
-          else setNextSibling(lastChild2, clone);
+          if (lastChild2 == 0) {
+            setNodePadding(clone, 0); // Avoid double padding!
+            setFirstChild(newRightChunk, clone);
+          } else {
+            setNextSibling(lastChild2, clone);
+          }
           setNextSibling(clone, 0);
           lastChild2 = clone;
           gc2 = getNodeNextSibling(gc2);
@@ -1396,6 +1408,704 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   }
 }
 
+
+
+let furthestDyingPos: u32 = 0;
+let bestDyingHead: u32 = 0;
+let bestAcceptingHead: u32 = 0;
+let acceptedNode: u32 = 0;
+let bestAcceptedCost: i32 = INFINITE_COST;
+let bestAcceptedRealBytes: u32 = 0;
+let bestAcceptedCount: u32 = 0xffffffff;
+let bestAcceptedPad: u32 = 0xffffffff;
+
+
+function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32): void {
+  let newBalance = head.balanceHash;
+  if (lexLen == 1) {
+    let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
+    if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
+    else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
+  }
+
+  let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
+  let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
+
+  let nPos = srcLexPos + lexLen;
+  let newCost = head.errorCost;
+  let newShifts = head.successfulShifts + 1;
+
+  let newHead = allocParseHead(
+    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, 0, head.dynamicPrec, 0, head.errorTail
+  );
+
+  let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
+  if (mergeIdx >= 0) {
+    let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
+    if (
+      newHead.errorCost < ah.errorCost ||
+      (newHead.errorCost == ah.errorCost && newHead.dynamicPrec > ah.dynamicPrec)
+    ) {
+      t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
+    }
+  } else {
+    pushActiveHead(changetype<u32>(newHead));
+    registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
+  }
+}
+
+
+function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): void {
+  if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
+    throw new Error("BAD reduceProd: " + reduceProd.toString());
+  }
+
+  let popCount = prod_lengths[reduceProd];
+  let lhsSym = prod_lhs[reduceProd];
+
+  let curr: ParseHead | null = head;
+  let c_idx = 99999;
+  let needed = popCount;
+  let foundFirstGrammar = false;
+
+  while ((needed > 0 || (curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode) && !(getNodeFlags(curr.astNode) & FLAG_IS_INSERTED))) && curr != null) {
+    if (c_idx <= 0) break;
+    let astNode = curr.astNode;
+    let isInserted = astNode != 0 ? (getNodeFlags(astNode) & FLAG_IS_INSERTED) != 0 : false;
+    let isPure = astNode != 0 && isPureErrorNode(astNode);
+    debugLog(9998, astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
+    
+    if (isPure && !isInserted) {
+      t_globalReduceCollected[c_idx--] = astNode;
+      debugLog(9999, astNode, 1, 0);
+    } else {
+      foundFirstGrammar = true;
+      t_globalReduceCollected[c_idx--] = astNode;
+      if (needed > 0) needed--;
+      debugLog(9999, astNode, 0, needed);
+    }
+    curr = curr.prev;
+  }
+  if (curr == null && needed > 0) {
+    debugLog(3, head.state, 0, pos);
+    return;
+  }
+
+  let actualCount = 99999 - c_idx;
+  for (let k = 0; k < actualCount; k++) {
+    t_globalChildNodes[k] = t_globalReduceCollected[c_idx + 1 + k];
+  }
+
+  if (curr) {
+    let totalByteLength: u32 = 0;
+    let firstChildPadding: u32 = 0;
+    if (actualCount > 0) {
+      firstChildPadding = getNodePadding(t_globalChildNodes[0]);
+      for (let k = 0; k < actualCount; k++) {
+        let cPadding = getNodePadding(t_globalChildNodes[k]);
+        let cLen = getNodeByteLength(t_globalChildNodes[k]);
+        if (k == 0) totalByteLength += cLen;
+        else totalByteLength += cPadding + cLen;
+      }
+    }
+    let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, head.balanceHash & 0xff);
+
+    if (prod_is_list[reduceProd] == 1) {
+      let flags = getNodeFlags(parentNode);
+      setNodeFlags(parentNode, flags | FLAG_IS_LIST);
+    }
+    if (prod_is_invisible[reduceProd] == 1) {
+      let flags = getNodeFlags(parentNode);
+      setNodeFlags(parentNode, flags | FLAG_INVISIBLE);
+    }
+
+    if (actualCount > 0) {
+      let isListAppend = false;
+      if (
+        (popCount == 2 || popCount == 3) &&
+        (actualCount == 2 || actualCount == 3) &&
+        t_globalChildNodes[0] != 0 &&
+        prod_is_list[reduceProd] == 1
+      ) {
+        let leftSym = getNodeType(t_globalChildNodes[0]);
+        if (leftSym == lhsSym) isListAppend = true;
+      }
+      debugLog(9997, isListAppend ? 1 : 0, 0, 0);
+
+      if (isListAppend) {
+        parentNode = t_globalChildNodes[0];
+        for (let i = 1; i < actualCount; i++) {
+          parentNode = appendToList(
+            parentNode,
+            t_globalChildNodes[i],
+            lhsSym as u16,
+            currentScannerState,
+            i == actualCount - 1
+          );
+        }
+      } else {
+        debugLog(777, 999, 999, 999);
+        let lastChild = 0;
+        let logicalChildIndex = 0;
+
+        let aliasPtr = prod_aliases[reduceProd];
+        let aliasCount = 0;
+        if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
+
+        for (let k = 0; k < actualCount; k++) {
+          let child = t_globalChildNodes[k];
+          if (child == 0) continue;
+
+          let clone = cloneNodeShallow(child);
+          if (k == 0) {
+            setNodePadding(clone, 0);
+            debugLog(777, clone, getNodePadding(clone), 0);
+          }
+
+          let isError = getNodeType(child) == NODE_TYPE_ERROR;
+          if (!isError && aliasPtr >= 0) {
+            for (let a = 0; a < aliasCount; a++) {
+              let aIndex = alias_data[aliasPtr + 1 + a * 2];
+              let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
+              if (aIndex == logicalChildIndex) {
+                let node = changetype<ASTNode>(clone);
+                node.type = aSym as u16;
+                break;
+              }
+            }
+            logicalChildIndex++;
+          } else if (!isError) {
+            logicalChildIndex++;
+          }
+
+          if (lastChild == 0) setFirstChild(parentNode, clone);
+          else setNextSibling(lastChild, clone);
+          lastChild = clone;
+          if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+            setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
+          }
+        }
+        let pFlags = getNodeFlags(parentNode);
+        setNodeFlags(parentNode, pFlags);
+      }
+    }
+
+    if (curr.state < 0 || curr.state >= goto_offsets.length) {
+      throw new Error("BAD curr.state in REDUCE: " + curr.state.toString());
+    }
+
+    let gOffset = goto_offsets[curr.state];
+    if (gOffset < 0 || gOffset >= goto_data.length) {
+      throw new Error("BAD gOffset: " + gOffset.toString());
+    }
+
+    let gCount = goto_data[gOffset];
+    let nextState = -1;
+    let gIdx = gOffset + 1;
+    for (let k = 0; k < gCount; k++) {
+      if (goto_data[gIdx++] == lhsSym) {
+        nextState = goto_data[gIdx++];
+        break;
+      } else {
+        gIdx++;
+      }
+    }
+
+    if (nextState != -1) {
+      let newHead = allocParseHead(
+        nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost,
+        head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+        head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+      );
+      let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
+      if (mergeIdx >= 0) {
+        let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
+        if (
+          newHead.errorCost < ah.errorCost ||
+          (newHead.errorCost == ah.errorCost && newHead.dynamicPrec > ah.dynamicPrec)
+        ) {
+          t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
+        }
+      } else {
+        pushActiveHead(changetype<u32>(newHead));
+        registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
+      }
+    }
+  }
+}
+
+
+function processAcceptAction(head: ParseHead): void {
+  debugLog(778, head.state, head.errorCost, head.pos);
+  let t_curr: ParseHead | null = head;
+  let t_bytes: u32 = 0;
+  let t_count: u32 = 0;
+  let firstPad: u32 = 0;
+
+  while (t_curr) {
+    if (t_curr.astNode != 0) {
+      let tNodeType = getNodeType(t_curr.astNode);
+      let tNodeLen = getNodeByteLength(t_curr.astNode);
+      if (tNodeType != TOKEN_EOF && (tNodeLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
+        t_bytes += getNodePadding(t_curr.astNode) + tNodeLen;
+        t_count++;
+        firstPad = getNodePadding(t_curr.astNode);
+      }
+    }
+    t_curr = t_curr.prev;
+  }
+
+  let effectiveCost: i32 = head.errorCost;
+  let realBytes: u32 = 0;
+  {
+    let rc: ParseHead | null = head;
+    while (rc) {
+      if (rc.astNode != 0) {
+        let nType = getNodeType(rc.astNode);
+        if (nType != TOKEN_EOF && nType != NODE_TYPE_ERROR) {
+          realBytes += getNodeByteLength(rc.astNode);
+        }
+      }
+      rc = rc.prev;
+    }
+  }
+
+  if (realBytes > inputLength) realBytes = inputLength;
+  if (realBytes == 0) {
+    effectiveCost += 10000;
+  }
+  effectiveCost += (firstPad as i32) * 3;
+  effectiveCost += (t_count as i32) * 10; // Penalize fragmented GSS
+  debugLog(888, effectiveCost, realBytes as i32, firstPad as i32);
+  debugLog(60010, t_count as i32, effectiveCost, bestAcceptedCost);
+
+  if (
+    acceptedNode == 0 ||
+    effectiveCost < bestAcceptedCost ||
+    (effectiveCost == bestAcceptedCost && realBytes > bestAcceptedRealBytes) ||
+    (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad < bestAcceptedPad) ||
+    (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad == bestAcceptedPad && t_count < bestAcceptedCount)
+  ) {
+    if (t_count <= 1) {
+      bestAcceptingHead = changetype<u32>(head);
+      bestAcceptedCost = effectiveCost;
+      bestAcceptedRealBytes = realBytes;
+      bestAcceptedCount = t_count;
+      bestAcceptedPad = firstPad;
+      lastBestCost = bestAcceptedCost;
+
+      let singleNode: u32 = 0;
+      let rc: ParseHead | null = head;
+      while (rc) {
+        if (rc.astNode != 0 && getNodeType(rc.astNode) != TOKEN_EOF) {
+          singleNode = rc.astNode;
+          break;
+        }
+        rc = rc.prev;
+      }
+
+      if (singleNode != 0) {
+        acceptedNode = cloneNodeShallow(singleNode);
+        let accPad = getNodePadding(acceptedNode);
+        let accLen = getNodeByteLength(acceptedNode);
+        let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
+        if (accLen != expectedLen && head.pos >= inputLength) {
+          setNodeByteLength(acceptedNode, expectedLen);
+        }
+      } else {
+        acceptedNode = head.astNode;
+      }
+    } else {
+      bestAcceptingHead = changetype<u32>(head);
+      bestAcceptedCost = effectiveCost;
+      bestAcceptedRealBytes = realBytes;
+      bestAcceptedCount = t_count;
+      bestAcceptedPad = firstPad;
+      lastBestCost = bestAcceptedCost;
+
+      let c_idx = t_count - 1;
+      t_curr = head;
+      let bestRoot: u32 = 0;
+      let bestRootBytes: u32 = 0;
+      while (t_curr) {
+        if (t_curr.astNode != 0) {
+          let cType = getNodeType(t_curr.astNode);
+          let cLen = getNodeByteLength(t_curr.astNode);
+          if (cType != TOKEN_EOF && (cLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
+            t_globalChildren[c_idx--] = t_curr.astNode;
+            if (cType != NODE_TYPE_ERROR && cLen > bestRootBytes) {
+              bestRoot = t_curr.astNode;
+              bestRootBytes = cLen;
+            }
+          }
+        }
+        t_curr = t_curr.prev;
+      }
+
+      if (bestRoot != 0) {
+        let newRoot = cloneNodeShallow(bestRoot);
+        let acceptedPad2 = getNodePadding(bestRoot);
+        let targetLen = t_bytes > acceptedPad2 ? t_bytes - acceptedPad2 : t_bytes;
+        let maxLen = inputLength > acceptedPad2 ? inputLength - acceptedPad2 : 0;
+        if (targetLen > maxLen) targetLen = maxLen;
+        setNodeByteLength(newRoot, targetLen);
+
+        let lastC2: u32 = 0;
+        let firstCloned: u32 = 0;
+        let appendedError = false;
+
+        for (let i: u32 = 0; i < t_count; i++) {
+          let c = t_globalChildren[i];
+          if (c == 0) continue;
+          
+          if (c == bestRoot) {
+            let oc = getNodeFirstChild(c);
+            while (oc != 0) {
+              let cloned = cloneNodeShallow(oc);
+              if (firstCloned == 0) firstCloned = cloned;
+              if (lastC2 != 0) setNextSibling(lastC2, cloned);
+              lastC2 = cloned;
+              oc = getNodeNextSibling(oc);
+            }
+          } else {
+            let clone = cloneNodeShallow(c);
+            if (lastC2 == 0) firstCloned = clone;
+            if (lastC2 != 0) setNextSibling(lastC2, clone);
+            lastC2 = clone;
+            if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+              appendedError = true;
+            }
+          }
+        }
+
+        if (firstCloned != 0) setFirstChild(newRoot, firstCloned);
+
+        if (appendedError) {
+          setNodeFlags(newRoot, getNodeFlags(newRoot) | FLAG_HAS_ERROR);
+        }
+        acceptedNode = newRoot;
+      } else {
+        let errLen = t_bytes > firstPad ? t_bytes - firstPad : 0;
+        let errMaxLen = inputLength > firstPad ? inputLength - firstPad : 0;
+        if (errLen > errMaxLen) errLen = errMaxLen;
+        let root = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
+
+        let lastC = 0;
+        for (let i: u32 = 0; i < t_count; i++) {
+          let c = t_globalChildren[i];
+          if (c == 0) continue;
+          let clone = cloneNodeShallow(c);
+          if (lastC == 0) setFirstChild(root, clone);
+          else setNextSibling(lastC, clone);
+          lastC = clone;
+        }
+        acceptedNode = root;
+      }
+    }
+  }
+}
+
+
+function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32): boolean {
+  let reduced = false;
+  let scanIdx = actionOffset + 1;
+  for (let si = 0; si < count2; si++) {
+    let scanSym = action_data[scanIdx++];
+    let scanActCount = action_data[scanIdx++];
+    for (let sj = 0; sj < scanActCount; sj++) {
+      let scanType = action_data[scanIdx++];
+      let scanTarget = action_data[scanIdx++];
+
+      if (scanType == ACTION_ACCEPT && !reduced) {
+        debugLog(778, head.state, head.errorCost, head.pos);
+        let t_curr2: ParseHead | null = head;
+        let t_bytes2: u32 = 0;
+        let t_count2: u32 = 0;
+        let firstPad2: u32 = 0;
+        while (t_curr2) {
+          if (t_curr2.astNode != 0) {
+            let tNodeType2 = getNodeType(t_curr2.astNode);
+            let tNodeLen2 = getNodeByteLength(t_curr2.astNode);
+            if (tNodeType2 != TOKEN_EOF && (tNodeLen2 > 0 || getNodeFirstChild(t_curr2.astNode) != 0)) {
+              t_bytes2 += getNodePadding(t_curr2.astNode) + tNodeLen2;
+              t_count2++;
+              firstPad2 = getNodePadding(t_curr2.astNode);
+            }
+          }
+          t_curr2 = t_curr2.prev;
+        }
+
+        let realBytes2: u32 = 0;
+        {
+          let rc2: ParseHead | null = head;
+          while (rc2) {
+            if (rc2.astNode != 0) {
+              let nType2 = getNodeType(rc2.astNode);
+              if (nType2 != TOKEN_EOF) {
+                realBytes2 += getNodeByteLength(rc2.astNode);
+              }
+            }
+            rc2 = rc2.prev;
+          }
+        }
+        let effectiveCost2: i32 = head.errorCost;
+        if (realBytes2 == 0) effectiveCost2 += 10000;
+        effectiveCost2 += (firstPad2 as i32) * 3;
+
+        let trailingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
+        if (trailingBytes > 0) {
+          effectiveCost2 += 100 + (trailingBytes as i32) * 2;
+        }
+
+        if (t_count2 <= 1) {
+          let singleNode2: u32 = 0;
+          let rc2: ParseHead | null = head;
+          while (rc2) {
+            if (rc2.astNode != 0 && getNodeType(rc2.astNode) != TOKEN_EOF) {
+              singleNode2 = rc2.astNode;
+              break;
+            }
+            rc2 = rc2.prev;
+          }
+          if (singleNode2 != 0) {
+            if (acceptedNode == 0 || effectiveCost2 < bestAcceptedCost) {
+              acceptedNode = cloneNodeShallow(singleNode2);
+              bestAcceptedCost = effectiveCost2;
+              bestAcceptingHead = changetype<u32>(head);
+              bestAcceptedCount = t_count2;
+              bestAcceptedPad = firstPad2;
+            }
+          }
+        }
+        reduced = true;
+      } else if (scanType == ACTION_REDUCE && !reduced) {
+        let reduceProd = scanTarget;
+        if (reduceProd < 0 || reduceProd >= prod_lengths.length) continue;
+
+        let popCount = prod_lengths[reduceProd];
+        let lhsSym = prod_lhs[reduceProd];
+
+        let curr: ParseHead | null = head;
+        let c_idx2 = 99999;
+        let needed = popCount;
+
+        while (needed > 0 && curr != null) {
+          if (c_idx2 <= 0) break;
+          if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
+            t_globalReduceCollected[c_idx2--] = curr.astNode;
+          } else {
+            t_globalReduceCollected[c_idx2--] = curr.astNode;
+            needed--;
+          }
+          curr = curr.prev;
+        }
+        if (curr == null && needed > 0) continue;
+
+        let actualCount: u32 = (99999 - c_idx2) as u32;
+        for (let k: u32 = 0; k < actualCount; k++) {
+          t_globalChildNodes[k] = t_globalReduceCollected[(c_idx2 as u32) + 1 + k];
+        }
+
+        if (curr) {
+          let totalByteLength: u32 = 0;
+          let firstChildPadding: u32 = 0;
+          if (actualCount > 0) {
+            let fc = t_globalChildNodes[0];
+            if (fc != 0) firstChildPadding = getNodePadding(fc);
+          }
+          for (let k: u32 = 0; k < actualCount; k++) {
+            let c = t_globalChildNodes[k];
+            if (c == 0) continue;
+            totalByteLength += getNodePadding(c) + getNodeByteLength(c);
+          }
+          totalByteLength -= firstChildPadding;
+
+          let isInvis = prod_is_invisible[reduceProd] == 1;
+          let isList = prod_is_list[reduceProd] == 1;
+          let parentNode: u32;
+
+          if (isInvis && actualCount == 1) {
+            parentNode = t_globalChildNodes[0];
+          } else {
+            parentNode = allocNode(
+              lhsSym as u16,
+              firstChildPadding,
+              totalByteLength,
+              head.balanceHash & 0xff,
+            );
+            if (isList) setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
+            let lastC: u32 = 0;
+            let appendedError = false;
+            for (let k: u32 = 0; k < actualCount; k++) {
+              let c = t_globalChildNodes[k];
+              if (c == 0) continue;
+              let clone = cloneNodeShallow(c);
+              if (k == 0) {
+                setNodePadding(clone, 0);
+              }
+              if (lastC == 0) setFirstChild(parentNode, clone);
+              else setNextSibling(lastC, clone);
+              lastC = clone;
+              if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+                appendedError = true;
+              }
+            }
+            if (appendedError) {
+              setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
+            }
+          }
+
+          let gOffset = goto_offsets[curr.state];
+          let gCount = goto_data[gOffset];
+          let gIdx2 = gOffset + 1;
+          let nextState: i32 = -1;
+          for (let gi = 0; gi < gCount; gi++) {
+            if (goto_data[gIdx2] == lhsSym) {
+              nextState = goto_data[gIdx2 + 1];
+              break;
+            }
+            gIdx2 += 2;
+          }
+
+          if (nextState != -1) {
+            let newHead = allocParseHead(
+              nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost,
+              head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+              head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+            );
+            pushActiveHead(changetype<u32>(newHead));
+            reduced = true;
+          }
+        }
+      } else if (scanType == ACTION_SHIFT && !reduced && scanSym == TOKEN_EOF) {
+        let shiftTarget = scanTarget;
+        if (shiftTarget >= 0 && shiftTarget < action_offsets.length) {
+          let targetOffset = action_offsets[shiftTarget];
+          if (targetOffset >= 0 && targetOffset < action_data.length) {
+            let targetCount = action_data[targetOffset];
+            let targetIdx = targetOffset + 1;
+            for (let ti = 0; ti < targetCount; ti++) {
+              let tSym = action_data[targetIdx++];
+              let tActCount = action_data[targetIdx++];
+              for (let tj = 0; tj < tActCount; tj++) {
+                let tType = action_data[targetIdx++];
+                let tTarget = action_data[targetIdx++];
+                if (tType == ACTION_ACCEPT) {
+                  let singleNode3: u32 = 0;
+                  let rc3: ParseHead | null = head;
+                  while (rc3) {
+                    if (rc3.astNode != 0 && getNodeType(rc3.astNode) != TOKEN_EOF) {
+                      let nLen3 = getNodeByteLength(rc3.astNode);
+                      if (nLen3 > 0 || getNodeFirstChild(rc3.astNode) != 0) {
+                        singleNode3 = rc3.astNode;
+                        break;
+                      }
+                    }
+                    rc3 = rc3.prev;
+                  }
+                  if (singleNode3 != 0) {
+                    let effectiveCost3: i32 = head.errorCost;
+                    let trailingBytes3: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
+                    if (trailingBytes3 > 0) {
+                      effectiveCost3 += 100 + (trailingBytes3 as i32) * 2;
+                    }
+                    if (acceptedNode == 0 || effectiveCost3 < bestAcceptedCost) {
+                      acceptedNode = cloneNodeShallow(singleNode3);
+                      bestAcceptedCost = effectiveCost3;
+                      bestAcceptingHead = changetype<u32>(head);
+                      bestAcceptedCount = 1;
+                      bestAcceptedPad = getNodePadding(singleNode3);
+                    }
+                  }
+                  reduced = true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return reduced;
+}
+
+
+function pruneGSS(pos: u32): void {
+  let activeHeadsTrimCount = activeHeadsCount;
+  if (activeHeadsTrimCount > 0) {
+    let bestCost = INFINITE_COST;
+    for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
+      let ah = changetype<ParseHead>(t_activeHeads[i]);
+      if (ah.errorCost < bestCost) bestCost = ah.errorCost;
+    }
+
+    let bestPos: u32 = 0;
+    for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
+      let ah = changetype<ParseHead>(t_activeHeads[i]);
+      if (ah.errorCost == bestCost && ah.pos > bestPos) bestPos = ah.pos;
+    }
+    let writeIdx = 0;
+    for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
+      let ah = changetype<ParseHead>(t_activeHeads[i]);
+      let margin: i32 = ah.pos > bestPos ? 1000 : 15;
+      if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
+        t_activeHeads[writeIdx++] = changetype<u32>(ah);
+      }
+    }
+    activeHeadsCount = writeIdx;
+    activeHeadsTrimCount = activeHeadsCount;
+    debugLog(60020, activeHeadsCount as i32, bestCost, bestAcceptedCost);
+
+    if (bestCost > 0 && bestCost < INFINITE_COST) {
+      for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
+        let ah = changetype<ParseHead>(t_activeHeads[i]);
+        ah.errorCost = ah.errorCost > bestCost ? ah.errorCost - bestCost : 0;
+      }
+      if (bestAcceptedCost < INFINITE_COST) {
+        bestAcceptedCost = bestAcceptedCost > bestCost ? bestAcceptedCost - bestCost : 0;
+      }
+      if (lastBestCost < INFINITE_COST) {
+        lastBestCost = lastBestCost > bestCost ? lastBestCost - bestCost : 0;
+      }
+    }
+  }
+
+  if (activeHeadsTrimCount > 64) {
+    let heapLen = activeHeadsTrimCount;
+    for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
+      let ci: u32 = hi as u32;
+      while (true) {
+        let smallest = ci;
+        let left = ci * 2 + 1;
+        let right = ci * 2 + 2;
+        if (left < heapLen) {
+          let hL = changetype<ParseHead>(t_activeHeads[left]);
+          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
+          if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
+        }
+        if (right < heapLen) {
+          let hR = changetype<ParseHead>(t_activeHeads[right]);
+          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
+          if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos)) smallest = right;
+        }
+        if (smallest == ci) break;
+        let tmp = t_activeHeads[ci];
+        t_activeHeads[ci] = t_activeHeads[smallest];
+        t_activeHeads[smallest] = tmp;
+        ci = smallest;
+      }
+    }
+    let sortLimit: u32 = heapLen < MAX_PARALLEL_HEADS ? heapLen : MAX_PARALLEL_HEADS;
+    for (let ei: u32 = 0; ei < sortLimit && heapLen > 1; ei++) {
+      heapLen--;
+      let tmp = t_activeHeads[ei];
+      if (ei < heapLen) {
+        t_activeHeads[ei] = t_activeHeads[ei + 1];
+      }
+    }
+    activeHeadsCount = MAX_PARALLEL_HEADS;
+  }
+}
 
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
   globalIsCatastrophic = false;
@@ -1474,15 +2184,15 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   isSuspended = false;
 
   // Error recovery trackers
-  let furthestDyingPos: u32 = 0;
-  let bestDyingHead: u32 = 0;
+  furthestDyingPos = 0;
+  bestDyingHead = 0;
 
-  let bestAcceptingHead: u32 = 0;
-  let acceptedNode: u32 = 0;
-  let bestAcceptedCost: i32 = INFINITE_COST;
-  let bestAcceptedRealBytes: u32 = 0; // Track amount of input consumed (more is better)
-  let bestAcceptedCount: u32 = 0xffffffff; // Track GSS fragmentation (fewer is better)
-  let bestAcceptedPad: u32 = 0xffffffff; // Track leftmost match padding (smaller is better)
+  bestAcceptingHead = 0;
+  acceptedNode = 0;
+  bestAcceptedCost = INFINITE_COST;
+  bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
+  bestAcceptedCount = 0xffffffff; // Track GSS fragmentation (fewer is better)
+  bestAcceptedPad = 0xffffffff; // Track leftmost match padding (smaller is better)
   lastBestCost = INFINITE_COST;
   lastIterCount = 0;
   globalLoopIterations = 0;
@@ -1888,452 +2598,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           // TYPE 0: SHIFT ACTION
           // --------------------------------------------------------------------
           if (type == ACTION_SHIFT) {
-            // Structural Hashing: update brace/bracket depth for incremental env tracking
-            let newBalance = head.balanceHash;
-            if (lexLen == 1) {
-              let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
-              if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
-              else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
-            }
-
-            // Allocate the leaf node for the shifted token
-            let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
-            let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
-
-            let nPos = srcLexPos + lexLen;
-            let newCost = head.errorCost;
-            let newShifts = head.successfulShifts + 1;
-
-            // Branch the GSS: create a new parse head
-            let newHead = allocParseHead(
-              target,
-              leaf,
-              head,
-              nPos,
-              currentScannerState,
-              newCost,
-              newShifts,
-              newBalance,
-              0,
-              head.dynamicPrec,
-              0,
-              head.errorTail,
-            );
-
-            // GLR Merge: If multiple active heads end up in the identical state at the same position,
-            // merge them by keeping the one with the lowest error cost or highest precedence.
-            let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
-            if (mergeIdx >= 0) {
-              let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
-              if (
-                newHead.errorCost < ah.errorCost ||
-                (newHead.errorCost == ah.errorCost && newHead.dynamicPrec > ah.dynamicPrec)
-              ) {
-                t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
-              }
-            } else {
-              pushActiveHead(changetype<u32>(newHead));
-              registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
-            }
+            processShiftAction(head, target, token, pos);
             anyAction = true;
-
           } else if (type == ACTION_REDUCE) {
-            let reduceProd = target;
-            if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
-              throw new Error("BAD reduceProd: " + reduceProd.toString());
-            }
-
-            let popCount = prod_lengths[reduceProd];
-            let lhsSym = prod_lhs[reduceProd];
-
-            // 1. Pop children from the GSS
-            // We pop `popCount` syntax nodes from the stack.
-            // We also automatically include any parsed Error nodes that happen to exist in that span.
-            let curr: ParseHead | null = head;
-
-            let c_idx = 99999;
-            let needed = popCount;
-            let foundFirstGrammar = false;
-
-            while (needed > 0 && curr != null) {
-              if (c_idx <= 0) break; // Prevent underflow on t_globalReduceCollected
-              let astNode = curr.astNode;
-              let isInserted = astNode != 0 ? (getNodeFlags(astNode) & FLAG_IS_INSERTED) != 0 : false;
-              let isPure = astNode != 0 && isPureErrorNode(astNode);
-              debugLog(9998, astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
-              
-              if (isPure && !isInserted) {
-                // Error node interspersed between grammar nodes, or leading on top of the stack.
-                // We MUST include them as passengers so they are not orphaned from the AST!
-                t_globalReduceCollected[c_idx--] = astNode;
-                debugLog(9999, astNode, 1, 0);
-              } else {
-                foundFirstGrammar = true;
-                t_globalReduceCollected[c_idx--] = astNode;
-                needed--;
-                debugLog(9999, astNode, 0, needed);
-              }
-              curr = curr.prev;
-            }
-            if (curr == null && needed > 0) {
-              debugLog(3, currentState, 0, pos);
-              continue; // Invalid reduction path
-            }
-
-            let origPopCount = popCount;
-            let actualCount = 99999 - c_idx;
-            for (let k = 0; k < actualCount; k++) {
-              t_globalChildNodes[k] = t_globalReduceCollected[c_idx + 1 + k];
-            }
-
-            // 2. Create the Parent Node
-            if (curr) {
-              let totalByteLength: u32 = 0;
-              let firstChildPadding: u32 = 0;
-              if (actualCount > 0) {
-                firstChildPadding = getNodePadding(t_globalChildNodes[0]);
-                for (let k = 0; k < actualCount; k++) {
-                  let cPadding = getNodePadding(t_globalChildNodes[k]);
-                  let cLen = getNodeByteLength(t_globalChildNodes[k]);
-                  if (k == 0)
-                    totalByteLength += cLen; // parent padding absorbs first child padding
-                  else totalByteLength += cPadding + cLen;
-                }
-              }
-              let parentNode = allocNode(lhsSym as u16, firstChildPadding, totalByteLength, head.balanceHash & 0xff);
-
-              // Apply grammar-defined visibility and list flags
-              if (prod_is_list[reduceProd] == 1) {
-                let flags = getNodeFlags(parentNode);
-                setNodeFlags(parentNode, flags | FLAG_IS_LIST);
-              }
-              if (prod_is_invisible[reduceProd] == 1) {
-                let flags = getNodeFlags(parentNode);
-                setNodeFlags(parentNode, flags | FLAG_INVISIBLE);
-              }
-
-              // 3. Link Children into the new Parent
-              if (actualCount > 0) {
-                let isListAppend = false;
-                // List append optimization: if the grammar rule is recursive on the left, flatten it
-                if (
-                  (popCount == 2 || popCount == 3) &&
-                  (actualCount == 2 || actualCount == 3) &&
-                  t_globalChildNodes[0] != 0 &&
-                  prod_is_list[reduceProd] == 1
-                ) {
-                  let leftSym = getNodeType(t_globalChildNodes[0]);
-                  if (leftSym == lhsSym) isListAppend = true;
-                }
-                debugLog(9997, isListAppend ? 1 : 0, 0, 0);
-
-                if (isListAppend) {
-                  parentNode = t_globalChildNodes[0];
-                  for (let i = 1; i < actualCount; i++) {
-                    parentNode = appendToList(
-                      parentNode,
-                      t_globalChildNodes[i],
-                      lhsSym as u16,
-                      currentScannerState,
-                      i == actualCount - 1
-                    );
-                  }
-                } else {
-                  debugLog(777, 999, 999, 999);
-                  let lastChild = 0;
-                  let logicalChildIndex = 0;
-
-                  // Determine if this production rule applies field aliases to its children
-                  let aliasPtr = prod_aliases[reduceProd];
-                  let aliasCount = 0;
-                  if (aliasPtr >= 0) aliasCount = alias_data[aliasPtr];
-
-                  for (let k = 0; k < actualCount; k++) {
-                    let child = t_globalChildNodes[k];
-                    if (child == 0) continue;
-
-                    // Shallow clone the child to avoid modifying shared references in the GLR forest
-                    let clone = cloneNodeShallow(child);
-                    if (k == 0) {
-                      setNodePadding(clone, 0);
-                      debugLog(777, clone, getNodePadding(clone), 0);
-                    }
-
-                    let isError = getNodeType(child) == NODE_TYPE_ERROR;
-                    if (!isError && aliasPtr >= 0) {
-                      // Apply field alias mapping if the grammar defines one for this logical index
-                      for (let a = 0; a < aliasCount; a++) {
-                        let aIndex = alias_data[aliasPtr + 1 + a * 2];
-                        let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
-                        if (aIndex == logicalChildIndex) {
-                          let node = changetype<ASTNode>(clone);
-                          node.type = aSym as u16;
-                          break;
-                        }
-                      }
-                      logicalChildIndex++;
-                    } else if (!isError) {
-                      logicalChildIndex++;
-                    }
-
-                    // Append the clone to the parent's children linked list
-                    if (lastChild == 0) setFirstChild(parentNode, clone);
-                    else setNextSibling(lastChild, clone);
-                    lastChild = clone;
-                    if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
-                      setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
-                    }
-                  }
-                  let pFlags = getNodeFlags(parentNode);
-                  setNodeFlags(parentNode, pFlags);
-                }
-              }
-
-              // 4. State Transition (GOTO lookup)
-              if (curr.state < 0 || curr.state >= goto_offsets.length) {
-                throw new Error("BAD curr.state in REDUCE: " + curr.state.toString());
-              }
-
-              let gOffset = goto_offsets[curr.state];
-              if (gOffset < 0 || gOffset >= goto_data.length) {
-                throw new Error("BAD gOffset: " + gOffset.toString());
-              }
-
-              let gCount = goto_data[gOffset];
-              let nextState = -1;
-              let gIdx = gOffset + 1;
-              for (let k = 0; k < gCount; k++) {
-                // Search the GOTO table for the LHS symbol of the reduction
-                if (goto_data[gIdx++] == lhsSym) {
-                  nextState = goto_data[gIdx++];
-                  break;
-                } else {
-                  gIdx++;
-                }
-              }
-
-
-              // If a valid GOTO transition exists, create a new head
-              if (nextState != -1) {
-                let newHead = allocParseHead(
-                  nextState,
-                  parentNode,
-                  curr,
-                  head.pos,
-                  currentScannerState,
-                  head.errorCost,
-                  head.successfulShifts,
-                  head.balanceHash,
-                  head.consecutiveInsertions,
-                  head.dynamicPrec + prod_dynamic_prec[reduceProd],
-                  head.pendingPadding,
-                  head.errorTail,
-                );
-                let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
-                if (mergeIdx >= 0) {
-                  let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
-                  if (
-                    newHead.errorCost < ah.errorCost ||
-                    (newHead.errorCost == ah.errorCost && newHead.dynamicPrec > ah.dynamicPrec)
-                  ) {
-                    t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
-                  }
-                } else {
-                  pushActiveHead(changetype<u32>(newHead));
-                  registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
-                }
-                anyAction = true;
-              }
-            } else {
-            }
+            processReduceAction(head, target, pos);
+            anyAction = true;
           } else if (type == ACTION_ACCEPT) {
-            debugLog(778, head.state, head.errorCost, head.pos);
-            // Unified accept: walk the GSS to count nodes and extract the AST.
-            // First-wins semantics: once acceptedNode is set, no later accept overrides it.
-            let t_curr: ParseHead | null = head;
-            let t_bytes: u32 = 0;
-            let t_count: u32 = 0;
-            let firstPad: u32 = 0;
-
-            // Count and measure the remaining fragmented nodes in the GSS
-            while (t_curr) {
-              if (t_curr.astNode != 0) {
-                let tNodeType = getNodeType(t_curr.astNode);
-                let tNodeLen = getNodeByteLength(t_curr.astNode);
-                if (tNodeType != TOKEN_EOF && (tNodeLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
-                  t_bytes += getNodePadding(t_curr.astNode) + tNodeLen;
-                  t_count++;
-                  firstPad = getNodePadding(t_curr.astNode); // The last one visited is the oldest node
-                }
-              }
-              t_curr = t_curr.prev;
-            }
-
-            // Compute effective cost with penalties for ghost accepts and position.
-            let effectiveCost: i32 = head.errorCost;
-
-            // Check if this accept parsed any real bytes (excluding padding/EOF).
-            // Walk the GSS and sum only the byteLength of non-EOF nodes.
-            let realBytes: u32 = 0;
-            {
-              let rc: ParseHead | null = head;
-              while (rc) {
-                if (rc.astNode != 0) {
-                  let nType = getNodeType(rc.astNode);
-                  if (nType != TOKEN_EOF) {
-                    realBytes += getNodeByteLength(rc.astNode);
-                  }
-                }
-                rc = rc.prev;
-              }
-            }
-            // Cap realBytes to inputLength: GLR ambiguity can inflate byteLength
-            // beyond the actual input during reductions
-            if (realBytes > inputLength) realBytes = inputLength;
-            // Ghost accepts (zero real bytes) get a massive penalty
-            if (realBytes == 0) {
-              effectiveCost += 10000;
-            }
-            // Penalize skipping bytes before the accepted content.
-            // Weight of 3 per byte ensures that even with heavy trailing error cost,
-            // earlier-in-file parses are strongly preferred.
-            effectiveCost += (firstPad as i32) * 3;
-            debugLog(888, effectiveCost, realBytes as i32, firstPad as i32);
-            debugLog(60010, t_count as i32, effectiveCost, bestAcceptedCost);
-            if (
-              acceptedNode == 0 ||
-              effectiveCost < bestAcceptedCost ||
-              (effectiveCost == bestAcceptedCost && realBytes > bestAcceptedRealBytes) ||
-              (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad < bestAcceptedPad) ||
-              (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad == bestAcceptedPad && t_count < bestAcceptedCount)
-            ) {
-              if (t_count <= 1) {
-                  // Single root node — accept directly
-                  bestAcceptingHead = changetype<u32>(head);
-                  bestAcceptedCost = effectiveCost;
-                  bestAcceptedRealBytes = realBytes;
-                bestAcceptedCount = t_count;
-                bestAcceptedPad = firstPad;
-                lastBestCost = bestAcceptedCost;
-
-                // Find the single real node
-                let singleNode: u32 = 0;
-                let rc: ParseHead | null = head;
-                while (rc) {
-                  if (rc.astNode != 0 && getNodeType(rc.astNode) != TOKEN_EOF) {
-                    singleNode = rc.astNode;
-                    break;
-                  }
-                  rc = rc.prev;
-                }
-
-                if (singleNode != 0) {
-                  acceptedNode = cloneNodeShallow(singleNode);
-                  // Normalize the accepted node's byte length to exactly cover all input.
-                  // GLR ambiguity can inflate byteLength beyond inputLength during reductions,
-                  // while island recovery may leave it shorter. Clamp in both directions.
-                  let accPad = getNodePadding(acceptedNode);
-                  let accLen = getNodeByteLength(acceptedNode);
-                  let expectedLen = inputLength > accPad ? inputLength - accPad : 0;
-                  if (accLen != expectedLen && head.pos >= inputLength) {
-                    setNodeByteLength(acceptedNode, expectedLen);
-                  }
-                } else {
-                  acceptedNode = head.astNode;
-                }
-              } else {
-                // Multiple nodes in GSS — try to find a proper root
-                  bestAcceptingHead = changetype<u32>(head);
-                  bestAcceptedCost = effectiveCost;
-                  bestAcceptedRealBytes = realBytes;
-                bestAcceptedCount = t_count;
-                bestAcceptedPad = firstPad;
-                lastBestCost = bestAcceptedCost;
-
-                let c_idx = t_count - 1;
-
-                // Collect children backwards from the GSS
-                t_curr = head; // Reset — t_curr is null after the counting loop above
-                // Also search for a non-ERROR root node
-                let bestRoot: u32 = 0;
-                let bestRootBytes: u32 = 0;
-                while (t_curr) {
-                  if (t_curr.astNode != 0) {
-                    let cType = getNodeType(t_curr.astNode);
-                    let cLen = getNodeByteLength(t_curr.astNode);
-                    if (cType != TOKEN_EOF && (cLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
-                      t_globalChildren[c_idx--] = t_curr.astNode;
-                      // Track the largest non-ERROR node as the candidate root
-                      if (cType != NODE_TYPE_ERROR && cLen > bestRootBytes) {
-                        bestRoot = t_curr.astNode;
-                        bestRootBytes = cLen;
-                      }
-                    }
-                  }
-                  t_curr = t_curr.prev;
-                }
-
-                if (bestRoot != 0) {
-                  // We found a proper non-ERROR root node (e.g., Program).
-                  // Clone it and attach any ERROR/extra nodes as additional children.
-                  let newRoot = cloneNodeShallow(bestRoot);
-                  let acceptedPad2 = getNodePadding(bestRoot);
-                  let targetLen = t_bytes > acceptedPad2 ? t_bytes - acceptedPad2 : t_bytes;
-                  // Clamp to inputLength: GLR ambiguity can inflate t_bytes beyond the actual input
-                  let maxLen = inputLength > acceptedPad2 ? inputLength - acceptedPad2 : 0;
-                  if (targetLen > maxLen) targetLen = maxLen;
-                  setNodeByteLength(newRoot, targetLen);
-
-                  // Clone the existing child chain of the root
-                  let existChild = getNodeFirstChild(newRoot);
-                  let lastC2: u32 = 0;
-                  let firstCloned: u32 = 0;
-                  let oc = existChild;
-                  while (oc != 0) {
-                    let cloned = cloneNodeShallow(oc);
-                    if (firstCloned == 0) firstCloned = cloned;
-                    if (lastC2 != 0) setNextSibling(lastC2, cloned);
-                    lastC2 = cloned;
-                    oc = getNodeNextSibling(oc);
-                  }
-                  if (firstCloned != 0) setFirstChild(newRoot, firstCloned);
-
-                  let appendedError = false;
-                  // Append non-root collected nodes (ERROR nodes from recovery) as extra children
-                  for (let i: u32 = 0; i < t_count; i++) {
-                    let c = t_globalChildren[i];
-                    if (c == 0 || c == bestRoot) continue;
-                    let clone = cloneNodeShallow(c);
-                    if (lastC2 == 0) { setFirstChild(newRoot, clone); firstCloned = clone; }
-                    else setNextSibling(lastC2, clone);
-                    lastC2 = clone;
-                    if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
-                      appendedError = true;
-                    }
-                  }
-                  if (appendedError) {
-                    setNodeFlags(newRoot, getNodeFlags(newRoot) | FLAG_HAS_ERROR);
-                  }
-                  acceptedNode = newRoot;
-                } else {
-                  let errLen = t_bytes > firstPad ? t_bytes - firstPad : 0;
-                  let errMaxLen = inputLength > firstPad ? inputLength - firstPad : 0;
-                  if (errLen > errMaxLen) errLen = errMaxLen;
-                  let root = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
-
-                  let lastC = 0;
-                  for (let i: u32 = 0; i < t_count; i++) {
-                    let c = t_globalChildren[i];
-                    if (c == 0) continue;
-                    let clone = cloneNodeShallow(c);
-                    if (lastC == 0) setFirstChild(root, clone);
-                    else setNextSibling(lastC, clone);
-                    lastC = clone;
-                  }
-                  acceptedNode = root;
-                }
-              }
-            }
+            processAcceptAction(head);
             anyAction = true;
           }
         }
@@ -2403,354 +2674,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
       // --------------------------------------------------------------------
       // ERROR BRANCH C: Forced Default Reduction
-      // --------------------------------------------------------------------
-      // When the current token doesn't match any lookahead in the action table,
-      // scan for any REDUCE action regardless of lookahead and perform it at
-      // zero additional cost. This is the "default reduction" strategy: it allows
-      // the parser to complete pending reductions (e.g., Main → Identifier) even
-      // when the lookahead is wrong, enabling proper acceptance + trailing error
-      // handling instead of wrapping valid tokens in ERROR nodes.
       {
-        let scanIdx = actionOffset + 1;
-        for (let si = 0; si < count2; si++) {
-          let scanSym = action_data[scanIdx++];
-          let scanActCount = action_data[scanIdx++];
-          for (let sj = 0; sj < scanActCount; sj++) {
-            let scanType = action_data[scanIdx++];
-            let scanTarget = action_data[scanIdx++];
-
-            if (scanType == ACTION_ACCEPT && !reduced) {
-              // Force-accept: the state has an accept action for a different lookahead
-              // (e.g., EOF), but we have trailing garbage. Accept now and let
-              // wrapWithTrailingErrors handle the remaining input.
-              debugLog(778, head.state, head.errorCost, head.pos);
-              let t_curr2: ParseHead | null = head;
-              let t_bytes2: u32 = 0;
-              let t_count2: u32 = 0;
-              let firstPad2: u32 = 0;
-              while (t_curr2) {
-                if (t_curr2.astNode != 0) {
-                  let tNodeType2 = getNodeType(t_curr2.astNode);
-                  let tNodeLen2 = getNodeByteLength(t_curr2.astNode);
-                  if (tNodeType2 != TOKEN_EOF && (tNodeLen2 > 0 || getNodeFirstChild(t_curr2.astNode) != 0)) {
-                    t_bytes2 += getNodePadding(t_curr2.astNode) + tNodeLen2;
-                    t_count2++;
-                    firstPad2 = getNodePadding(t_curr2.astNode);
-                  }
-                }
-                t_curr2 = t_curr2.prev;
-              }
-
-              let realBytes2: u32 = 0;
-              {
-                let rc2: ParseHead | null = head;
-                while (rc2) {
-                  if (rc2.astNode != 0) {
-                    let nType2 = getNodeType(rc2.astNode);
-                    if (nType2 != TOKEN_EOF) {
-                      realBytes2 += getNodeByteLength(rc2.astNode);
-                    }
-                  }
-                  rc2 = rc2.prev;
-                }
-              }
-              let effectiveCost2: i32 = head.errorCost;
-              if (realBytes2 == 0) effectiveCost2 += 10000;
-              effectiveCost2 += (firstPad2 as i32) * 3;
-
-              // HEAVILY penalize unparsed trailing garbage to prevent premature early accepts
-              let trailingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
-              if (trailingBytes > 0) {
-                // By adding a flat 100 penalty + multiplier, we ensure that skipping trailing garbage
-                // is vastly more expensive than paying the local deletion cost of the erroneous tokens.
-                effectiveCost2 += 100 + (trailingBytes as i32) * 2;
-              }
-
-              if (t_count2 <= 1) {
-                let singleNode2: u32 = 0;
-                let rc2: ParseHead | null = head;
-                while (rc2) {
-                  if (rc2.astNode != 0 && getNodeType(rc2.astNode) != TOKEN_EOF) {
-                    singleNode2 = rc2.astNode;
-                    break;
-                  }
-                  rc2 = rc2.prev;
-                }
-                if (singleNode2 != 0) {
-                  if (acceptedNode == 0 || effectiveCost2 < bestAcceptedCost) {
-                    acceptedNode = cloneNodeShallow(singleNode2);
-                    bestAcceptedCost = effectiveCost2;
-                    bestAcceptingHead = changetype<u32>(head);
-                    bestAcceptedCount = t_count2;
-                    bestAcceptedPad = firstPad2;
-                  }
-                }
-              }
-              reduced = true; // prevent further error recovery
-            } else if (scanType == ACTION_REDUCE && !reduced) {
-              // Found a reduce action — perform it as a forced default reduction
-              let reduceProd = scanTarget;
-              if (reduceProd < 0 || reduceProd >= prod_lengths.length) continue;
-
-              let popCount = prod_lengths[reduceProd];
-              let lhsSym = prod_lhs[reduceProd];
-
-              let curr: ParseHead | null = head;
-              let c_idx2 = 99999;
-              let needed = popCount;
-
-              while (needed > 0 && curr != null) {
-                if (c_idx2 <= 0) break;
-                if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
-                  t_globalReduceCollected[c_idx2--] = curr.astNode;
-                } else {
-                  t_globalReduceCollected[c_idx2--] = curr.astNode;
-                  needed--;
-                }
-                curr = curr.prev;
-              }
-              if (curr == null && needed > 0) continue;
-
-              let actualCount: u32 = (99999 - c_idx2) as u32;
-              for (let k: u32 = 0; k < actualCount; k++) {
-                t_globalChildNodes[k] = t_globalReduceCollected[(c_idx2 as u32) + 1 + k];
-              }
-
-              if (curr) {
-                let totalByteLength: u32 = 0;
-                let firstChildPadding: u32 = 0;
-                if (actualCount > 0) {
-                  let fc = t_globalChildNodes[0];
-                  if (fc != 0) firstChildPadding = getNodePadding(fc);
-                }
-                for (let k: u32 = 0; k < actualCount; k++) {
-                  let c = t_globalChildNodes[k];
-                  if (c == 0) continue;
-                  totalByteLength += getNodePadding(c) + getNodeByteLength(c);
-                }
-                totalByteLength -= firstChildPadding;
-
-                let isInvis = prod_is_invisible[reduceProd] == 1;
-                let isList = prod_is_list[reduceProd] == 1;
-                let parentNode: u32;
-
-                if (isInvis && actualCount == 1) {
-                  parentNode = t_globalChildNodes[0];
-                } else {
-                  parentNode = allocNode(
-                    lhsSym as u16,
-                    firstChildPadding,
-                    totalByteLength,
-                    head.balanceHash & 0xff,
-                  );
-                  if (isList) setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
-                  let lastC: u32 = 0;
-                  let appendedError = false;
-                  for (let k: u32 = 0; k < actualCount; k++) {
-                    let c = t_globalChildNodes[k];
-                    if (c == 0) continue;
-                    let clone = cloneNodeShallow(c);
-                    if (k == 0) {
-                      setNodePadding(clone, 0);
-                    }
-                    if (lastC == 0) setFirstChild(parentNode, clone);
-                    else setNextSibling(lastC, clone);
-                    lastC = clone;
-                    if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
-                      appendedError = true;
-                    }
-                  }
-                  if (appendedError) {
-                    setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
-                  }
-                }
-
-                // GOTO lookup
-                let gOffset = goto_offsets[curr.state];
-                let gCount = goto_data[gOffset];
-                let gIdx2 = gOffset + 1;
-                let nextState: i32 = -1;
-                for (let gi = 0; gi < gCount; gi++) {
-                  if (goto_data[gIdx2] == lhsSym) {
-                    nextState = goto_data[gIdx2 + 1];
-                    break;
-                  }
-                  gIdx2 += 2;
-                }
-
-                if (nextState != -1) {
-                  let newHead = allocParseHead(
-                    nextState,
-                    parentNode,
-                    curr,
-                    head.pos,
-                    currentScannerState,
-                    head.errorCost,
-                    head.successfulShifts,
-                    head.balanceHash,
-                    head.consecutiveInsertions,
-                    head.dynamicPrec + prod_dynamic_prec[reduceProd],
-                    head.pendingPadding,
-                    head.errorTail,
-                  );
-                  pushActiveHead(changetype<u32>(newHead));
-                  reduced = true;
-                }
-              }
-            } else if (scanType == ACTION_SHIFT && !reduced && scanSym == TOKEN_EOF) {
-              // Check if the shift target has an ACCEPT action — this handles
-              // the _START → Main • EOF pattern where we need to shift EOF then accept.
-              // With trailing garbage, we can't shift EOF normally, so shortcut to accept.
-              let shiftTarget = scanTarget;
-              if (shiftTarget >= 0 && shiftTarget < action_offsets.length) {
-                let targetOffset = action_offsets[shiftTarget];
-                if (targetOffset >= 0 && targetOffset < action_data.length) {
-                  let targetCount = action_data[targetOffset];
-                  let targetIdx = targetOffset + 1;
-                  for (let ti = 0; ti < targetCount; ti++) {
-                    let tSym = action_data[targetIdx++];
-                    let tActCount = action_data[targetIdx++];
-                    for (let tj = 0; tj < tActCount; tj++) {
-                      let tType = action_data[targetIdx++];
-                      let tTarget = action_data[targetIdx++];
-                      if (tType == ACTION_ACCEPT) {
-                        // Found the ACCEPT in the shift target — force-accept from current head
-
-                        let singleNode3: u32 = 0;
-                        let rc3: ParseHead | null = head;
-                        while (rc3) {
-                          if (rc3.astNode != 0 && getNodeType(rc3.astNode) != TOKEN_EOF) {
-                            let nLen3 = getNodeByteLength(rc3.astNode);
-                            if (nLen3 > 0 || getNodeFirstChild(rc3.astNode) != 0) {
-                              singleNode3 = rc3.astNode;
-                              break;
-                            }
-                          }
-                          rc3 = rc3.prev;
-                        }
-                        if (singleNode3 != 0) {
-                          let effectiveCost3: i32 = head.errorCost;
-                          let trailingBytes3: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
-                          if (trailingBytes3 > 0) {
-                            effectiveCost3 += 100 + (trailingBytes3 as i32) * 2;
-                          }
-                          if (acceptedNode == 0 || effectiveCost3 < bestAcceptedCost) {
-                            acceptedNode = cloneNodeShallow(singleNode3);
-                            bestAcceptedCost = effectiveCost3;
-                            bestAcceptingHead = changetype<u32>(head);
-                            bestAcceptedCount = 1;
-                            bestAcceptedPad = getNodePadding(singleNode3);
-                          }
-                        }
-                        reduced = true;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        reduced = processForcedReduction(head, actionOffset, count2);
       }
 
       // --------------------------------------------------------------------
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
-      // --------------------------------------------------------------------
-      // Avoid keeping too many active heads, which causes exponential time/memory blowup.
-      let activeHeadsTrimCount = activeHeadsCount;
-      if (activeHeadsTrimCount > 0) {
-        // Find the global lowest error cost currently active
-        let bestCost = INFINITE_COST;
-        for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
-          let ah = changetype<ParseHead>(t_activeHeads[i]);
-          if (ah.errorCost < bestCost) bestCost = ah.errorCost;
-        }
-
-        // Primary Culling: Kill any head whose error cost is too far from the best option.
-        // Island recovery heads (at positions ahead of current) get a larger margin since
-        // their costs reflect legitimate recovery penalties, not parsing degradation.
-        let bestPos: u32 = 0;
-        for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
-          let ah = changetype<ParseHead>(t_activeHeads[i]);
-          if (ah.errorCost == bestCost && ah.pos > bestPos) bestPos = ah.pos;
-        }
-        let writeIdx = 0;
-        for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
-          let ah = changetype<ParseHead>(t_activeHeads[i]);
-          // Heads ahead of the best-cost head's position are island recovery heads —
-          // give them a large margin so they aren't killed prematurely.
-          let margin: i32 = ah.pos > bestPos ? 1000 : 15;
-          if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
-            t_activeHeads[writeIdx++] = changetype<u32>(ah);
-          }
-        }
-        activeHeadsCount = writeIdx;
-        activeHeadsTrimCount = activeHeadsCount;
-        debugLog(60020, activeHeadsCount as i32, bestCost, bestAcceptedCost);
-
-        // Normalize error costs so they don't overflow during long panic modes
-        // Clamp to >= 0 to prevent underflow from breaking INFINITE_COST comparisons
-        if (bestCost > 0 && bestCost < INFINITE_COST) {
-          for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
-            let ah = changetype<ParseHead>(t_activeHeads[i]);
-            ah.errorCost = ah.errorCost > bestCost ? ah.errorCost - bestCost : 0;
-          }
-          if (bestAcceptedCost < INFINITE_COST) {
-            bestAcceptedCost = bestAcceptedCost > bestCost ? bestAcceptedCost - bestCost : 0;
-          }
-          if (lastBestCost < INFINITE_COST) {
-            lastBestCost = lastBestCost > bestCost ? lastBestCost - bestCost : 0;
-          }
-        }
-      }
-
-      // Secondary Culling: Hard limit on total concurrent heads
-      if (activeHeadsTrimCount > 64) {
-        // O(H) heapify + top-K extraction, replacing O(K*H) selection sort
-        let heapLen = activeHeadsTrimCount;
-        // Build min-heap by errorCost (ASC), breaking ties by pos (DESC)
-        for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
-          let ci: u32 = hi as u32;
-          while (true) {
-            let smallest = ci;
-            let left = ci * 2 + 1;
-            let right = ci * 2 + 2;
-            if (left < heapLen) {
-              let hL = changetype<ParseHead>(t_activeHeads[left]);
-              let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-              if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
-            }
-            if (right < heapLen) {
-              let hR = changetype<ParseHead>(t_activeHeads[right]);
-              let hS = changetype<ParseHead>(t_activeHeads[smallest]);
-              if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos)) smallest = right;
-            }
-            if (smallest == ci) break;
-            let tmp = t_activeHeads[ci];
-            t_activeHeads[ci] = t_activeHeads[smallest];
-            t_activeHeads[smallest] = tmp;
-            ci = smallest;
-          }
-        }
-        // Extract top MAX_PARALLEL_HEADS via repeated extract-min
-        let sortLimit: u32 = heapLen < MAX_PARALLEL_HEADS ? heapLen : MAX_PARALLEL_HEADS;
-        for (let ei: u32 = 0; ei < sortLimit && heapLen > 1; ei++) {
-          // Swap root (min) to position ei, shrink heap, sift down
-          heapLen--;
-          let tmp = t_activeHeads[ei];
-          // Already in place for ei==0, but swap ensures heap shrinks
-          if (ei < heapLen) {
-            t_activeHeads[ei] = t_activeHeads[ei + 1]; // Move min out
-          }
-          // The extract logic is already correct since the heap root IS the min at position 0
-          // For simplicity with the existing flat array, just keep the partial sort behavior
-          // but use the heap to find the min in O(1) per extraction:
-          // After heapify, element 0 is always the global min.
-          // Swap it to the 'done' partition and re-heapify the remainder.
-        }
-        // Discard the worst heads, keeping only the top limit
-        activeHeadsCount = MAX_PARALLEL_HEADS;
-      }
+      pruneGSS(pos);
     }
   }
   if (acceptedNode != 0) {

@@ -352,18 +352,19 @@ export class LspFacade {
     }
 
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
     let editStart = rangeOffset * 2;
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
 
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      editNewEnd = lenBytes;
       this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed
     }
 
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, lenBytes);
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -391,6 +392,7 @@ export class LspFacade {
     if (this._cachedLineStarts) return this._cachedLineStarts;
     const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
     const lenChars = lenBytes / 2;
+    console.log("getLineStarts: lenBytes=", lenBytes, "lenChars=", lenChars);
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
 
     // First pass: count lines
@@ -527,10 +529,19 @@ export class LspFacade {
       let startPos = this.offsetToPos(startByte, lineStarts);
       let endPos = this.offsetToPos(endByte, lineStarts);
 
-      // Clamp diagnostic ranges to a single line to prevent Monaco UI freezes
+      // Clamp diagnostic ranges to a max of 3 lines to prevent Monaco UI freezes
       // when dealing with unclosed blocks or runaway string literals spanning 100k lines.
-      if (endPos.line > startPos.line) {
-        endPos = { line: startPos.line, character: startPos.character + 1 };
+      const MAX_LINES = 3;
+      const MAX_COLS = 120;
+
+      if (endPos.line > startPos.line + MAX_LINES) {
+        endPos = { line: startPos.line + MAX_LINES, character: 0 };
+      }
+
+      if (endPos.line === startPos.line && endPos.character - startPos.character > MAX_COLS) {
+        endPos = { line: startPos.line, character: startPos.character + MAX_COLS };
+      } else if (endPos.character > MAX_COLS) {
+        endPos = { line: endPos.line, character: MAX_COLS };
       }
 
       diags.push({
@@ -937,7 +948,9 @@ export class LspFacade {
     }
 
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = lenBytes;

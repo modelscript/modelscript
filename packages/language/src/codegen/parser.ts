@@ -97,7 +97,17 @@ export function generateParserTables(
     for (const [sym, acts] of actions.entries()) {
       actionData.push(symToInt.get(sym)!);
       actionData.push(acts.length);
-      for (const act of acts) {
+
+      const sortedActs = [...acts].sort((a, b) => {
+        if (a.type !== 1 || b.type !== 1) return 0; // 1 is ActionType.REDUCE
+        const prodA = grammar.productions.find((p) => p.id === a.target);
+        const prodB = grammar.productions.find((p) => p.id === b.target);
+        const precDiff = (prodB?.dynamicPrec || 0) - (prodA?.dynamicPrec || 0);
+        if (precDiff !== 0) return precDiff;
+        return (b.target || 0) - (a.target || 0);
+      });
+
+      for (const act of sortedActs) {
         actionData.push(act.type);
         actionData.push(act.target || 0);
       }
@@ -147,6 +157,11 @@ export function generateParserTables(
     }
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
+
+  const maxTerminalId = grammar.terminals.size - 1;
+  const sortedSymbols = Array.from({ length: symToInt.size }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
+  sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
+  code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
 
   const syncIds: number[] = [];
   for (const t of syncTokens) {

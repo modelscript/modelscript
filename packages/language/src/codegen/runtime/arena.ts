@@ -640,7 +640,9 @@ export function getNodePadding(ptr: u32): u32 {
 
 export function setNodePadding(ptr: u32, pad: u32): void {
   if (pad > 0x3fff) pad = 0x3fff; // MAX_PADDING
-  changetype<ASTNode>(ptr).paddingLength = pad;
+  let node = changetype<ASTNode>(ptr);
+  node.paddingLength = pad;
+  node.isFatPadding = false;
 }
 
 export function getNodeByteLength(ptr: u32): u32 {

@@ -1,4 +1,3 @@
-
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
@@ -7,6 +6,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
 import { stateCanAccept, cloneNodeShallow, concatLists } from "./parser-loop";
 import { 
   getNodePadding, 
+  setNodePadding,
   getNodeByteLength, 
   setNodeByteLength, 
   getNodeFirstChild, 
@@ -246,8 +246,10 @@ export function recoverUnwindAndMutate(
                   let child = t_globalChildNodes[k];
                   if (child == 0) continue;
                   let clone = cloneNodeShallow(child);
-                  if (lastChild == 0) setFirstChild(errNode, clone);
-                  else setNextSibling(lastChild, clone);
+                  if (lastChild == 0) {
+                setNodePadding(clone, 0);
+                setFirstChild(errNode, clone);
+              } else setNextSibling(lastChild, clone);
                   lastChild = clone;
                 }
 
@@ -261,8 +263,9 @@ export function recoverUnwindAndMutate(
                   let tLen = lexLen;
                   if (tLen == 0) break;
                   let pad = srcLexPos > p ? srcLexPos - p : 0;
+                  if (lastChild == 0) pad = 0; // Parent holds the padding
                   newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
-                  let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+                  let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad as u32, tLen, 0);
                   if (lastChild == 0) setFirstChild(errNode, tNode);
                   else setNextSibling(lastChild, tNode);
                   lastChild = tNode;
@@ -533,7 +536,6 @@ export function recoverIslandMode(
               // stateCanAccept is reduction-aware!
               let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
               let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
-              debugLog(60002, currPop.state, canAcceptTok ? 1 : 0, canAcceptNext ? 1 : 0);
               if (canAcceptTok) {
                 foundTarget = currPop.state;
                 resumePos = searchPos;
@@ -617,8 +619,10 @@ export function recoverIslandMode(
               let child = t_globalChildNodes[k];
               if (child == 0) continue;
               let clone = cloneNodeShallow(child);
-              if (lastChild == 0) setFirstChild(islandLeaf, clone);
-              else setNextSibling(lastChild, clone);
+              if (lastChild == 0) {
+                setNodePadding(clone, 0);
+                setFirstChild(islandLeaf, clone);
+              } else setNextSibling(lastChild, clone);
               lastChild = clone;
             }
 
@@ -642,8 +646,10 @@ export function recoverIslandMode(
 
               let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
-              if (lastChild == 0) setFirstChild(islandLeaf, tNode);
-              else setNextSibling(lastChild, tNode);
+              if (lastChild == 0) {
+                setNodePadding(tNode, 0);
+                setFirstChild(islandLeaf, tNode);
+              } else setNextSibling(lastChild, tNode);
               lastChild = tNode;
 
               p = srcLexPos + tLen;
@@ -665,7 +671,7 @@ export function recoverIslandMode(
               currPop,
               resumePos,
               islandScannerState,
-              islandCost,
+              head.errorCost + 1, // Fix: Use artificially low cost to survive pruneGSS
               0,
               foundBalance,
               0, // consecutiveInsertions
