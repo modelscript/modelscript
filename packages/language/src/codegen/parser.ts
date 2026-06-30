@@ -192,7 +192,6 @@ export function generateParserTables(
     prodIsInvisible.push(p.isInvisible ? 1 : 0);
     prodIsList.push(p.isList ? 1 : 0);
     prodDynamicPrec.push(p.dynamicPrec || 0);
-    prodDynamicPrec.push(p.dynamicPrec || 0);
 
     if (p.aliases && p.aliases.length > 0) {
       prodAliases.push(aliasData.length);

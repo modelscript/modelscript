@@ -140,7 +140,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = enc; }
 
 // Internal decode helpers
-function peekChar(pos: u32): i32 {
+export function peekChar(pos: u32): i32 {
     if (inputEncoding == 0) {
         let b0 = load<u8>(getInputBuffer() + pos);
         if (b0 >= 0xC0) {
@@ -175,7 +175,7 @@ function peekChar(pos: u32): i32 {
     return 0;
 }
 
-function peekCharLen(pos: u32): u32 {
+export function peekCharLen(pos: u32): u32 {
     if (inputEncoding == 0) {
         let b0 = load<u8>(getInputBuffer() + pos);
         if (b0 >= 0xF0) return 4;
@@ -482,7 +482,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   console.log(
     "lexer.ts: regexList size =",
     regexList.length,
-    regexList.map((r) => r.tokenName),
+    regexList.map((r) => r.tokenName + "=" + r.pattern),
   );
 
   if (regexList.length > 0) {

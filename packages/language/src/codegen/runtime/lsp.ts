@@ -224,10 +224,14 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     logInt(isLeaf ? 1 : 0);
 
     if ((flags & FLAG_IS_INSERTED) != 0) {
-      // Inserted ghost nodes are zero-width phantoms from error recovery.
-      // Don't emit diagnostics for them — their squiggles land at whitespace/newline
-      // boundaries and create misleading markers on the wrong line. The actual
-      // garbage tokens inside the ERROR node already get proper squiggles below.
+      let dStart = nodeStart;
+      let dEnd = nodeStart + 2;
+      if (dEnd > inputLength) {
+        dEnd = inputLength;
+        if (dEnd > 0) dStart = dEnd - 2;
+        if (dStart < 0) dStart = 0;
+      }
+      lsp_allocDiagnostic(dStart, dEnd, type, 0);
     } else if (inError && isLeaf && len > 0) {
       logInt(22222);
       // Garbage token or token inside discarded Island Mode block
@@ -315,7 +319,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let isErrorNode = type == 0;
 
     let semOffset = load<i32>(type_semantics + type * 4);
-    if (semOffset != -1 && !inError) {
+    if (semOffset != -1) {
       let numSemantics = load<i32>(type_semantic_data + semOffset * 4);
       for (let i = 0; i < numSemantics; i++) {
         let childIdx = load<i32>(type_semantic_data + ((semOffset + 1 + i * 3) << 2));
@@ -854,7 +858,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
             let cPad = getNodePadding(child);
             let cLen = cPad + getNodeByteLength(child);
             t_lspTraverseStack[stackTop] = child;
-            t_lspOffsetStack[stackTop] = (child == getNodeFirstChild(node)) ? offset : currOffset;
+            t_lspOffsetStack[stackTop] = (child == getNodeFirstChild(current)) ? offset : currOffset;
             stackTop++;
             
             currOffset += cLen;

@@ -14,7 +14,7 @@ import {
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array } from "./array";
 import {
     lexPos, lexLen, srcLexPos, currentScannerState, invokeLexer, is_extra_token, inputLength,
-    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt
+    lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt, peekChar, peekCharLen
 } from "./parser";
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
@@ -145,7 +145,10 @@ function parseLR(): u32 {
   
   updateExpectedTokens();
   token = invokeLexer(pos);
+  logInt(9000);
   logInt(token);
+  logInt(pos);
+  logInt(lexLen);
   while (is_extra_token[token]) {
     pendingPadding += lexLen;
     pos += lexLen;
@@ -157,6 +160,10 @@ function parseLR(): u32 {
     let actionCount = lookupActions(currentState, token);
     
     if (actionCount == 0 || actionCount > 1) {
+      logInt(9001);
+      logInt(currentState);
+      logInt(token);
+      logInt(actionCount);
       transitionToGlr(pos, pendingPadding, currentScannerState);
       return 0;
     }
@@ -1496,8 +1503,9 @@ let bestAcceptedPad: u32 = 0xffffffff;
 
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32): void {
   let newBalance = head.balanceHash;
-  if (lexLen == 1) {
-    let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
+  let charLen = peekCharLen(lexPos);
+  if (lexLen == charLen) {
+    let c = peekChar(lexPos);
     if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
     else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
   }

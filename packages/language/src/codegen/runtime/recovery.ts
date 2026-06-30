@@ -33,7 +33,10 @@ import {
   setCurrentScannerState,
   TOKEN_EOF,
   TOKEN_UNKNOWN,
-  SYMBOL_COUNT
+  SYMBOL_COUNT,
+  peekChar,
+  peekCharLen,
+  inputEncoding
 } from "./parser";
 
 export let errorQueueHead: u32 = 0;
@@ -50,7 +53,6 @@ const CHAR_LBRACKET: u8 = 91;
 const CHAR_RBRACKET: u8 = 93;
 const CHAR_LPAREN: u8 = 40;
 const CHAR_RPAREN: u8 = 41;
-const PENALTY_UNWIND_NODE: i32 = 5;
 const PENALTY_SYNC_TOKEN: i32 = 10;
 
 @inline
@@ -90,12 +92,15 @@ export function recoverUnwindAndMutate(
           // inflated byte lengths on nodes that precede the error.
           let uPos_shared: u32 = unwindCurr.pos;
           let hasScopeBoundary: bool = false;
-          for (let bi: u32 = uPos_shared; bi < head.pos; bi += 2) {
-            let ch = changetype<UnmanagedUint16Array>(getInputBuffer())[bi >> 1];
+          let bi: u32 = uPos_shared;
+          while (bi < head.pos) {
+            let ch = peekChar(bi);
+            let chLen = peekCharLen(bi);
             if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
               hasScopeBoundary = true;
               break;
             }
+            bi += chLen;
           }
           if (hasScopeBoundary) {
             debugLog(60300, unwindDepth, uPos_shared, head.pos);
@@ -188,18 +193,22 @@ export function recoverUnwindAndMutate(
                     }
                     if (ao >= 0 && ao < action_data.length) {
                       let ac = action_data[ao];
-                      if (ao + 1 + ac * 2 <= action_data.length) {
-                        for (let ai: i32 = 0; ai < ac; ai++) {
-                          let sym = action_data[ao + 1 + ai * 2];
-                          if (sym == nextToken || sym == 0) {
-                            let action = action_data[ao + 1 + ai * 2 + 1];
-                            let atype = action & 0x03;
-                            let atarget = action >> 2;
+                      let aidx = ao + 1;
+                      for (let ai: i32 = 0; ai < ac; ai++) {
+                        let sym = action_data[aidx++];
+                        let actCount = action_data[aidx++];
+                        if (sym == nextToken || sym == 0) {
+                          for (let aj: i32 = 0; aj < actCount; aj++) {
+                            let atype = action_data[aidx++];
+                            let atarget = action_data[aidx++];
                             if (atype == ACTION_SHIFT) {
                               shiftTarget = atarget;
                               break;
                             }
                           }
+                          break;
+                        } else {
+                          aidx += actCount * 2;
                         }
                       }
                     }
@@ -326,11 +335,13 @@ export function recoverUnwindAndMutate(
           // absorb inter-scope garbage into the preceding node's byte length.
           // Island mode will handle the garbage correctly instead.
           let skipBranchB = false;
-          if (unwindDepth == 0 && head.pos >= 2) {
+          if (unwindDepth == 0 && head.pos > 0) {
             // Scan backwards past whitespace to find the last significant character
-            let scanBack: u32 = head.pos - 2;
-            while (scanBack >= 2) {
-              let ch = changetype<UnmanagedUint16Array>(getInputBuffer())[scanBack >> 1];
+            let scanBack: u32 = head.pos;
+            while (scanBack > 0) {
+              scanBack -= (inputEncoding == 0 ? 1 : inputEncoding <= 2 ? 2 : 4);
+              if (scanBack == 0) break;
+              let ch = peekChar(scanBack);
               if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {  // not space/tab/LF/CR
                 if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
                   skipBranchB = true;
@@ -338,7 +349,6 @@ export function recoverUnwindAndMutate(
                 debugLog(90000, head.pos, ch, skipBranchB ? 1 : 0);
                 break;
               }
-              scanBack -= 2;
             }
           }
           if (!skipBranchB && head.consecutiveInsertions < 8) {

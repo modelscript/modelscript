@@ -710,7 +710,7 @@ export class LspFacade {
     if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0) return errorRanges;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    for (let i = 0; i < this._lastDiagBinaryLength; i += 3) {
+    for (let i = 0; i < this._lastDiagBinaryLength; i += 4) {
       errorRanges.push({
         start: mem32[(dirPtr >> 2) + i],
         end: mem32[(dirPtr >> 2) + i + 1],
