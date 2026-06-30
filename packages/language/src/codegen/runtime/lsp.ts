@@ -181,6 +181,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   if (astRoot == 0) return lspBinaryLength / 4;
 
+  logInt(77777);
+  logInt(astRoot);
+
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
@@ -214,10 +217,17 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
 
+    logInt(11111);
+    logInt(type);
+    logInt(isErrorNode ? 1 : 0);
+    logInt(inError ? 1 : 0);
+    logInt(isLeaf ? 1 : 0);
+
     if ((flags & FLAG_IS_INSERTED) != 0) {
       // Missing token/rule (ghost node inserted by error recovery)
       lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
     } else if (inError && isLeaf && len > 0) {
+      logInt(22222);
       // Garbage token or token inside discarded Island Mode block
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     }
@@ -243,7 +253,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
       let currOffset = start + pad; // nodeStart
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = isErrorNode ? 0x80000000 : 0;
+      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       
       while (child != 0) {
         let padVal = getNodePadding(child);
@@ -368,7 +378,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = isErrorNode ? 0x80000000 : 0;
+      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
@@ -459,7 +469,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = isErrorNode ? 0x80000000 : 0;
+      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
@@ -552,7 +562,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = isErrorNode ? 0x80000000 : 0;
+      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);

@@ -59,14 +59,23 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   }
 
   let wordRegex: RegExp | null = null;
-  if (grammar.word && grammar.rules[grammar.word]) {
-    const dummy$ = new Proxy(
-      {},
-      {
-        get: (target, prop: string) => ({ type: "SYMBOL", value: prop }),
-      },
-    );
-    let rule = toRule(grammar.rules[grammar.word](dummy$ as any));
+  let wordName: string | null = null;
+
+  if (grammar.word) {
+    const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
+    let wResult = grammar.word;
+    if (typeof grammar.word === "function") wResult = (grammar as any).word(dummy$ as any);
+    const wordRule = toRule(wResult);
+    if (wordRule.type === "SYMBOL") {
+      wordName = wordRule.value as string;
+    } else {
+      wordName = (wordRule as any).name || (wordRule as any).value?.toString();
+    }
+  }
+
+  if (wordName && grammar.rules[wordName]) {
+    const dummy$ = new Proxy({}, { get: (target, prop: string) => ({ type: "SYMBOL", value: prop }) });
+    let rule = toRule(grammar.rules[wordName](dummy$ as any));
     let rType = (rule.type || "").toUpperCase();
     if (rType === "DEF" || rType === "REF") {
       rule =
@@ -88,6 +97,18 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         wordRegex = new RegExp("^(" + patternStr + ")$");
       }
     }
+
+    if (!wordRegex) {
+      console.log("lexer.ts: Falling back to generic wordRegex extraction for", wordName);
+      // Hardcode common identifier patterns if it's a complex rule
+      wordRegex = new RegExp("^([a-zA-Z_][a-zA-Z0-9_]*)$");
+    }
+  }
+
+  // Force IDENT into regexTokens if it's missing so the DFA generates it!
+  if (wordName && !regexTokens.has(wordName)) {
+    // Inject generic word pattern
+    regexTokens.set(wordName, "/[_a-zA-Z][_a-zA-Z0-9]*/");
   }
 
   console.log("lexer.ts: stringTokens size =", stringTokens.size, Array.from(stringTokens.keys()));
@@ -194,12 +215,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
 `;
 
-  lexerCode += `export function lex(pos: u32): i32 {
-`;
-  lexerCode += `  lexLen = 0;
-`;
-  lexerCode += `  lexPos = pos;
-`;
+  lexerCode += `export function getLexLen(): u32 { return lexLen; }\n`;
+  lexerCode += `export function lex(pos: u32): i32 {\n`;
+  lexerCode += `  lexLen = 0;\n`;
+  lexerCode += `  lexPos = pos;\n`;
   lexerCode += `  if (lexPos >= inputLength) { srcLexPos = lexPos; return 1023; } // EOF
 `;
 
@@ -436,7 +455,22 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   for (const [key, val] of regexTokens.entries()) {
     const mappedInt = normalized.symToInt.get(key);
     if (!mappedInt) continue;
-    const safeName = "T_" + mappedInt;
+
+    // FIND THE ORIGINAL SYMBOL NAME!
+    let symName = "";
+    for (const [sym, id] of normalized.symToInt.entries()) {
+      if (id === mappedInt) {
+        symName = sym;
+        break;
+      }
+    }
+
+    let safeName = symName.replace(/[^a-zA-Z0-9]/g, "_");
+    if (symName.startsWith('"') || symName.startsWith("/")) {
+      safeName = "T_" + mappedInt;
+    } else {
+      safeName = safeName.toUpperCase();
+    }
 
     let patternStr = val;
     if (val.startsWith("/") && val.lastIndexOf("/") > 0) {
@@ -444,6 +478,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     }
     regexList.push({ pattern: patternStr, tokenName: safeName });
   }
+
+  console.log(
+    "lexer.ts: regexList size =",
+    regexList.length,
+    regexList.map((r) => r.tokenName),
+  );
 
   if (regexList.length > 0) {
     const dfa = compileRegexToDFA(regexList);
@@ -489,16 +529,19 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     if (hasAcceptingStates) {
       lexerCode += `        lastAcceptingState = dfaState;\n`;
       lexerCode += `        lastAcceptingLen = dfaLexLen;\n`;
+      lexerCode += `        // console.log("Accepted state " + lastAcceptingState.toString() + " len " + lastAcceptingLen.toString());\n`;
       lexerCode += `        break;\n`;
     }
     lexerCode += `    }\n`;
     lexerCode += `  }\n`;
 
+    lexerCode += `  // console.log("Final lastAcceptingState " + lastAcceptingState.toString() + " len " + lastAcceptingLen.toString());\n`;
     lexerCode += `  if (lastAcceptingState !== -1) {\n`;
     lexerCode += `    lexLen = lastAcceptingLen;\n`;
     lexerCode += `    switch(lastAcceptingState) {\n`;
     for (let s = 0; s < dfa.numStates; s++) {
       if (dfa.accepts[s]) {
+        console.log(`lexer.ts: State ${s} accepts`, dfa.accepts[s]);
         const tokenNames = dfa.accepts[s]!;
         lexerCode += `      case ${s}: {\n`;
 
@@ -511,12 +554,18 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         const tokenName = tokenNames[0];
 
         let isWordToken = false;
-        if (grammar.word && keywordTokens.size > 0) {
-          const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
-          const wRule = toRule(grammar.rules[grammar.word](dummy$ as any));
-          const wKey = wRule.value?.toString() || "";
-          const wTokenInt = normalized.symToInt.get(wKey);
-          if ("T_" + wTokenInt === tokenName) isWordToken = true;
+        if (wordName && keywordTokens.size > 0) {
+          if (tokenName === wordName) {
+            isWordToken = true;
+          } else {
+            const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
+            const wRule = toRule(grammar.rules[wordName](dummy$ as any));
+            const wKey = wRule.value?.toString() || "";
+            const wTokenInt = normalized.symToInt.get(wKey);
+            let wTokenStr = "T_" + wTokenInt;
+            if (wKey === wordName) wTokenStr = wordName;
+            if (wTokenStr === tokenName) isWordToken = true;
+          }
         }
 
         if (isWordToken) {
@@ -530,6 +579,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
               lexerCode += `        if (kwMatch && peekChar(cPos) == ${kw.charCodeAt(i)}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
             }
             lexerCode += `        if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
+            lexerCode += `           logInt(33333); logInt(lexLen);\n`;
             lexerCode += `           if (expected_tokens[<u32>SyntaxType.T_${kwTokenInt}] == 1) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `           if (expected_tokens[<u32>SyntaxType.${tokenName}] == 0) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `        }\n`;
@@ -625,10 +675,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     helpers += `}
 `;
   }
-
   lexerCode += `
   lexLen = peekCharLen(lexPos);
   if (lexLen == 0) lexLen = 2; // Fail-safe
+  logInt(7777777); // LOG ERROR TOKEN
+  logInt(lexPos);
+  logInt(lexLen);
   return SyntaxType.ERROR;
 }
 `;

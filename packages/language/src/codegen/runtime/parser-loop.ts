@@ -386,16 +386,16 @@ function acceptCacheSet(key: u64, value: boolean): void {
     let occ = t_acceptCache[slotIdx + 2];
     if (occ == 0 || (t_acceptCache[slotIdx] == (key as u32) && t_acceptCache[slotIdx + 1] == ((key >> 32) as u32))) {
       t_acceptCache[slotIdx] = key as u32;
-      t_acceptCache[slotIdx + 1] = (key >> 32 as u32);
-      t_acceptCache[slotIdx + 2] = 1 | ((value ? 1 : 0 << 1));
+      t_acceptCache[slotIdx + 1] = (key >> 32) as u32;
+      t_acceptCache[slotIdx + 2] = value ? 3 : 1;  // bit0=occupied, bit1=value
       return;
     }
   }
   // All probe slots occupied → evict the first one
   let slotIdx = (idx) * 3;
   t_acceptCache[slotIdx] = key as u32;
-  t_acceptCache[slotIdx + 1] = (key >> 32 as u32);
-  t_acceptCache[slotIdx + 2] = 1 | ((value ? 1 : 0 << 1));
+  t_acceptCache[slotIdx + 1] = (key >> 32) as u32;
+  t_acceptCache[slotIdx + 2] = value ? 3 : 1;  // bit0=occupied, bit1=value
 }
 function acceptCacheClear(): void {
   if (changetype<usize>(t_acceptCache) != 0) {
@@ -422,6 +422,16 @@ export function stateCanAccept(
   if (depth > MAX_LOOKAHEAD_DEPTH) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
 
+  // Cache lookup: only use cache at depth 0 (top-level queries from recovery)
+  // to avoid caching intermediate reduction states that depend on the GSS shape.
+  if (depth == 0 && simCount == 0) {
+    let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
+    let cached = acceptCacheGet(cacheKey);
+    if (cached >= 0) {
+      return cached; // 0 = reject, 1 = accept
+    }
+  }
+
   debugLog(999100, state, tok, depth);
 
   let actionOffset = action_offsets[state];
@@ -443,12 +453,21 @@ export function stateCanAccept(
         let type = action_data[actIdx++];
         let target = action_data[actIdx++];
         if (type == ACTION_SHIFT) {
+          if (depth == 0 && simCount == 0) {
+            let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
+            acceptCacheSet(cacheKey, true);
+          }
           return target + 1;
         }
         if (type == ACTION_ACCEPT) {
+          if (depth == 0 && simCount == 0) {
+            let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
+            acceptCacheSet(cacheKey, true);
+          }
           return 1;
         }
         if (type == ACTION_REDUCE) {
+          debugLog(999101, target, prod_lengths[target], changetype<usize>(head));
           let ruleLen = prod_lengths[target];
           let ruleLHS = prod_lhs[target];
 
@@ -511,6 +530,7 @@ export function stateCanAccept(
           }
 
           if (nextState != -1) {
+            debugLog(999102, topState, ruleLHS, nextState);
             let ns0 = sim0, ns1 = sim1, ns2 = sim2, ns3 = sim3, ns4 = sim4, ns5 = sim5, ns6 = sim6, ns7 = sim7, ns8 = sim8, ns9 = sim9;
             let nextSimCount = newSimCount + 1;
             if (newSimCount == 0) ns0 = nextState;
@@ -528,6 +548,10 @@ export function stateCanAccept(
 
             let res = stateCanAccept(pHead, nextState, tok, depth + 1, nextSimCount, ns0, ns1, ns2, ns3, ns4, ns5, ns6, ns7, ns8, ns9);
             if (res > 0) {
+              if (depth == 0 && simCount == 0) {
+                let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
+                acceptCacheSet(cacheKey, true);
+              }
               return res;
             }
           }
@@ -535,6 +559,12 @@ export function stateCanAccept(
       }
     }
     idx += 2 + actCount * 2;
+  }
+
+  // Cache miss result: store negative result at depth 0
+  if (depth == 0 && simCount == 0) {
+    let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
+    acceptCacheSet(cacheKey, false);
   }
   return 0;
 }
@@ -597,8 +627,52 @@ function sanitizeTree(root: u32): void {
   }
 }
 
+function injectStrandedNodes(acceptedNode: u32, headPtr: u32): void {
+  if (headPtr == 0 || acceptedNode == 0) return;
+  
+  let curr: ParseHead | null = changetype<ParseHead>(headPtr);
+  let c_idx: u32 = 0;
+  
+  while (curr) {
+    if (curr.astNode != 0 && curr.astNode != acceptedNode && getNodeType(curr.astNode) != TOKEN_EOF) {
+      if (c_idx < (MAX_CHILD_NODES as u32)) {
+        t_globalChildNodes[c_idx++] = curr.astNode;
+      }
+    }
+    curr = curr.prev;
+  }
+  
+  if (c_idx == 0) return;
+  
+  let firstChild = getNodeFirstChild(acceptedNode);
+  let lastStranded = 0;
+  let firstStranded = 0;
+  
+  for (let i: i32 = c_idx - 1; i >= 0; i--) {
+    let sNode = t_globalChildNodes[i];
+    let clone = cloneNodeShallow(sNode);
+    if (lastStranded == 0) {
+      firstStranded = clone;
+    } else {
+      setNextSibling(lastStranded, clone);
+    }
+    lastStranded = clone;
+  }
+  
+  if (firstStranded != 0) {
+    let p = getNodePadding(firstStranded);
+    setNodePadding(acceptedNode, p);
+    setNodePadding(firstStranded, 0);
+    setNextSibling(lastStranded, firstChild);
+    setFirstChild(acceptedNode, firstStranded);
+    fixNodeLength(acceptedNode);
+  }
+  debugLog(999303, c_idx, getNodePadding(acceptedNode), getNodeByteLength(acceptedNode));
+}
+
 function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
+  debugLog(999304, nodeSpan, inputLength, 0);
   if (nodeSpan >= inputLength) return acceptedNode;
 
   // There is unparsed input after the accepted node — lex it into an ERROR node
@@ -679,7 +753,7 @@ export function cloneNodeShallow(gc: u32): u32 {
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
   return clone;
 }
-function isPureErrorNode(node: u32): boolean {
+export function isPureErrorNode(node: u32): boolean {
   if (node == 0) return false;
   if (getNodeType(node) != NODE_TYPE_ERROR) return false;
 
@@ -1455,40 +1529,37 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32):
 }
 
 
-function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): void {
+function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolean {
   if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
     throw new Error("BAD reduceProd: " + reduceProd.toString());
   }
 
   let popCount = prod_lengths[reduceProd];
   let lhsSym = prod_lhs[reduceProd];
+  debugLog(999, lhsSym, reduceProd, 0);
 
   let curr: ParseHead | null = head;
   let c_idx = 99999;
   let needed = popCount;
   let foundFirstGrammar = false;
 
-  while ((needed > 0 || (curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode) && !(getNodeFlags(curr.astNode) & FLAG_IS_INSERTED))) && curr != null) {
+  while ((needed > 0 || (curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
     if (c_idx <= 0) break;
     let astNode = curr.astNode;
-    let isInserted = astNode != 0 ? (getNodeFlags(astNode) & FLAG_IS_INSERTED) != 0 : false;
     let isPure = astNode != 0 && isPureErrorNode(astNode);
-    debugLog(9998, astNode, isPure ? 1 : 0, foundFirstGrammar ? 1 : 0);
     
-    if (isPure && !isInserted) {
+    if (isPure) {
       t_globalReduceCollected[c_idx--] = astNode;
-      debugLog(9999, astNode, 1, 0);
     } else {
       foundFirstGrammar = true;
       t_globalReduceCollected[c_idx--] = astNode;
       if (needed > 0) needed--;
-      debugLog(9999, astNode, 0, needed);
     }
     curr = curr.prev;
   }
   if (curr == null && needed > 0) {
     debugLog(3, head.state, 0, pos);
-    return;
+    return false;
   }
 
   let actualCount = 99999 - c_idx;
@@ -1544,7 +1615,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): void {
           );
         }
       } else {
-        debugLog(777, 999, 999, 999);
+
         let lastChild = 0;
         let logicalChildIndex = 0;
 
@@ -1559,7 +1630,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): void {
           let clone = cloneNodeShallow(child);
           if (k == 0) {
             setNodePadding(clone, 0);
-            debugLog(777, clone, getNodePadding(clone), 0);
+
           }
 
           let isError = getNodeType(child) == NODE_TYPE_ERROR;
@@ -1630,13 +1701,18 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): void {
         pushActiveHead(changetype<u32>(newHead));
         registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
       }
+      return true;
+    } else {
+      debugLog(9998, curr.state, lhsSym, gCount);
+      return false;
     }
   }
+  return false;
 }
 
 
 function processAcceptAction(head: ParseHead): void {
-  debugLog(778, head.state, head.errorCost, head.pos);
+
   let t_curr: ParseHead | null = head;
   let t_bytes: u32 = 0;
   let t_count: u32 = 0;
@@ -1817,7 +1893,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
       let scanTarget = action_data[scanIdx++];
 
       if (scanType == ACTION_ACCEPT && !reduced) {
-        debugLog(778, head.state, head.errorCost, head.pos);
+
         let t_curr2: ParseHead | null = head;
         let t_bytes2: u32 = 0;
         let t_count2: u32 = 0;
@@ -1854,7 +1930,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
 
         let trailingBytes: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
         if (trailingBytes > 0) {
-          effectiveCost2 += 100 + (trailingBytes as i32) * 2;
+          effectiveCost2 += 1000 + (trailingBytes as i32) * 15;
         }
 
         if (t_count2 <= 1) {
@@ -2007,7 +2083,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
                     let effectiveCost3: i32 = head.errorCost;
                     let trailingBytes3: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
                     if (trailingBytes3 > 0) {
-                      effectiveCost3 += 100 + (trailingBytes3 as i32) * 2;
+                      effectiveCost3 += 1000 + (trailingBytes3 as i32) * 15;
                     }
                     if (acceptedNode == 0 || effectiveCost3 < bestAcceptedCost) {
                       acceptedNode = cloneNodeShallow(singleNode3);
@@ -2048,6 +2124,7 @@ function pruneGSS(pos: u32): void {
     for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
       let ah = changetype<ParseHead>(t_activeHeads[i]);
       let margin: i32 = ah.pos > bestPos ? 1000 : 15;
+
       if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
         t_activeHeads[writeIdx++] = changetype<u32>(ah);
       }
@@ -2463,6 +2540,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     if (reusedNode != 0) {
       let nodeSym = getNodeType(reusedNode) as i32;
+      debugLog(2, reusedNode, nodeSym, 0);
 
       // Query the GOTO table to determine if this non-terminal can transition from the current state
       let gOffset = goto_offsets[currentState];
@@ -2475,6 +2553,17 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           break;
         } else {
           gIdx++;
+        }
+      }
+
+      // If we found a valid GOTO state, verify that it can accept the UPCOMING token!
+      // If it cannot, shifting this massive reused node would trap the parser immediately before a garbage token,
+      // leading to catastrophic error recovery that swallows the node.
+      if (nextState != -1) {
+        let canAccept = stateCanAccept(head, nextState, token);
+        debugLog(999201, currentState, nextState, canAccept);
+        if (canAccept == 0) {
+          nextState = -1;
         }
       }
 
@@ -2601,8 +2690,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
             processShiftAction(head, target, token, pos);
             anyAction = true;
           } else if (type == ACTION_REDUCE) {
-            processReduceAction(head, target, pos);
-            anyAction = true;
+            if (processReduceAction(head, target, pos)) {
+              anyAction = true;
+            }
           } else if (type == ACTION_ACCEPT) {
             processAcceptAction(head);
             anyAction = true;
@@ -2615,9 +2705,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     if (acceptedNode != 0 && activeHeadsCount == 0) {
-      debugLog(999, acceptedNode, bestAcceptedCost, getNodeByteLength(acceptedNode));
-      debugLog(60011, getNodeType(acceptedNode) as i32, getNodePadding(acceptedNode) as i32, activeHeadsCount as i32);
+      debugLog(999305, acceptedNode, bestAcceptingHead, activeHeadsCount);
       commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
+      injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
       return wrapWithTrailingErrors(acceptedNode);
     }
@@ -2678,14 +2768,16 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         reduced = processForcedReduction(head, actionOffset, count2);
       }
 
-      // --------------------------------------------------------------------
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
       pruneGSS(pos);
     }
   }
+  debugLog(999399, 1, 2, 3);
+  debugLog(999306, acceptedNode, bestDyingHead, 0);
   if (acceptedNode != 0) {
-    debugLog(999, bestAcceptedCost, getNodeByteLength(acceptedNode), 0);
+    debugLog(999305, acceptedNode, bestAcceptingHead, activeHeadsCount);
     commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
+      injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
       return wrapWithTrailingErrors(acceptedNode);
   }
@@ -2700,6 +2792,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     // parse the remaining unconsumed tokens as flat ERROR leaves, and return
     // a single monolithic ERROR root that spans the whole file.
     globalIsCatastrophic = true;
+    debugLog(999302, iterGuard, 0, 0);
 
     let curr: ParseHead | null = changetype<ParseHead>(bestDyingHead);
     commitDiagnostics(bestDyingHead != 0 ? changetype<ParseHead>(bestDyingHead).errorTail : 0);

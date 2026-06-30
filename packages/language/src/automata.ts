@@ -1166,6 +1166,9 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
         }
       }
     }
+    if (accepts.includes("IDENT")) {
+      console.log(`automata.ts: getAccepts found IDENT! accepts =`, accepts);
+    }
     return accepts.length > 0 ? accepts : null;
   }
 

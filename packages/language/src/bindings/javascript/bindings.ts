@@ -364,7 +364,7 @@ export class LspFacade {
       this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed
     }
 
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, lenBytes);
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -1177,24 +1177,24 @@ export class SyntaxNode {
   }
 
   get text(): string {
-    // Convert byte offsets to character indices (UTF-16: 2 bytes per char)
-    return this.tree.sourceCode.substring(this.startIndex / 2, this.endIndex / 2);
+    if (!this.tree.sourceCode) return "";
+    return this.tree.sourceCode.substring(this.startIndex, this.endIndex);
   }
 
   get startIndex(): number {
-    return this._startOffset + this._cachedPad;
+    return (this._startOffset + this._cachedPad) / 2;
   }
 
   get endIndex(): number {
-    return this.startIndex + this._cachedLen;
+    return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
 
   get startPosition(): Point {
-    return this.tree.offsetToPoint(this.startIndex);
+    return this.tree.offsetToPoint(this.startIndex * 2);
   }
 
   get endPosition(): Point {
-    return this.tree.offsetToPoint(this.endIndex);
+    return this.tree.offsetToPoint(this.endIndex * 2);
   }
 
   get children(): SyntaxNode[] {

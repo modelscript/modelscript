@@ -178,12 +178,20 @@ export function generateParserTables(
   const prodAliases: number[] = [];
   const aliasData: number[] = [];
 
+  console.log("StoredDefinition ID:", symToInt.get("StoredDefinition"));
+  console.log("_START ID:", symToInt.get("_START"));
+  console.log("MAX symId:", symToInt.size);
   const sortedProds = [...grammar.productions].sort((a, b) => a.id - b.id);
   for (const p of sortedProds) {
     prodLengths.push(p.right.length);
-    prodLhs.push(symToInt.get(p.left) || 0);
+    const lhs = symToInt.get(p.left);
+    if (lhs === undefined) {
+      console.log("prod_lhs is undefined for:", p.left);
+    }
+    prodLhs.push(lhs || 0);
     prodIsInvisible.push(p.isInvisible ? 1 : 0);
     prodIsList.push(p.isList ? 1 : 0);
+    prodDynamicPrec.push(p.dynamicPrec || 0);
     prodDynamicPrec.push(p.dynamicPrec || 0);
 
     if (p.aliases && p.aliases.length > 0) {
@@ -341,7 +349,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
+  let lspImports = `import { inputLength, logInt, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

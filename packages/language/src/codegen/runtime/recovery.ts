@@ -3,7 +3,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
   NODE_TYPE_ERROR, goto_offsets, goto_data
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, concatLists } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode } from "./parser-loop";
 import { 
   getNodePadding, 
   setNodePadding,
@@ -281,9 +281,6 @@ export function recoverUnwindAndMutate(
                 let weakPenalty: i32 = weakRecovery ? 50 : 0;
 
                 let delHeadCost = head.errorCost + baseDelCost + a1DelCost + weakPenalty;
-                debugLog(9992, unwindDepth, skipCount, delHeadCost);
-                debugLog(9993, head.errorCost, baseDelCost, a1DelCost);
-                debugLog(9994, weakPenalty, 0, 0);
                 // Push the ERROR node as a separate GSS entry above the anchor.
                 // Do NOT use concatLists here — it would corrupt non-list anchor
                 // nodes (e.g., turning a terminal "}" into a list).
@@ -497,12 +494,14 @@ export function recoverIslandMode(
           // expected_tokens bitmap has been cleared, preventing stateCanAccept from finding
           // a valid recovery anchor.
           expected_tokens.fill(1);
-          debugLog(60000, head.state, head.pos, head.consecutiveInsertions);
           let panicScanCount: u32 = 0;
+          let targetScannerState = currentScannerState;
           while (searchPos <= inputLength && panicScanCount < MAX_PANIC_SCAN_TOKENS) {
             panicScanCount++;
             let tok = TOKEN_EOF;
             let tokenLen = 0;
+
+            let stateBeforeLex = currentScannerState;
 
             if (searchPos < inputLength) {
               tok = invokeLexer(searchPos);
@@ -530,19 +529,22 @@ export function recoverIslandMode(
 
             currPop = head;
             let gssDepth: i32 = 0;
-            // Constrain Island Mode to only pop 1 level deep to prevent catastrophic destruction of entire outer blocks.
-            while (currPop != null && gssDepth < 2) {
+            // Remove artificial constraint: allow popping as deep as needed (cost will penalize).
+            while (currPop != null && gssDepth < 20) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
+              debugLog(999103, currPop.state, tok, nextTok);
               let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
               let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
-              if (canAcceptTok) {
+              if (canAcceptTok > 0) {
                 foundTarget = currPop.state;
                 resumePos = searchPos;
+                targetScannerState = stateBeforeLex;
                 break;
-              } else if (canAcceptNext) {
+              } else if (canAcceptNext > 0) {
                 foundTarget = currPop.state;
                 resumePos = nextPos;
+                targetScannerState = savedPanicScannerState;
                 break;
               }
               currPop = currPop.prev; // Pop stack
@@ -561,9 +563,7 @@ export function recoverIslandMode(
           debugLog(60004, foundTarget, panicScanCount as i32, resumePos);
 
           // Step 3: Apply the Panic Mode Recovery
-          // Skip recovery at EOF — wrapping the entire remaining file as ERROR
-          // and accepting with an empty parse is never useful.
-          if (foundTarget != -1 && currPop != null && (resumePos as u32) < inputLength) {
+          if (foundTarget != -1 && currPop != null && (resumePos as u32) <= inputLength) {
             // Calculate the true penalty for Panic Mode
             let poppedDepth = 0;
             let tempPop: ParseHead | null = head;
@@ -590,7 +590,7 @@ export function recoverIslandMode(
             if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
             let islandPad: u32 = 0;
-            let islandScannerState = currentScannerState;
+            let islandScannerState = targetScannerState;
             if (childCount > 0) {
               let firstChildId = t_globalChildNodes[childCount - 1];
               islandPad = getNodePadding(firstChildId);
@@ -607,10 +607,8 @@ export function recoverIslandMode(
               setCurrentScannerState(savedScannerState);
             }
 
-            // Allocate a monolithic ERROR leaf with length 0, we'll update it later
+            // Allocate a monolithic ERROR node container
             let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff);
-            let ptr = islandLeaf as usize;
-            changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
@@ -642,9 +640,13 @@ export function recoverIslandMode(
               if (srcLexPos >= (resumePos as u32)) break;
               let tLen = lexLen;
               if (tLen == 0) break; // prevent infinite loop
+              
+              let insCost = tok == TOKEN_UNKNOWN ? 2 : token_insert_costs[tok];
+              islandCost += (insCost > 0 ? insCost : 3);
+
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
-              let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+              let tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
                 setNodePadding(tNode, 0);
@@ -663,15 +665,13 @@ export function recoverIslandMode(
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.
             // We give it an artificially low errorCost so it ALWAYS survives the
             // primary culling phase against greedy local insertions, ensuring global recovery completes.
-            // We use head.errorCost + 1 to shield it from being instantly culled
-            // by greedy local insertion branches.
             let islandHead = allocParseHead(
               foundTarget,
               islandLeaf,
               currPop,
               resumePos,
               islandScannerState,
-              head.errorCost + 1, // Fix: Use artificially low cost to survive pruneGSS
+              islandCost,
               0,
               foundBalance,
               0, // consecutiveInsertions
