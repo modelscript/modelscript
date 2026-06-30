@@ -224,8 +224,10 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     logInt(isLeaf ? 1 : 0);
 
     if ((flags & FLAG_IS_INSERTED) != 0) {
-      // Missing token/rule (ghost node inserted by error recovery)
-      lsp_allocDiagnostic(nodeStart, nodeStart, type, 0);
+      // Inserted ghost nodes are zero-width phantoms from error recovery.
+      // Don't emit diagnostics for them — their squiggles land at whitespace/newline
+      // boundaries and create misleading markers on the wrong line. The actual
+      // garbage tokens inside the ERROR node already get proper squiggles below.
     } else if (inError && isLeaf && len > 0) {
       logInt(22222);
       // Garbage token or token inside discarded Island Mode block

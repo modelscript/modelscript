@@ -233,7 +233,7 @@ export function recoverUnwindAndMutate(
                   let savedSrcLexPos = srcLexPos;
                   let savedScannerState = currentScannerState;
                   invokeLexer(head.pos);
-                  errPad = lexPos > head.pos ? lexPos - head.pos : 0;
+                  errPad = srcLexPos > head.pos ? srcLexPos - head.pos : 0;
                   setLexLen(savedLexLen);
                   setLexPos(savedLexPos);
                   setSrcLexPos(savedSrcLexPos);
@@ -630,8 +630,30 @@ export function recoverIslandMode(
             let p = head.pos;
             let newTail = currPop != null ? currPop.errorTail : 0;
             
+            // Determine the actual start of the first garbage token by peeking
+            // forward from head.pos. head.pos sits right after the last consumed
+            // token (e.g., after `;` on line 3), so it includes the newline and
+            // indentation whitespace leading to the error tokens on the next line.
+            // Using head.pos directly would create a ghost squiggle on the
+            // previous line. Instead, lex once to get srcLexPos which is the
+            // byte offset of the first real token after whitespace.
+            let diagStart: u32 = head.pos;
             if ((resumePos as u32) > head.pos) {
-              newTail = pushDiagnostic(newTail, head.pos as u32, resumePos as u32);
+              let savedLP = lexPos;
+              let savedSLP = srcLexPos;
+              let savedLL = lexLen;
+              let savedSS = currentScannerState;
+              let peekTok = invokeLexer(head.pos);
+              if (peekTok != -1 && srcLexPos > head.pos) {
+                diagStart = srcLexPos;  // skip whitespace
+              }
+              setLexLen(savedLL);
+              setLexPos(savedLP);
+              setSrcLexPos(savedSLP);
+              setCurrentScannerState(savedSS);
+              if ((resumePos as u32) > diagStart) {
+                newTail = pushDiagnostic(newTail, diagStart, resumePos as u32);
+              }
             }
 
             while (p < (resumePos as u32)) {
@@ -646,6 +668,11 @@ export function recoverIslandMode(
 
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
+              // Stop consuming garbage when crossing a line boundary.
+              // If the whitespace between the last token and this token contains
+              // a newline, the subsequent tokens are on a new line and likely
+              // valid code (e.g., `print velocity;`), not garbage. Absorbing
+              // them into the ERROR node corrupts AST positions and semantic tokens.
               let tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
@@ -657,9 +684,14 @@ export function recoverIslandMode(
               p = srcLexPos + tLen;
             }
 
-            // Set the exact byte length based on the resume position, so the ERROR node absorbs trailing whitespace
-            // and the AST remains perfectly contiguous for LSP offset traversal.
-            let islandByteLen = (resumePos as u32) > currPop.pos + islandPad ? (resumePos as u32) - currPop.pos - islandPad : 0;
+            // Compute the ERROR node's byte length from the actual bytes consumed
+            // by its children (tracked by `p`), NOT from `resumePos`. Using
+            // resumePos would include trailing whitespace/newlines that extend
+            // past the last garbage token, violating the parent-child byte
+            // invariant and corrupting all subsequent sibling offsets in the
+            // outer AST (causing ghost errors and semantic token misalignment).
+            let actualEnd = p > head.pos ? p : head.pos;
+            let islandByteLen = actualEnd > currPop.pos + islandPad ? actualEnd - currPop.pos - islandPad : 0;
             setNodeByteLength(islandLeaf, islandByteLen);
 
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.
