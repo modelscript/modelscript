@@ -234,18 +234,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     executeLints(type, node, nodeStart, nodeEnd);
 
-    // Recurse into children — but skip clean subtrees entirely.
-    // If this node is NOT an error node AND does NOT have FLAG_HAS_ERROR
-    // AND is not inside an error context AND has no FLAG_IS_INSERTED,
-    // then none of its descendants can produce diagnostics, so we can
-    // skip the entire subtree. This reduces traversal from O(tree_size)
-    // to O(error_subtrees) for large files with localized errors.
-    let shouldRecurse = isErrorNode || inError
-      || (flags & FLAG_HAS_ERROR) != 0
-      || (flags & FLAG_IS_INSERTED) != 0;
-
+    // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
-    if (child != 0 && shouldRecurse) {
+    if (child != 0) {
       // Count children first to check capacity
       let childCount: u32 = 0;
       let countChild = child;

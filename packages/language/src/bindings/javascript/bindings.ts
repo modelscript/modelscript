@@ -398,9 +398,10 @@ export class LspFacade {
   /**
    * Incrementally patches the lineStarts array after an edit.
    * Instead of rescanning the entire buffer (O(N)), this:
-   * 1. Removes line starts within the deleted range
-   * 2. Adjusts line starts after the edit by the byte delta
+   * 1. Keeps line starts before the edit unchanged
+   * 2. Removes line starts within the deleted range
    * 3. Inserts new line starts for newlines in the inserted text
+   * 4. Shifts line starts after the edit by the byte delta
    * Complexity: O(edit_size + affected_lines), typically O(1) for single-char edits.
    */
   private _updateLineStarts(
@@ -414,21 +415,30 @@ export class LspFacade {
     const editNewEndByte = (rangeOffset + changeText.length) * 2;
     const delta = editNewEndByte - editOldEndByte;
 
-    // Find the range of lineStarts that fall within [editStartByte, editOldEndByte)
-    let removeStart = old.length;
-    let removeEnd = 0;
+    // Find two split points in the old lineStarts array:
+    // prefixEnd:  first index where old[i] > editStartByte (entries IN or AFTER the edit zone)
+    // suffixStart: first index where old[i] >= editOldEndByte (entries AFTER the deleted range)
+    //
+    // Entries [0, prefixEnd) are unchanged (before the edit).
+    // Entries [prefixEnd, suffixStart) are removed (inside the deleted range).
+    // Entries [suffixStart, old.length) are shifted by delta (after the edit).
+    let prefixEnd = old.length;
+    let suffixStart = old.length;
+
     for (let i = 0; i < old.length; i++) {
-      if (old[i] > editStartByte && old[i] < editOldEndByte) {
-        if (i < removeStart) removeStart = i;
-        removeEnd = i + 1;
-      } else if (old[i] >= editOldEndByte) {
+      if (old[i] > editStartByte && prefixEnd === old.length) {
+        prefixEnd = i;
+      }
+      if (old[i] >= editOldEndByte) {
+        suffixStart = i;
         break;
       }
     }
-    if (removeStart > removeEnd) {
-      removeStart = 0;
-      removeEnd = 0;
-    }
+
+    // If all entries are <= editStartByte, prefixEnd stays at old.length
+    // and suffixStart stays at old.length (nothing to remove or shift).
+    // Ensure prefixEnd <= suffixStart.
+    if (prefixEnd > suffixStart) prefixEnd = suffixStart;
 
     // Count new newlines in changeText
     const newLineStarts: number[] = [];
@@ -439,9 +449,9 @@ export class LspFacade {
     }
 
     // Build the new array:
-    // [0..removeStart) + newLineStarts + [removeEnd..end) with delta adjustment
-    const beforeCount = removeStart;
-    const afterCount = old.length - removeEnd;
+    // [0..prefixEnd) unchanged + newLineStarts + [suffixStart..end) shifted by delta
+    const beforeCount = prefixEnd;
+    const afterCount = old.length - suffixStart;
     const result = new Uint32Array(beforeCount + newLineStarts.length + afterCount);
 
     // Copy unchanged prefix
@@ -449,15 +459,15 @@ export class LspFacade {
       result[i] = old[i];
     }
 
-    // Insert new line starts
+    // Insert new line starts from the inserted text
     for (let i = 0; i < newLineStarts.length; i++) {
       result[beforeCount + i] = newLineStarts[i];
     }
 
     // Copy and shift suffix
-    const suffixStart = beforeCount + newLineStarts.length;
+    const writeStart = beforeCount + newLineStarts.length;
     for (let i = 0; i < afterCount; i++) {
-      result[suffixStart + i] = old[removeEnd + i] + delta;
+      result[writeStart + i] = old[suffixStart + i] + delta;
     }
 
     return result;
