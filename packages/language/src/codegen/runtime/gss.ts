@@ -250,7 +250,7 @@ export function findReusableNode(
         absContentEnd < editStart ||
         absContentStart >= editOldEnd
       ) {
-        let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
+        let isError = nodeType == 0 || (getNodeFlags(cPtr) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0;
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
         let hasErrorPadding = pad > expectedPadding && (pad - expectedPadding) > 0;
         

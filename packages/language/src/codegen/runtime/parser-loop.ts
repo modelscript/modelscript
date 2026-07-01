@@ -848,7 +848,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
 
   let lFlags = getNodeFlags(leftNode);
   let rFlags = getNodeFlags(rightNode);
-  let combinedErrorFlag = (lFlags | rFlags) & FLAG_HAS_ERROR;
+  let combinedErrorFlag = (lFlags | rFlags) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED) ? FLAG_HAS_ERROR : 0;
 
   // If the left node is not already a list, wrap it in an invisible list node
   if ((lFlags & FLAG_IS_LIST) == 0) {
@@ -1102,7 +1102,7 @@ function isMutable(ptr: u32): boolean {
   return ptr >= incrementalStartOffset;
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
-  let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & FLAG_HAS_ERROR;
+  let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED) ? FLAG_HAS_ERROR : 0;
   appendListCalls++;
   _listRecurDepth++;
   if (_listRecurDepth > 50) {
@@ -1652,7 +1652,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
           if (lastChild == 0) setFirstChild(parentNode, clone);
           else setNextSibling(lastChild, clone);
           lastChild = clone;
-          if (isError || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+          if (isError || (getNodeFlags(child) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) {
             setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_HAS_ERROR);
           }
         }
@@ -1848,7 +1848,7 @@ function processAcceptAction(head: ParseHead): void {
             if (lastC2 == 0) firstCloned = clone;
             if (lastC2 != 0) setNextSibling(lastC2, clone);
             lastC2 = clone;
-            if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+            if (getNodeType(c) == 0 || (getNodeFlags(c) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) {
               appendedError = true;
             }
           }
@@ -2022,7 +2022,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
               if (lastC == 0) setFirstChild(parentNode, clone);
               else setNextSibling(lastC, clone);
               lastC = clone;
-              if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+              if (getNodeType(c) == 0 || (getNodeFlags(c) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) {
                 appendedError = true;
               }
             }
