@@ -372,21 +372,26 @@ function acceptCacheGet(key: u64): i32 {
     let occ = t_acceptCache[slotIdx + 2];
     if (occ == 0) return -1; // empty slot → cache miss
     if (t_acceptCache[slotIdx] == (key as u32) && t_acceptCache[slotIdx + 1] == ((key >> 32) as u32)) {
-      return (occ >> 1) & 1; // cache hit → return 0 or 1
+      // Stored value: bit0 = occupied flag, bits 1-31 = actual result value.
+      // Result is the full stateCanAccept return value (target+1 for SHIFT, 1 for ACCEPT, 0 for reject).
+      return (occ >> 1) as i32;
     }
   }
   return -1; // probe limit reached → cache miss
 }
-function acceptCacheSet(key: u64, value: boolean): void {
+function acceptCacheSet(key: u64, result: i32): void {
   if (changetype<usize>(t_acceptCache) == 0) return;
   let idx = acceptCacheHash(key);
+  // Encode: bit0 = occupied flag, bits 1-31 = result value.
+  // result is the full stateCanAccept return value (0 for reject, target+1 for SHIFT, 1 for ACCEPT).
+  let encoded: u32 = ((result as u32) << 1) | 1;
   for (let i: u32 = 0; i < ACCEPT_CACHE_PROBE_LIMIT; i++) {
     let slotIdx = (((idx + i) & ACCEPT_CACHE_MASK)) * 3;
     let occ = t_acceptCache[slotIdx + 2];
     if (occ == 0 || (t_acceptCache[slotIdx] == (key as u32) && t_acceptCache[slotIdx + 1] == ((key >> 32) as u32))) {
       t_acceptCache[slotIdx] = key as u32;
       t_acceptCache[slotIdx + 1] = (key >> 32) as u32;
-      t_acceptCache[slotIdx + 2] = value ? 3 : 1;  // bit0=occupied, bit1=value
+      t_acceptCache[slotIdx + 2] = encoded;
       return;
     }
   }
@@ -394,7 +399,7 @@ function acceptCacheSet(key: u64, value: boolean): void {
   let slotIdx = (idx) * 3;
   t_acceptCache[slotIdx] = key as u32;
   t_acceptCache[slotIdx + 1] = (key >> 32) as u32;
-  t_acceptCache[slotIdx + 2] = value ? 3 : 1;  // bit0=occupied, bit1=value
+  t_acceptCache[slotIdx + 2] = encoded;
 }
 function acceptCacheClear(): void {
   if (changetype<usize>(t_acceptCache) != 0) {
@@ -454,14 +459,14 @@ export function stateCanAccept(
         if (type == ACTION_SHIFT) {
           if (depth == 0 && simCount == 0) {
             let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
-            acceptCacheSet(cacheKey, true);
+            acceptCacheSet(cacheKey, target + 1);
           }
           return target + 1;
         }
         if (type == ACTION_ACCEPT) {
           if (depth == 0 && simCount == 0) {
             let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
-            acceptCacheSet(cacheKey, true);
+            acceptCacheSet(cacheKey, 1);
           }
           return 1;
         }
@@ -549,7 +554,7 @@ export function stateCanAccept(
             if (res > 0) {
               if (depth == 0 && simCount == 0) {
                 let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
-                acceptCacheSet(cacheKey, true);
+                acceptCacheSet(cacheKey, res);
               }
               return res;
             }
@@ -563,7 +568,7 @@ export function stateCanAccept(
   // Cache miss result: store negative result at depth 0
   if (depth == 0 && simCount == 0) {
     let cacheKey: u64 = (state as u64) | ((tok as u64) << 16);
-    acceptCacheSet(cacheKey, false);
+    acceptCacheSet(cacheKey, 0);
   }
   return 0;
 }
