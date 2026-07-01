@@ -869,6 +869,7 @@ self.onmessage = async (e) => {
                 "--sharedMemory",
                 "--maximumMemory", "16384",
                 "--memoryBase", "65536",
+                "--disableWarning",
                 "--outFile", "parser.wasm",
                 "--textFile", "parser.wat"
             ], {

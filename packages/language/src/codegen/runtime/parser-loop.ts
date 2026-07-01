@@ -466,7 +466,7 @@ export function stateCanAccept(
           return 1;
         }
         if (type == ACTION_REDUCE) {
-          debugLog(999101, target, prod_lengths[target], changetype<usize>(head));
+          debugLog(999101, target, prod_lengths[target], changetype<usize>(head) as i32);
           let ruleLen = prod_lengths[target];
           let ruleLHS = prod_lhs[target];
 

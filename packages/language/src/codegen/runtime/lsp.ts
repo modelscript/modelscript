@@ -13,6 +13,7 @@ import {
   ast_hashSpan,
   ASTNode,
   FLAG_IS_INSERTED,
+  FLAG_HAS_ERROR,
 } from "./arena";
 import { errorCount, getErrorEnd, getErrorStart } from "./engine";
 import { inputLength } from "./parser";
