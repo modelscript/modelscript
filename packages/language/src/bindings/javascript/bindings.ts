@@ -296,7 +296,7 @@ export class LspFacade {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
 
     // Incrementally patch lineStarts instead of invalidating.
-    // For a 60K-line file, this avoids an O(N) full rescan on every keystroke.
+    // For large files (200K+ lines), this avoids an O(N) full rescan on every keystroke.
     if (this._cachedLineStarts && rangeLength >= 0 && changeText !== undefined) {
       this._cachedLineStarts = this._updateLineStarts(this._cachedLineStarts, rangeOffset, rangeLength, changeText);
     } else {

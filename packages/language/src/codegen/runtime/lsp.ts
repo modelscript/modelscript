@@ -251,7 +251,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let countChild = child;
       while (countChild != 0) {
         childCount++;
-        if (getNodeType(countChild) == 0) childHasError = true;
+        if ((getNodeFlags(countChild) & FLAG_HAS_ERROR) != 0) childHasError = true;
         countChild = getNodeNextSibling(countChild);
       }
 
