@@ -295,13 +295,8 @@ export class LspFacade {
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
 
-    // Incrementally patch lineStarts instead of invalidating.
-    // For a 60K-line file, this avoids an O(N) full rescan on every keystroke.
-    if (this._cachedLineStarts && rangeLength >= 0 && changeText !== undefined) {
-      this._cachedLineStarts = this._updateLineStarts(this._cachedLineStarts, rangeOffset, rangeLength, changeText);
-    } else {
-      this._cachedLineStarts = null;
-    }
+    // Invalidate cached line starts — they'll be recomputed on next access via getLineStarts().
+    this._cachedLineStarts = null;
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
