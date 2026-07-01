@@ -392,25 +392,16 @@ export class LspFacade {
     if (this._cachedLineStarts) return this._cachedLineStarts;
     const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
     const lenChars = lenBytes / 2;
-    console.log("getLineStarts: lenBytes=", lenBytes, "lenChars=", lenChars);
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
 
-    // First pass: count lines
-    let lineCount = 1;
-    for (let i = 0; i < lenChars; i++) {
-      if (textBuffer[i] === 10) lineCount++;
-    }
-
-    // Second pass: fill array
-    const lineStarts = new Uint32Array(lineCount);
-    lineStarts[0] = 0;
-    let lineIdx = 1;
+    const starts: number[] = [0];
     for (let i = 0; i < lenChars; i++) {
       if (textBuffer[i] === 10) {
-        lineStarts[lineIdx++] = (i + 1) * 2;
+        starts.push((i + 1) * 2);
       }
     }
 
+    const lineStarts = new Uint32Array(starts);
     this._cachedLineStarts = lineStarts;
     return lineStarts;
   }
@@ -475,10 +466,6 @@ export class LspFacade {
             }
 
             let syntaxNode: SyntaxNode | null = null;
-            console.log(
-              `[DEBUG Proxy] nodePtr=${nodePtr}, getChildByFieldId exists:`,
-              !!this.exports.getChildByFieldId,
-            );
             if (nodePtr > 0 && this.exports.getChildByFieldId) {
               const typeFlags = memory[nodePtr / 4];
               const typeId = typeFlags & 0x03ff;
@@ -505,12 +492,9 @@ export class LspFacade {
               {},
               {
                 get: (target, prop: string) => {
-                  console.log(`[DEBUG Proxy] accessing prop: ${prop}, syntaxNode is null?`, !syntaxNode);
                   if (prop === "text") return chars;
                   if (!syntaxNode) return "";
-                  const val = syntaxNode.childText(prop);
-                  console.log(`[DEBUG Proxy] resolved ${prop} to: "${val}"`);
-                  return val;
+                  return syntaxNode.childText(prop);
                 },
               },
             );
@@ -526,6 +510,7 @@ export class LspFacade {
         }
       }
 
+      const lineStarts = this.getLineStarts();
       let startPos = this.offsetToPos(startByte, lineStarts);
       let endPos = this.offsetToPos(endByte, lineStarts);
 
@@ -573,8 +558,8 @@ export class LspFacade {
           const next = diags[j];
           if (
             next.message === "Syntax Error" &&
-            next.range.start.line === current.range.start.line &&
-            Math.abs(next.range.start.character - current.range.start.character) <= 1
+            (next as any)._startByte >= (current as any)._startByte &&
+            (next as any)._startByte - (current as any)._endByte <= 500
           ) {
             // Reconstruct the bad text if possible
             const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
@@ -599,7 +584,9 @@ export class LspFacade {
               message: `${current.message} but got ${gotText}`,
               severity: Math.max(current.severity, next.severity),
               code: current.code,
-            });
+              _startByte: next._startByte,
+              _endByte: next._endByte,
+            } as any);
             diags.splice(j, 1);
             merged = true;
             break;

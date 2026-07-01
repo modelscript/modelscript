@@ -704,10 +704,7 @@ import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMI
 export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID };
 
 export function lsp_setInputLength(len: u32): void {
-  logInt(99999);
-  logInt(len);
   setInputLength(len);
-  logInt(inputLength);
 }
 export function lsp_setInputEncoding(encoding: u8): void {
   setInputEncoding(encoding);

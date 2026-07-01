@@ -246,8 +246,15 @@ export function resetGeneration(gen: u8): void {
 export function ensureInputBuffer(size: u32): usize {
   // Allow an extra 64 bytes of leading overhead so the usable region starts at
   // a cache-line-aligned offset, keeping metadata out of the hot input path.
-  if (size + 64 > S().currentInputBufferSize) {
-    S().currentInputBufferSize = size + 64;
+  let required = size + 64;
+  if (required > S().currentInputBufferSize) {
+    let newCap = S().currentInputBufferSize;
+    if (newCap == 0) newCap = 4 * 1024 * 1024; // fallback to 4MB just in case
+    while (newCap < required) newCap *= 2;
+    
+    // We intentionally don't free the old buffer since atomicChunkAlloc pointer alignment 
+    // makes it unsafe for heap.free(). Exponential growth limits leaked memory to ~2N.
+    S().currentInputBufferSize = newCap;
     S().arenaBuffer = atomicChunkAlloc(S().currentInputBufferSize);
   }
   return S().arenaBuffer + 64;

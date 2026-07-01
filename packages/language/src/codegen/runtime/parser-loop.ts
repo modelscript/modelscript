@@ -145,10 +145,6 @@ function parseLR(): u32 {
   
   updateExpectedTokens();
   token = invokeLexer(pos);
-  logInt(9000);
-  logInt(token);
-  logInt(pos);
-  logInt(lexLen);
   while (is_extra_token[token]) {
     pendingPadding += lexLen;
     pos += lexLen;
@@ -160,10 +156,6 @@ function parseLR(): u32 {
     let actionCount = lookupActions(currentState, token);
     
     if (actionCount == 0 || actionCount > 1) {
-      logInt(9001);
-      logInt(currentState);
-      logInt(token);
-      logInt(actionCount);
       transitionToGlr(pos, pendingPadding, currentScannerState);
       return 0;
     }

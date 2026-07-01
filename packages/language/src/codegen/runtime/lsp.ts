@@ -181,9 +181,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   if (astRoot == 0) return lspBinaryLength / 4;
 
-  logInt(77777);
-  logInt(astRoot);
-
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
@@ -192,6 +189,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   stackTop++;
 
   while (stackTop > 0) {
+    if (lspBinaryLength >= 1000) {
+      break;
+    }
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
@@ -217,12 +217,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
 
-    logInt(11111);
-    logInt(type);
-    logInt(isErrorNode ? 1 : 0);
-    logInt(inError ? 1 : 0);
-    logInt(isLeaf ? 1 : 0);
-
     if ((flags & FLAG_IS_INSERTED) != 0) {
       let dStart = nodeStart;
       let dEnd = nodeStart + 2;
@@ -233,7 +227,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       }
       lsp_allocDiagnostic(dStart, dEnd, type, 0);
     } else if (inError && isLeaf && len > 0) {
-      logInt(22222);
       // Garbage token or token inside discarded Island Mode block
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     }
