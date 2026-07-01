@@ -53,7 +53,7 @@ const CHAR_LBRACKET: u8 = 91;
 const CHAR_RBRACKET: u8 = 93;
 const CHAR_LPAREN: u8 = 40;
 const CHAR_RPAREN: u8 = 41;
-const PENALTY_SYNC_TOKEN: i32 = 10;
+const PENALTY_SYNC_TOKEN: i32 = 50;
 
 @inline
 function getInsertCost(tok: i32): i32 {
@@ -84,28 +84,13 @@ export function recoverUnwindAndMutate(
           let recBalance = unwindCurr.balanceHash;
           let recPrec = unwindCurr.dynamicPrec;
 
-          // Hard-stop: never unwind past scope-closing tokens.
-          // If the dropped byte range [unwindCurr.pos, head.pos) contains a
-          // '}', ')' or ']', the recovery has crossed a scope boundary.
-          // Breaking here forces island mode to handle inter-block garbage,
-          // preventing the Unwind/Mutate branches from creating heads with
-          // inflated byte lengths on nodes that precede the error.
-          let uPos_shared: u32 = unwindCurr.pos;
-          let hasScopeBoundary: bool = false;
-          let bi: u32 = uPos_shared;
-          while (bi < head.pos) {
-            let ch = peekChar(bi);
-            let chLen = peekCharLen(bi);
-            if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
-              hasScopeBoundary = true;
-              break;
-            }
-            bi += chLen;
-          }
-          if (hasScopeBoundary) {
-            debugLog(60300, unwindDepth, uPos_shared, head.pos);
-            break;
-          }
+          // Note: The scope boundary check that previously prevented unwinding
+          // past }/)/] has been removed. It was scanning [unwindCurr.pos, head.pos)
+          // which looks backward into already-parsed input. After a valid reduction
+          // like `scope {}`, the `}` was inside this range despite being part of a
+          // successfully consumed production, causing ALL structural recovery to be
+          // aborted at depth 1. The PENALTY_UNWIND_NODE cost (500 per depth level)
+          // is sufficient to naturally prevent excessively deep unwinds.
 
           // ------------------------------------------------------------
           // Branch A: Deletion (Skip Token)

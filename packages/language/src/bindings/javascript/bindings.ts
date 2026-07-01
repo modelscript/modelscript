@@ -295,13 +295,9 @@ export class LspFacade {
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
 
-    // Incrementally patch lineStarts instead of invalidating.
-    // For large files (200K+ lines), this avoids an O(N) full rescan on every keystroke.
-    if (this._cachedLineStarts && rangeLength >= 0 && changeText !== undefined) {
-      this._cachedLineStarts = this._updateLineStarts(this._cachedLineStarts, rangeOffset, rangeLength, changeText);
-    } else {
-      this._cachedLineStarts = null;
-    }
+    // Invalidate cached line starts on every edit.
+    // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
+    this._cachedLineStarts = null;
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
@@ -643,7 +639,7 @@ export class LspFacade {
           if (
             next.message === "Syntax Error" &&
             (next as any)._startByte >= (current as any)._startByte &&
-            (next as any)._startByte - (current as any)._endByte <= 500
+            (next as any)._startByte - (current as any)._endByte <= 5
           ) {
             // Reconstruct the bad text if possible
             const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
@@ -664,12 +660,12 @@ export class LspFacade {
             }
 
             mergedDiags.push({
-              range: next.range, // Use the syntax error's range since it covers the bad token
+              range: current.range, // Use the Expected token's range — that's where the user should look
               message: `${current.message} but got ${gotText}`,
               severity: Math.max(current.severity, next.severity),
               code: current.code,
-              _startByte: next._startByte,
-              _endByte: next._endByte,
+              _startByte: (current as any)._startByte,
+              _endByte: (current as any)._endByte,
             } as any);
             diags.splice(j, 1);
             merged = true;

@@ -1487,7 +1487,7 @@ let furthestDyingPos: u32 = 0;
 let bestDyingHead: u32 = 0;
 let bestAcceptingHead: u32 = 0;
 let acceptedNode: u32 = 0;
-let bestAcceptedCost: i32 = INFINITE_COST;
+let bestAcceptedCost: i32 = 999999; // = INFINITE_COST (literal to avoid ASC forward-ref)
 let bestAcceptedRealBytes: u32 = 0;
 let bestAcceptedCount: u32 = 0xffffffff;
 let bestAcceptedPad: u32 = 0xffffffff;
@@ -2083,7 +2083,14 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
                     let effectiveCost3: i32 = head.errorCost;
                     let trailingBytes3: u32 = inputLength > head.pos ? inputLength - head.pos : 0;
                     if (trailingBytes3 > 0) {
-                      effectiveCost3 += 1000 + (trailingBytes3 as i32) * 15;
+                      let nonWsCount: u32 = 0;
+                      for (let i: u32 = head.pos; i < inputLength; i++) {
+                        let ch = peekChar(i);
+                        if (ch != 32 && ch != 9 && ch != 10 && ch != 13) nonWsCount++;
+                      }
+                      if (nonWsCount > 0) {
+                        effectiveCost3 += 1000 + (nonWsCount as i32) * 15;
+                      }
                     }
                     if (acceptedNode == 0 || effectiveCost3 < bestAcceptedCost) {
                       acceptedNode = cloneNodeShallow(singleNode3);
@@ -2357,41 +2364,45 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
               ci = smallest;
             }
           }
-          // Extract top-keepCount elements from the heap into positions [heapStart, heapStart+keepCount)
-          for (let ei: u32 = 0; ei < keepCount && heapLen > 1; ei++) {
-            // Root of heap is the best candidate; swap it to the extracted region
-            let extracted = heapStart + ei;
-            if (ei > 0) {
-              // Move heap root to extracted position
-              let tmp = t_activeHeads[(heapStart + ei)];
-              t_activeHeads[extracted] = t_activeHeads[heapStart];
-              // Shrink heap: move last element to root and sift down
-              t_activeHeads[heapStart] = t_activeHeads[heapStart + heapLen - 1];
-              t_activeHeads[(heapStart + heapLen - 1)] = tmp;
-              heapLen--;
-              let ci: u32 = 0;
-              while (true) {
-                let smallest = ci;
-                let left = ci * 2 + 1;
-                let right = ci * 2 + 2;
-                if (left < heapLen) {
-                  let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
-                  let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                  if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
-                }
-                if (right < heapLen) {
-                  let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
-                  let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                  if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos))
-                    smallest = right;
-                }
-                if (smallest == ci) break;
-                let t2 = t_activeHeads[heapStart + ci];
-                t_activeHeads[heapStart + ci] = t_activeHeads[heapStart + smallest];
-                t_activeHeads[(heapStart + smallest)] = t2;
-                ci = smallest;
+          // Extract top-keepCount elements from the heap into a temporary array
+          let extracted = new Array<u32>(keepCount);
+          for (let ei: u32 = 0; ei < keepCount && heapLen > 0; ei++) {
+            // The root of the heap is the smallest element
+            extracted[ei] = t_activeHeads[heapStart];
+            
+            // Move the last element to the root and shrink the heap
+            let lastIdx = heapStart + heapLen - 1;
+            t_activeHeads[heapStart] = t_activeHeads[lastIdx];
+            heapLen--;
+            
+            // Sift down the new root
+            let ci: u32 = 0;
+            while (true) {
+              let smallest = ci;
+              let left = ci * 2 + 1;
+              let right = ci * 2 + 2;
+              if (left < heapLen) {
+                let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
+                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
+                if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
               }
+              if (right < heapLen) {
+                let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
+                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
+                if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos))
+                  smallest = right;
+              }
+              if (smallest == ci) break;
+              let t2 = t_activeHeads[heapStart + ci];
+              t_activeHeads[heapStart + ci] = t_activeHeads[heapStart + smallest];
+              t_activeHeads[(heapStart + smallest)] = t2;
+              ci = smallest;
             }
+          }
+          
+          // Copy the extracted elements back to the active heads array
+          for (let ei: u32 = 0; ei < keepCount; ei++) {
+            t_activeHeads[heapStart + ei] = extracted[ei];
           }
         }
         activeHeadsCount =

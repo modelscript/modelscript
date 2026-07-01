@@ -144,7 +144,7 @@ export const LOOP_MULTIPLIER_LIMIT: u32 = 100;
 export const MAX_PANIC_SCAN_TOKENS: u32 = 200;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;
-export const PENALTY_SYNC_TOKEN: i32 = 5;
+export const PENALTY_SYNC_TOKEN: i32 = 50;
 
 // --- Merge Hash Index ---
 // Fixed-size hash table for O(1) GLR merge lookups, replacing O(H) linear scans.
