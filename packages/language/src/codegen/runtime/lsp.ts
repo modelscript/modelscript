@@ -196,8 +196,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x7FFFFFFF;
+    let start = offsetStackVal & 0x3FFFFFFF;
     let inError = (offsetStackVal >>> 31) == 1;
+    let hasErrorSibling = (offsetStackVal & 0x40000000) != 0;
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -219,14 +220,21 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let isLeaf = firstChild == 0;
 
     if ((flags & FLAG_IS_INSERTED) != 0) {
-      let dStart = nodeStart;
-      let dEnd = nodeStart + 2;
-      if (dEnd > inputLength) {
-        dEnd = inputLength;
-        if (dEnd > 0) dStart = dEnd - 2;
-        if (dStart < 0) dStart = 0;
+      // Inserted ghost nodes are zero-width phantoms from error recovery.
+      // Only emit a "missing" diagnostic if the ghost has NO ERROR siblings —
+      // meaning it's a genuine missing token (e.g., `let x = ;`).
+      // If there IS an ERROR sibling, the ghost is a recovery artifact caused
+      // by nearby garbage tokens and would create a misleading marker.
+      if (!hasErrorSibling) {
+        let dStart = nodeStart;
+        let dEnd = nodeStart + 2;
+        if (dEnd > inputLength) {
+          dEnd = inputLength;
+          if (dEnd > 0) dStart = dEnd - 2;
+          if (dStart < 0) dStart = 0;
+        }
+        lsp_allocDiagnostic(dStart, dEnd, type, 0);
       }
-      lsp_allocDiagnostic(dStart, dEnd, type, 0);
     } else if (inError && isLeaf && len > 0) {
       // Garbage token or token inside discarded Island Mode block
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
@@ -237,11 +245,13 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
     if (child != 0) {
-      // Count children first to check capacity
+      // Count children and check for ERROR siblings in a single pass
       let childCount: u32 = 0;
+      let childHasError: boolean = false;
       let countChild = child;
       while (countChild != 0) {
         childCount++;
+        if (getNodeType(countChild) == 0) childHasError = true;
         countChild = getNodeNextSibling(countChild);
       }
 
@@ -253,13 +263,14 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
       let currOffset = start + pad; // nodeStart
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
+      let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
+      let siblingErrorBit: u32 = childHasError ? 0x40000000 : 0;
       
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit;
+        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit;
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);

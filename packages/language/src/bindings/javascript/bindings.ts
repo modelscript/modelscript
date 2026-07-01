@@ -295,8 +295,13 @@ export class LspFacade {
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
 
-    // Invalidate cached line starts — they'll be recomputed on next access via getLineStarts().
-    this._cachedLineStarts = null;
+    // Incrementally patch lineStarts instead of invalidating.
+    // For a 60K-line file, this avoids an O(N) full rescan on every keystroke.
+    if (this._cachedLineStarts && rangeLength >= 0 && changeText !== undefined) {
+      this._cachedLineStarts = this._updateLineStarts(this._cachedLineStarts, rangeOffset, rangeLength, changeText);
+    } else {
+      this._cachedLineStarts = null;
+    }
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
@@ -412,7 +417,7 @@ export class LspFacade {
 
     // Find two split points in the old lineStarts array:
     // prefixEnd:  first index where old[i] > editStartByte (entries IN or AFTER the edit zone)
-    // suffixStart: first index where old[i] >= editOldEndByte (entries AFTER the deleted range)
+    // suffixStart: first index where old[i] > editOldEndByte (entries AFTER the deleted range)
     //
     // Entries [0, prefixEnd) are unchanged (before the edit).
     // Entries [prefixEnd, suffixStart) are removed (inside the deleted range).
@@ -424,7 +429,7 @@ export class LspFacade {
       if (old[i] > editStartByte && prefixEnd === old.length) {
         prefixEnd = i;
       }
-      if (old[i] >= editOldEndByte) {
+      if (old[i] > editOldEndByte) {
         suffixStart = i;
         break;
       }
