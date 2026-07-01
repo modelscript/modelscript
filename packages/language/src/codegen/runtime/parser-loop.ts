@@ -2123,20 +2123,7 @@ function pruneGSS(pos: u32): void {
     let writeIdx = 0;
     for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
       let ah = changetype<ParseHead>(t_activeHeads[i]);
-      let margin: i32 = 15;
-      if (ah.pos > bestPos) {
-        // Heads ahead of the best-cost head get a generous margin
-        margin = 1000;
-      } else if (bestPos > ah.pos) {
-        // Heads lagging behind the best position get a tighter margin
-        // proportional to how far behind they are. A head 100+ bytes
-        // behind is almost certainly trapped in a garbage zone that
-        // island mode has already jumped past.
-        let lag = bestPos - ah.pos;
-        if (lag > 100) margin = 0;
-        else if (lag > 40) margin = 5;
-        else margin = 15;
-      }
+      let margin: i32 = ah.pos > bestPos ? 1000 : 15;
 
       if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
         t_activeHeads[writeIdx++] = changetype<u32>(ah);
@@ -2753,13 +2740,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           strictlyBetterExists = true;
           break;
         }
-        // Aggressive pruning: if an active head (e.g., from island mode)
-        // has jumped 50+ bytes ahead with comparable cost, this head is
-        // trapped in a garbage zone and recovery would only waste iterations.
-        if (ah.errorCost <= head.errorCost && ah.pos > pos + 50) {
-          strictlyBetterExists = true;
-          break;
-        }
+
       }
       if (strictlyBetterExists) continue;
 
