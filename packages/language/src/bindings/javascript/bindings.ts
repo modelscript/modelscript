@@ -293,9 +293,15 @@ export class LspFacade {
   }
 
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
-    console.log("Called JS parseIncremental", newTotalLength);
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
-    this._cachedLineStarts = null; // Invalidate cached line starts on edit
+
+    // Incrementally patch lineStarts instead of invalidating.
+    // For a 60K-line file, this avoids an O(N) full rescan on every keystroke.
+    if (this._cachedLineStarts && rangeLength >= 0 && changeText !== undefined) {
+      this._cachedLineStarts = this._updateLineStarts(this._cachedLineStarts, rangeOffset, rangeLength, changeText);
+    } else {
+      this._cachedLineStarts = null;
+    }
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
@@ -309,6 +315,7 @@ export class LspFacade {
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
       if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
+      this._cachedLineStarts = new Uint32Array([0]);
       return this.lastAstRoot;
     }
 
@@ -386,6 +393,74 @@ export class LspFacade {
     }
 
     return this.lastAstRoot;
+  }
+
+  /**
+   * Incrementally patches the lineStarts array after an edit.
+   * Instead of rescanning the entire buffer (O(N)), this:
+   * 1. Removes line starts within the deleted range
+   * 2. Adjusts line starts after the edit by the byte delta
+   * 3. Inserts new line starts for newlines in the inserted text
+   * Complexity: O(edit_size + affected_lines), typically O(1) for single-char edits.
+   */
+  private _updateLineStarts(
+    old: Uint32Array,
+    rangeOffset: number,
+    rangeLength: number,
+    changeText: string,
+  ): Uint32Array {
+    const editStartByte = rangeOffset * 2;
+    const editOldEndByte = (rangeOffset + rangeLength) * 2;
+    const editNewEndByte = (rangeOffset + changeText.length) * 2;
+    const delta = editNewEndByte - editOldEndByte;
+
+    // Find the range of lineStarts that fall within [editStartByte, editOldEndByte)
+    let removeStart = old.length;
+    let removeEnd = 0;
+    for (let i = 0; i < old.length; i++) {
+      if (old[i] > editStartByte && old[i] < editOldEndByte) {
+        if (i < removeStart) removeStart = i;
+        removeEnd = i + 1;
+      } else if (old[i] >= editOldEndByte) {
+        break;
+      }
+    }
+    if (removeStart > removeEnd) {
+      removeStart = 0;
+      removeEnd = 0;
+    }
+
+    // Count new newlines in changeText
+    const newLineStarts: number[] = [];
+    for (let i = 0; i < changeText.length; i++) {
+      if (changeText.charCodeAt(i) === 10) {
+        newLineStarts.push((rangeOffset + i + 1) * 2);
+      }
+    }
+
+    // Build the new array:
+    // [0..removeStart) + newLineStarts + [removeEnd..end) with delta adjustment
+    const beforeCount = removeStart;
+    const afterCount = old.length - removeEnd;
+    const result = new Uint32Array(beforeCount + newLineStarts.length + afterCount);
+
+    // Copy unchanged prefix
+    for (let i = 0; i < beforeCount; i++) {
+      result[i] = old[i];
+    }
+
+    // Insert new line starts
+    for (let i = 0; i < newLineStarts.length; i++) {
+      result[beforeCount + i] = newLineStarts[i];
+    }
+
+    // Copy and shift suffix
+    const suffixStart = beforeCount + newLineStarts.length;
+    for (let i = 0; i < afterCount; i++) {
+      result[suffixStart + i] = old[removeEnd + i] + delta;
+    }
+
+    return result;
   }
 
   public getLineStarts(): Uint32Array {
@@ -510,7 +585,6 @@ export class LspFacade {
         }
       }
 
-      const lineStarts = this.getLineStarts();
       let startPos = this.offsetToPos(startByte, lineStarts);
       let endPos = this.offsetToPos(endByte, lineStarts);
 
@@ -917,8 +991,6 @@ export class LspFacade {
   }
 
   parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
-    console.log("Called JS parse(text)", text.length, "setInputLength:", !!this.exports.setInputLength);
-    console.log(Object.keys(this.exports).join(", "));
     if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
