@@ -214,6 +214,23 @@ export class ChunkedArray<T> {
       this.length = count;
     }
   }
+
+  /**
+   * Bulk-copies elements from the ChunkedArray to a flat unmanaged memory buffer.
+   * Useful for exporting chunked data to JS via a contiguous array pointer.
+   * @param destPtr The memory address of the flat destination array.
+   */
+  @inline
+  public copyToFlat(destPtr: usize): void {
+    if (this.length == 0) return;
+    
+    let chunks = (this.length + CHUNK_SIZE() - 1) >> CHUNK_BITS();
+    for (let i: u32 = 0; i < chunks; i++) {
+      let srcChunk = load<usize>(this.directory + i * sizeof<usize>());
+      let elementsInChunk = (i == chunks - 1) ? (this.length - (i << CHUNK_BITS())) : CHUNK_SIZE();
+      memory.copy(destPtr + i * CHUNK_SIZE() * sizeof<T>(), srcChunk, elementsInChunk * sizeof<T>());
+    }
+  }
 }
 
 @unmanaged
