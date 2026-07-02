@@ -646,15 +646,30 @@ export function recoverIslandMode(
               setLexPos(savedLP);
               setSrcLexPos(savedSLP);
               setCurrentScannerState(savedSS);
-              if ((resumePos as u32) > diagStart) {
-                newTail = pushDiagnostic(newTail, diagStart, resumePos as u32);
-              }
             }
 
             while (p < (resumePos as u32)) {
               let tok = invokeLexer(p);
               if (tok == -1) break;
               if (srcLexPos >= (resumePos as u32)) break;
+
+              // Stop consuming garbage when crossing a line boundary.
+              // If the whitespace between the last token and this token contains
+              // a newline, the subsequent tokens are on a new line and likely
+              // valid code (e.g., `print velocity;`), not garbage. Absorbing
+              // them into the ERROR node corrupts AST positions and semantic tokens.
+              let hasNewline = false;
+              let checkP = p;
+              while (checkP < srcLexPos) {
+                let ch = peekChar(checkP);
+                if (ch == 10 || ch == 13) {
+                  hasNewline = true;
+                  break;
+                }
+                checkP += peekCharLen(checkP);
+              }
+              if (hasNewline) break;
+
               let tLen = lexLen;
               if (tLen == 0) break; // prevent infinite loop
               
@@ -663,11 +678,6 @@ export function recoverIslandMode(
 
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
-              // Stop consuming garbage when crossing a line boundary.
-              // If the whitespace between the last token and this token contains
-              // a newline, the subsequent tokens are on a new line and likely
-              // valid code (e.g., `print velocity;`), not garbage. Absorbing
-              // them into the ERROR node corrupts AST positions and semantic tokens.
               let tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
@@ -679,14 +689,22 @@ export function recoverIslandMode(
               p = srcLexPos + tLen;
             }
 
-            // Compute the ERROR node's byte length from the actual bytes consumed
-            // by its children (tracked by `p`), NOT from `resumePos`. Using
-            // resumePos would include trailing whitespace/newlines that extend
-            // past the last garbage token, violating the parent-child byte
-            // invariant and corrupting all subsequent sibling offsets in the
-            // outer AST (causing ghost errors and semantic token misalignment).
+            // Emit a diagnostic covering ONLY the actual garbage tokens,
+            // not the trailing whitespace/newlines that follow them.
             let actualEnd = p > head.pos ? p : head.pos;
-            let islandByteLen = actualEnd > currPop.pos + islandPad ? actualEnd - currPop.pos - islandPad : 0;
+            if (actualEnd > diagStart) {
+              newTail = pushDiagnostic(newTail, diagStart, actualEnd);
+            }
+
+            // The ERROR node's byte length MUST cover all bytes from its
+            // start up to the resume position (where the parser picks back
+            // up). The parser resumes at `resumePos` and the next token's
+            // padding is computed relative to that position. If we used
+            // `actualEnd` (end of last garbage token) instead, there would
+            // be a gap of uncovered bytes (trailing whitespace/newlines
+            // between the error tokens and the resume point) that no node
+            // accounts for, causing all subsequent sibling offsets to drift.
+            let islandByteLen = (resumePos as u32) > currPop.pos + islandPad ? (resumePos as u32) - currPop.pos - islandPad : 0;
             setNodeByteLength(islandLeaf, islandByteLen);
 
             // Branch the GSS from the recovery anchor, shifting the new ERROR node.

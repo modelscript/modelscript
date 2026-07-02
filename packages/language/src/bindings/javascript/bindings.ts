@@ -268,6 +268,7 @@ export class LspFacade {
   private lastAstRoot: number = 0;
   private _cachedLineStarts: Uint32Array | null = null;
   private _childTailCache = new Map<number, number>();
+  private currentInputLength: number = 0;
 
   constructor(wasmMemoryOrInstance: any, exports?: any) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
@@ -299,6 +300,7 @@ export class LspFacade {
     // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
     this._cachedLineStarts = null;
     this._childTailCache.clear(); // Invalidate tail pointers on edit
+    this.currentInputLength = newTotalLength;
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
 
@@ -517,8 +519,8 @@ export class LspFacade {
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
     for (let i = 0; i < numElements * 4; i += 4) {
-      const startByte = memory[(dirPtr >> 2) + i];
-      const endByte = memory[(dirPtr >> 2) + i + 1];
+      let startByte = memory[(dirPtr >> 2) + i];
+      let endByte = memory[(dirPtr >> 2) + i + 1];
       const lintId = memory[(dirPtr >> 2) + i + 2];
       const nodePtr = memory[(dirPtr >> 2) + i + 3];
 
@@ -587,6 +589,44 @@ export class LspFacade {
 
           if (LINT_CODES[lintId.toString()] !== undefined) {
             codeStr = LINT_CODES[lintId.toString()];
+          }
+        }
+      }
+
+      if (typeof msg === "string") {
+        const lenChars = this.currentInputLength;
+        if (lenChars > 0 && this.exports.getInputBuffer) {
+          const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+          let peek = startByte / 2;
+          while (peek < lenChars) {
+            let c = textBuffer[peek];
+            if (c === 32 || c === 9 || c === 10 || c === 13) {
+              peek++;
+            } else {
+              break;
+            }
+          }
+          if (peek < lenChars) {
+            let endPeek = peek;
+            while (endPeek < lenChars) {
+              let c = textBuffer[endPeek];
+              // Stop at whitespace or common punctuation (; { })
+              if (c === 32 || c === 9 || c === 10 || c === 13 || c === 59 || c === 123 || c === 125) {
+                break;
+              }
+              endPeek++;
+            }
+            startByte = peek * 2;
+
+            // Only update endByte if it's an insertion error (0 width) or we want to clamp to a single token.
+            // For Syntax Error (which spans multiple tokens), we should preserve its original endByte,
+            // unless its endByte is less than startByte.
+            if (msg.startsWith("Expected '") || endByte <= startByte) {
+              endByte = endPeek > peek ? endPeek * 2 : (peek + 1) * 2;
+            } else {
+              // Ensure we don't extend past the original endByte if we shifted startByte
+              if (endByte < startByte) endByte = startByte + 2;
+            }
           }
         }
       }
@@ -660,7 +700,7 @@ export class LspFacade {
             }
 
             mergedDiags.push({
-              range: current.range, // Use the Expected token's range — that's where the user should look
+              range: next.range, // Use the garbage token's range — that's the token they typed wrong
               message: `${current.message} but got ${gotText}`,
               severity: Math.max(current.severity, next.severity),
               code: current.code,

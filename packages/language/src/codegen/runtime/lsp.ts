@@ -14,6 +14,7 @@ import {
   ASTNode,
   FLAG_IS_INSERTED,
   FLAG_HAS_ERROR,
+  FLAG_INVISIBLE,
 } from "./arena";
 import { errorCount, getErrorEnd, getErrorStart } from "./engine";
 import { inputLength } from "./parser";
@@ -172,8 +173,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   lspBinaryLength = 0;
   lspVisitedCount = 0;
-  lastDiagStart = 0xffffffff;
-  lastDiagEnd = 0xffffffff;
 
   // Note: Engine-level syntax errors (from errorCount/errorQueue) are no longer iterated here.
   // The recovery algorithms (Branch A1, Branch B, Island Mode) all correctly encode their
@@ -196,7 +195,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x3FFFFFFF;
+    let start = offsetStackVal & 0x1FFFFFFF;
     let inError = (offsetStackVal >>> 31) == 1;
     let hasErrorSibling = (offsetStackVal & 0x40000000) != 0;
 
@@ -219,24 +218,28 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
 
+    let hasInsertedSibling = (offsetStackVal & 0x20000000) != 0;
+
     if ((flags & FLAG_IS_INSERTED) != 0) {
       // Inserted ghost nodes are zero-width phantoms from error recovery.
-      // Only emit a "missing" diagnostic if the ghost has NO ERROR siblings —
-      // meaning it's a genuine missing token (e.g., `let x = ;`).
-      // If there IS an ERROR sibling, the ghost is a recovery artifact caused
-      // by nearby garbage tokens and would create a misleading marker.
-      if (!hasErrorSibling) {
-        let dStart = nodeStart;
-        let dEnd = nodeStart + 2;
-        if (dEnd > inputLength) {
-          dEnd = inputLength;
-          if (dEnd > 0) dStart = dEnd - 2;
-          if (dStart < 0) dStart = 0;
-        }
-        lsp_allocDiagnostic(dStart, dEnd, type, 0);
+      // We always emit a diagnostic for them so the user knows what was expected,
+      // and so the JS-side merging logic can combine it with adjacent garbage tokens.
+      let dStart = nodeStart;
+      let dEnd = nodeStart + 2;
+      if (dEnd > inputLength) {
+        dEnd = inputLength;
+        if (dEnd > 0) dStart = dEnd - 2;
+        if (dStart < 0) dStart = 0;
       }
+      lsp_allocDiagnostic(dStart, dEnd, type, 0);
     } else if (inError && isLeaf && len > 0) {
       // Garbage token or token inside discarded Island Mode block
+      lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+    } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode) {
+      // Real token consumed by Branch A1 recovery into a recovered grammar
+      // node (e.g., an 'a' token inside a Usage with inserted ghost 'print').
+      // This token is structurally invalid and needs a squiggle even though
+      // it's not inside an ERROR node.
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     }
 
@@ -245,13 +248,16 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
     if (child != 0) {
-      // Count children and check for ERROR siblings in a single pass
+      // Count children and check for ERROR / INSERTED siblings in a single pass
       let childCount: u32 = 0;
       let childHasError: boolean = false;
+      let childHasInserted: boolean = false;
       let countChild = child;
       while (countChild != 0) {
         childCount++;
-        if ((getNodeFlags(countChild) & FLAG_HAS_ERROR) != 0) childHasError = true;
+        let cFlags = getNodeFlags(countChild);
+        if ((cFlags & FLAG_HAS_ERROR) != 0) childHasError = true;
+        if ((cFlags & FLAG_IS_INSERTED) != 0) childHasInserted = true;
         countChild = getNodeNextSibling(countChild);
       }
 
@@ -265,12 +271,13 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let writeIdx = stackTop + childCount - 1;
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
       let siblingErrorBit: u32 = childHasError ? 0x40000000 : 0;
+      let insertedBit: u32 = childHasInserted ? 0x20000000 : 0;
       
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit;
+        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit | insertedBit;
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
@@ -323,7 +330,18 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let type = getNodeType(node);
     let isErrorNode = type == 0;
 
-    let semOffset = load<i32>(type_semantics + type * 4);
+    // Skip semantic token emission for:
+    // 1. ERROR nodes (type == 0) — no valid grammar structure
+    // 2. Nodes inside error subtrees (inError) — unreliable offsets
+    // 3. Nodes with FLAG_HAS_ERROR — contain error recovery artifacts
+    // 4. Nodes with any FLAG_IS_INSERTED child — Branch A1 recovery
+    //    inserted ghost tokens that shift child positions incorrectly
+    let hasError = (flags & FLAG_HAS_ERROR) != 0;
+    
+    let semOffset: i32 = -1;
+    if (!isErrorNode && !inError) {
+      semOffset = load<i32>(type_semantics + type * 4);
+    }
     if (semOffset != -1) {
       let numSemantics = load<i32>(type_semantic_data + semOffset * 4);
       for (let i = 0; i < numSemantics; i++) {
@@ -335,11 +353,21 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         let childCount = 0;
         let targetChild: u32 = 0;
         let currOffset = start + pad;
-        let childOffset = 0;
+        let childOffset: u32 = 0;
 
       while (child != 0) {
           let cPad = getNodePadding(child);
-          if (getNodeType(child) != 0 /* NODE_TYPE_ERROR */) {
+          let cType = getNodeType(child);
+          let cFlags = getNodeFlags(child);
+          let cLen = getNodeByteLength(child);
+          // Skip children that don't correspond to grammar symbols:
+          // - ERROR nodes (type == 0)
+          // - Invisible internal nodes (list boundaries, _START, etc.)
+          // - Inserted ghost nodes (zero-length phantoms from recovery)
+          let isSkippable = cType == 0
+            || (cFlags & FLAG_INVISIBLE) != 0
+            || (cFlags & FLAG_IS_INSERTED) != 0;
+          if (!isSkippable) {
             if (childCount == childIdx) {
               targetChild = child;
               childOffset = currOffset + cPad;
@@ -347,7 +375,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
             }
             childCount++;
           }
-          currOffset += cPad + getNodeByteLength(child);
+          currOffset += cPad + cLen;
           child = getNodeNextSibling(child);
         }
 
@@ -365,6 +393,13 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
               lspBinaryCapacity = newCapacity;
             }
 
+            // Clamp offset + length to inputLength to prevent out-of-bounds tokens
+            // that would cause Monaco to reject the entire semantic tokens response
+            if (childOffset + cLen > inputLength) {
+              if (childOffset >= inputLength) continue; // completely out of bounds
+              cLen = inputLength - childOffset;
+            }
+            debugLog(888801, childOffset, cLen, tokenTypeId);
             t_lspBinaryBuffer[lspBinaryLength++] = childOffset;
             t_lspBinaryBuffer[lspBinaryLength++] = cLen;
             t_lspBinaryBuffer[lspBinaryLength++] = tokenTypeId;
@@ -389,7 +424,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
+      let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);

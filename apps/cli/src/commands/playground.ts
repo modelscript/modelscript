@@ -1043,7 +1043,7 @@ self.addEventListener('message', async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) { /* no-op */ } },
+                engine: { debugLog: function(cat, v1, v2, v3) { if (cat === 888801) console.log("[SEM]", "offset=" + v1, "len=" + v2, "type=" + v3); } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},
@@ -1241,6 +1241,11 @@ self.addEventListener('message', async (e) => {
             const tokenType = tokensArray[baseIdx + 2];
             const tokenModifiers = tokensArray[baseIdx + 3];
             
+            // Skip tokens with offsets past the end of the source text
+            // (can happen when ERROR node byte lengths are inflated during recovery)
+            if (offset >= lineStarts[lineStarts.length - 1] + 10000) continue;
+            if (length === 0) continue;
+            
             let line = 0;
             let low = 0;
             let high = lineStarts.length - 1;
@@ -1254,7 +1259,16 @@ self.addEventListener('message', async (e) => {
                 }
             }
             const charOffset = (offset - lineStarts[line]) / 2;
-            const charLength = length / 2;
+            let charLength = length / 2;
+            
+            // Clamp token length to not extend past the end of the current line
+            // (prevents Monaco's "end character > model.getLineLength" error)
+            if (line + 1 < lineStarts.length) {
+                const lineEndChar = (lineStarts[line + 1] - lineStarts[line]) / 2;
+                if (charOffset + charLength > lineEndChar) {
+                    charLength = Math.max(1, lineEndChar - charOffset);
+                }
+            }
             
             const deltaLine = line - prevLine;
             const deltaChar = deltaLine === 0 ? charOffset - prevChar : charOffset;
