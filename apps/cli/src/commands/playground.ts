@@ -1014,7 +1014,7 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     patchInt32[patchOffset++] = children ? children.length : 0;
     if (children) {
         for (let i = 0; i < children.length; i++) {
-            patchInt32[patchOffset++] = children[i];
+            patchInt32[patchOffset++] = children[i].ptr;
         }
     }
 }
