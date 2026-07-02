@@ -742,7 +742,7 @@ scope {
                 const nodes = [];
                 const visited = new Set();
                 
-                const flatten = (ptr, depth, parentOffset, isFirstChild, parentField) => {
+                const flatten = (ptr, depth, parentOffset, parentField) => {
                     if (nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
                         nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
@@ -753,22 +753,20 @@ scope {
                     const node = nodeMap.current.get(ptr);
                     if (!node) return parentOffset;
                     
-                    const currentOffset = isFirstChild ? parentOffset : parentOffset + (node.pad || 0);
+                    const currentOffset = parentOffset + (node.pad || 0);
                     const isError = node.typeName === "ERROR";
                     const isGhost = node.len === 0 && !isError;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
                     
                     let childOffset = currentOffset;
-                    let isFirst = true;
                     for (const childPtr of node.children || []) {
-                        childOffset = flatten(childPtr, depth + 1, childOffset, isFirst, null);
-                        isFirst = false;
+                        childOffset = flatten(childPtr, depth + 1, childOffset, null);
                     }
                     return currentOffset + (node.len || 0);
                 };
                 
-                if (rootId) flatten(rootId, 0, 0, false, null);
+                if (rootId) flatten(rootId, 0, 0, null);
                 return nodes;
             }, [updateTick, rootId]);
 
@@ -1014,7 +1012,7 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     patchInt32[patchOffset++] = children ? children.length : 0;
     if (children) {
         for (let i = 0; i < children.length; i++) {
-            patchInt32[patchOffset++] = children[i].ptr;
+            patchInt32[patchOffset++] = children[i];
         }
     }
 }
@@ -1064,7 +1062,7 @@ function triggerDiagnostics(changes = null) {
             buffer: transferBuffer, 
             rootId: globalAstRoot, 
             diagnostics: rawDiags,
-            lineStarts: lineStarts,
+            lineStarts: Array.from(lineStarts),
             generationId: currentGenerationId
         }, [transferBuffer]);
         

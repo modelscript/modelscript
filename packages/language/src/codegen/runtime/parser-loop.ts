@@ -1633,8 +1633,9 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
   let c_idx = 99999;
   let needed = popCount;
   let foundFirstGrammar = false;
+  let isList = prod_is_list[reduceProd] == 1;
 
-  while ((needed > 0 || (curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
+  while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
     if (c_idx <= 0) break;
     let astNode = curr.astNode;
     let isPure = astNode != 0 && isPureErrorNode(astNode);

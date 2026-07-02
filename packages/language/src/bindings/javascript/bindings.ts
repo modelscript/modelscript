@@ -579,7 +579,7 @@ export class LspFacade {
             if (nodePtr > 0 && this.exports.getChildByFieldId) {
               const typeFlags = memory[nodePtr / 4];
               const typeId = typeFlags & 0x03ff;
-              const pad = typeFlags >>> 18;
+              const pad = typeFlags >>> 19;
               const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
               const dummyTree = {
                 sourceCode: {
@@ -874,7 +874,7 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 18;
+      const rawPad = typeFlags >>> 19;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -972,7 +972,7 @@ export class LspFacade {
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
-      const rawPad = typeFlags >>> 18;
+      const rawPad = typeFlags >>> 19;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -1200,7 +1200,7 @@ export class LspFacade {
         let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 18;
+        const rawPad = typeFlags >>> 19;
         const isFat = (envHashPadding >>> 23) & 1;
         const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
@@ -1241,7 +1241,7 @@ export class LspFacade {
           let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
           if (typeName.startsWith("T_")) typeName = typeName.substring(2);
           const envHashPadding = mem32[(newPtr + 4) / 4];
-          const rawPad = typeFlags >>> 18;
+          const rawPad = typeFlags >>> 19;
           const isFat = (envHashPadding >>> 23) & 1;
           const pad =
             isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
@@ -1278,7 +1278,7 @@ export class LspFacade {
       let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(newPtr + 4) / 4];
-      const rawPad = typeFlags >>> 18;
+      const rawPad = typeFlags >>> 19;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -1379,7 +1379,7 @@ export class SyntaxNode {
         const typeId = typeFlags & 0x03ff;
         const name = SYNTAX_NAMES[typeId] || `node_${typeId}`;
         const envHashPadding = mem32[(childPtr + 4) / 4];
-        const rawPad = typeFlags >>> 18;
+        const rawPad = typeFlags >>> 19;
         const isFat = (envHashPadding >>> 23) & 1;
         const pad =
           isFat && this.tree.facade.exports.getFatPaddingPtr
@@ -1583,7 +1583,7 @@ export class Tree {
     const typeFlags = this.mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
     const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
-    const rawPad = typeFlags >>> 18;
+    const rawPad = typeFlags >>> 19;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr

@@ -318,7 +318,8 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           // - Invisible internal nodes (list boundaries, _START, etc.)
           // - Inserted ghost nodes (zero-length phantoms from recovery)
           let isSkippable = cType == 0
-            || (cFlags & FLAG_INVISIBLE) != 0;
+            || (cFlags & FLAG_INVISIBLE) != 0
+            || (cFlags & FLAG_IS_INSERTED) != 0;
           if (!isSkippable) {
             if (childCount == childIdx) {
               targetChild = child;
