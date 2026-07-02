@@ -109,23 +109,25 @@ function lsp_clearVisited(): void {
   }
   t_lspVisitedNodes.clear();
 }
-}
 
 /**
- * Grows the traverse and offset stacks to at least `required` capacity.
- * Copies existing data from [0, stackTop) into the new buffers.
+ * Extracts and serializes all syntax and grammar diagnostics into a flat `u32` buffer.
+ * Traverses the AST looking for injected error nodes and missing ghost nodes.
+ * @param astRoot The root node pointer of the parsed tree.
+ * @returns The number of `u32` records inside `t_lspBinaryBuffer` (4 u32s per diagnostic).
  */
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
-
 
   // Note: Engine-level syntax errors (from errorCount/errorQueue) are no longer iterated here.
   // The recovery algorithms (Branch A1, Branch B, Island Mode) all correctly encode their
   // errors into the AST (as NODE_TYPE_ERROR or zero-length inserted tokens).
   // Relying solely on the AST traversal prevents duplicate diagnostic reporting.
 
-  if (astRoot == 0) flushBinaryBuffer();
-  return t_lspBinaryBuffer.length / 4;
+  if (astRoot == 0) {
+    flushBinaryBuffer();
+    return 0;
+  }
 
   globalAstRoot = astRoot;
 
@@ -644,9 +646,6 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
       while (c != 0) { childCount++; c = getNodeNextSibling(c);
         isFirst_c = false; }
          
-         
-         }
-         
          // Push in reverse
          currOffset = offset;
          let writeIdx = stackTop + childCount - 1;
@@ -757,19 +756,6 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
          // Push children in reverse order so they are processed left-to-right
          // We can do this with a secondary loop or just traverse, order doesn't matter for references
       while (child != 0) {
-            if (stackTop >= lspTraverseCapacity) {
-               lspTraverseCapacity *= 2;
-               let oldTrav = t_lspTraverseStack;
-               let oldOff = t_lspOffsetStack;
-               t_lspTraverseStack = changetype<UnmanagedUint32Array>(heap.alloc(lspTraverseCapacity * 4));
-               t_lspOffsetStack = changetype<UnmanagedUint32Array>(heap.alloc(lspTraverseCapacity * 4));
-               memory.copy(changetype<usize>(t_lspTraverseStack), changetype<usize>(oldTrav), stackTop * 4);
-               memory.copy(changetype<usize>(t_lspOffsetStack), changetype<usize>(oldOff), stackTop * 4);
-               if (changetype<usize>(oldTrav) != 0) {
-                 heap.free(changetype<usize>(oldTrav));
-                 heap.free(changetype<usize>(oldOff));
-               }
-            }
             let cPad = getNodePadding(child);
             let cLen = cPad + getNodeByteLength(child);
             t_lspTraverseStack[stackTop] = child;
