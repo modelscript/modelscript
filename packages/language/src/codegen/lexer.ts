@@ -678,9 +678,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   lexerCode += `
   lexLen = peekCharLen(lexPos);
   if (lexLen == 0) lexLen = 2; // Fail-safe
-  logInt(7777777); // LOG ERROR TOKEN
-  logInt(lexPos);
-  logInt(lexLen);
   return SyntaxType.ERROR;
 }
 `;

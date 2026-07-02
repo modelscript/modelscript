@@ -248,8 +248,15 @@ export const FIELD_NAMES: Record<string, number> =
 
 export interface AstChangeListener {
   onNodeRetained(ptr: number): void;
-  onNodeInserted(ptr: number, typeId: number, typeName: string, pad: number, len: number, children: number[]): void;
   onNodeDeleted(ptr: number): void;
+  onNodeInserted(
+    ptr: number,
+    typeId: number,
+    typeName: string,
+    pad: number,
+    len: number,
+    children: { ptr: number; field: string | null }[],
+  ): void;
   onNodeUpdated(
     newPtr: number,
     oldPtr: number,
@@ -257,7 +264,7 @@ export interface AstChangeListener {
     typeName: string,
     pad: number,
     len: number,
-    children: number[],
+    children: { ptr: number; field: string | null }[],
   ): void;
 }
 
@@ -291,6 +298,26 @@ export class LspFacade {
     this.lastAstRoot = 0;
     this._cachedLineStarts = null;
     this._childTailCache.clear();
+  }
+
+  setParserConfig(
+    enableBranchA1: boolean,
+    enableBranchB: boolean,
+    enableBranchC: boolean,
+    enableIslandMode: boolean,
+  ): void {
+    if (this.exports.configEnableBranchA1) {
+      this.exports.configEnableBranchA1.value = enableBranchA1 ? 1 : 0;
+    }
+    if (this.exports.configEnableBranchB) {
+      this.exports.configEnableBranchB.value = enableBranchB ? 1 : 0;
+    }
+    if (this.exports.configEnableBranchC) {
+      this.exports.configEnableBranchC.value = enableBranchC ? 1 : 0;
+    }
+    if (this.exports.configEnableIslandMode) {
+      this.exports.configEnableIslandMode.value = enableIslandMode ? 1 : 0;
+    }
   }
 
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
@@ -1090,35 +1117,73 @@ export class LspFacade {
     let opsCount = 0;
     const MAX_DIFF_OPS = 10000;
 
-    const getChildren = (ptr: number): number[] => {
-      const children: number[] = [];
-      if (!ptr) return children;
+    const fieldIdToName: string[] = [];
+    for (const [name, id] of Object.entries(FIELD_NAMES)) {
+      fieldIdToName[id as number] = name;
+    }
 
-      const collect = (p: number) => {
-        let childPtr = mem32[(p + 8) / 4];
-        let slowPtr = childPtr;
+    const getChildren = (ptr: number): { ptr: number; field: string | null }[] => {
+      const children: { ptr: number; field: string | null }[] = [];
+      const firstChild = mem32[(ptr + 8) / 4];
+      let curr = firstChild;
+      const typeFlags = mem32[ptr / 4];
+      const parentTypeId = typeFlags & 0x03ff;
+      let childIndex = 0;
+
+      while (curr !== 0) {
+        let fieldId = -1;
+        if (this.exports.getFieldIdForChild) {
+          fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex);
+        }
+        const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
+        children.push({ ptr: curr, field });
+        curr = mem32[(curr + 12) / 4];
+        childIndex++;
+      }
+      return children;
+    };
+
+    const getFlattenedChildren = (ptr: number): { ptr: number; field: string | null }[] => {
+      const children: { ptr: number; field: string | null }[] = [];
+      const collect = (nodePtr: number, parentField: string | null) => {
+        if (!nodePtr) return;
+        const firstChild = mem32[(nodePtr + 8) / 4];
+        let childPtr = firstChild;
+        const typeFlags = mem32[nodePtr / 4];
+        const parentTypeId = typeFlags & 0x03ff;
+        let slowPtr = firstChild;
         let step = 0;
+        let childIndex = 0;
 
-        while (childPtr) {
-          if (step !== 0 && childPtr === slowPtr) break;
-
-          const typeFlags = mem32[childPtr / 4];
-          const typeId = typeFlags & 0x03ff;
+        while (childPtr !== 0) {
+          if (step > 0 && slowPtr === childPtr) {
+            // console.warn("Cycle detected in AST child list for node", nodePtr);
+            break;
+          }
+          const cTypeFlags = mem32[childPtr / 4];
+          const typeId = cTypeFlags & 0x03ff;
           let typeName = SYNTAX_NAMES[typeId] || `node_${typeId}`;
-          const isInvisible = (typeFlags & (1 << 12)) !== 0;
+          const isInvisible = (cTypeFlags & (1 << 12)) !== 0;
+
+          let fieldId = -1;
+          if (this.exports.getFieldIdForChild) {
+            fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex);
+          }
+          const field = fieldId >= 0 ? fieldIdToName[fieldId] : parentField;
 
           if (typeName.startsWith("_") || isInvisible) {
-            collect(childPtr);
+            collect(childPtr, field);
           } else {
-            children.push(childPtr);
+            children.push({ ptr: childPtr, field });
           }
           childPtr = mem32[(childPtr + 12) / 4];
           if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
           step++;
+          childIndex++;
         }
       };
 
-      collect(ptr);
+      collect(ptr, null);
       return children;
     };
 
@@ -1140,12 +1205,12 @@ export class LspFacade {
         const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
 
-        const children = getChildren(ptr);
+        const children = getFlattenedChildren(ptr);
         listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
 
         // Push children in reverse so they are processed in forward order
         for (let i = children.length - 1; i >= 0; i--) {
-          stack.push(children[i]);
+          stack.push(children[i].ptr);
         }
       }
     };
@@ -1161,7 +1226,7 @@ export class LspFacade {
         listener.onNodeDeleted(ptr);
         const children = getChildren(ptr);
         for (let i = children.length - 1; i >= 0; i--) {
-          stack.push(children[i]);
+          stack.push(children[i].ptr);
         }
       }
     };
@@ -1181,7 +1246,7 @@ export class LspFacade {
           const pad =
             isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
           const len = envHashPadding & 0x007fffff;
-          const children = getChildren(newPtr);
+          const children = getFlattenedChildren(newPtr);
           listener.onNodeInserted(newPtr, typeId, typeName, pad, len, children);
         }
         opsCount++;
@@ -1218,36 +1283,36 @@ export class LspFacade {
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
-      const oldCh = getChildren(oldPtr);
-      const newCh = getChildren(newPtr);
+      const oldCh = getFlattenedChildren(oldPtr);
+      const newCh = getFlattenedChildren(newPtr);
 
       listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, newCh);
       opsCount++;
 
       let start = 0;
-      while (start < oldCh.length && start < newCh.length && oldCh[start] === newCh[start]) {
-        listener.onNodeRetained(newCh[start]);
+      while (start < oldCh.length && start < newCh.length && oldCh[start].ptr === newCh[start].ptr) {
+        listener.onNodeRetained(newCh[start].ptr);
         start++;
       }
 
       let oldEnd = oldCh.length - 1;
       let newEnd = newCh.length - 1;
-      while (oldEnd >= start && newEnd >= start && oldCh[oldEnd] === newCh[newEnd]) {
+      while (oldEnd >= start && newEnd >= start && oldCh[oldEnd].ptr === newCh[newEnd].ptr) {
         oldEnd--;
         newEnd--;
       }
 
       const maxMiddle = Math.max(oldEnd - start + 1, newEnd - start + 1);
       for (let i = 0; i < maxMiddle; i++) {
-        const oPtr = start + i <= oldEnd ? oldCh[start + i] : 0;
-        const nPtr = start + i <= newEnd ? newCh[start + i] : 0;
+        const oPtr = start + i <= oldEnd ? oldCh[start + i].ptr : 0;
+        const nPtr = start + i <= newEnd ? newCh[start + i].ptr : 0;
         if (oPtr && nPtr) diffNodes(oPtr, nPtr);
         else if (nPtr) buildInsertions(nPtr);
         else if (oPtr) buildDeletions(oPtr);
       }
 
       for (let i = newEnd + 1; i < newCh.length; i++) {
-        listener.onNodeRetained(newCh[i]);
+        listener.onNodeRetained(newCh[i].ptr);
       }
     };
 

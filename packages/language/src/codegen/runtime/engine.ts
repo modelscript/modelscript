@@ -384,6 +384,10 @@ export let globalToken: i32 = -1;
 export const MODE_LR: i32 = 0;
 export const MODE_GLR: i32 = 1;
 export let currentParserMode: i32 = 0;
+export let configEnableBranchA1: boolean = true;
+export let configEnableBranchB: boolean = true;
+export let configEnableBranchC: boolean = true;
+export let configEnableIslandMode: boolean = true;
 
 export let t_lrStateStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_lrNodeStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
@@ -526,6 +530,8 @@ export class FieldCursor {
   init(node: u32, fieldId: i32): void {
     this.node = node;
     this.fieldId = fieldId;
+    this.hasCachedNext = false;
+    this.cachedNext = 0;
     this.offset = -1;
     this.indexCount = 0;
     this.currentIdxPtr = 0;
@@ -533,9 +539,12 @@ export class FieldCursor {
     this.stack0 = 0; this.stack1 = 0; this.stack2 = 0; this.stack3 = 0;
     this.stack4 = 0; this.stack5 = 0; this.stack6 = 0; this.stack7 = 0;
     this.currentChild = 0;
-    this.cachedNext = 0;
-    this.hasCachedNext = false;
     this.isActive = true;
+    
+    if (node == 0) {
+      this.offset = -1;
+      return;
+    }
     
     let type = getNodeType(node);
     if (type >= (type_fields.length as u16)) {
@@ -698,6 +707,27 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   let child = cursor.next();
   cursor.release();
   return child;
+}
+
+export function getFieldIdForChild(type: u16, childIndex: u16): i32 {
+  if (type >= (type_fields.length as u16)) return -1;
+  let offset = type_fields[type];
+  if (offset == -1 || offset < 0 || offset >= type_field_data.length) return -1;
+  let fieldCount = type_field_data[offset];
+  let currentOffset = offset + 1;
+  for (let i = 0; i < fieldCount; i++) {
+    if (currentOffset + 1 >= type_field_data.length) break;
+    let currentFieldId = type_field_data[currentOffset];
+    let indexCount = type_field_data[currentOffset + 1];
+    let idxPtr = currentOffset + 2;
+    for (let j = 0; j < indexCount; j++) {
+      if (idxPtr >= type_field_data.length) break;
+      if (type_field_data[idxPtr] == (childIndex as i32)) return currentFieldId;
+      idxPtr++;
+    }
+    currentOffset += 2 + indexCount;
+  }
+  return -1;
 }
 
 import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, logInt } from "./parser";

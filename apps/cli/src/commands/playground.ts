@@ -63,6 +63,13 @@ export const Playground: CommandModule = {
         }
 
         const ext = urlPath.split(".").pop()?.toLowerCase();
+        const headers: Record<string, string> = {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        };
         const mimeTypes: Record<string, string> = {
           js: "application/javascript",
           html: "text/html",
@@ -401,13 +408,19 @@ scope {
                         });
                     }
 
+                    const branchA1 = document.getElementById('toggle-branch-a1')?.checked ?? true;
+                    const branchB = document.getElementById('toggle-branch-b')?.checked ?? true;
+                    const branchC = document.getElementById('toggle-branch-c')?.checked ?? true;
+                    const islandMode = document.getElementById('toggle-island-mode')?.checked ?? true;
+
                     lspWorker.postMessage({ 
                         type: 'init', 
                         wasm: e.data.wasm, 
                         jsWrapper: e.data.jsWrapper,
                         syntaxNames: e.data.syntaxNames,
                         langName: e.data.langName,
-                        initialText: window.codeEditor ? window.codeEditor.getValue() : null
+                        initialText: window.codeEditor ? window.codeEditor.getValue() : null,
+                        initialConfig: { branchA1, branchB, branchC, islandMode }
                     });
                 } else if (e.data.type === 'error') {
                     document.getElementById('status').innerText = "Error: " + e.data.error;
@@ -485,6 +498,10 @@ scope {
                     } else if (msg.type === 'astPatch' || msg.type === 'astPatchBinary') {
                         window.postMessage(msg, '*');
                     }
+                }
+                
+                sendConfigConfig(config) {
+                    this.worker.postMessage({ type: 'setConfig', config });
                 }
             }
             
@@ -606,6 +623,31 @@ scope {
                     return null;
                 }
             });
+
+            document.getElementById('toggle-branch-a1')?.addEventListener('change', (e) => {
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1: e.target.checked, branchB, branchC, islandMode });
+            });
+            document.getElementById('toggle-branch-b')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB: e.target.checked, branchC, islandMode });
+            });
+            document.getElementById('toggle-branch-c')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const islandMode = document.getElementById('toggle-island-mode').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB, branchC: e.target.checked, islandMode });
+            });
+            document.getElementById('toggle-island-mode')?.addEventListener('change', (e) => {
+                const branchA1 = document.getElementById('toggle-branch-a1').checked;
+                const branchB = document.getElementById('toggle-branch-b').checked;
+                const branchC = document.getElementById('toggle-branch-c').checked;
+                languageClient.sendConfigConfig({ branchA1, branchB, branchC, islandMode: e.target.checked });
+            });
         });
     </script>
 
@@ -700,7 +742,7 @@ scope {
                 const nodes = [];
                 const visited = new Set();
                 
-                const flatten = (ptr, depth, parentOffset, isFirstChild) => {
+                const flatten = (ptr, depth, parentOffset, isFirstChild, parentField) => {
                     if (nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
                         nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
@@ -715,18 +757,18 @@ scope {
                     const isError = node.typeName === "ERROR";
                     const isGhost = node.len === 0 && !isError;
                     
-                    nodes.push({ ...node, depth, isGhost, isError, currentOffset });
+                    nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
                     
                     let childOffset = currentOffset;
                     let isFirst = true;
                     for (const childPtr of node.children || []) {
-                        childOffset = flatten(childPtr, depth + 1, childOffset, isFirst);
+                        childOffset = flatten(childPtr, depth + 1, childOffset, isFirst, null);
                         isFirst = false;
                     }
                     return currentOffset + (node.len || 0);
                 };
                 
-                if (rootId) flatten(rootId, 0, 0, false);
+                if (rootId) flatten(rootId, 0, 0, false, null);
                 return nodes;
             }, [updateTick, rootId]);
 
@@ -773,7 +815,12 @@ scope {
                                 
                                 return (
                                     <div key={node.id} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
-                                        <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#d2a8ff' }}>{node.typeName}</span>
+                                        {node.parentField && (
+                                            <span style={{ color: '#6e7781', marginRight: '4px' }}>
+                                                {node.parentField}:
+                                            </span>
+                                        )}
+                                        <span className="hoverable-text" style={{ color: node.isError ? '#d73a49' : '#0550ae' }}>{node.typeName}</span>
                                         <span style={{ color: '#8b949e', marginLeft: '5px' }}>
                                             {getPosStr(node.currentOffset, node.len)}
                                         </span>
@@ -798,7 +845,24 @@ scope {
             <div class="brand-icon"></div>
             ModelScript Playground
         </div>
-        <span id="status" style="font-size: 12px; opacity: 0.8;">Ready</span>
+        <div style="display: flex; gap: 15px; font-size: 13px; align-items: center; margin-left: auto; margin-right: 15px;">
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-a1" checked> Enable Branch A1 Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-b" checked> Enable Branch B Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-c" checked> Enable Branch C Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggle-island-mode" checked> Enable Island Mode
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggle-verbose-log"> Verbose Logging
+            </label>
+        </div>
+        <span id="status" style="font-size: 12px; opacity: 0.8; margin-right: 15px;">Ready</span>
         <button id="compile-btn" class="primer-btn">
             <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" fill="currentColor">
                 <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.44a.25.25 0 0 1 .379-.216Z"></path>
@@ -1024,6 +1088,23 @@ function triggerDiagnostics(changes = null) {
 
 // Listen for custom init message containing the WASM binary and generated JS
 self.addEventListener('message', async (e) => {
+    if (e.data.type === 'config' || e.data.type === 'setConfig') {
+        if (lspFacade) {
+            lspFacade.setParserConfig(e.data.config.branchA1, e.data.config.branchB, e.data.config.branchC, e.data.config.islandMode);
+            
+            // Force a re-parse by faking a full text change
+            if (latestUri && currentTextLength > 0) {
+                const text = lspFacade.exports.getInputBuffer ? 
+                    new TextDecoder('utf-16le').decode(new Uint8Array(lspFacade.wasmMemory.buffer, lspFacade.exports.getInputBuffer(), currentTextLength * 2)) : "";
+                
+                lspFacade.resetParser();
+                currentTextLength = 0;
+                triggerDiagnostics([{ text: text.replace(/\0/g, ''), rangeOffset: undefined, rangeLength: undefined }]);
+            }
+        }
+        return;
+    }
+        
     if (e.data.type === 'init') {
         console.log("LSP initialized with new WASM parser");
         const { wasm, jsWrapper, langName } = e.data;
@@ -1085,6 +1166,9 @@ self.addEventListener('message', async (e) => {
             });
 
             console.log("LspFacade successfully loaded inside worker.");
+            if (e.data.initialConfig) {
+                lspFacade.setParserConfig(e.data.initialConfig.branchA1, e.data.initialConfig.branchB, e.data.initialConfig.branchC, e.data.initialConfig.islandMode);
+            }
             if (e.data.initialText !== undefined && e.data.initialText !== null) {
                 pendingFullText = e.data.initialText;
             }

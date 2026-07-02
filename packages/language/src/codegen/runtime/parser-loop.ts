@@ -7,7 +7,7 @@ import {
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED, FLAG_EXTRACTED,
     getNodeEnvHash, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode
 } from "./arena";
@@ -42,7 +42,8 @@ import {
     globalLoopIterations, globalLoopGuard,
     globalSearchIterations, mergeGeneration,
     tempActions, mergeTableInit, initGlobalCursor, errorCount,
-    MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID
+    MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID,
+    configEnableBranchC
 } from "./engine";
 
 const ACCEPT_CACHE_CAPACITY: u32 = 16384;
@@ -579,11 +580,41 @@ export function stateCanAccept(
  * with clean ERROR nodes. This prevents UNKNOWN nodes from appearing in the
  * final tree output.
  */
+function deepCloneSubtree(node: u32, depth: i32): u32 {
+  if (node == 0 || depth > 50) return 0;
+  let clone = allocNode(getNodeType(node), getNodePadding(node), getNodeByteLength(node), getNodeEnvHash(node));
+  setNodeFlags(clone, getNodeFlags(node) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+
+  let lastChild: u32 = 0;
+  let child = getNodeFirstChild(node);
+  let guard: u32 = 0;
+  while (child != 0 && child >= 65536 && guard < 10000) {
+    guard++;
+    let childClone = deepCloneSubtree(child, depth + 1);
+    if (childClone != 0) {
+      if (lastChild == 0) setFirstChild(clone, childClone);
+      else setNextSibling(lastChild, childClone);
+      lastChild = childClone;
+    }
+    child = getNodeNextSibling(child);
+  }
+  return clone;
+}
+
 function sanitizeTree(root: u32): void {
   if (root == 0) return;
-  // Use an iterative approach with a stack to avoid deep recursion
-  let stack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(1024 * 4));
+  // Use an iterative approach with a stack to avoid deep recursion.
+  // Track visited nodes to detect shared subtrees (DAG structures
+  // created by cloneNodeShallow sharing firstChild pointers across
+  // multiple parent clones). When a shared node is found, deep-clone
+  // it to break the aliasing and prevent cycles.
+  let stack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(2048 * 4));
+  let visited = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
+  let visitedCount: u32 = 0;
   let stackTop: u32 = 0;
+
+  // Mark the root as visited
+  if (visitedCount < 8192) visited[visitedCount++] = root;
   stack[stackTop++] = root;
 
   while (stackTop > 0) {
@@ -594,26 +625,51 @@ function sanitizeTree(root: u32): void {
     let prevChild: u32 = 0;
     let child = getNodeFirstChild(node);
     let modified = false;
+    let siblingGuard: u32 = 0;
 
-    while (child != 0 && child >= 65536) {
+    while (child != 0 && child >= 65536 && siblingGuard < 10000) {
+      siblingGuard++;
       let childType = getNodeType(child);
       let nextSib = getNodeNextSibling(child);
 
       if (childType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
         // Corrupt node: REMOVE it by unlinking from the chain.
-        // GLR shared-state corruption can produce nodes with invalid types
-        // (e.g., dangling pointer reads). Replacing them with ERROR inflates the
-        // tree and creates phantom diagnostics. Unlinking is safer.
         if (prevChild == 0) setFirstChild(node, nextSib);
         else setNextSibling(prevChild, nextSib);
         modified = true;
-        // Don't advance prevChild — it stays the same
       } else {
-        // Valid child: push to stack for recursive sanitization
-        if (stackTop < 1024) {
-          stack[stackTop++] = child;
+        // Check if this child was already visited (shared subtree)
+        let isShared = false;
+        for (let vi: u32 = 0; vi < visitedCount; vi++) {
+          if (visited[vi] == child) {
+            isShared = true;
+            break;
+          }
         }
-        prevChild = child;
+
+        if (isShared) {
+          // Deep-clone to break shared-pointer aliasing
+          let freshClone = deepCloneSubtree(child, 0);
+          if (freshClone != 0) {
+            setNextSibling(freshClone, nextSib);
+            if (prevChild == 0) setFirstChild(node, freshClone);
+            else setNextSibling(prevChild, freshClone);
+            prevChild = freshClone;
+            // Mark the fresh clone as visited and push for sanitization
+            if (visitedCount < 8192) visited[visitedCount++] = freshClone;
+            if (stackTop < 2048) stack[stackTop++] = freshClone;
+          } else {
+            // Clone failed (too deep); unlink to prevent cycle
+            if (prevChild == 0) setFirstChild(node, nextSib);
+            else setNextSibling(prevChild, nextSib);
+            modified = true;
+          }
+        } else {
+          // Mark as visited and recurse
+          if (visitedCount < 8192) visited[visitedCount++] = child;
+          if (stackTop < 2048) stack[stackTop++] = child;
+          prevChild = child;
+        }
       }
 
       child = nextSib;
@@ -636,9 +692,24 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): void {
   
   let curr: ParseHead | null = changetype<ParseHead>(headPtr);
   let c_idx: u32 = 0;
-  
-  while (curr) {
-    if (curr.astNode != 0 && curr.astNode != acceptedNode && getNodeType(curr.astNode) != TOKEN_EOF) {
+    let acceptBase = acceptedNode;
+    // Follow clones back to their origin
+    while ((getNodeFlags(acceptBase) & FLAG_EXTRACTED) != 0 && getNodeFirstChild(acceptBase) != 0) {
+      let isShallowClone = false;
+      let currTemp: ParseHead | null = headPtr != 0 ? changetype<ParseHead>(headPtr) : null;
+      while (currTemp) {
+        if (currTemp.astNode != 0 && currTemp.astNode != acceptBase && getNodeFirstChild(currTemp.astNode) == getNodeFirstChild(acceptBase)) {
+           acceptBase = currTemp.astNode;
+           isShallowClone = true;
+           break;
+        }
+        currTemp = currTemp.prev;
+      }
+      if (!isShallowClone) break;
+    }
+
+    while (curr) {
+      if (curr.astNode != 0 && curr.astNode != acceptedNode && curr.astNode != acceptBase && getNodeType(curr.astNode) != TOKEN_EOF) {
       if (c_idx < (MAX_CHILD_NODES as u32)) {
         t_globalChildNodes[c_idx++] = curr.astNode;
       }
@@ -744,16 +815,30 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  let newRoot = allocNode(getNodeType(acceptedNode), 0, inputLength, 0);
-  setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
-  setFirstChild(newRoot, acceptedNode);
-  setNextSibling(acceptedNode, errorNode);
-
+  let newRoot = acceptedNode;
+  if (getNodeType(acceptedNode) != NODE_TYPE_ERROR) {
+      newRoot = allocNode(NODE_TYPE_ERROR, 0, inputLength, 0);
+      setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
+      setFirstChild(newRoot, acceptedNode);
+      setNextSibling(acceptedNode, errorNode);
+  } else {
+      let lastChild = getNodeFirstChild(acceptedNode);
+      let prevChild = 0;
+      while (lastChild != 0) {
+          prevChild = lastChild;
+          lastChild = getNodeNextSibling(lastChild);
+      }
+      if (prevChild == 0) setFirstChild(acceptedNode, errorNode);
+      else setNextSibling(prevChild, errorNode);
+  }
   return newRoot;
 }
 export function cloneNodeShallow(gc: u32): u32 {
+  if (gc == 0) return 0;
+  setNodeFlags(gc, getNodeFlags(gc) | FLAG_EXTRACTED);
   let clone = allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc));
-  setNodeFlags(clone, getNodeFlags(gc) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); // Clear GC mark and LSP visited
+  // Keep FLAG_EXTRACTED on the clone so its shared children are not mutated in-place
+  setNodeFlags(clone, (getNodeFlags(gc) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); 
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
   return clone;
 }
@@ -1104,6 +1189,7 @@ function isMutable(ptr: u32): boolean {
   // shared list nodes can be referenced by multiple heads, and
   // mutating one corrupts the others' trees.
   if (activeHeadsCount > 1) return false;
+  if ((getNodeFlags(ptr) & FLAG_EXTRACTED) != 0) return false;
   return ptr >= incrementalStartOffset;
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
@@ -2601,7 +2687,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           getNodeByteLength(reusedNode),
           getNodeEnvHash(reusedNode),
         );
-        setNodeFlags(cloneReused, getNodeFlags(reusedNode) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+        setNodeFlags(cloneReused, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(cloneReused, getNodeFirstChild(reusedNode)); // Inherit old children
 
         // Splice it into the GSS head
@@ -2640,7 +2726,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           getNodeByteLength(reusedNode),
           getNodeEnvHash(reusedNode),
         );
-        setNodeFlags(clone, getNodeFlags(reusedNode) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+        setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(clone, getNodeFirstChild(reusedNode));
 
         let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
@@ -2781,7 +2867,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
       // --------------------------------------------------------------------
       // ERROR BRANCH C: Forced Default Reduction
-      {
+      if (configEnableBranchC) {
         reduced = processForcedReduction(head, actionOffset, count2);
       }
 

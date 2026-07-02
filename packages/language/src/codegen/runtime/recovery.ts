@@ -1,7 +1,7 @@
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
-  NODE_TYPE_ERROR, goto_offsets, goto_data
+  NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode
 } from "./engine";
 import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode } from "./parser-loop";
 import { 
@@ -12,6 +12,7 @@ import {
   getNodeFirstChild, 
   setFirstChild, 
   setNextSibling,
+  getNodeNextSibling,
   getNodeType,
   allocNode,
   getInputBuffer,
@@ -68,6 +69,8 @@ export function recoverUnwindAndMutate(
   inputLength: u32,
   bestAcceptedCost: i32
 ): void {
+        // === ERROR RECOVERY ENTRY ===
+        debugLog(999000, head.pos, token, bestAcceptedCost);
         // ERROR BRANCH A & B: Unwind and Mutate
         // ----------------------------------------------------------------
         let initialScannerState = currentScannerState;
@@ -133,6 +136,7 @@ export function recoverUnwindAndMutate(
             // we are NOT dropping 'token', so we refund its cost in a1DelCost.
             let a1DelCost = startSkip == 0 ? -getInsertCost(token == TOKEN_EOF ? 0 : token) : 0;
 
+            if (configEnableBranchA1) {
             // Force lexer to recognize all tokens during recovery forward scan
             expected_tokens.fill(1);
             for (let skipCount: u32 = startSkip; skipCount <= maxSkips; skipCount++) {
@@ -239,12 +243,26 @@ export function recoverUnwindAndMutate(
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
                   if (child == 0) continue;
-                  let clone = cloneNodeShallow(child);
-                  if (lastChild == 0) {
-                setNodePadding(clone, 0);
-                setFirstChild(errNode, clone);
-              } else setNextSibling(lastChild, clone);
-                  lastChild = clone;
+                  
+                  if (getNodeType(child) == NODE_TYPE_ERROR) {
+                    let errChild = getNodeFirstChild(child);
+                    while (errChild != 0) {
+                      let clone = cloneNodeShallow(errChild);
+                      if (lastChild == 0) {
+                        setNodePadding(clone, 0);
+                        setFirstChild(errNode, clone);
+                      } else setNextSibling(lastChild, clone);
+                      lastChild = clone;
+                      errChild = getNodeNextSibling(errChild);
+                    }
+                  } else {
+                    let clone = cloneNodeShallow(child);
+                    if (lastChild == 0) {
+                      setNodePadding(clone, 0);
+                      setFirstChild(errNode, clone);
+                    } else setNextSibling(lastChild, clone);
+                    lastChild = clone;
+                  }
                 }
 
                 expected_tokens.fill(1);
@@ -275,9 +293,11 @@ export function recoverUnwindAndMutate(
                 let weakPenalty: i32 = weakRecovery ? 50 : 0;
 
                 let delHeadCost = head.errorCost + baseDelCost + a1DelCost + weakPenalty;
-                // Push the ERROR node as a separate GSS entry above the anchor.
-                // Do NOT use concatLists here — it would corrupt non-list anchor
-                // nodes (e.g., turning a terminal "}" into a list).
+                // Only push delHead if we actually dropped tokens.
+                // Pushing delHead when skipCount == 0 (0 dropped tokens)
+                // will just infinite loop the parser at the exact same position and state.
+                let shouldPushDelHead = (skipCount > 0);
+                
                 let delHead = allocParseHead(
                   recState,
                   errNode,
@@ -285,14 +305,17 @@ export function recoverUnwindAndMutate(
                   a1NextScanPos,
                   initialScannerState,
                   delHeadCost,
-                  0,
+                  0, // pendingPadding (reset after recovery)
                   newBalance,
-                  0,
+                  0, // consecutiveInsertions
                   recPrec,
                   0,
                   newTail
                 );
-                pushActiveHead(changetype<u32>(delHead));
+                
+                if (shouldPushDelHead) {
+                  pushActiveHead(changetype<u32>(delHead));
+                }
                 break;
               }
 
@@ -306,6 +329,7 @@ export function recoverUnwindAndMutate(
             // A3. Skip-to-EOF has been removed. Island Mode handles this fallback significantly better.
 
             // A2 has been removed to prevent AST corruption via concatLists on non-list nodes.
+            } // end configEnableBranchA1
           }
 
           // ------------------------------------------------------------
@@ -319,6 +343,7 @@ export function recoverUnwindAndMutate(
           // just completed a scope-closing reduction and any insertion here would
           // absorb inter-scope garbage into the preceding node's byte length.
           // Island mode will handle the garbage correctly instead.
+          if (configEnableBranchB) {
           let skipBranchB = false;
           if (unwindDepth == 0 && head.pos > 0) {
             // Scan backwards past whitespace to find the last significant character
@@ -457,6 +482,7 @@ export function recoverUnwindAndMutate(
                   }
             }
           }
+          } // end configEnableBranchB
 
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
@@ -475,6 +501,7 @@ export function recoverIslandMode(
         // We advance the scanner forward until we hit a "sync token" (e.g. `}`, `;`, `end`).
         // Then we search the GSS stack backwards for a state that can consume that sync token.
         // Everything in between is wrapped in an ERROR node and discarded from the AST.
+        if (configEnableIslandMode) {
         if (head.consecutiveInsertions == 0) {
           let syncCost = 15; // High initial penalty for destroying a span of code
           let searchPos = head.pos;
@@ -607,16 +634,31 @@ export function recoverIslandMode(
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
+            // If a popped node is already an ERROR node, flatten it to prevent deep nesting.
             let lastChild = 0;
             for (let k = childCount - 1; k >= 0; k--) {
               let child = t_globalChildNodes[k];
               if (child == 0) continue;
-              let clone = cloneNodeShallow(child);
-              if (lastChild == 0) {
-                setNodePadding(clone, 0);
-                setFirstChild(islandLeaf, clone);
-              } else setNextSibling(lastChild, clone);
-              lastChild = clone;
+              
+              if (getNodeType(child) == NODE_TYPE_ERROR) {
+                let errChild = getNodeFirstChild(child);
+                while (errChild != 0) {
+                  let clone = cloneNodeShallow(errChild);
+                  if (lastChild == 0) {
+                    setNodePadding(clone, 0);
+                    setFirstChild(islandLeaf, clone);
+                  } else setNextSibling(lastChild, clone);
+                  lastChild = clone;
+                  errChild = getNodeNextSibling(errChild);
+                }
+              } else {
+                let clone = cloneNodeShallow(child);
+                if (lastChild == 0) {
+                  setNodePadding(clone, 0);
+                  setFirstChild(islandLeaf, clone);
+                } else setNextSibling(lastChild, clone);
+                lastChild = clone;
+              }
             }
 
             // Lex any remaining raw garbage between the last parsed node and the resume position
@@ -653,22 +695,10 @@ export function recoverIslandMode(
               if (tok == -1) break;
               if (srcLexPos >= (resumePos as u32)) break;
 
-              // Stop consuming garbage when crossing a line boundary.
-              // If the whitespace between the last token and this token contains
-              // a newline, the subsequent tokens are on a new line and likely
-              // valid code (e.g., `print velocity;`), not garbage. Absorbing
-              // them into the ERROR node corrupts AST positions and semantic tokens.
-              let hasNewline = false;
-              let checkP = p;
-              while (checkP < srcLexPos) {
-                let ch = peekChar(checkP);
-                if (ch == 10 || ch == 13) {
-                  hasNewline = true;
-                  break;
-                }
-                checkP += peekCharLen(checkP);
-              }
-              if (hasNewline) break;
+              // All tokens between the last valid parsed node and the recovery anchor
+              // are definitively garbage (skipped by panic mode). We must consume them
+              // and emit them as ERROR leaves so they get accurately squiggled,
+              // regardless of whether they cross a line boundary.
 
               let tLen = lexLen;
               if (tLen == 0) break; // prevent infinite loop
@@ -678,7 +708,7 @@ export function recoverIslandMode(
 
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
-              let tNode = allocNode(NODE_TYPE_ERROR, pad, tLen, 0);
+              let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
                 setNodePadding(tNode, 0);
@@ -686,14 +716,10 @@ export function recoverIslandMode(
               } else setNextSibling(lastChild, tNode);
               lastChild = tNode;
 
-              p = srcLexPos + tLen;
-            }
+              // Emit a diagnostic specifically for this garbage token
+              newTail = pushDiagnostic(newTail, srcLexPos, srcLexPos + tLen);
 
-            // Emit a diagnostic covering ONLY the actual garbage tokens,
-            // not the trailing whitespace/newlines that follow them.
-            let actualEnd = p > head.pos ? p : head.pos;
-            if (actualEnd > diagStart) {
-              newTail = pushDiagnostic(newTail, diagStart, actualEnd);
+              p = srcLexPos + tLen;
             }
 
             // The ERROR node's byte length MUST cover all bytes from its
@@ -728,4 +754,5 @@ export function recoverIslandMode(
             debugLog(6, foundTarget, islandCost, resumePos);
           }
         }
+        } // end configEnableIslandMode
 }

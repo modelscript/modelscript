@@ -178,7 +178,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         if (dStart < 0) dStart = 0;
       }
       lsp_allocDiagnostic(dStart, dEnd, type, 0);
-    } else if (inError && isLeaf && len > 0) {
+    } else if ((inError || isErrorNode) && isLeaf && len > 0) {
       // Garbage token or token inside discarded Island Mode block
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
     } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode) {
@@ -199,11 +199,19 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let childHasError: boolean = false;
       let childHasInserted: boolean = false;
       let countChild = child;
+      let hasInsertedSoFar: boolean = false;
+      let afterInsertedMask: u64 = 0;
+      
       while (countChild != 0) {
-        childCount++;
         let cFlags = getNodeFlags(countChild);
         if ((cFlags & FLAG_HAS_ERROR) != 0) childHasError = true;
-        if ((cFlags & FLAG_IS_INSERTED) != 0) childHasInserted = true;
+        if ((cFlags & FLAG_IS_INSERTED) != 0) {
+            childHasInserted = true;
+            hasInsertedSoFar = true;
+        } else if (hasInsertedSoFar && childCount < 64) {
+            afterInsertedMask |= (1 as u64) << (childCount as u64);
+        }
+        childCount++;
         countChild = getNodeNextSibling(countChild);
       }
 
@@ -214,17 +222,21 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let currOffset = start + pad; // nodeStart
       let writeIdx = stackTop + childCount - 1;
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
-      let siblingErrorBit: u32 = childHasError ? 0x40000000 : 0;
-      let insertedBit: u32 = childHasInserted ? 0x20000000 : 0;
+      let siblingErrorBit: u32 = (childHasError || hasErrorSibling) ? 0x40000000 : 0;
+      let currChildIdx = 0;
       
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
+        let comesAfter = (currChildIdx < 64) && ((afterInsertedMask & ((1 as u64) << (currChildIdx as u64))) != 0);
+        let insertedBit: u32 = (comesAfter || hasInsertedSibling) ? 0x20000000 : 0;
+        
         t_lspTraverseStack[writeIdx] = child;
         t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit | insertedBit;
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
+        currChildIdx++;
       }
       stackTop += childCount;
     }
@@ -306,8 +318,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           // - Invisible internal nodes (list boundaries, _START, etc.)
           // - Inserted ghost nodes (zero-length phantoms from recovery)
           let isSkippable = cType == 0
-            || (cFlags & FLAG_INVISIBLE) != 0
-            || (cFlags & FLAG_IS_INSERTED) != 0;
+            || (cFlags & FLAG_INVISIBLE) != 0;
           if (!isSkippable) {
             if (childCount == childIdx) {
               targetChild = child;
