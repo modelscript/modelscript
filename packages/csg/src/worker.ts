@@ -23,6 +23,9 @@ export class CSGWorker {
   async init() {
     try {
       const require = createRequire(import.meta.url);
+      if (typeof (globalThis as { __dirname?: string }).__dirname === 'undefined') {
+        (globalThis as { __dirname?: string }).__dirname = path.dirname(new URL(import.meta.url).pathname);
+      }
       const mod = require("opencascade.js/dist/opencascade.wasm.js");
       const initWasm = mod.default || mod;
 

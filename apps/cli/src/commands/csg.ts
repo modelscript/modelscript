@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Context, ModelicaDAE, ModelicaFlattener } from "@modelscript/core";
-import { CSGWorker } from "@modelscript/csg";
-import Modelica from "@modelscript/tree-sitter-modelica";
+import { Context } from "@modelscript/core";
+import { CSGWorker, extractCSGTopology } from "@modelscript/csg";
+import Modelica from "@modelscript/modelica/parser";
 import fs from "node:fs";
 import path from "node:path";
 import Parser from "tree-sitter";
@@ -14,7 +14,6 @@ interface CSGArgs {
   paths: string[];
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const BuildCSG: CommandModule<{}, CSGArgs> = {
   command: "csg <name> <paths...>",
   describe: "Compile and extract CSG topologies to 3D meshes",
@@ -35,10 +34,10 @@ export const BuildCSG: CommandModule<{}, CSGArgs> = {
   handler: async (args) => {
     const parser = new Parser();
     parser.setLanguage(Modelica);
-    Context.registerParser(".mo", parser);
+    Context.registerParser(".mo", parser as any);
     const context = new Context(new NodeFileSystem());
 
-    for (const p of args.paths) context.addLibrary(p);
+    for (const p of args.paths) await context.addLibrary(p);
     const instance = context.query(args.name);
     if (!instance) {
       console.error(`'${args.name}' not found`);
@@ -46,26 +45,28 @@ export const BuildCSG: CommandModule<{}, CSGArgs> = {
     }
 
     console.log(`[CLI] Flattening ${args.name}...`);
-    // Flatten the model
-    const dae = new ModelicaDAE(instance.name ?? "DAE", instance.description);
-    instance.accept(new ModelicaFlattener(), ["", dae]);
+    const arena = context.flattenArena(args.name);
+    if (!arena) {
+      console.error(`[CLI] Failed to flatten ${args.name}.`);
+      return;
+    }
 
-    // Check if the flattener found any CSG nodes
-    if (!dae.csgGraph || dae.csgGraph.nodes.length === 0) {
+    const csgGraph = extractCSGTopology(context, args.name);
+
+    if (!csgGraph || csgGraph.nodes.length === 0) {
       console.log(`[CLI] No CSG operations found in ${args.name}.`);
       return;
     }
 
     const outputDir = path.join(process.cwd(), "build", "csg");
 
-    // Write out the graph JSON for diagnostics
     fs.mkdirSync(outputDir, { recursive: true });
-    fs.writeFileSync(path.join(outputDir, "execution_graph.json"), JSON.stringify(dae.csgGraph, null, 2));
+    fs.writeFileSync(path.join(outputDir, "execution_graph.json"), JSON.stringify(csgGraph, null, 2));
 
-    console.log(`[CLI] Discovered ${dae.csgGraph.nodes.length} CSG topologically ordered nodes.`);
+    console.log(`[CLI] Discovered ${csgGraph.nodes.length} CSG topologically ordered nodes.`);
     console.log(`[CLI] Spawning OpenCASCADE Worker...`);
 
     const worker = new CSGWorker();
-    await worker.processGraph(dae.csgGraph, outputDir);
+    await worker.processGraph(csgGraph, outputDir);
   },
 };

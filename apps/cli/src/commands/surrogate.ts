@@ -99,7 +99,7 @@ export const Surrogate: CommandModule<{}, SurrogateArgs> = {
     const parser = new Parser();
     parser.setLanguage(Modelica);
 
-    Context.registerParser(".mo", parser);
+    Context.registerParser(".mo", parser as any);
     const context = Context.createBatch(new NodeFileSystem());
 
     for (const p of args.paths) await context.addLibrary(p);

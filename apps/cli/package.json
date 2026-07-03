@@ -40,7 +40,7 @@
     "@modelscript/core": "*",
     "@modelscript/csg": "*",
     "@modelscript/language": "*",
-    "@modelscript/tree-sitter-modelica": "*",
+    "@modelscript/modelica": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",
     "assemblyscript": "^0.28.19",
