@@ -797,11 +797,14 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
     let tLen = lexLen;
     if (tLen == 0) break;
     let pad: u32 = srcLexPos > lexP ? srcLexPos - lexP : 0;
-    if (lastTokNode == 0) pad += errPad;
 
     let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
-    if (lastTokNode == 0) setFirstChild(errorNode, tNode);
-    else setNextSibling(lastTokNode, tNode);
+    if (lastTokNode == 0) {
+      setNodePadding(tNode, 0);
+      setFirstChild(errorNode, tNode);
+    } else {
+      setNextSibling(lastTokNode, tNode);
+    }
     lastTokNode = tNode;
 
     lexP = srcLexPos + tLen;
@@ -814,7 +817,7 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
 
   let newRoot = acceptedNode;
   if (getNodeType(acceptedNode) != NODE_TYPE_ERROR) {
-      newRoot = allocNode(NODE_TYPE_ERROR, 0, inputLength, 0);
+      newRoot = allocNode((MAX_TERMINAL_ID + 1) as u16, 0, inputLength, 0);
       setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
       setFirstChild(newRoot, acceptedNode);
       setNextSibling(acceptedNode, errorNode);
@@ -2936,12 +2939,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let p = changetype<ParseHead>(bestDyingHead).pos;
       let firstPad: u32 = missingPadding;
       let peekTok = invokeLexer(p);
-      if (peekTok != -1) {
-        let errLen = inputLength > p + firstPad ? inputLength - p - firstPad : 0;
-        unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
-      } else {
-        unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, remainingLen - (firstPad - missingPadding), 0);
-      }
+      let errLen = remainingLen;
+      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
       let lastTokNode = 0;
 
       // Report a single monolithic error for the entire unparsed remainder
@@ -2954,19 +2953,21 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       expected_tokens.fill(1);
 
       while (p < inputLength) {
-        let tok = invokeLexer(p);
-        if (tok == -1) break;
-        let pad = lexPos - p;
-        let token = lex(p);
+        let tok = lex(p);
+        if (tok == TOKEN_EOF) break;
+        let pad = srcLexPos > p ? srcLexPos - p : 0;
         let tLen = lexLen;
         if (tLen == 0) break; // prevent infinite loop
 
         let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
-        if (lastTokNode == 0) setFirstChild(unparsedNode, tNode);
-        else setNextSibling(lastTokNode, tNode);
+        if (lastTokNode == 0) {
+          setFirstChild(unparsedNode, tNode);
+        } else {
+          setNextSibling(lastTokNode, tNode);
+        }
         lastTokNode = tNode;
 
-        p = lexPos + tLen;
+        p = srcLexPos + tLen;
       }
 
       totalBytes += remainingLen + missingPadding;
@@ -2994,7 +2995,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     let firstChildPadding = totalNodes > 0 ? getNodePadding(t_globalChildNodes[0]) : 0;
     let root = allocNode(
-      NODE_TYPE_ERROR,
+      (MAX_TERMINAL_ID + 1) as u16,
       firstChildPadding,
       totalBytes > firstChildPadding ? totalBytes - firstChildPadding : 0,
       0,
