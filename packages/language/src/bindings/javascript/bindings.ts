@@ -879,6 +879,10 @@ export class LspFacade {
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
+      if (typeId === 5) {
+        console.log(`[JS_DEBUG] node_5: pad=${pad} len=${len} typeFlags=${typeFlags} ptr=${ptr}`);
+      }
+
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
 
@@ -1115,7 +1119,7 @@ export class LspFacade {
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     let opsCount = 0;
-    const MAX_DIFF_OPS = 10000;
+    const MAX_DIFF_OPS = 1000000;
 
     const fieldIdToName: string[] = [];
     for (const [name, id] of Object.entries(FIELD_NAMES)) {
@@ -1191,7 +1195,10 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
-        if (opsCount >= MAX_DIFF_OPS) return;
+        if (opsCount >= MAX_DIFF_OPS) {
+          console.warn("buildInsertions ABORTED due to opsCount limit!");
+          return;
+        }
         opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
@@ -1219,7 +1226,10 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
-        if (opsCount >= MAX_DIFF_OPS) return;
+        if (opsCount >= MAX_DIFF_OPS) {
+          console.warn("buildDeletions ABORTED due to opsCount limit!");
+          return;
+        }
         opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
@@ -1233,6 +1243,7 @@ export class LspFacade {
 
     const diffNodes = (oldPtr: number, newPtr: number): void => {
       if (opsCount >= MAX_DIFF_OPS) {
+        console.warn("diffNodes ABORTED due to opsCount limit!");
         // Fallback: tree changed too much, just delete old and insert new
         if (oldPtr) listener.onNodeDeleted(oldPtr);
         if (newPtr) {

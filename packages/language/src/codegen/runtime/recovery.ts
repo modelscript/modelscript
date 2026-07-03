@@ -302,7 +302,7 @@ export function recoverUnwindAndMutate(
                   recState,
                   errNode,
                   unwindCurr,
-                  a1NextScanPos,
+                  p, // Preserve whitespace between the last garbage token and the resumed token
                   initialScannerState,
                   delHeadCost,
                   0, // pendingPadding (reset after recovery)

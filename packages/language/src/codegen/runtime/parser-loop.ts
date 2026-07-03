@@ -588,7 +588,7 @@ function deepCloneSubtree(node: u32, depth: i32): u32 {
   let lastChild: u32 = 0;
   let child = getNodeFirstChild(node);
   let guard: u32 = 0;
-  while (child != 0 && child >= 65536 && guard < 10000) {
+  while (child != 0 && guard < 10000) {
     guard++;
     let childClone = deepCloneSubtree(child, depth + 1);
     if (childClone != 0) {
@@ -627,7 +627,7 @@ function sanitizeTree(root: u32): void {
     let modified = false;
     let siblingGuard: u32 = 0;
 
-    while (child != 0 && child >= 65536 && siblingGuard < 10000) {
+    while (child != 0 && siblingGuard < 10000) {
       siblingGuard++;
       let childType = getNodeType(child);
       let nextSib = getNodeNextSibling(child);
@@ -680,10 +680,7 @@ function sanitizeTree(root: u32): void {
       fixNodeLength(node);
     }
 
-    // Also fix children pointing below memoryBase (corrupted pointers)
-    if (getNodeFirstChild(node) != 0 && getNodeFirstChild(node) < 65536) {
-      setFirstChild(node, 0);
-    }
+    // Also fix children pointing to 0 (corrupted pointers are handled in unlinking above)
   }
 }
 
@@ -1188,7 +1185,9 @@ function isMutable(ptr: u32): boolean {
   // In GLR mode (multiple active heads), never mutate in-place:
   // shared list nodes can be referenced by multiple heads, and
   // mutating one corrupts the others' trees.
-  if (activeHeadsCount > 1) return false;
+  // Note: The current head is popped from the queue during evaluation,
+  // so if activeHeadsCount > 0, it means there is at least one OTHER head.
+  if (activeHeadsCount > 0) return false;
   if ((getNodeFlags(ptr) & FLAG_EXTRACTED) != 0) return false;
   return ptr >= incrementalStartOffset;
 }
@@ -1377,12 +1376,22 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
   if (isMutable(leftNode)) {
     let prevOfRightMost = 0;
     let rightMost = getNodeFirstChild(leftNode);
+    let allChildrenMutable = true;
     while (getNodeNextSibling(rightMost) != 0) {
       prevOfRightMost = rightMost;
       rightMost = getNodeNextSibling(rightMost);
     }
+    
+    // CRITICAL FIX: Even if the list node itself is mutable, if its children
+    // have been extracted (shared with another clone), we cannot mutate
+    // the last child's nextSibling pointer in-place!
+    if ((getNodeFlags(rightMost) & FLAG_EXTRACTED) != 0 || 
+        (prevOfRightMost != 0 && (getNodeFlags(prevOfRightMost) & FLAG_EXTRACTED) != 0)) {
+       allChildrenMutable = false;
+    }
 
-    let newRightMost = appendToList(rightMost, leaf, listSym, envHash, isBoundary);
+    if (allChildrenMutable) {
+      let newRightMost = appendToList(rightMost, leaf, listSym, envHash, isBoundary);
 
     let nrDepth = getListDepth(newRightMost, listSym);
     if (nrDepth == lDepth) {
@@ -1456,9 +1465,12 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
       setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
       fixNodeLength(leftNode);
       _listRecurDepth--;
-      return leftNode;
+      }
     }
-  } else {
+  }
+  
+  // If we reach here, we must clone the list and its children to avoid mutating shared state.
+  {
     let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
     let gc = getNodeFirstChild(leftNode);
     let lastChild = 0;

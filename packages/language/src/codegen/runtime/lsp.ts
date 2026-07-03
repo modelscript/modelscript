@@ -234,6 +234,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         t_lspTraverseStack[writeIdx] = child;
         t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit | insertedBit;
         writeIdx--;
+        debugLog(888801, currOffset, cLen, getNodeType(child));
         currOffset += cLen;
         child = getNodeNextSibling(child);
         currChildIdx++;
@@ -280,8 +281,13 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     t_lspVisitedNodes.push(node);
 
     let pad = getNodePadding(node);
+    let len = getNodeByteLength(node);
     let type = getNodeType(node);
     let isErrorNode = type == 0;
+
+    // Debug: trace every node visited during semantic token traversal
+    debugLog(888800, type, start + pad, pad);
+    debugLog(888802, len, node, inError ? 1 : 0);
 
     // Skip semantic token emission for:
     // 1. ERROR nodes (type == 0) — no valid grammar structure
@@ -369,7 +375,11 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
-        let cLen = padVal + getNodeByteLength(child);
+        let childByteLen = getNodeByteLength(child);
+        let cLen = padVal + childByteLen;
+        let childType = getNodeType(child);
+        debugLog(888803, childType, currOffset, padVal);
+        debugLog(888804, childByteLen, cLen, 0);
         t_lspTraverseStack[writeIdx] = child;
         t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit;
         writeIdx--;

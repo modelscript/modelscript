@@ -495,6 +495,8 @@ scope {
                         monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
                     } else if (msg.type === 'statusUpdate') {
                         document.getElementById('status').innerText = msg.message;
+                    } else if (msg.type === 'worker_log') {
+                        console.log(...msg.args);
                     } else if (msg.type === 'astPatch' || msg.type === 'astPatchBinary') {
                         window.postMessage(msg, '*');
                     }
@@ -745,13 +747,16 @@ scope {
                 const flatten = (ptr, depth, parentOffset, parentField) => {
                     if (nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
-                        nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE', depth, isCycle: true });
+                        nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE_' + ptr, depth, isCycle: true, currentOffset: parentOffset });
                         return parentOffset;
                     }
                     visited.add(ptr);
                     
                     const node = nodeMap.current.get(ptr);
-                    if (!node) return parentOffset;
+                    if (!node) {
+                        visited.delete(ptr);
+                        return parentOffset;
+                    }
                     
                     const currentOffset = parentOffset + (node.pad || 0);
                     const isError = node.typeName === "ERROR";
@@ -763,6 +768,7 @@ scope {
                     for (const childPtr of node.children || []) {
                         childOffset = flatten(childPtr, depth + 1, childOffset, null);
                     }
+                    visited.delete(ptr);
                     return currentOffset + (node.len || 0);
                 };
                 
@@ -787,6 +793,9 @@ scope {
             const getPosStr = (offset, len) => {
                 const startPos = getLineCol(offset);
                 const endPos = getLineCol(offset + len);
+                if (Number.isNaN(startPos.col) || Number.isNaN(endPos.col)) {
+                    console.error("NaN detected! offset:", offset, "len:", len, "lineStarts:", lineStarts);
+                }
                 return "[" + startPos.line + ", " + startPos.col + "] - [" + endPos.line + ", " + endPos.col + "]";
             };
 
@@ -1010,6 +1019,9 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     patchInt32[patchOffset++] = pad || 0;
     patchInt32[patchOffset++] = len || 0;
     patchInt32[patchOffset++] = children ? children.length : 0;
+    if (Number.isNaN(pad) || Number.isNaN(len)) {
+        console.error("pushPatch received NaN! pad:", pad, "len:", len, "typeId:", typeId);
+    }
     if (children) {
         for (let i = 0; i < children.length; i++) {
             patchInt32[patchOffset++] = children[i];
@@ -1040,9 +1052,10 @@ function triggerDiagnostics(changes = null) {
                 globalAstRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
                 currentTextLength = newTotalLength;
             } else {
+                const oldLen = currentTextLength;
                 currentTextLength = change.text.length;
                 currentGenerationId++;
-                globalAstRoot = lspFacade.parseIncremental(change.text, 0, 0, currentTextLength);
+                globalAstRoot = lspFacade.parseIncremental(change.text, 0, oldLen, currentTextLength);
             }
         }
         
@@ -1122,7 +1135,13 @@ self.addEventListener('message', async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) { if (cat === 888801) console.log("[SEM]", "offset=" + v1, "len=" + v2, "type=" + v3); } },
+                engine: { debugLog: function(cat, v1, v2, v3) { 
+                    if (cat === 888801) console.log("[SEM]", "offset=" + v1, "len=" + v2, "type=" + v3); 
+                    if (cat === 888800) console.log("[NODE_START]", "type=" + v1, "nodeOffset=" + v2, "pad=" + v3);
+                    if (cat === 888802) console.log("[NODE_INFO]", "len=" + v1, "ptr=" + v2, "inError=" + v3);
+                    if (cat === 888803) console.log("  [CHILD_CALC]", "childType=" + v1, "parentOffset=" + v2, "childPad=" + v3);
+                    if (cat === 888804) console.log("  [CHILD_CALC2]", "childLen=" + v1, "cLen(pad+len)=" + v2);
+                } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},
@@ -1153,14 +1172,22 @@ self.addEventListener('message', async (e) => {
             const blob = new Blob([jsWrapper], { type: 'application/javascript' });
             const url = URL.createObjectURL(blob);
             const { LspFacade } = await import(url);
+
+            const origLog = console.log;
+            console.log = function(...args) {
+                if (args[0] && typeof args[0] === 'string' && (args[0].startsWith('[SEM]') || args[0].startsWith('[NODE_START]') || args[0].startsWith('[NODE_INFO]') || args[0].includes('CHILD_CALC'))) {
+                    self.postMessage({ type: 'worker_log', args: args });
+                }
+                origLog.apply(console, args);
+            };
             
             lspFacade = new LspFacade(memory, instance.exports);
             
             lspFacade.addAstChangeListener({
-                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),
+                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children ? children.map(c => c.ptr) : null),
                 onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, null),
                 onNodeRetained: (ptr) => {},
-                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children)
+                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children ? children.map(c => c.ptr) : null)
             });
 
             console.log("LspFacade successfully loaded inside worker.");
