@@ -9,6 +9,7 @@ import yargs from "yargs/yargs";
 // import { Cosim } from "./commands/cosim.js";
 // import { Fmu } from "./commands/fmu.js";
 import { Build } from "./commands/build.js";
+import { BuildCSG } from "./commands/csg.js";
 import { Generate } from "./commands/generate.js";
 // import { I18n } from "./commands/i18n.js";
 // import { Init } from "./commands/init.js";
@@ -55,6 +56,7 @@ yargs(process.argv.slice(2))
   // .command(MC)
   // .command(Verify)
   // .command(Unpublish)
+  .command(BuildCSG)
   .strictCommands()
   .demandCommand()
   .help()
