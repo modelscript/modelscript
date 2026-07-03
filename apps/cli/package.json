@@ -37,7 +37,10 @@
   },
   "dependencies": {
     "@babel/standalone": "^7.29.7",
+    "@modelscript/core": "*",
+    "@modelscript/csg": "*",
     "@modelscript/language": "*",
+    "@modelscript/tree-sitter-modelica": "*",
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.5.16",
     "assemblyscript": "^0.28.19",

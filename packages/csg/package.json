@@ -1,0 +1,30 @@
+{
+  "name": "@modelscript/csg",
+  "version": "0.0.1",
+  "description": "OpenCASCADE WebWorker for ModelScript Procedural CAD",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && npm run lint && tsc",
+    "clean": "rimraf dist",
+    "lint": "true",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "opencascade.js": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  }
+}
