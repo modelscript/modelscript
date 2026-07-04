@@ -350,7 +350,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x7FFFFFFF;
+    let start = offsetStackVal & 0x1FFFFFFF;
     let inError = (offsetStackVal >>> 31) == 1;
 
     let flags = getNodeFlags(node);
@@ -396,13 +396,11 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           let cType = getNodeType(child);
           let cFlags = getNodeFlags(child);
           let cLen = getNodeByteLength(child);
-          // Skip children that don't correspond to grammar symbols:
-          // - ERROR nodes (type == 0)
           // - Invisible internal nodes (list boundaries, _START, etc.)
-          // - Inserted ghost nodes (zero-length phantoms from recovery)
-          let isSkippable = cType == 0
-            || (cFlags & FLAG_INVISIBLE) != 0
-            || (cFlags & FLAG_IS_INSERTED) != 0;
+          // We MUST NOT skip FLAG_IS_INSERTED or NODE_TYPE_ERROR, because the
+          // semantic data indices are pre-compiled and expect all structural terminals to exist.
+          // Skipping them would desynchronize childCount and corrupt subsequent token colors.
+          let isSkippable = (cFlags & FLAG_INVISIBLE) != 0;
           if (!isSkippable) {
             if (childCount == childIdx) {
               targetChild = child;
@@ -491,7 +489,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x7FFFFFFF;
+    let start = offsetStackVal & 0x1FFFFFFF;
     let inError = (offsetStackVal >>> 31) == 1;
 
     let flags = getNodeFlags(node);
@@ -569,7 +567,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
     stackTop--;
     let node = t_lspTraverseStack[stackTop];
     let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x7FFFFFFF;
+    let start = offsetStackVal & 0x1FFFFFFF;
     let inError = (offsetStackVal >>> 31) == 1;
 
     let flags = getNodeFlags(node);
