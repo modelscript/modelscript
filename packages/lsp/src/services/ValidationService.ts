@@ -80,12 +80,30 @@ export class ValidationService {
       }
       const node = cursor.currentNode;
       const hasErr = typeof node.hasError === "function" ? node.hasError() : node.hasError;
+      const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
 
-      if (hasErr) {
-        const isMissing = typeof node.isMissing === "function" ? node.isMissing() : node.isMissing;
-        if (isMissing || node.type === "ERROR") {
-          const start = textDocument.positionAt(node.startIndex);
-          const end = textDocument.positionAt(node.endIndex);
+      let shouldReport = false;
+      let start = textDocument.positionAt(node.startIndex);
+      let end = textDocument.positionAt(node.endIndex);
+
+      if (isMissing) {
+        shouldReport = true;
+        if (start.line === end.line && start.character === end.character) {
+          if (node.previousSibling) {
+            start = textDocument.positionAt(node.previousSibling.startIndex);
+            end = textDocument.positionAt(node.previousSibling.endIndex);
+          } else {
+            end = { line: start.line, character: start.character + 1 };
+          }
+        }
+      } else if (node.type === "ERROR") {
+        if (node.childCount === 0) shouldReport = true;
+      } else if (!hasErr && node.childCount === 0 && node.parent?.type === "ERROR") {
+        shouldReport = true;
+      }
+
+      if (shouldReport) {
+        if (start.line !== end.line || start.character !== end.character) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             range: { start, end },
@@ -93,6 +111,9 @@ export class ValidationService {
             source: "modelscript",
           });
         }
+      }
+
+      if (hasErr || node.type === "ERROR") {
         if (cursor.gotoFirstChild()) {
           continue;
         }

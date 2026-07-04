@@ -390,7 +390,6 @@ scope {
                                 return e.data.semanticLegend;
                             },
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
-                                await new Promise(r => setTimeout(r, 150));
                                 if (token.isCancellationRequested) return null;
 
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/full', {
@@ -718,8 +717,8 @@ scope {
                             setUpdateTick(t => t + 1);
                         }
                         
-                        if (msg.lineStarts) {
-                            setLineStarts(msg.lineStarts);
+                        if (msg.lineStartsBuffer) {
+                            setLineStarts(new Uint32Array(msg.lineStartsBuffer));
                         }
                         
                         if (msg.diagnostics) {
@@ -1046,22 +1045,37 @@ function triggerDiagnostics(changes = null) {
         
         let astRoot = 0;
         
+        const t0 = performance.now();
+        let newTotalLength = currentTextLength;
+        let requiresFull = false;
+        
         for (const change of pendingChanges) {
-            if (change.rangeOffset !== undefined) {
-                const newTotalLength = Math.max(0, currentTextLength - change.rangeLength + change.text.length);
-                globalAstRoot = lspFacade.parseIncremental(change.text, change.rangeOffset, change.rangeLength, newTotalLength);
-                currentTextLength = newTotalLength;
+            if (change.rangeOffset === undefined) {
+                requiresFull = true;
+                newTotalLength = change.text.length;
             } else {
-                const oldLen = currentTextLength;
-                currentTextLength = change.text.length;
-                currentGenerationId++;
-                globalAstRoot = lspFacade.parseIncremental(change.text, 0, oldLen, currentTextLength);
+                newTotalLength = Math.max(0, newTotalLength - change.rangeLength + change.text.length);
             }
         }
         
+        currentGenerationId++;
+        
+        if (requiresFull) {
+            const lastChange = pendingChanges[pendingChanges.length - 1];
+            globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, currentTextLength, newTotalLength);
+        } else {
+            globalAstRoot = lspFacade.parseIncrementalBatch(pendingChanges, newTotalLength);
+        }
+        
+        currentTextLength = newTotalLength;
+        const t1 = performance.now();
+        
         const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
-        console.log('DIAGS:', JSON.stringify(rawDiags), 'root:', globalAstRoot, 'inputLen:', lspFacade.exports.inputLength?.value);
+        const t2 = performance.now();
+        
         const lineStarts = lspFacade.getLineStarts();
+        const t3 = performance.now();
+        console.log("[LSP Timings] parse: " + Math.round(t1-t0) + "ms | diags: " + Math.round(t2-t1) + "ms | lineStarts: " + Math.round(t3-t2) + "ms");
         
         // Double-buffer swap: transfer the current buffer and switch to the other
         const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
@@ -1070,14 +1084,17 @@ function triggerDiagnostics(changes = null) {
         patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
         patchInt32 = new Int32Array(patchBuffer);
         
+        const lineStartsCopy = new Uint32Array(lineStarts);
+        const lineStartsBuffer = lineStartsCopy.buffer;
+
         self.postMessage({ 
             type: 'astPatchBinary', 
             buffer: transferBuffer, 
             rootId: globalAstRoot, 
             diagnostics: rawDiags,
-            lineStarts: Array.from(lineStarts),
+            lineStartsBuffer: lineStartsBuffer,
             generationId: currentGenerationId
-        }, [transferBuffer]);
+        }, [transferBuffer, lineStartsBuffer]);
         
         const diagnostics = rawDiags.map(d => ({
             severity: d.severity,
@@ -1094,7 +1111,7 @@ function triggerDiagnostics(changes = null) {
         });
         
         pendingChanges = [];
-    }, 50);
+    }, 20);
 }
 
 // Listen for custom init message containing the WASM binary and generated JS
@@ -1325,7 +1342,11 @@ self.addEventListener('message', async (e) => {
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
     } else if (e.data.method === 'textDocument/semanticTokens/full') {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const t0 = performance.now();
         const tokensArray = lspFacade.getSemanticTokens(globalAstRoot);
+        const t1 = performance.now();
+        console.log("[LSP Timings] getSemanticTokens: " + Math.round(t1-t0) + "ms");
+        
         if (!tokensArray || tokensArray.length === 0) {
             return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         }

@@ -7578,7 +7578,7 @@
       "format": "esm"
     },
     "src/services/ValidationService.ts": {
-      "bytes": 72875,
+      "bytes": 73633,
       "imports": [
         {
           "path": "../../node_modules/vscode-languageserver/lib/browser/main.js",
@@ -8391,12 +8391,12 @@
         "src/services/HierarchyService.ts": { "bytesInOutput": 5622 },
         "src/services/ParserService.ts": { "bytesInOutput": 21260 },
         "../../node_modules/web-tree-sitter/web-tree-sitter.js": { "bytesInOutput": 165462 },
-        "src/services/ValidationService.ts": { "bytesInOutput": 64617 },
+        "src/services/ValidationService.ts": { "bytesInOutput": 65415 },
         "src/services/ReasonerService.ts": { "bytesInOutput": 1978 },
         "src/step-workspace-index.ts": { "bytesInOutput": 9733 },
         "src/step-assembly-extractor.ts": { "bytesInOutput": 4139 }
       },
-      "bytes": 19439699
+      "bytes": 19442205
     },
     "dist/step-worker.js": {
       "imports": [],

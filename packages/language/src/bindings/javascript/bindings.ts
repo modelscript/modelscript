@@ -396,7 +396,9 @@ export class LspFacade {
       this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed
     }
 
+    const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -410,9 +412,140 @@ export class LspFacade {
         }
       }
     }
+    const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (_t2 - _t0 > 50) {
+      console.log(
+        `[parseIncremental] WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
+      );
+    }
 
     this.lastAstRoot = newAstRoot;
 
+    if (this.exports.clearAstMarks) {
+      this.exports.clearAstMarks(this.lastAstRoot);
+    }
+
+    return this.lastAstRoot;
+  }
+
+  parseIncrementalBatch(
+    edits: { rangeOffset: number; rangeLength: number; text: string }[],
+    newTotalLength: number,
+  ): number {
+    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    if (edits.length === 0) return this.lastAstRoot;
+
+    this._cachedLineStarts = null;
+    this._childTailCache.clear();
+
+    // First, compute the bounding box of all edits in original coordinates
+    let minOrigStart = Infinity;
+    let maxOrigEnd = 0;
+    let currentDelta = 0;
+
+    for (const edit of edits) {
+      if (edit.rangeOffset === undefined) {
+        // Full replacement fallback
+        return this.parseIncremental(edit.text, 0, this.currentInputLength, newTotalLength);
+      }
+      let origStart = edit.rangeOffset - currentDelta;
+      let origEnd = origStart + edit.rangeLength;
+
+      if (origStart < minOrigStart) minOrigStart = origStart;
+      if (origEnd > maxOrigEnd) maxOrigEnd = origEnd;
+
+      currentDelta += edit.text.length - edit.rangeLength;
+    }
+
+    const oldTotalLength = newTotalLength - currentDelta;
+
+    if (newTotalLength <= 0) {
+      if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+      if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
+      const newAstRoot = this.exports.parse(0, 0, 0, 0);
+      this.lastAstRoot = newAstRoot;
+      if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
+      this._cachedLineStarts = new Uint32Array([0]);
+      this.currentInputLength = 0;
+      return this.lastAstRoot;
+    }
+
+    if (this.exports.abortSuspend) this.exports.abortSuspend();
+    const lenBytes = newTotalLength * 2;
+    const oldTextPtr = this.exports.getInputBuffer();
+
+    let oldSnapshot: Uint16Array | null = null;
+    if (oldTotalLength > 0) {
+      const oldView = new Uint16Array(this.wasmMemory.buffer, oldTextPtr, oldTotalLength);
+      oldSnapshot = new Uint16Array(oldTotalLength);
+      oldSnapshot.set(oldView);
+    }
+
+    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : oldTextPtr;
+    const maxLen = Math.max(oldTotalLength, newTotalLength);
+    const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
+
+    if (oldTextPtr !== textPtr && oldSnapshot) {
+      const safeCopyLen = Math.min(oldSnapshot.length, memArray16.length);
+      memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
+    }
+
+    let runningTotalLength = oldTotalLength;
+    for (const edit of edits) {
+      if (edit.text.length !== edit.rangeLength) {
+        const sourceIndex = edit.rangeOffset + edit.rangeLength;
+        const targetIndex = edit.rangeOffset + edit.text.length;
+        const count = runningTotalLength - sourceIndex;
+        if (count > 0) {
+          memArray16.copyWithin(targetIndex, sourceIndex, sourceIndex + count);
+        }
+        runningTotalLength = runningTotalLength - edit.rangeLength + edit.text.length;
+      }
+      for (let i = 0; i < edit.text.length; i++) {
+        memArray16[edit.rangeOffset + i] = edit.text.charCodeAt(i);
+      }
+    }
+    this._cachedLineStarts = null;
+
+    this.currentInputLength = newTotalLength;
+
+    if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
+    else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
+    if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
+    else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+
+    const maxNewEnd = maxOrigEnd + currentDelta;
+
+    let editStartByte = minOrigStart * 2;
+    let editOldEndByte = maxOrigEnd * 2;
+    let editNewEndByte = maxNewEnd * 2;
+
+    if (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0) {
+      this.lastAstRoot = 0;
+    }
+
+    const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
+    const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    if (this.astListeners && this.astListeners.length > 0) {
+      if (this.lastAstRoot !== 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
+        }
+      } else if (newAstRoot !== 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(0, newAstRoot, listener);
+        }
+      }
+    }
+    const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    console.log(
+      `[parseIncrementalBatch] Batched ${edits.length} edits. WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
+    );
+
+    this.lastAstRoot = newAstRoot;
     if (this.exports.clearAstMarks) {
       this.exports.clearAstMarks(this.lastAstRoot);
     }
@@ -1029,7 +1162,7 @@ export class LspFacade {
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     let opsCount = 0;
-    const MAX_DIFF_OPS = 1000000;
+    const MAX_DIFF_OPS = 50000;
 
     const fieldIdToName: string[] = [];
     for (const [name, id] of Object.entries(FIELD_NAMES)) {
@@ -1045,6 +1178,8 @@ export class LspFacade {
       let childIndex = 0;
 
       while (curr !== 0) {
+        if (opsCount >= MAX_DIFF_OPS) break;
+        opsCount++;
         let fieldId = -1;
         if (this.exports.getFieldIdForChild) {
           fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex);
@@ -1061,6 +1196,8 @@ export class LspFacade {
       const children: { ptr: number; field: string | null }[] = [];
       const collect = (nodePtr: number, parentField: string | null) => {
         if (!nodePtr) return;
+        if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
+        opsCount++;
         const firstChild = mem32[(nodePtr + 8) / 4];
         let childPtr = firstChild;
         const typeFlags = mem32[nodePtr / 4];
@@ -1105,10 +1242,7 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
-        if (opsCount >= MAX_DIFF_OPS) {
-          console.warn("buildInsertions ABORTED due to opsCount limit!");
-          return;
-        }
+        if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
         opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
@@ -1136,10 +1270,7 @@ export class LspFacade {
       if (!startPtr) return;
       const stack: number[] = [startPtr];
       while (stack.length > 0) {
-        if (opsCount >= MAX_DIFF_OPS) {
-          console.warn("buildDeletions ABORTED due to opsCount limit!");
-          return;
-        }
+        if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
         opsCount++;
         const ptr = stack.pop()!;
         if (!ptr) continue;
@@ -1152,27 +1283,7 @@ export class LspFacade {
     };
 
     const diffNodes = (oldPtr: number, newPtr: number): void => {
-      if (opsCount >= MAX_DIFF_OPS) {
-        console.warn("diffNodes ABORTED due to opsCount limit!");
-        // Fallback: tree changed too much, just delete old and insert new
-        if (oldPtr) listener.onNodeDeleted(oldPtr);
-        if (newPtr) {
-          const typeFlags = mem32[newPtr / 4];
-          const typeId = typeFlags & 0x03ff;
-          let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
-          if (typeName.startsWith("T_")) typeName = typeName.substring(2);
-          const envHashPadding = mem32[(newPtr + 4) / 4];
-          const rawPad = typeFlags >>> 19;
-          const isFat = (envHashPadding >>> 23) & 1;
-          const pad =
-            isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
-          const len = envHashPadding & 0x007fffff;
-          const children = getFlattenedChildren(newPtr);
-          listener.onNodeInserted(newPtr, typeId, typeName, pad, len, children);
-        }
-        opsCount++;
-        return;
-      }
+      if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
       if (oldPtr === newPtr) {
         listener.onNodeRetained(newPtr);
         return;
@@ -1237,7 +1348,28 @@ export class LspFacade {
       }
     };
 
-    diffNodes(oldRoot, newRoot);
+    try {
+      diffNodes(oldRoot, newRoot);
+    } catch (e: any) {
+      if (e.message === "MAX_DIFF_OPS") {
+        console.warn("AST diff aborted due to complexity limit. Falling back to full re-insertion.");
+        if (oldRoot) listener.onNodeDeleted(oldRoot);
+        if (newRoot) {
+          opsCount = 0;
+          try {
+            buildInsertions(newRoot);
+          } catch (e2: any) {
+            if (e2.message === "MAX_DIFF_OPS") {
+              console.warn("AST fallback insertion ALSO aborted due to complexity limit. Tree will be incomplete.");
+            } else {
+              throw e2;
+            }
+          }
+        }
+      } else {
+        throw e;
+      }
+    }
   }
 }
 

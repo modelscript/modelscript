@@ -484,8 +484,6 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   node.firstChild = 0;
   node.nextSibling = 0;
 
-  debugLog(123, ptr, type, byteLength);
-
   return ptr;
 }
 
@@ -635,13 +633,12 @@ export function nodeHasError(ptr: u32): boolean {
 }
 
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
-  debugLog(126, parentPtr, childPtr, 0);
+  if (parentPtr == 0) return;
   changetype<ASTNode>(parentPtr).firstChild = childPtr;
 }
 
 export function setNextSibling(siblingPtr: u32, nextPtr: u32): void {
   if (siblingPtr == 0) return;
-  debugLog(125, siblingPtr, nextPtr, 0);
   changetype<ASTNode>(siblingPtr).nextSibling = nextPtr;
 }
 

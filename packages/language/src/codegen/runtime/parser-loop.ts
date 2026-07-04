@@ -11,7 +11,7 @@ import {
     getNodeEnvHash, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode
 } from "./arena";
-import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array } from "./array";
+import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import {
     lexPos, lexLen, srcLexPos, currentScannerState, invokeLexer, is_extra_token, inputLength,
     lex, setLexPos, setLexLen, setSrcLexPos, setCurrentScannerState, SYMBOL_COUNT, logInt, peekChar, peekCharLen
@@ -607,25 +607,27 @@ function deepCloneSubtree(node: u32, depth: i32): u32 {
   return clone;
 }
 
+let t_sanitizeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+let t_sanitizeVisited: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+
 function sanitizeTree(root: u32): void {
   if (root == 0) return;
-  // Use an iterative approach with a stack to avoid deep recursion.
-  // Track visited nodes to detect shared subtrees (DAG structures
-  // created by cloneNodeShallow sharing firstChild pointers across
-  // multiple parent clones). When a shared node is found, deep-clone
-  // it to break the aliasing and prevent cycles.
-  let stack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(2048 * 4));
-  let visited = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
-  let visitedCount: u32 = 0;
-  let stackTop: u32 = 0;
+  
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
+  } else {
+    t_sanitizeStack.clear();
+    t_sanitizeVisited.clear();
+  }
 
   // Mark the root as visited
-  if (visitedCount < 8192) visited[visitedCount++] = root;
-  stack[stackTop++] = root;
+  setNodeFlags(root, getNodeFlags(root) | FLAG_LSP_VISITED);
+  t_sanitizeVisited.push(root);
+  t_sanitizeStack.push(root);
 
-  while (stackTop > 0) {
-    stackTop--;
-    let node = stack[stackTop];
+  while (t_sanitizeStack.length > 0) {
+    let node = t_sanitizeStack.pop();
     if (node == 0) continue;
 
     let prevChild: u32 = 0;
@@ -645,14 +647,9 @@ function sanitizeTree(root: u32): void {
         modified = true;
       } else {
         // Check if this child was already visited (shared subtree)
-        let isShared = false;
-        for (let vi: u32 = 0; vi < visitedCount; vi++) {
-          if (visited[vi] == child) {
-            isShared = true;
-            break;
-          }
-        }
-
+        let cFlags = getNodeFlags(child);
+        let isShared = (cFlags & FLAG_LSP_VISITED) != 0;
+        
         if (isShared) {
           // Deep-clone to break shared-pointer aliasing
           let freshClone = deepCloneSubtree(child, 0);
@@ -662,8 +659,8 @@ function sanitizeTree(root: u32): void {
             else setNextSibling(prevChild, freshClone);
             prevChild = freshClone;
             // Mark the fresh clone as visited and push for sanitization
-            if (visitedCount < 8192) visited[visitedCount++] = freshClone;
-            if (stackTop < 2048) stack[stackTop++] = freshClone;
+            t_sanitizeVisited.push(freshClone);
+            t_sanitizeStack.push(freshClone);
           } else {
             // Clone failed (too deep); unlink to prevent cycle
             if (prevChild == 0) setFirstChild(node, nextSib);
@@ -672,8 +669,9 @@ function sanitizeTree(root: u32): void {
           }
         } else {
           // Mark as visited and recurse
-          if (visitedCount < 8192) visited[visitedCount++] = child;
-          if (stackTop < 2048) stack[stackTop++] = child;
+          setNodeFlags(child, cFlags | FLAG_LSP_VISITED);
+          t_sanitizeVisited.push(child);
+          t_sanitizeStack.push(child);
           prevChild = child;
         }
       }
@@ -686,7 +684,12 @@ function sanitizeTree(root: u32): void {
       fixNodeLength(node);
     }
 
-    // Also fix children pointing to 0 (corrupted pointers are handled in unlinking above)
+  }
+
+  // Second pass: Clear the FLAG_LSP_VISITED flag
+  for (let vi: u32 = 0; vi < t_sanitizeVisited.length; vi++) {
+    let vNode = t_sanitizeVisited.get(vi);
+    setNodeFlags(vNode, getNodeFlags(vNode) & ~FLAG_LSP_VISITED);
   }
 }
 
@@ -916,8 +919,6 @@ let _listRecurDepth: u32 = 0;
 let appendListCalls = 0;
 
 export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
-  debugLog(5679, leftNode, rightNode, listSym);
-  debugLog(124, leftNode, rightNode, 0);
   _listRecurDepth++;
   // Cycle detection guard
   if (_listRecurDepth > 50) {
@@ -2316,9 +2317,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     t_globalChildren = changetype<UnmanagedInt32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
     t_tokenBufferArena = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
     t_tokenBufferLenArena = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
-    t_lrStateStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_LR_STACK_DEPTH * 4));
-    t_lrNodeStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_LR_STACK_DEPTH * 4));
+    t_lrStateStack = createChunkedUint32Array(10000);
+    t_lrNodeStack = createChunkedUint32Array(10000);
     initQueryArena();
+  } else {
+    t_lrStateStack.clear();
+    t_lrNodeStack.clear();
   }
 
   let pos: u32 = 0;

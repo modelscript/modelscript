@@ -389,8 +389,8 @@ export let configEnableBranchB: boolean = true;
 export let configEnableBranchC: boolean = true;
 export let configEnableIslandMode: boolean = true;
 
-export let t_lrStateStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-export let t_lrNodeStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let lrStackDepth: i32 = 0;
 export const MAX_LR_STACK_DEPTH: i32 = 65536;
 export let tempActions: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
