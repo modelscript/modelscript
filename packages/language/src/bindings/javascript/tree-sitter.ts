@@ -50,6 +50,7 @@ export class SyntaxNode {
     const mem32 = this.tree.mem32;
     const kids: SyntaxNode[] = [];
     let childOffset = this._startOffset;
+    if (this.ptr === 0) return kids; // Synthetic nodes have no children
     let childPtr = mem32[(this.ptr + 8) / 4];
 
     while (childPtr !== 0) {
@@ -63,6 +64,28 @@ export class SyntaxNode {
           ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
           : rawPad;
       const len = envHashPadding & 0x007fffff;
+
+      // Extract garbage tokens hidden in padding if this subtree contains errors
+      if (pad > 0 && this._cachedTypeId === 0) {
+        let inGarbage = false;
+        let garbageStart = 0;
+        for (let i = 0; i < pad; i++) {
+          let charCode = this.tree.sourceCode.charCodeAt(childOffset + i);
+          let isWs = charCode === 32 || charCode === 9 || charCode === 10 || charCode === 13;
+          if (!isWs && !inGarbage) {
+            inGarbage = true;
+            garbageStart = i;
+          } else if (isWs && inGarbage) {
+            inGarbage = false;
+            let garbageLen = i - garbageStart;
+            kids.push(new SyntaxNode(this.tree, 0, childOffset, this, garbageStart, garbageLen, 0));
+          }
+        }
+        if (inGarbage) {
+          let garbageLen = pad - garbageStart;
+          kids.push(new SyntaxNode(this.tree, 0, childOffset, this, garbageStart, garbageLen, 0));
+        }
+      }
 
       kids.push(new SyntaxNode(this.tree, childPtr, childOffset, this, pad, len, typeId));
 
@@ -85,7 +108,7 @@ export class SyntaxNode {
   get nextSibling(): SyntaxNode | null {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr);
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
     if (idx >= 0 && idx < siblings.length - 1) {
       return siblings[idx + 1];
     }
@@ -95,7 +118,7 @@ export class SyntaxNode {
   get previousSibling(): SyntaxNode | null {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr);
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
     if (idx > 0) {
       return siblings[idx - 1];
     }

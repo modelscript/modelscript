@@ -247,73 +247,78 @@ function collectDiagnosticsIncremental(
   return [...kept, ...found];
 }
 
-function walkForErrors(node: CSTNode, diagnostics: DiagnosticJson[], sourceText: string): void {
+function walkForErrors(node: CSTNode, diagnostics: DiagnosticJson[], sourceText: string, inError = false): void {
   // Prune subtrees that have no errors — huge win for large files
-  if (node.hasError === false) return;
+  if (!inError && node.hasError === false) return;
 
-  if (node.type === "ERROR") {
-    const snippet = sourceText.substring(nodeStartByte(node), Math.min(nodeEndByte(node), nodeStartByte(node) + 30));
-    diagnostics.push({
-      startByte: nodeStartByte(node),
-      endByte: nodeEndByte(node),
-      message: "Syntax error: unexpected '" + snippet.trim() + "'",
-      severity: "error",
-    });
-    return;
-  }
-  if (node.isMissing) {
+  const isErrorNode = node.type === "ERROR" || node.type.startsWith("recovery_");
+  const isMissing = node.isMissing || node.type === "MISSING";
+  const count = node.childCount ?? node.children?.length ?? 0;
+
+  if (isMissing) {
     diagnostics.push({
       startByte: nodeStartByte(node),
       endByte: nodeEndByte(node) === nodeStartByte(node) ? nodeStartByte(node) + 1 : nodeEndByte(node),
-      message: `Missing expected '${node.type}'`,
+      message: `Missing expected '${node.type === "MISSING" ? "token" : node.type}'`,
       severity: "error",
     });
-    return;
+  } else if ((inError || isErrorNode) && count === 0) {
+    const len = nodeEndByte(node) - nodeStartByte(node);
+    if (len > 0) {
+      const snippet = sourceText.substring(nodeStartByte(node), Math.min(nodeEndByte(node), nodeStartByte(node) + 30));
+      diagnostics.push({
+        startByte: nodeStartByte(node),
+        endByte: nodeEndByte(node),
+        message: "Syntax error: unexpected '" + snippet.trim() + "'",
+        severity: "error",
+      });
+    }
   }
-  // Auto-generated recovery blobs — valid grammar but semantically errors
-  if (node.type.startsWith("recovery_")) {
-    const snippet = sourceText.substring(nodeStartByte(node), Math.min(nodeEndByte(node), nodeStartByte(node) + 30));
-    diagnostics.push({
-      startByte: nodeStartByte(node),
-      endByte: nodeEndByte(node),
-      message: "Syntax error: unexpected '" + snippet.trim() + "'",
-      severity: "error",
-    });
-    return;
-  }
-  const count = node.childCount ?? node.children.length;
+
+  const nextInError = inError || isErrorNode;
   for (let i = 0; i < count; i++) {
     const ch = node.child ? node.child(i) : node.children[i];
-    if (ch) walkForErrors(ch, diagnostics, sourceText);
+    if (ch) walkForErrors(ch, diagnostics, sourceText, nextInError);
   }
 }
 
 /** Only recurse into subtrees where hasChanges is true. */
-function walkForErrorsIncremental(node: CSTNode, diagnostics: DiagnosticJson[], sourceText: string): void {
-  if (node.hasChanges === false) return; // Skip unchanged subtrees entirely
-  if (node.type === "ERROR") {
-    const snippet = sourceText.substring(nodeStartByte(node), Math.min(nodeEndByte(node), nodeStartByte(node) + 30));
-    diagnostics.push({
-      startByte: nodeStartByte(node),
-      endByte: nodeEndByte(node),
-      message: "Syntax error: unexpected '" + snippet.trim() + "'",
-      severity: "error",
-    });
-    return;
-  }
-  if (node.type === "MISSING") {
+function walkForErrorsIncremental(
+  node: CSTNode,
+  diagnostics: DiagnosticJson[],
+  sourceText: string,
+  inError = false,
+): void {
+  if (!inError && node.hasChanges === false) return; // Skip unchanged subtrees entirely
+
+  const isErrorNode = node.type === "ERROR" || node.type.startsWith("recovery_");
+  const isMissing = node.isMissing || node.type === "MISSING";
+  const count = node.childCount ?? node.children?.length ?? 0;
+
+  if (isMissing) {
     diagnostics.push({
       startByte: nodeStartByte(node),
       endByte: nodeEndByte(node) === nodeStartByte(node) ? nodeStartByte(node) + 1 : nodeEndByte(node),
-      message: "Missing expected token",
+      message: `Missing expected '${node.type === "MISSING" ? "token" : node.type}'`,
       severity: "error",
     });
-    return;
+  } else if ((inError || isErrorNode) && count === 0) {
+    const len = nodeEndByte(node) - nodeStartByte(node);
+    if (len > 0) {
+      const snippet = sourceText.substring(nodeStartByte(node), Math.min(nodeEndByte(node), nodeStartByte(node) + 30));
+      diagnostics.push({
+        startByte: nodeStartByte(node),
+        endByte: nodeEndByte(node),
+        message: "Syntax error: unexpected '" + snippet.trim() + "'",
+        severity: "error",
+      });
+    }
   }
-  const count = node.childCount ?? node.children.length;
+
+  const nextInError = inError || isErrorNode;
   for (let i = 0; i < count; i++) {
     const ch = node.child ? node.child(i) : node.children[i];
-    if (ch) walkForErrorsIncremental(ch, diagnostics, sourceText);
+    if (ch) walkForErrorsIncremental(ch, diagnostics, sourceText, nextInError);
   }
 }
 

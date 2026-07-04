@@ -621,41 +621,7 @@ export class LspFacade {
       }
 
       if (typeof msg === "string") {
-        const lenChars = this.currentInputLength;
-        if (lenChars > 0 && this.exports.getInputBuffer) {
-          const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
-          let peek = startByte / 2;
-          while (peek < lenChars) {
-            let c = textBuffer[peek];
-            if (c === 32 || c === 9 || c === 10 || c === 13) {
-              peek++;
-            } else {
-              break;
-            }
-          }
-          if (peek < lenChars) {
-            let endPeek = peek;
-            while (endPeek < lenChars) {
-              let c = textBuffer[endPeek];
-              // Stop at whitespace or common punctuation (; { })
-              if (c === 32 || c === 9 || c === 10 || c === 13 || c === 59 || c === 123 || c === 125) {
-                break;
-              }
-              endPeek++;
-            }
-            startByte = peek * 2;
-
-            // Only update endByte if it's an insertion error (0 width) or we want to clamp to a single token.
-            // For Syntax Error (which spans multiple tokens), we should preserve its original endByte,
-            // unless its endByte is less than startByte.
-            if (msg.startsWith("Expected '") || endByte <= startByte) {
-              endByte = endPeek > peek ? endPeek * 2 : (peek + 1) * 2;
-            } else {
-              // Ensure we don't extend past the original endByte if we shifted startByte
-              if (endByte < startByte) endByte = startByte + 2;
-            }
-          }
-        }
+        // Range shifting and clamping removed to preserve WASM output
       }
 
       let startPos = this.offsetToPos(startByte, lineStarts);
@@ -684,9 +650,7 @@ export class LspFacade {
         message: msg,
         severity: severity,
         code: codeStr,
-        _startByte: startByte,
-        _endByte: endByte,
-      } as any);
+      });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -696,61 +660,7 @@ export class LspFacade {
       return a.range.start.character - b.range.start.character;
     });
 
-    const mergedDiags: Diagnostic[] = [];
-    for (let i = 0; i < diags.length; i++) {
-      const current = diags[i];
-      if (current.message.startsWith("Expected '")) {
-        let merged = false;
-        for (let j = i + 1; j < Math.min(diags.length, i + 3); j++) {
-          const next = diags[j];
-          if (
-            next.message === "Syntax Error" &&
-            (next as any)._startByte >= (current as any)._startByte &&
-            (next as any)._startByte - (current as any)._endByte <= 5
-          ) {
-            // Reconstruct the bad text if possible
-            const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
-            let gotText = "invalid syntax";
-
-            if (lenChars > 0 && this.exports.getInputBuffer) {
-              const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
-              const s = (next as any)._startByte / 2;
-              const e = (next as any)._endByte / 2;
-              if (e > s && s < lenChars) {
-                let chars = "";
-                for (let k = s; k < e && k < s + 10; k++) {
-                  chars += String.fromCharCode(textBuffer[k]);
-                }
-                if (e - s > 10) chars += "...";
-                if (chars.trim().length > 0) gotText = `'${chars.trim()}'`;
-              }
-            }
-
-            mergedDiags.push({
-              range: next.range, // Use the garbage token's range — that's the token they typed wrong
-              message: `${current.message} but got ${gotText}`,
-              severity: Math.max(current.severity, next.severity),
-              code: current.code,
-              _startByte: (current as any)._startByte,
-              _endByte: (current as any)._endByte,
-            } as any);
-            diags.splice(j, 1);
-            merged = true;
-            break;
-          }
-        }
-        if (!merged) mergedDiags.push(current);
-      } else {
-        mergedDiags.push(current);
-      }
-    }
-
-    for (let diag of mergedDiags) {
-      delete (diag as any)._startByte;
-      delete (diag as any)._endByte;
-    }
-
-    return mergedDiags;
+    return diags;
   }
 
   getSemanticTokens(astRoot: number): Uint32Array {

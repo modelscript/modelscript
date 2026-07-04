@@ -8,6 +8,10 @@ import {
 } from "./array";
 import { inputEncoding } from "./parser";
 
+@external("engine", "debugLog")
+export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
+
+
 /**
  * Arena Allocator for AST Nodes (Persistent / Structural Sharing)
  *
@@ -361,8 +365,9 @@ export function initArena(sizeBytes: u32): void {
  * If the free-list is empty, it uses the fast bump-allocator for the active generation.
  *
  * @param type The grammar production type ID.
- * @param paddingLength The byte offset/padding prior to this node in the source.
- * @param byteLength The total length of the source text spanning this node.
+ * @param typeId The grammar production type ID.
+ * @param padding The byte offset/padding prior to this node in the source.
+ * @param len The total length of the source text spanning this node.
  * @param envHash A structural hash used for rapid comparison and deduplication.
  * @returns A physical memory pointer (u32) to the newly allocated 16-byte node.
  */
@@ -371,6 +376,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   s.allocCount++;
   let ptr: u32 = 0;
 
+  let flags: u32 = type == 0 ? FLAG_HAS_ERROR : 0;
   // 1. Attempt to reclaim memory from the free list (structural sharing)
   if (s.freeNodeHead != 0) {
     ptr = s.freeNodeHead;
@@ -477,6 +483,8 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
   node.firstChild = 0;
   node.nextSibling = 0;
+
+  debugLog(123, ptr, type, byteLength);
 
   return ptr;
 }
@@ -627,11 +635,13 @@ export function nodeHasError(ptr: u32): boolean {
 }
 
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
+  debugLog(126, parentPtr, childPtr, 0);
   changetype<ASTNode>(parentPtr).firstChild = childPtr;
 }
 
 export function setNextSibling(siblingPtr: u32, nextPtr: u32): void {
   if (siblingPtr == 0) return;
+  debugLog(125, siblingPtr, nextPtr, 0);
   changetype<ASTNode>(siblingPtr).nextSibling = nextPtr;
 }
 

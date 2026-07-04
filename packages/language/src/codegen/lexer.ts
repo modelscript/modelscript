@@ -117,9 +117,9 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   let lexerCode = ``;
 
-  // Generate extras map
-  lexerCode += `\nexport const is_extra_token = new StaticArray<u8>(2048);\n`;
+  lexerCode += `\nexport let is_extra_token: usize = 0;\n`;
   lexerCode += `export function initExtras(): void {\n`;
+  lexerCode += `  if (is_extra_token == 0) {\n    is_extra_token = atomicChunkAlloc(2048);\n    memory.fill(is_extra_token, 0, 2048);\n  }\n`;
   if (normalized.extras) {
     for (const rule of normalized.extras) {
       const rType = (rule.type || "").toUpperCase();
@@ -128,7 +128,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         if (typeof rule.value === "string") val = `"${rule.value}"`;
         const mappedInt = normalized.symToInt.get(val);
         if (mappedInt !== undefined) {
-          lexerCode += `  is_extra_token[<u32>SyntaxType.T_${mappedInt}] = 1;\n`;
+          lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
         }
       }
     }
@@ -548,7 +548,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         if (tokenNames.length > 1) {
           lexerCode += `        // Lexical tie-breaking\n`;
           for (const tName of tokenNames) {
-            lexerCode += `        if (expected_tokens[<u32>SyntaxType.${tName}] == 1) return SyntaxType.${tName};\n`;
+            lexerCode += `        if (load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
           }
         }
         const tokenName = tokenNames[0];
@@ -580,8 +580,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             }
             lexerCode += `        if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
             lexerCode += `           logInt(33333); logInt(lexLen);\n`;
-            lexerCode += `           if (expected_tokens[<u32>SyntaxType.T_${kwTokenInt}] == 1) return SyntaxType.T_${kwTokenInt};\n`;
-            lexerCode += `           if (expected_tokens[<u32>SyntaxType.${tokenName}] == 0) return SyntaxType.T_${kwTokenInt};\n`;
+            lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
+            lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `        }\n`;
           }
         }

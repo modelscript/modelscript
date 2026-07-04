@@ -15,6 +15,7 @@ import {
   FLAG_IS_INSERTED,
   FLAG_HAS_ERROR,
   FLAG_INVISIBLE,
+  getInputBuffer,
 } from "./arena";
 import { errorCount, getErrorEnd, getErrorStart } from "./engine";
 import { inputLength } from "./parser";
@@ -61,7 +62,7 @@ export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u
       let lastLintId = t_lspBinaryBuffer[i + 2];
       let lastEnd = t_lspBinaryBuffer[i + 1];
       let lastStart = t_lspBinaryBuffer[i];
-      if (start == lastStart && end == lastEnd) return;
+      if (start == lastStart && end == lastEnd && lintId == lastLintId) return;
     }
   }
   t_lspBinaryBuffer.push(start);
@@ -178,9 +179,46 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         if (dStart < 0) dStart = 0;
       }
       lsp_allocDiagnostic(dStart, dEnd, type, 0);
-    } else if ((inError || isErrorNode) && isLeaf && len > 0) {
-      // Garbage token or token inside discarded Island Mode block
-      lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+    } else if (inError || isErrorNode) {
+      if (pad > 0) {
+        // The padding might contain dropped garbage tokens!
+        // Scan the padding and emit a diagnostic for each contiguous block of non-whitespace
+        let inputPtr = getInputBuffer();
+        let inGarbage = false;
+        let garbageStart: u32 = 0;
+        for (let i: u32 = 0; i < pad; i += 2) {
+          let c = load<u16>(inputPtr + start + i);
+          let isWs = (c == 32 || c == 9 || c == 10 || c == 13);
+          if (!isWs && !inGarbage) {
+            inGarbage = true;
+            garbageStart = start + i;
+          } else if (isWs && inGarbage) {
+            inGarbage = false;
+            lsp_allocDiagnostic(garbageStart, start + i, 0, 0);
+          }
+        }
+        if (inGarbage) {
+          lsp_allocDiagnostic(garbageStart, start + pad, 0, 0);
+        }
+      }
+      
+      if (isLeaf && len > 0) {
+        // Check if token is entirely whitespace
+        let allWhitespace = true;
+        let inputPtr = getInputBuffer();
+        for (let i: u32 = 0; i < len; i += 2) {
+          let c = load<u16>(inputPtr + nodeStart + i);
+          if (c != 32 && c != 9 && c != 10 && c != 13) {
+            allWhitespace = false;
+            break;
+          }
+        }
+        
+        // Garbage token or token inside discarded Island Mode block
+        if (!allWhitespace) {
+          lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+        }
+      }
     } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode) {
       // Real token consumed by Branch A1 recovery into a recovered grammar
       // node (e.g., an 'a' token inside a Usage with inserted ghost 'print').
@@ -197,20 +235,27 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Count children and check for ERROR / INSERTED siblings in a single pass
       let childCount: u32 = 0;
       let childHasError: boolean = false;
-      let childHasInserted: boolean = false;
       let countChild = child;
-      let hasInsertedSoFar: boolean = false;
       let afterInsertedMask: u64 = 0;
+      let lastRealChildIdx: i32 = -1;
       
       while (countChild != 0) {
         let cFlags = getNodeFlags(countChild);
-        if ((cFlags & FLAG_HAS_ERROR) != 0) childHasError = true;
-        if ((cFlags & FLAG_IS_INSERTED) != 0) {
-            childHasInserted = true;
-            hasInsertedSoFar = true;
-        } else if (hasInsertedSoFar && childCount < 64) {
-            afterInsertedMask |= (1 as u64) << (childCount as u64);
+        let cType = getNodeType(countChild);
+        
+        if ((cFlags & FLAG_HAS_ERROR) != 0 || cType == 0) {
+            childHasError = true;
         }
+        
+        if ((cFlags & FLAG_IS_INSERTED) != 0) {
+            // Taint the last real child we saw so it gets a diagnostic squiggle!
+            if (lastRealChildIdx >= 0 && lastRealChildIdx < 64) {
+                afterInsertedMask |= (1 as u64) << (lastRealChildIdx as u64);
+            }
+        } else if (cType != 0 && getNodeByteLength(countChild) > 0) {
+            lastRealChildIdx = childCount;
+        }
+        
         childCount++;
         countChild = getNodeNextSibling(countChild);
       }

@@ -138,7 +138,7 @@ export function recoverUnwindAndMutate(
 
             if (configEnableBranchA1) {
             // Force lexer to recognize all tokens during recovery forward scan
-            expected_tokens.fill(1);
+            memory.fill(changetype<usize>(expected_tokens), 1, 2048);
             for (let skipCount: u32 = startSkip; skipCount <= maxSkips; skipCount++) {
               let savedLexPos = lexPos;
               let savedLexLen = lexLen;
@@ -169,7 +169,7 @@ export function recoverUnwindAndMutate(
                 let weakRecovery: bool = false;
                 if (tokenEndPos < inputLength) {
                   let sv2_lp = lexPos, sv2_ll = lexLen, sv2_sp = srcLexPos, sv2_ss = currentScannerState;
-                  expected_tokens.fill(1);
+                  memory.fill(changetype<usize>(expected_tokens), 1, 2048);
                   let secondToken = invokeLexer(tokenEndPos);
                   setLexPos(sv2_lp); setLexLen(sv2_ll); setSrcLexPos(sv2_sp); setCurrentScannerState(sv2_ss);
 
@@ -265,7 +265,7 @@ export function recoverUnwindAndMutate(
                   }
                 }
 
-                expected_tokens.fill(1);
+                memory.fill(changetype<usize>(expected_tokens), 1, 2048);
                 let p = head.pos;
                 let newTail = head.errorTail;
                 while (p < a1NextScanPos) {
@@ -412,7 +412,7 @@ export function recoverUnwindAndMutate(
                     // Without this, the lexer filters tokens via expected_tokens
                     // (set for current active heads), missing tokens the TARGET
                     // state needs (e.g., `;` after virtual Number insertion).
-                    expected_tokens.fill(1);
+                    memory.fill(changetype<usize>(expected_tokens), 1, 2048);
 
                     for (let skip = 0; skip <= 3; skip++) {
                       if (laScanPos >= inputLength) {
@@ -515,7 +515,7 @@ export function recoverIslandMode(
           // Without this, keywords may be mis-lexed as identifiers when the current head's
           // expected_tokens bitmap has been cleared, preventing stateCanAccept from finding
           // a valid recovery anchor.
-          expected_tokens.fill(1);
+          memory.fill(changetype<usize>(expected_tokens), 1, 2048);
           let panicScanCount: u32 = 0;
           let targetScannerState = currentScannerState;
           while (searchPos <= inputLength && panicScanCount < MAX_PANIC_SCAN_TOKENS) {
@@ -663,7 +663,7 @@ export function recoverIslandMode(
 
             // Lex any remaining raw garbage between the last parsed node and the resume position
             // This ensures discarded spaces aren't squiggled and the LSP doesn't merge everything
-            expected_tokens.fill(1);
+            memory.fill(changetype<usize>(expected_tokens), 1, 2048);
             let p = head.pos;
             let newTail = currPop != null ? currPop.errorTail : 0;
             

@@ -393,7 +393,7 @@ export let t_lrStateStack: UnmanagedUint32Array = changetype<UnmanagedUint32Arra
 export let t_lrNodeStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let lrStackDepth: i32 = 0;
 export const MAX_LR_STACK_DEPTH: i32 = 65536;
-export const tempActions = new StaticArray<u32>(16);
+export let tempActions: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 
 
 
@@ -413,7 +413,7 @@ export function lsp_isCatastrophicError(): boolean {
  * A bitmap of tokens that are valid transitions from the current active GLR heads.
  * Used by the language server for auto-completion triggering.
  */
-export const expected_tokens = new StaticArray<u8>(2048);
+export let expected_tokens: usize = 0;
 
 /**
  * Computes the union of all valid next tokens across all currently active GSS heads.
