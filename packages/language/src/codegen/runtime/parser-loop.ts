@@ -2,7 +2,7 @@
 import {
     initGSS,
     ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead,
-    findReusableNode
+    globalCursorDepth, cursorNodeStack, cursorOffsetStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
@@ -2674,9 +2674,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         editStart,
         editOldEnd,
         headSym,
-        expectedPadding,
-        stateCanAcceptFnBool,
-        actionLookupFnBool
+        expectedPadding
       );
       if (reusedNode != 0) {
         debugLog(1, reusedNode, pos, oldSrcLexPos);
@@ -3042,6 +3040,90 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     return root;
+  }
+  return 0;
+}
+
+export function findReusableNode(
+  targetOldPos: u32,
+  targetSrcOldPos: u32,
+  currentState: i32,
+  envHash: u32,
+  editStart: u32,
+  editOldEnd: u32,
+  headSym: u32,
+  expectedPadding: u32
+): u32 {
+  if (globalCursorDepth < 0) return 0;
+
+  let startNode = cursorNodeStack[globalCursorDepth];
+  let startSrc = cursorOffsetStack[globalCursorDepth] + getNodePadding(startNode);
+  if (startSrc > targetSrcOldPos) {
+    return 0;
+  }
+
+  let searching = true;
+  while (searching) {
+    let cPtr = cursorNodeStack[globalCursorDepth];
+    let absStart = cursorOffsetStack[globalCursorDepth];
+    let pad = getNodePadding(cPtr);
+    let absContentStart = absStart + pad;
+    let byteLen = getNodeByteLength(cPtr);
+    let absContentEnd = absContentStart + byteLen;
+    let nodeType = getNodeType(cPtr);
+
+    if (absContentEnd <= targetSrcOldPos) {
+      if (!globalCursorGotoNextSibling()) {
+        if (!globalCursorGotoParent()) searching = false;
+        else {
+          while (!globalCursorGotoNextSibling()) {
+            if (!globalCursorGotoParent()) {
+              searching = false;
+              break;
+            }
+          }
+        }
+      }
+      continue;
+    }
+
+    if (absContentStart > targetSrcOldPos) {
+      searching = false;
+      continue;
+    }
+
+    if (absContentStart == targetSrcOldPos && absContentEnd > targetSrcOldPos) {
+      if (
+        absContentEnd < editStart ||
+        absContentStart >= editOldEnd
+      ) {
+        let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
+        let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
+        let hasErrorPadding = pad > expectedPadding && (pad - expectedPadding) > 0;
+        
+        if (!isError && !isMissing && !hasErrorPadding) {
+            let typeFlags = getNodeFlags(cPtr);
+            let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
+            if (!isInvisible && (actionLookupFnBool(currentState, nodeType) || stateCanAcceptFnBool(currentState, nodeType))) {
+               return cPtr;
+            }
+        }
+      }
+    }
+
+    if (!globalCursorGotoFirstChild()) {
+      if (!globalCursorGotoNextSibling()) {
+        if (!globalCursorGotoParent()) searching = false;
+        else {
+          while (!globalCursorGotoNextSibling()) {
+            if (!globalCursorGotoParent()) {
+              searching = false;
+              break;
+            }
+          }
+        }
+      }
+    }
   }
   return 0;
 }

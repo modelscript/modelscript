@@ -355,8 +355,7 @@ export {
   allocParseHead,
   ErrorBranch,
   allocErrorBranch,
-  initGlobalCursor,
-  findReusableNode
+  initGlobalCursor
 } from "./gss";
 
 // ----------------------------------------------------------------------------

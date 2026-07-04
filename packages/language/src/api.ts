@@ -31,6 +31,7 @@ export interface BuildResult {
     js: string;
     dts: string;
     syntaxNames?: string[];
+    fieldNames?: string[];
     semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
   };
 }

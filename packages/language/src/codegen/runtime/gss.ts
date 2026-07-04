@@ -142,7 +142,7 @@ export const cursorOffsetStack = createChunkedUint32Array();
 export const savedCursorNodeStack = createChunkedUint32Array();
 export const savedCursorOffsetStack = createChunkedUint32Array();
 
-let globalCursorDepth: i32 = -1;
+export let globalCursorDepth: i32 = -1;
 
 export function initGlobalCursor(rootPtr: u32): void {
   if (rootPtr != 0) {
@@ -194,90 +194,4 @@ export function globalCursorGotoParent(): boolean {
   if (globalCursorDepth <= 0) return false;
   globalCursorDepth--;
   return true;
-}
-
-export function findReusableNode(
-  targetOldPos: u32,
-  targetSrcOldPos: u32,
-  currentState: i32,
-  envHash: u32,
-  editStart: u32,
-  editOldEnd: u32,
-  headSym: u32,
-  expectedPadding: u32,
-  stateCanAcceptFn: (state: i32, tok: i32) => boolean,
-  actionLookupFn: (state: i32, token: i32) => boolean
-): u32 {
-  if (globalCursorDepth < 0) return 0;
-
-  let startNode = cursorNodeStack[globalCursorDepth];
-  let startSrc = cursorOffsetStack[globalCursorDepth] + getNodePadding(startNode);
-  if (startSrc > targetSrcOldPos) {
-    return 0;
-  }
-
-  let searching = true;
-  while (searching) {
-    let cPtr = cursorNodeStack[globalCursorDepth];
-    let absStart = cursorOffsetStack[globalCursorDepth];
-    let pad = getNodePadding(cPtr);
-    let absContentStart = absStart + pad;
-    let byteLen = getNodeByteLength(cPtr);
-    let absContentEnd = absContentStart + byteLen;
-    let nodeType = getNodeType(cPtr);
-
-    if (absContentEnd <= targetSrcOldPos) {
-      if (!globalCursorGotoNextSibling()) {
-        if (!globalCursorGotoParent()) searching = false;
-        else {
-          while (!globalCursorGotoNextSibling()) {
-            if (!globalCursorGotoParent()) {
-              searching = false;
-              break;
-            }
-          }
-        }
-      }
-      continue;
-    }
-
-    if (absContentStart > targetSrcOldPos) {
-      searching = false;
-      continue;
-    }
-
-    if (absContentStart == targetSrcOldPos && absContentEnd > targetSrcOldPos) {
-      if (
-        absContentEnd < editStart ||
-        absContentStart >= editOldEnd
-      ) {
-        let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
-        let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
-        let hasErrorPadding = pad > expectedPadding && (pad - expectedPadding) > 0;
-        
-        if (!isError && !isMissing && !hasErrorPadding) {
-            let typeFlags = getNodeFlags(cPtr);
-            let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
-            if (!isInvisible && (actionLookupFn(currentState, nodeType) || stateCanAcceptFn(currentState, nodeType))) {
-               return cPtr;
-            }
-        }
-      }
-    }
-
-    if (!globalCursorGotoFirstChild()) {
-      if (!globalCursorGotoNextSibling()) {
-        if (!globalCursorGotoParent()) searching = false;
-        else {
-          while (!globalCursorGotoNextSibling()) {
-            if (!globalCursorGotoParent()) {
-              searching = false;
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-  return 0;
 }

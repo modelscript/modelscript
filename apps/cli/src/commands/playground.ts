@@ -380,30 +380,40 @@ scope {
                     const kb = (e.data.wasm.byteLength / 1024).toFixed(1);
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
                     window.syntaxNames = e.data.syntaxNames;
+                    window.fieldNames = e.data.fieldNames;
                     
                     if (window.semanticTokensProvider) {
                         window.semanticTokensProvider.dispose();
                     }
+                    if (window.semanticTokensRangeProvider) {
+                        window.semanticTokensRangeProvider.dispose();
+                    }
                     if (e.data.semanticLegend) {
+                        const getLegend = function () { return e.data.semanticLegend; };
                         window.semanticTokensProvider = monaco.languages.registerDocumentSemanticTokensProvider('plaintext', {
-                            getLegend: function () {
-                                return e.data.semanticLegend;
-                            },
+                            getLegend,
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
                                 if (token.isCancellationRequested) return null;
-
-                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', {
-                                    textDocument: { uri: model.uri.toString() }
-                                });
-                                if (result && result.data) {
-                                    return {
-                                        data: new Uint32Array(result.data),
-                                        resultId: null
-                                    };
-                                }
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } });
+                                if (result && result.data) return { data: new Uint32Array(result.data), resultId: null };
                                 return null;
                             },
                             releaseDocumentSemanticTokens: function (resultId) { }
+                        });
+                        window.semanticTokensRangeProvider = monaco.languages.registerDocumentRangeSemanticTokensProvider('plaintext', {
+                            getLegend,
+                            provideDocumentRangeSemanticTokens: async (model, range, token) => {
+                                if (token.isCancellationRequested) return null;
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/range', {
+                                    textDocument: { uri: model.uri.toString() },
+                                    range: {
+                                        start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+                                        end: { line: range.endLineNumber - 1, character: range.endColumn - 1 }
+                                    }
+                                });
+                                if (result && result.data) return { data: new Uint32Array(result.data), resultId: null };
+                                return null;
+                            }
                         });
                     }
 
@@ -692,7 +702,7 @@ scope {
                                 
                                 const children = [];
                                 for (let c = 0; c < childCount; c++) {
-                                    children.push(ints[i++]);
+                                    children.push({ ptr: ints[i++], fieldId: ints[i++] });
                                 }
 
                                 const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
@@ -764,8 +774,9 @@ scope {
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
                     
                     let childOffset = currentOffset;
-                    for (const childPtr of node.children || []) {
-                        childOffset = flatten(childPtr, depth + 1, childOffset, null);
+                    for (const childObj of node.children || []) {
+                        const fieldName = childObj.fieldId >= 0 ? (window.fieldNames ? window.fieldNames[childObj.fieldId] : ("field_" + childObj.fieldId)) : null;
+                        childOffset = flatten(childObj.ptr, depth + 1, childOffset, fieldName);
                     }
                     visited.delete(ptr);
                     return currentOffset + (node.len || 0);
@@ -964,6 +975,7 @@ self.onmessage = async (e) => {
                 wasm: vfs['parser.wasm'], 
                 jsWrapper: result.javascriptWrapper.js,
                 syntaxNames: result.javascriptWrapper.syntaxNames,
+                fieldNames: result.javascriptWrapper.fieldNames,
                 semanticLegend: result.javascriptWrapper.semanticLegend,
                 langName: grammarDef.name
             });
@@ -1023,7 +1035,8 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     }
     if (children) {
         for (let i = 0; i < children.length; i++) {
-            patchInt32[patchOffset++] = children[i];
+            patchInt32[patchOffset++] = children[i].ptr;
+            patchInt32[patchOffset++] = children[i].fieldId !== undefined ? children[i].fieldId : -1;
         }
     }
 }
@@ -1201,10 +1214,10 @@ self.addEventListener('message', async (e) => {
             lspFacade = new LspFacade(memory, instance.exports);
             
             lspFacade.addAstChangeListener({
-                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children ? children.map(c => c.ptr) : null),
+                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),
                 onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, null),
                 onNodeRetained: (ptr) => {},
-                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children ? children.map(c => c.ptr) : null)
+                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children)
             });
 
             console.log("LspFacade successfully loaded inside worker.");
@@ -1340,32 +1353,46 @@ self.addEventListener('message', async (e) => {
             }
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
-    } else if (e.data.method === 'textDocument/semanticTokens/full') {
+    } else if (e.data.method === 'textDocument/semanticTokens/full' || e.data.method === 'textDocument/semanticTokens/range') {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         const t0 = performance.now();
         const tokensArray = lspFacade.getSemanticTokens(globalAstRoot);
         const t1 = performance.now();
-        console.log("[LSP Timings] getSemanticTokens: " + Math.round(t1-t0) + "ms");
         
         if (!tokensArray || tokensArray.length === 0) {
             return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         }
         
         const lineStarts = lspFacade.getLineStarts();
+        let startOffset = 0;
+        let endOffset = 0xFFFFFFFF;
+        
+        if (e.data.method === 'textDocument/semanticTokens/range' && e.data.params.range) {
+            const range = e.data.params.range;
+            startOffset = (range.start.line < lineStarts.length ? lineStarts[range.start.line] : 0) + range.start.character * 2;
+            endOffset = (range.end.line < lineStarts.length ? lineStarts[range.end.line] : lineStarts[lineStarts.length - 1]) + range.end.character * 2;
+        }
+        
         const count = tokensArray.length / 4;
-        const indices = new Int32Array(count);
-        for (let i = 0; i < count; i++) indices[i] = i;
+        const validIndices = [];
+        for (let i = 0; i < count; i++) {
+            const offset = tokensArray[i * 4];
+            if (offset >= startOffset && offset <= endOffset) {
+                validIndices.push(i);
+            }
+        }
         
         // Sort indices by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
-        indices.sort((a, b) => tokensArray[a * 4] - tokensArray[b * 4]);
+        validIndices.sort((a, b) => tokensArray[a * 4] - tokensArray[b * 4]);
         
-        const data = new Uint32Array(count * 5);
+        const validCount = validIndices.length;
+        const data = new Uint32Array(validCount * 5);
         let dataIdx = 0;
         let prevLine = 0;
         let prevChar = 0;
         
-        for (let i = 0; i < count; i++) {
-            const baseIdx = indices[i] * 4;
+        for (let i = 0; i < validCount; i++) {
+            const baseIdx = validIndices[i] * 4;
             const offset = tokensArray[baseIdx];
             const length = tokensArray[baseIdx + 1];
             const tokenType = tokensArray[baseIdx + 2];
@@ -1413,7 +1440,7 @@ self.addEventListener('message', async (e) => {
             prevChar = charOffset;
         }
         
-        console.log("Semantic Tokens computed:", count, "tokens");
+        console.log("Semantic Tokens computed:", validCount, "tokens in range", startOffset, "to", endOffset);
         // Transfer the buffer directly to avoid structured cloning overhead
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: data.buffer } }, [data.buffer]);
     }

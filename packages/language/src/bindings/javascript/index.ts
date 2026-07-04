@@ -8,6 +8,7 @@ export function generateJavaScriptWrapper(
   js: string;
   dts: string;
   syntaxNames: string[];
+  fieldNames: string[];
   semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 } {
   const langName = grammarDef.name;
@@ -24,6 +25,12 @@ export function generateJavaScriptWrapper(
   }
 
   const syntaxNamesStr = JSON.stringify(syntaxNames);
+
+  const fieldNamesArr: string[] = [];
+  for (const [name, id] of normalized.fieldToInt.entries()) {
+    fieldNamesArr[id] = name;
+  }
+
   const fieldNamesStr = JSON.stringify(Object.fromEntries(normalized.fieldToInt));
 
   let lintMessagesStr = "{";
@@ -119,5 +126,5 @@ export function generateJavaScriptWrapper(
   const jsWithLegend = js + `\nexport const semanticLegend = ${legendStr};\n`;
   const dtsWithLegend = dts + `\nexport const semanticLegend: { tokenTypes: string[], tokenModifiers: string[] };\n`;
 
-  return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames, semanticLegend: legend };
+  return { js: jsWithLegend, dts: dtsWithLegend, syntaxNames, fieldNames: fieldNamesArr, semanticLegend: legend };
 }
