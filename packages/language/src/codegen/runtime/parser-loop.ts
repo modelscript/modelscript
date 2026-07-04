@@ -9,7 +9,7 @@ import {
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED, FLAG_EXTRACTED,
     getNodeEnvHash, getInputBuffer,
-    atomicChunkAlloc, resetGeneration, S, ASTNode
+    atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks
 } from "./arena";
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import {
@@ -2366,6 +2366,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       currentParserMode = MODE_LR;
       let accepted = parseLR();
       if (currentParserMode == MODE_LR) {
+        clearAstMarks(accepted);
         return accepted;
       }
     } else {
@@ -2853,7 +2854,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
       injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
-      return wrapWithTrailingErrors(acceptedNode);
+      let finalTree = wrapWithTrailingErrors(acceptedNode);
+      clearAstMarks(finalTree);
+      return finalTree;
     }
 
     if (!anyAction) {
@@ -2924,7 +2927,9 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
       injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
-      return wrapWithTrailingErrors(acceptedNode);
+      let finalTree = wrapWithTrailingErrors(acceptedNode);
+      clearAstMarks(finalTree);
+      return finalTree;
   }
   if (bestDyingHead != 0) {
     // ----------------------------------------------------------------------
@@ -3099,9 +3104,9 @@ export function findReusableNode(
       ) {
         let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
-        let hasErrorPadding = pad > expectedPadding && (pad - expectedPadding) > 0;
+        let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
         
-        if (!isError && !isMissing && !hasErrorPadding) {
+        if (!isError && !isMissing && nodeEnvHash == envHash) {
             let typeFlags = getNodeFlags(cPtr);
             let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
             if (!isInvisible && (actionLookupFnBool(currentState, nodeType) || stateCanAcceptFnBool(currentState, nodeType))) {

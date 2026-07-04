@@ -62,15 +62,8 @@ let lastDiagEnd: u32 = 0xffffffff;
 
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
   if (t_lspBinaryBuffer.length >= 1000 * 4) return;
-  if (t_lspBinaryBuffer.length > 0 && lintId == 0) {
-    let limit: u32 = t_lspBinaryBuffer.length > 40 ? t_lspBinaryBuffer.length - 40 : 0;
-    for (let i: i32 = t_lspBinaryBuffer.length - 4; i >= (limit as i32); i -= 4) {
-      let lastLintId = t_lspBinaryBuffer[i + 2];
-      let lastEnd = t_lspBinaryBuffer[i + 1];
-      let lastStart = t_lspBinaryBuffer[i];
-      if (start == lastStart && end == lastEnd && lintId == lastLintId) return;
-    }
-  }
+  // Duplicate diagnostic filtering is now performed in O(N log N) on the JS side
+  // via Set/Sort to prevent WASM thread blocking.
   t_lspBinaryBuffer.push(start);
   t_lspBinaryBuffer.push(end);
   t_lspBinaryBuffer.push(lintId);
@@ -151,6 +144,30 @@ function lsp_clearVisited(): void {
   t_lspVisitedCount = 0;
 }
 
+@inline function packOffsetStack(offset: u32, inError: boolean, hasErrorSibling: boolean, hasInsertedSibling: boolean): u32 {
+  let val = offset & 0x1FFFFFFF;
+  if (inError) val |= 0x80000000;
+  if (hasErrorSibling) val |= 0x40000000;
+  if (hasInsertedSibling) val |= 0x20000000;
+  return val;
+}
+
+@inline function getOffsetFromStack(val: u32): u32 {
+  return val & 0x1FFFFFFF;
+}
+
+@inline function getInErrorFromStack(val: u32): boolean {
+  return (val >>> 31) == 1;
+}
+
+@inline function getHasErrorSiblingFromStack(val: u32): boolean {
+  return (val & 0x40000000) != 0;
+}
+
+@inline function getHasInsertedSiblingFromStack(val: u32): boolean {
+  return (val & 0x20000000) != 0;
+}
+
 /**
  * Extracts and serializes all syntax and grammar diagnostics into a flat `u32` buffer.
  * Traverses the AST looking for injected error nodes and missing ghost nodes.
@@ -184,9 +201,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     stackTop--;
     let node = load<u32>(changetype<usize>(t_lspTraverseStack) + stackTop * 4);
     let offsetStackVal = load<u32>(changetype<usize>(t_lspOffsetStack) + stackTop * 4);
-    let start = offsetStackVal & 0x1FFFFFFF;
-    let inError = (offsetStackVal >>> 31) == 1;
-    let hasErrorSibling = (offsetStackVal & 0x40000000) != 0;
+    let start = getOffsetFromStack(offsetStackVal);
+    let inError = getInErrorFromStack(offsetStackVal);
+    let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -203,7 +220,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
 
-    let hasInsertedSibling = (offsetStackVal & 0x20000000) != 0;
+    let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 
     if ((flags & FLAG_IS_INSERTED) != 0) {
       // Inserted ghost nodes are zero-width phantoms from error recovery.
@@ -302,18 +319,14 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
       let currOffset = start + pad; // nodeStart
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
-      let siblingErrorBit: u32 = (childHasError || hasErrorSibling) ? 0x40000000 : 0;
       let currChildIdx = 0;
       
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         let comesAfter = (currChildIdx < 64) && ((afterInsertedMask & ((1 as u64) << (currChildIdx as u64))) != 0);
-        let insertedBit: u32 = (comesAfter || hasInsertedSibling) ? 0x20000000 : 0;
-        
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit | siblingErrorBit | insertedBit;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, childHasError || hasErrorSibling, comesAfter || hasInsertedSibling);
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
@@ -348,10 +361,10 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
   while (stackTop > 0) {
     stackTop--;
-    let node = t_lspTraverseStack[stackTop];
-    let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x1FFFFFFF;
-    let inError = (offsetStackVal >>> 31) == 1;
+    let node = load<u32>(changetype<usize>(t_lspTraverseStack) + stackTop * 4);
+    let offsetStackVal = load<u32>(changetype<usize>(t_lspOffsetStack) + stackTop * 4);
+    let start = getOffsetFromStack(offsetStackVal);
+    let inError = getInErrorFromStack(offsetStackVal);
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -487,10 +500,10 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
   while (stackTop > 0) {
     stackTop--;
-    let node = t_lspTraverseStack[stackTop];
-    let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x1FFFFFFF;
-    let inError = (offsetStackVal >>> 31) == 1;
+    let node = load<u32>(changetype<usize>(t_lspTraverseStack) + stackTop * 4);
+    let offsetStackVal = load<u32>(changetype<usize>(t_lspOffsetStack) + stackTop * 4);
+    let start = getOffsetFromStack(offsetStackVal);
+    let inError = getInErrorFromStack(offsetStackVal);
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -527,12 +540,11 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
       ensureTraverseStack(stackTop + childCount);
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
@@ -565,10 +577,10 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
   while (stackTop > 0) {
     stackTop--;
-    let node = t_lspTraverseStack[stackTop];
-    let offsetStackVal = t_lspOffsetStack[stackTop];
-    let start = offsetStackVal & 0x1FFFFFFF;
-    let inError = (offsetStackVal >>> 31) == 1;
+    let node = load<u32>(changetype<usize>(t_lspTraverseStack) + stackTop * 4);
+    let offsetStackVal = load<u32>(changetype<usize>(t_lspOffsetStack) + stackTop * 4);
+    let start = getOffsetFromStack(offsetStackVal);
+    let inError = getInErrorFromStack(offsetStackVal);
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -607,12 +619,11 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
       ensureTraverseStack(stackTop + childCount);
       let currOffset = start + pad;
       let writeIdx = stackTop + childCount - 1;
-      let errorFlagBit = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = currOffset | errorFlagBit;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);

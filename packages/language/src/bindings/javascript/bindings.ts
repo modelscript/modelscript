@@ -786,14 +786,25 @@ export class LspFacade {
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
-    // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
     this._lastDiagBinaryLength = numElements * 4;
-    diags.sort((a, b) => {
+
+    const uniqueDiags: Diagnostic[] = [];
+    const seenDiags = new Set<string>();
+
+    for (const d of diags) {
+      const key = `${d.range.start.line}:${d.range.start.character}-${d.range.end.line}:${d.range.end.character}:${d.code || d.message}`;
+      if (!seenDiags.has(key)) {
+        seenDiags.add(key);
+        uniqueDiags.push(d);
+      }
+    }
+
+    uniqueDiags.sort((a, b) => {
       if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
       return a.range.start.character - b.range.start.character;
     });
 
-    return diags;
+    return uniqueDiags;
   }
 
   getSemanticTokens(astRoot: number): Uint32Array {
