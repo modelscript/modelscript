@@ -6,6 +6,7 @@ import { NormalizedGrammar } from "../grammar.js";
 import {
   arenaCode,
   arrayCode,
+  bltCode,
   cursorCode,
   daeCode,
   engineCode,
@@ -14,6 +15,7 @@ import {
   parserLoopCode,
   recoveryCode,
 } from "../../build/src-gen/runtime-templates.js";
+import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
 import { generateLexer } from "./lexer.js";
 import { generateTypes } from "./types.js";
@@ -335,9 +337,17 @@ export function generateParserTables(
   lintSwitchStr += "  }\n}\n";
   code += lintSwitchStr;
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\n`;
+  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\nexport * from "./blt";\n`;
+
+  if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
+    code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
+  } else {
+    code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32): u32 { return 0; }\n`;
+  }
 
   let engineCodeTemplate = engineCode;
+  let daeCodeTemplate = daeCode;
+  let bltCodeTemplate = bltCode;
 
   const hasToken = (str: string) => Array.from(symToInt.keys()).includes(`"${str}"`);
   engineCodeTemplate = engineCodeTemplate
@@ -376,5 +386,6 @@ export function generateParserTables(
     { filename: "gss.ts", content: gssCode },
     { filename: "recovery.ts", content: recoveryCode },
     { filename: "dae.ts", content: daeCode },
+    { filename: "blt.ts", content: bltCode },
   ];
 }

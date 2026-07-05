@@ -110,10 +110,12 @@ export interface CodeGraph<
   hash: HashAPI;
   ast: AstAPI<RuleName, FieldName>;
   model: ModelAPI<ModelAttrs>;
-  set: SetAPI;
   map: MapAPI;
+  set: SetAPI;
   dae: DaeAPI;
+  blt: BltAPI;
 
+  error(message: string): void;
   runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
   runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
   diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
@@ -159,6 +161,11 @@ export interface DaeAPI {
   addExpression(kind: u8, data1: u32, left?: u32, right?: u32): u32;
   addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId?: u32): u32;
   addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+}
+
+export interface BltAPI {
+  computeBLT(): void;
+  rollback(snapshotEqCount: u32, snapshotVarCount: u32): void;
 }
 
 export enum VarType {
@@ -449,6 +456,11 @@ export interface LanguageOptions<
     /** AssemblyScript callback or function name for goto definition */
     definition?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   };
+
+  /** Equality Saturation and E-Graph Algebraic Simplifications */
+  simplification?: {
+    rules: { name: string; lhs: TransformCombinator; rhs: TransformCombinator }[];
+  };
 }
 
 /**
@@ -632,3 +644,40 @@ export function prec<F extends string = never>(value: number, rule: Rule<F>): Ru
 (prec as any).dynamic = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC_DYNAMIC", value, children: [rule] };
 };
+
+// --- E-Graph Rewrite Rule Combinators ---
+
+export class TransformCombinator {
+  constructor(
+    public op: string,
+    public args: any[],
+  ) {}
+
+  toSExpr(): string {
+    if (this.op === "variable") return `?${this.args[0]}`;
+    if (this.op === "constant") return `${this.args[0]}`;
+    let argsStr = this.args.map((a) => (a instanceof TransformCombinator ? a.toSExpr() : String(a))).join(" ");
+    return `(${this.op} ${argsStr})`;
+  }
+}
+
+export function add(a: any, b: any) {
+  return new TransformCombinator("add", [a, b]);
+}
+export function sub(a: any, b: any) {
+  return new TransformCombinator("sub", [a, b]);
+}
+export function mul(a: any, b: any) {
+  return new TransformCombinator("mul", [a, b]);
+}
+export function div(a: any, b: any) {
+  return new TransformCombinator("div", [a, b]);
+}
+export function variable(name: string) {
+  return new TransformCombinator("variable", [name]);
+}
+export const v = variable;
+export function constant(val: number) {
+  return new TransformCombinator("constant", [val]);
+}
+export const c = constant;
