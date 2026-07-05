@@ -678,11 +678,14 @@ export class LspFacade {
     const memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
-    for (let i = 0; i < numElements * 4; i += 4) {
+    for (let i = 0; i < numElements * 7; i += 7) {
       let startByte = memory[(dirPtr >> 2) + i];
       let endByte = memory[(dirPtr >> 2) + i + 1];
       const lintId = memory[(dirPtr >> 2) + i + 2];
-      const nodePtr = memory[(dirPtr >> 2) + i + 3];
+      const arg0 = memory[(dirPtr >> 2) + i + 3];
+      const arg1 = memory[(dirPtr >> 2) + i + 4];
+      const arg2 = memory[(dirPtr >> 2) + i + 5];
+      const arg3 = memory[(dirPtr >> 2) + i + 6];
 
       let msg = "Syntax Error";
       let severity = 1; // Default to Error
@@ -708,41 +711,55 @@ export class LspFacade {
               if (j < lenChars) chars += String.fromCharCode(textBuffer[j]);
             }
 
-            let syntaxNode: SyntaxNode | null = null;
-            if (nodePtr > 0 && this.exports.getChildByFieldId) {
-              const typeFlags = memory[nodePtr / 4];
-              const typeId = typeFlags & 0x03ff;
-              const pad = typeFlags >>> 19;
-              const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
-              const dummyTree = {
-                sourceCode: {
-                  substring: (start: number, end: number) => {
-                    let s = "";
-                    for (let j = start; j < end; j++) {
-                      if (j < lenChars) s += String.fromCharCode(textBuffer[j]);
-                    }
-                    return s;
+            const createContext = (nodePtr: number, fallbackText: string) => {
+              let syntaxNode: SyntaxNode | null = null;
+              let text = fallbackText;
+              if (nodePtr > 0 && this.exports.getChildByFieldId) {
+                const typeFlags = memory[nodePtr / 4];
+                const typeId = typeFlags & 0x03ff;
+                const pad = typeFlags >>> 19;
+                const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
+                let actualStart = startByte - pad;
+                if (this.exports.lsp_findNodeOffset) {
+                  const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
+                  if (offset >= 0) actualStart = offset;
+                }
+                const dummyTree = {
+                  sourceCode: {
+                    substring: (start: number, end: number) => {
+                      let s = "";
+                      for (let j = start; j < end; j++) {
+                        if (j < lenChars) s += String.fromCharCode(textBuffer[j]);
+                      }
+                      return s;
+                    },
+                  },
+                  mem32: memory,
+                  offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
+                  facade: this,
+                };
+                syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualStart, null, pad, len, typeId);
+                text = dummyTree.sourceCode.substring(syntaxNode.startIndex / 2, syntaxNode.endIndex / 2);
+              }
+
+              return new Proxy(
+                {},
+                {
+                  get: (target, prop: string) => {
+                    if (prop === "text") return text;
+                    if (!syntaxNode) return "";
+                    return syntaxNode.childText(prop);
                   },
                 },
-                mem32: memory,
-                offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
-                facade: this,
-              };
-              syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, startByte - pad, null, pad, len, typeId);
-            }
+              );
+            };
 
-            const fieldsProxy = new Proxy(
-              {},
-              {
-                get: (target, prop: string) => {
-                  if (prop === "text") return chars;
-                  if (!syntaxNode) return "";
-                  return syntaxNode.childText(prop);
-                },
-              },
-            );
+            const ctxTarget = createContext(arg0, chars);
+            const ctx1 = createContext(arg1, "");
+            const ctx2 = createContext(arg2, "");
+            const ctx3 = createContext(arg3, "");
 
-            msg = (msgVal as any)(fieldsProxy);
+            msg = (msgVal as any)(ctxTarget, ctx1, ctx2, ctx3);
           } else {
             msg = msgVal;
           }
@@ -786,7 +803,7 @@ export class LspFacade {
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
-    this._lastDiagBinaryLength = numElements * 4;
+    this._lastDiagBinaryLength = numElements * 7;
 
     const uniqueDiags: Diagnostic[] = [];
     const seenDiags = new Set<string>();
@@ -898,7 +915,7 @@ export class LspFacade {
     if (!this.exports.lsp_getBinaryBuffer || this._lastDiagBinaryLength === 0) return errorRanges;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    for (let i = 0; i < this._lastDiagBinaryLength; i += 4) {
+    for (let i = 0; i < this._lastDiagBinaryLength; i += 7) {
       errorRanges.push({
         start: mem32[(dirPtr >> 2) + i],
         end: mem32[(dirPtr >> 2) + i + 1],

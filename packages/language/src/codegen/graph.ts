@@ -161,13 +161,19 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
             }
 
             if (methodName === "diagnostic" && args.length >= 1) {
-              const targetArg = args[0];
-              const contextArg = args.length > 1 ? args[1] : targetArg;
+              const arg0 = args.length > 1 ? (visitNode(args[1]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg1 = args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg2 = args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+              const arg3 = args.length > 4 ? (visitNode(args[4]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+
               return ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_allocDiagnostic"), undefined, [
                 ts.factory.createIdentifier("nodeStart"),
                 ts.factory.createIdentifier("nodeEnd"),
                 ts.factory.createIdentifier("lintId"),
-                visitNode(contextArg) as ts.Expression,
+                arg0,
+                arg1,
+                arg2,
+                arg3,
               ]);
             }
           } else if (

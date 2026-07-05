@@ -60,14 +60,17 @@ import { debugLog } from "./engine";
 let lastDiagStart: u32 = 0xffffffff;
 let lastDiagEnd: u32 = 0xffffffff;
 
-export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, argPtr: u32): void {
-  if (t_lspBinaryBuffer.length >= 1000 * 4) return;
+export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
+  if (t_lspBinaryBuffer.length >= 1000 * 7) return;
   // Duplicate diagnostic filtering is now performed in O(N log N) on the JS side
   // via Set/Sort to prevent WASM thread blocking.
   t_lspBinaryBuffer.push(start);
   t_lspBinaryBuffer.push(end);
   t_lspBinaryBuffer.push(lintId);
-  t_lspBinaryBuffer.push(argPtr);
+  t_lspBinaryBuffer.push(arg0);
+  t_lspBinaryBuffer.push(arg1);
+  t_lspBinaryBuffer.push(arg2);
+  t_lspBinaryBuffer.push(arg3);
 }
 
 function ensureLspBuffers(): void {
@@ -233,7 +236,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         if (dEnd > 0) dStart = dEnd - 2;
         if (dStart < 0) dStart = 0;
       }
-      lsp_allocDiagnostic(dStart, dEnd, type, 0);
+      lsp_allocDiagnostic(dStart, dEnd, type);
     } else if (inError || isErrorNode) {
       if (pad > 0) {
         // The padding might contain dropped garbage tokens!
@@ -249,11 +252,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
             garbageStart = start + i;
           } else if (isWs && inGarbage) {
             inGarbage = false;
-            lsp_allocDiagnostic(garbageStart, start + i, 0, 0);
+            lsp_allocDiagnostic(garbageStart, start + i, 0);
           }
         }
         if (inGarbage) {
-          lsp_allocDiagnostic(garbageStart, start + pad, 0, 0);
+          lsp_allocDiagnostic(garbageStart, start + pad, 0);
         }
       }
       
@@ -271,7 +274,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         
         // Garbage token or token inside discarded Island Mode block
         if (!allWhitespace) {
-          lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+          lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
         }
       }
     } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode) {
@@ -279,7 +282,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // node (e.g., an 'a' token inside a Usage with inserted ghost 'print').
       // This token is structurally invalid and needs a squiggle even though
       // it's not inside an ERROR node.
-      lsp_allocDiagnostic(nodeStart, nodeEnd, 0, 0);
+      lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
     }
 
     executeLints(type, node, nodeStart, nodeEnd);
@@ -338,7 +341,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
   lsp_clearVisited();
   flushBinaryBuffer();
-  return t_lspBinaryBuffer.length / 4;
+  return t_lspBinaryBuffer.length / 7;
 }
 
 /**

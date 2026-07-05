@@ -114,7 +114,7 @@ export interface CodeGraph<
   map: MapAPI;
 
   runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
-  diagnostic(targetNode: u32, contextNode?: u32): void;
+  diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
 }
 
 export interface AstAPI<RuleName extends string, FieldName extends string = never> {
@@ -226,6 +226,11 @@ export type ASTLintFunction<
   $: Record<string, u16> & Record<RuleName, u16>,
 ) => void;
 
+export interface DiagnosticContext<FieldName extends string = string> {
+  text: string;
+  fields: Record<FieldName | (string & {}), string>;
+}
+
 export interface CompilerLint<
   RuleName extends string = string,
   FieldName extends string = never,
@@ -233,9 +238,16 @@ export interface CompilerLint<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
-  query: ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+  query: ASTLintFunction<ModelAttrs, RuleName, FieldName>;
   code?: string | number;
-  message: string | ((fields: Record<FieldName | (string & {}), string> & { text: string }) => string);
+  message:
+    | string
+    | ((
+        target: DiagnosticContext<FieldName>,
+        arg0: DiagnosticContext<FieldName>,
+        arg1: DiagnosticContext<FieldName>,
+        arg2: DiagnosticContext<FieldName>,
+      ) => string);
   severity: "error" | "warning" | "info";
 }
 
