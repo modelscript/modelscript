@@ -18,7 +18,9 @@ import {
 import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
 import { generateLexer } from "./lexer.js";
+import { generateReasoner } from "./reasoner.js";
 import { generateTypes } from "./types.js";
+import { generateTypeSystem } from "./typesys.js";
 
 /**
  * The consolidated result of a successful grammar analysis and parsing phase.
@@ -339,6 +341,13 @@ export function generateParserTables(
 
   code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\nexport * from "./blt";\n`;
 
+  if (originalGrammar.typeSystem) {
+    code += `\nexport * from "./typesys";\n`;
+  }
+  if (originalGrammar.semantics) {
+    code += `\nexport * from "./reasoner";\n`;
+  }
+
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
     code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
   } else {
@@ -374,7 +383,7 @@ export function generateParserTables(
 
   lspCodeTemplate = lspCodeTemplate.replace('import { inputLength } from "./parser";', lspImports);
 
-  return [
+  const outFiles: GeneratedFile[] = [
     { filename: "parser.ts", content: code },
     { filename: "array.ts", content: arrayCode },
     { filename: "arena.ts", content: arenaCode },
@@ -388,4 +397,16 @@ export function generateParserTables(
     { filename: "dae.ts", content: daeCode },
     { filename: "blt.ts", content: bltCode },
   ];
+
+  if (originalGrammar.typeSystem) {
+    outFiles.push({
+      filename: "typesys.ts",
+      content: generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || ""),
+    });
+  }
+  if (originalGrammar.semantics) {
+    outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
+  }
+
+  return outFiles;
 }

@@ -461,6 +461,39 @@ export interface LanguageOptions<
   simplification?: {
     rules: { name: string; lhs: TransformCombinator; rhs: TransformCombinator }[];
   };
+
+  /** Zero-GC Hindley-Milner Type System Engine Configuration */
+  typeSystem?: {
+    constraints?: ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+    subtypingPredicates?: string[];
+    customCode?: string;
+  };
+
+  /** DL-Lite / Datalog Semantic Reasoning Engine Configuration */
+  semantics?: {
+    rules?: string[];
+    axioms?: string[];
+    vocabularies?: string[];
+    extensions?: Record<string, string[]>;
+    maxArity?: number;
+    extraction?: Record<string, string>;
+    typeExtraction?: Record<string, string>;
+    pathResolution?:
+      | {
+          ownership: string;
+          naming: string;
+          subsetting?: string;
+        }
+      | boolean;
+    reasoner?: {
+      maxFacts?: number;
+    };
+  };
+
+  /** Module System Configuration */
+  moduleSystem?: {
+    resolve_module?: boolean;
+  };
 }
 
 /**
