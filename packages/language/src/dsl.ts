@@ -72,7 +72,7 @@ export const enum TensorType {
   Int16 = 6,
 }
 
-export interface FieldCursor {
+export interface Cursor {
   hasNext(): boolean;
   next(): u32;
   release(): void;
@@ -119,7 +119,11 @@ export interface CodeGraph<
 
 export interface AstAPI<RuleName extends string, FieldName extends string = never> {
   getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
-  getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): FieldCursor;
+  getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): Cursor;
+
+  getAncestors(nodeId: u32, stopAtType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
+  getDescendants(nodeId: u32, filterType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
+  getPathTokens(nodeId: u32): Cursor;
 
   getType(nodeId: u32): u16;
   getFirstChild(nodeId: u32): u32;
@@ -187,6 +191,8 @@ export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>
   setNextSibling(nodeId: u32, siblingId: u32): void;
   replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void;
   removeChild(parentId: u32, childId: u32): void;
+
+  getSemanticChildren(nodeId: u32): Cursor;
 }
 
 export type ASTQueryFunction<

@@ -729,6 +729,288 @@ export function getFieldIdForChild(type: u16, childIndex: u16): i32 {
   return -1;
 }
 
+@unmanaged
+export class AncestorCursor {
+  pathStack: u32; 
+  pathLength: i32;
+  currentIndex: i32;
+  isActive: boolean;
+  filterType: u16;
+  
+  @inline init(targetNode: u32, stopAtType: u16, rootNode: u32): void {
+     this.filterType = stopAtType;
+     this.pathLength = 0;
+     this.currentIndex = -1;
+     this.isActive = true;
+     
+     if (targetNode == rootNode || rootNode == 0) return;
+     
+     // Iterative DFS to find targetNode
+     let stack = this.pathStack; 
+     let stackDepth = 0;
+     let current = rootNode;
+     
+     while (current != 0) {
+         if (current == targetNode) {
+             this.pathLength = stackDepth;
+             this.currentIndex = stackDepth - 1;
+             return;
+         }
+         let child = getNodeFirstChild(current);
+         if (child != 0) {
+             if (stackDepth < 256) {
+                 store<u32>(stack + (stackDepth << 2), current);
+                 stackDepth++;
+             }
+             current = child;
+             continue;
+         }
+         let sibling = getNodeNextSibling(current);
+         if (sibling != 0) {
+             current = sibling;
+             continue;
+         }
+         let foundSibling = false;
+         while (stackDepth > 0) {
+             stackDepth--;
+             let parent = load<u32>(stack + (stackDepth << 2));
+             let psib = getNodeNextSibling(parent);
+             if (psib != 0) {
+                 current = psib;
+                 foundSibling = true;
+                 break;
+             }
+         }
+         if (!foundSibling) current = 0;
+     }
+  }
+
+  @inline hasNext(): boolean {
+     while (this.currentIndex >= 0) {
+         let n = load<u32>(this.pathStack + (this.currentIndex << 2));
+         if (this.filterType == 0xFFFF || getNodeType(n) == this.filterType) {
+             return true;
+         }
+         this.currentIndex--;
+     }
+     return false;
+  }
+  
+  @inline next(): u32 {
+     let n = load<u32>(this.pathStack + (this.currentIndex << 2));
+     this.currentIndex--;
+     return n;
+  }
+
+  @inline release(): void {
+     if (!this.isActive) return;
+     this.isActive = false;
+     releaseAncestorCursor(this);
+  }
+}
+
+const ancestorCursorPool = new Array<AncestorCursor>(16);
+let ancestorCursorPoolDepth: i32 = 16;
+for (let i = 0; i < 16; i++) {
+  let ptr = heap.alloc(offsetof<AncestorCursor>());
+  let cursor = changetype<AncestorCursor>(ptr);
+  cursor.isActive = false;
+  cursor.pathStack = heap.alloc(256 * 4) as u32;
+  ancestorCursorPool[i] = cursor;
+}
+
+export function getAncestors(node: u32, filterType: u16, rootNode: u32): AncestorCursor {
+  let cursor: AncestorCursor;
+  if (ancestorCursorPoolDepth > 0) {
+    ancestorCursorPoolDepth--;
+    cursor = ancestorCursorPool[ancestorCursorPoolDepth];
+  } else {
+    let ptr = heap.alloc(offsetof<AncestorCursor>());
+    cursor = changetype<AncestorCursor>(ptr);
+    cursor.pathStack = heap.alloc(256 * 4) as u32;
+  }
+  cursor.init(node, filterType, rootNode);
+  return cursor;
+}
+
+export function releaseAncestorCursor(cursor: AncestorCursor): void {
+  if (ancestorCursorPoolDepth < 16) {
+    ancestorCursorPool[ancestorCursorPoolDepth] = cursor;
+    ancestorCursorPoolDepth++;
+  } else {
+    heap.free(cursor.pathStack as usize);
+    heap.free(changetype<usize>(cursor));
+  }
+}
+
+
+@unmanaged
+export class DescendantCursor {
+  stack: u32;
+  stackDepth: i32;
+  current: u32;
+  isActive: boolean;
+  filterType: u16;
+
+  @inline init(root: u32, filterType: u16): void {
+     this.filterType = filterType;
+     this.stackDepth = 0;
+     this.current = getNodeFirstChild(root);
+     this.isActive = true;
+  }
+  
+  @inline hasNext(): boolean {
+     while (this.current != 0) {
+         if (this.filterType == 0xFFFF || getNodeType(this.current) == this.filterType) {
+             return true;
+         }
+         this.advance();
+     }
+     return false;
+  }
+  
+  @inline next(): u32 {
+     let n = this.current;
+     this.advance();
+     return n;
+  }
+
+  @inline advance(): void {
+     let child = getNodeFirstChild(this.current);
+     if (child != 0) {
+         if (this.stackDepth < 256) {
+             store<u32>(this.stack + (this.stackDepth << 2), this.current);
+             this.stackDepth++;
+         }
+         this.current = child;
+         return;
+     }
+     let sibling = getNodeNextSibling(this.current);
+     if (sibling != 0) {
+         this.current = sibling;
+         return;
+     }
+     while (this.stackDepth > 0) {
+         this.stackDepth--;
+         let parent = load<u32>(this.stack + (this.stackDepth << 2));
+         let psib = getNodeNextSibling(parent);
+         if (psib != 0) {
+             this.current = psib;
+             return;
+         }
+     }
+     this.current = 0;
+  }
+  
+  @inline release(): void {
+     if (!this.isActive) return;
+     this.isActive = false;
+     releaseDescendantCursor(this);
+  }
+}
+
+const descendantCursorPool = new Array<DescendantCursor>(16);
+let descendantCursorPoolDepth: i32 = 16;
+for (let i = 0; i < 16; i++) {
+  let ptr = heap.alloc(offsetof<DescendantCursor>());
+  let cursor = changetype<DescendantCursor>(ptr);
+  cursor.isActive = false;
+  cursor.stack = heap.alloc(256 * 4) as u32;
+  descendantCursorPool[i] = cursor;
+}
+
+export function getDescendants(node: u32, filterType: u16): DescendantCursor {
+  let cursor: DescendantCursor;
+  if (descendantCursorPoolDepth > 0) {
+    descendantCursorPoolDepth--;
+    cursor = descendantCursorPool[descendantCursorPoolDepth];
+  } else {
+    let ptr = heap.alloc(offsetof<DescendantCursor>());
+    cursor = changetype<DescendantCursor>(ptr);
+    cursor.stack = heap.alloc(256 * 4) as u32;
+  }
+  cursor.init(node, filterType);
+  return cursor;
+}
+
+export function releaseDescendantCursor(cursor: DescendantCursor): void {
+  if (descendantCursorPoolDepth < 16) {
+    descendantCursorPool[descendantCursorPoolDepth] = cursor;
+    descendantCursorPoolDepth++;
+  } else {
+    heap.free(cursor.stack as usize);
+    heap.free(changetype<usize>(cursor));
+  }
+}
+
+
+@unmanaged
+export class SemanticCursor {
+  currentChild: u32;
+  isActive: boolean;
+  
+  @inline init(node: u32): void {
+     this.currentChild = getNodeFirstChild(node);
+     this.isActive = true;
+  }
+  
+  @inline hasNext(): boolean {
+     return this.currentChild != 0;
+  }
+  
+  @inline next(): u32 {
+     let c = this.currentChild;
+     this.currentChild = getNodeNextSibling(c);
+     return c;
+  }
+  
+  @inline release(): void {
+     if (!this.isActive) return;
+     this.isActive = false;
+     releaseSemanticCursor(this);
+  }
+}
+
+const semanticCursorPool = new Array<SemanticCursor>(16);
+let semanticCursorPoolDepth: i32 = 16;
+for (let i = 0; i < 16; i++) {
+  let ptr = heap.alloc(offsetof<SemanticCursor>());
+  let cursor = changetype<SemanticCursor>(ptr);
+  cursor.isActive = false;
+  semanticCursorPool[i] = cursor;
+}
+
+export function getSemanticChildren(node: u32): SemanticCursor {
+  let cursor: SemanticCursor;
+  if (semanticCursorPoolDepth > 0) {
+    semanticCursorPoolDepth--;
+    cursor = semanticCursorPool[semanticCursorPoolDepth];
+  } else {
+    let ptr = heap.alloc(offsetof<SemanticCursor>());
+    cursor = changetype<SemanticCursor>(ptr);
+  }
+  cursor.init(node);
+  return cursor;
+}
+
+export function releaseSemanticCursor(cursor: SemanticCursor): void {
+  if (semanticCursorPoolDepth < 16) {
+    semanticCursorPool[semanticCursorPoolDepth] = cursor;
+    semanticCursorPoolDepth++;
+  } else {
+    heap.free(changetype<usize>(cursor));
+  }
+}
+
+export function getPathTokens(node: u32): DescendantCursor {
+  // PathTokens is essentially a DescendantCursor filtering for all terminal nodes. 
+  // In our engine, MAX_TERMINAL_ID defines terminals, but we can't easily filter by "isTerminal" 
+  // inside DescendantCursor. We can let the user filter, or we can just yield all descendants.
+  // We'll yield all descendants and let the caller handle it.
+  return getDescendants(node, 0xFFFF);
+}
+
+
 import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, logInt } from "./parser";
 export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID };
 

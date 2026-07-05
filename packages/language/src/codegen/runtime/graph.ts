@@ -25,8 +25,8 @@ import {
 } from "./arena";
 import { UnmanagedUint32Array } from "./array";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
-import { getChildByFieldId, getChildrenByFieldId } from "./engine";
-import { FieldCursor } from "./engine";
+import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren } from "./engine";
+import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 
@@ -508,6 +508,7 @@ export class ModelAPI {
   @inline setNextSibling(nodeId: u32, siblingId: u32): void { setNextSibling(nodeId, siblingId); }
   @inline replaceChild(parentId: u32, oldChildId: u32, newChildId: u32): void { replaceNode(parentId, oldChildId, newChildId); }
   @inline removeChild(parentId: u32, childId: u32): void { ast_removeNode(parentId, childId); }
+  @inline getSemanticChildren(nodeId: u32): SemanticCursor { return getSemanticChildren(nodeId); }
 }
 
 export class HashAPI {
@@ -519,6 +520,10 @@ export class HashAPI {
 export class AstAPI {
   @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
   @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
+  @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF): AncestorCursor { return getAncestors(nodeId, filterType, globalAstRoot); }
+  @inline getDescendants(nodeId: u32, filterType: u16 = 0xFFFF): DescendantCursor { return getDescendants(nodeId, filterType); }
+  @inline getPathTokens(nodeId: u32): DescendantCursor { return getPathTokens(nodeId); }
+
 
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }

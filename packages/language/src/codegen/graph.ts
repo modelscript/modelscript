@@ -54,8 +54,77 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       dbName = originalParams[0];
     }
 
+    let cursorCounter = 0;
     const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
       const visit: ts.Visitor = (node) => {
+        // 3. Syntax Sugar: for...of loops over cursors
+        if (ts.isForOfStatement(node)) {
+          const iterExpr = visitNode(node.expression) as ts.Expression;
+
+          let varName = "child";
+          if (ts.isVariableDeclarationList(node.initializer)) {
+            varName = node.initializer.declarations[0].name.getText();
+          } else {
+            varName = node.initializer.getText();
+          }
+
+          cursorCounter++;
+          const cursorName = ts.factory.createIdentifier("_cursor_" + cursorCounter);
+
+          const cursorDecl = ts.factory.createVariableStatement(
+            undefined,
+            ts.factory.createVariableDeclarationList(
+              [ts.factory.createVariableDeclaration(cursorName, undefined, undefined, iterExpr)],
+              ts.NodeFlags.Let,
+            ),
+          );
+
+          const whileCondition = ts.factory.createCallExpression(
+            ts.factory.createPropertyAccessExpression(cursorName, "hasNext"),
+            undefined,
+            [],
+          );
+
+          const nextDecl = ts.factory.createVariableStatement(
+            undefined,
+            ts.factory.createVariableDeclarationList(
+              [
+                ts.factory.createVariableDeclaration(
+                  ts.factory.createIdentifier(varName),
+                  undefined,
+                  undefined,
+                  ts.factory.createCallExpression(
+                    ts.factory.createPropertyAccessExpression(cursorName, "next"),
+                    undefined,
+                    [],
+                  ),
+                ),
+              ],
+              ts.NodeFlags.Let,
+            ),
+          );
+
+          let bodyStmts: ts.Statement[] = [nextDecl];
+          const visitedBody = visitNode(node.statement) as ts.Statement;
+          if (ts.isBlock(visitedBody)) {
+            bodyStmts = bodyStmts.concat(visitedBody.statements);
+          } else {
+            bodyStmts.push(visitedBody);
+          }
+
+          const whileLoop = ts.factory.createWhileStatement(whileCondition, ts.factory.createBlock(bodyStmts, true));
+
+          const releaseCall = ts.factory.createExpressionStatement(
+            ts.factory.createCallExpression(
+              ts.factory.createPropertyAccessExpression(cursorName, "release"),
+              undefined,
+              [],
+            ),
+          );
+
+          return ts.factory.createBlock([cursorDecl, whileLoop, releaseCall], true);
+        }
+
         // 1. $.RuleName -> <u16>SyntaxType.RULENAME
         if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "$") {
           const ruleName = node.name.getText().toUpperCase();
