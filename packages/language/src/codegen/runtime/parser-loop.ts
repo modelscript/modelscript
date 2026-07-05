@@ -2079,14 +2079,17 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
         let curr: ParseHead | null = head;
         let c_idx2 = 99999;
         let needed = popCount;
+        let isList = prod_is_list[reduceProd] == 1;
 
-        while (needed > 0 && curr != null) {
+        while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
           if (c_idx2 <= 0) break;
-          if (curr.astNode != 0 && isPureErrorNode(curr.astNode)) {
-            t_globalReduceCollected[c_idx2--] = curr.astNode;
+          let astNode = curr.astNode;
+          let isPure = astNode != 0 && isPureErrorNode(astNode);
+          if (isPure) {
+            t_globalReduceCollected[c_idx2--] = astNode;
           } else {
-            t_globalReduceCollected[c_idx2--] = curr.astNode;
-            needed--;
+            t_globalReduceCollected[c_idx2--] = astNode;
+            if (needed > 0) needed--;
           }
           curr = curr.prev;
         }
@@ -2112,10 +2115,31 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
           totalByteLength -= firstChildPadding;
 
           let isInvis = prod_is_invisible[reduceProd] == 1;
-          let isList = prod_is_list[reduceProd] == 1;
           let parentNode: u32;
 
-          if (isInvis && actualCount == 1) {
+          let isListAppend = false;
+          if (
+            (popCount == 2 || popCount == 3) &&
+            (actualCount == 2 || actualCount == 3) &&
+            t_globalChildNodes[0] != 0 &&
+            isList
+          ) {
+            let leftSym = getNodeType(t_globalChildNodes[0]);
+            if (leftSym == lhsSym) isListAppend = true;
+          }
+
+          if (isListAppend) {
+            parentNode = t_globalChildNodes[0];
+            for (let i: u32 = 1; i < actualCount; i++) {
+              parentNode = appendToList(
+                parentNode,
+                t_globalChildNodes[i],
+                lhsSym as u16,
+                currentScannerState,
+                i == actualCount - 1
+              );
+            }
+          } else if (isInvis && actualCount == 1) {
             parentNode = t_globalChildNodes[0];
           } else {
             parentNode = allocNode(
@@ -2125,6 +2149,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
               head.balanceHash & 0xff,
             );
             if (isList) setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_IS_LIST);
+            if (isInvis) setNodeFlags(parentNode, getNodeFlags(parentNode) | FLAG_INVISIBLE);
             let lastC: u32 = 0;
             let appendedError = false;
             for (let k: u32 = 0; k < actualCount; k++) {
