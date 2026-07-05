@@ -220,3 +220,116 @@ export function releaseMap64(m: UnmanagedMap64): void {
         heap.free(changetype<usize>(m));
     }
 }
+// 64-bit to 64-bit Hash Map implementation
+@unmanaged
+export class UnmanagedMap64To64 {
+    keys: usize;
+    values: usize;
+    capacity: u32;
+    size: u32;
+    isActive: boolean;
+
+    @inline init(initialCapacity: u32 = 16): void {
+        this.capacity = initialCapacity;
+        this.size = 0;
+        this.isActive = true;
+        this.keys = heap.alloc(initialCapacity * 8);
+        this.values = heap.alloc(initialCapacity * 8);
+        memory.fill(this.keys, 0, initialCapacity * 8);
+    }
+
+    @inline set(hash: u64, value: u64): void {
+        if (hash == 0) hash = 1;
+        if (this.size * 2 >= this.capacity) this._resize();
+        
+        let mask = this.capacity - 1;
+        let idx = (hash as u32) & mask;
+        
+        while (true) {
+            let k = load<u64>(this.keys + (idx * 8));
+            if (k == 0) {
+                store<u64>(this.keys + (idx * 8), hash);
+                store<u64>(this.values + (idx * 8), value);
+                this.size++;
+                return;
+            }
+            if (k == hash) {
+                store<u64>(this.values + (idx * 8), value);
+                return;
+            }
+            idx = (idx + 1) & mask;
+        }
+    }
+
+    @inline get(hash: u64): u64 {
+        if (hash == 0) hash = 1;
+        let mask = this.capacity - 1;
+        let idx = (hash as u32) & mask;
+        
+        while (true) {
+            let k = load<u64>(this.keys + (idx * 8));
+            if (k == 0) return 0;
+            if (k == hash) return load<u64>(this.values + (idx * 8));
+            idx = (idx + 1) & mask;
+        }
+    }
+
+    _resize(): void {
+        let oldCap = this.capacity;
+        let oldKeys = this.keys;
+        let oldValues = this.values;
+        
+        this.capacity = oldCap * 2;
+        this.keys = heap.alloc(this.capacity * 8);
+        this.values = heap.alloc(this.capacity * 8);
+        memory.fill(this.keys, 0, this.capacity * 8);
+        this.size = 0;
+        
+        for (let i: u32 = 0; i < oldCap; i++) {
+            let k = load<u64>(oldKeys + (i * 8));
+            if (k != 0) {
+                this.set(k, load<u64>(oldValues + (i * 8)));
+            }
+        }
+        heap.free(oldKeys);
+        heap.free(oldValues);
+    }
+
+    @inline release(): void {
+        if (!this.isActive) return;
+        this.isActive = false;
+        heap.free(this.keys);
+        heap.free(this.values);
+    }
+}
+
+const map64Pool = new Array<UnmanagedMap64To64>(16);
+let map64PoolDepth: i32 = 16;
+for (let i = 0; i < 16; i++) {
+    let ptr = heap.alloc(offsetof<UnmanagedMap64To64>());
+    let m = changetype<UnmanagedMap64To64>(ptr);
+    m.isActive = false;
+    map64Pool[i] = m;
+}
+
+export function createMap64To64(): u32 {
+    let m: UnmanagedMap64To64;
+    if (map64PoolDepth > 0) {
+        map64PoolDepth--;
+        m = map64Pool[map64PoolDepth];
+    } else {
+        let ptr = heap.alloc(offsetof<UnmanagedMap64To64>());
+        m = changetype<UnmanagedMap64To64>(ptr);
+    }
+    m.init();
+    return changetype<u32>(m);
+}
+
+export function releaseMap64To64(m: UnmanagedMap64To64): void {
+    if (map64PoolDepth < 16) {
+        map64Pool[map64PoolDepth] = m;
+        map64PoolDepth++;
+    } else {
+        heap.free(changetype<usize>(m));
+    }
+}

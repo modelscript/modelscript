@@ -29,7 +29,7 @@ import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, 
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
-import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64 } from "./hashmap";
+import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { DaeBuilder, dae_createBuilder } from "./dae";
 import { BltEngine, blt_createEngine } from "./blt";
 
@@ -491,8 +491,36 @@ export class ModelAPI {
   @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
   @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
 
-  @inline getProperty<T>(nodeId: u32, propId: u32): T { return 0 as T; } // Stubbed until Arena layout finalized
-  @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void { } // Stubbed until Arena layout finalized
+let t_modelProperties: UnmanagedMap64To64 | null = null;
+
+  @inline getProperty<T>(nodeId: u32, propId: u32): T {
+    if (t_modelProperties == null) return 0 as T;
+    let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
+    let val = t_modelProperties!.get(key);
+    if (isFloat<T>()) {
+      if (sizeof<T>() == 8) return reinterpret<f64>(val) as T;
+      return reinterpret<f32>(val as u32) as T;
+    }
+    return val as T;
+  }
+  @inline setProperty<T>(nodeId: u32, propId: u32, value: T): void {
+    if (t_modelProperties == null) {
+      t_modelProperties = changetype<UnmanagedMap64To64>(createMap64To64());
+    }
+    let key: u64 = (nodeId as u64) | ((propId as u64) << 32);
+    // TypeScript/AssemblyScript doesn't allow direct cast of generic T to u64 if T is u32/i32 etc., 
+    // but in AssemblyScript, we can cast it if we're careful.
+    // However, T might be f64. If T is f64, we need reinterpret.
+    if (isFloat<T>()) {
+      if (sizeof<T>() == 8) {
+        t_modelProperties!.set(key, reinterpret<u64>(value as f64));
+      } else {
+        t_modelProperties!.set(key, reinterpret<u32>(value as f32) as u64);
+      }
+    } else {
+      t_modelProperties!.set(key, value as u64);
+    }
+  }
   
   @inline bind(parentId: u32, nameNodeId: u32, childId: u32): void { ast_bindChildNode(parentId, nameNodeId, childId); }
   @inline resolve(parentId: u32, nameNodeId: u32): u32 { return ast_resolveChildNode(parentId, nameNodeId); }
