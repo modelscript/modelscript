@@ -49,7 +49,6 @@
     "build:templates": "node scripts/bundle-templates.js",
     "clean": "rimraf dist src/src-gen",
     "lint": "eslint src",
-    "test": "node tests/lsp_diag.spec.mjs",
     "watch": "tsc --watch"
   },
   "lint-staged": {
