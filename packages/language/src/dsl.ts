@@ -114,6 +114,7 @@ export interface CodeGraph<
   map: MapAPI;
 
   runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
+  runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
   diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
 }
 
@@ -213,7 +214,7 @@ export type ASTQueryFunction<
   FieldName extends string = never,
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (graph: CodeGraph<RuleName, FieldName, QueryName, ModelAttrs>, queryArg: u32, ...args: any[]) => u32 | boolean;
+> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean;
 
 export type ASTLintFunction<
   RuleName extends string = string,
@@ -221,7 +222,7 @@ export type ASTLintFunction<
   QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > = (
-  graph: CodeGraph<RuleName, FieldName, QueryName, ModelAttrs>,
+  graph: CodeGraph<ModelAttrs, RuleName, FieldName>,
   queryArg: u32,
   $: Record<string, u16> & Record<RuleName, u16>,
 ) => void;
@@ -238,7 +239,7 @@ export interface CompilerLint<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
-  query: ASTLintFunction<ModelAttrs, RuleName, FieldName>;
+  query: ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   code?: string | number;
   message:
     | string
@@ -280,6 +281,12 @@ export interface LanguageOptions<
    * Keys are rule names, values are functions that compose rules.
    */
   rules: Record<RuleName, RuleBuilder<RuleName, FieldName>>;
+
+  /**
+   * Host Queries allow WASM to call out to the host environment (Node.js/V8)
+   * for complex semantic resolutions (e.g. multi-file workspace lookups) via FFI.
+   */
+  hostQueries?: Record<string, (facade: any, arg1: u32, arg2: u32, arg3: u32) => u32>;
 
   /**
    * Tokens to skip automatically (e.g., whitespace, comments) everywhere in the grammar.

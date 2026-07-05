@@ -268,6 +268,23 @@ export interface AstChangeListener {
   ): void;
 }
 
+export function createWasmImports(grammar: any, facade: LspFacade): any {
+  const hostQueries: Record<string, any> = grammar.hostQueries || {};
+  const queryKeys = Object.keys(hostQueries);
+
+  return {
+    host: {
+      runHostQuery: (queryId: number, arg1: number, arg2: number, arg3: number): number => {
+        if (queryId > 0 && queryId <= queryKeys.length) {
+          const queryName = queryKeys[queryId - 1];
+          return hostQueries[queryName](facade, arg1, arg2, arg3);
+        }
+        return 0;
+      },
+    },
+  };
+}
+
 export class LspFacade {
   private syntaxNames: string[] = SYNTAX_NAMES;
   private wasmMemory: WebAssembly.Memory;

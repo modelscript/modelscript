@@ -28,6 +28,14 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     }
   }
 
+  const hostQueryIdMap = new Map<string, number>();
+  if (grammar.hostQueries) {
+    let hostQueryIdx = 1;
+    for (const queryName of Object.keys(grammar.hostQueries)) {
+      hostQueryIdMap.set(queryName, hostQueryIdx++);
+    }
+  }
+
   function transpileQuery(
     queryFn: any,
     context: "query" | "lint" | "lsp" = "query",
@@ -157,6 +165,31 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
                 }
 
                 return ts.factory.createCallExpression(ts.factory.createIdentifier("runQuery"), undefined, callArgs);
+              }
+            }
+
+            if (methodName === "runHostQuery" && args.length >= 1) {
+              const queryArg = args[0];
+              if (ts.isStringLiteral(queryArg)) {
+                const queryName = queryArg.text;
+                const id = hostQueryIdMap.get(queryName);
+                if (id === undefined) throw new Error(`Host Query ${queryName} not defined`);
+
+                const arg1 =
+                  args.length > 1 ? (visitNode(args[1]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+                const arg2 =
+                  args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+                const arg3 =
+                  args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+
+                return ts.factory.createCallExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier("runHostQuery"),
+                  ),
+                  undefined,
+                  [ts.factory.createNumericLiteral(id), arg1, arg2, arg3],
+                );
               }
             }
 

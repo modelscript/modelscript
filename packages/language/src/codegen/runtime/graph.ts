@@ -31,6 +31,9 @@ import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64 } from "./hashmap";
 
+@external("host", "runHostQuery")
+export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
+
 @unmanaged
 export class QueryNode {
   queryType: u32;             // +0
@@ -606,6 +609,10 @@ class CodeGraph {
 
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
         return runQuery(queryType, queryArg);
+    }
+    
+    @inline runHostQuery(queryId: u32, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): u32 {
+        return host_runHostQuery(queryId, arg1, arg2, arg3);
     }
     @inline diagnostic(targetNode: u32, contextNode: u32 = targetNode): void { /* Handled by TS Macro */ }
 }
