@@ -30,6 +30,7 @@ import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from ".
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64 } from "./hashmap";
+import { DaeBuilder, dae_createBuilder } from "./dae";
 
 @external("host", "runHostQuery")
 export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
@@ -597,6 +598,7 @@ class CodeGraph {
     model: ModelAPI;
     set: SetAPI;
     map: MapAPI;
+    dae: DaeBuilder;
 
     constructor() {
       this.tensor = new TensorAPI();
@@ -605,6 +607,7 @@ class CodeGraph {
       this.model = new ModelAPI();
       this.set = new SetAPI();
       this.map = new MapAPI();
+      this.dae = changetype<DaeBuilder>(dae_createBuilder());
     }
 
     @inline runQuery(queryType: u32, queryArg: u32): u32 {

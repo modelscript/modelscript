@@ -7,6 +7,7 @@ import {
   arenaCode,
   arrayCode,
   cursorCode,
+  daeCode,
   engineCode,
   gssCode,
   lspCode,
@@ -374,5 +375,6 @@ export function generateParserTables(
     { filename: "parser-loop.ts", content: parserLoopCode },
     { filename: "gss.ts", content: gssCode },
     { filename: "recovery.ts", content: recoveryCode },
+    { filename: "dae.ts", content: daeCode },
   ];
 }

@@ -112,6 +112,7 @@ export interface CodeGraph<
   model: ModelAPI<ModelAttrs>;
   set: SetAPI;
   map: MapAPI;
+  dae: DaeAPI;
 
   runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
   runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
@@ -151,6 +152,110 @@ export interface SetAPI {
   add(setId: u32, hash: u64): void;
   has(setId: u32, hash: u64): boolean;
   release(setId: u32): void;
+}
+
+export interface DaeAPI {
+  addVariable(nameId: u32, type: u8, variability: u8, causality: u8, startValue: f64, flags?: i32): u32;
+  addExpression(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+  addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId?: u32): u32;
+  addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+}
+
+export enum VarType {
+  Real = 0,
+  Integer = 1,
+  Boolean = 2,
+  String = 3,
+  Enumeration = 4,
+  Clock = 5,
+}
+
+export enum Variability {
+  Continuous = 0,
+  Discrete = 1,
+  Parameter = 2,
+  Constant = 3,
+}
+
+export enum Causality {
+  Local = 0,
+  Input = 1,
+  Output = 2,
+}
+
+export enum EqKind {
+  Simple = 0,
+  Array = 1,
+  For = 2,
+  If = 3,
+  When = 4,
+  FunctionCall = 5,
+  Connect = 6,
+  InitialSimple = 7,
+  InitialFor = 8,
+}
+
+export enum ExprKind {
+  Name = 0,
+  IntLiteral = 1,
+  RealLiteral = 2,
+  BoolLiteral = 3,
+  StringLiteral = 4,
+  Binary = 5,
+  Unary = 6,
+  Call = 7,
+  Subscript = 8,
+  ArrayCtor = 9,
+  Range = 10,
+  IfElse = 11,
+  Der = 12,
+  Pre = 13,
+  Negate = 14,
+  Tuple = 15,
+  Colon = 16,
+  EnumLiteral = 17,
+  Comprehension = 18,
+  PartialFunc = 19,
+  Object = 20,
+}
+
+export enum BinOp {
+  Add = 0,
+  Sub = 1,
+  Mul = 2,
+  Div = 3,
+  Pow = 4,
+  ElemAdd = 5,
+  ElemSub = 6,
+  ElemMul = 7,
+  ElemDiv = 8,
+  ElemPow = 9,
+  And = 10,
+  Or = 11,
+  Eq = 12,
+  Neq = 13,
+  Lt = 14,
+  Gt = 15,
+  Lte = 16,
+  Gte = 17,
+}
+
+export enum UnaryOp {
+  Negate = 0,
+  Not = 1,
+}
+
+export enum StmtKind {
+  Assignment = 0,
+  For = 1,
+  While = 2,
+  If = 3,
+  When = 4,
+  Return = 5,
+  Break = 6,
+  ProcedureCall = 7,
+  ComplexAssignment = 8,
+  Block = 9,
 }
 
 export interface MapAPI {
