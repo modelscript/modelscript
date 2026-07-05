@@ -58,7 +58,7 @@
     "three": "^0.184.0",
     "unist-util-visit": "^5.1.0",
     "vscode-languageserver-protocol": "^3.17.5",
-    "web-tree-sitter": "^0.26.7"
+    "web-tree-sitter": "^0.26.10"
   },
   "devDependencies": {
     "@react-router/dev": "^7.14.0",
