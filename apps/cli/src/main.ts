@@ -20,6 +20,7 @@ import { Generate } from "./commands/generate.js";
 // import { Optimize } from "./commands/optimize.js";
 import { Parse } from "./commands/parse.js";
 import { Playground } from "./commands/playground.js";
+import { Sandbox } from "./commands/sandbox.js";
 // import { Publish } from "./commands/publish.js";
 // import { Render } from "./commands/render.js";
 // import { Simulate } from "./commands/simulate.js";
@@ -49,6 +50,7 @@ yargs(process.argv.slice(2))
   // .command(Optimize)
   .command(Parse)
   .command(Playground)
+  .command(Sandbox)
   // .command(Publish)
   // .command(Render)
   // .command(Simulate)
