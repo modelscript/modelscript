@@ -57,7 +57,7 @@
     "set-cookie-parser": "^2.6.0",
     "three": "^0.184.0",
     "unist-util-visit": "^5.1.0",
-    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-protocol": "^3.18.2",
     "web-tree-sitter": "^0.26.7"
   },
   "devDependencies": {
