@@ -102,18 +102,18 @@ export interface TensorAPI {
 }
 
 export interface CodeGraph<
-  RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
   ModelAttrs extends Record<string, Record<string, any>> = any,
+  RuleName extends string = any,
+  FieldName extends string = never,
 > {
   tensor: TensorAPI;
   hash: HashAPI;
-
   ast: AstAPI<RuleName, FieldName>;
   model: ModelAPI<ModelAttrs>;
+  set: SetAPI;
+  map: MapAPI;
 
-  runQuery(queryType: QueryName | (string & {}) | u32, queryArg: u32, ...args: any[]): u32;
+  runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
   diagnostic(targetNode: u32, contextNode?: u32): void;
 }
 
@@ -124,6 +124,9 @@ export interface AstAPI<RuleName extends string, FieldName extends string = neve
   getAncestors(nodeId: u32, stopAtType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
   getDescendants(nodeId: u32, filterType?: Extract<RuleName, string> | (string & {}) | u16): Cursor;
   getPathTokens(nodeId: u32): Cursor;
+
+  textEqualsNode(nodeA: u32, nodeB: u32): boolean;
+  textEquals(nodeId: u32, literal: string): boolean;
 
   getType(nodeId: u32): u16;
   getFirstChild(nodeId: u32): u32;
@@ -136,14 +139,24 @@ export interface AstAPI<RuleName extends string, FieldName extends string = neve
 }
 
 export interface HashAPI {
-  /** Returns the FNV-1a 32-bit offset basis (2166136261) */
   init(): u32;
-
-  /** Incrementally hashes a memory span */
   span(currentHash: u32, span: u64): u32;
-
-  /** Incrementally hashes a single 8-bit byte */
   byte(currentHash: u32, byte: u8): u32;
+  span64(span: u64): u64;
+}
+
+export interface SetAPI {
+  create(): u32;
+  add(setId: u32, hash: u64): void;
+  has(setId: u32, hash: u64): boolean;
+  release(setId: u32): void;
+}
+
+export interface MapAPI {
+  create(): u32;
+  set(mapId: u32, hash: u64, valueId: u32): void;
+  get(mapId: u32, hash: u64): u32;
+  release(mapId: u32): void;
 }
 
 export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>> {

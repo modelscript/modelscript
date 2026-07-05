@@ -309,6 +309,51 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
                     ],
                   );
                 }
+              } else if (methodName === "textEquals" && args.length === 2 && ts.isStringLiteral(args[1])) {
+                const nodeArg = visitNode(args[0]) as ts.Expression;
+                const strVal = args[1].text;
+                const len = strVal.length;
+
+                let expr: ts.Expression = ts.factory.createBinaryExpression(
+                  ts.factory.createCallExpression(ts.factory.createIdentifier("getNodeByteLength"), undefined, [
+                    nodeArg,
+                  ]),
+                  ts.factory.createToken(ts.SyntaxKind.EqualsEqualsToken),
+                  ts.factory.createNumericLiteral(len),
+                );
+
+                for (let i = 0; i < len; i++) {
+                  const charCode = strVal.charCodeAt(i);
+                  const offsetExpr = ts.factory.createBinaryExpression(
+                    ts.factory.createCallExpression(ts.factory.createIdentifier("getInputBuffer"), undefined, []),
+                    ts.factory.createToken(ts.SyntaxKind.PlusToken),
+                    ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_findNodeOffset"), undefined, [
+                      ts.factory.createIdentifier("globalAstRoot"),
+                      nodeArg,
+                    ]),
+                  );
+                  const indexExpr = ts.factory.createBinaryExpression(
+                    offsetExpr,
+                    ts.factory.createToken(ts.SyntaxKind.PlusToken),
+                    ts.factory.createNumericLiteral(i),
+                  );
+                  const loadExpr = ts.factory.createCallExpression(
+                    ts.factory.createIdentifier("load"),
+                    [ts.factory.createTypeReferenceNode("u8")],
+                    [indexExpr],
+                  );
+                  const charEqExpr = ts.factory.createBinaryExpression(
+                    loadExpr,
+                    ts.factory.createToken(ts.SyntaxKind.EqualsEqualsToken),
+                    ts.factory.createNumericLiteral(charCode),
+                  );
+                  expr = ts.factory.createBinaryExpression(
+                    expr,
+                    ts.factory.createToken(ts.SyntaxKind.AmpersandAmpersandToken),
+                    charEqExpr,
+                  );
+                }
+                return ts.factory.createParenthesizedExpression(expr);
               } else {
                 return ts.factory.createCallExpression(
                   ts.factory.createPropertyAccessExpression(

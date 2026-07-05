@@ -29,6 +29,7 @@ import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, 
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
 import { lsp_allocDiagnostic } from "./lsp";
+import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64 } from "./hashmap";
 
 @unmanaged
 export class QueryNode {
@@ -515,9 +516,39 @@ export class HashAPI {
   @inline init(): u32 { return 2166136261; }
   @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
   @inline byte(currentHash: u32, byte: u8): u32 { return ast_hashByte(byte, currentHash); }
+  @inline span64(span: u64): u64 {
+      let len = (span & 0xFFFFFFFF) as u32;
+      let offset = (span >> 32) as u32;
+      let buffer = getInputBuffer();
+      // Simple cyrb53-like 64-bit hash
+      let h1: u64 = 0xdeadbeef ^ (len as u64);
+      let h2: u64 = 0x41c6ce57 ^ (len as u64);
+      for (let i: u32 = 0; i < len; i++) {
+          let c = load<u8>(buffer + offset + i) as u64;
+          h1 = Math.imul((h1 ^ c) as i32, 2654435761) as u64;
+          h2 = Math.imul((h2 ^ c) as i32, 1597334677) as u64;
+      }
+      return (h1 << 32) | h2;
+  }
 }
 
 export class AstAPI {
+  @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
+      if (nodeA == nodeB) return true;
+      let lenA = getNodeByteLength(nodeA);
+      let lenB = getNodeByteLength(nodeB);
+      if (lenA != lenB) return false;
+      let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA);
+      let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB);
+      let buffer = getInputBuffer();
+      for (let i: u32 = 0; i < lenA; i++) {
+          if (load<u8>(buffer + offsetA + i) != load<u8>(buffer + offsetB + i)) {
+              return false;
+          }
+      }
+      return true;
+  }
+
   @inline getChildByFieldId(nodeId: u32, fieldId: i32): u32 { return getChildByFieldId(nodeId, fieldId); }
   @inline getChildrenByFieldId(nodeId: u32, fieldId: i32): FieldCursor { return getChildrenByFieldId(nodeId, fieldId); }
   @inline getAncestors(nodeId: u32, filterType: u16 = 0xFFFF): AncestorCursor { return getAncestors(nodeId, filterType, globalAstRoot); }
@@ -541,18 +572,36 @@ export class AstAPI {
   @inline hashSpan(span: u64): u32 { return ast_hashSpan(span); }
 }
 
+export class SetAPI {
+  @inline create(): u32 { return createSet64(); }
+  @inline add(setId: u32, hash: u64): void { changetype<UnmanagedSet64>(setId).add(hash); }
+  @inline has(setId: u32, hash: u64): boolean { return changetype<UnmanagedSet64>(setId).has(hash); }
+  @inline release(setId: u32): void { changetype<UnmanagedSet64>(setId).release(); }
+}
+
+export class MapAPI {
+  @inline create(): u32 { return createMap64(); }
+  @inline set(mapId: u32, hash: u64, valueId: u32): void { changetype<UnmanagedMap64>(mapId).set(hash, valueId); }
+  @inline get(mapId: u32, hash: u64): u32 { return changetype<UnmanagedMap64>(mapId).get(hash); }
+  @inline release(mapId: u32): void { changetype<UnmanagedMap64>(mapId).release(); }
+}
+
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
 class CodeGraph {
     tensor: TensorAPI;
     hash: HashAPI;
     ast: AstAPI;
     model: ModelAPI;
+    set: SetAPI;
+    map: MapAPI;
 
     constructor() {
       this.tensor = new TensorAPI();
       this.hash = new HashAPI();
       this.ast = new AstAPI();
       this.model = new ModelAPI();
+      this.set = new SetAPI();
+      this.map = new MapAPI();
     }
 
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
