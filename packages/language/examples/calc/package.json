@@ -1,0 +1,11 @@
+{
+  "name": "calc-language",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Calc example language",
+  "scripts": {
+    "build": "msc build build/src-gen/parser.ts",
+    "generate": "msc generate src/language.ts build/src-gen",
+    "sandbox": "msc sandbox src/language.ts build/src-gen"
+  }
+}

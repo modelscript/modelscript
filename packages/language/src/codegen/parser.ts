@@ -11,6 +11,7 @@ import {
   daeCode,
   engineCode,
   gssCode,
+  hashmapCode,
   lspCode,
   parserLoopCode,
   recoveryCode,
@@ -79,7 +80,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nimport { DaeBuilder } from "./dae";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\n`;
 
   // Lexer, Types, etc.
   code += generateTypes(originalGrammar, grammar);
@@ -351,7 +352,7 @@ export function generateParserTables(
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
     code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
   } else {
-    code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32): u32 { return 0; }\n`;
+    code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\nexport function simplifyAst(exprId: u32, dae: DaeBuilder): u32 { return exprId; }\n`;
   }
 
   let engineCodeTemplate = engineCode;
@@ -396,6 +397,7 @@ export function generateParserTables(
     { filename: "recovery.ts", content: recoveryCode },
     { filename: "dae.ts", content: daeCode },
     { filename: "blt.ts", content: bltCode },
+    { filename: "hashmap.ts", content: hashmapCode },
   ];
 
   if (originalGrammar.typeSystem) {

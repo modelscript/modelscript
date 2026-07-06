@@ -38,6 +38,7 @@ export default defineConfig([
             "packages/language/src/codegen/runtime/arena.ts",
             "packages/language/src/codegen/runtime/array.ts",
             "packages/language/src/codegen/runtime/cursor.ts",
+            "packages/language/examples/calc/src/language.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,

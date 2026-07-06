@@ -1,5 +1,5 @@
 import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
-import { atomicChunkAlloc, atomicChunkFree } from "./arena";
+import { atomicChunkAlloc } from "./arena";
 
 export enum VarType {
   Real = 0,
@@ -99,33 +99,33 @@ export enum StmtKind {
 }
 
 // Strides
-const VAR_STRIDE = 8;
-const VAR_NAME = 0;
-const VAR_TYPE = 1;
-const VAR_VARIABILITY = 2;
-const VAR_CAUSALITY = 3;
-const VAR_START_HI = 4;
-const VAR_START_LO = 5;
-const VAR_SHAPE_DIM = 6;
-const VAR_FLAGS = 7;
+export const VAR_STRIDE = 8;
+export const VAR_NAME = 0;
+export const VAR_TYPE = 1;
+export const VAR_VARIABILITY = 2;
+export const VAR_CAUSALITY = 3;
+export const VAR_START_HI = 4;
+export const VAR_START_LO = 5;
+export const VAR_SHAPE_DIM = 6;
+export const VAR_FLAGS = 7;
 
-const EQ_STRIDE = 4;
-const EQ_KIND = 0;
-const EQ_LHS = 1;
-const EQ_RHS = 2;
-const EQ_AUX = 3;
+export const EQ_STRIDE = 4;
+export const EQ_KIND = 0;
+export const EQ_LHS = 1;
+export const EQ_RHS = 2;
+export const EQ_AUX = 3;
 
-const EXPR_STRIDE = 4;
-const EXPR_KIND = 0;
-const EXPR_DATA1 = 1;
-const EXPR_LEFT = 2;
-const EXPR_RIGHT = 3;
+export const EXPR_STRIDE = 4;
+export const EXPR_KIND = 0;
+export const EXPR_DATA1 = 1;
+export const EXPR_LEFT = 2;
+export const EXPR_RIGHT = 3;
 
-const STMT_STRIDE = 4;
-const STMT_KIND = 0;
-const STMT_DATA1 = 1;
-const STMT_LEFT = 2;
-const STMT_RIGHT = 3;
+export const STMT_STRIDE = 4;
+export const STMT_KIND = 0;
+export const STMT_DATA1 = 1;
+export const STMT_LEFT = 2;
+export const STMT_RIGHT = 3;
 
 @unmanaged
 export class DaeBuilder {
@@ -168,9 +168,9 @@ export class DaeBuilder {
   @inline
   addVariable(
     nameId: u32,
-    type: u8,
-    variability: u8,
-    causality: u8,
+    type: i32,
+    variability: i32,
+    causality: i32,
     startValue: f64,
     flags: i32 = 0
   ): u32 {
@@ -195,7 +195,7 @@ export class DaeBuilder {
   }
 
   @inline
-  addExpression(kind: u8, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
+  addExpression(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.exprCount++;
     let offset = idx * EXPR_STRIDE;
 
@@ -208,7 +208,7 @@ export class DaeBuilder {
   }
 
   @inline
-  addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId: u32 = 0xffffffff): u32 {
+  addEquation(kind: i32, lhsId: u32, rhsId: u32, auxId: u32 = 0xffffffff): u32 {
     let idx = this.eqCount++;
     let offset = idx * EQ_STRIDE;
 
@@ -221,7 +221,7 @@ export class DaeBuilder {
   }
 
   @inline
-  addStatement(kind: u8, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
+  addStatement(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.stmtCount++;
     let offset = idx * STMT_STRIDE;
 

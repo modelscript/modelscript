@@ -238,27 +238,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       }
       lsp_allocDiagnostic(dStart, dEnd, type);
     } else if (inError || isErrorNode) {
-      if (pad > 0) {
-        // The padding might contain dropped garbage tokens!
-        // Scan the padding and emit a diagnostic for each contiguous block of non-whitespace
-        let inputPtr = getInputBuffer();
-        let inGarbage = false;
-        let garbageStart: u32 = 0;
-        for (let i: u32 = 0; i < pad; i += 2) {
-          let c = load<u16>(inputPtr + start + i);
-          let isWs = (c == 32 || c == 9 || c == 10 || c == 13);
-          if (!isWs && !inGarbage) {
-            inGarbage = true;
-            garbageStart = start + i;
-          } else if (isWs && inGarbage) {
-            inGarbage = false;
-            lsp_allocDiagnostic(garbageStart, start + i, 0);
-          }
-        }
-        if (inGarbage) {
-          lsp_allocDiagnostic(garbageStart, start + pad, 0);
-        }
-      }
+      // The pad > 0 garbage scan was removed because garbage tokens are now explicitly
+      // stored as leaf children inside ERROR nodes, and padding legitimately contains
+      // non-whitespace extra tokens like comments.
       
       if (isLeaf && len > 0) {
         // Check if token is entirely whitespace

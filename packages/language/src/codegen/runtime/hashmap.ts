@@ -1,6 +1,6 @@
 /* eslint-disable */
 // @ts-nocheck
-import { heap } from "./arena";
+import { atomicChunkAlloc } from "./arena";
 
 // 64-bit Hash Set implementation using linear probing
 @unmanaged
@@ -14,7 +14,7 @@ export class UnmanagedSet64 {
         this.capacity = initialCapacity;
         this.size = 0;
         this.isActive = true;
-        this.keys = heap.alloc(initialCapacity * 8);
+        this.keys = atomicChunkAlloc(initialCapacity * 8);
         memory.fill(this.keys, 0, initialCapacity * 8);
     }
 
@@ -55,7 +55,7 @@ export class UnmanagedSet64 {
         let oldKeys = this.keys;
         
         this.capacity = oldCap * 2;
-        this.keys = heap.alloc(this.capacity * 8);
+        this.keys = atomicChunkAlloc(this.capacity * 8);
         memory.fill(this.keys, 0, this.capacity * 8);
         this.size = 0;
         
@@ -63,13 +63,11 @@ export class UnmanagedSet64 {
             let k = load<u64>(oldKeys + (i * 8));
             if (k != 0) this.add(k);
         }
-        heap.free(oldKeys);
     }
 
     @inline release(): void {
         if (!this.isActive) return;
         this.isActive = false;
-        heap.free(this.keys);
         releaseSet64(this);
     }
 }
@@ -87,8 +85,8 @@ export class UnmanagedMap64 {
         this.capacity = initialCapacity;
         this.size = 0;
         this.isActive = true;
-        this.keys = heap.alloc(initialCapacity * 8);
-        this.values = heap.alloc(initialCapacity * 4);
+        this.keys = atomicChunkAlloc(initialCapacity * 8);
+        this.values = atomicChunkAlloc(initialCapacity * 4);
         memory.fill(this.keys, 0, initialCapacity * 8);
     }
 
@@ -134,8 +132,8 @@ export class UnmanagedMap64 {
         let oldValues = this.values;
         
         this.capacity = oldCap * 2;
-        this.keys = heap.alloc(this.capacity * 8);
-        this.values = heap.alloc(this.capacity * 4);
+        this.keys = atomicChunkAlloc(this.capacity * 8);
+        this.values = atomicChunkAlloc(this.capacity * 4);
         memory.fill(this.keys, 0, this.capacity * 8);
         this.size = 0;
         
@@ -152,8 +150,6 @@ export class UnmanagedMap64 {
     @inline release(): void {
         if (!this.isActive) return;
         this.isActive = false;
-        heap.free(this.keys);
-        heap.free(this.values);
         releaseMap64(this);
     }
 }
@@ -233,8 +229,8 @@ export class UnmanagedMap64To64 {
         this.capacity = initialCapacity;
         this.size = 0;
         this.isActive = true;
-        this.keys = heap.alloc(initialCapacity * 8);
-        this.values = heap.alloc(initialCapacity * 8);
+        this.keys = atomicChunkAlloc(initialCapacity * 8);
+        this.values = atomicChunkAlloc(initialCapacity * 8);
         memory.fill(this.keys, 0, initialCapacity * 8);
     }
 
@@ -280,8 +276,8 @@ export class UnmanagedMap64To64 {
         let oldValues = this.values;
         
         this.capacity = oldCap * 2;
-        this.keys = heap.alloc(this.capacity * 8);
-        this.values = heap.alloc(this.capacity * 8);
+        this.keys = atomicChunkAlloc(this.capacity * 8);
+        this.values = atomicChunkAlloc(this.capacity * 8);
         memory.fill(this.keys, 0, this.capacity * 8);
         this.size = 0;
         
@@ -298,15 +294,14 @@ export class UnmanagedMap64To64 {
     @inline release(): void {
         if (!this.isActive) return;
         this.isActive = false;
-        heap.free(this.keys);
-        heap.free(this.values);
+        releaseMap64To64(this);
     }
 }
 
 const map64Pool = new Array<UnmanagedMap64To64>(16);
 let map64PoolDepth: i32 = 16;
 for (let i = 0; i < 16; i++) {
-    let ptr = heap.alloc(offsetof<UnmanagedMap64To64>());
+    let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64To64>());
     let m = changetype<UnmanagedMap64To64>(ptr);
     m.isActive = false;
     map64Pool[i] = m;
@@ -318,7 +313,7 @@ export function createMap64To64(): u32 {
         map64PoolDepth--;
         m = map64Pool[map64PoolDepth];
     } else {
-        let ptr = heap.alloc(offsetof<UnmanagedMap64To64>());
+        let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64To64>());
         m = changetype<UnmanagedMap64To64>(ptr);
     }
     m.init();

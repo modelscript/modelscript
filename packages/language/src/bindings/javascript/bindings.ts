@@ -809,6 +809,12 @@ export class LspFacade {
         endPos = { line: endPos.line, character: MAX_COLS };
       }
 
+      // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
+      // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
+      if (endPos.line > startPos.line && endPos.character === 0) {
+        endPos = { line: endPos.line - 1, character: startPos.character + 1 };
+      }
+
       diags.push({
         range: {
           start: startPos,

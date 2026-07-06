@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { execSync } from "node:child_process";
+import { exec, execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +9,7 @@ import type { CommandModule } from "yargs";
 interface SandboxArgs {
   entry: string;
   outdir: string;
+  open: boolean;
 }
 
 export const Sandbox: CommandModule<{}, SandboxArgs> = {
@@ -26,6 +27,11 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
         description: "output directory",
         type: "string",
         default: "build/src-gen",
+      })
+      .option("open", {
+        description: "Open the browser automatically",
+        type: "boolean",
+        default: true,
       });
   },
   handler: async (args) => {
@@ -54,7 +60,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
       }
 
       const absoluteOutDir = path.resolve(process.cwd(), outDir);
-      startVscodeExtension(absoluteOutDir, languageDef.name, languageDef);
+      startVscodeExtension(absoluteOutDir, languageDef.name, languageDef, args.open);
     } catch (err: unknown) {
       if (err instanceof Error) {
         console.error(err.stack || err.message);
@@ -65,7 +71,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
     }
   },
 };
-export function startVscodeExtension(outDir: string, grammarName: string, grammarDef: any) {
+export function startVscodeExtension(outDir: string, grammarName: string, grammarDef: any, openBrowser = false) {
   const extDir = path.join(outDir, "..", ".vscode-extension");
   const srcDir = path.join(extDir, "src");
 
@@ -78,6 +84,7 @@ export function startVscodeExtension(outDir: string, grammarName: string, gramma
 
   const packageJson = {
     name: `${langId}-lang`,
+    publisher: "modelscript",
     version: "1.0.0",
     engines: {
       vscode: "^1.80.0",
@@ -119,16 +126,28 @@ let wasmMemory: WebAssembly.Memory;
 let facade: any;
 let currentWasmBufferUri: string | null = null;
 
+function getUtf8ByteLength(str: string): number {
+    let s = str.length;
+    for (let i=str.length-1; i>=0; i--) {
+        let code = str.charCodeAt(i);
+        if (code > 0x7f && code <= 0x7ff) s++;
+        else if (code > 0x7ff && code <= 0xffff) s+=2;
+        if (code >= 0xDC00 && code <= 0xDFFF) i--; // surrogate pair
+    }
+    return s;
+}
+
 function syncWasmInputBuffer(doc: vscode.TextDocument) {
     if (currentWasmBufferUri === doc.uri.toString() && uriToLastText.get(doc.uri.toString()) === doc.getText()) return;
     const text = doc.getText();
-    const encoder = new TextEncoder();
-    const encoded = encoder.encode(text);
-    
     const textPtr = wasmExports.getInputBuffer();
-    const memArray = new Uint8Array(wasmMemory.buffer);
-    memArray.set(encoded, textPtr);
-    wasmExports.setInputLength(encoded.length);
+    const memArray = new Uint16Array(wasmMemory.buffer);
+    for (let i = 0; i < text.length; i++) {
+        memArray[(textPtr >> 1) + i] = text.charCodeAt(i);
+    }
+    if (wasmExports.lsp_setInputEncoding) wasmExports.lsp_setInputEncoding(1);
+    else if (wasmExports.setInputEncoding) wasmExports.setInputEncoding(1);
+    wasmExports.setInputLength(text.length * 2);
     
     currentWasmBufferUri = doc.uri.toString();
     uriToLastText.set(doc.uri.toString(), text);
@@ -166,11 +185,13 @@ class LspWorkerProxy {
                     try {
                         const response = await fetch(msg.wasmUri);
                         const wasmBytes = await response.arrayBuffer();
+                        wasmMemory = new WebAssembly.Memory({ initial: 4000, maximum: 16000, shared: true });
                         const env = {
+                            memory: wasmMemory,
                             abort: () => console.error("WASM Abort in Worker"),
                             getSourceSlice: () => 0,
                             emitTextEdit: () => {},
-                            logInt: (val) => console.log('Worker WASM LOG:', val)
+                            logInt: () => {}
                         };
                         const parser = {
                             logInt: env.logInt,
@@ -180,14 +201,20 @@ class LspWorkerProxy {
                             "parser.logToken": () => {},
                             "parser.logCost": () => {}
                         };
-                        const module = await WebAssembly.instantiate(wasmBytes, { env, parser });
+                        const engine = {
+                            debugLog: env.logInt
+                        };
+                        const host = {
+                            runHostQuery: () => 0
+                        };
+                        const module = await WebAssembly.instantiate(wasmBytes, { env, parser, engine, host });
                         wasmExports = module.instance.exports;
-                        wasmMemory = wasmExports.memory;
                         wasmExports.initArena(10 * 1024 * 1024);
                         self.postMessage({ id: msg.id, success: true });
                     } catch (err) {
                         self.postMessage({ id: msg.id, success: false, error: err.toString() });
                     }
+                }
             };
         \`;
         
@@ -222,16 +249,16 @@ let lspWorker: LspWorkerProxy;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('${grammarName} Language Extension Activating...');
-    
-    // Initialize the IPOPT Solver asynchronously
-    globalIpoptSolver.initialize(context.extensionUri);
 
     const wasmUri = vscode.Uri.joinPath(context.extensionUri, 'parser.wasm');
     const wasmBytes = await vscode.workspace.fs.readFile(wasmUri);
 
     let pendingEdits: vscode.TextEdit[] = [];
 
+    wasmMemory = new WebAssembly.Memory({ initial: 4000, maximum: 16000, shared: true });
+
     const env = {
+        memory: wasmMemory,
         abort: (msgPtr: number, filePtr: number, line: number, col: number) => {
             console.error("WASM Abort at " + line + ":" + col);
         },
@@ -277,22 +304,27 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
             }
         },
-        logInt: (val: number) => { console.log('WASM LOG:', val); }
+        logInt: () => {}
     };
 
     const wasmModule = await WebAssembly.instantiate(wasmBytes, {
         env,
         parser: {
-            logInt: (val: number) => { console.log('WASM LOG:', val); },
+            logInt: () => {},
             emitTextEdit: env.emitTextEdit,
             getSourceSlice: env.getSourceSlice,
             "parser.logState": () => {},
             "parser.logToken": () => {},
             "parser.logCost": () => {}
+        },
+        engine: {
+            debugLog: () => {}
+        },
+        host: {
+            runHostQuery: () => 0
         }
     });
     wasmExports = wasmModule.instance.exports;
-    wasmMemory = wasmExports.memory;
     facade = new LspFacade(wasmMemory, wasmExports);
     
     // CRITICAL: Initialize the AST arena to prevent memory corruption between input buffer and AST nodes
@@ -359,8 +391,8 @@ export async function activate(context: vscode.ExtensionContext) {
             provideHover(document, position, token) {
                 syncWasmInputBuffer(document);
                 const astRoot = uriToAstRoot.get(document.uri.toString()) || 0;
-                if (astRoot === 0) return null;
-                const hover = facade.getHover(astRoot, document.uri.toString(), position.line, position.character);
+                if (astRoot === 0 || typeof (facade as any).getHover !== 'function') return null;
+                const hover = (facade as any).getHover(astRoot, document.uri.toString(), position.line, position.character);
                 if (!hover || !hover.contents || !hover.contents.value) return null;
                 return new vscode.Hover(hover.contents.value, new vscode.Range(
                     hover.range.start.line, hover.range.start.character,
@@ -375,8 +407,8 @@ export async function activate(context: vscode.ExtensionContext) {
             provideDefinition(document, position, token) {
                 syncWasmInputBuffer(document);
                 const astRoot = uriToAstRoot.get(document.uri.toString()) || 0;
-                if (astRoot === 0) return null;
-                const def = facade.getDefinition(astRoot, document.uri.toString(), position.line, position.character);
+                if (astRoot === 0 || typeof (facade as any).getDefinition !== 'function') return null;
+                const def = (facade as any).getDefinition(astRoot, document.uri.toString(), position.line, position.character);
                 if (!def) return null;
                 return new vscode.Location(
                     vscode.Uri.parse(def.uri),
@@ -400,8 +432,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (astRoot === 0) return null;
                     const tokens = facade.getSemanticTokens(astRoot);
                     if (!tokens) return null;
-                    console.log("[LSP Ext] Raw WASM Tokens: " + JSON.stringify(tokens));
-                    
                     const builder = new vscode.SemanticTokensBuilder(legend);
                     let currentLine = 0;
                     let currentChar = 0;
@@ -423,12 +453,8 @@ export async function activate(context: vscode.ExtensionContext) {
                         // Sanity check to avoid crashing the VS Code extension host
                         const lineText = document.lineAt(currentLine).text;
                         if (currentChar + len > lineText.length) {
-                            console.error(\`Skipping invalid token at line \${currentLine}, char \${currentChar}, len \${len}. Line length is \${lineText.length}\`);
                             continue;
                         }
-                        
-                        const tokenText = lineText.substring(currentChar, currentChar + len);
-                        console.log(\`[LSP Ext] Token at line \${currentLine}, char \${currentChar}, len \${len}, type \${type} text: "\${tokenText}"\`);
                         
                         builder.push(currentLine, currentChar, len, type, mod);
                     }
@@ -447,8 +473,8 @@ export async function activate(context: vscode.ExtensionContext) {
             provideCompletionItems(document, position, token, context) {
                 syncWasmInputBuffer(document);
                 const astRoot = uriToAstRoot.get(document.uri.toString()) || 0;
-                if (astRoot === 0) return null;
-                const completions = facade.getCompletions(astRoot, position.line, position.character);
+                if (astRoot === 0 || typeof (facade as any).getCompletions !== 'function') return null;
+                const completions = (facade as any).getCompletions(astRoot, position.line, position.character);
                 if (!completions) return null;
                 return completions.map((c: any) => {
                     const item = new vscode.CompletionItem(c.label, c.kind);
@@ -495,26 +521,31 @@ export async function activate(context: vscode.ExtensionContext) {
 function updateDocumentState(doc: vscode.TextDocument, changes?: any[]) {
     try {
         const text = doc.getText();
-        const encoder = new TextEncoder();
-        const encoded = encoder.encode(text);
 
         // Graceful fail for very large files to avoid WASM OOM and LSP crash
-        if (encoded.length > 30 * 1024 * 1024) { // 30 MB limit
-            console.warn(\`[ModelScript LSP] Document too large to parse (\\\${encoded.length} bytes). Skipping to prevent WASM OOM.\`);
-            vscode.window.showWarningMessage(\`Document too large to parse (\\\${Math.round(encoded.length / 1024 / 1024)}MB). LSP features disabled for this file.\`);
+        if (text.length * 2 > 30 * 1024 * 1024) { // 30 MB limit
+            console.warn(\`[ModelScript LSP] Document too large to parse (\\\${text.length * 2} bytes). Skipping to prevent WASM OOM.\`);
+            vscode.window.showWarningMessage(\`Document too large to parse (\\\${Math.round(text.length * 2 / 1024 / 1024)}MB). LSP features disabled for this file.\`);
             uriToAstRoot.set(doc.uri.toString(), 0);
             if (wasmExports.clearDiagnostics) wasmExports.clearDiagnostics();
             return;
         }
 
         const textPtr = wasmExports.getInputBuffer();
-        const memArray = new Uint8Array(wasmMemory.buffer);
+        const memArray = new Uint16Array(wasmMemory.buffer);
         
-        memArray.set(encoded, textPtr);
-        wasmExports.setInputLength(encoded.length);
+        for (let i = 0; i < text.length; i++) {
+            memArray[(textPtr >> 1) + i] = text.charCodeAt(i);
+        }
+        if (wasmExports.lsp_setInputEncoding) wasmExports.lsp_setInputEncoding(1);
+        else if (wasmExports.setInputEncoding) wasmExports.setInputEncoding(1);
+        wasmExports.setInputLength(text.length * 2);
         currentWasmBufferUri = doc.uri.toString();
 
         wasmExports.clearDiagnostics();
+        if ((facade as any)._cachedLineStarts) {
+            (facade as any)._cachedLineStarts = null;
+        }
         
         let astRoot = uriToAstRoot.get(doc.uri.toString()) || 0;
         wasmExports.clearAstMarks(astRoot);
@@ -534,23 +565,22 @@ function updateDocumentState(doc: vscode.TextDocument, changes?: any[]) {
             
             for (const change of changes) {
                 const startChar = change.rangeOffset;
-                const prefixChar = lastText.substring(0, startChar);
-                const startByte = encoder.encode(prefixChar).length;
+                const replacedCharLen = change.rangeLength;
                 
-                const replacedChar = lastText.substring(startChar, startChar + change.rangeLength);
-                const replacedByteLen = encoder.encode(replacedChar).length;
+                // For UTF-16, the byte offset is simply character offset * 2
+                const startByte = startChar * 2;
+                const replacedByteLen = replacedCharLen * 2;
                 const oldEndByte = startByte + replacedByteLen;
                 
                 if (startByte < editStart) editStart = startByte;
                 if (oldEndByte > editOldEnd) editOldEnd = oldEndByte;
                 
-                const insertedByteLen = encoder.encode(change.text).length;
+                const insertedByteLen = change.text.length * 2;
                 totalShift += (insertedByteLen - replacedByteLen);
             }
             
             let editNewEnd = editOldEnd + totalShift;
             if (wasmExports.resetGeneration) wasmExports.resetGeneration(0);
-            console.log("[LSP Ext] Calling parse with:", { astRoot, editStart, editOldEnd, editNewEnd });
             astRoot = wasmExports.parse(astRoot, editStart, editOldEnd, editNewEnd);
             if (wasmExports.invalidateQuery) {
                 // queryType 0 is PARSE. queryArg is fileId.
@@ -602,7 +632,19 @@ export function deactivate() {}
 
   fs.writeFileSync(path.join(srcDir, "extension.ts"), extensionCode, "utf-8");
 
-  const langName = grammarName.split("/").pop() || "parser";
+  const packageJsonPath = path.join(process.cwd(), "package.json");
+  let langName = grammarName.split("/").pop() || "parser";
+  if (fs.existsSync(packageJsonPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      if (pkg.name) {
+        langName = pkg.name.split("/").pop() || "parser";
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const wasmPath = path.join(process.cwd(), "dist", `${langName}.wasm`);
   if (!fs.existsSync(wasmPath)) {
     console.error(`WASM not found at ${wasmPath}. Please run 'msc build' first.`);
@@ -619,6 +661,17 @@ export function deactivate() {}
     }
   } else {
     fs.copyFileSync(path.join(outDir, "lsp_api.ts"), path.join(srcDir, "lsp_api.ts"));
+  }
+
+  console.log(`Building VS Code extension...`);
+  try {
+    execSync(
+      `npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=browser`,
+      { cwd: extDir, stdio: "inherit" },
+    );
+  } catch (e) {
+    console.error("Failed to build extension:", e);
+    process.exit(1);
   }
 
   console.log(`Booting up @vscode/test-web...`);
@@ -671,11 +724,49 @@ export function deactivate() {}
     const workspaceFolder = path.resolve(outDir, "..", "..", "workspace");
     if (!fs.existsSync(workspaceFolder)) {
       fs.mkdirSync(workspaceFolder, { recursive: true });
+
+      // Auto-generate some example files based on the language
+      const exampleContent =
+        langId === "calc"
+          ? "/* Welcome to Calc! */\n\na = 10;\nb = 20;\nsum = a + b;\n"
+          : langId === "json"
+            ? '{\n  "hello": "world",\n  "status": true,\n  "count": 42\n}\n'
+            : `// Sample ${langId} file\n`;
+      fs.writeFileSync(path.join(workspaceFolder, `example${fileExt}`), exampleContent, "utf-8");
     }
-    execSync(
-      `npx --yes @vscode/test-web --browserType=none --testRunnerDataDir="${sharedTestWebDir}" --extensionDevelopmentPath=. ${commitArg} ${workspaceFolder}`,
-      { cwd: extDir, stdio: "inherit" },
-    );
+
+    const args = [
+      "--yes",
+      "@vscode/test-web",
+      "--browserType=none",
+      "--coi",
+      `--extensionDevelopmentPath=${extDir}`,
+      `--testRunnerDataDir=${sharedTestWebDir}`,
+    ];
+    if (commitArg) {
+      args.push("--commit");
+      args.push(commitArg.replace("--commit ", ""));
+    }
+    args.push(workspaceFolder);
+
+    const serverProcess = spawn("npx", args, {
+      cwd: extDir,
+      stdio: "inherit",
+      shell: true,
+    });
+
+    if (openBrowser) {
+      setTimeout(() => {
+        const startCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+        exec(`${startCmd} http://localhost:3000`).on("error", () => {
+          console.log("Could not open browser automatically. Please navigate to http://localhost:3000");
+        });
+      }, 2500);
+    }
+
+    serverProcess.on("close", (code) => {
+      process.exit(code || 0);
+    });
   } catch (e) {
     console.error("VS Code Web environment closed with error:", e);
   }

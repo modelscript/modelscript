@@ -112,7 +112,7 @@ export class BltEngine {
 
         if (kind == ExprKind.Name) {
           let varId = this.dae.exprData.get(exprOffset + EXPR_DATA1);
-          if (varId < this.dae.varCount && seenVars.get(varId) == 0) {
+          if ((varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
             // Is it an unknown? We should only add variables that need solving.
             // For now, we add all variables. A filter for constants/parameters can be added here.
             seenVars.set(varId, 1);
@@ -147,7 +147,7 @@ export class BltEngine {
     let start = this.eqDepPtrs.get(eqIdx);
     let end = this.eqDepPtrs.get(eqIdx + 1);
 
-    for (let i: u32 = start; i < end; i++) {
+    for (let i: u32 = start as u32; i < (end as u32); i++) {
       let varIdx = this.eqDepVars.get(i);
       if (this.visitedVar.get(varIdx) == 0) {
         this.visitedVar.set(varIdx, 1);
@@ -205,7 +205,7 @@ export class BltEngine {
       let start = this.eqDepPtrs.get(eqIdx as u32);
       let end = this.eqDepPtrs.get((eqIdx as u32) + 1);
 
-      for (let i: u32 = start; i < end; i++) {
+      for (let i: u32 = start as u32; i < (end as u32); i++) {
         let w = this.eqDepVars.get(i);
         if (w == (varIdx as i32)) continue; // ignore self-dependency in graph traversal
 
