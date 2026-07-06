@@ -394,9 +394,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
   // 1. String Literals (existing)
   // 1. String Literals (existing)
+  // 1. String Literals (existing)
   lexerCode += `  // --- String Literals ---\n`;
   const keywordTokens = new Map<string, string>();
-  for (const [key, val] of stringTokens.entries()) {
+  const stringEntries = Array.from(stringTokens.entries());
+  stringEntries.sort((a, b) => b[1].length - a[1].length);
+  for (const [key, val] of stringEntries) {
     const mappedInt = normalized.symToInt.get(`"${val}"`);
     if (!mappedInt) continue;
     const safeName = "T_" + mappedInt;
@@ -565,7 +568,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         const tokenName = tokenNames[0];
 
         let isWordToken = false;
-        if (wordName && keywordTokens.size > 0) {
+        if (wordName) {
           if (tokenName === wordName) {
             isWordToken = true;
           } else {

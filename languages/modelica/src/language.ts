@@ -391,8 +391,7 @@ export const modelicaLanguage = language({
         repeat(seq($.some_equation, ";")),
         repeat(seq("elseif", $.expression, "then", repeat(seq($.some_equation, ";")))),
         optional(seq("else", repeat(seq($.some_equation, ";")))),
-        "end",
-        "if",
+        "end if",
       ),
 
     if_statement: ($) =>
@@ -403,19 +402,18 @@ export const modelicaLanguage = language({
         repeat(seq($.statement, ";")),
         repeat(seq("elseif", $.expression, "then", repeat(seq($.statement, ";")))),
         optional(seq("else", repeat(seq($.statement, ";")))),
-        "end",
-        "if",
+        "end if",
       ),
 
-    for_equation: ($) => seq("for", $.for_indices, "loop", repeat(seq($.some_equation, ";")), "end", "for"),
+    for_equation: ($) => seq("for", $.for_indices, "loop", repeat(seq($.some_equation, ";")), "end for"),
 
-    for_statement: ($) => seq("for", $.for_indices, "loop", repeat(seq($.statement, ";")), "end", "for"),
+    for_statement: ($) => seq("for", $.for_indices, "loop", repeat(seq($.statement, ";")), "end for"),
 
     for_indices: ($) => seq($.for_index, repeat(seq(",", $.for_index))),
 
     for_index: ($) => seq($.identifier, optional(seq("in", $.expression))),
 
-    while_statement: ($) => seq("while", $.expression, "loop", repeat(seq($.statement, ";")), "end", "while"),
+    while_statement: ($) => seq("while", $.expression, "loop", repeat(seq($.statement, ";")), "end while"),
 
     when_equation: ($) =>
       seq(
@@ -424,8 +422,7 @@ export const modelicaLanguage = language({
         "then",
         repeat(seq($.some_equation, ";")),
         repeat(seq("elsewhen", $.expression, "then", repeat(seq($.some_equation, ";")))),
-        "end",
-        "when",
+        "end when",
       ),
 
     when_statement: ($) =>
@@ -435,8 +432,7 @@ export const modelicaLanguage = language({
         "then",
         repeat(seq($.statement, ";")),
         repeat(seq("elsewhen", $.expression, "then", repeat(seq($.statement, ";")))),
-        "end",
-        "when",
+        "end when",
       ),
 
     connect_equation: ($) => seq("connect", "(", $.component_reference, ",", $.component_reference, ")"),

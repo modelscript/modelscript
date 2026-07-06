@@ -179,7 +179,12 @@ export const Parse: CommandModule<{}, ParseArgs> = {
 
       const typeFlags = runtime.readU32(node.getPtr());
       const envHashPadding = runtime.readU32(node.getPtr() + 4);
-      const pad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 19;
+      const isFat = (envHashPadding >>> 23) & 1;
+      const pad =
+        isFat && wasmInstance.exports.getFatPaddingPtr
+          ? runtime.readU32((wasmInstance.exports as any).getFatPaddingPtr(rawPad))
+          : rawPad;
       const len = envHashPadding & 0x007fffff;
 
       const startOffset = currentOffset + pad;
@@ -191,9 +196,11 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       const posStr = `[${startPos[0]}, ${startPos[1]}] - [${endPos[0]}, ${endPos[1]}]`;
       const indent = "  ".repeat(depth);
 
+      const isInvisible = (typeFlags & (1 << 12)) !== 0;
+
       let child = node.getFirstChild();
 
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"');
+      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
 
       let childStrs: string[] = [];
       let childOffset = currentOffset;
