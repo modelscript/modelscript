@@ -1,5 +1,6 @@
 /* eslint-disable */
-import { NormalizedGrammar, Production, SymbolName } from "./grammar.js";
+import type { Production, SymbolName } from "./grammar.js";
+import { NormalizedGrammar } from "./grammar.js";
 
 /**
  * Represents a single parsing state context during parser generation.

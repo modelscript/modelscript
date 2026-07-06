@@ -1,5 +1,6 @@
 import { compileRegexToDFA } from "../automata.js";
-import { LanguageOptions, Rule, toRule } from "../dsl.js";
+import type { LanguageOptions, Rule } from "../dsl.js";
+import { toRule } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
 export function generateLexer(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
@@ -402,7 +403,17 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
     const isWord = wordRegex ? wordRegex.test(val) : false;
 
-    if (grammar.word && isWord) {
+    // Determine if this literal is a reserved keyword
+    let isReserved = false;
+    for (const reservedTokens of normalized.reservedKeywords.values()) {
+      // reservedTokens contains strings with quotes like '"end"'
+      if (reservedTokens.has(`"${val}"`) || reservedTokens.has(val)) {
+        isReserved = true;
+        break;
+      }
+    }
+
+    if (grammar.word && isWord && !isReserved) {
       // Tree-sitter style keyword extraction: defer this literal to the identifier fallback!
       keywordTokens.set(val, key);
       continue;

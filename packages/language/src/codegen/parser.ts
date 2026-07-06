@@ -164,7 +164,12 @@ export function generateParserTables(
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
 
-  const maxTerminalId = grammar.terminals.size - 1;
+  let maxTerminalId = 0;
+  for (const term of grammar.terminals) {
+    if (term !== "EOF" && term !== "ERROR") {
+      maxTerminalId++;
+    }
+  }
   const sortedSymbols = Array.from({ length: symToInt.size }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
   sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
   code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
@@ -314,7 +319,7 @@ export function generateParserTables(
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
 
-  code += `\nexport const MAX_TERMINAL_ID = ${grammar.terminals.size - 1};\n`;
+  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
   let lintSwitchStr = `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;

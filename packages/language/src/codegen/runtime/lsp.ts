@@ -309,9 +309,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
+        
         let comesAfter = (currChildIdx < 64) && ((afterInsertedMask & ((1 as u64) << (currChildIdx as u64))) != 0);
+        let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
+        
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, childHasError || hasErrorSibling, comesAfter || hasInsertedSibling);
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, childHasError || hasErrorSibling, passInsertedSibling);
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);

@@ -65,8 +65,7 @@ export class Parser {
   ): ASTNode | null {
     let view: Uint8Array;
     if (typeof source === "string") {
-      const encoder = new TextEncoder();
-      view = encoder.encode(source);
+      view = new TextEncoder().encode(source);
     } else {
       view = source;
     }
@@ -107,20 +106,31 @@ export class WasmRuntime implements RuntimeAdapter {
 
   constructor(
     private wasmExports: any,
-    memory: WebAssembly.Memory,
+    private memory: WebAssembly.Memory,
   ) {
     this.mem32 = new Uint32Array(memory.buffer);
     this.mem16 = new Uint16Array(memory.buffer);
     this.mem8 = new Uint8Array(memory.buffer);
   }
 
+  private ensureMemory(): void {
+    if (this.mem32.length === 0) {
+      this.mem32 = new Uint32Array(this.memory.buffer);
+      this.mem16 = new Uint16Array(this.memory.buffer);
+      this.mem8 = new Uint8Array(this.memory.buffer);
+    }
+  }
+
   readU32(ptr: number): number {
+    this.ensureMemory();
     return this.mem32[ptr / 4];
   }
   readU16(ptr: number): number {
+    this.ensureMemory();
     return this.mem16[ptr / 2];
   }
   writeU8Array(ptr: number, data: Uint8Array): void {
+    this.ensureMemory();
     this.mem8.set(data, ptr);
   }
 
@@ -138,12 +148,15 @@ export class WasmRuntime implements RuntimeAdapter {
   }
 
   getNodeFirstChild(ptr: number): number {
+    this.ensureMemory();
     return this.mem32[(ptr + 8) / 4];
   }
   getNodeNextSibling(ptr: number): number {
+    this.ensureMemory();
     return this.mem32[(ptr + 12) / 4];
   }
   getNodeType(ptr: number): number {
+    this.ensureMemory();
     return this.mem32[ptr / 4] & 0x03ff;
   }
 
