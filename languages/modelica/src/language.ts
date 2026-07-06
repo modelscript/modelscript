@@ -1,4 +1,4 @@
-import { choice, language, optional, prec, repeat, seq, token } from "@modelscript/language";
+import { choice, field, language, optional, prec, repeat, seq, token } from "@modelscript/language";
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -16,8 +16,13 @@ const PRECEDENCE = {
 export const modelicaLanguage = language({
   name: "Modelica",
 
+  word: "identifier",
+
+  inline: ["element_list", "component_list", "statement_or_procedure", "composition"],
+
   primitives: {
     nestedComment: { open: "/*", close: "*/" },
+    multiWordKeywords: ["end if", "end for", "end while", "end when"],
   },
 
   rules: {
@@ -50,10 +55,10 @@ export const modelicaLanguage = language({
 
     long_class_specifier: ($) =>
       choice(
-        seq($.identifier, $.description_string, $.composition, "end", $.identifier),
+        seq(field("name", $.identifier), $.description_string, $.composition, "end", $.identifier),
         seq(
           "extends",
-          $.identifier,
+          field("name", $.identifier),
           optional($.class_modification),
           $.description_string,
           $.composition,
@@ -65,7 +70,7 @@ export const modelicaLanguage = language({
     short_class_specifier: ($) =>
       choice(
         seq(
-          $.identifier,
+          field("name", $.identifier),
           "=",
           $.base_prefix,
           $.type_specifier,
@@ -73,12 +78,20 @@ export const modelicaLanguage = language({
           optional($.class_modification),
           $.description,
         ),
-        seq($.identifier, "=", "enumeration", "(", choice(optional($.enum_list), ":"), ")", $.description),
+        seq(
+          field("name", $.identifier),
+          "=",
+          "enumeration",
+          "(",
+          choice(optional($.enum_list), ":"),
+          ")",
+          $.description,
+        ),
       ),
 
     der_class_specifier: ($) =>
       seq(
-        $.identifier,
+        field("name", $.identifier),
         "=",
         "der",
         "(",
@@ -351,28 +364,37 @@ export const modelicaLanguage = language({
         prec(PRECEDENCE.range, seq($.expression, ":", $.expression, optional(seq(":", $.expression)))),
 
         // logical or
-        prec.left(PRECEDENCE.or, seq($.expression, "or", $.expression)),
+        prec.left(PRECEDENCE.or, seq(field("left", $.expression), "or", field("right", $.expression))),
 
         // logical and
-        prec.left(PRECEDENCE.and, seq($.expression, "and", $.expression)),
+        prec.left(PRECEDENCE.and, seq(field("left", $.expression), "and", field("right", $.expression))),
 
         // logical not
-        prec(PRECEDENCE.not, seq("not", $.expression)),
+        prec(PRECEDENCE.not, seq("not", field("operand", $.expression))),
 
         // relation
-        prec.left(PRECEDENCE.relational, seq($.expression, choice("<", "<=", ">", ">=", "==", "<>"), $.expression)),
+        prec.left(
+          PRECEDENCE.relational,
+          seq(field("left", $.expression), choice("<", "<=", ">", ">=", "==", "<>"), field("right", $.expression)),
+        ),
 
         // add/sub
-        prec.left(PRECEDENCE.add, seq($.expression, choice("+", "-", ".+", ".-"), $.expression)),
+        prec.left(
+          PRECEDENCE.add,
+          seq(field("left", $.expression), choice("+", "-", ".+", ".-"), field("right", $.expression)),
+        ),
 
         // unary add/sub
-        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), $.expression)),
+        prec(PRECEDENCE.unary, seq(choice("+", "-", ".+", ".-"), field("operand", $.expression))),
 
         // mul/div
-        prec.left(PRECEDENCE.mul, seq($.expression, choice("*", "/", ".*", "./"), $.expression)),
+        prec.left(
+          PRECEDENCE.mul,
+          seq(field("left", $.expression), choice("*", "/", ".*", "./"), field("right", $.expression)),
+        ),
 
         // exp
-        prec.right(PRECEDENCE.exp, seq($.expression, choice("^", ".^"), $.expression)),
+        prec.right(PRECEDENCE.exp, seq(field("left", $.expression), choice("^", ".^"), field("right", $.expression))),
       ),
 
     primary: ($) =>
