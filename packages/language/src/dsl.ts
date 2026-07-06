@@ -449,6 +449,8 @@ export interface LanguageOptions<
 
   /** Built-in Language Server Protocol features */
   lsp?: {
+    /** The file extension associated with this language (e.g. '.mo'). Defaults to '.<name>' */
+    fileExtension?: string;
     /** List of node types that can be folded */
     folding?: NoInfer<RuleName>[];
     /** List of node types that define a new variable scope */
@@ -660,21 +662,28 @@ export function reserved<F extends string = never>(wordset: string, rule: RuleLi
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }
 
-export function prec<F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
-  return { type: "PREC", value, children: [rule] };
+export interface PrecFunction {
+  <F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
+  left<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  right<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  dynamic<F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
 }
 
-(prec as any).left = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+export const prec: PrecFunction = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
+  return { type: "PREC", value, children: [rule] };
+} as PrecFunction;
+
+prec.left = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_LEFT", value: 0, children: [value] };
   return { type: "PREC_LEFT", value, children: [rule!] };
 };
 
-(prec as any).right = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+prec.right = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
   if (typeof value === "object") return { type: "PREC_RIGHT", value: 0, children: [value] };
   return { type: "PREC_RIGHT", value, children: [rule!] };
 };
 
-(prec as any).dynamic = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
+prec.dynamic = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC_DYNAMIC", value, children: [rule] };
 };
 

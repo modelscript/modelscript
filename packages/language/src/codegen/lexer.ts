@@ -569,6 +569,11 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         }
 
         if (isWordToken) {
+          if (sp && sp.multiWordKeywords && sp.multiWordKeywords.length > 0) {
+            lexerCode += `        // Multi-word keyword lookahead\n`;
+            lexerCode += `        let mwkToken = checkMultiWordKeyword(lexPos, lexLen);\n`;
+            lexerCode += `        if (mwkToken != 0) { return mwkToken; }\n`;
+          }
           lexerCode += `        // Keyword extraction optimization\n`;
           lexerCode += `        let kwMatch = false;\n`;
           lexerCode += `        let cPos = lexPos;\n`;
@@ -579,7 +584,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
               lexerCode += `        if (kwMatch && peekChar(cPos) == ${kw.charCodeAt(i)}) { cPos += peekCharLen(cPos); } else { kwMatch = false; }\n`;
             }
             lexerCode += `        if (kwMatch && (cPos - lexPos == lexLen)) {\n`;
-            lexerCode += `           logInt(33333); logInt(lexLen);\n`;
             lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `        }\n`;
@@ -649,26 +653,30 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       const firstWord = words[0];
       const restWords = words.slice(1).join(" ");
 
-      helpers += `  // "${mwk}"\n`;
-      helpers += `  {\n`;
-      helpers += `    let mMatch = true;\n`;
-      helpers += `    let mPos = startPos;\n`;
-      for (let i = 0; i < firstWord.length; i++) {
-        helpers += `    if (mMatch && peekChar(mPos) == ${firstWord.charCodeAt(i)}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
+      const tokenInt = normalized.symToInt.get(`"${mwk}"`);
+      if (tokenInt) {
+        helpers += `  // "${mwk}"\n`;
+        helpers += `  {\n`;
+        helpers += `    let mMatch = true;\n`;
+        helpers += `    let mPos = startPos;\n`;
+        for (let i = 0; i < firstWord.length; i++) {
+          helpers += `    if (mMatch && peekChar(mPos) == ${firstWord.charCodeAt(i)}) { mPos += peekCharLen(mPos); } else { mMatch = false; }\n`;
+        }
+        helpers += `    if (mMatch && (mPos - startPos == identLen)) {\n`;
+        helpers += `      let rPos = wsPos;\n`;
+        for (let i = 0; i < restWords.length; i++) {
+          helpers += `      if (mMatch && peekChar(rPos) == ${restWords.charCodeAt(i)}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
+        }
+        helpers += `      if (mMatch && rPos <= inputLength) {\n`;
+        helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
+        helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
+        helpers += `          lexLen = <u32>(rPos - startPos);\n`;
+        helpers += `          return SyntaxType.T_${tokenInt};\n`;
+        helpers += `        }\n`;
+        helpers += `      }\n`;
+        helpers += `    }\n`;
+        helpers += `  }\n`;
       }
-      helpers += `    if (mMatch && (mPos - startPos == identLen)) {\n`;
-      helpers += `      let rPos = wsPos;\n`;
-      for (let i = 0; i < restWords.length; i++) {
-        helpers += `      if (mMatch && peekChar(rPos) == ${restWords.charCodeAt(i)}) { rPos += peekCharLen(rPos); } else { mMatch = false; }\n`;
-      }
-      helpers += `      if (mMatch && rPos <= inputLength) {\n`;
-      helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
-      helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
-      helpers += `          return <i32>(rPos - startPos);\n`;
-      helpers += `        }\n`;
-      helpers += `      }\n`;
-      helpers += `    }\n`;
-      helpers += `  }\n`;
     }
     helpers += `  return 0;
 `;

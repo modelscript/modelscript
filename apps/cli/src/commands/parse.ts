@@ -93,6 +93,9 @@ export const Parse: CommandModule<{}, ParseArgs> = {
           },
         },
       ),
+      host: {
+        runHostQuery: () => 0,
+      },
     });
 
     const runtime = new WasmRuntime(wasmInstance.exports, exportedMemory);

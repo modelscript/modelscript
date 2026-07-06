@@ -61,6 +61,9 @@ export class SymbolNormalizer implements RuleNormalizer {
 export class TokenNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const val = rule.value !== undefined ? rule.value : rule.arg;
+    if (typeof val !== "string" && !(val instanceof RegExp)) {
+      throw new Error(`Invalid token value in context '${ctx}': expected string or RegExp, got ${typeof val}`);
+    }
     let tokenName = val.toString();
     if (typeof val === "string") {
       tokenName = `"${val}"`;
@@ -348,6 +351,7 @@ export class NormalizedGrammar {
   supertypes = new Map<string, string[]>();
   globalPrecedences = new Map<string, number>();
   reservedKeywords = new Map<string, Set<string>>();
+  extractedKeywords?: string[];
 
   constructor(grammar: LanguageOptions<any>) {
     const dummy$ = new Proxy(
@@ -407,6 +411,12 @@ export class NormalizedGrammar {
 
     this.inlineRules = grammar.inline || [];
     this.startSymbol = Object.keys(grammar.rules)[0]; // First rule is start
+
+    if (grammar.primitives && grammar.primitives.multiWordKeywords) {
+      for (const mwk of grammar.primitives.multiWordKeywords) {
+        this.terminals.add(`"${mwk}"`);
+      }
+    }
 
     // Evaluate all rules to build the graph
     for (const ruleName in grammar.rules) {
@@ -479,11 +489,7 @@ export class NormalizedGrammar {
         }
 
         if (extractedKeywords.length > 0) {
-          const keywordRules: Rule[] = extractedKeywords.map((kw) => ({ type: "TOKEN", value: kw }));
-          this.evaluatedRules[grammar.word] = {
-            type: "CHOICE",
-            children: [wordRule, ...keywordRules],
-          };
+          this.extractedKeywords = extractedKeywords;
         }
       }
     }

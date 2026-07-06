@@ -25,6 +25,29 @@ export const modelicaLanguage = language({
     multiWordKeywords: ["end if", "end for", "end while", "end when"],
   },
 
+  lsp: {
+    fileExtension: ".mo",
+    folding: [
+      "class_definition",
+      "equation_section",
+      "algorithm_section",
+      "if_equation",
+      "if_statement",
+      "for_equation",
+      "for_statement",
+      "while_statement",
+      "when_equation",
+      "when_statement",
+    ],
+    outline: [
+      "class_definition",
+      "component_declaration",
+      "short_class_specifier",
+      "long_class_specifier",
+      "der_class_specifier",
+    ],
+  },
+
   rules: {
     program: ($) => $.stored_definition,
 
