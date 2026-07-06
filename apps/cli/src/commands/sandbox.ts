@@ -433,30 +433,22 @@ export async function activate(context: vscode.ExtensionContext) {
                     const tokens = facade.getSemanticTokens(astRoot);
                     if (!tokens) return null;
                     const builder = new vscode.SemanticTokensBuilder(legend);
-                    let currentLine = 0;
-                    let currentChar = 0;
                     
-                    for (let i = 0; i < tokens.length; i += 5) {
-                        const deltaLine = tokens[i];
-                        const deltaChar = tokens[i+1];
-                        const len = tokens[i+2];
-                        const type = tokens[i+3];
-                        const mod = tokens[i+4];
+                    for (let i = 0; i < tokens.length; i += 4) {
+                        const offset = tokens[i];
+                        const len = tokens[i+1];
+                        const type = tokens[i+2];
+                        const mod = tokens[i+3];
                         
-                        currentLine += deltaLine;
-                        if (deltaLine > 0) {
-                            currentChar = deltaChar;
-                        } else {
-                            currentChar += deltaChar;
-                        }
+                        const startPos = document.positionAt(offset / 2);
                         
                         // Sanity check to avoid crashing the VS Code extension host
-                        const lineText = document.lineAt(currentLine).text;
-                        if (currentChar + len > lineText.length) {
+                        const lineText = document.lineAt(startPos.line).text;
+                        if (startPos.character + (len / 2) > lineText.length) {
                             continue;
                         }
                         
-                        builder.push(currentLine, currentChar, len, type, mod);
+                        builder.push(startPos.line, startPos.character, len / 2, type, mod);
                     }
                     
                     return builder.build();
@@ -491,20 +483,31 @@ export async function activate(context: vscode.ExtensionContext) {
                 const astRoot = uriToAstRoot.get(document.uri.toString()) || 0;
                 if (astRoot === 0) return null;
                 
-                const symbols = facade.getDocumentSymbols(astRoot, document.uri.toString());
+                const symbols = facade.getDocumentSymbols(astRoot);
                 if (!symbols) return null;
                 
-                // Convert SymbolInformation to DocumentSymbol for hierarchical outline
-                // For a flat list, we can map them directly.
                 return symbols.map((sym: any) => {
                     const range = new vscode.Range(
-                        new vscode.Position(sym.location.range.start.line, sym.location.range.start.character),
-                        new vscode.Position(sym.location.range.end.line, sym.location.range.end.character)
+                        new vscode.Position(sym.start.line, sym.start.character),
+                        new vscode.Position(sym.end.line, sym.end.character)
                     );
+                    
+                    let name = document.getText(range).split('\\n')[0].trim();
+                    if (name.length > 50) name = name.substring(0, 50) + '...';
+                    
+                    // Simple heuristic for SymbolKind based on name
+                    let kind = vscode.SymbolKind.Class;
+                    if (name.startsWith('function')) kind = vscode.SymbolKind.Function;
+                    else if (name.startsWith('model')) kind = vscode.SymbolKind.Class;
+                    else if (name.startsWith('record')) kind = vscode.SymbolKind.Struct;
+                    else if (name.startsWith('package')) kind = vscode.SymbolKind.Package;
+                    else if (name.startsWith('connector')) kind = vscode.SymbolKind.Interface;
+                    else if (name.startsWith('type')) kind = vscode.SymbolKind.TypeParameter;
+                    
                     return new vscode.DocumentSymbol(
-                        sym.name,
+                        name,
                         '',
-                        sym.kind,
+                        kind,
                         range,
                         range
                     );

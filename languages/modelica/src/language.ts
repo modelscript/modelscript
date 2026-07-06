@@ -1,4 +1,4 @@
-import { choice, field, language, optional, prec, repeat, seq, token } from "@modelscript/language";
+import { choice, field, language, optional, prec, repeat, semanticToken, seq, token } from "@modelscript/language";
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -144,10 +144,16 @@ export const modelicaLanguage = language({
 
     long_class_specifier: ($) =>
       choice(
-        seq(field("name", $.identifier), $.description_string, $.composition, "end", $.identifier),
+        seq(
+          semanticToken("class", field("name", $.identifier), ["declaration"]),
+          $.description_string,
+          $.composition,
+          "end",
+          $.identifier,
+        ),
         seq(
           "extends",
-          field("name", $.identifier),
+          semanticToken("class", field("name", $.identifier), ["declaration"]),
           optional($.class_modification),
           $.description_string,
           $.composition,
@@ -159,7 +165,7 @@ export const modelicaLanguage = language({
     short_class_specifier: ($) =>
       choice(
         seq(
-          field("name", $.identifier),
+          semanticToken("class", field("name", $.identifier), ["declaration"]),
           "=",
           $.base_prefix,
           $.type_specifier,
@@ -168,7 +174,7 @@ export const modelicaLanguage = language({
           $.description,
         ),
         seq(
-          field("name", $.identifier),
+          semanticToken("class", field("name", $.identifier), ["declaration"]),
           "=",
           "enumeration",
           "(",
@@ -180,7 +186,7 @@ export const modelicaLanguage = language({
 
     der_class_specifier: ($) =>
       seq(
-        field("name", $.identifier),
+        semanticToken("class", field("name", $.identifier), ["declaration"]),
         "=",
         "der",
         "(",
@@ -196,7 +202,7 @@ export const modelicaLanguage = language({
 
     enum_list: ($) => seq($.enumeration_literal, repeat(seq(",", $.enumeration_literal))),
 
-    enumeration_literal: ($) => seq($.identifier, $.description),
+    enumeration_literal: ($) => seq(semanticToken("enumMember", $.identifier, ["declaration"]), $.description),
 
     composition: ($) =>
       seq(
@@ -293,7 +299,12 @@ export const modelicaLanguage = language({
 
     condition_attribute: ($) => seq("if", $.expression),
 
-    declaration: ($) => seq($.identifier, optional($.array_subscripts), optional($.modification)),
+    declaration: ($) =>
+      seq(
+        semanticToken("variable", $.identifier, ["declaration"]),
+        optional($.array_subscripts),
+        optional($.modification),
+      ),
 
     // A.2.5 Modification
     modification: ($) =>
@@ -370,7 +381,7 @@ export const modelicaLanguage = language({
         seq("der", "(", $.component_reference, ")", ":=", $.expression),
       ),
 
-    function_call: ($) => seq($.component_reference, $.function_call_args),
+    function_call: ($) => seq(semanticToken("function", $.component_reference), $.function_call_args),
 
     if_equation: ($) =>
       seq(
@@ -505,16 +516,16 @@ export const modelicaLanguage = language({
 
     unit_of_measurement: ($) => $.identifier, // Maps to Q-IDENT, handled in tokenizer
 
-    type_specifier: ($) => seq(optional("."), $.name),
+    type_specifier: ($) => semanticToken("type", seq(optional("."), $.name)),
 
     name: ($) => seq($.identifier, repeat(seq(".", $.identifier))),
 
     component_reference: ($) =>
       seq(
         optional("."),
-        $.identifier,
+        semanticToken("variable", $.identifier),
         optional($.array_subscripts),
-        repeat(seq(".", $.identifier, optional($.array_subscripts))),
+        repeat(seq(".", semanticToken("variable", $.identifier), optional($.array_subscripts))),
       ),
 
     result_reference: ($) =>
@@ -565,9 +576,10 @@ export const modelicaLanguage = language({
 
     // Tokens
     identifier: () => token(/([a-zA-Z_]\w*|'([^'\\]|\\.)*')/),
-    string_literal: () => token(/"([^"\\]|\\.)*"/),
-    unsigned_integer: () => token(/\d+/),
-    unsigned_real: () => token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/),
+    string_literal: () => semanticToken("string", token(/"([^"\\]|\\.)*"/)),
+    unsigned_integer: () => semanticToken("number", token(/\d+/)),
+    unsigned_real: () =>
+      semanticToken("number", token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/)),
   },
 
   extras: () => [/\s+/, /\/\/.*/],
