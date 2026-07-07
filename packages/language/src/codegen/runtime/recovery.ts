@@ -70,7 +70,7 @@ export function recoverUnwindAndMutate(
   bestAcceptedCost: i32
 ): void {
         // === ERROR RECOVERY ENTRY ===
-        debugLog(999000, head.pos, token, bestAcceptedCost);
+        
         // ERROR BRANCH A & B: Unwind and Mutate
         // ----------------------------------------------------------------
         let initialScannerState = currentScannerState;
@@ -112,7 +112,7 @@ export function recoverUnwindAndMutate(
             let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
             let droppedBytes: u32 = head.pos > uPos ? head.pos - uPos : 0;
 
-            debugLog(9995, head.pos, uPos, changetype<usize>(uCurr) as u32);
+            
 
             let baseDelCost =
               getInsertCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
@@ -156,7 +156,7 @@ export function recoverUnwindAndMutate(
               let tokCost = getInsertCost(nextToken == TOKEN_EOF ? 0 : nextToken);
               
               let canAccept = stateCanAccept(unwindCurr, recState, nextToken, 0);
-              debugLog(60100, recState, nextToken, canAccept ? 1 : 0);
+              
 
               if (canAccept) {
                 // ── 2-token lookahead validation ──
@@ -293,6 +293,7 @@ export function recoverUnwindAndMutate(
                 let weakPenalty: i32 = weakRecovery ? 50 : 0;
 
                 let delHeadCost = head.errorCost + baseDelCost + a1DelCost + weakPenalty;
+                if (bestAcceptedCost < 20000 && delHeadCost >= bestAcceptedCost) break;
                 // Only push delHead if we actually dropped tokens.
                 // Pushing delHead when skipCount == 0 (0 dropped tokens)
                 // will just infinite loop the parser at the exact same position and state.
@@ -356,7 +357,7 @@ export function recoverUnwindAndMutate(
                 if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
                   skipBranchB = true;
                 }
-                debugLog(90000, head.pos, ch, skipBranchB ? 1 : 0);
+                
                 break;
               }
             }
@@ -391,7 +392,7 @@ export function recoverUnwindAndMutate(
                   if (sym == TOKEN_EOF && token != TOKEN_EOF) {
                     continue;
                   }
-                  debugLog(60200, sym, target, recState);
+                  
 
                     let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
                     if (baseCost <= 0) baseCost = 10; // Prevent infinite loops from 0-cost insertions
@@ -399,6 +400,7 @@ export function recoverUnwindAndMutate(
                     let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
                     let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + (bDropped as i32);
                     let actualCost = baseCost + retroCost;
+                    if (bestAcceptedCost < 20000 && (head.errorCost + actualCost) >= bestAcceptedCost) continue;
                     
                     let candidateViable = false;
                     let laScanPos = head.pos;
@@ -426,7 +428,7 @@ export function recoverUnwindAndMutate(
                       let laTok = lex(laScanPos);
                       let laEnd = srcLexPos + lexLen;
                       let canAcceptLA = stateCanAccept(unwindCurr, target, laTok, 0, 1, target) > 0;
-                      debugLog(60201, laTok, target, canAcceptLA ? 1 : 0);
+                      
                       if (canAcceptLA) {
                         candidateViable = true;
                         break;
@@ -471,12 +473,12 @@ export function recoverUnwindAndMutate(
                           head.errorTail
                         );
                         
-                        debugLog(60202, sym, target, head.state);
+                        
                         if (target != head.state) {
                           pushActiveHead(changetype<u32>(insHead));
-                          debugLog(60203, sym, target, head.errorCost + actualCost);
+                          
                         } else {
-                          debugLog(60204, sym, target, 0); // DROPPED: target == head.state
+                           // DROPPED: target == head.state
                         }
                     }
                   }
@@ -532,7 +534,7 @@ export function recoverIslandMode(
               if (tokenLen == 0) break;
             }
 
-            debugLog(60001, tok, searchPos, tokenLen);
+            
 
             // We treat EVERY token as a potential synchronization point (like Tree-sitter's ERROR pseudo-node).
             // We rely on `stateCanAccept` to contextually determine if the popped state can resume here.
@@ -555,7 +557,7 @@ export function recoverIslandMode(
             while (currPop != null && gssDepth < 20) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
-              debugLog(999103, currPop.state, tok, nextTok);
+              
               let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
               let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
               if (canAcceptTok > 0) {
@@ -572,7 +574,7 @@ export function recoverIslandMode(
               currPop = currPop.prev; // Pop stack
               gssDepth++;
             }
-            debugLog(60003, foundTarget, gssDepth, resumePos);
+            
 
             // (Brute-force fallback removed: it was too aggressive and matched invalid states for Identifier, causing infinite recovery loops. The GSS walk is sufficient now that stateCanAccept cache is fixed.)
 
@@ -582,7 +584,7 @@ export function recoverIslandMode(
             searchPos = nextPos;
             syncCost += 1; // +1 penalty for every token skipped during panic mode
           }
-          debugLog(60004, foundTarget, panicScanCount as i32, resumePos);
+          
 
           // Step 3: Apply the Panic Mode Recovery
           if (foundTarget != -1 && currPop != null && (resumePos as u32) <= inputLength) {
@@ -597,8 +599,9 @@ export function recoverIslandMode(
               head.errorCost +
               poppedDepth * PENALTY_UNWIND_NODE +
               syncCost * PENALTY_SYNC_TOKEN +
-              (resumePos - currPop.pos);
-
+              (resumePos - currPop.pos) +
+              100; // BASE PENALTY FOR ISLAND MODE
+            if (bestAcceptedCost < 20000 && islandCost >= bestAcceptedCost) return;
             // Collect all the AST nodes that were parsed between the anchor state and the failure point
             let currChild: ParseHead | null = head;
             let childCount = 0;
@@ -733,25 +736,31 @@ export function recoverIslandMode(
             let islandByteLen = (resumePos as u32) > currPop.pos + islandPad ? (resumePos as u32) - currPop.pos - islandPad : 0;
             setNodeByteLength(islandLeaf, islandByteLen);
 
-            // Branch the GSS from the recovery anchor, shifting the new ERROR node.
-            // We give it an artificially low errorCost so it ALWAYS survives the
-            // primary culling phase against greedy local insertions, ensuring global recovery completes.
-            let islandHead = allocParseHead(
-              foundTarget,
-              islandLeaf,
-              currPop,
-              resumePos,
-              islandScannerState,
-              islandCost,
-              0,
-              foundBalance,
-              0, // consecutiveInsertions
-              head.dynamicPrec,
-              0, // pendingPadding
-              newTail,
-            );
-            pushActiveHead(changetype<u32>(islandHead));
-            debugLog(6, foundTarget, islandCost, resumePos);
+            if ((resumePos as u32) == head.pos && foundTarget == head.state) {
+              // This makes zero progress (same position, same state).
+              // Pushing it resets consecutiveInsertions and causes an infinite loop.
+              // We just drop this branch.
+            } else {
+              // Branch the GSS from the recovery anchor, shifting the new ERROR node.
+              // We give it an artificially low errorCost so it ALWAYS survives the
+              // primary culling phase against greedy local insertions, ensuring global recovery completes.
+              let islandHead = allocParseHead(
+                foundTarget,
+                islandLeaf,
+                currPop,
+                resumePos,
+                islandScannerState,
+                islandCost,
+                0,
+                foundBalance,
+                ((resumePos as u32) == head.pos) ? head.consecutiveInsertions : 0, // consecutiveInsertions
+                head.dynamicPrec,
+                0, // pendingPadding
+                newTail,
+              );
+              pushActiveHead(changetype<u32>(islandHead));
+              
+            }
           }
         }
         } // end configEnableIslandMode

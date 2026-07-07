@@ -81,18 +81,20 @@ export const Parse: CommandModule<{}, ParseArgs> = {
           console.error(msg);
           process.exit(1);
         },
+        trace: (code: number, a: number, b: number, c: number) => {
+          if (code >= 60000) {
+            console.log(`[TRACE] code=${code}, a=${a}, b=${b}, c=${c}`);
+          }
+        },
       },
       parser: {
         logInt: (val: any) => console.log("DEBUG_INT:", val),
       },
-      engine: new Proxy(
-        {},
-        {
-          get(target, prop) {
-            return () => {};
-          },
+      engine: {
+        debugLog: (cat: number, val1: number, val2: number, val3: number) => {
+          // if (cat >= 60000) console.log(`[DEBUG] ${cat}, ${val1}, ${val2}, ${val3}`);
         },
-      ),
+      },
       host: {
         runHostQuery: () => 0,
       },
@@ -186,6 +188,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
           ? runtime.readU32((wasmInstance.exports as any).getFatPaddingPtr(rawPad))
           : rawPad;
       const len = envHashPadding & 0x007fffff;
+      typeName = typeName + ":" + typeId;
 
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -203,7 +206,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
 
       let childStrs: string[] = [];
-      let childOffset = currentOffset;
+      let childOffset = startOffset;
       let visited = new Set<number>();
 
       while (child) {
