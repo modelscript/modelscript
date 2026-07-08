@@ -379,6 +379,8 @@ function acceptCacheSet(key: u64, result: i32): void {
 }
 function acceptCacheClear(): void {
 }
+export let g_stateCanAcceptMaxDepth: i32 = MAX_LOOKAHEAD_DEPTH;
+
 export function stateCanAccept(
   head: ParseHead | null,
   state: i32,
@@ -396,7 +398,7 @@ export function stateCanAccept(
   sim8: i32 = 0,
   sim9: i32 = 0,
 ): i32 {
-  if (depth > MAX_LOOKAHEAD_DEPTH) return 0;
+  if (depth > g_stateCanAcceptMaxDepth) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
 
 
@@ -471,6 +473,8 @@ export function stateCanAccept(
             if (pHead != null) topState = pHead.state;
           }
 
+          if (depth > 0) {}
+
           let nextState = -1;
           if (topState != -1) {
             let gOffset = goto_offsets[topState];
@@ -509,6 +513,8 @@ export function stateCanAccept(
             if (res > 0) {
               return res;
             }
+          } else {
+            // if (depth > 0) debugLog(60007, ruleLHS, topState, 0); // goto failed
           }
         }
       }
@@ -2015,9 +2021,28 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
         let popCount = prod_lengths[reduceProd];
         let lhsSym = prod_lhs[reduceProd];
 
-        let curr: ParseHead | null = head;
+        let availableNodes = 0;
+        let tempCurr: ParseHead | null = head;
+        while (tempCurr != null) {
+          if (tempCurr.astNode != 0 && !isPureErrorNode(tempCurr.astNode)) {
+            availableNodes++;
+          }
+          tempCurr = tempCurr.prev;
+        }
+        
+        let missingCount = popCount > availableNodes ? popCount - availableNodes : 0;
         let c_idx2 = 99999;
-        let needed = popCount;
+        
+        // 1. Prepend virtual nodes for the missing trailing pieces
+        for (let m: i32 = 0; m < missingCount; m++) {
+          let virtualNode = allocNode(NODE_TYPE_ERROR, 0, 0, 0);
+          setNodeFlags(virtualNode, FLAG_IS_INSERTED);
+          t_globalReduceCollected[c_idx2--] = virtualNode;
+        }
+        
+        // 2. Pop the remaining actual nodes from the stack
+        let needed = popCount - missingCount;
+        let curr: ParseHead | null = head;
         let isList = prod_is_list[reduceProd] == 1;
 
         while ((needed > 0 || (isList && curr != null && curr.astNode != 0 && isPureErrorNode(curr.astNode))) && curr != null) {
@@ -2032,14 +2057,12 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
           }
           curr = curr.prev;
         }
-        if (curr == null && needed > 0) continue;
 
         let actualCount: u32 = (99999 - c_idx2) as u32;
         for (let k: u32 = 0; k < actualCount; k++) {
           t_globalChildNodes[k] = t_globalReduceCollected[(c_idx2 as u32) + 1 + k];
         }
 
-        if (curr) {
           let totalByteLength: u32 = 0;
           let firstChildPadding: u32 = 0;
           if (actualCount > 0) {
@@ -2110,7 +2133,8 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
             }
           }
 
-          let gOffset = goto_offsets[curr.state];
+          let anchorState = curr != null ? curr.state : 0;
+          let gOffset = goto_offsets[anchorState];
           let gCount = goto_data[gOffset];
           let gIdx2 = gOffset + 1;
           let nextState: i32 = -1;
@@ -2124,14 +2148,13 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
 
           if (nextState != -1) {
             let newHead = allocParseHead(
-              nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost,
+              nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + (missingCount * 50),
               head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
               head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
             );
             pushActiveHead(changetype<u32>(newHead));
             reduced = true;
           }
-        }
       } else if (scanType == ACTION_SHIFT && !reduced && scanSym == TOKEN_EOF) {
         let shiftTarget = scanTarget;
         if (shiftTarget >= 0 && shiftTarget < action_offsets.length) {
@@ -2935,7 +2958,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let firstPad: u32 = missingPadding;
       let peekTok = invokeLexer(p);
       let errLen = remainingLen;
-      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0);
+      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0, true);
       let lastTokNode = 0;
 
       // Report a single monolithic error for the entire unparsed remainder
@@ -2954,7 +2977,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         let tLen = lexLen;
         if (tLen == 0) break; // prevent infinite loop
 
-        let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+        let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
         if (lastTokNode == 0) {
           setFirstChild(unparsedNode, tNode);
         } else {

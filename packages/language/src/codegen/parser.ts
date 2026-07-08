@@ -181,6 +181,37 @@ export function generateParserTables(
   }
   code += generateStaticArray(syncIds, "sync_tokens");
 
+  // 1. Identify list separators
+  const listSeparators = new Set<string>();
+  for (const p of grammar.productions) {
+    if (p.isList && p.right.length >= 2 && p.right[0] === p.left) {
+      const potentialSeparator = p.right[1];
+      if (grammar.terminals.has(potentialSeparator)) {
+        listSeparators.add(potentialSeparator);
+      }
+    }
+  }
+
+  // 2. Generate tokenDeleteCosts
+  const tokenDeleteCosts: number[] = new Array(symToInt.size + 1).fill(10);
+  for (const [sym, id] of symToInt.entries()) {
+    let cost = 10;
+    if (listSeparators.has(sym)) {
+      cost = 200;
+    }
+    if (syncTokens.includes(sym.replace(/^"|"$/g, "")) || syncTokens.includes(sym)) {
+      cost = 1000;
+    }
+    tokenDeleteCosts[id] = cost;
+  }
+
+  const eofId = symToInt.get("EOF");
+  if (eofId !== undefined) {
+    tokenDeleteCosts[eofId] = 5000;
+  }
+
+  code += generateStaticArray(tokenDeleteCosts, "token_delete_costs");
+
   const prodLengths: number[] = [];
   const prodLhs: number[] = [];
   const prodIsInvisible: number[] = [];

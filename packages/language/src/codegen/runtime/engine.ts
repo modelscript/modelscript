@@ -44,6 +44,7 @@ import {
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
   token_insert_costs as _token_insert_costs,
+  token_delete_costs as _token_delete_costs,
   sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
@@ -106,6 +107,7 @@ export const goto_offsets = changetype<StaticTable>(_goto_offsets);
 export const goto_data = changetype<StaticTable>(_goto_data);
 export const mrd_data = changetype<StaticTable>(_mrd_data);
 export const token_insert_costs = changetype<StaticTable>(_token_insert_costs);
+export const token_delete_costs = changetype<StaticTable>(_token_delete_costs);
 export const sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
 
 export const prod_lengths = changetype<StaticTable>(_prod_lengths);
@@ -141,7 +143,7 @@ export const ARENA_BUFFER_SIZE: i32 = 16384;
 export const MAX_LOOKAHEAD_DEPTH: i32 = 6;
 export const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
 export const LOOP_MULTIPLIER_LIMIT: u32 = 100;
-export const MAX_PANIC_SCAN_TOKENS: u32 = 200;
+export const MAX_PANIC_SCAN_TOKENS: u32 = 50;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;
 export const PENALTY_SYNC_TOKEN: i32 = 50;

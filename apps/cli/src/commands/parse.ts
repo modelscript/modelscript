@@ -92,7 +92,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       },
       engine: {
         debugLog: (cat: number, val1: number, val2: number, val3: number) => {
-          // if (cat >= 60000) console.log(`[DEBUG] ${cat}, ${val1}, ${val2}, ${val3}`);
+          if (cat >= 60000) console.log(`[DEBUG] ${cat}, ${val1}, ${val2}, ${val3}`);
         },
       },
       host: {

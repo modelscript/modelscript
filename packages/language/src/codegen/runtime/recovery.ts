@@ -1,9 +1,10 @@
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
-  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs,
-  NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode
+  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs, token_delete_costs,
+  NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode, ACTION_REDUCE
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxDepth } from "./parser-loop";
+import { prod_lengths, prod_lhs } from "./parser";
 import { 
   getNodePadding, 
   setNodePadding,
@@ -40,6 +41,121 @@ import {
   inputEncoding
 } from "./parser";
 
+const t_branchB_outTokens = new Int32Array(8);
+const t_branchB_outStates = new Int32Array(8);
+
+function searchBudgetedInsertions(
+  unwindCurr: ParseHead,
+  currentState: i32,
+  laTok: i32,
+  budget: i32,
+  depth: i32,
+  maxDepth: i32,
+  outTokens: Int32Array,
+  outStates: Int32Array
+): i32 {
+  if (depth >= maxDepth) return -1;
+  
+  let actOffset = action_offsets[currentState];
+  if (actOffset < 0 || actOffset >= action_data.length) return -1;
+  
+  let numTerminals = action_data[actOffset];
+  if (numTerminals > budget) return -1; // Abort: Too ambiguous
+  
+  let actIdx = actOffset + 1;
+  for (let i = 0; i < numTerminals; i++) {
+    let sym = action_data[actIdx];
+    let actCount = action_data[actIdx + 1];
+    let aIdx = actIdx + 2;
+    actIdx += 2 + actCount * 2;
+    
+    // Skip EOF unless it's the actual lookahead
+    if (sym == TOKEN_EOF && laTok != TOKEN_EOF) continue;
+    
+    let shiftTarget = -1;
+    let reduceTarget = -1;
+    
+    for (let j = 0; j < actCount; j++) {
+      let aType = action_data[aIdx++];
+      let aTarget = action_data[aIdx++];
+      if (aType == ACTION_SHIFT) {
+        shiftTarget = aTarget;
+      } else if (aType == ACTION_REDUCE) {
+        if (load<i32>(prod_lengths + (aTarget << 2)) == 0) {
+          reduceTarget = aTarget;
+        }
+      }
+    }
+    
+    // Branch 1: Try shifting terminal
+    if (shiftTarget != -1 && sym <= MAX_TERMINAL_ID) {
+      outTokens[depth] = sym;
+      outStates[depth] = shiftTarget;
+      
+      let s0 = depth >= 0 ? outStates[0] : 0;
+      let s1 = depth >= 1 ? outStates[1] : 0;
+      let s2 = depth >= 2 ? outStates[2] : 0;
+      let s3 = depth >= 3 ? outStates[3] : 0;
+      let s4 = depth >= 4 ? outStates[4] : 0;
+      let s5 = depth >= 5 ? outStates[5] : 0;
+      
+      if (stateCanAccept(unwindCurr, shiftTarget, laTok, 0, depth + 1, s0, s1, s2, s3, s4, s5) > 0) {
+        return depth + 1;
+      }
+      
+      let res = searchBudgetedInsertions(
+        unwindCurr, shiftTarget, laTok,
+        budget - numTerminals, depth + 1, maxDepth,
+        outTokens, outStates
+      );
+      if (res > 0) return res;
+    }
+    
+    // Branch 2: Try empty reduction (hallucinating non-terminal)
+    if (reduceTarget != -1) {
+      let ruleLHS = load<i32>(prod_lhs + (reduceTarget << 2));
+      let nextState = -1;
+      let gOffset = goto_offsets[currentState];
+      if (gOffset >= 0 && gOffset < goto_data.length) {
+        let gCount = goto_data[gOffset];
+        let gIdx = gOffset + 1;
+        for (let k = 0; k < gCount; k++) {
+          if (goto_data[gIdx++] == ruleLHS) {
+            nextState = goto_data[gIdx];
+            break;
+          }
+          gIdx++;
+        }
+      }
+      
+      if (nextState != -1) {
+        outTokens[depth] = ruleLHS;
+        outStates[depth] = nextState;
+        
+        let s0 = depth >= 0 ? outStates[0] : 0;
+        let s1 = depth >= 1 ? outStates[1] : 0;
+        let s2 = depth >= 2 ? outStates[2] : 0;
+        let s3 = depth >= 3 ? outStates[3] : 0;
+        let s4 = depth >= 4 ? outStates[4] : 0;
+        let s5 = depth >= 5 ? outStates[5] : 0;
+        
+        if (stateCanAccept(unwindCurr, nextState, laTok, 0, depth + 1, s0, s1, s2, s3, s4, s5) > 0) {
+          return depth + 1;
+        }
+        
+        let res = searchBudgetedInsertions(
+          unwindCurr, nextState, laTok,
+          budget, depth + 1, maxDepth, // don't decrease budget for empty reductions
+          outTokens, outStates
+        );
+        if (res > 0) return res;
+      }
+    }
+  }
+  
+  return -1;
+}
+
 export let errorQueueHead: u32 = 0;
 export let errorQueueTail: u32 = 0;
 
@@ -58,8 +174,14 @@ const PENALTY_SYNC_TOKEN: i32 = 50;
 
 @inline
 function getInsertCost(tok: i32): i32 {
-  if (tok < 0 || tok >= token_insert_costs.length) return 10;
-  return token_insert_costs[tok];
+  if (tok < 0 || tok >= token_insert_costs.length) return 25;
+  return token_insert_costs[tok] * 25;
+}
+
+@inline
+function getDeleteCost(tok: i32): i32 {
+  if (tok < 0 || tok >= token_delete_costs.length) return 10;
+  return token_delete_costs[tok];
 }
 
 @inline
@@ -115,13 +237,13 @@ export function recoverUnwindAndMutate(
             
 
             let baseDelCost =
-              getInsertCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
+              getDeleteCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
             if (lexLen == 1 && lexPos < inputLength) {
               let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
               if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
               else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
                 newBalance--;
-                baseDelCost = getInsertCost(token) + (unwindDepth as i32);
+                baseDelCost = getDeleteCost(token) + (unwindDepth as i32);
               }
             }
 
@@ -134,7 +256,7 @@ export function recoverUnwindAndMutate(
             
             // baseDelCost includes the cost of dropping 'token'. If we do startSkip=0,
             // we are NOT dropping 'token', so we refund its cost in a1DelCost.
-            let a1DelCost = startSkip == 0 ? -getInsertCost(token == TOKEN_EOF ? 0 : token) : 0;
+            let a1DelCost = startSkip == 0 ? -getDeleteCost(token == TOKEN_EOF ? 0 : token) : 0;
 
             if (configEnableBranchA1) {
             // Force lexer to recognize all tokens during recovery forward scan
@@ -153,7 +275,7 @@ export function recoverUnwindAndMutate(
               setSrcLexPos(savedSrcLexPos);
               setCurrentScannerState(savedScannerState);
 
-              let tokCost = getInsertCost(nextToken == TOKEN_EOF ? 0 : nextToken);
+              let tokCost = getDeleteCost(nextToken == TOKEN_EOF ? 0 : nextToken);
               
               let canAccept = stateCanAccept(unwindCurr, recState, nextToken, 0);
               
@@ -238,7 +360,7 @@ export function recoverUnwindAndMutate(
                   setCurrentScannerState(savedScannerState);
                 }
 
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff);
+                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff, true);
                 let lastChild = 0;
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
@@ -277,7 +399,7 @@ export function recoverUnwindAndMutate(
                   let pad = srcLexPos > p ? srcLexPos - p : 0;
                   if (lastChild == 0) pad = 0; // Parent holds the padding
                   newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
-                  let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad as u32, tLen, 0);
+                  let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
                   if (lastChild == 0) setFirstChild(errNode, tNode);
                   else setNextSibling(lastChild, tNode);
                   lastChild = tNode;
@@ -363,125 +485,107 @@ export function recoverUnwindAndMutate(
             }
           }
           if (!skipBranchB && head.consecutiveInsertions < 8) {
-            for (let sym = 1; sym <= SYMBOL_COUNT; sym++) {
-              let target = -1;
-              
-              if (sym <= MAX_TERMINAL_ID) {
-                let res = stateCanAccept(unwindCurr, recState, sym, 0);
-                if (res > 0) {
-                  target = res - 1;
+            let savedLexPosB = lexPos;
+            let savedLexLenB = lexLen;
+            let savedSrcLexPosB = srcLexPos;
+            let savedScannerStateB = currentScannerState;
+
+            memory.fill(changetype<usize>(expected_tokens), 1, 2048);
+
+            let laScanPos = head.pos;
+            let candidateViable = false;
+            let seqLen = 0;
+
+            for (let skip = 0; skip <= 3; skip++) {
+              if (laScanPos >= inputLength) {
+                if (skip == 0 && token == TOKEN_EOF) {
+                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 20, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+                  if (seqLen > 0) candidateViable = true;
                 }
-              } else {
-                // Non-terminal hallucination: look up the GOTO table
-                let gOffset = goto_offsets[recState];
-                if (gOffset >= 0 && gOffset < goto_data.length) {
-                  let gCount = goto_data[gOffset];
-                  let gIdx = gOffset + 1;
-                  for (let i = 0; i < gCount; i++) {
-                    if (goto_data[gIdx++] == sym) {
-                      target = goto_data[gIdx];
-                      break;
-                    } else {
-                      gIdx++;
-                    }
-                  }
-                }
+                break;
               }
 
-              if (target != -1) {
-                  if (sym == TOKEN_EOF && token != TOKEN_EOF) {
-                    continue;
+              setLexPos(laScanPos);
+              let laTok = lex(laScanPos);
+              let laEnd = srcLexPos + lexLen;
+
+              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 20, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+              if (seqLen > 0) {
+                candidateViable = true;
+                break;
+              }
+
+              if (laTok == TOKEN_EOF) break;
+              laScanPos = laEnd;
+            }
+
+            setLexPos(savedLexPosB);
+            setLexLen(savedLexLenB);
+            setSrcLexPos(savedSrcLexPosB);
+            setCurrentScannerState(savedScannerStateB);
+
+            if (candidateViable && seqLen > 0) {
+              let actualCost = 0;
+              for (let k = 0; k < seqLen; k++) {
+                let sym = t_branchB_outTokens[k];
+                let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
+                if (baseCost <= 0) baseCost = 10;
+                actualCost += baseCost;
+              }
+
+              let uPos = unwindCurr.pos;
+              let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
+              let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + (bDropped as i32);
+              actualCost += retroCost;
+
+              if (bestAcceptedCost >= 20000 || (head.errorCost + actualCost) < bestAcceptedCost) {
+                let pCount = unwindDepth;
+                let uCurr: ParseHead | null = head;
+                let newBalance = head.balanceHash;
+                for (let u = 0; u < pCount; u++) {
+                  if (uCurr != null) {
+                    newBalance = uCurr.balanceHash;
+                    uCurr = uCurr.prev;
                   }
-                  
+                }
+                let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
 
-                    let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
-                    if (baseCost <= 0) baseCost = 10; // Prevent infinite loops from 0-cost insertions
-                    let uPos = unwindCurr.pos;
-                    let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
-                    let retroCost = (unwindDepth as i32) * PENALTY_UNWIND_NODE + (bDropped as i32);
-                    let actualCost = baseCost + retroCost;
-                    if (bestAcceptedCost < 20000 && (head.errorCost + actualCost) >= bestAcceptedCost) continue;
-                    
-                    let candidateViable = false;
-                    let laScanPos = head.pos;
-                    
-                    let savedLexPosB = lexPos;
-                    let savedLexLenB = lexLen;
-                    let savedSrcLexPosB = srcLexPos;
-                    let savedScannerStateB = currentScannerState;
+                let currentHead = unwindCurr;
+                let isValidPath = true;
 
-                    // Force lexer to recognize ANY token during lookahead.
-                    // Without this, the lexer filters tokens via expected_tokens
-                    // (set for current active heads), missing tokens the TARGET
-                    // state needs (e.g., `;` after virtual Number insertion).
-                    memory.fill(changetype<usize>(expected_tokens), 1, 2048);
+                for (let k = 0; k < seqLen; k++) {
+                  let sym = t_branchB_outTokens[k];
+                  let targetState = t_branchB_outStates[k];
 
-                    for (let skip = 0; skip <= 3; skip++) {
-                      if (laScanPos >= inputLength) {
-                        if (skip == 0 && token == TOKEN_EOF && stateCanAccept(unwindCurr, target, TOKEN_EOF, 0, 1, target) > 0) {
-                           candidateViable = true;
-                        }
-                        break;
-                      }
-                      
-                      setLexPos(laScanPos);
-                      let laTok = lex(laScanPos);
-                      let laEnd = srcLexPos + lexLen;
-                      let canAcceptLA = stateCanAccept(unwindCurr, target, laTok, 0, 1, target) > 0;
-                      
-                      if (canAcceptLA) {
-                        candidateViable = true;
-                        break;
-                      }
-                      
-                      if (laTok == TOKEN_EOF) break;
-                      laScanPos = laEnd;
-                    }
+                  let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
+                  let ptr = virtualLeaf as usize;
+                  changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
 
-                    setLexPos(savedLexPosB);
-                    setLexLen(savedLexLenB);
-                    setSrcLexPos(savedSrcLexPosB);
-                    setCurrentScannerState(savedScannerStateB);
+                  currentHead = allocParseHead(
+                    targetState,
+                    virtualLeaf,
+                    currentHead,
+                    head.pos,
+                    initialScannerState,
+                    head.errorCost + actualCost,
+                    0,
+                    newBalance,
+                    head.consecutiveInsertions + seqLen,
+                    recPrec,
+                    uPadding + bDropped,
+                    head.errorTail
+                  );
 
-                    if (candidateViable) {
-                        let pCount = unwindDepth;
-                        let uCurr: ParseHead | null = head;
-                        let newBalance = head.balanceHash;
-                        for (let u = 0; u < pCount; u++) {
-                          if (uCurr != null) {
-                            newBalance = uCurr.balanceHash;
-                            uCurr = uCurr.prev;
-                          }
-                        }
-                        let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
-                        
-                        let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
-                        let ptr = virtualLeaf as usize;
-                        changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
-                        let insHead = allocParseHead(
-                          target,
-                          virtualLeaf,
-                          unwindCurr,
-                          head.pos,
-                          initialScannerState,
-                          head.errorCost + actualCost,
-                          0,
-                          newBalance,
-                          head.consecutiveInsertions + 1,
-                          recPrec,
-                          uPadding + bDropped,
-                          head.errorTail
-                        );
-                        
-                        
-                        if (target != head.state) {
-                          pushActiveHead(changetype<u32>(insHead));
-                          
-                        } else {
-                           // DROPPED: target == head.state
-                        }
-                    }
+                  if (targetState == currentHead.prev!.state) {
+                    isValidPath = false;
+                    break;
                   }
+                }
+
+                if (isValidPath) {
+                  pushActiveHead(changetype<u32>(currentHead));
+                }
+              }
             }
           }
           } // end configEnableBranchB
@@ -545,6 +649,7 @@ export function recoverIslandMode(
             let savedPanicSrcLexPos = srcLexPos;
             let savedPanicScannerState = currentScannerState;
             let nextTok = invokeLexer(nextPos); // lookahead token after the sync token
+            let nextStateBeforeLex = currentScannerState;
             // Restore lexer state so tokenLen stays valid for subsequent iterations
             setLexLen(savedPanicLexLen);
             setLexPos(savedPanicLexPos);
@@ -558,19 +663,29 @@ export function recoverIslandMode(
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
               
-              let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
-              let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
-              if (canAcceptTok > 0) {
-                foundTarget = currPop.state;
-                resumePos = searchPos;
-                targetScannerState = stateBeforeLex;
-                break;
-              } else if (canAcceptNext > 0) {
-                foundTarget = currPop.state;
-                resumePos = nextPos;
-                targetScannerState = savedPanicScannerState;
-                break;
-              }
+            // If the token is a major structural token (like EOF or end), we increase the lookahead limit
+            // to allow Panic Mode to anchor across massive multi-level block reductions.
+            // Using typical Modelica structural token heuristics: EOF (0).
+            // 'end' and 'equation' varies by grammar, but we can safely boost it globally for Island Mode.
+            let oldDepth = g_stateCanAcceptMaxDepth;
+            g_stateCanAcceptMaxDepth = 25;
+            
+            let canAcceptTok = stateCanAccept(currPop, currPop.state, tok);
+            let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok);
+            
+            g_stateCanAcceptMaxDepth = oldDepth;
+
+            if (canAcceptTok > 0) {
+              foundTarget = currPop.state;
+              resumePos = searchPos;
+              targetScannerState = stateBeforeLex;
+              break;
+            } else if (canAcceptNext > 0) {
+              foundTarget = currPop.state;
+              resumePos = nextPos;
+              targetScannerState = nextStateBeforeLex;
+              break;
+            }
               currPop = currPop.prev; // Pop stack
               gssDepth++;
             }
@@ -633,7 +748,7 @@ export function recoverIslandMode(
             }
 
             // Allocate a monolithic ERROR node container
-            let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff);
+            let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff, true);
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
@@ -711,7 +826,7 @@ export function recoverIslandMode(
 
               let pad = srcLexPos > p ? srcLexPos - p : 0;
 
-              let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+              let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
                 setNodePadding(tNode, 0);

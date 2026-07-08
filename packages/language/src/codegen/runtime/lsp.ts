@@ -12,9 +12,10 @@ import {
   ast_getTextSpan,
   ast_hashSpan,
   ASTNode,
-  FLAG_IS_INSERTED,
   FLAG_HAS_ERROR,
   FLAG_INVISIBLE,
+  FLAG_IS_TAINED,
+  FLAG_IS_INSERTED,
   getInputBuffer,
 } from "./arena";
 import { errorCount, getErrorEnd, getErrorStart } from "./engine";
@@ -225,24 +226,28 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
     let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 
+    let isTainted = (flags & FLAG_IS_TAINED) != 0;
+
     if ((flags & FLAG_IS_INSERTED) != 0) {
       // Inserted ghost nodes are zero-width phantoms from error recovery.
       // We always emit a diagnostic for them so the user knows what was expected,
       // and so the JS-side merging logic can combine it with adjacent garbage tokens.
-      let dStart = nodeStart;
-      let dEnd = nodeStart + 2;
-      if (dEnd > inputLength) {
-        dEnd = inputLength;
-        if (dEnd > 0) dStart = dEnd - 2;
-        if (dStart < 0) dStart = 0;
+      if (!isTainted) {
+        let dStart = nodeStart;
+        let dEnd = nodeStart + 2;
+        if (dEnd > inputLength) {
+          dEnd = inputLength;
+          if (dEnd > 0) dStart = dEnd - 2;
+          if (dStart < 0) dStart = 0;
+        }
+        lsp_allocDiagnostic(dStart, dEnd, type);
       }
-      lsp_allocDiagnostic(dStart, dEnd, type);
-    } else if (inError || isErrorNode) {
+    } else if (inError || isErrorNode || (isLeaf && (flags & FLAG_HAS_ERROR) != 0)) {
       // The pad > 0 garbage scan was removed because garbage tokens are now explicitly
       // stored as leaf children inside ERROR nodes, and padding legitimately contains
       // non-whitespace extra tokens like comments.
       
-      if (isLeaf && len > 0) {
+      if (isLeaf && len > 0 && !isTainted) {
         // Check if token is entirely whitespace
         let allWhitespace = true;
         let inputPtr = getInputBuffer();
@@ -314,7 +319,8 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
         
         t_lspTraverseStack[writeIdx] = child;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, childHasError || hasErrorSibling, passInsertedSibling);
+        let nextInError = (isErrorNode || inError) && !isTainted;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, nextInError, childHasError || hasErrorSibling, passInsertedSibling);
         writeIdx--;
         currOffset += cLen;
         child = getNodeNextSibling(child);
@@ -356,6 +362,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    if ((flags & FLAG_IS_TAINED) != 0) continue;
     setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     
@@ -495,6 +502,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    if ((flags & FLAG_IS_TAINED) != 0) continue;
     setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     
@@ -572,6 +580,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
+    if ((flags & FLAG_IS_TAINED) != 0) continue;
     setNodeFlags(node, flags | FLAG_LSP_VISITED);
 
     

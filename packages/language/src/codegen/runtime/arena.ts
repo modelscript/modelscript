@@ -371,7 +371,7 @@ export function initArena(sizeBytes: u32): void {
  * @param envHash A structural hash used for rapid comparison and deduplication.
  * @returns A physical memory pointer (u32) to the newly allocated 16-byte node.
  */
-export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32): u32 {
+export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false): u32 {
   let s = S();
   s.allocCount++;
   let ptr: u32 = 0;
@@ -477,6 +477,9 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   if (type == 0 || isMutated) { // 0 is NODE_TYPE_ERROR
     initialFlags = (FLAG_HAS_ERROR as u32) << 10;
   }
+  if (isTainted) {
+    initialFlags |= (FLAG_IS_TAINED as u32) << 10;
+  }
 
   let node = changetype<ASTNode>(ptr);
   node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 19);
@@ -557,7 +560,7 @@ export const FLAG_GC_MARK: u16 = 1;
 export const FLAG_EXTRACTED: u16 = 2;
 export const FLAG_INVISIBLE: u16 = 4;
 export const FLAG_LSP_VISITED: u16 = 8;
-export const FLAG_DIRTY: u16 = 16;
+export const FLAG_IS_TAINED: u16 = 16;
 export const FLAG_IS_LIST: u16 = 32;
 export const FLAG_LIST_BOUNDARY: u16 = 64;
 export const FLAG_HAS_ERROR: u16 = 128;
@@ -619,12 +622,12 @@ export function isExtracted(ptr: u32): boolean {
   return (changetype<ASTNode>(ptr).flags & FLAG_EXTRACTED) != 0;
 }
 
-export function markDirty(ptr: u32): void {
-  changetype<ASTNode>(ptr).flags |= FLAG_DIRTY;
+export function markTainted(ptr: u32): void {
+  changetype<ASTNode>(ptr).flags |= FLAG_IS_TAINED;
 }
 @inline
-export function isDirty(ptr: u32): boolean {
-  return (changetype<ASTNode>(ptr).flags & FLAG_DIRTY) != 0;
+export function isTainted(ptr: u32): boolean {
+  return (changetype<ASTNode>(ptr).flags & FLAG_IS_TAINED) != 0;
 }
 
 @inline
@@ -871,9 +874,10 @@ export function cloneNode(nodeId: u32, deep: boolean): u32 {
  * @param ptr The node to flag.
  */
 export function ast_markDirty(ptr: u32): void {
-  // Flag the node as DIRTY. In a full implementation we would traverse upwards
-  // to mark parents, or the unparser will simply spot this dirty node during traversal.
-  if (ptr != 0) markDirty(ptr);
+  // FLAG_DIRTY was historically at bit 4 (value 16), sharing the same slot as FLAG_IS_TAINED.
+  // The packed ASTNode.flags field only has 9 bits (0-8), all of which are allocated.
+  // Since no code reads the dirty flag (isDirty is unused), this is a no-op placeholder.
+  // If mutation tracking is needed in the future, use the external nodeFlags chunked array.
 }
 
 export const OVERRIDE_NONE = 0;

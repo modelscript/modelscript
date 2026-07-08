@@ -112,6 +112,8 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     regexTokens.set(wordName, "/[_a-zA-Z][_a-zA-Z0-9]*/");
   }
 
+  console.log("lexer.ts: wordRegex is", wordRegex);
+
   console.log("lexer.ts: stringTokens size =", stringTokens.size, Array.from(stringTokens.keys()));
   let lexerGlobals = `// DFA Lexer State Machine\n`;
   lexerGlobals += `// Extracted ${stringTokens.size} string literals and ${regexTokens.size} regex patterns\n\n`;
@@ -405,6 +407,9 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     const safeName = "T_" + mappedInt;
 
     const isWord = wordRegex ? wordRegex.test(val) : false;
+    if (val === "model") {
+      console.log(`lexer.ts: Debug 'model': mappedInt=${mappedInt}, isWord=${isWord}, hasWord=${!!grammar.word}`);
+    }
 
     // Determine if this literal is a reserved keyword
     let isReserved = false;
@@ -415,10 +420,14 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         break;
       }
     }
+    if (val === "model") {
+      console.log(`lexer.ts: Debug 'model': isReserved=${isReserved}`);
+    }
 
     if (grammar.word && isWord && !isReserved) {
       // Tree-sitter style keyword extraction: defer this literal to the identifier fallback!
       keywordTokens.set(val, key);
+      console.log("lexer.ts: keywordTokens added:", val, "size:", keywordTokens.size);
       continue;
     }
 
@@ -583,6 +592,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         }
 
         if (isWordToken) {
+          console.log("lexer.ts: Injecting " + keywordTokens.size + " keywords into DFA state " + tokenName);
           if (sp && sp.multiWordKeywords && sp.multiWordKeywords.length > 0) {
             lexerCode += `        // Multi-word keyword lookahead\n`;
             lexerCode += `        let mwkToken = checkMultiWordKeyword(lexPos, lexLen);\n`;
