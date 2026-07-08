@@ -22,6 +22,7 @@ export const modelicaLanguage = language({
 
   primitives: {
     nestedComment: { open: "/*", close: "*/" },
+    lineComment: "//",
     multiWordKeywords: ["end if", "end for", "end while", "end when"],
   },
 

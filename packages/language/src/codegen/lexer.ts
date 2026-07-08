@@ -279,8 +279,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       const lc = sp.lineComment;
       if (lc.length === 2) {
         lexerCode += `    // Line comment: ${lc}\n`;
-        lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
-        lexerCode += `    if (c == ${lc.charCodeAt(0)} && c2 == ${lc.charCodeAt(1)}) {\n`;
+        lexerCode += `    let c2_lc = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
+        lexerCode += `    if (c == ${lc.charCodeAt(0)} && c2_lc == ${lc.charCodeAt(1)}) {\n`;
         lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
         lexerCode += `      while (lexPos < inputLength && peekChar(lexPos) != 10) lexPos += peekCharLen(lexPos);\n`;
         lexerCode += `      if (lexPos < inputLength) lexPos += peekCharLen(lexPos); // skip newline\n`;
@@ -304,8 +304,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       const c0 = nc.close.charCodeAt(0);
       const c1 = nc.close.charCodeAt(1);
       lexerCode += `    // Nested block comment: ${nc.open} ... ${nc.close}\n`;
-      lexerCode += `    let c2 = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
-      lexerCode += `    if (c == ${o0} && c2 == ${o1}) {\n`;
+      lexerCode += `    let c2_nc = lexPos + charLen < inputLength ? peekChar(lexPos + charLen) : 0;\n`;
+      lexerCode += `    if (c == ${o0} && c2_nc == ${o1}) {\n`;
       lexerCode += `      lexPos += charLen + peekCharLen(lexPos + charLen);\n`;
       lexerCode += `      let commentDepth: u32 = 1;\n`;
       lexerCode += `      while (lexPos < inputLength && commentDepth > 0) {\n`;
