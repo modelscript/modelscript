@@ -41,6 +41,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/compiler";
+import { keyword } from "@modelscript/language";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modification-args.js";
 
 function cyrb53(str: string, seed = 0): string {
@@ -1256,7 +1257,7 @@ const PREC = {
 // Language Definition
 // ---------------------------------------------------------------------------
 
-export default language({
+const modelicaLang = language({
   name: "modelica",
 
   extras: ($) => [/\s/, $.BLOCK_COMMENT, $.LINE_COMMENT],
@@ -4091,25 +4092,25 @@ export default language({
 
     ClassPrefixes: () =>
       seq(
-        optional(field("partial", "partial")),
+        optional(field("partial", keyword("partial"))),
         choice(
-          field("class", "class"),
-          field("model", "model"),
-          seq(optional(field("operator", "operator")), field("record", "record")),
-          field("block", "block"),
-          seq(optional(field("expandable", "expandable")), field("connector", "connector")),
-          field("type", "type"),
-          field("package", "package"),
+          field("class", keyword("class")),
+          field("model", keyword("model")),
+          seq(optional(field("operator", keyword("operator"))), field("record", keyword("record"))),
+          field("block", keyword("block")),
+          seq(optional(field("expandable", keyword("expandable"))), field("connector", keyword("connector"))),
+          field("type", keyword("type")),
+          field("package", keyword("package")),
           seq(
-            optional(field("purity", choice("pure", "impure"))),
-            optional(field("operator", "operator")),
-            field("function", "function"),
+            optional(field("purity", choice(keyword("pure"), keyword("impure")))),
+            optional(field("operator", keyword("operator"))),
+            field("function", keyword("function")),
           ),
-          field("operator", "operator"),
-          field("optimization", "optimization"),
-          field("shape", "shape"),
-          field("field", "field"),
-          field("process", "process"),
+          field("operator", keyword("operator")),
+          field("optimization", keyword("optimization")),
+          field("shape", keyword("shape")),
+          field("field", keyword("field")),
+          field("process", keyword("process")),
         ),
       ),
 
@@ -6404,16 +6405,16 @@ export default language({
 
     EquationSection: ($) =>
       seq(
-        optional(field("initial", "initial")),
-        "equation",
+        optional(field("initial", keyword("initial"))),
+        keyword("equation"),
         repeat(field("equation", $._Equation)),
         optional(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
 
     AlgorithmSection: ($) =>
       seq(
-        optional(field("initial", "initial")),
-        "algorithm",
+        optional(field("initial", keyword("initial"))),
+        keyword("algorithm"),
         repeat(field("statement", $._Statement)),
         optional(seq(field("annotationClause", $.AnnotationClause), ";")),
       ),
@@ -7204,3 +7205,5 @@ export default language({
     },
   },
 });
+
+export default modelicaLang;

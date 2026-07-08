@@ -41,7 +41,6 @@ export const Generate: CommandModule<{}, GenerateArgs> = {
       const { createJiti } = await import("jiti");
       const jiti = createJiti(import.meta.url);
       const module = (await jiti.import(absoluteEntry)) as Record<string, unknown>;
-
       const languageDef = Object.values(module).find((val: unknown) => {
         const v = val as Record<string, unknown>;
         return v && v.name && v.rules;

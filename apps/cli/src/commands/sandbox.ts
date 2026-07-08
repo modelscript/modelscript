@@ -60,7 +60,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
       }
 
       const absoluteOutDir = path.resolve(process.cwd(), outDir);
-      startVscodeExtension(absoluteOutDir, languageDef.name, languageDef, args.open);
+      await startVscodeExtension(absoluteOutDir, languageDef.name, languageDef, args.open);
     } catch (err: unknown) {
       if (err instanceof Error) {
         console.error(err.stack || err.message);
@@ -71,7 +71,7 @@ export const Sandbox: CommandModule<{}, SandboxArgs> = {
     }
   },
 };
-export function startVscodeExtension(outDir: string, grammarName: string, grammarDef: any, openBrowser = false) {
+export async function startVscodeExtension(outDir: string, grammarName: string, grammarDef: any, openBrowser = false) {
   const extDir = path.join(outDir, "..", ".vscode-extension");
   const srcDir = path.join(extDir, "src");
 
@@ -85,7 +85,7 @@ export function startVscodeExtension(outDir: string, grammarName: string, gramma
   const packageJson = {
     name: `${langId}-lang`,
     publisher: "modelscript",
-    version: "1.0.0",
+    version: `1.0.${Math.floor(Date.now() / 1000)}`,
     engines: {
       vscode: "^1.80.0",
     },
@@ -98,10 +98,39 @@ export function startVscodeExtension(outDir: string, grammarName: string, gramma
           extensions: [fileExt],
         },
       ],
+      grammars: [
+        {
+          language: langId,
+          scopeName: "source." + langId,
+          path: "./syntaxes/tmLanguage.json",
+        },
+      ],
     },
   };
 
   fs.writeFileSync(path.join(extDir, "package.json"), JSON.stringify(packageJson, null, 2), "utf-8");
+
+  const syntaxesDir = path.join(extDir, "syntaxes");
+  if (!fs.existsSync(syntaxesDir)) {
+    fs.mkdirSync(syntaxesDir, { recursive: true });
+  }
+
+  try {
+    // @ts-expect-error - The module might not be compiled at the time of typechecking
+    const mod = await import("@modelscript/language/dist/codegen/textmate.js");
+    const tm = mod.generateTextMate(grammarDef);
+    fs.writeFileSync(path.join(syntaxesDir, "tmLanguage.json"), tm.tm, "utf-8");
+  } catch (e) {
+    try {
+      const mod = await import("@modelscript/language");
+      // @ts-expect-error - Type might not be fully resolved in dev environment
+      const tm = mod.generateTextMate(grammarDef);
+      fs.writeFileSync(path.join(syntaxesDir, "tmLanguage.json"), tm.tm, "utf-8");
+    } catch (e2) {
+      console.warn("Could not generate textmate grammar from @modelscript/language:", e2);
+      fs.writeFileSync(path.join(syntaxesDir, "tmLanguage.json"), JSON.stringify({}), "utf-8");
+    }
+  }
 
   const tsconfig = {
     compilerOptions: {
@@ -119,7 +148,7 @@ export function startVscodeExtension(outDir: string, grammarName: string, gramma
 
   const extensionCode = `
 import * as vscode from 'vscode';
-import { LspFacade } from './lsp_api';
+import { LspFacade, semanticLegend } from './lsp_api';
 
 let wasmExports: any;
 let wasmMemory: WebAssembly.Memory;
@@ -418,11 +447,10 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    const legend = new vscode.SemanticTokensLegend([
-        'namespace', 'class', 'enum', 'interface', 'struct', 'typeParameter', 'type', 'parameter',
-        'variable', 'property', 'enumMember', 'event', 'function', 'method', 'macro', 'keyword',
-        'modifier', 'comment', 'string', 'number', 'regexp', 'operator'
-    ], []);
+    const legend = new vscode.SemanticTokensLegend(
+        semanticLegend.tokenTypes,
+        semanticLegend.tokenModifiers
+    );
     context.subscriptions.push(
         vscode.languages.registerDocumentSemanticTokensProvider('${langId}', {
             provideDocumentSemanticTokens(document) {
@@ -486,13 +514,15 @@ export async function activate(context: vscode.ExtensionContext) {
                 const symbols = facade.getDocumentSymbols(astRoot);
                 if (!symbols) return null;
                 
-                return symbols.map((sym: any) => {
+                const docSymbols = symbols.map((sym: any) => {
                     const range = new vscode.Range(
                         new vscode.Position(sym.start.line, sym.start.character),
                         new vscode.Position(sym.end.line, sym.end.character)
                     );
                     
-                    let name = document.getText(range).split('\\n')[0].trim();
+                    let text = document.getText(range).trim();
+                    let nameMatch = text.match(/^('[^']*'|[a-zA-Z_]\\w*)/);
+                    let name = nameMatch ? nameMatch[0] : text.split('\\\\n')[0].trim();
                     if (name.length > 50) name = name.substring(0, 50) + '...';
                     
                     // Simple heuristic for SymbolKind based on name
@@ -503,6 +533,8 @@ export async function activate(context: vscode.ExtensionContext) {
                     else if (name.startsWith('package')) kind = vscode.SymbolKind.Package;
                     else if (name.startsWith('connector')) kind = vscode.SymbolKind.Interface;
                     else if (name.startsWith('type')) kind = vscode.SymbolKind.TypeParameter;
+                    else if (name.startsWith('Integer') || name.startsWith('Real') || name.startsWith('Boolean') || name.startsWith('String')) kind = vscode.SymbolKind.Variable;
+                    else kind = vscode.SymbolKind.Variable;
                     
                     return new vscode.DocumentSymbol(
                         name,
@@ -512,6 +544,31 @@ export async function activate(context: vscode.ExtensionContext) {
                         range
                     );
                 });
+                
+                // Build a nested tree based on ranges
+                const root: vscode.DocumentSymbol[] = [];
+                const stack: vscode.DocumentSymbol[] = [];
+                
+                for (const sym of docSymbols) {
+                    while (stack.length > 0) {
+                        const parent = stack[stack.length - 1];
+                        if (sym.range.start.isAfterOrEqual(parent.range.start) && sym.range.end.isBeforeOrEqual(parent.range.end)) {
+                            break;
+                        }
+                        stack.pop();
+                    }
+                    
+                    if (stack.length > 0) {
+                        const parent = stack[stack.length - 1];
+                        parent.children.push(sym);
+                    } else {
+                        root.push(sym);
+                    }
+                    
+                    stack.push(sym);
+                }
+                
+                return root;
             }
         })
     );

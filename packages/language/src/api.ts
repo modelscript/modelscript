@@ -1,5 +1,6 @@
 import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
 import { GeneratedFile, generateParser, generateParserTables } from "./codegen/parser.js";
+import { generateTextMate } from "./codegen/textmate.js";
 import { LanguageOptions } from "./dsl.js";
 
 /**
@@ -57,6 +58,10 @@ export function buildParser(languageDef: LanguageOptions): BuildResult {
   const assemblyScriptFiles = generateParserTables(languageDef, result.grammar, result.table);
 
   const javascriptWrapper = generateJavaScriptWrapper(languageDef, result.grammar);
+
+  const textMateContent = generateTextMate(languageDef);
+  assemblyScriptFiles.push({ filename: "tmLanguage.json", content: textMateContent.tm });
+  assemblyScriptFiles.push({ filename: "monarch.json", content: textMateContent.monarch });
 
   return { parserInfo, assemblyScriptFiles, javascriptWrapper };
 }

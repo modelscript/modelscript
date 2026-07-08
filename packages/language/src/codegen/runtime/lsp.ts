@@ -408,15 +408,12 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           // We MUST NOT skip FLAG_IS_INSERTED or NODE_TYPE_ERROR, because the
           // semantic data indices are pre-compiled and expect all structural terminals to exist.
           // Skipping them would desynchronize childCount and corrupt subsequent token colors.
-          let isSkippable = (cFlags & FLAG_INVISIBLE) != 0;
-          if (!isSkippable) {
-            if (childCount == childIdx) {
-              targetChild = child;
-              childOffset = currOffset + cPad;
-              break;
-            }
-            childCount++;
+          if (childCount == childIdx) {
+            targetChild = child;
+            childOffset = currOffset + cPad;
+            break;
           }
+          childCount++;
           currOffset += cPad + cLen;
           child = getNodeNextSibling(child);
         }

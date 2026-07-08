@@ -602,6 +602,20 @@ export function alias<F extends string = never>(rule: RuleLike<F>, name: string 
   return { type: "ALIAS", value: nameValue, children: [toRule(rule)] };
 }
 
+export type TokenClass = "keyword" | "type" | "operator" | "string" | "number" | "comment" | "punctuation";
+
+export function syntaxToken<F extends string = never>(tokenClass: TokenClass, rule: RuleLike<F>): any {
+  return { type: "SYNTAX_TOKEN", value: tokenClass, children: [toRule(rule)] };
+}
+
+export function keyword<F extends string = never>(rule: RuleLike<F>): any {
+  return syntaxToken("keyword", rule);
+}
+
+export function op<F extends string = never>(rule: RuleLike<F>): any {
+  return syntaxToken("operator", rule);
+}
+
 export type SemanticTokenType =
   | "namespace"
   | "type"

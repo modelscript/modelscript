@@ -9,7 +9,7 @@ import {
 
 import { TextDocument } from "vscode-languageserver-textdocument";
 
-import { keywords, typeKeywords } from "../utils/keywords";
+import { typeKeywords } from "../utils/keywords";
 
 const tokenTypes = [
   "keyword",
@@ -444,36 +444,43 @@ export function registerSemanticTokensProvider(
       let tokenType: string | null = null;
       const modifier = 0;
 
-      const isKeyword = keywords.includes(node.type) || typeKeywords.includes(node.type);
-
-      if (isKeyword) {
-        tokenType = "keyword";
-      } else if (node.type === "IDENT") {
+      if (node.type === "IDENT" || node.type === "identifier") {
         const parent = node.parent;
         let p = parent;
-        while (p && p.type === "Name") {
+        while (p && (p.type === "Name" || p.type === "name")) {
           p = p.parent;
         }
 
         if (
           p?.type === "LongClassSpecifier" ||
+          p?.type === "long_class_specifier" ||
           p?.type === "ShortClassSpecifier" ||
+          p?.type === "short_class_specifier" ||
           p?.type === "DerClassSpecifier" ||
+          p?.type === "der_class_specifier" ||
           p?.type === "WithinDirective" ||
+          p?.type === "within_clause" ||
           p?.type === "ExtendsClause" ||
-          p?.type === "TypeSpecifier"
+          p?.type === "extends_clause" ||
+          p?.type === "TypeSpecifier" ||
+          p?.type === "type_specifier"
         ) {
           tokenType = "type";
-        } else if (p?.type === "Declaration") {
+        } else if (p?.type === "Declaration" || p?.type === "component_declaration" || p?.type === "declaration") {
           tokenType = "variable";
         } else if (typeKeywords.includes(node.text)) {
           tokenType = "type";
         } else {
           tokenType = "variable";
         }
-      } else if (node.type === "STRING") {
+      } else if (node.type === "STRING" || node.type === "string_literal" || node.type === "description_string") {
         tokenType = "string";
-      } else if (node.type === "UNSIGNED_INTEGER" || node.type === "UNSIGNED_REAL") {
+      } else if (
+        node.type === "UNSIGNED_INTEGER" ||
+        node.type === "UNSIGNED_REAL" ||
+        node.type === "unsigned_integer" ||
+        node.type === "unsigned_real"
+      ) {
         tokenType = "number";
       } else if (node.type === "comment") {
         tokenType = "comment";

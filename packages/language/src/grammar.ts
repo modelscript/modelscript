@@ -60,6 +60,9 @@ export class SymbolNormalizer implements RuleNormalizer {
 
 export class TokenNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+    if (rule.children && rule.children.length > 0 && rule.value === undefined) {
+      return g.flatten(ctx, rule.children[0], p);
+    }
     const val = rule.value !== undefined ? rule.value : rule.arg;
     if (typeof val !== "string" && !(val instanceof RegExp)) {
       throw new Error(`Invalid token value in context '${ctx}': expected string or RegExp, got ${typeof val}`);
@@ -71,7 +74,10 @@ export class TokenNormalizer implements RuleNormalizer {
     g.terminals.add(tokenName);
     return [{ sym: tokenName }];
   }
-  getEBNF(g: NormalizedGrammar, rule: any): string {
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    if (rule.children && rule.children.length > 0 && rule.value === undefined) {
+      return g.getEBNF(getChild(rule));
+    }
     return typeof rule.value === "string"
       ? `"${rule.value}"`
       : rule.value instanceof RegExp
@@ -286,6 +292,15 @@ export class SemanticNormalizer implements RuleNormalizer {
   }
 }
 
+export class SyntaxTokenNormalizer implements RuleNormalizer {
+  normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
+    return g.flatten(ctx, children[0], p);
+  }
+  getEBNF(g: NormalizedGrammar, rule: any, getChild: any): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
+
 export class SyncNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const tokens = rule.value as string[];
@@ -319,6 +334,7 @@ export const RULE_NORMALIZERS: Record<string, RuleNormalizer> = {
   TOKEN_IMMEDIATE: new DefRefNormalizer(),
   ALIAS: new AliasNormalizer(),
   SEMANTIC: new SemanticNormalizer(),
+  SYNTAX_TOKEN: new SyntaxTokenNormalizer(), // Transparently pass through syntax tokens
   SYNC: new SyncNormalizer(),
 };
 
@@ -360,8 +376,10 @@ export class NormalizedGrammar {
         get: (target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
     );
+    console.log("Type of conflicts:", typeof grammar.conflicts);
     if (typeof grammar.conflicts === "function") {
       const confs = grammar.conflicts(dummy$ as any) as any[][];
+      console.log("Raw conflicts:", JSON.stringify(confs, null, 2));
       this.conflicts = confs.map((group) =>
         group
           .map((rule) => {
@@ -401,10 +419,14 @@ export class NormalizedGrammar {
       for (const [key, resolver] of Object.entries(grammar.reserved)) {
         const rules = resolver(dummy$ as any).map(toRule);
         const tokens = new Set<string>();
-        for (const r of rules) {
+        const extractToken = (r: Rule<any>) => {
           if (r.type === "SYMBOL") tokens.add(r.value as string);
           else if (r.type === "TOKEN") tokens.add(`"${r.value}"`);
-        }
+          else if (r.type === "SYNTAX_TOKEN" && r.children) {
+            for (const child of r.children) extractToken(child);
+          }
+        };
+        for (const r of rules) extractToken(r);
         this.reservedKeywords.set(key, tokens);
       }
     }

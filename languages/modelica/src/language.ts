@@ -105,13 +105,7 @@ export const modelicaLanguage = language({
       "when_equation",
       "when_statement",
     ],
-    outline: [
-      "class_definition",
-      "component_declaration",
-      "short_class_specifier",
-      "long_class_specifier",
-      "der_class_specifier",
-    ],
+    outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
   },
 
   rules: {
@@ -149,7 +143,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          $.identifier,
+          semanticToken("class", $.identifier, ["declaration"]),
         ),
         seq(
           "extends",
@@ -158,7 +152,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          $.identifier,
+          semanticToken("class", $.identifier, ["declaration"]),
         ),
       ),
 
@@ -300,11 +294,7 @@ export const modelicaLanguage = language({
     condition_attribute: ($) => seq("if", $.expression),
 
     declaration: ($) =>
-      seq(
-        semanticToken("variable", $.identifier, ["declaration"]),
-        optional($.array_subscripts),
-        optional($.modification),
-      ),
+      seq(semanticToken("property", $.identifier), optional($.array_subscripts), optional($.modification)),
 
     // A.2.5 Modification
     modification: ($) =>
@@ -512,16 +502,16 @@ export const modelicaLanguage = language({
 
     unit_of_measurement: ($) => $.identifier, // Maps to Q-IDENT, handled in tokenizer
 
-    type_specifier: ($) => semanticToken("type", seq(optional("."), $.name)),
+    type_specifier: ($) => seq(optional("."), semanticToken("class", $.name, ["declaration"])),
 
     name: ($) => seq($.identifier, repeat(seq(".", $.identifier))),
 
     component_reference: ($) =>
       seq(
         optional("."),
-        semanticToken("variable", $.identifier),
+        semanticToken("property", $.identifier),
         optional($.array_subscripts),
-        repeat(seq(".", semanticToken("variable", $.identifier), optional($.array_subscripts))),
+        repeat(seq(".", semanticToken("property", $.identifier), optional($.array_subscripts))),
       ),
 
     result_reference: ($) =>
@@ -576,7 +566,8 @@ export const modelicaLanguage = language({
     unsigned_integer: () => semanticToken("number", token(/\d+/)),
     unsigned_real: () =>
       semanticToken("number", token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/)),
+    comment: () => semanticToken("comment", token(choice(/\/\/.*/, /\/\*[\s\S]*?\*\//))),
   },
 
-  extras: () => [/\s+/, /\/\/.*/],
+  extras: ($) => [/\s+/, $.comment],
 });
