@@ -568,12 +568,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         const tokenNames = dfa.accepts[s]!;
         lexerCode += `      case ${s}: {\n`;
 
-        if (tokenNames.length > 1) {
-          lexerCode += `        // Lexical tie-breaking\n`;
-          for (const tName of tokenNames) {
-            lexerCode += `        if (load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
-          }
-        }
         const tokenName = tokenNames[0];
 
         let isWordToken = false;
@@ -611,6 +605,13 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
             lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.T_${kwTokenInt}) == 1) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `           if (load<u8>(expected_tokens + <u32>SyntaxType.${tokenName}) == 0) return SyntaxType.T_${kwTokenInt};\n`;
             lexerCode += `        }\n`;
+          }
+        }
+
+        if (tokenNames.length > 1) {
+          lexerCode += `        // Lexical tie-breaking\n`;
+          for (const tName of tokenNames) {
+            lexerCode += `        if (load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
           }
         }
 

@@ -3,7 +3,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs, token_delete_costs,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode, ACTION_REDUCE
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxDepth } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxDepth, virtual_token_queue, setVirtualTokenCount } from "./parser-loop";
 import { prod_lengths, prod_lhs } from "./parser";
 import { 
   getNodePadding, 
@@ -190,7 +190,7 @@ export function recoverUnwindAndMutate(
   token: i32,
   inputLength: u32,
   bestAcceptedCost: i32
-): void {
+): boolean {
         // === ERROR RECOVERY ENTRY ===
         
         // ERROR BRANCH A & B: Unwind and Mutate
@@ -203,6 +203,7 @@ export function recoverUnwindAndMutate(
         // Branch B: Inserting a missing token (virtual shift)
         let unwindCurr: ParseHead | null = head;
         let unwindDepth = 0;
+        debugLog(999, configEnableBranchB ? 1 : 0, 0, 0);
         while (unwindCurr != null && unwindDepth < 3) {
           let recState = unwindCurr.state;
           let recPrev = unwindCurr.prev;
@@ -490,6 +491,8 @@ export function recoverUnwindAndMutate(
             let savedSrcLexPosB = srcLexPos;
             let savedScannerStateB = currentScannerState;
 
+            debugLog(1001, 0, 0, 0); // Branch B started
+
             memory.fill(changetype<usize>(expected_tokens), 1, 2048);
 
             let laScanPos = head.pos;
@@ -499,7 +502,8 @@ export function recoverUnwindAndMutate(
             for (let skip = 0; skip <= 3; skip++) {
               if (laScanPos >= inputLength) {
                 if (skip == 0 && token == TOKEN_EOF) {
-                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 20, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 100, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+                  debugLog(1002, seqLen, 0, 0);
                   if (seqLen > 0) candidateViable = true;
                 }
                 break;
@@ -509,7 +513,8 @@ export function recoverUnwindAndMutate(
               let laTok = lex(laScanPos);
               let laEnd = srcLexPos + lexLen;
 
-              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 20, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 100, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+              debugLog(1003, seqLen, 0, 0);
               if (seqLen > 0) {
                 candidateViable = true;
                 break;
@@ -550,41 +555,29 @@ export function recoverUnwindAndMutate(
                 }
                 let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
 
-                let currentHead = unwindCurr;
-                let isValidPath = true;
+                let currentHead = allocParseHead(
+                  unwindCurr.state,
+                  unwindCurr.astNode,
+                  unwindCurr.prev,
+                  unwindCurr.pos,
+                  initialScannerState,
+                  head.errorCost + actualCost,
+                  0,
+                  unwindCurr.balanceHash,
+                  head.consecutiveInsertions + seqLen,
+                  unwindCurr.dynamicPrec,
+                  unwindCurr.pendingPadding,
+                  head.errorTail
+                );
 
                 for (let k = 0; k < seqLen; k++) {
-                  let sym = t_branchB_outTokens[k];
-                  let targetState = t_branchB_outStates[k];
-
-                  let virtualLeaf = allocNode(sym as u16, 0, 0, newBalance & 0xff);
-                  let ptr = virtualLeaf as usize;
-                  changetype<ASTNode>(ptr).flags |= FLAG_IS_INSERTED;
-
-                  currentHead = allocParseHead(
-                    targetState,
-                    virtualLeaf,
-                    currentHead,
-                    head.pos,
-                    initialScannerState,
-                    head.errorCost + actualCost,
-                    0,
-                    newBalance,
-                    head.consecutiveInsertions + seqLen,
-                    recPrec,
-                    uPadding + bDropped,
-                    head.errorTail
-                  );
-
-                  if (targetState == currentHead.prev!.state) {
-                    isValidPath = false;
-                    break;
-                  }
+                  virtual_token_queue[k] = t_branchB_outTokens[k];
                 }
+                setVirtualTokenCount(seqLen);
 
-                if (isValidPath) {
-                  pushActiveHead(changetype<u32>(currentHead));
-                }
+                pushActiveHead(changetype<u32>(currentHead));
+                debugLog(1004, actualCost, 0, 0);
+                return true;
               }
             }
           }
@@ -593,6 +586,7 @@ export function recoverUnwindAndMutate(
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
         }
+        return false;
 }
 @inline
 export function recoverIslandMode(

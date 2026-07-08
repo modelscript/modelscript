@@ -34,7 +34,6 @@ import {
   repeat,
   repeat1,
   seq,
-  token,
   warning,
   type QueryDB,
   type Rule,
@@ -7013,85 +7012,18 @@ const modelicaLang = language({
     BOOLEAN: () => choice("false", "true"),
 
     IDENT: () =>
-      token(
-        choice(
-          seq(
-            /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
-            repeat(
-              choice(
-                /[0-9]/,
-                /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
-              ),
-            ),
-          ),
-          // Q-IDENT: 'quoted identifier'
-          seq(
-            "'",
-            repeat(
-              choice(
-                /[_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/,
-                /[0-9]/,
-                "!",
-                "#",
-                "$",
-                "%",
-                "&",
-                "(",
-                ")",
-                "*",
-                "+",
-                ",",
-                "-",
-                ".",
-                "/",
-                ":",
-                ";",
-                "<",
-                ">",
-                "=",
-                "?",
-                "@",
-                "[",
-                "]",
-                "^",
-                "{",
-                "}",
-                "|",
-                "~",
-                " ",
-                '"',
-                seq("\\", choice("'", '"', "?", "\\", "a", "b", "f", "n", "r", "t", "v")),
-              ),
-            ),
-            "'",
-          ),
-        ),
-      ),
+      /([_a-zA-Z\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF][_a-zA-Z0-9\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0E00-\u0E7F\u0E80-\u0EFF\u1000-\u109F\u1100-\u11FF\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]*|'([^'\\]|\\.)*')/,
     /* eslint-enable no-control-regex */
 
-    STRING: () =>
-      token(
-        seq(
-          '"',
-          repeat(choice(/[^"\\]/, seq("\\", choice("'", '"', "?", "\\", "a", "b", "f", "n", "r", "t", "v")))),
-          '"',
-        ),
-      ),
+    STRING: () => /"([^"\\]|\\['"?\\abfnrtv])*"/,
 
     UNSIGNED_INTEGER: () => /[0-9]+/,
 
-    UNSIGNED_REAL: () =>
-      token(
-        choice(
-          seq(/[0-9]+/, ".", optional(/[0-9]+/)),
-          seq(/[0-9]+/, optional(seq(".", optional(/[0-9]+/))), choice("e", "E"), optional(choice("+", "-")), /[0-9]+/),
-          seq(".", /[0-9]+/, optional(seq(choice("e", "E"), optional(choice("+", "-")), /[0-9]+/))),
-        ),
-      ),
+    UNSIGNED_REAL: () => /([0-9]+\.[0-9]*|[0-9]*\.[0-9]+)([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+/,
 
-    BLOCK_COMMENT: () => token(seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/")),
+    BLOCK_COMMENT: () => /\/\*[^*]*\*+([^/*][^*]*\*+)*\//,
 
-    LINE_COMMENT: () => token(seq("//", /[^\r\n]*/)),
+    LINE_COMMENT: () => /\/\/[^\r\n]*/,
 
     BOM: () => /\u00EF\u00BB\u00BF/,
   },

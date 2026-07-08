@@ -72,7 +72,7 @@ export const Build: CommandModule<{}, BuildArgs> = {
     console.log(`Compiling AssemblyScript to WASM...`);
     try {
       execSync(
-        `npx --no asc ${absoluteEntry} -o ${wasmPath} --exportRuntime --runtime stub -O3 --importMemory --initialMemory 4000 --maximumMemory 16000 --sharedMemory --enable threads --disableWarning`,
+        `npx --no asc ${absoluteEntry} -o ${wasmPath} --exportRuntime --runtime stub -O1 --importMemory --initialMemory 4000 --maximumMemory 16000 --sharedMemory --enable threads --disableWarning`,
         { stdio: "inherit" },
       );
     } catch {
