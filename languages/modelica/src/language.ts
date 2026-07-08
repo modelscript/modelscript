@@ -93,6 +93,10 @@ export const modelicaLanguage = language({
 
   lsp: {
     fileExtension: ".mo",
+    icons: {
+      light: "./assets/icon-light.png",
+      dark: "./assets/icon-dark.png",
+    },
     folding: [
       "class_definition",
       "equation_section",

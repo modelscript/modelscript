@@ -451,6 +451,11 @@ export interface LanguageOptions<
   lsp?: {
     /** The file extension associated with this language (e.g. '.mo'). Defaults to '.<name>' */
     fileExtension?: string;
+    /** Relative paths to light and dark mode file icons */
+    icons?: {
+      light: string;
+      dark: string;
+    };
     /** List of node types that can be folded */
     folding?: NoInfer<RuleName>[];
     /** List of node types that define a new variable scope */

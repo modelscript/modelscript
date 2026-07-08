@@ -82,6 +82,30 @@ export async function startVscodeExtension(outDir: string, grammarName: string, 
   const langId = grammarName.toLowerCase();
   const fileExt = grammarDef.lsp?.fileExtension || `.${langId}`;
 
+  const langConfig: any = {
+    id: langId,
+    extensions: [fileExt],
+  };
+
+  if (grammarDef.lsp?.icons) {
+    const extIconsDir = path.join(extDir, "icons");
+    fs.mkdirSync(extIconsDir, { recursive: true });
+
+    const lightPath = path.resolve(process.cwd(), grammarDef.lsp.icons.light);
+    const darkPath = path.resolve(process.cwd(), grammarDef.lsp.icons.dark);
+
+    if (fs.existsSync(lightPath) && fs.existsSync(darkPath)) {
+      const lightExt = path.extname(lightPath);
+      const darkExt = path.extname(darkPath);
+      fs.copyFileSync(lightPath, path.join(extIconsDir, `light${lightExt}`));
+      fs.copyFileSync(darkPath, path.join(extIconsDir, `dark${darkExt}`));
+      langConfig.icon = {
+        light: `./icons/light${lightExt}`,
+        dark: `./icons/dark${darkExt}`,
+      };
+    }
+  }
+
   const packageJson = {
     name: `${langId}-lang`,
     publisher: "modelscript",
@@ -92,12 +116,7 @@ export async function startVscodeExtension(outDir: string, grammarName: string, 
     browser: "./dist/extension.js",
     activationEvents: ["onLanguage:" + langId],
     contributes: {
-      languages: [
-        {
-          id: langId,
-          extensions: [fileExt],
-        },
-      ],
+      languages: [langConfig],
       grammars: [
         {
           language: langId,
@@ -123,7 +142,6 @@ export async function startVscodeExtension(outDir: string, grammarName: string, 
   } catch (e) {
     try {
       const mod = await import("@modelscript/language");
-      // @ts-expect-error - Type might not be fully resolved in dev environment
       const tm = mod.generateTextMate(grammarDef);
       fs.writeFileSync(path.join(syntaxesDir, "tmLanguage.json"), tm.tm, "utf-8");
     } catch (e2) {
@@ -781,8 +799,12 @@ export function deactivate() {}
     }
 
     // Open the workspace subdirectory
-    const workspaceFolder = path.resolve(outDir, "..", "..", "workspace");
-    if (!fs.existsSync(workspaceFolder)) {
+    let workspaceFolder = path.resolve(outDir, "..", "..", "workspace");
+    const examplesDir = path.resolve(outDir, "..", "..", "examples");
+
+    if (fs.existsSync(examplesDir) && fs.statSync(examplesDir).isDirectory()) {
+      workspaceFolder = examplesDir;
+    } else if (!fs.existsSync(workspaceFolder)) {
       fs.mkdirSync(workspaceFolder, { recursive: true });
 
       // Auto-generate some example files based on the language
