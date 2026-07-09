@@ -3,7 +3,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, PENALTY_UNWIND_NODE, token_insert_costs, token_delete_costs,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode, ACTION_REDUCE
 } from "./engine";
-import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxDepth, virtual_token_queue, setVirtualTokenCount } from "./parser-loop";
+import { stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxDepth } from "./parser-loop";
 import { prod_lengths, prod_lhs } from "./parser";
 import { 
   getNodePadding, 
@@ -502,9 +502,9 @@ export function recoverUnwindAndMutate(
             for (let skip = 0; skip <= 3; skip++) {
               if (laScanPos >= inputLength) {
                 if (skip == 0 && token == TOKEN_EOF) {
-                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 100, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 100, 0, 3, t_branchB_outTokens, t_branchB_outStates);
                   debugLog(1002, seqLen, 0, 0);
-                  if (seqLen > 0) candidateViable = true;
+                  if (seqLen > 0 && seqLen <= 3) candidateViable = true;
                 }
                 break;
               }
@@ -513,9 +513,9 @@ export function recoverUnwindAndMutate(
               let laTok = lex(laScanPos);
               let laEnd = srcLexPos + lexLen;
 
-              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 100, 0, 6, t_branchB_outTokens, t_branchB_outStates);
+              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 100, 0, 3, t_branchB_outTokens, t_branchB_outStates);
               debugLog(1003, seqLen, 0, 0);
-              if (seqLen > 0) {
+              if (seqLen > 0 && seqLen <= 3) {
                 candidateViable = true;
                 break;
               }
@@ -555,6 +555,10 @@ export function recoverUnwindAndMutate(
                 }
                 let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
 
+                let v0 = seqLen > 0 ? t_branchB_outTokens[0] : 0;
+                let v1 = seqLen > 1 ? t_branchB_outTokens[1] : 0;
+                let v2 = seqLen > 2 ? t_branchB_outTokens[2] : 0;
+                
                 let currentHead = allocParseHead(
                   unwindCurr.state,
                   unwindCurr.astNode,
@@ -567,13 +571,9 @@ export function recoverUnwindAndMutate(
                   head.consecutiveInsertions + seqLen,
                   unwindCurr.dynamicPrec,
                   unwindCurr.pendingPadding,
-                  head.errorTail
+                  head.errorTail,
+                  v0, v1, v2, seqLen
                 );
-
-                for (let k = 0; k < seqLen; k++) {
-                  virtual_token_queue[k] = t_branchB_outTokens[k];
-                }
-                setVirtualTokenCount(seqLen);
 
                 pushActiveHead(changetype<u32>(currentHead));
                 debugLog(1004, actualCost, 0, 0);
@@ -853,8 +853,10 @@ export function recoverIslandMode(
               // Branch the GSS from the recovery anchor, shifting the new ERROR node.
               // We give it an artificially low errorCost so it ALWAYS survives the
               // primary culling phase against greedy local insertions, ensuring global recovery completes.
+              let nextConsecutive = ((resumePos as u32) == head.pos) ? head.consecutiveInsertions : 0;
+
               let islandHead = allocParseHead(
-                foundTarget,
+                currPop.state, // MUST be currPop.state so virtual tokens can be shifted from the initial anchor
                 islandLeaf,
                 currPop,
                 resumePos,
@@ -862,10 +864,11 @@ export function recoverIslandMode(
                 islandCost,
                 0,
                 foundBalance,
-                ((resumePos as u32) == head.pos) ? head.consecutiveInsertions : 0, // consecutiveInsertions
+                nextConsecutive,
                 head.dynamicPrec,
                 0, // pendingPadding
                 newTail,
+                0, 0, 0, 0 // No virtual tokens in Island Mode
               );
               pushActiveHead(changetype<u32>(islandHead));
               

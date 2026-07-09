@@ -1552,7 +1552,7 @@ let bestAcceptedCount: u32 = 0xffffffff;
 let bestAcceptedPad: u32 = 0xffffffff;
 
 
-function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32): void {
+function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean): void {
   let newBalance = head.balanceHash;
   let charLen = peekCharLen(lexPos);
   if (lexLen == charLen) {
@@ -1563,13 +1563,30 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32):
 
   let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
   let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
+  
+  let vq0 = head.virtualQueue0;
+  let vq1 = head.virtualQueue1;
+  let vq2 = head.virtualQueue2;
+  let vCount = head.virtualQueueCount;
+
+  if (isVirtual) {
+    setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED);
+    if (vCount > 0) {
+      vq0 = (vq0 >>> 16) | ((vq1 & 0xFFFF) << 16);
+      vq1 = (vq1 >>> 16) | ((vq2 & 0xFFFF) << 16);
+      vq2 = (vq2 >>> 16);
+      vCount--;
+    }
+  }
 
   let nPos = srcLexPos + lexLen;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
+  let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
 
   let newHead = allocParseHead(
-    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, 0, head.dynamicPrec, 0, head.errorTail
+    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
+    vq0, vq1, vq2, vCount
   );
 
   let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
@@ -2150,7 +2167,8 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
             let newHead = allocParseHead(
               nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + (missingCount * 50),
               head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-              head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
+              head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
+              head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueueCount
             );
             pushActiveHead(changetype<u32>(newHead));
             reduced = true;
@@ -2293,6 +2311,8 @@ function pruneGSS(pos: u32): void {
   }
 }
 
+
+
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
   globalIsCatastrophic = false;
   globalSearchIterations = 0;
@@ -2306,6 +2326,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     t_tokenBufferLenArena = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
     t_lrStateStack = createChunkedUint32Array(10000);
     t_lrNodeStack = createChunkedUint32Array(10000);
+
     initQueryArena();
   } else {
     t_lrStateStack.clear();
@@ -2346,6 +2367,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     tokenBufferWriteIdx = 0;
     tokenBufferReadIdx = 0;
     tokenBufferLastPos = 0;
+
+
 
     initGlobalCursor(oldTree);
 
@@ -2575,7 +2598,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       }
     }
 
-    if (tokenBufferReadIdx < tokenBufferWriteIdx) {
+    let is_current_token_virtual = false;
+    if (head.virtualQueueCount > 0) {
+      token = head.virtualQueue0 & 0xFFFF;
+      lexLen = 0;
+      is_current_token_virtual = true;
+    } else if (tokenBufferReadIdx < tokenBufferWriteIdx) {
       let rIdx = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
       token = t_tokenBufferArena[rIdx];
       lexLen = t_tokenBufferLenArena[rIdx];
@@ -2600,6 +2628,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           }
         }
       }
+      
       token = invokeLexer(pos);
       while (load<u8>(is_extra_token + token) == 1) {
         head.pendingPadding += lexLen;
@@ -2819,7 +2848,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
           // TYPE 0: SHIFT ACTION
           // --------------------------------------------------------------------
           if (type == ACTION_SHIFT) {
-            processShiftAction(head, target, token, pos);
+            processShiftAction(head, target, token, pos, is_current_token_virtual);
             anyAction = true;
           } else if (type == ACTION_REDUCE) {
             if (processReduceAction(head, target, pos)) {
@@ -2883,6 +2912,13 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let count2 = action_data[actionOffset];
       let idx2 = actionOffset + 1;
       let reduced = false;
+
+      // If we hallucinated a token that caused an error, the recovery path is dead.
+      // Do not attempt to recover from our own recoveries, as this causes infinite loops.
+      if (is_current_token_virtual) {
+         pruneGSS(pos);
+         continue;
+      }
 
       // --------------------------------------------------------------------
       // ERROR BRANCH A & B: Token Deletion / Insertion (via Unwind & Mutate)

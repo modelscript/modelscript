@@ -60,6 +60,10 @@ export class ParseHead {
   dynamicPrec: i32;
   pendingPadding: u32;
   errorTail: u32;
+  virtualQueue0: u32;
+  virtualQueue1: u32;
+  virtualQueue2: u32;
+  virtualQueueCount: u32;
 }
 
 export function allocParseHead(
@@ -75,8 +79,12 @@ export function allocParseHead(
   dynamicPrec: i32 = 0,
   pendingPadding: u32 = 0,
   errorTail: u32 = 0,
+  virtualQueue0: u32 = 0,
+  virtualQueue1: u32 = 0,
+  virtualQueue2: u32 = 0,
+  virtualQueueCount: u32 = 0,
 ): ParseHead {
-  let ptr = allocGen0(48);
+  let ptr = allocGen0(64);
   let h = changetype<ParseHead>(ptr);
   h.state = state;
   h.astNode = astNode;
@@ -90,6 +98,10 @@ export function allocParseHead(
   h.dynamicPrec = dynamicPrec;
   h.pendingPadding = pendingPadding;
   h.errorTail = errorTail;
+  h.virtualQueue0 = virtualQueue0;
+  h.virtualQueue1 = virtualQueue1;
+  h.virtualQueue2 = virtualQueue2;
+  h.virtualQueueCount = virtualQueueCount;
   return h;
 }
 
