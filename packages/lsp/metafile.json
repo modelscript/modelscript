@@ -2185,6 +2185,241 @@
       ],
       "format": "esm"
     },
+    "../language/build/src-gen/runtime-templates.js": {
+      "bytes": 418510,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
+      "format": "esm"
+    },
+    "../language/dist/bindings/javascript/index.js": {
+      "bytes": 5014,
+      "imports": [
+        {
+          "path": "../language/build/src-gen/runtime-templates.js",
+          "kind": "import-statement",
+          "original": "../../../build/src-gen/runtime-templates.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/automata.js": {
+      "bytes": 52032,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/dsl.js": {
+      "bytes": 9097,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/grammar.js": {
+      "bytes": 21562,
+      "imports": [
+        { "path": "../language/dist/dsl.js", "kind": "import-statement", "original": "./dsl.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/compile_rules.js": {
+      "bytes": 11859,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/egraph.js": {
+      "bytes": 20250,
+      "imports": [
+        {
+          "path": "../language/dist/codegen/compile_rules.js",
+          "kind": "import-statement",
+          "original": "./compile_rules.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "(disabled):perf_hooks": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:fs": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:os": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:crypto": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "(disabled):../../node_modules/source-map-support/source-map-support.js": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "(disabled):inspector": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "../language/node_modules/typescript/lib/typescript.js": {
+      "bytes": 9144216,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "(disabled):perf_hooks", "kind": "require-call", "original": "perf_hooks" },
+        { "path": "ignore:fs", "kind": "require-call", "original": "fs" },
+        { "path": "ignore:fs", "kind": "require-call", "original": "fs" },
+        { "path": "ignore:path", "kind": "require-call", "original": "path" },
+        { "path": "ignore:os", "kind": "require-call", "original": "os" },
+        { "path": "ignore:crypto", "kind": "require-call", "original": "crypto" },
+        {
+          "path": "(disabled):../../node_modules/source-map-support/source-map-support.js",
+          "kind": "require-call",
+          "original": "source-map-support"
+        },
+        { "path": "(disabled):inspector", "kind": "require-call", "original": "inspector" },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "cjs"
+    },
+    "../language/dist/codegen/graph.js": {
+      "bytes": 27842,
+      "imports": [
+        {
+          "path": "../language/node_modules/typescript/lib/typescript.js",
+          "kind": "import-statement",
+          "original": "typescript"
+        },
+        {
+          "path": "../language/build/src-gen/runtime-templates.js",
+          "kind": "import-statement",
+          "original": "../../build/src-gen/runtime-templates.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/lexer.js": {
+      "bytes": 33221,
+      "imports": [
+        { "path": "../language/dist/automata.js", "kind": "import-statement", "original": "../automata.js" },
+        { "path": "../language/dist/dsl.js", "kind": "import-statement", "original": "../dsl.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/utils.js": {
+      "bytes": 218,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/reasoner.js": {
+      "bytes": 35334,
+      "imports": [
+        { "path": "../language/dist/codegen/utils.js", "kind": "import-statement", "original": "./utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/types.js": {
+      "bytes": 3660,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/typesys.js": {
+      "bytes": 28041,
+      "imports": [
+        { "path": "../language/dist/codegen/utils.js", "kind": "import-statement", "original": "./utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/parser.js": {
+      "bytes": 17889,
+      "imports": [
+        { "path": "../language/dist/automata.js", "kind": "import-statement", "original": "../automata.js" },
+        { "path": "../language/dist/grammar.js", "kind": "import-statement", "original": "../grammar.js" },
+        {
+          "path": "../language/build/src-gen/runtime-templates.js",
+          "kind": "import-statement",
+          "original": "../../build/src-gen/runtime-templates.js"
+        },
+        { "path": "../language/dist/codegen/egraph.js", "kind": "import-statement", "original": "./egraph.js" },
+        { "path": "../language/dist/codegen/graph.js", "kind": "import-statement", "original": "./graph.js" },
+        { "path": "../language/dist/codegen/lexer.js", "kind": "import-statement", "original": "./lexer.js" },
+        { "path": "../language/dist/codegen/reasoner.js", "kind": "import-statement", "original": "./reasoner.js" },
+        { "path": "../language/dist/codegen/types.js", "kind": "import-statement", "original": "./types.js" },
+        { "path": "../language/dist/codegen/typesys.js", "kind": "import-statement", "original": "./typesys.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/codegen/textmate.js": {
+      "bytes": 6846,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/api.js": {
+      "bytes": 1436,
+      "imports": [
+        {
+          "path": "../language/dist/bindings/javascript/index.js",
+          "kind": "import-statement",
+          "original": "./bindings/javascript/index.js"
+        },
+        { "path": "../language/dist/codegen/parser.js", "kind": "import-statement", "original": "./codegen/parser.js" },
+        {
+          "path": "../language/dist/codegen/textmate.js",
+          "kind": "import-statement",
+          "original": "./codegen/textmate.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../language/dist/index.js": {
+      "bytes": 222,
+      "imports": [
+        { "path": "../language/dist/api.js", "kind": "import-statement", "original": "./api.js" },
+        { "path": "../language/dist/automata.js", "kind": "import-statement", "original": "./automata.js" },
+        { "path": "../language/dist/codegen/parser.js", "kind": "import-statement", "original": "./codegen/parser.js" },
+        {
+          "path": "../language/dist/codegen/textmate.js",
+          "kind": "import-statement",
+          "original": "./codegen/textmate.js"
+        },
+        { "path": "../language/dist/dsl.js", "kind": "import-statement", "original": "./dsl.js" },
+        { "path": "../language/dist/grammar.js", "kind": "import-statement", "original": "./grammar.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
     "../../languages/modelica/dist/modification-args.js": {
       "bytes": 11142,
       "imports": [
@@ -2194,9 +2429,10 @@
       "format": "esm"
     },
     "../../languages/modelica/dist/language.js": {
-      "bytes": 344504,
+      "bytes": 344795,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../language/dist/index.js", "kind": "import-statement", "original": "@modelscript/language" },
         {
           "path": "../../languages/modelica/dist/modification-args.js",
           "kind": "import-statement",
@@ -2233,7 +2469,7 @@
       "format": "esm"
     },
     "../../languages/modelica/dist/flattener-query.js": {
-      "bytes": 249889,
+      "bytes": 250705,
       "imports": [
         {
           "path": "../../languages/modelica/dist/language.js",
@@ -2293,7 +2529,7 @@
       "format": "esm"
     },
     "../../languages/csv/dist/src-gen/config.js": {
-      "bytes": 432,
+      "bytes": 431,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -2307,7 +2543,7 @@
       "format": "esm"
     },
     "../../languages/csv/dist/src-gen/query-hooks.js": {
-      "bytes": 2372,
+      "bytes": 2274,
       "imports": [
         { "path": "../../languages/csv/dist/language.js", "kind": "import-statement", "original": "../language.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -5110,7 +5346,7 @@
       "format": "esm"
     },
     "src/providers/semanticTokensProvider.ts": {
-      "bytes": 13280,
+      "bytes": 13689,
       "imports": [
         {
           "path": "../../node_modules/vscode-languageserver/lib/browser/main.js",
@@ -5259,7 +5495,7 @@
       "format": "esm"
     },
     "../compiler/dist/simulator/evaluator/eval-runtime.js": {
-      "bytes": 18043,
+      "bytes": 18406,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -5367,8 +5603,36 @@
       ],
       "format": "esm"
     },
+    "ignore:node:url": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:node:path": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:node:module": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "ignore:node:fs": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "../compiler/dist/simulator/solvers/sundials-wasm.js": {
+      "bytes": 5226,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "ignore:node:url", "kind": "dynamic-import", "original": "node:url" },
+        { "path": "ignore:node:path", "kind": "dynamic-import", "original": "node:path" },
+        { "path": "ignore:node:module", "kind": "dynamic-import", "original": "node:module" },
+        { "path": "ignore:node:fs", "kind": "dynamic-import", "original": "node:fs" },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
     "../compiler/dist/simulator/core/simulator.js": {
-      "bytes": 72757,
+      "bytes": 81266,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         {
@@ -5412,6 +5676,11 @@
           "original": "../solvers/dopri5.js"
         },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        {
+          "path": "../compiler/dist/simulator/solvers/sundials-wasm.js",
+          "kind": "dynamic-import",
+          "original": "../solvers/sundials-wasm.js"
+        },
         { "path": "<runtime>", "kind": "import-statement", "external": true }
       ],
       "format": "esm"
@@ -5454,7 +5723,7 @@
       "format": "esm"
     },
     "../compiler/dist/simulator/core/simulate-arena.js": {
-      "bytes": 12017,
+      "bytes": 12563,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         {
@@ -5616,24 +5885,6 @@
       ],
       "format": "esm"
     },
-    "ignore:node:url": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
-    "ignore:node:path": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
-    "../compiler/dist/simulator/solvers/sundials-wasm.js": {
-      "bytes": 8176,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "ignore:node:url", "kind": "dynamic-import", "original": "node:url" },
-        { "path": "ignore:node:path", "kind": "dynamic-import", "original": "node:path" },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
     "../compiler/dist/simulator/uq/monte-carlo.js": {
       "bytes": 36089,
       "imports": [
@@ -5701,7 +5952,7 @@
       "format": "esm"
     },
     "../compiler/dist/simulator/index.js": {
-      "bytes": 1436,
+      "bytes": 1329,
       "imports": [
         {
           "path": "../compiler/dist/simulator/core/simulate-arena.js",
@@ -5817,11 +6068,6 @@
           "path": "../compiler/dist/simulator/solvers/dopri5.js",
           "kind": "import-statement",
           "original": "./solvers/dopri5.js"
-        },
-        {
-          "path": "../compiler/dist/simulator/solvers/sundials-wasm.js",
-          "kind": "import-statement",
-          "original": "./solvers/sundials-wasm.js"
         },
         {
           "path": "../compiler/dist/simulator/surrogates/rom-trainer.js",
@@ -6228,7 +6474,7 @@
       "format": "esm"
     },
     "../compiler/dist/optimizer/solvers/coinor-codegen.js": {
-      "bytes": 17144,
+      "bytes": 17192,
       "imports": [
         { "path": "../symbolics/dist/index.js", "kind": "import-statement", "original": "@modelscript/symbolics" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -6318,7 +6564,7 @@
       "format": "esm"
     },
     "../fmi/dist/fmi3.js": {
-      "bytes": 35927,
+      "bytes": 37664,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -6337,7 +6583,7 @@
       "format": "esm"
     },
     "../fmi/dist/fmi.js": {
-      "bytes": 26709,
+      "bytes": 27850,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -6365,9 +6611,10 @@
       "format": "esm"
     },
     "../fmi/dist/fmu-codegen.js": {
-      "bytes": 97567,
+      "bytes": 124875,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/fmi.js", "kind": "import-statement", "original": "./fmi.js" },
         { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
         { "path": "<runtime>", "kind": "import-statement", "external": true }
@@ -6385,7 +6632,7 @@
       "format": "esm"
     },
     "../fmi/dist/fmu-wasm-codegen.js": {
-      "bytes": 28662,
+      "bytes": 29557,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
@@ -6394,20 +6641,12 @@
       ],
       "format": "esm"
     },
-    "ignore:fs": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
-    "ignore:os": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
     "ignore:child_process": {
       "bytes": 0,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
     },
     "../fmi/dist/fmu-archive.js": {
-      "bytes": 27033,
+      "bytes": 27456,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "../../node_modules/pako/dist/pako.esm.mjs", "kind": "import-statement", "original": "pako" },
@@ -6723,7 +6962,7 @@
       "format": "esm"
     },
     "../fmi/dist/sundials-codegen.js": {
-      "bytes": 9072,
+      "bytes": 9389,
       "imports": [
         { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -7630,10 +7869,6 @@
       ],
       "format": "esm"
     },
-    "ignore:crypto": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
     "../../node_modules/occt-import-js/dist/occt-import-js.js": {
       "bytes": 96871,
       "imports": [
@@ -7931,7 +8166,7 @@
         "../../node_modules/vscode-jsonrpc/lib/browser/ril.js": { "bytesInOutput": 6381 },
         "../../node_modules/vscode-jsonrpc/lib/browser/main.js": { "bytesInOutput": 3250 },
         "../../node_modules/vscode-jsonrpc/browser.js": { "bytesInOutput": 213 },
-        "../../node_modules/vscode-languageserver-types/lib/esm/main.js": { "bytesInOutput": 67926 },
+        "../../node_modules/vscode-languageserver-types/lib/esm/main.js": { "bytesInOutput": 67931 },
         "../../node_modules/vscode-languageserver-protocol/lib/common/messages.js": { "bytesInOutput": 2345 },
         "../../node_modules/vscode-languageserver-protocol/lib/common/utils/is.js": { "bytesInOutput": 1932 },
         "../../node_modules/vscode-languageserver-protocol/lib/common/protocol.implementation.js": {
@@ -8075,7 +8310,7 @@
         "../../node_modules/pako/dist/pako.esm.mjs": { "bytesInOutput": 144189 },
         "../utils/dist/io.js": { "bytesInOutput": 393 },
         "../../node_modules/quick-format-unescaped/index.js": { "bytesInOutput": 3689 },
-        "../../node_modules/pino/browser.js": { "bytesInOutput": 19581 },
+        "../../node_modules/pino/browser.js": { "bytesInOutput": 19593 },
         "../utils/dist/logger.js": { "bytesInOutput": 445 },
         "../utils/dist/tree-sitter.js": { "bytesInOutput": 137 },
         "../utils/dist/types.js": { "bytesInOutput": 125 },
@@ -8083,8 +8318,8 @@
         "../utils/dist/index.js": { "bytesInOutput": 321 },
         "../compiler/dist/scope.js": { "bytesInOutput": 6347 },
         "../compiler/dist/semantic-node.js": { "bytesInOutput": 5486 },
-        "../compiler/dist/semantic-diff.js": { "bytesInOutput": 4105 },
-        "../compiler/dist/symbol-indexer.js": { "bytesInOutput": 23488 },
+        "../compiler/dist/semantic-diff.js": { "bytesInOutput": 4108 },
+        "../compiler/dist/symbol-indexer.js": { "bytesInOutput": 23493 },
         "../compiler/dist/topology.js": { "bytesInOutput": 134 },
         "../compiler/dist/unified-workspace.js": { "bytesInOutput": 16921 },
         "../compiler/dist/verifier.js": { "bytesInOutput": 16730 },
@@ -8094,18 +8329,42 @@
         "../compiler/dist/combinators.js": { "bytesInOutput": 1896 },
         "../compiler/dist/language-dsl.js": { "bytesInOutput": 1300 },
         "../compiler/dist/index.js": { "bytesInOutput": 8830 },
+        "../language/build/src-gen/runtime-templates.js": { "bytesInOutput": 161 },
+        "../language/dist/bindings/javascript/index.js": { "bytesInOutput": 185 },
+        "../language/dist/automata.js": { "bytesInOutput": 401 },
+        "../language/dist/dsl.js": { "bytesInOutput": 6700 },
+        "../language/dist/grammar.js": { "bytesInOutput": 12051 },
+        "../language/dist/codegen/compile_rules.js": { "bytesInOutput": 152 },
+        "../language/dist/codegen/egraph.js": { "bytesInOutput": 167 },
+        "(disabled):perf_hooks": { "bytesInOutput": 137 },
+        "ignore:fs": { "bytesInOutput": 117 },
+        "ignore:os": { "bytesInOutput": 117 },
+        "ignore:crypto": { "bytesInOutput": 125 },
+        "(disabled):../../node_modules/source-map-support/source-map-support.js": { "bytesInOutput": 194 },
+        "(disabled):inspector": { "bytesInOutput": 135 },
+        "../language/node_modules/typescript/lib/typescript.js": { "bytesInOutput": 11498410 },
+        "../language/dist/codegen/graph.js": { "bytesInOutput": 223 },
+        "../language/dist/codegen/lexer.js": { "bytesInOutput": 177 },
+        "../language/dist/codegen/utils.js": { "bytesInOutput": 136 },
+        "../language/dist/codegen/reasoner.js": { "bytesInOutput": 162 },
+        "../language/dist/codegen/types.js": { "bytesInOutput": 137 },
+        "../language/dist/codegen/typesys.js": { "bytesInOutput": 160 },
+        "../language/dist/codegen/parser.js": { "bytesInOutput": 343 },
+        "../language/dist/codegen/textmate.js": { "bytesInOutput": 142 },
+        "../language/dist/api.js": { "bytesInOutput": 193 },
+        "../language/dist/index.js": { "bytesInOutput": 253 },
         "../../languages/modelica/dist/modification-args.js": { "bytesInOutput": 5659 },
-        "../../languages/modelica/dist/language.js": { "bytesInOutput": 293843 },
+        "../../languages/modelica/dist/language.js": { "bytesInOutput": 294121 },
         "../../languages/modelica/dist/types.js": { "bytesInOutput": 3886 },
         "../../languages/modelica/dist/ast.js": { "bytesInOutput": 176027 },
         "../../languages/modelica/dist/arena-expr-visitor.js": { "bytesInOutput": 88463 },
-        "../../languages/modelica/dist/flattener-query.js": { "bytesInOutput": 212908 },
-        "../../languages/modelica/dist/semantic-model.js": { "bytesInOutput": 67946 },
+        "../../languages/modelica/dist/flattener-query.js": { "bytesInOutput": 213624 },
+        "../../languages/modelica/dist/semantic-model.js": { "bytesInOutput": 67948 },
         "../../languages/modelica/dist/src-gen/config.js": { "bytesInOutput": 4379 },
         "../../languages/modelica/dist/src-gen/query-hooks.js": { "bytesInOutput": 3927 },
         "../../languages/csv/dist/src-gen/config.js": { "bytesInOutput": 609 },
         "../../languages/csv/dist/language.js": { "bytesInOutput": 6411 },
-        "../../languages/csv/dist/src-gen/query-hooks.js": { "bytesInOutput": 1835 },
+        "../../languages/csv/dist/src-gen/query-hooks.js": { "bytesInOutput": 1799 },
         "../../languages/modelica/dist/diagram/annotation-evaluator.js": { "bytesInOutput": 16530 },
         "../../languages/modelica/dist/expression-evaluator.js": { "bytesInOutput": 8529 },
         "../../languages/modelica/dist/predefined-types.js": { "bytesInOutput": 5202 },
@@ -8122,39 +8381,39 @@
         "../../languages/sysml2/dist/src-gen/query-hooks.js": { "bytesInOutput": 46416 },
         "../../languages/sysml2/dist/factory.js": { "bytesInOutput": 2900 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/methods.js": { "bytesInOutput": 1048 },
-        "../../node_modules/@svgdotjs/svg.js/src/utils/utils.js": { "bytesInOutput": 3191 },
+        "../../node_modules/@svgdotjs/svg.js/src/utils/utils.js": { "bytesInOutput": 3192 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/namespaces.js": { "bytesInOutput": 385 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/window.js": { "bytesInOutput": 426 },
         "../../node_modules/@svgdotjs/svg.js/src/types/Base.js": { "bytesInOutput": 542 },
-        "../../node_modules/@svgdotjs/svg.js/src/utils/adopter.js": { "bytesInOutput": 3375 },
+        "../../node_modules/@svgdotjs/svg.js/src/utils/adopter.js": { "bytesInOutput": 3376 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/optional/arrange.js": { "bytesInOutput": 2216 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/regex.js": { "bytesInOutput": 856 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/optional/class.js": { "bytesInOutput": 1288 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/optional/css.js": { "bytesInOutput": 1694 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/optional/data.js": { "bytesInOutput": 1173 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/optional/data.js": { "bytesInOutput": 1174 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/optional/memory.js": { "bytesInOutput": 955 },
         "../../node_modules/@svgdotjs/svg.js/src/types/Color.js": { "bytesInOutput": 13050 },
         "../../node_modules/@svgdotjs/svg.js/src/types/Point.js": { "bytesInOutput": 1402 },
-        "../../node_modules/@svgdotjs/svg.js/src/types/Matrix.js": { "bytesInOutput": 12996 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/core/parser.js": { "bytesInOutput": 878 },
-        "../../node_modules/@svgdotjs/svg.js/src/types/Box.js": { "bytesInOutput": 6507 },
+        "../../node_modules/@svgdotjs/svg.js/src/types/Matrix.js": { "bytesInOutput": 12997 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/core/parser.js": { "bytesInOutput": 879 },
+        "../../node_modules/@svgdotjs/svg.js/src/types/Box.js": { "bytesInOutput": 6508 },
         "../../node_modules/@svgdotjs/svg.js/src/types/List.js": { "bytesInOutput": 1563 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/core/selector.js": { "bytesInOutput": 695 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/core/selector.js": { "bytesInOutput": 696 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/event.js": { "bytesInOutput": 3506 },
         "../../node_modules/@svgdotjs/svg.js/src/types/EventTarget.js": { "bytesInOutput": 1552 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/defaults.js": { "bytesInOutput": 948 },
         "../../node_modules/@svgdotjs/svg.js/src/types/SVGArray.js": { "bytesInOutput": 1217 },
         "../../node_modules/@svgdotjs/svg.js/src/types/SVGNumber.js": { "bytesInOutput": 2491 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/attr.js": { "bytesInOutput": 2210 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Dom.js": { "bytesInOutput": 8215 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Element.js": { "bytesInOutput": 4287 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Dom.js": { "bytesInOutput": 8216 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Element.js": { "bytesInOutput": 4288 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/optional/sugar.js": { "bytesInOutput": 5635 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/optional/transform.js": { "bytesInOutput": 2087 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/optional/transform.js": { "bytesInOutput": 2102 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Container.js": { "bytesInOutput": 919 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Defs.js": { "bytesInOutput": 562 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Shape.js": { "bytesInOutput": 356 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/circled.js": { "bytesInOutput": 1275 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Ellipse.js": { "bytesInOutput": 1063 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Ellipse.js": { "bytesInOutput": 1064 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Fragment.js": { "bytesInOutput": 1056 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/gradiented.js": { "bytesInOutput": 789 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Gradient.js": { "bytesInOutput": 1808 },
@@ -8162,43 +8421,43 @@
         "../../node_modules/@svgdotjs/svg.js/src/elements/Image.js": { "bytesInOutput": 2168 },
         "../../node_modules/@svgdotjs/svg.js/src/types/PointArray.js": { "bytesInOutput": 3159 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/pointed.js": { "bytesInOutput": 979 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Line.js": { "bytesInOutput": 1839 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Line.js": { "bytesInOutput": 1840 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Marker.js": { "bytesInOutput": 2141 },
         "../../node_modules/@svgdotjs/svg.js/src/animation/Controller.js": { "bytesInOutput": 6222 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/pathParser.js": { "bytesInOutput": 7179 },
-        "../../node_modules/@svgdotjs/svg.js/src/types/PathArray.js": { "bytesInOutput": 4500 },
+        "../../node_modules/@svgdotjs/svg.js/src/types/PathArray.js": { "bytesInOutput": 4501 },
         "../../node_modules/@svgdotjs/svg.js/src/animation/Morphable.js": { "bytesInOutput": 8182 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Path.js": { "bytesInOutput": 2255 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/core/poly.js": { "bytesInOutput": 1116 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Path.js": { "bytesInOutput": 2256 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/core/poly.js": { "bytesInOutput": 1117 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Polygon.js": { "bytesInOutput": 911 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Polyline.js": { "bytesInOutput": 923 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Rect.js": { "bytesInOutput": 789 },
         "../../node_modules/@svgdotjs/svg.js/src/animation/Queue.js": { "bytesInOutput": 1641 },
         "../../node_modules/@svgdotjs/svg.js/src/animation/Animator.js": { "bytesInOutput": 2617 },
         "../../node_modules/@svgdotjs/svg.js/src/animation/Timeline.js": { "bytesInOutput": 8915 },
-        "../../node_modules/@svgdotjs/svg.js/src/animation/Runner.js": { "bytesInOutput": 28059 },
+        "../../node_modules/@svgdotjs/svg.js/src/animation/Runner.js": { "bytesInOutput": 28060 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Svg.js": { "bytesInOutput": 1790 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Symbol.js": { "bytesInOutput": 695 },
         "../../node_modules/@svgdotjs/svg.js/src/modules/core/textable.js": { "bytesInOutput": 2122 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Text.js": { "bytesInOutput": 3741 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Text.js": { "bytesInOutput": 3742 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Tspan.js": { "bytesInOutput": 2165 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Circle.js": { "bytesInOutput": 1175 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/ClipPath.js": { "bytesInOutput": 1540 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/ForeignObject.js": { "bytesInOutput": 767 },
-        "../../node_modules/@svgdotjs/svg.js/src/modules/core/containerGeometry.js": { "bytesInOutput": 2487 },
+        "../../node_modules/@svgdotjs/svg.js/src/modules/core/containerGeometry.js": { "bytesInOutput": 2488 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/G.js": { "bytesInOutput": 735 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/A.js": { "bytesInOutput": 1930 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Mask.js": { "bytesInOutput": 1462 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Stop.js": { "bytesInOutput": 1270 },
-        "../../node_modules/@svgdotjs/svg.js/src/elements/Style.js": { "bytesInOutput": 1417 },
+        "../../node_modules/@svgdotjs/svg.js/src/elements/Style.js": { "bytesInOutput": 1418 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/TextPath.js": { "bytesInOutput": 2636 },
         "../../node_modules/@svgdotjs/svg.js/src/elements/Use.js": { "bytesInOutput": 867 },
-        "../../node_modules/@svgdotjs/svg.js/src/main.js": { "bytesInOutput": 3175 },
+        "../../node_modules/@svgdotjs/svg.js/src/main.js": { "bytesInOutput": 3177 },
         "../../languages/modelica/dist/diagram/types.js": { "bytesInOutput": 2469 },
         "../../languages/modelica/dist/diagram/svg.js": { "bytesInOutput": 4258 },
         "../../languages/modelica/dist/diagram/index.js": { "bytesInOutput": 225 },
         "../../node_modules/sql.js/dist/sql-wasm-browser.js": { "bytesInOutput": 84656 },
-        "../compiler/dist/simulator/evaluator/eval-runtime.js": { "bytesInOutput": 12307 },
+        "../compiler/dist/simulator/evaluator/eval-runtime.js": { "bytesInOutput": 12930 },
         "../compiler/dist/simulator/initialization/init-solver.js": { "bytesInOutput": 12509 },
         "../compiler/dist/simulator/discrete/fmu-subsystem.js": { "bytesInOutput": 3481 },
         "../compiler/dist/simulator/evaluator/ad-jacobian.js": { "bytesInOutput": 9566 },
@@ -8208,15 +8467,20 @@
         "../compiler/dist/simulator/evaluator/sparse-jacobian.js": { "bytesInOutput": 7388 },
         "../compiler/dist/simulator/solvers/bdf.js": { "bytesInOutput": 15041 },
         "../compiler/dist/simulator/solvers/dopri5.js": { "bytesInOutput": 23580 },
-        "../compiler/dist/simulator/core/simulator.js": { "bytesInOutput": 59634 },
+        "ignore:node:url": { "bytesInOutput": 129 },
+        "ignore:node:path": { "bytesInOutput": 131 },
+        "ignore:node:module": { "bytesInOutput": 135 },
+        "ignore:node:fs": { "bytesInOutput": 127 },
+        "../compiler/dist/simulator/solvers/sundials-wasm.js": { "bytesInOutput": 5970 },
+        "../compiler/dist/simulator/core/simulator.js": { "bytesInOutput": 67896 },
         "../compiler/dist/simulator/core/wgsl-cache.js": { "bytesInOutput": 3316 },
         "../compiler/dist/simulator/core/webgpu-simulation-runner.js": { "bytesInOutput": 17922 },
-        "../compiler/dist/simulator/core/simulate-arena.js": { "bytesInOutput": 9547 },
+        "../compiler/dist/simulator/core/simulate-arena.js": { "bytesInOutput": 10075 },
         "../compiler/dist/simulator/evaluator/tape.js": { "bytesInOutput": 9272 },
         "../compiler/dist/simulator/core/simulation.js": { "bytesInOutput": 153 },
         "../compiler/dist/simulator/core/solver-options.js": { "bytesInOutput": 2248 },
         "ignore:module": { "bytesInOutput": 125 },
-        "../compiler/dist/simulator/core/wasm-simulation-runner.js": { "bytesInOutput": 3635 },
+        "../compiler/dist/simulator/core/wasm-simulation-runner.js": { "bytesInOutput": 3642 },
         "../compiler/dist/simulator/discrete/branch-and-bound.js": { "bytesInOutput": 10070 },
         "../compiler/dist/simulator/discrete/minlp-heuristics.js": { "bytesInOutput": 7509 },
         "../compiler/dist/simulator/surrogates/rom-trainer.js": { "bytesInOutput": 17445 },
@@ -8224,14 +8488,11 @@
         "../compiler/dist/simulator/evaluator/gaussian.js": { "bytesInOutput": 14740 },
         "../compiler/dist/simulator/initialization/homotopy-strategies.js": { "bytesInOutput": 10862 },
         "../compiler/dist/simulator/initialization/system-initializer.js": { "bytesInOutput": 14690 },
-        "ignore:node:url": { "bytesInOutput": 129 },
-        "ignore:node:path": { "bytesInOutput": 131 },
-        "../compiler/dist/simulator/solvers/sundials-wasm.js": { "bytesInOutput": 8287 },
         "../compiler/dist/simulator/uq/monte-carlo.js": { "bytesInOutput": 31557 },
         "../compiler/dist/simulator/uq/doe.js": { "bytesInOutput": 10499 },
         "../compiler/dist/simulator/surrogates/surrogate-pipeline.js": { "bytesInOutput": 4431 },
         "../compiler/dist/simulator/utils/memory-profiler.js": { "bytesInOutput": 1351 },
-        "../compiler/dist/simulator/index.js": { "bytesInOutput": 4811 },
+        "../compiler/dist/simulator/index.js": { "bytesInOutput": 4631 },
         "../symbolics/dist/modelica-types.js": { "bytesInOutput": 3720 },
         "../symbolics/dist/systems/index.js": { "bytesInOutput": 63699 },
         "../symbolics/dist/calculus/derivative.js": { "bytesInOutput": 476 },
@@ -8253,18 +8514,16 @@
         "../symbolics/dist/tape.js": { "bytesInOutput": 179 },
         "../symbolics/dist/index.js": { "bytesInOutput": 552 },
         "../../languages/csv/dist/src/csv-parser.js": { "bytesInOutput": 5285 },
-        "../fmi/dist/fmi3.js": { "bytesInOutput": 33671 },
+        "../fmi/dist/fmi3.js": { "bytesInOutput": 34662 },
         "../fmi/dist/ad-codegen.js": { "bytesInOutput": 11921 },
-        "../fmi/dist/fmi.js": { "bytesInOutput": 25738 },
+        "../fmi/dist/fmi.js": { "bytesInOutput": 26485 },
         "../fmi/dist/transpiler-utils.js": { "bytesInOutput": 4353 },
         "../fmi/dist/fmu-as-codegen.js": { "bytesInOutput": 14339 },
-        "../fmi/dist/fmu-codegen.js": { "bytesInOutput": 90037 },
+        "../fmi/dist/fmu-codegen.js": { "bytesInOutput": 115761 },
         "../fmi/dist/fmu-js-codegen.js": { "bytesInOutput": 6041 },
-        "../fmi/dist/fmu-wasm-codegen.js": { "bytesInOutput": 26390 },
-        "ignore:fs": { "bytesInOutput": 117 },
-        "ignore:os": { "bytesInOutput": 117 },
+        "../fmi/dist/fmu-wasm-codegen.js": { "bytesInOutput": 26385 },
         "ignore:child_process": { "bytesInOutput": 139 },
-        "../fmi/dist/fmu-archive.js": { "bytesInOutput": 23014 },
+        "../fmi/dist/fmu-archive.js": { "bytesInOutput": 23429 },
         "../fmi/dist/fmu-wasm-compile.js": { "bytesInOutput": 3498 },
         "../../languages/modelica/dist/annotation.js": { "bytesInOutput": 151 },
         "../../languages/modelica/dist/geometry.js": { "bytesInOutput": 147 },
@@ -8284,9 +8543,9 @@
         "../fmi/dist/fmu3-codegen.js": { "bytesInOutput": 22563 },
         "../fmi/dist/rom-wasm-codegen.js": { "bytesInOutput": 17283 },
         "../fmi/dist/ssp-archive.js": { "bytesInOutput": 21818 },
-        "../fmi/dist/sundials-codegen.js": { "bytesInOutput": 8346 },
+        "../fmi/dist/sundials-codegen.js": { "bytesInOutput": 8555 },
         "../fmi/dist/wrapper-template.js": { "bytesInOutput": 1607 },
-        "../fmi/dist/index.js": { "bytesInOutput": 2119 },
+        "../fmi/dist/index.js": { "bytesInOutput": 2169 },
         "../cad/dist/types.js": { "bytesInOutput": 550 },
         "../cad/dist/primitives.js": { "bytesInOutput": 1524 },
         "../cad/dist/transforms.js": { "bytesInOutput": 3468 },
@@ -8296,7 +8555,7 @@
         "../cad/dist/index.js": { "bytesInOutput": 1079 },
         "../../languages/modelica/dist/shape-flattener.js": { "bytesInOutput": 7490 },
         "../../languages/modelica/dist/study-flattener.js": { "bytesInOutput": 3306 },
-        "../../node_modules/mqtt/dist/mqtt.esm.js": { "bytesInOutput": 586942 },
+        "../../node_modules/mqtt/dist/mqtt.esm.js": { "bytesInOutput": 586946 },
         "../cosim/dist/mqtt/protocol.js": { "bytesInOutput": 399 },
         "../cosim/dist/mqtt/topics.js": { "bytesInOutput": 3393 },
         "../cosim/dist/mqtt/client.js": { "bytesInOutput": 9731 },
@@ -8322,14 +8581,13 @@
         "../cosim/dist/fmu/storage.js": { "bytesInOutput": 6964 },
         "../cosim/dist/fmu/wrapper-gen.js": { "bytesInOutput": 3532 },
         "../../node_modules/ws/browser.js": { "bytesInOutput": 342 },
-        "../cosim/dist/ws/stream.js": { "bytesInOutput": 4198 },
+        "../cosim/dist/ws/stream.js": { "bytesInOutput": 4200 },
         "../cosim/dist/ssp/export.js": { "bytesInOutput": 6280 },
         "../cosim/dist/ssp/ssd-parser.js": { "bytesInOutput": 8141 },
         "../cosim/dist/ssp/import.js": { "bytesInOutput": 5954 },
         "../cosim/dist/ssp/types.js": { "bytesInOutput": 130 },
-        "../cosim/dist/index.js": { "bytesInOutput": 3163 },
+        "../cosim/dist/index.js": { "bytesInOutput": 3164 },
         "ignore:fs/promises": { "bytesInOutput": 133 },
-        "ignore:crypto": { "bytesInOutput": 125 },
         "../../node_modules/occt-import-js/dist/occt-import-js.js": { "bytesInOutput": 172026 },
         "src/browserServerMain.ts": { "bytesInOutput": 29770 },
         "../../node_modules/vscode-languageserver-textdocument/lib/esm/main.js": { "bytesInOutput": 8407 },
@@ -8346,7 +8604,7 @@
         "src/formatting/modelica-formatter.ts": { "bytesInOutput": 2197 },
         "src/providers/hoverProvider.ts": { "bytesInOutput": 4242 },
         "src/utils/stepUtils.ts": { "bytesInOutput": 12912 },
-        "src/providers/semanticTokensProvider.ts": { "bytesInOutput": 12579 },
+        "src/providers/semanticTokensProvider.ts": { "bytesInOutput": 12893 },
         "src/providers/workspaceFeaturesProvider.ts": { "bytesInOutput": 8492 },
         "src/utils/hierarchyUtils.ts": { "bytesInOutput": 7784 },
         "src/vfs/browser-file-system.ts": { "bytesInOutput": 6206 },
@@ -8374,9 +8632,9 @@
         "src/diagramProtocol.ts": { "bytesInOutput": 390 },
         "src/handlers/diagramHandler.ts": { "bytesInOutput": 8051 },
         "src/handlers/drone-chassis-geometry.ts": { "bytesInOutput": 10838 },
-        "src/handlers/interopEndpoints.ts": { "bytesInOutput": 6694 },
+        "src/handlers/interopEndpoints.ts": { "bytesInOutput": 6695 },
         "src/handlers/miscEndpoints.ts": { "bytesInOutput": 12688 },
-        "src/handlers/simulationEndpoints.ts": { "bytesInOutput": 18662 },
+        "src/handlers/simulationEndpoints.ts": { "bytesInOutput": 18663 },
         "src/handlers/modelscriptParticipant.ts": { "bytesInOutput": 2972 },
         "src/handlers/simulationHandler.ts": { "bytesInOutput": 4401 },
         "../../languages/modelica/dist/arena-script-interpreter.js": { "bytesInOutput": 14633 },
@@ -8396,7 +8654,7 @@
         "src/step-workspace-index.ts": { "bytesInOutput": 9733 },
         "src/step-assembly-extractor.ts": { "bytesInOutput": 4139 }
       },
-      "bytes": 19442205
+      "bytes": 51156224
     },
     "dist/step-worker.js": {
       "imports": [],

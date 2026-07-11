@@ -84,3 +84,16 @@ Couenne/
 ThirdParty/
 f2ctmp/
 packages/language/tests/wasm/src-gen/
+
+# FMI / OpenModelica build artifacts
+*.fmu
+*_FMU.mo
+*_FMU.libs
+*_FMU.makefile
+*_info.json
+*_res.mat
+*_res.csv
+*.opt
+packages/fmi/validation/exported_fmus/
+packages/fmi/validation/reference_fmus/
+packages/fmi/validation/reference_fmus_repo/

@@ -70,10 +70,5 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "nx": {
-    "implicitDependencies": [
-      "!@modelscript/compiler"
-    ]
   }
 }

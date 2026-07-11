@@ -179,7 +179,8 @@
   "nx": {
     "implicitDependencies": [
       "!@modelscript/core",
-      "!@modelscript/modelica"
+      "!@modelscript/modelica",
+      "!@modelscript/symbolics"
     ]
   }
 }

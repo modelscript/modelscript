@@ -16,7 +16,9 @@
  */
 
 import type { SolverOptions } from "@modelscript/compiler/simulator";
+// @ts-ignore: Circular dependency during build
 import type { ModelicaExpression } from "@modelscript/symbolics";
+// @ts-ignore: Circular dependency during build
 import { StaticTapeBuilder } from "@modelscript/symbolics";
 
 // ── Public interface ──
