@@ -1303,7 +1303,7 @@ export class ModelicaDAE {
   /** Get array element variables for a root name. O(1). */
   arenaGetArrayElements(baseName: string): ModelicaVariable[] {
     const indices = this.arena.getArrayElementIndices(baseName);
-    return indices.map((idx) => materializeVariable(this.arena, idx));
+    return indices.map((idx: number) => materializeVariable(this.arena, idx));
   }
 
   /** Check if array elements exist for a root name. O(1). */

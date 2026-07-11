@@ -16,10 +16,10 @@
  */
 
 import type { SolverOptions } from "@modelscript/compiler/simulator";
-// @ts-ignore: Circular dependency during build
-import type { ModelicaExpression } from "@modelscript/symbolics";
-// @ts-ignore: Circular dependency during build
-import { StaticTapeBuilder } from "@modelscript/symbolics";
+import { StaticTapeBuilder } from "../../symbolics/tape.js";
+
+// Represent the legacy expression AST structurally to avoid circular dependency
+type ModelicaExpression = any;
 
 // ── Public interface ──
 
