@@ -119,7 +119,7 @@
     "asbuild": "npm run asbuild:debug && npm run asbuild:release",
     "asbuild:debug": "asc assembly/index.ts --target debug",
     "asbuild:release": "asc assembly/index.ts --target release",
-    "build": "tsc",
+    "build": "npm run asbuild && tsc",
     "clean": "rimraf dist",
     "lint": "eslint src",
     "start": "npx serve .",
