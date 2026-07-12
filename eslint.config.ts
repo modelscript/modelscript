@@ -10,6 +10,7 @@ export default defineConfig([
       "packages/language/tests/wasm/**",
       "packages/language/src/codegen/typescript.mjs",
       "eslint.config.ts",
+      "packages/compiler/src/wasm/sundials.js",
     ],
   },
   eslint.configs.recommended,
@@ -31,6 +32,12 @@ export default defineConfig([
             "scripts/compare-trajectories.ts",
             "scripts/generate-benchmark.ts",
             "scripts/benchmark-incremental.ts",
+            "scripts/fetch-reference-fmus.ts",
+            "packages/fmi/scripts/compare-csv.ts",
+            "packages/fmi/scripts/fetch-fmusim.ts",
+            "packages/fmi/scripts/fmusim-verify.ts",
+            "packages/fmi/scripts/omc-verify.ts",
+            "packages/fmi/scripts/validate.ts",
             "apps/docs/docs/.vitepress/config.ts",
             "apps/docs/docs/.vitepress/theme/index.ts",
             "languages/example/src/language.ts",
@@ -54,12 +61,16 @@ export default defineConfig([
     },
   },
   {
-    files: ["scripts/**/*.ts", "packages/compiler/bench*.ts"],
+    files: ["scripts/**/*.ts", "packages/compiler/bench*.ts", "packages/fmi/scripts/**/*.ts"],
     rules: {
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/consistent-generic-constructors": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/prefer-for-of": "off",
+      "no-useless-escape": "off",
+      "no-useless-assignment": "off",
+      "preserve-caught-error": "off",
     },
   },
   {
@@ -94,7 +105,7 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/language/src/**/*.ts", "packages/compiler/src/**/*.ts"],
+    files: ["packages/language/src/**/*.ts", "packages/compiler/src/**/*.ts", "packages/fmi/src/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off",
@@ -105,6 +116,9 @@ export default defineConfig([
       "@typescript-eslint/no-inferrable-types": "off",
       "no-useless-assignment": "off",
       "@typescript-eslint/ban-ts-comment": "off",
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: "off",
     },
   },
 ]);

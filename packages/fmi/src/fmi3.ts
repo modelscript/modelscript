@@ -187,8 +187,10 @@ export function generateFmi3(dae: ArenaDAEBuilder, options: Fmi3Options, stateVa
   let valueRef = 0;
 
   // ── Time variable (independent) ──
+  // We assign time a VR equal to dae.varCount to ensure the other variables
+  // maintain a 1:1 mapping with their DAE index (which is used in the C struct).
   variables.push({
-    valueReference: valueRef++,
+    valueReference: dae.varCount,
     name: "time",
     causality: "independent",
     variability: "continuous",
@@ -208,9 +210,12 @@ export function generateFmi3(dae: ArenaDAEBuilder, options: Fmi3Options, stateVa
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
     const shape = dae.getVarShape(i);
-    const totalSize = shape.length > 0 ? shape.reduce((a, b) => a * b, 1) : 1;
-    const fv = mapVariable3(dae, i, valueRef);
-    valueRef += totalSize;
+    const totalSize = shape.reduce((a, b) => a * b, 1);
+    const fv = mapVariable3(dae, i, i);
+    // Note: FMI 3.0 arrays use the base VR, we don't reserve valueReferences
+    // for each element since the VR points to the whole array conceptually or
+    // element references are offset. But we need to ensure the next variable gets
+    // its correct DAE index, which is simply `i+1` handled by the loop!
     variables.push(fv);
 
     if (dae.getVarType(i) === VarType.Enumeration) {
@@ -243,40 +248,41 @@ export function generateFmi3(dae: ArenaDAEBuilder, options: Fmi3Options, stateVa
   const aliasMap = detectAliases3(dae, variables);
 
   // ── Derivative variables ──
-  for (let i = 0; i < dae.varCount; i++) {
-    if (dae.isVarRemoved(i)) continue;
-    const name = dae.getVarName(i);
-    if (states.has(name)) {
-      const stateRef = stateVarRefs.get(name);
-      const shape = dae.getVarShape(i);
-      const totalSize = shape.length > 0 ? shape.reduce((a, b) => a * b, 1) : 1;
-      const derFv: Fmi3Variable = {
-        valueReference: valueRef,
-        name: `der(${name})`,
-        causality: "local",
-        variability: "continuous",
-        type: "Float64",
-        start: 0,
-      };
-      if (shape.length > 0) {
-        derFv.dimensions = shape.map((d) => ({ start: d }));
+  for (const sv of variables) {
+    const match = sv.name.match(/^der\((.+)\)$/);
+    if (match) {
+      const stateName = match[1] ?? "";
+      const stateSv = variables.find((v) => v.name === stateName);
+      if (stateSv) {
+        sv.derivative = stateSv.valueReference;
+        derivativeRefs.push(sv.valueReference);
+        if (!stateSv.initial || stateSv.initial === "calculated") {
+          stateSv.initial = "exact";
+        }
       }
-      valueRef += totalSize;
-      if (stateRef !== undefined) derFv.derivative = stateRef;
-      variables.push(derFv);
-      derivativeRefs.push(derFv.valueReference);
     }
   }
 
   // ── Group array variables for FMI 3.0 native arrays ──
   const groupedVariables = groupArrayVariables3(variables);
 
+  // ── Event Indicators (FMI 3.0 requires them as ModelVariables) ──
+  const nEventIndicators = dae.eventIndicatorExprIds.length;
+  for (let i = 0; i < nEventIndicators; i++) {
+    variables.push({
+      valueReference: dae.varCount + 1 + i, // Offset past normal vars and time
+      name: `z_${i}`,
+      causality: "local",
+      variability: "continuous",
+      type: "Float64",
+    });
+  }
+
   // ── Compute dependencies ──
   const deps = computeDependencies3(dae, groupedVariables, outputRefs, derivativeRefs, initialUnknownRefs);
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
-  const nEventIndicators = dae.eventIndicatorExprIds.length;
   const terminals = detectTerminals3(groupedVariables);
   const xml = generateModelDescriptionXml3(groupedVariables, {
     ...options,
@@ -329,13 +335,22 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
   const nonArrayVars: Fmi3Variable[] = [];
 
   for (const sv of variables) {
-    const match = SUBSCRIPT_RE.exec(sv.name);
-    if (!match) {
+    let baseName = "";
+    let subscripts: number[] = [];
+
+    const derMatch = sv.name.match(/^der\((.+)\[([0-9,]+)\]\)$/);
+    const subMatch = sv.name.match(/^(.+)\[([0-9,]+)\]$/);
+
+    if (derMatch) {
+      baseName = `der(${derMatch[1]})`;
+      subscripts = (derMatch[2] ?? "").split(",").map(Number);
+    } else if (subMatch) {
+      baseName = subMatch[1] ?? "";
+      subscripts = (subMatch[2] ?? "").split(",").map(Number);
+    } else {
       nonArrayVars.push(sv);
       continue;
     }
-    const baseName = match[1] ?? "";
-    const subscripts = (match[2] ?? "").split(",").map(Number);
 
     let family = families.get(baseName);
     if (!family) {
@@ -391,10 +406,22 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
     }
 
     const sortedVars = [...family.vars].sort((a, b) => {
-      const matchA = SUBSCRIPT_RE.exec(a.name);
-      const matchB = SUBSCRIPT_RE.exec(b.name);
-      const subsA = (matchA?.[2] ?? "").split(",").map(Number);
-      const subsB = (matchB?.[2] ?? "").split(",").map(Number);
+      let subsA: number[] = [];
+      let subsB: number[] = [];
+      const derMatchA = a.name.match(/^der\((.+)\[([0-9,]+)\]\)$/);
+      if (derMatchA) subsA = (derMatchA[2] ?? "").split(",").map(Number);
+      else {
+        const subMatchA = a.name.match(/^(.+)\[([0-9,]+)\]$/);
+        if (subMatchA) subsA = (subMatchA[2] ?? "").split(",").map(Number);
+      }
+
+      const derMatchB = b.name.match(/^der\((.+)\[([0-9,]+)\]\)$/);
+      if (derMatchB) subsB = (derMatchB[2] ?? "").split(",").map(Number);
+      else {
+        const subMatchB = b.name.match(/^(.+)\[([0-9,]+)\]$/);
+        if (subMatchB) subsB = (subMatchB[2] ?? "").split(",").map(Number);
+      }
+
       for (let d = 0; d < ndims; d++) {
         const va = subsA[d] ?? 0;
         const vb = subsB[d] ?? 0;
@@ -430,6 +457,7 @@ function groupArrayVariables3(variables: Fmi3Variable[]): Fmi3Variable[] {
     if (refVar.displayUnit) arrayVar.displayUnit = refVar.displayUnit;
     if (refVar.initial) arrayVar.initial = refVar.initial;
     if (refVar.declaredType) arrayVar.declaredType = refVar.declaredType;
+    if (refVar.derivative !== undefined) arrayVar.derivative = refVar.derivative;
 
     result.push(arrayVar);
   }
@@ -733,6 +761,10 @@ function mapVariable3(dae: ArenaDAEBuilder, idx: number, valueRef: number): Fmi3
     if (duVal) fv.displayUnit = duVal;
   }
 
+  if (fv.type !== "Float32" && fv.type !== "Float64" && fv.variability === "continuous") {
+    fv.variability = "discrete";
+  }
+
   const initialVal = mapInitial3(fv.causality, fv.variability);
   if (initialVal) fv.initial = initialVal;
 
@@ -1029,8 +1061,11 @@ function generateModelDescriptionXml3(
   }
 
   if (opts.nEventIndicators > 0) {
+    // The event indicators were appended to the end of the variables array
+    const eventIndicatorStartIndex = variables.length - opts.nEventIndicators;
     for (let i = 0; i < opts.nEventIndicators; i++) {
-      lines.push(`    <EventIndicator valueReference="${variables.length + i}" />`);
+      const vr = variables[eventIndicatorStartIndex + i]!.valueReference;
+      lines.push(`    <EventIndicator valueReference="${vr}" />`);
     }
   }
 

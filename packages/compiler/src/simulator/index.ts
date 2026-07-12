@@ -29,17 +29,6 @@ export {
   type EventCallback,
   type RhsFunction,
 } from "./solvers/dopri5.js";
-export {
-  SundialsWasmSolver,
-  getCachedSundialsWasm,
-  loadSundialsWasm,
-  type KinsolWasmResult,
-  type EventCallback as SundialsEventCallback,
-  type EventFunction as SundialsEventFunction,
-  type RhsFunction as SundialsRhsFunction,
-  type SundialsWasmOptions,
-  type SundialsWasmResult,
-} from "./solvers/sundials-wasm.js";
 export * from "./surrogates/rom-trainer.js";
 export * from "./surrogates/surrogate-pipeline.js";
 export * from "./uq/doe.js";

@@ -45,8 +45,10 @@ export interface FmuArchiveOptions extends FmuOptions {
   includeWasm?: boolean;
   /** Pre-compiled WASM binary to bundle (if already compiled externally). */
   wasmBinary?: Uint8Array;
-  /** Pre-compiled WASM JS glue to bundle. */
+  /** Optional WASM JS glue code. */
   wasmJsGlue?: string;
+  /** Optional pre-compiled native binaries to include in binaries/PLATFORM/ */
+  nativeBinaries?: { platform: string; ext: string; binary: Uint8Array }[];
   /** Additional resource files to bundle in `resources/` (filename → contents). */
   resourceFiles?: Map<string, Uint8Array>;
   /** Which FMI versions to bundle (default: "both"). */
@@ -424,6 +426,14 @@ export function buildFmuArchive(
   }
 
   // ── Build ZIP archive ──
+  if (options.nativeBinaries) {
+    for (const bin of options.nativeBinaries) {
+      files.set(`binaries/`, new Uint8Array(0));
+      files.set(`binaries/${bin.platform}/`, new Uint8Array(0));
+      files.set(`binaries/${bin.platform}/${id}${bin.ext}`, bin.binary);
+    }
+  }
+
   const archive = createZip(files);
 
   return {
@@ -441,8 +451,9 @@ export function createZip(files: Map<string, Uint8Array>): Uint8Array {
   let offset = 0;
 
   for (const [name, data] of files) {
+    const isDir = name.endsWith("/");
     const nameBytes = new TextEncoder().encode(name);
-    const compressed = deflateRaw(data, { level: 6 });
+    const compressed = isDir ? data : deflateRaw(data, { level: 6 });
     const crc = crc32(data);
 
     // ── Local file header ──
@@ -451,7 +462,7 @@ export function createZip(files: Map<string, Uint8Array>): Uint8Array {
     lView.setUint32(0, 0x04034b50, true); // Local file header signature
     lView.setUint16(4, 20, true); // Version needed to extract
     lView.setUint16(6, 0, true); // General purpose bit flag
-    lView.setUint16(8, 8, true); // Compression method (deflate)
+    lView.setUint16(8, isDir ? 0 : 8, true); // Compression method
     lView.setUint16(10, 0, true); // Last mod file time
     lView.setUint16(12, 0, true); // Last mod file date
     lView.setUint32(14, crc, true); // CRC-32
@@ -468,10 +479,10 @@ export function createZip(files: Map<string, Uint8Array>): Uint8Array {
     const cdEntry = new Uint8Array(46 + nameBytes.length);
     const cdView = new DataView(cdEntry.buffer);
     cdView.setUint32(0, 0x02014b50, true); // Central directory signature
-    cdView.setUint16(4, 20, true); // Version made by
+    cdView.setUint16(4, isDir ? (3 << 8) | 20 : 20, true); // Version made by
     cdView.setUint16(6, 20, true); // Version needed
     cdView.setUint16(8, 0, true); // Flags
-    cdView.setUint16(10, 8, true); // Compression
+    cdView.setUint16(10, isDir ? 0 : 8, true); // Compression
     cdView.setUint16(12, 0, true); // Time
     cdView.setUint16(14, 0, true); // Date
     cdView.setUint32(16, crc, true); // CRC-32
@@ -482,7 +493,7 @@ export function createZip(files: Map<string, Uint8Array>): Uint8Array {
     cdView.setUint16(32, 0, true); // File comment length
     cdView.setUint16(34, 0, true); // Disk number start
     cdView.setUint16(36, 0, true); // Internal file attributes
-    cdView.setUint32(38, 0, true); // External file attributes
+    cdView.setUint32(38, isDir ? 0x41ed0010 : 0, true); // External file attributes
     cdView.setUint32(42, offset, true); // Relative offset of local header
     cdEntry.set(nameBytes, 46);
 

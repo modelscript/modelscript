@@ -38,11 +38,13 @@ export interface ArenaSimulateOptions {
   /** Number of output intervals (used if `step` is not given). */
   numberOfIntervals?: number;
   /** ODE solver selection. */
-  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu";
+  solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "webgpu" | "cvode";
   /** Absolute tolerance for adaptive solvers (default: 1e-6). */
   atol?: number;
   /** Relative tolerance for adaptive solvers (default: 1e-6). */
   rtol?: number;
+  /** Custom output string IDs for subsetting result traces. */
+  outputStringIds?: number[];
   /** Parameter overrides (name → value). */
   parameterOverrides?: Map<string, number>;
   /** Abort signal for cooperative cancellation. */
@@ -160,6 +162,7 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
     solver: options?.solver === "webgpu" ? "rk4" : (options?.solver ?? "rk4"),
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
 
   // ── Step 7.5: Terminate FMU subsystems ──
@@ -169,7 +172,12 @@ export function simulateArena(arena: ArenaDAEBuilder, options?: ArenaSimulateOpt
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row));
 
-  return { t, y, states: stateNames };
+  let outNames = stateNames;
+  if (options?.outputStringIds) {
+    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  }
+
+  return { t, y, states: outNames };
 }
 
 /**
@@ -343,6 +351,7 @@ export async function simulateArenaAsync(
     ...(options?.signal !== undefined && { signal: options.signal }),
     ...(options?.atol !== undefined && { atol: options.atol }),
     ...(options?.rtol !== undefined && { rtol: options.rtol }),
+    ...(options?.outputStringIds !== undefined && { outputStringIds: options.outputStringIds }),
   });
 
   sim.terminateFmuSubsystems();
@@ -350,5 +359,10 @@ export async function simulateArenaAsync(
   const t = rawResult.t;
   const y: number[][] = rawResult.y.map((row) => Array.from(row));
 
-  return { t, y, states: stateNames };
+  let outNames = stateNames;
+  if (options?.outputStringIds) {
+    outNames = options.outputStringIds.map((id) => sim.arena.interner.resolve(id) ?? "unknown");
+  }
+
+  return { t, y, states: outNames };
 }

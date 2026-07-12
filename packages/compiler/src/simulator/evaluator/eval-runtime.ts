@@ -26,7 +26,12 @@ function collectArgIds(arena: ArenaDAEBuilder, baseExprId: number, firstElem: nu
  * This must have full parity with the legacy ExpressionEvaluator for all
  * built-in functions and ExprKinds used during simulation.
  */
-export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, valuesByStringId: Float64Array): number {
+export function evaluateArenaRuntime(
+  arena: ArenaDAEBuilder,
+  exprId: number,
+  valuesByStringId: Float64Array,
+  preValuesByStringId?: Float64Array,
+): number {
   if (exprId < 0) return 0;
 
   const kind = arena.getExprKind(exprId);
@@ -71,20 +76,18 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
     }
 
     case ExprKind.Pre: {
-      // pre(x) → at runtime, returns the previous-step value of x.
-      // In a continuous simulation loop this is typically the same as the current value
-      // (the simulator updates pre-values between steps). Just evaluate the argument.
       const argId = arena.getExprData1(exprId);
-      return evaluateArenaRuntime(arena, argId, valuesByStringId);
+      const snapshotEnv = preValuesByStringId ?? valuesByStringId;
+      return evaluateArenaRuntime(arena, argId, snapshotEnv, snapshotEnv);
     }
 
     case ExprKind.Negate: {
-      return -evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId);
+      return -evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
     }
 
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId) as UnaryOp;
-      const operand = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId);
+      const operand = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
       if (op === UnaryOp.Negate) return -operand;
       if (op === UnaryOp.Not) return operand === 0 ? 1 : 0;
       return 0;
@@ -92,8 +95,8 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
 
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId) as BinOp;
-      const left = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId);
-      const right = evaluateArenaRuntime(arena, arena.getExprRight(exprId), valuesByStringId);
+      const left = evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
+      const right = evaluateArenaRuntime(arena, arena.getExprRight(exprId), valuesByStringId, preValuesByStringId);
 
       if (Number.isNaN(left) || Number.isNaN(right)) {
         console.error("Binary op operand is NaN! left:", left, "right:", right, "op:", op, "exprId:", exprId);
@@ -136,11 +139,11 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
     }
 
     case ExprKind.IfElse: {
-      const cond = evaluateArenaRuntime(arena, arena.getExprData1(exprId), valuesByStringId);
+      const cond = evaluateArenaRuntime(arena, arena.getExprData1(exprId), valuesByStringId, preValuesByStringId);
       if (cond !== 0) {
-        return evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId);
+        return evaluateArenaRuntime(arena, arena.getExprLeft(exprId), valuesByStringId, preValuesByStringId);
       } else {
-        return evaluateArenaRuntime(arena, arena.getExprRight(exprId), valuesByStringId);
+        return evaluateArenaRuntime(arena, arena.getExprRight(exprId), valuesByStringId, preValuesByStringId);
       }
     }
 
@@ -157,13 +160,15 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
         const baseName = arena.interner.resolve(arena.getExprData1(baseId));
         if (indexCount === 1) {
           // Single subscript (most common case — fast path)
-          const idx = evaluateArenaRuntime(arena, firstIndexId, valuesByStringId);
+          const idx = evaluateArenaRuntime(arena, firstIndexId, valuesByStringId, preValuesByStringId);
           const subscriptedNameId = arena.interner.intern(`${baseName}[${Math.round(idx)}]`);
           return valuesByStringId[subscriptedNameId] ?? 0;
         }
         // Multi-subscript: x[i,j] → "x[i,j]"
         const indexIds = collectArgIds(arena, exprId, firstIndexId, indexCount);
-        const indices = indexIds.map((id) => Math.round(evaluateArenaRuntime(arena, id, valuesByStringId)));
+        const indices = indexIds.map((id) =>
+          Math.round(evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId)),
+        );
         const subscriptedNameId = arena.interner.intern(`${baseName}[${indices.join(",")}]`);
         return valuesByStringId[subscriptedNameId] ?? 0;
       }
@@ -177,7 +182,7 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
       const count = arena.getExprData1(exprId);
       const firstElem = arena.getExprLeft(exprId);
       if (count > 0) {
-        return evaluateArenaRuntime(arena, firstElem, valuesByStringId);
+        return evaluateArenaRuntime(arena, firstElem, valuesByStringId, preValuesByStringId);
       }
       return 0;
     }
@@ -186,7 +191,7 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
       // Range in scalar context: return the start value.
       // Full range expansion is handled at compile time by the flattener.
       const startId = arena.getExprData1(exprId);
-      return evaluateArenaRuntime(arena, startId, valuesByStringId);
+      return evaluateArenaRuntime(arena, startId, valuesByStringId, preValuesByStringId);
     }
 
     case ExprKind.Colon:
@@ -219,22 +224,22 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
         case "/*Real*/":
         case "/*Integer*/":
         case "/*Boolean*/":
-          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId) : 0;
+          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
         case "smooth":
           // smooth(order, expr) → just evaluate expr (second arg)
           if (argCount > 1) {
             const secondArgId = arena.getExprLeft(exprId + 1);
-            return evaluateArenaRuntime(arena, secondArgId, valuesByStringId);
+            return evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
           }
-          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId) : 0;
+          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
         case "homotopy":
           // homotopy(actual, simplified) → use actual
-          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId) : 0;
+          return argCount > 0 ? evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId) : 0;
       }
 
       // ── Single-argument functions ──
       if (argCount === 1) {
-        const arg = evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+        const arg = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
         switch (funcName) {
           // Trigonometric
           case "sin":
@@ -305,10 +310,10 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
 
       // ── Two-argument functions ──
       if (argCount === 2) {
-        const arg0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+        const arg0 = evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
         // Second argument is in the Tuple entry at exprId + 1
         const secondArgId = arena.getExprLeft(exprId + 1);
-        const arg1 = evaluateArenaRuntime(arena, secondArgId, valuesByStringId);
+        const arg1 = evaluateArenaRuntime(arena, secondArgId, valuesByStringId, preValuesByStringId);
         switch (funcName) {
           case "atan2":
             return Math.atan2(arg0, arg1);
@@ -337,9 +342,9 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
       if (funcName === "max" || funcName === "min") {
         if (argCount > 0) {
           const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
-          let result = evaluateArenaRuntime(arena, argIds[0] as number, valuesByStringId);
+          let result = evaluateArenaRuntime(arena, argIds[0] as number, valuesByStringId, preValuesByStringId);
           for (let a = 1; a < argCount; a++) {
-            const val = evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId);
+            const val = evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId, preValuesByStringId);
             result = funcName === "max" ? Math.max(result, val) : Math.min(result, val);
           }
           return result;
@@ -352,14 +357,14 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
         let result = 0;
         for (let a = 1; a < argIds.length; a++) {
-          result += evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId);
+          result += evaluateArenaRuntime(arena, argIds[a] as number, valuesByStringId, preValuesByStringId);
         }
         return result;
       }
 
       // ── fill(val, n1, n2, ...) — returns scalar fill value ──
       if (funcName === "fill" && argCount > 0) {
-        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
       }
 
       // ── zeros(n) / ones(n) ──
@@ -377,18 +382,18 @@ export function evaluateArenaRuntime(arena: ArenaDAEBuilder, exprId: number, val
 
       // ── transpose(A) / symmetric(A) — pass through first arg ──
       if ((funcName === "transpose" || funcName === "symmetric") && argCount > 0) {
-        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+        return evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
       }
 
       // ── sum / product reductions ──
       if ((funcName === "sum" || funcName === "product") && argCount > 0) {
         if (argCount === 1) {
-          return evaluateArenaRuntime(arena, firstArgId, valuesByStringId);
+          return evaluateArenaRuntime(arena, firstArgId, valuesByStringId, preValuesByStringId);
         }
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
         let result = funcName === "product" ? 1 : 0;
         for (const id of argIds) {
-          const val = evaluateArenaRuntime(arena, id, valuesByStringId);
+          const val = evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId);
           result = funcName === "product" ? result * val : result + val;
         }
         return result;

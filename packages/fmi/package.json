@@ -42,7 +42,11 @@
   "scripts": {
     "build": "npm run clean && tsc",
     "clean": "rimraf dist",
+    "fetch:fmusim": "tsx scripts/fetch-fmusim.ts",
     "lint": "eslint src --ext .ts,.tsx",
+    "test:fmusim": "tsx scripts/fmusim-verify.ts",
+    "test:omc": "tsx scripts/omc-verify.ts",
+    "validate": "tsx scripts/validate.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {

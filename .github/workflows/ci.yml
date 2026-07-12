@@ -43,6 +43,12 @@ jobs:
         with:
           report-path: "**/ctrf/*.json"
         if: always()
+      - name: Validate FMI
+        run: |
+          npm run validate --workspace=@modelscript/fmi
+          npm run fetch:fmusim --workspace=@modelscript/fmi
+          npm run test:fmusim --workspace=@modelscript/fmi
+        if: always()
       - name: Run Lint
         run: npm run lint
       - name: Package VS Code Extension

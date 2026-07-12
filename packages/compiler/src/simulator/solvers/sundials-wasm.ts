@@ -3,16 +3,9 @@
 /**
  * SUNDIALS WASM Solver — TypeScript wrapper.
  *
- * Loads a pre-compiled SUNDIALS WebAssembly module (cvodes + idas + kinsol)
- * and provides a high-level API for ODE/DAE integration with callback bridging.
- *
- * The key technique: Emscripten's `addFunction()` registers a JavaScript
- * function as a C function pointer in the WASM table, enabling SUNDIALS'
- * integration loop (running in WASM) to call back into TypeScript for
- * model evaluation (f(t, y) → dy/dt).
+ * Loads a pre-compiled SUNDIALS WebAssembly module (cvode)
+ * and provides a high-level stateful API for ODE/DAE integration with callback bridging.
  */
-
-// ── Emscripten module interface ──
 
 interface SundialsEmscriptenModule {
   _malloc(size: number): number;
@@ -25,309 +18,173 @@ interface SundialsEmscriptenModule {
   ccall(name: string, returnType: string | null, argTypes: string[], args: (number | string)[]): number;
 }
 
-// ── Public interface ──
-
-/** Options for SUNDIALS WASM solvers. */
 export interface SundialsWasmOptions {
-  /** Absolute tolerance (default: 1e-8). */
   atol?: number;
-  /** Relative tolerance (default: 1e-6). */
   rtol?: number;
-  /** Maximum number of internal steps (default: 50000). */
-  maxSteps?: number;
-  /** Maximum step size (0 = unlimited). */
-  maxStep?: number;
-  /** Initial step size (0 = auto). */
-  initialStep?: number;
 }
 
-/** Result of a SUNDIALS WASM integration. */
-export interface SundialsWasmResult {
-  /** Output time points. */
-  times: number[];
-  /** State vectors at each output time. */
-  states: number[][];
-  /** Number of RHS function evaluations. */
-  fEvals: number;
-  /** Number of Jacobian evaluations. */
-  jEvals: number;
-  /** Number of steps taken. */
-  steps: number;
-  /** Error message (empty on success). */
-  message: string;
-}
+export type RhsFunction = (t: number, y: Float64Array, ydot: Float64Array) => number;
+export type EventFunction = (t: number, y: Float64Array, gout: Float64Array) => number;
 
-/** Result of KINSOL nonlinear solve. */
-export interface KinsolWasmResult {
-  /** Solution vector. */
-  solution: number[];
-  /** Whether the solve converged. */
-  converged: boolean;
-}
-
-/** RHS function type: dy/dt = f(t, y). */
-export type RhsFunction = (t: number, y: number[]) => number[];
-
-/** Event function type: g(t, y) → scalar (sign change triggers event). */
-export type EventFunction = (t: number, y: number[]) => number;
-
-/** Event callback type. */
-export type EventCallback = (t: number, y: number[], eventIdx: number) => number[];
-
-/**
- * SUNDIALS WASM solver instance.
- *
- * Wraps a loaded Emscripten module and provides high-level methods
- * for ODE/DAE integration via CVODE/IDA and nonlinear solving via KINSOL.
- */
-export class SundialsWasmSolver {
+export class CvodeSolver {
   private module: SundialsEmscriptenModule;
   private registeredFunctions: number[] = [];
+  private ctxPtr: number = 0;
 
-  constructor(module: SundialsEmscriptenModule) {
-    this.module = module;
-  }
+  public nStates: number;
+  private nEvents: number;
 
-  /**
-   * Integrate an ODE system using CVODE.
-   *
-   * The RHS function `f` runs in JavaScript — SUNDIALS' CVODE integration
-   * loop (in WASM) calls back into JS for each function evaluation via
-   * a registered function pointer.
-   */
-  cvode(
-    f: RhsFunction,
+  // Pointers
+  private y0Ptr: number;
+  private tRetPtr: number;
+  private yRetPtr: number;
+
+  // Memory views for callbacks
+  private _callbackY!: Float64Array;
+  private _callbackYDot!: Float64Array;
+  private _callbackGout!: Float64Array;
+
+  constructor(
+    module: SundialsEmscriptenModule,
+    nStates: number,
     t0: number,
     y0: number[],
-    tEnd: number,
-    outputTimes: number[],
+    rhsFn: RhsFunction,
+    nEvents: number = 0,
+    eventFn?: EventFunction,
     options?: SundialsWasmOptions,
-    eventFns?: EventFunction[],
-  ): SundialsWasmResult {
-    const M = this.module;
-    const n = y0.length;
-    const nOutputs = outputTimes.length;
+  ) {
+    this.module = module;
+    this.nStates = nStates;
+    this.nEvents = nEvents;
+
     const atol = options?.atol ?? 1e-8;
     const rtol = options?.rtol ?? 1e-6;
-    const maxSteps = options?.maxSteps ?? 50000;
-    const maxStep = options?.maxStep ?? 0;
-    const initialStep = options?.initialStep ?? 0;
-    const nEvents = eventFns?.length ?? 0;
 
-    // Allocate shared WASM memory buffers
-    const yPtr = M._malloc(n * 8);
-    const ydotPtr = M._malloc(n * 8);
-    const outputTimesPtr = M._malloc(nOutputs * 8);
-    const resultTimesPtr = M._malloc(nOutputs * 8);
-    const resultStatesPtr = M._malloc(nOutputs * n * 8);
-    const statsPtr = M._malloc(4 * 8);
+    this.y0Ptr = module._malloc(nStates * 8);
+    for (let i = 0; i < nStates; i++) module.HEAPF64[(this.y0Ptr >> 3) + i] = y0[i] ?? 0;
 
-    for (let i = 0; i < n; i++) M.HEAPF64[(yPtr >> 3) + i] = y0[i] ?? 0;
-    for (let i = 0; i < nOutputs; i++) M.HEAPF64[(outputTimesPtr >> 3) + i] = outputTimes[i] ?? 0;
+    this.tRetPtr = module._malloc(8);
+    this.yRetPtr = module._malloc(nStates * 8);
 
-    // Register RHS callback: int rhs(double t, double* y, double* ydot, void* ud)
+    // Register RHS Callback
     const rhsCallback = (t: number, yWasm: number, ydotWasm: number): number => {
-      const yArr: number[] = new Array(n);
-      for (let i = 0; i < n; i++) yArr[i] = M.HEAPF64[(yWasm >> 3) + i] ?? 0;
-      const dydt = f(t, yArr);
-      for (let i = 0; i < n; i++) M.HEAPF64[(ydotWasm >> 3) + i] = dydt[i] ?? 0;
-      return 0;
+      // Re-initialize views to point at WASM memory (in case heap grew)
+      this._callbackY = new Float64Array(module.HEAPF64.buffer, yWasm, nStates);
+      this._callbackYDot = new Float64Array(module.HEAPF64.buffer, ydotWasm, nStates);
+      return rhsFn(t, this._callbackY, this._callbackYDot);
     };
-    const rhsFnPtr = M.addFunction(rhsCallback, "iiiii");
+    const rhsFnPtr = module.addFunction(rhsCallback, "idii");
     this.registeredFunctions.push(rhsFnPtr);
 
-    // Register event callbacks if present
+    // Register Event Callback
     let eventFnPtr = 0;
-    if (nEvents > 0 && eventFns) {
+    if (nEvents > 0 && eventFn) {
       const eventCallback = (t: number, yWasm: number, goutPtr: number): number => {
-        const yArr: number[] = new Array(n);
-        for (let i = 0; i < n; i++) yArr[i] = M.HEAPF64[(yWasm >> 3) + i] ?? 0;
-        for (let i = 0; i < nEvents; i++) {
-          const fn = eventFns[i];
-          if (fn) M.HEAPF64[(goutPtr >> 3) + i] = fn(t, yArr);
-        }
-        return 0;
+        this._callbackY = new Float64Array(module.HEAPF64.buffer, yWasm, nStates);
+        this._callbackGout = new Float64Array(module.HEAPF64.buffer, goutPtr, nEvents);
+        return eventFn(t, this._callbackY, this._callbackGout);
       };
-      eventFnPtr = M.addFunction(eventCallback, "iiiii");
+      eventFnPtr = module.addFunction(eventCallback, "idii");
       this.registeredFunctions.push(eventFnPtr);
     }
 
-    // Call WASM CVODE solver
-    M.ccall(
-      "sundials_cvode_wasm",
+    // Call cvode_init
+    this.ctxPtr = module.ccall(
+      "cvode_init",
       "number",
-      [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-      ],
-      [
-        n,
-        t0,
-        yPtr,
-        rhsFnPtr,
-        outputTimesPtr,
-        nOutputs,
-        eventFnPtr,
-        nEvents,
-        atol,
-        rtol,
-        maxSteps,
-        maxStep,
-        initialStep,
-        resultTimesPtr,
-        resultStatesPtr,
-        statsPtr,
-      ],
+      ["number", "number", "number", "number", "number", "number", "number", "number"],
+      [nStates, t0, this.y0Ptr, rhsFnPtr, nEvents, eventFnPtr, rtol, atol],
     );
 
-    // Read results
-    const status = M.HEAPF64[(statsPtr >> 3) + 3] ?? -1;
-    const actualPoints = status >= 0 ? nOutputs : 0;
-    const times: number[] = [];
-    const states: number[][] = [];
-
-    for (let k = 0; k < actualPoints; k++) {
-      times.push(M.HEAPF64[(resultTimesPtr >> 3) + k] ?? 0);
-      const row: number[] = new Array(n);
-      for (let i = 0; i < n; i++) row[i] = M.HEAPF64[(resultStatesPtr >> 3) + k * n + i] ?? 0;
-      states.push(row);
+    if (!this.ctxPtr) {
+      throw new Error("Failed to initialize CVODE context");
     }
-
-    const result: SundialsWasmResult = {
-      times,
-      states,
-      fEvals: M.HEAPF64[statsPtr >> 3] ?? 0,
-      jEvals: M.HEAPF64[(statsPtr >> 3) + 1] ?? 0,
-      steps: M.HEAPF64[(statsPtr >> 3) + 2] ?? 0,
-      message: status >= 0 ? "" : "CVODE solver error",
-    };
-
-    M._free(yPtr);
-    M._free(ydotPtr);
-    M._free(outputTimesPtr);
-    M._free(resultTimesPtr);
-    M._free(resultStatesPtr);
-    M._free(statsPtr);
-
-    return result;
   }
 
   /**
-   * Solve a nonlinear system F(z) = 0 using KINSOL.
+   * Step to tOut.
+   * Returns:
+   *   { flag, t, y }
+   * flag is 2 for CV_ROOT_RETURN, 0 for CV_SUCCESS, <0 for error
    */
-  kinsol(F: (z: number[]) => number[], z0: number[], options?: { atol?: number; rtol?: number }): KinsolWasmResult {
-    const M = this.module;
-    const n = z0.length;
-    const atol = options?.atol ?? 1e-10;
-    const rtol = options?.rtol ?? 1e-10;
-
-    const zPtr = M._malloc(n * 8);
-    const statusPtr = M._malloc(8);
-    for (let i = 0; i < n; i++) M.HEAPF64[(zPtr >> 3) + i] = z0[i] ?? 0;
-
-    const resFn = (zWasm: number, fvalPtr: number): number => {
-      const zArr: number[] = new Array(n);
-      for (let i = 0; i < n; i++) zArr[i] = M.HEAPF64[(zWasm >> 3) + i] ?? 0;
-      const residual = F(zArr);
-      for (let i = 0; i < n; i++) M.HEAPF64[(fvalPtr >> 3) + i] = residual[i] ?? 0;
-      return 0;
-    };
-    const resFnPtr = M.addFunction(resFn, "iiii");
-    this.registeredFunctions.push(resFnPtr);
-
-    M.ccall(
-      "sundials_kinsol_wasm",
+  step(tOut: number): { flag: number; t: number; y: number[] } {
+    const flag = this.module.ccall(
+      "cvode_step",
       "number",
-      ["number", "number", "number", "number", "number", "number"],
-      [n, zPtr, resFnPtr, atol, rtol, statusPtr],
+      ["number", "number", "number", "number"],
+      [this.ctxPtr, tOut, this.tRetPtr, this.yRetPtr],
     );
 
-    const status = M.HEAPF64[statusPtr >> 3] ?? -1;
-    const solution: number[] = new Array(n);
-    for (let i = 0; i < n; i++) solution[i] = M.HEAPF64[(zPtr >> 3) + i] ?? 0;
+    const t = this.module.HEAPF64[this.tRetPtr >> 3] ?? 0;
+    const y: number[] = new Array(this.nStates);
+    for (let i = 0; i < this.nStates; i++) {
+      y[i] = this.module.HEAPF64[(this.yRetPtr >> 3) + i] ?? 0;
+    }
 
-    M._free(zPtr);
-    M._free(statusPtr);
+    return { flag, t, y };
+  }
 
-    return { solution, converged: status >= 0 };
+  /**
+   * Reinitialize solver after state mutation (e.g. events)
+   */
+  reinit(t: number, y: number[]) {
+    for (let i = 0; i < this.nStates; i++) {
+      this.module.HEAPF64[(this.y0Ptr >> 3) + i] = y[i] ?? 0;
+    }
+    this.module.ccall("cvode_reinit", "void", ["number", "number", "number"], [this.ctxPtr, t, this.y0Ptr]);
   }
 
   dispose(): void {
+    if (this.ctxPtr) {
+      this.module.ccall("cvode_free", "void", ["number"], [this.ctxPtr]);
+      this.ctxPtr = 0;
+    }
+    this.module._free(this.y0Ptr);
+    this.module._free(this.tRetPtr);
+    this.module._free(this.yRetPtr);
     for (const ptr of this.registeredFunctions) {
       try {
         this.module.removeFunction(ptr);
-      } catch {
-        // Module may already be disposed
-      }
+      } catch {}
     }
     this.registeredFunctions = [];
   }
 }
 
-// ── Module loader ──
+let cachedModule: SundialsEmscriptenModule | null = null;
 
-let cachedSolver: SundialsWasmSolver | null = null;
-
-/** Get the currently cached SUNDIALS WASM solver, if loaded. */
-export function getCachedSundialsWasm(): SundialsWasmSolver | null {
-  return cachedSolver;
-}
-
-/**
- * Load the SUNDIALS WASM module and return a solver instance.
- * Cached after first load.
- *
- * @param wasmUrl Optional URL or path to the sundials.wasm file
- */
-export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsWasmSolver> {
-  if (cachedSolver) return cachedSolver;
+export async function loadSundialsWasm(wasmUrl?: string): Promise<SundialsEmscriptenModule> {
+  if (cachedModule) return cachedModule;
 
   const isNode = typeof globalThis.process !== "undefined" && globalThis.process.versions?.node;
 
   if (isNode) {
     const { fileURLToPath } = await import("node:url");
     const { dirname, join } = await import("node:path");
+    const { createRequire } = await import("node:module");
     const currentDir = dirname(fileURLToPath(import.meta.url));
     const wasmDir = join(currentDir, "..", "..", "wasm");
     const jsGlue = join(wasmDir, "sundials.js");
-
-    const factory = await import(jsGlue);
-    const module = await new Promise<SundialsEmscriptenModule>((resolve) => {
-      const mod = factory.default({
-        locateFile: (path: string) => join(wasmDir, path),
-        onRuntimeInitialized: () => resolve(mod),
-      });
+    const { readFileSync } = await import("node:fs");
+    const code = readFileSync(jsGlue, "utf8");
+    const mod = { exports: {} as any };
+    const func = new Function("module", "exports", "require", "__dirname", "__filename", code);
+    func(mod, mod.exports, createRequire(import.meta.url), wasmDir, jsGlue);
+    const factory = mod.exports.default || mod.exports;
+    cachedModule = await factory({
+      locateFile: (path: string) => join(wasmDir, path),
     });
-
-    cachedSolver = new SundialsWasmSolver(module);
-    return cachedSolver;
+    return cachedModule!;
   }
 
   // Browser
   const url = wasmUrl ?? new URL(/* webpackIgnore: true */ "../../wasm/sundials.wasm", import.meta.url).href;
   const jsUrl = url.replace(/\.wasm$/, ".js");
   const factory = await import(/* webpackIgnore: true */ jsUrl);
-  const module = await new Promise<SundialsEmscriptenModule>((resolve) => {
-    const mod = factory.default({
-      locateFile: () => url,
-      onRuntimeInitialized: () => resolve(mod),
-    });
+  cachedModule = await factory.default({
+    locateFile: () => url,
   });
 
-  cachedSolver = new SundialsWasmSolver(module);
-  return cachedSolver;
+  return cachedModule!;
 }

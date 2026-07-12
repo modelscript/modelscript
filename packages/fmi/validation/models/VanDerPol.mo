@@ -5,13 +5,13 @@
 // Drmodelica: 2.1 Van der Pol (p. 22)
 //
 model VanDerPol  "Van der Pol oscillator model"
-  Real x(start = 1);
-  Real y(start = 1);
-  parameter Real lambda = 0.3;
+  Real x(start = 2);
+  Real y(start = 0);
+  parameter Real mu = 1.0;
 equation
   der(x) = y;
-  der(y) = - x + lambda*(1 - x*x)*y;
-  annotation(__OpenModelica_commandLineOptions="-d=-newInst");
+  der(y) = - x + mu*(1 - x*x)*y;
+
 end VanDerPol;
 
 // Result:

@@ -2491,8 +2491,12 @@ export class ArenaQueryFlattener {
             if (primitiveTypeName === "Real") {
               exprId = visitor.castToRealExpr(exprId);
             }
-            const nameExpr = dae.addNameExpr(baseName);
-            dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            if (this.options.arrayMode === "scalarize") {
+              this.addScalarizedEquation(dae, EqKind.Simple, baseName, exprId, shape, visitor);
+            } else {
+              const nameExpr = dae.addNameExpr(baseName);
+              dae.addEquation(EqKind.Simple, nameExpr, exprId);
+            }
           }
         }
       } else if (arrayBinding.kind === "literal") {
@@ -2506,8 +2510,14 @@ export class ArenaQueryFlattener {
           return dae.addStringLiteral(value as string);
         };
         const exprId = compileLiteral(arrayBinding.value);
-        const nameExpr = dae.addNameExpr(baseName);
-        dae.addEquation(EqKind.Simple, nameExpr, exprId);
+        if (this.options.arrayMode === "scalarize") {
+          const scopeId = entry.parentId ?? entry.id;
+          const visitor = this.createExprVisitor(dae, undefined, undefined, scopeId);
+          this.addScalarizedEquation(dae, EqKind.Simple, baseName, exprId, shape, visitor);
+        } else {
+          const nameExpr = dae.addNameExpr(baseName);
+          dae.addEquation(EqKind.Simple, nameExpr, exprId);
+        }
       }
     }
   }
@@ -2564,6 +2574,10 @@ export class ArenaQueryFlattener {
       else if (wrapperFunc === "pre") elemLhsId = dae.addPreExpr(elemLhsId);
       else if (wrapperFunc) elemLhsId = dae.addCallExpr(wrapperFunc, [elemLhsId]);
       dae.addEquation(eqKind, elemLhsId, elemRhsId);
+
+      if (elemVarIdx >= 0 && eqKind === EqKind.Simple && !wrapperFunc) {
+        dae.setVarExpression(elemVarIdx, elemRhsId);
+      }
     }
   }
 

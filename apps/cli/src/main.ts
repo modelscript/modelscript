@@ -7,9 +7,9 @@ import path from "node:path";
 import yargs from "yargs/yargs";
 // import { Compile } from "./commands/compile.js";
 // import { Cosim } from "./commands/cosim.js";
-// import { Fmu } from "./commands/fmu.js";
 import { Build } from "./commands/build.js";
 import { BuildCSG } from "./commands/csg.js";
+import { Fmu } from "./commands/fmu.js";
 import { Generate } from "./commands/generate.js";
 // import { I18n } from "./commands/i18n.js";
 // import { Init } from "./commands/init.js";
@@ -23,7 +23,7 @@ import { Playground } from "./commands/playground.js";
 import { Sandbox } from "./commands/sandbox.js";
 // import { Publish } from "./commands/publish.js";
 // import { Render } from "./commands/render.js";
-// import { Simulate } from "./commands/simulate.js";
+import { Simulate } from "./commands/simulate.js";
 // import { Unpublish } from "./commands/unpublish.js";
 
 // import { MC } from "./commands/mc.js";
@@ -38,7 +38,7 @@ yargs(process.argv.slice(2))
   .usage(`CLI for ModelScript ${pkg.content.version}`)
   // .command(Compile)
   // .command(Cosim)
-  // .command(Fmu)
+  .command(Fmu)
   .command(Build)
   .command(Generate)
   // .command(I18n)
@@ -53,7 +53,7 @@ yargs(process.argv.slice(2))
   .command(Sandbox)
   // .command(Publish)
   // .command(Render)
-  // .command(Simulate)
+  .command(Simulate)
   // .command(Surrogate)
   // .command(MC)
   // .command(Verify)

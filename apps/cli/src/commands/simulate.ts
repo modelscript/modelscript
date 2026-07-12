@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type ArenaDAEBuilder } from "@modelscript/compiler";
+import { initBltWasm, type ArenaDAEBuilder } from "@modelscript/compiler";
 import {
   ArenaSimulator,
   runWasmSimulation,
   simulateArena,
+  simulateArenaAsync,
   snapshotMemory,
   type MemorySnapshot,
 } from "@modelscript/compiler/simulator";
@@ -82,7 +83,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       .option("solver", {
         description: "ODE solver to use",
         type: "string",
-        choices: ["rk4", "dopri5", "bdf", "auto"],
+        choices: ["euler", "rk4", "dopri5", "bdf", "auto", "cvode"],
         default: "dopri5",
       })
       .option("realtime", {
@@ -150,6 +151,8 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
       lastSnap = snap;
     }
 
+    await initBltWasm();
+
     if (!arena) {
       console.error(`'${args.name}' not found or had flattening errors.`);
       return;
@@ -168,7 +171,7 @@ export const Simulate: CommandModule<{}, SimulateArgs> = {
         await simulateC(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
       case "arena":
-        simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
+        await simulateArenaEngine(arena, args, profiler, startTime, stopTime, step, memProfiles, lastSnap);
         break;
       case "js":
       default:
@@ -198,13 +201,22 @@ function simulateJs(
 ): void {
   profiler.start("simulation");
 
+  const outputStringIds: number[] = [];
+  for (let i = 0; i < arena.varCount; i++) {
+    const name = arena.getVarName(i);
+    if (!name.startsWith("$") && !name.startsWith("der(")) {
+      outputStringIds.push(arena.getVarNameId(i));
+    }
+  }
+
   // Map CLI solver to simulateArena solver
-  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
   const result = simulateArena(arena, {
     startTime,
     stopTime,
     step,
     solver,
+    outputStringIds,
   });
 
   profiler.end("simulation");
@@ -219,7 +231,7 @@ function simulateJs(
 
 // ── Arena Engine ──
 
-function simulateArenaEngine(
+async function simulateArenaEngine(
   arena: ArenaDAEBuilder,
   args: SimulateArgs,
   profiler: Profiler,
@@ -228,16 +240,30 @@ function simulateArenaEngine(
   step: number,
   memProfiles: Record<string, unknown>,
   lastSnap: MemorySnapshot | null,
-): void {
+): Promise<void> {
   profiler.start("simulation");
 
-  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto";
-  const result = simulateArena(arena, {
+  const outputStringIds: number[] = [];
+  for (let i = 0; i < arena.varCount; i++) {
+    const name = arena.getVarName(i);
+    if (!name.startsWith("$") && !name.startsWith("der(")) {
+      outputStringIds.push(arena.getVarNameId(i));
+    }
+  }
+
+  const solver = args.solver as "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
+  const opts: any = {
     startTime,
     stopTime,
     step,
     solver,
-  });
+    outputStringIds,
+  };
+  if (args.tolerance) {
+    opts.atol = Number(args.tolerance);
+    opts.rtol = Number(args.tolerance);
+  }
+  const result = await simulateArenaAsync(arena, opts);
 
   profiler.end("simulation");
 

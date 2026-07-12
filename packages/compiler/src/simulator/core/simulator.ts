@@ -263,9 +263,12 @@ export class ArenaSimulator {
   /** Cached FMU prefix → subsystem mapping (built once in prepare). */
   private fmuMappings: { prefix: string; subsystem: FmuSubsystem; inputIds: number[]; outputIds: number[] }[] = [];
 
+  public preValuesByStringId!: Float64Array;
+
   constructor(public arena: ArenaDAEBuilder) {}
 
   prepare() {
+    this.preValuesByStringId = new Float64Array(this.arena.interner.size);
     this.resolveParameters();
     this.eliminateAliases();
     this.identifyDerivatives();
@@ -739,7 +742,7 @@ export class ArenaSimulator {
       if (!tr) continue;
       if (tr.fromState !== rt.activeState) continue;
 
-      const condVal = evaluateArenaRuntime(this.arena, tr.conditionExprId, valuesByStringId);
+      const condVal = evaluateArenaRuntime(this.arena, tr.conditionExprId, valuesByStringId, this.preValuesByStringId);
       const condTrue = condVal !== 0;
 
       // Synchronize guard: if synchronize=true, only fire when all child state
@@ -808,7 +811,7 @@ export class ArenaSimulator {
     const activeStateDef = rt.def.states.find((s) => s.name === rt.activeState);
     if (activeStateDef) {
       for (const eq of activeStateDef.equations) {
-        const val = evaluateArenaRuntime(this.arena, eq.exprId, valuesByStringId);
+        const val = evaluateArenaRuntime(this.arena, eq.exprId, valuesByStringId, this.preValuesByStringId);
         if (eq.isDerivative) {
           // For derivative equations: write to der(varName)
           const varName = this.arena.interner.resolve(eq.targetNameId);
@@ -1002,13 +1005,18 @@ export class ArenaSimulator {
 
   private processWhenClauses(valuesByStringId: Float64Array): void {
     for (const clause of this.whenClauses) {
-      const condVal = evaluateArenaRuntime(this.arena, clause.conditionExprId, valuesByStringId);
+      const condVal = evaluateArenaRuntime(
+        this.arena,
+        clause.conditionExprId,
+        valuesByStringId,
+        this.preValuesByStringId,
+      );
       const isActive = condVal !== 0;
 
       // Rising edge detection
       if (isActive && !clause.wasActive) {
         for (const action of clause.actions) {
-          const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId);
+          const val = evaluateArenaRuntime(this.arena, action.exprId, valuesByStringId, this.preValuesByStringId);
           valuesByStringId[action.targetNameId] = val;
         }
       }
@@ -1249,15 +1257,19 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     options?: {
-      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
+      outputStringIds?: number[];
     },
   ) {
     const solver = options?.solver ?? "rk4";
     const timeId = this.arena.interner.intern("time");
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
+
+    this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+    this.preValuesByStringId.set(valuesByStringId);
 
     // Execute initial algorithm sections
     for (const sec of this.arena.initialAlgorithmSections) {
@@ -1290,6 +1302,9 @@ export class ArenaSimulator {
         options,
       );
     }
+    if (solver === "cvode") {
+      throw new Error("CVODE solver requires simulateAsync instead of simulate");
+    }
 
     // ── Fixed-step solvers (RK4, Euler) ──
     const t_out: number[] = [];
@@ -1300,6 +1315,7 @@ export class ArenaSimulator {
       valuesByStringId[timeId] = currentTime;
       this.evaluateBlocks(valuesByStringId);
       this.evaluateDerivativeEquations(valuesByStringId);
+      this.preValuesByStringId.set(valuesByStringId);
       this.executeStateMachines(valuesByStringId);
       this.processWhenClauses(valuesByStringId);
       if (this.fmuMappings.length > 0) this.stepFmuSubsystems(valuesByStringId, currentTime, step);
@@ -1311,9 +1327,10 @@ export class ArenaSimulator {
       }
 
       // Record output
-      const currentState = new Float64Array(n);
-      for (let i = 0; i < n; i++) {
-        currentState[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+      const outIds = options?.outputStringIds ?? stateStringIds;
+      const currentState = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
       }
       t_out.push(currentTime);
       y_out.push(currentState);
@@ -1350,7 +1367,7 @@ export class ArenaSimulator {
     stateStringIds: number[],
     derivStringIds: number[],
     timeId: number,
-    options?: { atol?: number; rtol?: number },
+    options?: { atol?: number; rtol?: number; outputStringIds?: number[] },
   ) {
     const n = stateStringIds.length;
     const startTime = valuesByStringId[timeId] ?? 0;
@@ -1410,10 +1427,21 @@ export class ArenaSimulator {
     }
 
     // Convert to Float64Array output format
+    const outIds = options?.outputStringIds ?? stateStringIds;
     const t_out = rawResult.times;
     const y_out: Float64Array[] = rawResult.states.map((row) => {
-      const fa = new Float64Array(n);
-      for (let i = 0; i < n; i++) fa[i] = row[i] ?? 0;
+      // First, load the states into the environment
+      for (let i = 0; i < n; i++) {
+        valuesByStringId[stateStringIds[i] ?? -1] = row[i] ?? 0;
+      }
+      // Re-evaluate algebraic variables for the recorded state
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+
+      const fa = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        fa[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
+      }
       return fa;
     });
 
@@ -1479,6 +1507,188 @@ export class ArenaSimulator {
     }
   }
 
+  private async simulateCvodeWasm(
+    wasmMod: any,
+    CvodeSolverClass: any,
+    steps: number,
+    step: number,
+    valuesByStringId: Float64Array,
+    stateStringIds: number[],
+    derivStringIds: number[],
+    timeId: number,
+    options?: {
+      signal?: AbortSignal;
+      atol?: number;
+      rtol?: number;
+      outputStringIds?: number[];
+    },
+  ): Promise<{ t: number[]; y: number[][] }> {
+    this.preValuesByStringId = new Float64Array(valuesByStringId.length);
+    this.preValuesByStringId.set(valuesByStringId);
+    const t = valuesByStringId[timeId] ?? 0;
+    const n = stateStringIds.length;
+    const outIds = options?.outputStringIds ?? stateStringIds;
+    const outN = outIds.length;
+
+    if (n === 0) {
+      const resultT = new Float64Array(steps + 1);
+      const resultY: Float64Array[] = new Array(steps + 1);
+      let currentT = t;
+      resultT[0] = currentT;
+      resultY[0] = new Float64Array(outN);
+      for (let i = 0; i < outN; i++) resultY[0][i] = valuesByStringId[outIds[i] as number] ?? 0;
+
+      for (let s = 1; s <= steps; s++) {
+        currentT += step;
+        valuesByStringId[timeId] = currentT;
+        this.evaluateBlocks(valuesByStringId);
+        this.preValuesByStringId.set(valuesByStringId);
+        this.processWhenClauses(valuesByStringId);
+        resultT[s] = currentT;
+        resultY[s] = new Float64Array(outN);
+        for (let i = 0; i < outN; i++) resultY[s][i] = valuesByStringId[outIds[i] as number] ?? 0;
+      }
+      return { t: Array.from(resultT), y: resultY.map((arr) => Array.from(arr)) };
+    }
+
+    const y0 = new Array(n);
+    for (let i = 0; i < n; i++) y0[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
+
+    const rhsFn = (t_eval: number, y: Float64Array, ydot: Float64Array) => {
+      valuesByStringId[timeId] = t_eval;
+      for (let i = 0; i < n; i++) valuesByStringId[stateStringIds[i] as number] = y[i] ?? 0;
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+      for (let i = 0; i < n; i++) ydot[i] = valuesByStringId[derivStringIds[i] as number] ?? 0;
+      return 0;
+    };
+
+    const nEvents = this.eventIndicators.length;
+    let eventFn: any;
+    if (nEvents > 0) {
+      eventFn = (t_eval: number, y: Float64Array, gout: Float64Array) => {
+        valuesByStringId[timeId] = t_eval;
+        for (let i = 0; i < n; i++) valuesByStringId[stateStringIds[i] as number] = y[i] ?? 0;
+        this.evaluateBlocks(valuesByStringId);
+        this.evaluateDerivativeEquations(valuesByStringId);
+        for (let i = 0; i < nEvents; i++) {
+          const ei = this.eventIndicators[i] as any;
+          let val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+          if (ei.direction === 0) {
+            val = val ? 1 : -1;
+          }
+          gout[i] = val;
+        }
+        return 0;
+      };
+    }
+
+    const solver = new CvodeSolverClass(wasmMod, n, t, y0, rhsFn, nEvents, eventFn, {
+      atol: options?.atol,
+      rtol: options?.rtol,
+    });
+
+    let resultT = new Float64Array(steps + 1);
+    let resultY: Float64Array[] = new Array(steps + 1);
+
+    resultT[0] = t;
+    this.evaluateBlocks(valuesByStringId);
+    this.evaluateDerivativeEquations(valuesByStringId);
+    const y0_out = new Float64Array(outN);
+    for (let i = 0; i < outN; i++) {
+      y0_out[i] = valuesByStringId[outIds[i] as number] ?? 0;
+    }
+    resultY[0] = y0_out;
+
+    let outIdx = 1;
+    let currentT = t;
+    for (let stepIdx = 1; stepIdx <= steps; stepIdx++) {
+      const targetT = t + stepIdx * step;
+      let reachedTarget = false;
+
+      let stepCount = 0;
+      while (!reachedTarget) {
+        if (options?.signal?.aborted) {
+          solver.dispose();
+          throw new Error("Simulation aborted");
+        }
+
+        const stepResult = solver.step(targetT);
+        const flag = stepResult.flag;
+        currentT = stepResult.t;
+
+        stepCount++;
+        if (stepCount > 1000) {
+          throw new Error(`Infinite loop detected at targetT=${targetT}, currentT=${currentT}, flag=${flag}`);
+        }
+
+        for (let i = 0; i < n; i++) {
+          valuesByStringId[stateStringIds[i] as number] = stepResult.y[i] ?? 0;
+        }
+        valuesByStringId[timeId] = currentT;
+
+        if (flag === 2) {
+          // CV_ROOT_RETURN
+          this.preValuesByStringId.set(valuesByStringId);
+          for (let i = 0; i < nEvents; i++) {
+            const ei = this.eventIndicators[i] as any;
+            const val = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+            ei.prevValue = val;
+          }
+          this.processWhenClauses(valuesByStringId);
+          this.executeStateMachines(valuesByStringId);
+          this.evaluateBlocks(valuesByStringId);
+          this.evaluateDerivativeEquations(valuesByStringId);
+
+          const y_new = new Array(n);
+          for (let i = 0; i < n; i++) y_new[i] = valuesByStringId[stateStringIds[i] as number] ?? 0;
+          solver.reinit(currentT, y_new);
+        }
+
+        if (flag < 0) {
+          solver.dispose();
+          throw new Error(`CVODE solver failed with flag ${flag} at t=${currentT}`);
+        }
+
+        if (currentT >= targetT - 1e-12) {
+          reachedTarget = true;
+        }
+      }
+
+      if (outIdx >= resultT.length) {
+        const newSize = resultT.length * 2;
+        const newT = new Float64Array(newSize);
+        newT.set(resultT);
+        resultT = newT;
+
+        const newY = new Array(newSize);
+        for (let i = 0; i < resultY.length; i++) newY[i] = resultY[i];
+        resultY = newY;
+      }
+
+      resultT[outIdx] = currentT;
+
+      // We must re-evaluate algebraic variables for the recorded state because
+      // the solver may have last evaluated the RHS at an intermediate or extrapolated time!
+      this.evaluateBlocks(valuesByStringId);
+      this.evaluateDerivativeEquations(valuesByStringId);
+
+      const step_y = new Float64Array(outN);
+      for (let i = 0; i < outN; i++) {
+        step_y[i] = valuesByStringId[outIds[i] as number] ?? 0;
+      }
+      resultY[outIdx] = step_y;
+      outIdx++;
+    }
+
+    solver.dispose();
+
+    return {
+      t: Array.from(resultT.subarray(0, outIdx)),
+      y: resultY.slice(0, outIdx).map((arr) => Array.from(arr)),
+    };
+  }
+
   async simulateAsync(
     steps: number,
     step: number,
@@ -1487,9 +1697,10 @@ export class ArenaSimulator {
     derivStringIds: number[],
     options?: {
       signal?: AbortSignal;
-      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto";
+      solver?: "euler" | "rk4" | "dopri5" | "bdf" | "auto" | "cvode";
       atol?: number;
       rtol?: number;
+      outputStringIds?: number[];
     },
   ) {
     const solver = options?.solver ?? "rk4";
@@ -1523,6 +1734,23 @@ export class ArenaSimulator {
     }
     for (const ei of this.eventIndicators) {
       ei.prevValue = evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId);
+    }
+
+    if (solver === "cvode") {
+      if (options?.signal?.aborted) throw new Error("Simulation aborted");
+      const { loadSundialsWasm, CvodeSolver } = await import("../solvers/sundials-wasm.js");
+      const wasmMod = await loadSundialsWasm();
+      return this.simulateCvodeWasm(
+        wasmMod,
+        CvodeSolver,
+        steps,
+        step,
+        valuesByStringId,
+        stateStringIds,
+        derivStringIds,
+        timeId,
+        options,
+      );
     }
 
     // Adaptive solvers run synchronously (they're CPU-bound; yielding inside would break solver state)
@@ -1580,9 +1808,10 @@ export class ArenaSimulator {
       }
 
       // Record output
-      const currentState = new Float64Array(n);
-      for (let i = 0; i < n; i++) {
-        currentState[i] = valuesByStringId[stateStringIds[i] ?? -1] ?? 0;
+      const outIds = options?.outputStringIds ?? stateStringIds;
+      const currentState = new Float64Array(outIds.length);
+      for (let i = 0; i < outIds.length; i++) {
+        currentState[i] = valuesByStringId[outIds[i] ?? -1] ?? 0;
       }
       t_out.push(currentTime);
       y_out.push(currentState);
