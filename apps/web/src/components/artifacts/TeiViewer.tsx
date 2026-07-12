@@ -69,6 +69,19 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const parseTei = (text: string) => {
+    try {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(text, "text/xml");
+      if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+        throw new Error("Invalid XML format");
+      }
+      setTeiData(xmlDoc);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
   useEffect(() => {
     if (viewConfig.data) {
       parseTei(viewConfig.data);
@@ -92,19 +105,6 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
       setError("No TEI data or URL provided.");
     }
   }, [viewConfig]);
-
-  const parseTei = (text: string) => {
-    try {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(text, "text/xml");
-      if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
-        throw new Error("Invalid XML format");
-      }
-      setTeiData(xmlDoc);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  };
 
   if (loading) {
     return (

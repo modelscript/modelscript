@@ -121,11 +121,6 @@ const FeedsPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchFeeds();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
-
   const fetchFeeds = async () => {
     if (!token) return;
     try {
@@ -140,6 +135,11 @@ const FeedsPage: React.FC = () => {
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    fetchFeeds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();

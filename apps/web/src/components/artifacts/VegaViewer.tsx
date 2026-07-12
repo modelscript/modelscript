@@ -23,20 +23,20 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       }
 
       try {
-        let loadedSpec = viewConfig.spec;
-
-        // If spec is a URL path
-        if (typeof loadedSpec === "string" && (loadedSpec.startsWith("http") || loadedSpec.startsWith("/"))) {
-          const res = await fetch(loadedSpec);
-          if (!res.ok) throw new Error("Failed to fetch Vega spec");
-          loadedSpec = await res.json();
+        let loadedSpec = null;
+        if (typeof viewConfig.spec === "string") {
+          if (viewConfig.spec.startsWith("http") || viewConfig.spec.startsWith("/")) {
+            const res = await fetch(viewConfig.spec);
+            if (!res.ok) throw new Error("Failed to fetch Vega spec");
+            loadedSpec = await res.json();
+          } else {
+            loadedSpec = JSON.parse(viewConfig.spec);
+          }
+        } else if (viewConfig.spec) {
+          loadedSpec = JSON.parse(JSON.stringify(viewConfig.spec));
         }
-        // If spec is a JSON string
-        else if (typeof loadedSpec === "string") {
-          loadedSpec = JSON.parse(loadedSpec);
-        }
 
-        if (viewConfig.data) {
+        if (loadedSpec && viewConfig.data) {
           loadedSpec.data = Array.isArray(viewConfig.data) ? { values: viewConfig.data } : viewConfig.data;
         }
 
