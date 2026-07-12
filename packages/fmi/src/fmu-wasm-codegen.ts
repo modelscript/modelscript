@@ -349,10 +349,21 @@ function generateWasmC(
     const variability = dae.getVarVariability(i);
     if (variability === Variability.Parameter || variability === Variability.Constant) {
       const ref = vrMap.get(vName);
-      const expr = dae.getVarExpression(i);
-      if (ref !== undefined && typeof expr === "number" && expr >= 0) {
-        const cExpr = exprToC(dae, expr);
-        L.push(`  g_vars[${ref}] = ${cExpr};  /* ${vName} */`);
+      if (ref !== undefined) {
+        const expr = dae.getVarExpression(i);
+        const startAttr = dae.getVarAttrExprId(i, "start");
+        const initExpr =
+          typeof expr === "number" && expr >= 0 ? expr : startAttr !== undefined && startAttr >= 0 ? startAttr : -1;
+
+        if (initExpr >= 0) {
+          const cExpr = exprToC(dae, initExpr);
+          L.push(`  g_vars[${ref}] = ${cExpr};  /* ${vName} */`);
+        } else {
+          const startVal = dae.getVarStartValue(i);
+          if (startVal !== 0) {
+            L.push(`  g_vars[${ref}] = ${startVal};  /* ${vName} */`);
+          }
+        }
       }
     }
   }
@@ -362,7 +373,12 @@ function generateWasmC(
     if (dae.isVarRemoved(i)) continue;
     const vName = dae.getVarName(i);
     const variability = dae.getVarVariability(i);
-    if (variability === Variability.Continuous || variability === undefined || variability === null) {
+    if (
+      variability === Variability.Continuous ||
+      variability === Variability.Discrete ||
+      variability === undefined ||
+      variability === null
+    ) {
       const ref = vrMap.get(vName);
       if (ref !== undefined) {
         const startAttr = dae.getVarAttrExprId(i, "start");
@@ -371,6 +387,11 @@ function generateWasmC(
         if (typeof initExpr === "number" && initExpr >= 0) {
           const cExpr = exprToC(dae, initExpr);
           L.push(`  g_vars[${ref}] = ${cExpr};  /* ${vName} */`);
+        } else {
+          const startVal = dae.getVarStartValue(i);
+          if (startVal !== 0) {
+            L.push(`  g_vars[${ref}] = ${startVal};  /* ${vName} */`);
+          }
         }
       }
     }
@@ -528,8 +549,9 @@ function generateWasmC(
         condExprId: number,
         bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[],
       ) => {
-        const condC = conditionToZeroCrossingC(dae, condExprId);
-        L.push(`  if (${condC} > 0.0 && g_when_prev[${whenIdx}] <= 0.0) {`);
+        const condC = exprToC(dae, condExprId);
+        L.push(`  double condVal_${whenIdx} = (double)(${condC});`);
+        L.push(`  if (condVal_${whenIdx} != 0.0 && g_when_prev[${whenIdx}] == 0.0) {`);
         for (const bodyEq of bodyEquations) {
           if (bodyEq.kind === EqKind.Simple) {
             const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
@@ -562,7 +584,7 @@ function generateWasmC(
           }
         }
         L.push("  }");
-        L.push(`  g_when_prev[${whenIdx}] = ${condC};`);
+        L.push(`  g_when_prev[${whenIdx}] = condVal_${whenIdx};`);
         whenIdx++;
       };
 

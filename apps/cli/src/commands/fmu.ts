@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { initBltWasm } from "@modelscript/compiler";
 import { ArenaSimulator } from "@modelscript/compiler/simulator";
 import { Context } from "@modelscript/core";
 import {
@@ -9,11 +10,9 @@ import {
   FMI2_TYPES_PLATFORM_H,
   buildFmuArchive,
   compileToWasm,
-  createZip,
   generateFmu,
   generateFmuCSources,
   generateFmuWasmSource,
-  serializeArenaToJson,
 } from "@modelscript/fmi";
 import Modelica from "@modelscript/modelica/parser";
 import { execSync } from "node:child_process";
@@ -146,6 +145,8 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       return;
     }
 
+    await initBltWasm();
+
     // Prepare simulator to get state variable info
     const simulator = new ArenaSimulator(arena);
     simulator.prepare();
@@ -200,6 +201,8 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
     }
 
     // ── Full FMU archive mode ──
+    const fmiVersionStr =
+      String(args["fmi-version"]) === "3" ? "3" : String(args["fmi-version"]) === "2" ? "2" : "both";
     const archiveOptions: FmuArchiveOptions = {
       modelIdentifier,
       description: args.description,
@@ -210,7 +213,7 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
       fmuType,
       includeSources: args.source !== false,
       includeModelJson: true,
-      fmiVersion: args["fmi-version"] as "2" | "3" | "both",
+      fmiVersion: fmiVersionStr,
     };
 
     profiler.start("codegen");
@@ -251,7 +254,14 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
         fs.mkdirSync(srcDir, { recursive: true });
         fs.writeFileSync(path.join(srcDir, `${modelIdentifier}_model.h`), sources.modelH);
         fs.writeFileSync(path.join(srcDir, `${modelIdentifier}_model.c`), sources.modelC);
-        fs.writeFileSync(path.join(srcDir, "fmi2Functions.c"), sources.fmi2FunctionsC);
+        const fmi2c = path.join(srcDir, "fmi2Functions.c");
+        const fmi3c = path.join(srcDir, "fmi3Functions.c");
+        if (archiveOptions.fmiVersion === "2" || archiveOptions.fmiVersion === "both") {
+          fs.writeFileSync(fmi2c, sources.fmi2FunctionsC);
+        }
+        if (archiveOptions.fmiVersion === "3" || archiveOptions.fmiVersion === "both") {
+          fs.writeFileSync(fmi3c, sources.fmi3FunctionsC);
+        }
 
         // Write FMI headers from archive
         const encoder = new TextEncoder();
@@ -259,21 +269,26 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           fs.writeFileSync(path.join(srcDir, name), encoder.encode(content));
         }
 
-        // Detect platform
-        const arch = os.arch() === "x64" ? "64" : "32";
-        const plat =
+        const arch2 = os.arch() === "x64" ? "64" : "32";
+        const plat2 =
           process.platform === "win32"
-            ? `win${arch}`
+            ? `win${arch2}`
             : process.platform === "darwin"
-              ? `darwin${arch}`
-              : `linux${arch}`;
+              ? `darwin${arch2}`
+              : `linux${arch2}`;
+        const arch3 = os.arch() === "x64" ? "x86_64" : os.arch() === "arm64" ? "aarch64" : "x86";
+        const plat3 =
+          process.platform === "win32"
+            ? `${arch3}-windows`
+            : process.platform === "darwin"
+              ? `${arch3}-darwin`
+              : `${arch3}-linux`;
         const ext = process.platform === "win32" ? ".dll" : process.platform === "darwin" ? ".dylib" : ".so";
 
         // Compile
         const cc = process.env.CC ?? "gcc";
-        const binDir = path.join(tmpDir, "binaries", plat);
-        fs.mkdirSync(binDir, { recursive: true });
-        const sharedLib = path.join(binDir, `${modelIdentifier}${ext}`);
+        // Just build to temp dir first
+        const sharedLib = path.join(tmpDir, `${modelIdentifier}${ext}`);
 
         const ccCmd = [
           cc,
@@ -284,16 +299,20 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           "-Wextra",
           `-I${srcDir}`,
           path.join(srcDir, `${modelIdentifier}_model.c`),
-          path.join(srcDir, "fmi2Functions.c"),
+          archiveOptions.fmiVersion === "2" || archiveOptions.fmiVersion === "both" ? fmi2c : "",
+          archiveOptions.fmiVersion === "3" || archiveOptions.fmiVersion === "both" ? fmi3c : "",
           "-o",
           sharedLib,
           "-lm",
-        ].join(" ");
+          "-pthread",
+        ]
+          .filter(Boolean)
+          .join(" ");
 
         console.log(`Compiling with: ${ccCmd}`);
         try {
           execSync(ccCmd, { stdio: "pipe", timeout: 60000 });
-          console.log(`  Compiled: binaries/${plat}/${modelIdentifier}${ext}`);
+          console.log(`  Compiled native binary`);
         } catch (compileErr) {
           const msg =
             compileErr instanceof Error && "stderr" in compileErr
@@ -306,50 +325,27 @@ export const Fmu: CommandModule<{}, FmuArgs> = {
           return;
         }
 
-        // Rebuild archive with the compiled binary
-        const finalEntries = new Map<string, Uint8Array>();
-
-        // Actually, it's easier to use the resourceFiles map for the native binary
-        if (!archiveOptions.resourceFiles) archiveOptions.resourceFiles = new Map();
-        // FMI standard expects native binaries in binaries/PLATFORM/
-        // So we hack it in via resourceFiles by using a relative path that breaks out of resources/
-        // Wait, fmu-archive adds "resources/" prefix. So we can't use resourceFiles.
-
-        // Let's just re-implement the entry copying like in export-fmu.ts
-        finalEntries.set("modelDescription.xml", encoder.encode(result.fmuResult.modelDescriptionXml));
-
+        const binData = fs.readFileSync(sharedLib);
+        archiveOptions.nativeBinaries = [];
+        if (archiveOptions.fmiVersion === "2" || archiveOptions.fmiVersion === "both") {
+          archiveOptions.nativeBinaries.push({ platform: plat2, ext, binary: binData });
+        }
         if (archiveOptions.fmiVersion === "3" || archiveOptions.fmiVersion === "both") {
-          // Add terminalsAndIcons if present
-          // We can't easily get fmi3Result without calling generateFmi3.
-          // A cleaner way is to just call buildFmuArchive again but modify it to accept native binaries.
+          archiveOptions.nativeBinaries.push({ platform: plat3, ext, binary: binData });
         }
 
-        // Since we're replacing export-fmu, let's copy its logic directly.
-        finalEntries.set("modelDescription.xml", encoder.encode(result.fmuResult.modelDescriptionXml));
-        if (archiveOptions.includeSources !== false) {
-          finalEntries.set(`sources/${modelIdentifier}_model.h`, encoder.encode(sources.modelH));
-          finalEntries.set(`sources/${modelIdentifier}_model.c`, encoder.encode(sources.modelC));
-          finalEntries.set("sources/fmi2Functions.c", encoder.encode(sources.fmi2FunctionsC));
-          finalEntries.set("sources/CMakeLists.txt", encoder.encode(sources.cmakeLists));
-          for (const [name, content] of Object.entries(FMI_HEADERS)) {
-            finalEntries.set(`sources/${name}`, encoder.encode(content));
-          }
-        }
-        if (archiveOptions.includeModelJson !== false) {
-          finalEntries.set(
-            "resources/model.json",
-            encoder.encode(JSON.stringify(serializeArenaToJson(arena), null, 2)),
-          );
-        }
+        console.log("FMI VERSION: ", archiveOptions.fmiVersion);
+        console.log(
+          "NATIVE BINARIES: ",
+          archiveOptions.nativeBinaries.map((b) => b.platform),
+        );
 
-        if (archiveOptions.wasmBinary && archiveOptions.wasmJsGlue) {
-          finalEntries.set(`binaries/wasm32/${modelIdentifier}.wasm`, archiveOptions.wasmBinary);
-          finalEntries.set(`binaries/wasm32/${modelIdentifier}.js`, encoder.encode(archiveOptions.wasmJsGlue));
-        }
+        // Re-build archive to include native binaries properly
+        profiler.start("codegen");
+        result = buildFmuArchive(arena, archiveOptions, stateVars);
+        profiler.end("codegen");
 
-        finalEntries.set(`binaries/${plat}/${modelIdentifier}${ext}`, fs.readFileSync(sharedLib));
-
-        fs.writeFileSync(outputPath, createZip(finalEntries));
+        fs.writeFileSync(outputPath, result.archive);
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
         profiler.end("compilation_c");

@@ -85,7 +85,12 @@ export function generateSundialsMainC(
           name: stateSv.name,
           vr: stateSv.valueReference,
           derVr: sv.valueReference,
-          start: stateSv.start ?? 0,
+          start:
+            typeof stateSv.start === "number"
+              ? stateSv.start
+              : stateSv.start === "true" || stateSv.start === true
+                ? 1
+                : 0,
         });
       }
     }
@@ -144,7 +149,8 @@ export function generateSundialsMainC(
   lines.push(`  /* Set parameter and initial values */`);
   for (const sv of vars) {
     if (sv.start !== undefined && sv.causality !== "independent") {
-      lines.push(`  inst.vars[${sv.valueReference}] = ${formatCDouble(sv.start)};  /* ${sv.name} */`);
+      const numStart = typeof sv.start === "number" ? sv.start : sv.start === "true" || sv.start === true ? 1 : 0;
+      lines.push(`  inst.vars[${sv.valueReference}] = ${formatCDouble(numStart)};  /* ${sv.name} */`);
     }
   }
   lines.push("");

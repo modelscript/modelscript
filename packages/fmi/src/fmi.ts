@@ -37,7 +37,7 @@ export interface FmiScalarVariable {
   /** Data type: Real, Integer, Boolean, String, Clock. */
   type: "Real" | "Integer" | "Boolean" | "String" | "Clock";
   /** Start value (initial condition or default). */
-  start?: number;
+  start?: string | number | boolean;
   /** SI unit string (optional). */
   unit?: string;
   /** Display unit (optional). */
@@ -114,6 +114,9 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
   let valueRef = 0;
 
   // ── Time variable (independent) ──
+  // In FMI 2.0, time is implicitly available. Some importers (like OMC)
+  // have bugs if time is explicitly listed without a start attribute.
+  /*
   scalarVariables.push({
     valueReference: valueRef++,
     name: "time",
@@ -121,6 +124,7 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
     variability: "continuous",
     type: "Real",
   });
+  */
 
   // ── Model variables ──
   const outputRefs: number[] = [];
@@ -131,7 +135,11 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
 
   for (let i = 0; i < dae.varCount; i++) {
     if (dae.isVarRemoved(i)) continue;
-    const sv = mapVariable(dae, i, valueRef++);
+    const sv = mapVariable(dae, i, valueRef);
+    if (sv.variability === "constant") {
+      continue;
+    }
+    valueRef++;
     scalarVariables.push(sv);
 
     if (dae.getVarType(i) === VarType.Enumeration) {
@@ -165,6 +173,9 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
       if (stateSv) {
         sv.derivative = stateSv.valueReference;
         derivativeRefs.push(sv.valueReference);
+        if (!stateSv.initial || stateSv.initial === "calculated") {
+          stateSv.initial = "exact";
+        }
       }
     }
   }
@@ -173,7 +184,11 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
   const aliasMap = detectAliases(dae, scalarVariables);
 
   // ── Compute dependencies ──
-  const deps = computeDependencies(dae, scalarVariables, outputRefs, derivativeRefs, initialUnknownRefs);
+  const filteredInitialUnknowns = initialUnknownRefs.filter((ref) => {
+    const v = scalarVariables.find((sv) => sv.valueReference === ref);
+    return v && v.initial === "calculated";
+  });
+  const deps = computeDependencies(dae, scalarVariables, outputRefs, derivativeRefs, filteredInitialUnknowns);
 
   // ── Generate modelDescription.xml ──
   const fmuType = options.fmuType ?? { modelExchange: true, coSimulation: true };
@@ -183,7 +198,7 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
     guid,
     outputRefs,
     derivativeRefs,
-    initialUnknownRefs,
+    initialUnknownRefs: filteredInitialUnknowns,
     fmuType,
     nEventIndicators,
     aliasMap,
@@ -197,7 +212,7 @@ export function generateFmu(dae: ArenaDAEBuilder, options: FmuOptions, _stateVar
     modelStructure: {
       outputs: outputRefs,
       derivatives: derivativeRefs,
-      initialUnknowns: initialUnknownRefs,
+      initialUnknowns: filteredInitialUnknowns,
     },
     guid,
     numberOfEventIndicators: nEventIndicators,
@@ -369,6 +384,9 @@ function mapVariable(dae: ArenaDAEBuilder, idx: number, valueRef: number): FmiSc
     variability: mapVariability(dae.getVarVariability(idx)),
     type: mapType(dae.getVarType(idx)),
   };
+  if (sv.type !== "Real" && sv.variability === "continuous") {
+    sv.variability = "discrete";
+  }
   const desc = dae.getVarDescription(idx);
   if (desc) sv.description = desc;
 
@@ -384,6 +402,12 @@ function mapVariable(dae: ArenaDAEBuilder, idx: number, valueRef: number): FmiSc
   }
   if (sv.start === undefined && sv.variability === "continuous") {
     sv.start = 0;
+  }
+  if (
+    sv.start === undefined &&
+    (sv.causality === "parameter" || sv.causality === "input" || sv.variability === "constant")
+  ) {
+    sv.start = sv.type === "String" ? "" : 0;
   }
 
   const unitAttr = dae.getVarAttrExprId(idx, "unit");
@@ -422,7 +446,8 @@ function mapType(t: VarType): FmiScalarVariable["type"] {
 }
 
 function mapCausality(c: Causality, v: Variability): FmiCausality {
-  if (v === Variability.Parameter || v === Variability.Constant) return "parameter";
+  if (v === Variability.Constant) return "local";
+  if (v === Variability.Parameter) return "parameter";
   if (c === Causality.Input) return "input";
   if (c === Causality.Output) return "output";
   return "local";
@@ -592,7 +617,11 @@ function generateModelDescriptionXml(
     const startAttr = sv.start !== undefined && sv.initial !== "calculated" ? ` start="${sv.start}"` : "";
     const unitAttr = sv.unit ? ` unit="${escapeXml(sv.unit)}"` : "";
     const duAttr = sv.displayUnit ? ` displayUnit="${escapeXml(sv.displayUnit)}"` : "";
-    const derivAttr = sv.derivative !== undefined ? ` derivative="${sv.derivative}"` : "";
+    let derivAttr = "";
+    if (sv.derivative !== undefined) {
+      const stateIndex = variables.findIndex((v) => v.valueReference === sv.derivative) + 1;
+      if (stateIndex > 0) derivAttr = ` derivative="${stateIndex}"`;
+    }
     const declTypeAttr = sv.declaredType ? ` declaredType="${escapeXml(sv.declaredType)}"` : "";
     lines.push(`      <${sv.type}${startAttr}${unitAttr}${duAttr}${derivAttr}${declTypeAttr} />`);
     lines.push("    </ScalarVariable>");
@@ -662,7 +691,7 @@ interface Fmi3ArrayVariable {
   elements: FmiScalarVariable[];
 }
 
-function groupFmi3Variables(scalarVariables: FmiScalarVariable[]): (FmiScalarVariable | Fmi3ArrayVariable)[] {
+export function groupFmi3Variables(scalarVariables: FmiScalarVariable[]): (FmiScalarVariable | Fmi3ArrayVariable)[] {
   const result: (FmiScalarVariable | Fmi3ArrayVariable)[] = [];
   const arrayMap = new Map<string, Fmi3ArrayVariable>();
 

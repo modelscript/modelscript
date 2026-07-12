@@ -17,6 +17,7 @@
 import {
   ArenaDAEBuilder,
   BinOp,
+  Causality,
   EqKind,
   ExprKind,
   StaticTapeBuilder,
@@ -28,6 +29,7 @@ import {
   simplifyArenaExpression,
 } from "@modelscript/compiler";
 import type { FmuOptions, FmuResult } from "./fmi.js";
+import { groupFmi3Variables } from "./fmi.js";
 import { binaryOpToC, escapeCString, formatCDouble, mapFunctionName, sanitizeIdentifier } from "./transpiler-utils.js";
 
 /** Generated C source files. */
@@ -67,7 +69,7 @@ export function generateFmuCSources(dae: ArenaDAEBuilder, fmuResult: FmuResult, 
     "\n\n" +
     jacCode.join("\n");
   const fmi2FunctionsC = generateFmi2FunctionsC(id, nVars, nStates, nStringVars, dae, fmuResult);
-  const fmi3FunctionsC = generateFmi3FunctionsC(id, dae);
+  const fmi3FunctionsC = generateFmi3FunctionsC(id, dae, fmuResult);
 
   const externalIncludes = new Set<string>();
   for (const fn of dae.functions.values()) {
@@ -113,8 +115,7 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
     }
     case ExprKind.Pre: {
       const op = dae.getExprData1(id);
-      const name = dae.interner.resolve(dae.getExprData1(op));
-      return varToC(`pre(${name})`);
+      return exprToC(dae, op);
     }
     case ExprKind.Binary: {
       const op = dae.getExprData1(id) as BinOp;
@@ -133,6 +134,12 @@ function exprToC(dae: ArenaDAEBuilder, id: number): string {
         const delayTime = exprToC(dae, dae.getExprLeft(id + 1));
         const bufIdx = delayBufferCounter++;
         return `delay_lookup(&inst->delayBuf[${bufIdx}], inst->time - (${delayTime}), ${delayVal})`;
+      }
+      if (fname === "/*Real*/" && argCount === 1) {
+        return `((double)(${exprToC(dae, dae.getExprLeft(id))}))`;
+      }
+      if (fname === "/*Integer*/" && argCount === 1) {
+        return `((int)(${exprToC(dae, dae.getExprLeft(id))}))`;
       }
       if (fname === "spatialDistribution" && argCount >= 5) {
         const outVal = exprToC(dae, dae.getExprLeft(id));
@@ -405,10 +412,66 @@ function generateAlgebraicLoopSolvers(
       })),
     }));
 
-  if (algebraicLoops.length === 0) {
+  const simpleAssignments = blt.blocks
+    .filter((b) => {
+      if (b.vars.length !== 1 || b.eqIdxs.length !== 1) return false;
+      const v = b.vars[0]!;
+      if (derivativeVars.has(v)) return false;
+      const causality = dae.getVarCausality(v);
+      if (
+        causality === Causality.Input ||
+        dae.getVarVariability(v) === Variability.Parameter ||
+        dae.getVarVariability(v) === Variability.Constant
+      )
+        return false;
+      return true;
+    })
+    .map((b) => {
+      const varName = dae.getVarName(b.vars[0]!);
+      const eqIdx = b.eqIdxs[0]!;
+      const lhs = dae.getEqLhs(eqIdx);
+      const rhs = dae.getEqRhs(eqIdx);
+
+      let exprId = rhs;
+      if (dae.getExprKind(lhs) !== ExprKind.Name) {
+        exprId = lhs;
+      } else {
+        const lhsName = dae.interner.resolve(dae.getExprData1(lhs));
+        if (lhsName !== varName) {
+          exprId = lhs;
+        }
+      }
+      return { varName, exprId };
+    });
+
+  if (algebraicLoops.length === 0 && simpleAssignments.length === 0) {
     lines.push("  (void)inst;");
     lines.push("}");
     return lines.join("\n");
+  }
+
+  // Create local aliases only for referenced variables in simple assignments
+  const referencedNames = new Set<string>();
+  for (const assign of simpleAssignments) {
+    collectReferencedNames(dae, assign.exprId, referencedNames);
+  }
+
+  if (referencedNames.has("time")) {
+    lines.push("  double time = inst->time;");
+  }
+  for (const sv of result.scalarVariables) {
+    if (sv.causality === "independent") continue;
+    if (!referencedNames.has(sv.name)) continue;
+    const cName = varToC(sv.name);
+    lines.push(`  double ${cName} = inst->vars[${sv.valueReference}];`);
+  }
+  lines.push("");
+
+  for (const assign of simpleAssignments) {
+    const sv = result.scalarVariables.find((v) => v.name === assign.varName);
+    if (sv) {
+      lines.push(`  inst->vars[${sv.valueReference}] = ${exprToC(dae, assign.exprId)}; /* ${assign.varName} */`);
+    }
   }
 
   for (let loopIdx = 0; loopIdx < algebraicLoops.length; loopIdx++) {
@@ -751,10 +814,25 @@ function generateModelC(id: string, dae: ArenaDAEBuilder, result: FmuResult): st
     const variability = dae.getVarVariability(i);
     if (variability === Variability.Parameter || variability === Variability.Constant) {
       const ref = vrMap.get(vName);
-      const expr = dae.getVarExpression(i) as number | undefined;
-      if (ref !== undefined && expr !== undefined && typeof expr === "number" && expr >= 0) {
-        const cExpr = exprToC(dae, expr);
-        lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${vName} */`);
+      if (ref !== undefined) {
+        const expr = dae.getVarExpression(i) as number | undefined;
+        const startAttr = dae.getVarAttrExprId(i, "start");
+        const initExpr =
+          expr !== undefined && typeof expr === "number" && expr >= 0
+            ? expr
+            : startAttr !== undefined && startAttr >= 0
+              ? startAttr
+              : -1;
+
+        if (initExpr >= 0) {
+          const cExpr = exprToC(dae, initExpr);
+          lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${vName} */`);
+        } else {
+          const startVal = dae.getVarStartValue(i);
+          if (startVal !== 0) {
+            lines.push(`  inst->vars[${ref}] = ${startVal};  /* ${vName} */`);
+          }
+        }
       }
     }
   }
@@ -763,7 +841,12 @@ function generateModelC(id: string, dae: ArenaDAEBuilder, result: FmuResult): st
     if (dae.isVarRemoved(i)) continue;
     const vName = dae.getVarName(i);
     const variability = dae.getVarVariability(i);
-    if (variability === Variability.Continuous || variability === undefined || variability === null) {
+    if (
+      variability === Variability.Continuous ||
+      variability === Variability.Discrete ||
+      variability === undefined ||
+      variability === null
+    ) {
       const ref = vrMap.get(vName);
       if (ref !== undefined) {
         const startAttr = dae.getVarAttrExprId(i, "start");
@@ -772,6 +855,11 @@ function generateModelC(id: string, dae: ArenaDAEBuilder, result: FmuResult): st
         if (initExpr !== undefined && typeof initExpr === "number" && initExpr >= 0) {
           const cExpr = exprToC(dae, initExpr);
           lines.push(`  inst->vars[${ref}] = ${cExpr};  /* ${vName} */`);
+        } else {
+          const startVal = dae.getVarStartValue(i);
+          if (startVal !== 0) {
+            lines.push(`  inst->vars[${ref}] = ${startVal};  /* ${vName} */`);
+          }
         }
       }
     }
@@ -998,6 +1086,43 @@ function generateFmi2FunctionsC(
   lines.push("} FMUInstance;");
   lines.push("");
 
+  // ── Types Platform & Version ──
+  lines.push('const char* fmi2GetTypesPlatform(void) { return "default"; }');
+  lines.push('const char* fmi2GetVersion(void) { return "2.0"; }');
+  lines.push("");
+
+  // ── State saving stubs ──
+  lines.push(
+    "fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate state) { (void)c; (void)state; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* state) { (void)c; (void)state; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate state, size_t* size) { (void)c; (void)state; (void)size; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate state, fmi2Byte serializedState[], size_t size) { (void)c; (void)state; (void)serializedState; (void)size; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* state) { (void)c; (void)serializedState; (void)size; (void)state; return fmi2Error; }",
+  );
+  lines.push("fmi2Status fmi2EnterEventMode(fmi2Component c) { (void)c; return fmi2OK; }");
+  lines.push("fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) { (void)c; return fmi2OK; }");
+  lines.push(
+    "fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real x_nominal[], size_t nx) { (void)c; for(size_t i=0;i<nx;i++) x_nominal[i]=1.0; return fmi2OK; }",
+  );
+  lines.push(
+    "fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) { (void)c; (void)vr; (void)nvr; (void)order; (void)value; return fmi2Error; }",
+  );
+  lines.push(
+    "fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer order[], fmi2Real value[]) { (void)c; (void)vr; (void)nvr; (void)order; (void)value; return fmi2Error; }",
+  );
+  lines.push("");
+
   // ── Logger & Terminate Impl ──
   lines.push("static void fmi2_logger_impl(void* fmuInstance, const char* category, const char* message) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)fmuInstance;");
@@ -1074,6 +1199,7 @@ function generateFmi2FunctionsC(
   // ── fmi2GetReal / fmi2SetReal ──
   lines.push("fmi2Status fmi2GetReal(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Real value[]) {");
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push("    if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]];");
   lines.push("  }");
@@ -1098,6 +1224,7 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2GetInteger(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Integer value[]) {",
   );
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push("    if (vr[i] < N_VARS) value[i] = (fmi2Integer)inst->model.vars[vr[i]];");
   lines.push("  }");
@@ -1120,6 +1247,7 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2GetBoolean(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Boolean value[]) {",
   );
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push("    if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]] != 0.0 ? fmi2True : fmi2False;");
   lines.push("  }");
@@ -1142,6 +1270,7 @@ function generateFmi2FunctionsC(
     "fmi2Status fmi2GetString(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2String value[]) {",
   );
   lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push("    if (vr[i] < N_STRING_VARS) {");
   lines.push('      value[i] = inst->model.stringVars[vr[i]] ? inst->model.stringVars[vr[i]] : "";');
@@ -1235,142 +1364,16 @@ function generateFmi2FunctionsC(
   lines.push("");
 
   // ── New discrete states / Event handling ──
-  lines.push("fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* info) {");
-  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("fmi2Status fmi2NewDiscreteStates(fmi2Component _comp, fmi2EventInfo* info) {");
+  lines.push("  FMUInstance* inst = (FMUInstance*)_comp;");
   lines.push("  info->newDiscreteStatesNeeded = fmi2False;");
   lines.push("  info->terminateSimulation = inst->terminateRequested ? fmi2True : fmi2False;");
   lines.push("  info->nominalsOfContinuousStatesChanged = fmi2False;");
   lines.push("  info->valuesOfContinuousStatesChanged = fmi2False;");
   lines.push("  info->nextEventTimeDefined = fmi2False;");
   lines.push("  info->nextEventTime = 0.0;");
-
-  // Collect when equations
-  const whenEqIdxs: number[] = [];
-  for (let idx = 0; idx < dae.eqCount; idx++) {
-    if (dae.getEqKind(idx) === EqKind.When) {
-      whenEqIdxs.push(idx);
-    }
-  }
-
-  if (whenEqIdxs.length > 0) {
-    let whenIdx = 0;
-    for (const eqIdx of whenEqIdxs) {
-      const weq = dae.getWhenEquationMeta(eqIdx);
-      if (!weq) continue;
-
-      // Evaluate condition directly
-      const condC = conditionToZeroCrossingC(dae, weq.conditionExprId);
-      lines.push(`  /* when-equation ${whenIdx} */`);
-      lines.push(`  if (${condC} > 0.0 && inst->model.whenPrev[${whenIdx}] <= 0.0) {`);
-
-      // Execute the when-equation body assignments
-      for (const bodyEq of weq.bodyEquations) {
-        if (bodyEq.kind === EqKind.Simple) {
-          const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
-          if (lhsName) {
-            // Find the VR for this variable
-            const sv = result.scalarVariables.find((v) => v.name === lhsName);
-            if (sv) {
-              lines.push(
-                `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`,
-              );
-            }
-          }
-        } else if (bodyEq.kind === EqKind.FunctionCall) {
-          if (dae.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
-            const callId = bodyEq.lhsExprId;
-            const fname = dae.interner.resolve(dae.getExprData1(callId));
-            if (fname === "reinit") {
-              const arg0 = dae.getExprLeft(callId);
-              const arg1 = dae.getExprLeft(callId + 1);
-              if (dae.getExprKind(arg0) === ExprKind.Name) {
-                const stateName = dae.interner.resolve(dae.getExprData1(arg0));
-                const sv = result.scalarVariables.find((v) => v.name === stateName);
-                if (sv) {
-                  lines.push(
-                    `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`,
-                  );
-                  lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
-                }
-              }
-            }
-          }
-        }
-      }
-      lines.push("  }");
-      lines.push(`  inst->model.whenPrev[${whenIdx}] = ${condC};`);
-      whenIdx++;
-
-      // elseWhen clauses
-      for (const clause of weq.elseWhenClauses) {
-        const condElseC = conditionToZeroCrossingC(dae, clause.conditionExprId);
-        lines.push(`  /* elsewhen-clause ${whenIdx} */`);
-        lines.push(`  if (${condElseC} > 0.0 && inst->model.whenPrev[${whenIdx}] <= 0.0) {`);
-        for (const bodyEq of clause.bodyEquations) {
-          if (bodyEq.kind === EqKind.Simple) {
-            const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
-            if (lhsName) {
-              const sv = result.scalarVariables.find((v) => v.name === lhsName);
-              if (sv) {
-                lines.push(
-                  `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`,
-                );
-              }
-            }
-          } else if (bodyEq.kind === EqKind.FunctionCall) {
-            if (dae.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
-              const callId = bodyEq.lhsExprId;
-              const fname = dae.interner.resolve(dae.getExprData1(callId));
-              if (fname === "reinit") {
-                const arg0 = dae.getExprLeft(callId);
-                const arg1 = dae.getExprLeft(callId + 1);
-                if (dae.getExprKind(arg0) === ExprKind.Name) {
-                  const stateName = dae.interner.resolve(dae.getExprData1(arg0));
-                  const sv = result.scalarVariables.find((v) => v.name === stateName);
-                  if (sv) {
-                    lines.push(
-                      `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`,
-                    );
-                    lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
-                  }
-                }
-              }
-            }
-          }
-        }
-        lines.push("  }");
-        lines.push(`  inst->model.whenPrev[${whenIdx}] = ${condElseC};`);
-        whenIdx++;
-      }
-    }
-  }
-
-  // Time-event scheduling: scan when-conditions for "time >= T" patterns
-  if (whenEqIdxs.length > 0) {
-    lines.push("  /* Time-event detection and scheduling */");
-    for (const eqIdx of whenEqIdxs) {
-      const weq = dae.getWhenEquationMeta(eqIdx);
-      if (!weq) continue;
-
-      const tEvent = extractTimeEventThresholdC(dae, weq.conditionExprId);
-      if (tEvent) {
-        lines.push(`  if (inst->model.time < (${tEvent})) {`);
-        lines.push("    info->nextEventTimeDefined = fmi2True;");
-        lines.push(`    info->nextEventTime = ${tEvent};`);
-        lines.push("  }");
-      }
-      for (const clause of weq.elseWhenClauses) {
-        const tEventElse = extractTimeEventThresholdC(dae, clause.conditionExprId);
-        if (tEventElse) {
-          lines.push(`  if (inst->model.time < (${tEventElse})) {`);
-          lines.push("    info->nextEventTimeDefined = fmi2True;");
-          lines.push(`    info->nextEventTime = ${tEventElse};`);
-          lines.push("  }");
-        }
-      }
-    }
-  }
-
+  lines.push("  /* Execute Event Handling (when-clauses) */");
+  lines.push(generateEventHandlingLogic(dae, result, "fmi2"));
   lines.push("  return fmi2OK;");
   lines.push("}");
   lines.push("");
@@ -1489,6 +1492,30 @@ function generateFmi2FunctionsC(
   lines.push("    fmi2NewDiscreteStates(inst, &info);");
   lines.push("  }");
   lines.push("}");
+
+  // ── async_step_worker ──
+  lines.push("/* Asynchronous Step Worker Thread */");
+  lines.push("#ifdef _WIN32");
+  lines.push("static DWORD WINAPI async_step_worker(LPVOID lpParam) {");
+  lines.push("#else");
+  lines.push("static void* async_step_worker(void* lpParam) {");
+  lines.push("#endif");
+  lines.push("  FMUInstance* inst = (FMUInstance*)lpParam;");
+  lines.push("  double t = inst->asyncCurrentT;");
+  lines.push("  double tEnd = inst->asyncTEnd;");
+  lines.push("  double h = inst->stepSize;");
+  lines.push("  while (t < tEnd - 1e-13 && !inst->cancelRequested) {");
+  lines.push("    double hStep = h;");
+  lines.push("    if (t + hStep > tEnd) hStep = tEnd - t;");
+  lines.push("    integrate_rk4(inst, t, t + hStep, hStep);");
+  lines.push("    t += hStep;");
+  lines.push("  }");
+  lines.push("  inst->model.time = tEnd;");
+  lines.push("  inst->asyncResult = inst->cancelRequested ? fmi2Discard : fmi2OK;");
+  lines.push("  inst->asyncDone = 1;");
+  lines.push("  return 0;");
+  lines.push("}");
+  lines.push("");
 
   // ── fmi2DoStep ──
   lines.push("fmi2Status fmi2DoStep(fmi2Component c, fmi2Real currentCommunicationPoint,");
@@ -1639,11 +1666,11 @@ function generateFmi2FunctionsC(
 
   // ── fmi2GetDirectionalDerivative ──
   lines.push("/* Exact Directional Derivative via exact AD and symbolic CAS differentiation */");
-  lines.push("fmi2Status fmi2GetDirectionalDerivative(fmi2Component c,");
+  lines.push("fmi2Status fmi2GetDirectionalDerivative(fmi2Component _comp,");
   lines.push("    const fmi2ValueReference unknowns[], size_t nUnknown,");
   lines.push("    const fmi2ValueReference knowns[], size_t nKnown,");
   lines.push("    const fmi2Real dvKnown[], fmi2Real dvUnknown[]) {");
-  lines.push("  FMUInstance* inst = (FMUInstance*)c;");
+  lines.push("  FMUInstance* inst = (FMUInstance*)_comp;");
 
   const derEquations: { stateName: string; rhs: number }[] = [];
   for (let idx = 0; idx < dae.eqCount; idx++) {
@@ -1845,7 +1872,129 @@ function collectReferencedNames(dae: ArenaDAEBuilder, id: number, names: Set<str
   }
 }
 
-export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string {
+function generateIntegratorCode(
+  id: string,
+  instanceType: string,
+  stateVRs: number[],
+  discreteUpdateCall: string,
+): string[] {
+  const lines: string[] = [];
+  lines.push("/* Runge-Kutta 4th Order fixed-step integrator with Event Detection */");
+  lines.push(`static void integrate_rk4(${instanceType}* inst, double t_start, double t_end, double dt) {`);
+  lines.push("  int n = N_STATES;");
+  lines.push("  double k1[N_STATES + 1], k2[N_STATES + 1], k3[N_STATES + 1], k4[N_STATES + 1];");
+  lines.push("  double y0[N_STATES + 1], tmp_states[N_STATES + 1];");
+  lines.push("  double z_prev[N_EVENT_INDICATORS + 1];");
+  lines.push("  double t = t_start;");
+  lines.push("");
+  lines.push("  while (t < t_end - 1e-13) {");
+  lines.push("    double h = t_end - t;");
+  lines.push("    int step_accepted = 0;");
+  lines.push("    for (int i = 0; i < n; i++) {");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      y0[${i}] = inst->model.vars[${vr}];`);
+    }
+  }
+  lines.push("    }");
+  lines.push("    inst->model.time = t;");
+  lines.push("    if (N_EVENT_INDICATORS > 0) {");
+  lines.push(`      ${id}_getEventIndicators(&inst->model, z_prev);`);
+  lines.push("    }");
+  lines.push("");
+  lines.push("    while (!step_accepted) {");
+  lines.push("      /* k1 */");
+  lines.push("      inst->model.time = t;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}];`);
+    }
+  }
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k1[i] = inst->model.derivatives[i];");
+  lines.push("");
+  lines.push("      /* k2 */");
+  lines.push("      inst->model.time = t + 0.5 * h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k1[${i}];`);
+    }
+  }
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k2[i] = inst->model.derivatives[i];");
+  lines.push("");
+  lines.push("      /* k3 */");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + 0.5 * h * k2[${i}];`);
+    }
+  }
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k3[i] = inst->model.derivatives[i];");
+  lines.push("");
+  lines.push("      /* k4 */");
+  lines.push("      inst->model.time = t + h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`      inst->model.vars[${vr}] = y0[${i}] + h * k3[${i}];`);
+    }
+  }
+  lines.push(`      ${id}_getDerivatives(&inst->model);`);
+  lines.push("      for (int i = 0; i < n; i++) k4[i] = inst->model.derivatives[i];");
+  lines.push("");
+  lines.push("      /* Combine */");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(
+        `      tmp_states[${i}] = y0[${i}] + (h / 6.0) * (k1[${i}] + 2.0 * k2[${i}] + 2.0 * k3[${i}] + k4[${i}]);`,
+      );
+    }
+  }
+  lines.push("");
+  lines.push("      int crossing = 0;");
+  lines.push("      if (N_EVENT_INDICATORS > 0) {");
+  lines.push("        inst->model.time = t + h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`        inst->model.vars[${vr}] = tmp_states[${i}];`);
+    }
+  }
+  lines.push("        double z_curr[N_EVENT_INDICATORS + 1];");
+  lines.push(`        ${id}_getEventIndicators(&inst->model, z_curr);`);
+  lines.push("        for (int i = 0; i < N_EVENT_INDICATORS; i++) {");
+  lines.push("          if (z_prev[i] * z_curr[i] < 0.0) { crossing = 1; break; }");
+  lines.push("        }");
+  lines.push("      }");
+  lines.push("      if (crossing && h > 1e-7) {");
+  lines.push("        h *= 0.5;");
+  lines.push("      } else {");
+  lines.push("        step_accepted = 1;");
+  lines.push("      }");
+  lines.push("    }");
+  lines.push("    t += h;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`    inst->model.vars[${vr}] = tmp_states[${i}];`);
+    }
+  }
+  lines.push("    inst->model.time = t;");
+  lines.push("");
+  lines.push("    /* Call discrete state update */");
+  lines.push(`    ${discreteUpdateCall}`);
+  lines.push("  }");
+  lines.push("}");
+  return lines;
+}
+
+export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder, result: FmuResult): string {
   const lines: string[] = [];
   lines.push("/* Auto-generated by ModelScript — FMI 3.0 API */");
   lines.push(`#include "${id}_model.h"`);
@@ -1859,11 +2008,24 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push("typedef const char* fmi3String;");
   lines.push("typedef double fmi3Float64;");
   lines.push("typedef float fmi3Float32;");
+  lines.push("typedef long long fmi3Int64;");
   lines.push("typedef int fmi3Int32;");
+  lines.push("typedef short fmi3Int16;");
+  lines.push("typedef char fmi3Int8;");
+  lines.push("typedef unsigned long long fmi3UInt64;");
+  lines.push("typedef unsigned int fmi3UInt32;");
+  lines.push("typedef unsigned short fmi3UInt16;");
+  lines.push("typedef unsigned char fmi3UInt8;");
   lines.push("typedef int fmi3Boolean;");
+  lines.push("#define fmi3True 1");
+  lines.push("#define fmi3False 0");
+  lines.push("typedef char fmi3Byte;");
   lines.push("typedef fmi3Boolean fmi3Clock;");
   lines.push("typedef unsigned int fmi3ValueReference;");
   lines.push("typedef enum { fmi3OK, fmi3Warning, fmi3Discard, fmi3Error, fmi3Fatal } fmi3Status;");
+  lines.push(
+    "typedef enum { fmi3Independent = 0, fmi3Constant = 1, fmi3Fixed = 2, fmi3Tunable = 3, fmi3Discrete = 4, fmi3Dependent = 5 } fmi3DependencyKind;",
+  );
   lines.push("typedef void (*fmi3LogMessageCallback)(fmi3InstanceEnvironment, fmi3Status, fmi3String, fmi3String);");
   lines.push("");
   lines.push("typedef struct {");
@@ -1872,8 +2034,27 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push("  fmi3InstanceEnvironment env;");
   lines.push("  fmi3LogMessageCallback logMessage;");
   lines.push("  fmi3Boolean loggingOn;");
+  lines.push("  fmi3Boolean terminateRequested;");
   lines.push("} FMI3InstanceData;");
   lines.push("");
+  lines.push("/* Forward declarations */");
+  lines.push(
+    "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime);",
+  );
+  lines.push("");
+
+  // Extract state VRs for integrator (using modelStructure derivatives)
+  const stateVRs = result.modelStructure.derivatives.map((derVR) => {
+    const stateName = result.scalarVariables
+      .find((x) => x.valueReference === derVR)
+      ?.name.replace(/^der\((.+)\)$/, "$1");
+    return stateName ? (result.scalarVariables.find((x) => x.name === stateName)?.valueReference ?? -1) : -1;
+  });
+
+  const discreteUpdateCall3 =
+    "fmi3Boolean dummy; fmi3Float64 tDummy; fmi3UpdateDiscreteStates((fmi3Instance)inst, &dummy, &dummy, &dummy, &dummy, &dummy, &tDummy);";
+  lines.push(...generateIntegratorCode(id, "FMI3InstanceData", stateVRs, discreteUpdateCall3));
+
   lines.push("fmi3Instance fmi3InstantiateModelExchange(");
   lines.push("  fmi3String instanceName, fmi3String instantiationToken,");
   lines.push("  fmi3String resourcePath, fmi3Boolean visible,");
@@ -1904,6 +2085,15 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
     "  return fmi3InstantiateModelExchange(instanceName, instantiationToken, resourcePath, visible, loggingOn, env, logMessage);",
   );
   lines.push("}");
+  lines.push("fmi3Instance fmi3InstantiateScheduledExecution(");
+  lines.push("  fmi3String instanceName, fmi3String instantiationToken,");
+  lines.push("  fmi3String resourcePath, fmi3Boolean visible,");
+  lines.push("  fmi3Boolean loggingOn, fmi3InstanceEnvironment env,");
+  lines.push("  fmi3LogMessageCallback logMessage) {");
+  lines.push("  (void)instanceName; (void)instantiationToken; (void)resourcePath;");
+  lines.push("  (void)visible; (void)loggingOn; (void)env; (void)logMessage;");
+  lines.push("  return NULL;");
+  lines.push("}");
   lines.push("");
   lines.push("void fmi3FreeInstance(fmi3Instance instance) {");
   lines.push("  if (!instance) return;");
@@ -1912,6 +2102,17 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push("    if (inst->model.stringVars[i]) free(inst->model.stringVars[i]);");
   lines.push("  }");
   lines.push("  free(instance);");
+  lines.push("}");
+  lines.push("");
+  lines.push('const char* fmi3GetVersion(void) { return "3.0"; }');
+  lines.push("");
+  lines.push(
+    "fmi3Status fmi3SetDebugLogging(fmi3Instance instance, fmi3Boolean loggingOn, size_t nCategories, const fmi3String categories[]) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (inst) inst->loggingOn = loggingOn;");
+  lines.push("  (void)nCategories; (void)categories;");
+  lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
   lines.push("fmi3Status fmi3GetFMUState(fmi3Instance instance, fmi3FMUState* state) {");
@@ -1972,6 +2173,16 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push("}");
   lines.push("");
   lines.push(
+    "fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState state, size_t* size) { (void)instance; (void)state; *size = 0; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SerializeFMUState(fmi3Instance instance, fmi3FMUState state, fmi3Byte serializedState[], size_t size) { (void)instance; (void)state; (void)serializedState; (void)size; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3DeserializeFMUState(fmi3Instance instance, const fmi3Byte serializedState[], size_t size, fmi3FMUState* state) { (void)instance; (void)serializedState; (void)size; (void)state; return fmi3Error; }",
+  );
+  lines.push("");
+  lines.push(
     "fmi3Status fmi3EnterInitializationMode(fmi3Instance instance, fmi3Boolean toleranceDefined, fmi3Float64 tolerance, fmi3Float64 startTime, fmi3Boolean stopTimeDefined, fmi3Float64 stopTime) {",
   );
   lines.push("  (void)toleranceDefined; (void)tolerance; (void)stopTimeDefined; (void)stopTime;");
@@ -1990,23 +2201,50 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push("}");
   lines.push("");
 
+  lines.push("static size_t get_vr_size(fmi3ValueReference vr) {");
+  lines.push("  switch (vr) {");
+  const groupedVars = groupFmi3Variables(result.scalarVariables);
+  for (const item of groupedVars) {
+    if ("elements" in item) {
+      const totalSize = item.dimensions.reduce((a, b) => a * b, 1);
+      lines.push(`    case ${item.startRef}: return ${totalSize};`);
+    }
+  }
+  lines.push("    default: return 1;");
+  lines.push("  }");
+  lines.push("}");
+  lines.push("");
+
   const numericTypes = ["Float32", "Float64", "Int8", "UInt8", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64"];
   for (const t of numericTypes) {
     lines.push(
       `fmi3Status fmi3Get${t}(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3${t} value[], size_t nValues) {`,
     );
-    lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance; (void)nValues;");
+    lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+    lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
+    lines.push("  size_t vIdx = 0;");
     lines.push("  for (size_t i = 0; i < nvr; i++) {");
-    lines.push(`    if (vr[i] < N_VARS) value[i] = (fmi3${t})inst->model.vars[vr[i]];`);
+    lines.push("    size_t size = get_vr_size(vr[i]);");
+    lines.push("    for (size_t j = 0; j < size; j++) {");
+    lines.push("      if (vIdx >= nValues) return fmi3Error;");
+    lines.push(`      if (vr[i] < N_VARS) value[vIdx++] = (fmi3${t})inst->model.vars[vr[i] + j];`);
+    lines.push(`      else if (vr[i] == N_VARS) value[vIdx++] = (fmi3${t})inst->model.time;`);
+    lines.push("    }");
     lines.push("  }");
     lines.push("  return fmi3OK;");
     lines.push("}");
     lines.push(
       `fmi3Status fmi3Set${t}(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3${t} value[], size_t nValues) {`,
     );
-    lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance; (void)nValues;");
+    lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+    lines.push("  size_t vIdx = 0;");
     lines.push("  for (size_t i = 0; i < nvr; i++) {");
-    lines.push("    if (vr[i] < N_VARS) inst->model.vars[vr[i]] = (double)value[i];");
+    lines.push("    size_t size = get_vr_size(vr[i]);");
+    lines.push("    for (size_t j = 0; j < size; j++) {");
+    lines.push("      if (vIdx >= nValues) return fmi3Error;");
+    lines.push("      if (vr[i] < N_VARS) inst->model.vars[vr[i] + j] = (double)value[vIdx++];");
+    lines.push("      else if (vr[i] == N_VARS) inst->model.time = (double)value[vIdx++];");
+    lines.push("    }");
     lines.push("  }");
     lines.push("  return fmi3OK;");
     lines.push("}");
@@ -2017,6 +2255,7 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
     "fmi3Status fmi3GetBoolean(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Boolean value[], size_t nValues) {",
   );
   lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance; (void)nValues;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push("    if (vr[i] < N_VARS) value[i] = inst->model.vars[vr[i]] != 0.0;");
   lines.push("  }");
@@ -2037,6 +2276,7 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
     "fmi3Status fmi3GetString(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3String value[], size_t nValues) {",
   );
   lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance; (void)nValues;");
+  lines.push(`  if (nvr > 0) ${id}_getDerivatives(&inst->model);`);
   lines.push("  for (size_t i = 0; i < nvr; i++) {");
   lines.push(
     `    if (vr[i] < N_STRING_VARS) value[i] = inst->model.stringVars[vr[i]] ? inst->model.stringVars[vr[i]] : "";`,
@@ -2064,22 +2304,48 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push(
     "fmi3Status fmi3SetContinuousStates(fmi3Instance instance, const fmi3Float64 continuousStates[], size_t nContinuousStates) {",
   );
-  lines.push("  (void)instance; (void)continuousStates; (void)nContinuousStates; return fmi3OK;");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`  if (${i} < nContinuousStates) inst->model.vars[${vr}] = continuousStates[${i}];`);
+    }
+  }
+  lines.push("  return fmi3OK;");
   lines.push("}");
+
   lines.push(
     "fmi3Status fmi3GetContinuousStateDerivatives(fmi3Instance instance, fmi3Float64 derivatives[], size_t nContinuousStates) {",
   );
-  lines.push("  (void)instance; (void)derivatives; (void)nContinuousStates; return fmi3OK;");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push(`  ${id}_getDerivatives(&inst->model);`);
+  lines.push("  for (size_t i = 0; i < nContinuousStates && i < N_STATES; i++) {");
+  lines.push("    derivatives[i] = inst->model.derivatives[i];");
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
   lines.push("}");
+
   lines.push(
     "fmi3Status fmi3GetContinuousStates(fmi3Instance instance, fmi3Float64 continuousStates[], size_t nContinuousStates) {",
   );
-  lines.push("  (void)instance; (void)continuousStates; (void)nContinuousStates; return fmi3OK;");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  for (let i = 0; i < stateVRs.length; i++) {
+    const vr = stateVRs[i];
+    if (vr !== undefined && vr >= 0) {
+      lines.push(`  if (${i} < nContinuousStates) continuousStates[${i}] = inst->model.vars[${vr}];`);
+    }
+  }
+  lines.push("  return fmi3OK;");
   lines.push("}");
+
   lines.push(
     "fmi3Status fmi3GetEventIndicators(fmi3Instance instance, fmi3Float64 eventIndicators[], size_t nEventIndicators) {",
   );
-  lines.push("  (void)instance; (void)eventIndicators; (void)nEventIndicators; return fmi3OK;");
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (N_EVENT_INDICATORS > 0 && nEventIndicators > 0) {");
+  lines.push(`    ${id}_getEventIndicators(&inst->model, eventIndicators);`);
+  lines.push("  }");
+  lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
   lines.push(
@@ -2088,49 +2354,291 @@ export function generateFmi3FunctionsC(id: string, dae: ArenaDAEBuilder): string
   lines.push(
     "    fmi3Boolean* eventHandlingNeeded, fmi3Boolean* terminateSimulation, fmi3Boolean* earlyReturn, fmi3Float64* lastSuccessfulTime) {",
   );
-  lines.push("  FMU3InstanceData* inst = (FMI3InstanceData*)instance;");
-  lines.push("  double t = currentCommunicationPoint, tEnd = t + communicationStepSize;");
-  lines.push("  double h = 0.001;");
-  lines.push("  while (t < tEnd - 1e-15) {");
-  lines.push("    if (t + h > tEnd) h = tEnd - t;");
-  lines.push("    /* Fixed-step FE integrator */");
-  lines.push("    int n = N_STATES;");
-  lines.push("    double y0[N_STATES + 1];");
-  lines.push("    /* Load states */");
-  lines.push("    (void)y0;");
-  lines.push("    /* Evaluate derivatives */");
-  lines.push(`    inst->model.time = t;`);
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (!inst) return fmi3Fatal;");
+  lines.push("  (void)noSetFMUStatePriorToCurrentPoint;");
+  lines.push("  if (terminateSimulation) *terminateSimulation = inst->terminateRequested ? fmi3True : fmi3False;");
+  lines.push("  double tEnd = currentCommunicationPoint + communicationStepSize;");
+  lines.push("");
+  lines.push("  if (N_STATES > 0) {");
+  lines.push(`    inst->model.time = currentCommunicationPoint;`);
   lines.push(`    ${id}_getDerivatives(&inst->model);`);
-  lines.push("    /* Update states */");
-  lines.push("    t += h;");
   lines.push("  }");
-  lines.push("  integrate_rk4((FMUInstance*)inst, currentCommunicationPoint, tEnd, communicationStepSize);");
+  lines.push("");
+  lines.push("  integrate_rk4(inst, currentCommunicationPoint, tEnd, communicationStepSize);");
+  lines.push("");
+  lines.push("  inst->model.time = tEnd;");
+  lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = 0;");
+  lines.push("  if (earlyReturn) *earlyReturn = 0;");
+  lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = tEnd;");
 
-  // FMI 3.0 zero-crossing detection in fmi3DoStep
-  if (dae.eventIndicatorExprIds.length > 0) {
-    lines.push("");
-    lines.push("  /* Zero-crossing detection */");
-    lines.push("  double z0_3[N_EVENT_INDICATORS+1], z1_3[N_EVENT_INDICATORS+1];");
-    lines.push(`  /* Evaluate indicators at start (y0, t) */`);
-    lines.push(`  inst->model.time = currentCommunicationPoint;`);
-    lines.push(`  ${id}_getEventIndicators(&inst->model, z0_3);`);
-    lines.push(`  inst->model.time = tEnd;`);
-    lines.push(`  ${id}_getEventIndicators(&inst->model, z1_3);`);
-    lines.push("  int crossing3 = 0;");
-    lines.push("  for (int i=0; i<N_EVENT_INDICATORS; i++) {");
-    lines.push("    if ((z0_3[i] > 0 && z1_3[i] <= 0) || (z0_3[i] <= 0 && z1_3[i] > 0)) { crossing3 = 1; break; }");
-    lines.push("  }");
-    lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = crossing3;");
-    lines.push("  if (earlyReturn) *earlyReturn = crossing3;");
-    lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = crossing3 ? currentCommunicationPoint : tEnd;");
-  } else {
-    lines.push("  if (eventHandlingNeeded) *eventHandlingNeeded = 0;");
-    lines.push("  if (earlyReturn) *earlyReturn = 0;");
-    lines.push("  if (lastSuccessfulTime) *lastSuccessfulTime = tEnd;");
-  }
-
+  lines.push("  return fmi3OK;");
   lines.push("}");
   lines.push("");
+
+  // Missing FMI 3.0 types (Binary, Clock)
+  lines.push("typedef const char* fmi3Binary;");
+  lines.push(
+    "fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, size_t valueSize[], fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)valueSize; (void)value; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const size_t valueSize[], const fmi3Binary value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)valueSize; (void)value; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Clock value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)value; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Clock value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)value; (void)nValues; return fmi3Error; }",
+  );
+
+  // Advanced / Optional FMI 3.0 functions
+  lines.push(
+    "fmi3Status fmi3GetDirectionalDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)seed; (void)nSeed; (void)sensitivity; (void)nSensitivity; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetAdjointDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 seed[], size_t nSeed, fmi3Float64 sensitivity[], size_t nSensitivity) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)seed; (void)nSeed; (void)sensitivity; (void)nSensitivity; return fmi3Error; }",
+  );
+  lines.push("fmi3Status fmi3EnterConfigurationMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push("fmi3Status fmi3ExitConfigurationMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push(
+    "fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 interval[], int qualifier[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)interval; (void)qualifier; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 intervalCounter[], fmi3UInt64 resolution[], int qualifier[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; (void)qualifier; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3Float64 shift[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shift; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, fmi3UInt64 shiftCounter[], fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shiftCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 interval[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)interval; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 intervalCounter[], const fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)intervalCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Float64 shift[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shift; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3SetShiftFraction(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3UInt64 shiftCounter[], const fmi3UInt64 resolution[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)shiftCounter; (void)resolution; (void)nValues; return fmi3Error; }",
+  );
+  lines.push("fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push("fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3Error; }");
+  lines.push("fmi3Status fmi3EnterEventMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  lines.push("fmi3Status fmi3EnterContinuousTimeMode(fmi3Instance instance) { (void)instance; return fmi3OK; }");
+  lines.push(
+    "fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSetFMUStatePriorToCurrentPoint, fmi3Boolean* enterEventMode, fmi3Boolean* terminateSimulation) {",
+  );
+  lines.push("  (void)instance; (void)noSetFMUStatePriorToCurrentPoint;");
+  lines.push("  if (enterEventMode) *enterEventMode = fmi3False;");
+  lines.push("  if (terminateSimulation) *terminateSimulation = fmi3False;");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push(
+    "fmi3Status fmi3GetOutputDerivatives(fmi3Instance instance, const fmi3ValueReference vr[], size_t nvr, const fmi3Int32 order[], fmi3Float64 value[], size_t nValues) { (void)instance; (void)vr; (void)nvr; (void)order; (void)value; (void)nValues; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetNumberOfContinuousStates(fmi3Instance instance, size_t* nContinuousStates) { (void)instance; *nContinuousStates = N_STATES; return fmi3OK; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetNumberOfEventIndicators(fmi3Instance instance, size_t* nEventIndicators) { (void)instance; *nEventIndicators = N_EVENT_INDICATORS; return fmi3OK; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetNominalsOfContinuousStates(fmi3Instance instance, fmi3Float64 nominals[], size_t nContinuousStates) { (void)instance; for (size_t i = 0; i < nContinuousStates; i++) nominals[i] = 1.0; return fmi3OK; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetNumberOfVariableDependencies(fmi3Instance instance, fmi3ValueReference valueReference, size_t* nDependencies) { (void)instance; (void)valueReference; *nDependencies = 0; return fmi3OK; }",
+  );
+  lines.push(
+    "fmi3Status fmi3GetVariableDependencies(fmi3Instance instance, fmi3ValueReference dependent, size_t elementIndicesOfDependent[], fmi3ValueReference independents[], size_t elementIndicesOfIndependents[], fmi3DependencyKind dependencyKinds[], size_t ndependencies) { (void)instance; (void)dependent; (void)elementIndicesOfDependent; (void)independents; (void)elementIndicesOfIndependents; (void)dependencyKinds; (void)ndependencies; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) { (void)instance; (void)clockReference; (void)activationTime; return fmi3Error; }",
+  );
+  lines.push(
+    "fmi3Status fmi3UpdateDiscreteStates(fmi3Instance instance, fmi3Boolean* discreteStatesNeedUpdate, fmi3Boolean* terminateSimulation, fmi3Boolean* nominalsOfContinuousStatesChanged, fmi3Boolean* valuesOfContinuousStatesChanged, fmi3Boolean* nextEventTimeDefined, fmi3Float64* nextEventTime) {",
+  );
+  lines.push("  FMI3InstanceData* inst = (FMI3InstanceData*)instance;");
+  lines.push("  if (discreteStatesNeedUpdate) *discreteStatesNeedUpdate = fmi3False;");
+  lines.push("  if (terminateSimulation) *terminateSimulation = inst->terminateRequested ? fmi3True : fmi3False;");
+  lines.push("  if (nominalsOfContinuousStatesChanged) *nominalsOfContinuousStatesChanged = fmi3False;");
+  lines.push("  if (valuesOfContinuousStatesChanged) *valuesOfContinuousStatesChanged = fmi3False;");
+  lines.push("  if (nextEventTimeDefined) *nextEventTimeDefined = fmi3False;");
+  lines.push("  if (nextEventTime) *nextEventTime = 0.0;");
+  lines.push("");
+  lines.push("  /* Execute Event Handling (when-clauses) */");
+  lines.push(generateEventHandlingLogic(dae, result, "fmi3"));
+  lines.push("");
+  lines.push("  return fmi3OK;");
+  lines.push("}");
+  lines.push("");
+  return lines.join("\n");
+}
+
+function generateEventHandlingLogic(dae: ArenaDAEBuilder, result: FmuResult, fmiVersion: "fmi2" | "fmi3"): string {
+  const lines: string[] = [];
+  const whenEqIdxs: number[] = [];
+  for (let idx = 0; idx < dae.eqCount; idx++) {
+    if (dae.getEqKind(idx) === EqKind.When) {
+      whenEqIdxs.push(idx);
+    }
+  }
+
+  if (whenEqIdxs.length > 0) {
+    lines.push("  /* Local aliases for evaluation */");
+    for (const sv of result.scalarVariables) {
+      if (sv.causality === "independent") continue;
+      const cName = varToC(sv.name);
+      lines.push(`  double ${cName} = inst->model.vars[${sv.valueReference}];`);
+      lines.push(`  (void)${cName};`);
+    }
+    lines.push(`  double time = inst->model.time;`);
+    lines.push(`  (void)time;`);
+    lines.push("");
+
+    let whenIdx = 0;
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+
+      // Evaluate condition directly as boolean
+      const condC = exprToC(dae, weq.conditionExprId);
+      lines.push(`  /* when-equation ${whenIdx} */`);
+      lines.push(`  double condVal_${whenIdx} = (double)(${condC});`);
+      lines.push(`  if (condVal_${whenIdx} != 0.0 && inst->model.whenPrev[${whenIdx}] == 0.0) {`);
+
+      // Execute the when-equation body assignments
+      for (const bodyEq of weq.bodyEquations) {
+        if (bodyEq.kind === EqKind.Simple) {
+          const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
+          if (lhsName) {
+            const sv = result.scalarVariables.find((v) => v.name === lhsName);
+            if (sv) {
+              lines.push(
+                `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`,
+              );
+              lines.push(`    ${varToC(lhsName)} = inst->model.vars[${sv.valueReference}];`);
+            }
+          }
+        } else if (bodyEq.kind === EqKind.FunctionCall) {
+          if (dae.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
+            const callId = bodyEq.lhsExprId;
+            const fname = dae.interner.resolve(dae.getExprData1(callId));
+            if (fname === "reinit") {
+              const arg0 = dae.getExprLeft(callId);
+              const arg1 = dae.getExprLeft(callId + 1);
+              if (dae.getExprKind(arg0) === ExprKind.Name) {
+                const stateName = dae.interner.resolve(dae.getExprData1(arg0));
+                const sv = result.scalarVariables.find((v) => v.name === stateName);
+                if (sv) {
+                  lines.push(
+                    `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`,
+                  );
+                  lines.push(`    ${varToC(stateName)} = inst->model.vars[${sv.valueReference}];`);
+                  if (fmiVersion === "fmi2") {
+                    lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
+                  } else {
+                    lines.push(`    if (valuesOfContinuousStatesChanged) *valuesOfContinuousStatesChanged = fmi3True;`);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      lines.push("  }");
+      lines.push(`  inst->model.whenPrev[${whenIdx}] = (double)(${condC});`);
+      whenIdx++;
+
+      // elseWhen clauses
+      for (const clause of weq.elseWhenClauses) {
+        const condElseC = exprToC(dae, clause.conditionExprId);
+        lines.push(`  /* elsewhen-clause ${whenIdx} */`);
+        lines.push(`  double condVal_${whenIdx} = (double)(${condElseC});`);
+        lines.push(`  if (condVal_${whenIdx} != 0.0 && inst->model.whenPrev[${whenIdx}] == 0.0) {`);
+        for (const bodyEq of clause.bodyEquations) {
+          if (bodyEq.kind === EqKind.Simple) {
+            const lhsName = extractAssignmentTarget(dae, bodyEq.lhsExprId);
+            if (lhsName) {
+              const sv = result.scalarVariables.find((v) => v.name === lhsName);
+              if (sv) {
+                lines.push(
+                  `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, bodyEq.rhsExprId)};  /* ${lhsName} */`,
+                );
+                lines.push(`    ${varToC(lhsName)} = inst->model.vars[${sv.valueReference}];`);
+              }
+            }
+          } else if (bodyEq.kind === EqKind.FunctionCall) {
+            if (dae.getExprKind(bodyEq.lhsExprId) === ExprKind.Call) {
+              const callId = bodyEq.lhsExprId;
+              const fname = dae.interner.resolve(dae.getExprData1(callId));
+              if (fname === "reinit") {
+                const arg0 = dae.getExprLeft(callId);
+                const arg1 = dae.getExprLeft(callId + 1);
+                if (dae.getExprKind(arg0) === ExprKind.Name) {
+                  const stateName = dae.interner.resolve(dae.getExprData1(arg0));
+                  const sv = result.scalarVariables.find((v) => v.name === stateName);
+                  if (sv) {
+                    lines.push(
+                      `    inst->model.vars[${sv.valueReference}] = ${exprToC(dae, arg1)};  /* reinit(${stateName}) */`,
+                    );
+                    lines.push(`    ${varToC(stateName)} = inst->model.vars[${sv.valueReference}];`);
+                    if (fmiVersion === "fmi2") {
+                      lines.push(`    info->valuesOfContinuousStatesChanged = fmi2True;`);
+                    } else {
+                      lines.push(
+                        `    if (valuesOfContinuousStatesChanged) *valuesOfContinuousStatesChanged = fmi3True;`,
+                      );
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        lines.push("  }");
+        lines.push(`  inst->model.whenPrev[${whenIdx}] = (double)(${condElseC});`);
+        whenIdx++;
+      }
+    }
+
+    // Time-event scheduling
+    lines.push("  /* Time-event detection and scheduling */");
+    for (const eqIdx of whenEqIdxs) {
+      const weq = dae.getWhenEquationMeta(eqIdx);
+      if (!weq) continue;
+
+      const tEvent = extractTimeEventThresholdC(dae, weq.conditionExprId);
+      if (tEvent) {
+        lines.push(`  if (inst->model.time < (${tEvent})) {`);
+        if (fmiVersion === "fmi2") {
+          lines.push("    info->nextEventTimeDefined = fmi2True;");
+          lines.push(`    info->nextEventTime = ${tEvent};`);
+        } else {
+          lines.push("    if (nextEventTimeDefined) *nextEventTimeDefined = fmi3True;");
+          lines.push(`    if (nextEventTime) *nextEventTime = ${tEvent};`);
+        }
+        lines.push("  }");
+      }
+      for (const clause of weq.elseWhenClauses) {
+        const tEventElse = extractTimeEventThresholdC(dae, clause.conditionExprId);
+        if (tEventElse) {
+          lines.push(`  if (inst->model.time < (${tEventElse})) {`);
+          if (fmiVersion === "fmi2") {
+            lines.push("    info->nextEventTimeDefined = fmi2True;");
+            lines.push(`    info->nextEventTime = ${tEventElse};`);
+          } else {
+            lines.push("    if (nextEventTimeDefined) *nextEventTimeDefined = fmi3True;");
+            lines.push(`    if (nextEventTime) *nextEventTime = ${tEventElse};`);
+          }
+          lines.push("  }");
+        }
+      }
+    }
+  }
+
   return lines.join("\n");
 }
 
