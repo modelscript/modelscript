@@ -12,7 +12,8 @@ ARG PREBUILT=false
 
 # ---- Shared Alpine base with native build tools ----
 FROM node:22-alpine AS deps
-RUN apk add --no-cache python3 make g++
+RUN apk add --no-cache python3 make g++ zip unzip
+ENV NODE_OPTIONS="--max-old-space-size=8192"
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY languages/modelica/package.json languages/modelica/grammar.js languages/modelica/binding.gyp languages/modelica/
@@ -35,13 +36,11 @@ RUN cd languages/modelica && npx node-gyp rebuild
 # API
 # ==============================================================================
 FROM deps AS build-api-false
-COPY packages/core packages/core
-COPY languages/modelica languages/modelica
-COPY packages/cosim packages/cosim
+COPY packages packages
+COPY languages languages
 COPY apps/api apps/api
-RUN npm run clean -w packages/core && npx tsc -p packages/core \
-    && npm run clean -w packages/cosim && npx tsc -p packages/cosim \
-    && npm run clean -w apps/api && npx tsc -p apps/api
+RUN npx nx build @modelscript/api
+
 
 FROM deps AS build-api-true
 COPY packages/core/dist packages/core/dist
@@ -80,16 +79,16 @@ CMD ["node", "apps/api/dist/main.js"]
 # ==============================================================================
 FROM deps AS build-morsel-false
 COPY scripts scripts
-COPY packages/core packages/core
-COPY languages/modelica languages/modelica
+COPY packages packages
+COPY languages languages
 COPY apps/morsel apps/morsel
 RUN node scripts/download-msl.cjs && node scripts/download-sysml2.cjs
-RUN npm run clean -w packages/core && npx tsc -p packages/core \
-    && npm run build -w apps/morsel
+RUN npx nx build @modelscript/morsel
+
 
 FROM deps AS build-morsel-true
 COPY apps/morsel/package.json apps/morsel/
-COPY apps/morsel/build apps/morsel/build
+COPY apps/morsel/package.json apps/morsel/buil[d] /app/apps/morsel/build/
 
 FROM build-morsel-${PREBUILT} AS build-morsel
 
@@ -107,10 +106,11 @@ CMD ["npx", "react-router-serve", "./apps/morsel/build/server/index.js"]
 # Web
 # ==============================================================================
 FROM deps AS build-web-false
-COPY packages/core packages/core
+COPY packages packages
+COPY languages languages
 COPY apps/web apps/web
-RUN npm run clean -w packages/core && npx tsc -p packages/core \
-    && npm run build -w apps/web
+RUN npx nx build @modelscript/web
+
 
 FROM deps AS build-web-true
 COPY apps/web/dist apps/web/dist
@@ -136,16 +136,13 @@ RUN bash scripts/download-model.sh
 
 FROM deps AS build-ide-false
 COPY scripts scripts
-COPY packages/core packages/core
-COPY languages/modelica languages/modelica
-COPY packages/lsp packages/lsp
-COPY extensions/vscode extensions/vscode
+COPY packages packages
+COPY languages languages
+COPY extensions extensions
 COPY apps/ide apps/ide
 COPY apps/morsel apps/morsel
-RUN npm run clean -w packages/core && npx tsc -p packages/core \
-    && npm run build -w packages/lsp \
-    && npm run build -w extensions/vscode \
-    && npm run build -w apps/ide
+RUN npx nx build @modelscript/ide
+
 
 FROM deps AS build-ide-true
 COPY apps/ide/dist apps/ide/dist
@@ -189,13 +186,11 @@ CMD ["node", "apps/ide/dist/server.js"]
 # CLI / GitLab CI Runner
 # ==============================================================================
 FROM deps AS build-cli-false
-COPY packages/core packages/core
-COPY packages/cosim packages/cosim
-COPY languages/modelica languages/modelica
+COPY packages packages
+COPY languages languages
 COPY apps/cli apps/cli
-RUN npm run clean -w packages/core && npx tsc -p packages/core \
-    && npm run clean -w packages/cosim && npx tsc -p packages/cosim \
-    && npm run clean -w apps/cli && npx tsc -p apps/cli
+RUN npx nx build @modelscript/cli
+
 
 FROM deps AS build-cli-true
 COPY packages/core/dist packages/core/dist
