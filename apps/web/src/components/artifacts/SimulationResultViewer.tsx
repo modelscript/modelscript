@@ -150,7 +150,6 @@ const ScalarMesh: React.FC<{
     material.uniforms.scalarMax.value = scalarMax;
     material.uniforms.colormap.value = colormapTexture;
     material.uniforms.loadFactor.value = loadFactor / 100.0;
-    // eslint-disable-next-line react-hooks/immutability
     material.needsUpdate = true;
   }, [material, scalarMin, scalarMax, colormapTexture, loadFactor]);
 
@@ -349,7 +348,6 @@ const FlowStreaks: React.FC<{
 
   useFrame((state) => {
     if (material.uniforms) {
-      // eslint-disable-next-line react-hooks/immutability
       material.uniforms.time.value = state.clock.elapsedTime * 0.5;
     }
   });
