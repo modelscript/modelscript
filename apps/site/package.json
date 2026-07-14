@@ -20,10 +20,10 @@
     "@react-router/node": "^7.13.1",
     "@react-router/serve": "^7.13.1",
     "isbot": "^5.1.31",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "react-is": "^19.0.0",
-    "react-router": "^7.13.1",
+    "react-router": "^8.1.0",
     "set-cookie-parser": "^2.6.0"
   },
   "devDependencies": {

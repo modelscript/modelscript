@@ -138,7 +138,7 @@
     "pako": "^2.1.0",
     "pino": "^10.3.1",
     "tree-sitter-cli": "^0.26.9",
-    "web-tree-sitter": "^0.24.7"
+    "web-tree-sitter": "^0.26.10"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

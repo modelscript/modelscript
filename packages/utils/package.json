@@ -23,7 +23,7 @@
     "media-typer": "^1.1.0",
     "pako": "^2.1.0",
     "parse-data-url": "^6.0.0",
-    "web-tree-sitter": "0.22.6"
+    "web-tree-sitter": "0.26.10"
   },
   "devDependencies": {
     "rimraf": "^5.0.5",
