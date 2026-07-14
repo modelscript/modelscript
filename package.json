@@ -62,7 +62,7 @@
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
     "hono": "^4.12.14",
-    "tree-sitter-cli": "0.26.9"
+    "tree-sitter-cli": "^0.22.4"
   },
   "dependencies": {
     "@eslint/config-array": "^0.19.2",
