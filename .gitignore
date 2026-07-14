@@ -97,3 +97,4 @@ packages/language/tests/wasm/src-gen/
 packages/fmi/validation/exported_fmus/
 packages/fmi/validation/reference_fmus/
 packages/fmi/validation/reference_fmus_repo/
+

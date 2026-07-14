@@ -1,4 +1,4 @@
-export default grammar({
+module.exports = grammar({
   name: "csv",
   rules: {
     SourceFile: ($) => seq(field("rows", $.Row), repeat(seq($._newline, field("rows", $.Row))), optional($._newline)),

@@ -31,7 +31,9 @@
   },
   "dependencies": {
     "@modelscript/compiler": "*",
-    "@modelscript/diagram": "*"
+    "@modelscript/diagram": "*",
+    "node-addon-api": "^8.5.0",
+    "node-gyp-build": "^4.8.4"
   },
   "devDependencies": {}
 }

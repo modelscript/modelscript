@@ -1,4 +1,4 @@
-export default grammar({
+module.exports = grammar({
   name: "sysml2",
   extras: ($) => [/\s/, $.ML_NOTE, $.SL_NOTE],
   conflicts: ($) => [

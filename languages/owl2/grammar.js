@@ -1,4 +1,4 @@
-export default grammar({
+module.exports = grammar({
   name: "owl2",
   extras: ($) => [/\s/, /#.*/],
   word: ($) => $.IDENT,

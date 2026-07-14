@@ -275,7 +275,7 @@ async function generate(fileArg: string) {
 
   grammarSections.push(`\n  rules: {\n${rulesContent.replace(/\n$/, "")}\n  }`);
 
-  const grammarContent = `export default grammar({\n${grammarSections.join(",")}\n});\n`;
+  const grammarContent = `module.exports = grammar({\n${grammarSections.join(",")}\n});\n`;
 
   const grammarFile = path.join(outputDir, "grammar.js");
   fs.writeFileSync(grammarFile, grammarContent, "utf-8");

@@ -2186,7 +2186,7 @@
       "format": "esm"
     },
     "../language/build/src-gen/runtime-templates.js": {
-      "bytes": 418510,
+      "bytes": 420095,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -2429,7 +2429,7 @@
       "format": "esm"
     },
     "../../languages/modelica/dist/language.js": {
-      "bytes": 344795,
+      "bytes": 343784,
       "imports": [
         { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
         { "path": "../language/dist/index.js", "kind": "import-statement", "original": "@modelscript/language" },
@@ -2663,7 +2663,7 @@
       "format": "esm"
     },
     "../../languages/sysml2/dist/src-gen/config.js": {
-      "bytes": 146670,
+      "bytes": 145244,
       "imports": [
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
         { "path": "<runtime>", "kind": "import-statement", "external": true }
@@ -2736,7 +2736,7 @@
       "format": "esm"
     },
     "../../languages/sysml2/dist/src-gen/query-hooks.js": {
-      "bytes": 72238,
+      "bytes": 69004,
       "imports": [
         { "path": "../../languages/sysml2/dist/language.js", "kind": "import-statement", "original": "../language.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -5460,7 +5460,7 @@
       "format": "esm"
     },
     "../../languages/owl2/dist/src-gen/config.js": {
-      "bytes": 2996,
+      "bytes": 2995,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -6136,6 +6136,233 @@
       ],
       "format": "esm"
     },
+    "../compiler/dist/optimizer/solvers/coinor-codegen.js": {
+      "bytes": 17145,
+      "imports": [
+        {
+          "path": "../compiler/dist/symbolics/tape.js",
+          "kind": "import-statement",
+          "original": "../../symbolics/tape.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../compiler/dist/optimizer/solvers/coinor-wasm.js": {
+      "bytes": 14211,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "ignore:node:url", "kind": "dynamic-import", "original": "node:url" },
+        { "path": "ignore:node:path", "kind": "dynamic-import", "original": "node:path" },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../compiler/dist/optimizer/solvers/gpu-codegen.js": {
+      "bytes": 7125,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../compiler/dist/optimizer/solvers/ipopt-solver.js": {
+      "bytes": 597,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../compiler/dist/optimizer/index.js": {
+      "bytes": 518,
+      "imports": [
+        {
+          "path": "../compiler/dist/optimizer/core/calibrator.js",
+          "kind": "import-statement",
+          "original": "./core/calibrator.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/core/optimizer.js",
+          "kind": "import-statement",
+          "original": "./core/optimizer.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/core/stochastic-optimizer.js",
+          "kind": "import-statement",
+          "original": "./core/stochastic-optimizer.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/solvers/coinor-codegen.js",
+          "kind": "import-statement",
+          "original": "./solvers/coinor-codegen.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/solvers/coinor-wasm.js",
+          "kind": "import-statement",
+          "original": "./solvers/coinor-wasm.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/solvers/gpu-codegen.js",
+          "kind": "import-statement",
+          "original": "./solvers/gpu-codegen.js"
+        },
+        {
+          "path": "../compiler/dist/optimizer/solvers/ipopt-solver.js",
+          "kind": "import-statement",
+          "original": "./solvers/ipopt-solver.js"
+        },
+        {
+          "path": "../compiler/dist/simulator/core/simulator.js",
+          "kind": "import-statement",
+          "original": "../simulator/core/simulator.js"
+        },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../../languages/csv/dist/src/csv-parser.js": {
+      "bytes": 6285,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmi3.js": {
+      "bytes": 37664,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/ad-codegen.js": {
+      "bytes": 14116,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/fmi3.js", "kind": "import-statement", "original": "./fmi3.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmi.js": {
+      "bytes": 27850,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/transpiler-utils.js": {
+      "bytes": 4815,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmu-as-codegen.js": {
+      "bytes": 15052,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmu-codegen.js": {
+      "bytes": 124875,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/fmi.js", "kind": "import-statement", "original": "./fmi.js" },
+        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmu-js-codegen.js": {
+      "bytes": 6384,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmu-wasm-codegen.js": {
+      "bytes": 29557,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "ignore:child_process": {
+      "bytes": 0,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
+    },
+    "../fmi/dist/fmu-archive.js": {
+      "bytes": 27456,
+      "imports": [
+        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
+        { "path": "../../node_modules/pako/dist/pako.esm.mjs", "kind": "import-statement", "original": "pako" },
+        { "path": "../fmi/dist/fmi.js", "kind": "import-statement", "original": "./fmi.js" },
+        { "path": "../fmi/dist/fmi3.js", "kind": "import-statement", "original": "./fmi3.js" },
+        { "path": "../fmi/dist/fmu-as-codegen.js", "kind": "import-statement", "original": "./fmu-as-codegen.js" },
+        { "path": "../fmi/dist/fmu-codegen.js", "kind": "import-statement", "original": "./fmu-codegen.js" },
+        { "path": "../fmi/dist/fmu-js-codegen.js", "kind": "import-statement", "original": "./fmu-js-codegen.js" },
+        { "path": "../fmi/dist/fmu-wasm-codegen.js", "kind": "import-statement", "original": "./fmu-wasm-codegen.js" },
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "ignore:fs", "kind": "dynamic-import", "original": "fs" },
+        { "path": "ignore:path", "kind": "dynamic-import", "original": "path" },
+        { "path": "ignore:os", "kind": "dynamic-import", "original": "os" },
+        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../fmi/dist/fmu-wasm-compile.js": {
+      "bytes": 4138,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "ignore:fs", "kind": "dynamic-import", "original": "fs" },
+        { "path": "ignore:path", "kind": "dynamic-import", "original": "path" },
+        { "path": "ignore:os", "kind": "dynamic-import", "original": "os" },
+        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
+        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
+    "../../languages/modelica/dist/annotation.js": {
+      "bytes": 7886,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
+      "format": "esm"
+    },
+    "../../languages/modelica/dist/geometry.js": {
+      "bytes": 2485,
+      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
+      "format": "esm"
+    },
+    "../../languages/modelica/dist/multibody-generator.js": {
+      "bytes": 3746,
+      "imports": [
+        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
+        { "path": "<runtime>", "kind": "import-statement", "external": true }
+      ],
+      "format": "esm"
+    },
     "../symbolics/dist/modelica-types.js": {
       "bytes": 3342,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
@@ -6470,229 +6697,6 @@
         { "path": "../symbolics/dist/systems/index.js", "kind": "import-statement", "original": "./systems/index.js" },
         { "path": "../symbolics/dist/tape.js", "kind": "import-statement", "original": "./tape.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../compiler/dist/optimizer/solvers/coinor-codegen.js": {
-      "bytes": 17192,
-      "imports": [
-        { "path": "../symbolics/dist/index.js", "kind": "import-statement", "original": "@modelscript/symbolics" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../compiler/dist/optimizer/solvers/coinor-wasm.js": {
-      "bytes": 14211,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "ignore:node:url", "kind": "dynamic-import", "original": "node:url" },
-        { "path": "ignore:node:path", "kind": "dynamic-import", "original": "node:path" },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../compiler/dist/optimizer/solvers/gpu-codegen.js": {
-      "bytes": 7125,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../compiler/dist/optimizer/solvers/ipopt-solver.js": {
-      "bytes": 597,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../compiler/dist/optimizer/index.js": {
-      "bytes": 518,
-      "imports": [
-        {
-          "path": "../compiler/dist/optimizer/core/calibrator.js",
-          "kind": "import-statement",
-          "original": "./core/calibrator.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/core/optimizer.js",
-          "kind": "import-statement",
-          "original": "./core/optimizer.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/core/stochastic-optimizer.js",
-          "kind": "import-statement",
-          "original": "./core/stochastic-optimizer.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/solvers/coinor-codegen.js",
-          "kind": "import-statement",
-          "original": "./solvers/coinor-codegen.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/solvers/coinor-wasm.js",
-          "kind": "import-statement",
-          "original": "./solvers/coinor-wasm.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/solvers/gpu-codegen.js",
-          "kind": "import-statement",
-          "original": "./solvers/gpu-codegen.js"
-        },
-        {
-          "path": "../compiler/dist/optimizer/solvers/ipopt-solver.js",
-          "kind": "import-statement",
-          "original": "./solvers/ipopt-solver.js"
-        },
-        {
-          "path": "../compiler/dist/simulator/core/simulator.js",
-          "kind": "import-statement",
-          "original": "../simulator/core/simulator.js"
-        },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../../languages/csv/dist/src/csv-parser.js": {
-      "bytes": 6285,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmi3.js": {
-      "bytes": 37664,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/ad-codegen.js": {
-      "bytes": 14116,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../fmi/dist/fmi3.js", "kind": "import-statement", "original": "./fmi3.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmi.js": {
-      "bytes": 27850,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/transpiler-utils.js": {
-      "bytes": 4815,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmu-as-codegen.js": {
-      "bytes": 15052,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmu-codegen.js": {
-      "bytes": 124875,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../fmi/dist/fmi.js", "kind": "import-statement", "original": "./fmi.js" },
-        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmu-js-codegen.js": {
-      "bytes": 6384,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmu-wasm-codegen.js": {
-      "bytes": 29557,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../fmi/dist/transpiler-utils.js", "kind": "import-statement", "original": "./transpiler-utils.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "ignore:child_process": {
-      "bytes": 0,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }]
-    },
-    "../fmi/dist/fmu-archive.js": {
-      "bytes": 27456,
-      "imports": [
-        { "path": "../compiler/dist/index.js", "kind": "import-statement", "original": "@modelscript/compiler" },
-        { "path": "../../node_modules/pako/dist/pako.esm.mjs", "kind": "import-statement", "original": "pako" },
-        { "path": "../fmi/dist/fmi.js", "kind": "import-statement", "original": "./fmi.js" },
-        { "path": "../fmi/dist/fmi3.js", "kind": "import-statement", "original": "./fmi3.js" },
-        { "path": "../fmi/dist/fmu-as-codegen.js", "kind": "import-statement", "original": "./fmu-as-codegen.js" },
-        { "path": "../fmi/dist/fmu-codegen.js", "kind": "import-statement", "original": "./fmu-codegen.js" },
-        { "path": "../fmi/dist/fmu-js-codegen.js", "kind": "import-statement", "original": "./fmu-js-codegen.js" },
-        { "path": "../fmi/dist/fmu-wasm-codegen.js", "kind": "import-statement", "original": "./fmu-wasm-codegen.js" },
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "ignore:fs", "kind": "dynamic-import", "original": "fs" },
-        { "path": "ignore:path", "kind": "dynamic-import", "original": "path" },
-        { "path": "ignore:os", "kind": "dynamic-import", "original": "os" },
-        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../fmi/dist/fmu-wasm-compile.js": {
-      "bytes": 4138,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "ignore:fs", "kind": "dynamic-import", "original": "fs" },
-        { "path": "ignore:path", "kind": "dynamic-import", "original": "path" },
-        { "path": "ignore:os", "kind": "dynamic-import", "original": "os" },
-        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
-        { "path": "ignore:child_process", "kind": "dynamic-import", "original": "child_process" },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
-      ],
-      "format": "esm"
-    },
-    "../../languages/modelica/dist/annotation.js": {
-      "bytes": 7886,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
-      "format": "esm"
-    },
-    "../../languages/modelica/dist/geometry.js": {
-      "bytes": 2485,
-      "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
-      "format": "esm"
-    },
-    "../../languages/modelica/dist/multibody-generator.js": {
-      "bytes": 3746,
-      "imports": [
-        { "path": "<define:process.env>", "kind": "import-statement", "external": true },
-        { "path": "<runtime>", "kind": "import-statement", "external": true }
       ],
       "format": "esm"
     },
@@ -8354,7 +8358,7 @@
         "../language/dist/api.js": { "bytesInOutput": 193 },
         "../language/dist/index.js": { "bytesInOutput": 253 },
         "../../languages/modelica/dist/modification-args.js": { "bytesInOutput": 5659 },
-        "../../languages/modelica/dist/language.js": { "bytesInOutput": 294121 },
+        "../../languages/modelica/dist/language.js": { "bytesInOutput": 293086 },
         "../../languages/modelica/dist/types.js": { "bytesInOutput": 3886 },
         "../../languages/modelica/dist/ast.js": { "bytesInOutput": 176027 },
         "../../languages/modelica/dist/arena-expr-visitor.js": { "bytesInOutput": 88463 },
@@ -8371,14 +8375,14 @@
         "../../languages/modelica/dist/msim-parser.js": { "bytesInOutput": 4453 },
         "../../languages/modelica/dist/factory.js": { "bytesInOutput": 5864 },
         "../diagram/dist/polyglot-diagram-builder.js": { "bytesInOutput": 53221 },
-        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 137295 },
+        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 136447 },
         "../../languages/sysml2/dist/reasoner-bridge.js": { "bytesInOutput": 2496 },
         "../reasoner/dist/tableau-reasoner.js": { "bytesInOutput": 20458 },
         "../reasoner/dist/ontology-builder.js": { "bytesInOutput": 5812 },
         "../reasoner/dist/sparql-engine.js": { "bytesInOutput": 144 },
         "../reasoner/dist/index.js": { "bytesInOutput": 218 },
         "../../languages/sysml2/dist/language.js": { "bytesInOutput": 188425 },
-        "../../languages/sysml2/dist/src-gen/query-hooks.js": { "bytesInOutput": 46416 },
+        "../../languages/sysml2/dist/src-gen/query-hooks.js": { "bytesInOutput": 45228 },
         "../../languages/sysml2/dist/factory.js": { "bytesInOutput": 2900 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/methods.js": { "bytesInOutput": 1048 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/utils.js": { "bytesInOutput": 3192 },
@@ -8493,6 +8497,21 @@
         "../compiler/dist/simulator/surrogates/surrogate-pipeline.js": { "bytesInOutput": 4431 },
         "../compiler/dist/simulator/utils/memory-profiler.js": { "bytesInOutput": 1351 },
         "../compiler/dist/simulator/index.js": { "bytesInOutput": 4631 },
+        "../../languages/csv/dist/src/csv-parser.js": { "bytesInOutput": 5285 },
+        "../fmi/dist/fmi3.js": { "bytesInOutput": 34662 },
+        "../fmi/dist/ad-codegen.js": { "bytesInOutput": 11921 },
+        "../fmi/dist/fmi.js": { "bytesInOutput": 26485 },
+        "../fmi/dist/transpiler-utils.js": { "bytesInOutput": 4353 },
+        "../fmi/dist/fmu-as-codegen.js": { "bytesInOutput": 14339 },
+        "../fmi/dist/fmu-codegen.js": { "bytesInOutput": 115761 },
+        "../fmi/dist/fmu-js-codegen.js": { "bytesInOutput": 6041 },
+        "../fmi/dist/fmu-wasm-codegen.js": { "bytesInOutput": 26385 },
+        "ignore:child_process": { "bytesInOutput": 139 },
+        "../fmi/dist/fmu-archive.js": { "bytesInOutput": 23429 },
+        "../fmi/dist/fmu-wasm-compile.js": { "bytesInOutput": 3498 },
+        "../../languages/modelica/dist/annotation.js": { "bytesInOutput": 151 },
+        "../../languages/modelica/dist/geometry.js": { "bytesInOutput": 147 },
+        "../../languages/modelica/dist/multibody-generator.js": { "bytesInOutput": 169 },
         "../symbolics/dist/modelica-types.js": { "bytesInOutput": 3720 },
         "../symbolics/dist/systems/index.js": { "bytesInOutput": 63699 },
         "../symbolics/dist/calculus/derivative.js": { "bytesInOutput": 476 },
@@ -8513,21 +8532,6 @@
         "../symbolics/dist/systems/arena-printer.js": { "bytesInOutput": 174 },
         "../symbolics/dist/tape.js": { "bytesInOutput": 179 },
         "../symbolics/dist/index.js": { "bytesInOutput": 552 },
-        "../../languages/csv/dist/src/csv-parser.js": { "bytesInOutput": 5285 },
-        "../fmi/dist/fmi3.js": { "bytesInOutput": 34662 },
-        "../fmi/dist/ad-codegen.js": { "bytesInOutput": 11921 },
-        "../fmi/dist/fmi.js": { "bytesInOutput": 26485 },
-        "../fmi/dist/transpiler-utils.js": { "bytesInOutput": 4353 },
-        "../fmi/dist/fmu-as-codegen.js": { "bytesInOutput": 14339 },
-        "../fmi/dist/fmu-codegen.js": { "bytesInOutput": 115761 },
-        "../fmi/dist/fmu-js-codegen.js": { "bytesInOutput": 6041 },
-        "../fmi/dist/fmu-wasm-codegen.js": { "bytesInOutput": 26385 },
-        "ignore:child_process": { "bytesInOutput": 139 },
-        "../fmi/dist/fmu-archive.js": { "bytesInOutput": 23429 },
-        "../fmi/dist/fmu-wasm-compile.js": { "bytesInOutput": 3498 },
-        "../../languages/modelica/dist/annotation.js": { "bytesInOutput": 151 },
-        "../../languages/modelica/dist/geometry.js": { "bytesInOutput": 147 },
-        "../../languages/modelica/dist/multibody-generator.js": { "bytesInOutput": 169 },
         "../../languages/modelica/dist/po.js": { "bytesInOutput": 135 },
         "../core/dist/compiler/modelica/builtins/geometry.js": { "bytesInOutput": 158 },
         "../core/dist/compiler/modelica/builtins/studies.js": { "bytesInOutput": 155 },
@@ -8620,7 +8624,7 @@
         "../compiler/dist/optimizer/core/calibrator.js": { "bytesInOutput": 20232 },
         "../compiler/dist/optimizer/core/optimizer.js": { "bytesInOutput": 18284 },
         "../compiler/dist/optimizer/core/stochastic-optimizer.js": { "bytesInOutput": 10098 },
-        "../compiler/dist/optimizer/solvers/coinor-codegen.js": { "bytesInOutput": 45 },
+        "../compiler/dist/optimizer/solvers/coinor-codegen.js": { "bytesInOutput": 44 },
         "../compiler/dist/optimizer/solvers/coinor-wasm.js": { "bytesInOutput": 29 },
         "../compiler/dist/optimizer/solvers/gpu-codegen.js": { "bytesInOutput": 29 },
         "../compiler/dist/optimizer/solvers/ipopt-solver.js": { "bytesInOutput": 29 },
@@ -8654,7 +8658,7 @@
         "src/step-workspace-index.ts": { "bytesInOutput": 9733 },
         "src/step-assembly-extractor.ts": { "bytesInOutput": 4139 }
       },
-      "bytes": 51156224
+      "bytes": 51148828
     },
     "dist/step-worker.js": {
       "imports": [],
@@ -8756,9 +8760,9 @@
         "../compiler/dist/combinators.js": { "bytesInOutput": 615 },
         "../../node_modules/web-tree-sitter/web-tree-sitter.js": { "bytesInOutput": 165266 },
         "../../languages/modelica/dist/src-gen/config.js": { "bytesInOutput": 3256 },
-        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 40787 }
+        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 37399 }
       },
-      "bytes": 3186490
+      "bytes": 3184774
     }
   }
 }

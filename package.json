@@ -62,7 +62,7 @@
     "dompurify": "^3.4.0",
     "elliptic": "^6.6.1",
     "hono": "^4.12.14",
-    "tree-sitter-cli": "^0.22.4"
+    "tree-sitter-cli": "0.26.9"
   },
   "dependencies": {
     "@eslint/config-array": "^0.19.2",
@@ -72,7 +72,7 @@
     "lodash.merge": "^4.6.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "tree-sitter": "^0.22.4"
+    "tree-sitter": "^0.21.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

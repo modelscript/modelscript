@@ -28,11 +28,21 @@
       "default": "./dist/src/csv-parser.js"
     }
   },
+  "types": "bindings/node",
+  "files": [
+    "grammar.js",
+    "binding.gyp",
+    "prebuilds/**",
+    "bindings/node/*",
+    "queries/*",
+    "src/**"
+  ],
   "scripts": {
     "build": "node build.js && tsc",
     "clean": "rimraf dist build *.wasm src-gen bindings/node/*.node prebuilds",
     "generate": "tree-sitter generate --abi=14 && node-gyp rebuild && tree-sitter build --wasm",
-    "install": "node-gyp rebuild",
+    "install": "node-gyp-build",
+    "prebuildify": "prebuildify --napi --strip",
     "prestart": "tree-sitter build --wasm",
     "start": "tree-sitter playground"
   },
@@ -43,15 +53,21 @@
   },
   "devDependencies": {
     "prebuildify": "^6.0.1",
-    "tree-sitter": "^0.22.4",
-    "tree-sitter-cli": "^0.22.4"
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-cli": "0.26.9"
   },
   "peerDependencies": {
-    "tree-sitter": "^0.22.4"
+    "tree-sitter": "^0.21.1"
   },
   "peerDependenciesMeta": {
     "tree-sitter": {
       "optional": true
     }
-  }
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.csv",
+      "injection-regex": "^csv$"
+    }
+  ]
 }

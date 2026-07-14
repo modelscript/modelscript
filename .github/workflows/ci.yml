@@ -18,6 +18,11 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+      - name: Setup WASI SDK
+        run: |
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz
+          tar xf wasi-sdk-20.0-linux.tar.gz
+          echo "WASI_SDK_PATH=$PWD/wasi-sdk-20.0" >> $GITHUB_ENV
       - name: Install Dependencies
         run: npm ci
       - name: Cache Nx
@@ -44,6 +49,11 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+      - name: Setup WASI SDK
+        run: |
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz
+          tar xf wasi-sdk-20.0-linux.tar.gz
+          echo "WASI_SDK_PATH=$PWD/wasi-sdk-20.0" >> $GITHUB_ENV
       - name: Install Dependencies
         run: npm ci
         env:
@@ -101,6 +111,11 @@ jobs:
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+      - name: Setup WASI SDK
+        run: |
+          wget https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-20/wasi-sdk-20.0-linux.tar.gz
+          tar xf wasi-sdk-20.0-linux.tar.gz
+          echo "WASI_SDK_PATH=$PWD/wasi-sdk-20.0" >> $GITHUB_ENV
       - name: Install Dependencies
         run: npm ci
         env:
