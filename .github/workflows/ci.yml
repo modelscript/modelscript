@@ -33,11 +33,9 @@ jobs:
       - name: Run Lint
         run: npx nx affected -t lint --parallel=3
 
-  test_core:
+  test:
+    needs: lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        shard: ["1/4", "2/4", "3/4", "4/4"]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -54,10 +52,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nx/cache
-          key: ${{ runner.os }}-nx-test-core-${{ strategy.job-index }}-${{ github.sha }}
+          key: ${{ runner.os }}-nx-test-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-nx-test-core-${{ strategy.job-index }}-
+            ${{ runner.os }}-nx-test-
             ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
       - name: Cache MSL
         id: cache-msl
         uses: actions/cache@v4
@@ -66,55 +66,30 @@ jobs:
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Download MSL
         run: node scripts/download-msl.cjs
-      - name: Build Core Dependencies
-        run: npx nx build @modelscript/core --parallel=3
-      - name: Run Core Tests
-        run: npm run test --workspace=@modelscript/core -- --shard=${{ matrix.shard }}
-      - name: Publish Test Report
-        uses: ctrf-io/github-test-reporter@v1
-        with:
-          report-path: "**/ctrf/*.json"
-        if: always()
-
-  test_others:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: ".nvmrc"
-          cache: "npm"
-      - name: Install Dependencies
-        run: npm ci
-        env:
-          CXXFLAGS: "-std=c++20"
-      - name: Cache Nx
+      - name: Cache FMI Simulator
+        id: cache-fmusim
         uses: actions/cache@v4
         with:
-          path: .nx/cache
-          key: ${{ runner.os }}-nx-test-others-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nx-test-others-
-            ${{ runner.os }}-nx-
-      - name: Calculate Affected Bounds
-        uses: nrwl/nx-set-shas@v4
-      - name: Run Other Tests
-        run: npx nx affected -t test --exclude=@modelscript/core --parallel=3
-      - name: Publish Test Report
-        uses: ctrf-io/github-test-reporter@v1
-        with:
-          report-path: "**/ctrf/*.json"
-        if: always()
+          path: packages/fmi/bin
+          key: ${{ runner.os }}-fmusim-2.0.4
+      - name: Fetch FMI Simulator
+        if: steps.cache-fmusim.outputs.cache-hit != 'true'
+        run: npm run fetch:fmusim --workspace=@modelscript/fmi
+      - name: Run Tests
+        run: npx nx affected -t test --parallel=3
       - name: Validate FMI
         run: |
           npm run validate --workspace=@modelscript/fmi
-          npm run fetch:fmusim --workspace=@modelscript/fmi
           npm run test:fmusim --workspace=@modelscript/fmi
+        if: always()
+      - name: Publish Test Report
+        uses: ctrf-io/github-test-reporter@v1
+        with:
+          report-path: "**/ctrf/*.json"
         if: always()
 
   build_and_deploy:
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       contents: write
