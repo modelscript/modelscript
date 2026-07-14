@@ -8,36 +8,98 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_test_lint_deploy:
+  lint:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-lint-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-lint-
+            ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
+      - name: Run Lint
+        run: npx nx affected -t lint --parallel=3
+
+  test_core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+        env:
+          CXXFLAGS: "-std=c++20"
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-test-core-${{ strategy.job-index }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-test-core-${{ strategy.job-index }}-
+            ${{ runner.os }}-nx-
       - name: Cache MSL
         id: cache-msl
         uses: actions/cache@v4
         with:
           path: scripts/ModelicaStandardLibrary_v4.1.0.zip
           key: ${{ runner.os }}-msl-v4.1.0
+      - name: Download MSL
+        run: node scripts/download-msl.cjs
+      - name: Run Core Tests
+        run: npm run test --workspace=@modelscript/core -- --shard=${{ matrix.shard }}
+      - name: Publish Test Report
+        uses: ctrf-io/github-test-reporter@v1
+        with:
+          report-path: "**/ctrf/*.json"
+        if: always()
+
+  test_others:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
       - name: Install Dependencies
         run: npm ci
         env:
           CXXFLAGS: "-std=c++20"
-      - name: Download MSL
-        run: node scripts/download-msl.cjs
-      - name: Run Build
-        run: npm run build
-      - name: Run Tests
-        run: npm run test
-        if: always()
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-test-others-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-test-others-
+            ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
+      - name: Run Other Tests
+        run: npx nx affected -t test --exclude=@modelscript/core --parallel=3
       - name: Publish Test Report
         uses: ctrf-io/github-test-reporter@v1
         with:
@@ -49,8 +111,35 @@ jobs:
           npm run fetch:fmusim --workspace=@modelscript/fmi
           npm run test:fmusim --workspace=@modelscript/fmi
         if: always()
-      - name: Run Lint
-        run: npm run lint
+
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+        env:
+          CXXFLAGS: "-std=c++20"
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-build-
+            ${{ runner.os }}-nx-
+      - name: Calculate Affected Bounds
+        uses: nrwl/nx-set-shas@v4
+      - name: Run Build
+        run: npx nx affected -t build --exclude=@modelscript/morsel --parallel=3
       - name: Package VS Code Extension
         run: npx @vscode/vsce package --no-dependencies
         working-directory: extensions/vscode
@@ -71,7 +160,35 @@ jobs:
           external_repository: modelscript/modelscript.github.io
           publish_dir: ./apps/site/build/client
 
-      # --- Docker ---
+  docker_build:
+    needs: build_and_deploy
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - name: Install Dependencies
+        run: npm ci
+        env:
+          CXXFLAGS: "-std=c++20"
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: ${{ runner.os }}-nx-docker-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-nx-docker-
+            ${{ runner.os }}-nx-build-
+            ${{ runner.os }}-nx-
+      - name: Fast Rebuild from Cache
+        run: npx nx run-many -t build --exclude=@modelscript/morsel --parallel=3
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

@@ -435,11 +435,28 @@ async function main(): Promise<void> {
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1] ?? "1", 10)
     : Math.max(1, process.env.CI ? os.availableParallelism() : Math.floor(os.availableParallelism() / 2));
+
+  const shardArg = rawArgs.find((a) => a.startsWith("--shard="));
+  let shardIndex = 1;
+  let shardCount = 1;
+  if (shardArg) {
+    const shardParts = (shardArg.split("=")[1] ?? "1/1").split("/");
+    shardIndex = parseInt(shardParts[0] ?? "1", 10);
+    shardCount = parseInt(shardParts[1] ?? "1", 10);
+  }
+
   const args = rawArgs.filter(
-    (a) => a !== "--update" && a !== "--omc" && a !== "--allow-failures" && !a.startsWith("--concurrency="),
+    (a) =>
+      a !== "--update" &&
+      a !== "--omc" &&
+      a !== "--allow-failures" &&
+      !a.startsWith("--concurrency=") &&
+      !a.startsWith("--shard="),
   );
 
-  console.log(`${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena)`);
+  console.log(
+    `${BOLD}Testsuite Runner${RESET} (concurrency=${concurrency}, pipeline=arena, shard=${shardIndex}/${shardCount})`,
+  );
   console.log();
 
   // Determine which subdirectories (and optionally specific files) to run
@@ -544,6 +561,18 @@ async function main(): Promise<void> {
 
       allQueued.push({ testCase, suiteName, suiteDir });
     }
+  }
+
+  if (shardCount > 1) {
+    const shardSize = Math.ceil(allQueued.length / shardCount);
+    const startIdx = (shardIndex - 1) * shardSize;
+    const endIdx = startIdx + shardSize;
+    allQueued.splice(0, allQueued.length, ...allQueued.slice(startIdx, endIdx));
+
+    const skippedShardSize = Math.ceil(skippedResults.length / shardCount);
+    const skippedStartIdx = (shardIndex - 1) * skippedShardSize;
+    const skippedEndIdx = skippedStartIdx + skippedShardSize;
+    skippedResults.splice(0, skippedResults.length, ...skippedResults.slice(skippedStartIdx, skippedEndIdx));
   }
 
   console.log(`${BOLD}Queued ${allQueued.length} test(s) + ${skippedResults.length} skipped${RESET}`);
