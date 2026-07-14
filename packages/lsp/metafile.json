@@ -2529,7 +2529,7 @@
       "format": "esm"
     },
     "../../languages/csv/dist/src-gen/config.js": {
-      "bytes": 431,
+      "bytes": 432,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -2543,7 +2543,7 @@
       "format": "esm"
     },
     "../../languages/csv/dist/src-gen/query-hooks.js": {
-      "bytes": 2274,
+      "bytes": 2372,
       "imports": [
         { "path": "../../languages/csv/dist/language.js", "kind": "import-statement", "original": "../language.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -2663,7 +2663,7 @@
       "format": "esm"
     },
     "../../languages/sysml2/dist/src-gen/config.js": {
-      "bytes": 145244,
+      "bytes": 146670,
       "imports": [
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
         { "path": "<runtime>", "kind": "import-statement", "external": true }
@@ -2736,7 +2736,7 @@
       "format": "esm"
     },
     "../../languages/sysml2/dist/src-gen/query-hooks.js": {
-      "bytes": 69004,
+      "bytes": 72238,
       "imports": [
         { "path": "../../languages/sysml2/dist/language.js", "kind": "import-statement", "original": "../language.js" },
         { "path": "<define:process.env>", "kind": "import-statement", "external": true },
@@ -5460,7 +5460,7 @@
       "format": "esm"
     },
     "../../languages/owl2/dist/src-gen/config.js": {
-      "bytes": 2995,
+      "bytes": 2996,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -8368,21 +8368,21 @@
         "../../languages/modelica/dist/src-gen/query-hooks.js": { "bytesInOutput": 3927 },
         "../../languages/csv/dist/src-gen/config.js": { "bytesInOutput": 609 },
         "../../languages/csv/dist/language.js": { "bytesInOutput": 6411 },
-        "../../languages/csv/dist/src-gen/query-hooks.js": { "bytesInOutput": 1799 },
+        "../../languages/csv/dist/src-gen/query-hooks.js": { "bytesInOutput": 1835 },
         "../../languages/modelica/dist/diagram/annotation-evaluator.js": { "bytesInOutput": 16530 },
         "../../languages/modelica/dist/expression-evaluator.js": { "bytesInOutput": 8529 },
         "../../languages/modelica/dist/predefined-types.js": { "bytesInOutput": 5202 },
         "../../languages/modelica/dist/msim-parser.js": { "bytesInOutput": 4453 },
         "../../languages/modelica/dist/factory.js": { "bytesInOutput": 5864 },
         "../diagram/dist/polyglot-diagram-builder.js": { "bytesInOutput": 53221 },
-        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 136447 },
+        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 137295 },
         "../../languages/sysml2/dist/reasoner-bridge.js": { "bytesInOutput": 2496 },
         "../reasoner/dist/tableau-reasoner.js": { "bytesInOutput": 20458 },
         "../reasoner/dist/ontology-builder.js": { "bytesInOutput": 5812 },
         "../reasoner/dist/sparql-engine.js": { "bytesInOutput": 144 },
         "../reasoner/dist/index.js": { "bytesInOutput": 218 },
         "../../languages/sysml2/dist/language.js": { "bytesInOutput": 188425 },
-        "../../languages/sysml2/dist/src-gen/query-hooks.js": { "bytesInOutput": 45228 },
+        "../../languages/sysml2/dist/src-gen/query-hooks.js": { "bytesInOutput": 46416 },
         "../../languages/sysml2/dist/factory.js": { "bytesInOutput": 2900 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/methods.js": { "bytesInOutput": 1048 },
         "../../node_modules/@svgdotjs/svg.js/src/utils/utils.js": { "bytesInOutput": 3192 },
@@ -8658,7 +8658,7 @@
         "src/step-workspace-index.ts": { "bytesInOutput": 9733 },
         "src/step-assembly-extractor.ts": { "bytesInOutput": 4139 }
       },
-      "bytes": 51148828
+      "bytes": 51154828
     },
     "dist/step-worker.js": {
       "imports": [],
@@ -8760,9 +8760,9 @@
         "../compiler/dist/combinators.js": { "bytesInOutput": 615 },
         "../../node_modules/web-tree-sitter/web-tree-sitter.js": { "bytesInOutput": 165266 },
         "../../languages/modelica/dist/src-gen/config.js": { "bytesInOutput": 3256 },
-        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 37399 }
+        "../../languages/sysml2/dist/src-gen/config.js": { "bytesInOutput": 40787 }
       },
-      "bytes": 3184774
+      "bytes": 3186490
     }
   }
 }

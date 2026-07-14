@@ -23,6 +23,7 @@
   {
     "type": "SourceFile",
     "named": true,
+    "root": true,
     "fields": {
       "rows": {
         "multiple": true,

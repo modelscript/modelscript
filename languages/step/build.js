@@ -33,7 +33,18 @@ if (shouldBuild) {
     delete pkg.type;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
-    execSync("npx --yes tree-sitter-cli build --wasm", { stdio: "inherit", cwd: __dirname });
+    let retries = 5;
+    while (retries > 0) {
+      try {
+        execSync("npx --yes tree-sitter-cli build --wasm", { stdio: "inherit", cwd: __dirname });
+        break;
+      } catch (err) {
+        retries--;
+        if (retries === 0) throw err;
+        console.warn(`[WASM Build] Failed (likely due to concurrent wasi-sdk extraction), retrying in 3s...`);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
+      }
+    }
   } catch (err) {
     console.error("[step] Failed to build WASM:", err.message);
     process.exitCode = 1;
