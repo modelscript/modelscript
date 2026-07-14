@@ -70,6 +70,8 @@
     "ajv": "^8.17.0",
     "glob": "^13.0.6",
     "lodash.merge": "^4.6.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tree-sitter": "^0.22.4"
   },
   "devDependencies": {
