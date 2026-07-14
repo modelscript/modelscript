@@ -66,6 +66,8 @@ jobs:
           key: ${{ runner.os }}-msl-v4.1.0
       - name: Download MSL
         run: node scripts/download-msl.cjs
+      - name: Build Core Dependencies
+        run: npx nx build @modelscript/core --parallel=3
       - name: Run Core Tests
         run: npm run test --workspace=@modelscript/core -- --shard=${{ matrix.shard }}
       - name: Publish Test Report
