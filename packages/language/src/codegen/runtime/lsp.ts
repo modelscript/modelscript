@@ -18,7 +18,7 @@ import {
   FLAG_IS_INSERTED,
   getInputBuffer,
 } from "./arena";
-import { errorCount, getErrorEnd, getErrorStart } from "./engine";
+import { errorCount, getErrorEnd, getErrorStart, NODE_TYPE_ERROR } from "./engine";
 import { inputLength } from "./parser";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 
@@ -243,10 +243,46 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         lsp_allocDiagnostic(dStart, dEnd, type);
       }
     } else if (inError || isErrorNode || (isLeaf && (flags & FLAG_HAS_ERROR) != 0)) {
-      // The pad > 0 garbage scan was removed because garbage tokens are now explicitly
-      // stored as leaf children inside ERROR nodes, and padding legitimately contains
-      // non-whitespace extra tokens like comments.
-      
+      if (pad > 0) {
+        let inputPtr = getInputBuffer();
+        let inGarbage = false;
+        let garbageStart: u32 = 0;
+        let i: u32 = 0;
+        while (i < pad) {
+          let c = load<u16>(inputPtr + start + i);
+          let cNext: u16 = (i + 2 < pad) ? load<u16>(inputPtr + start + i + 2) : 0;
+          
+          if (c == 47 && cNext == 47) { // "//"
+            if (inGarbage) { lsp_allocDiagnostic(garbageStart, start + i, 0); inGarbage = false; }
+            while (i < pad && load<u16>(inputPtr + start + i) != 10) i += 2;
+            continue;
+          } else if (c == 47 && cNext == 42) { // "/*"
+            if (inGarbage) { lsp_allocDiagnostic(garbageStart, start + i, 0); inGarbage = false; }
+            i += 4;
+            while (i < pad) {
+               if (load<u16>(inputPtr + start + i) == 42 && i + 2 < pad && load<u16>(inputPtr + start + i + 2) == 47) {
+                  i += 4; break;
+               }
+               i += 2;
+            }
+            continue;
+          }
+          
+          let isWs = (c == 32 || c == 9 || c == 10 || c == 13);
+          if (!isWs && !inGarbage) {
+            inGarbage = true;
+            garbageStart = start + i;
+          } else if (isWs && inGarbage) {
+            inGarbage = false;
+            lsp_allocDiagnostic(garbageStart, start + i, 0);
+          }
+          i += 2;
+        }
+        if (inGarbage) {
+          lsp_allocDiagnostic(garbageStart, start + pad, 0);
+        }
+      }
+
       if (isLeaf && len > 0 && !isTainted) {
         // Check if token is entirely whitespace
         let allWhitespace = true;
@@ -383,7 +419,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let hasError = (flags & FLAG_HAS_ERROR) != 0;
     
     let semOffset: i32 = -1;
-    if (!isErrorNode && !inError) {
+    if (!isErrorNode) {
       semOffset = load<i32>(type_semantics + type * 4);
     }
     if (semOffset != -1) {
@@ -398,23 +434,31 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         let targetChild: u32 = 0;
         let currOffset = start + pad;
         let childOffset: u32 = 0;
+        let isFirstChild = true;
 
       while (child != 0) {
           let cPad = getNodePadding(child);
           let cType = getNodeType(child);
           let cFlags = getNodeFlags(child);
           let cLen = getNodeByteLength(child);
-          // - Invisible internal nodes (list boundaries, _START, etc.)
-          // We MUST NOT skip FLAG_IS_INSERTED or NODE_TYPE_ERROR, because the
-          // semantic data indices are pre-compiled and expect all structural terminals to exist.
-          // Skipping them would desynchronize childCount and corrupt subsequent token colors.
-          if (childCount == childIdx) {
-            targetChild = child;
-            childOffset = currOffset + cPad;
-            break;
+          // Skip error nodes and tainted nodes from the child index count.
+          // Error nodes pulled in by isPureErrorNode recovery reductions are
+          // not grammar-compiled children, so counting them corrupts childIdx.
+          // Tainted nodes are synthetic zero-width recovery phantoms.
+          let isExtra = (cFlags & FLAG_IS_TAINED) != 0 || cType == NODE_TYPE_ERROR;
+          
+          let effectivePad = isFirstChild ? 0 : cPad;
+
+          if (!isExtra) {
+            if (childCount == childIdx) {
+              targetChild = child;
+              childOffset = currOffset + effectivePad;
+              break;
+            }
+            childCount++;
           }
-          childCount++;
-          currOffset += cPad + cLen;
+          currOffset += effectivePad + cLen;
+          isFirstChild = false;
           child = getNodeNextSibling(child);
         }
 
@@ -425,8 +469,8 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
             // Clamp offset + length to inputLength to prevent out-of-bounds tokens
             // that would cause Monaco to reject the entire semantic tokens response
-            if (childOffset + cLen > inputLength) {
-              if (childOffset >= inputLength) continue; // completely out of bounds
+            if (childOffset > inputLength) continue;
+            if (cLen > inputLength || childOffset + cLen > inputLength || childOffset + cLen < childOffset) {
               cLen = inputLength - childOffset;
             }
             let tokenModifiers = 0;
@@ -745,25 +789,17 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
          // Push children in reverse order so they are popped left-to-right
          let childCount = 0;
          let c = child;
-         let isFirst_c = true;
-      while (c != 0) { childCount++; c = getNodeNextSibling(c);
-        isFirst_c = false; }
+      while (c != 0) { childCount++; c = getNodeNextSibling(c); }
          
          // Push in reverse
-         currOffset = offset;
+         currOffset = offset + pad;
          let writeIdx = stackTop + childCount - 1;
          c = child;
-         isFirst_c = true;
          while (c != 0) {
             let cPad = getNodePadding(c);
             let cLen = cPad + getNodeByteLength(c);
             t_lspFindTraverseStack[writeIdx] = c;
-            if (isFirst_c) {
-               t_lspFindOffsetStack[writeIdx] = offset;
-               isFirst_c = false;
-            } else {
-               t_lspFindOffsetStack[writeIdx] = currOffset;
-            }
+            t_lspFindOffsetStack[writeIdx] = currOffset;
             writeIdx--;
             currOffset += cLen;
             c = getNodeNextSibling(c);
@@ -835,9 +871,10 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
       let child = getNodeFirstChild(current);
       
       let len = getNodeByteLength(current);
+      let pad = getNodePadding(current);
+      
       // Candidate filtering by length and string hash
       if (len == targetLen) {
-         let pad = getNodePadding(current);
          let tokenStart = offset + pad;
          let span = ast_getTextSpan(current, tokenStart);
          if (ast_hashSpan(span) == targetHash) {
@@ -855,14 +892,15 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
       if (child == 0) {
          // Leaf node, nothing more to push
       } else {
-         let currOffset = offset;
+         let currOffset = offset + pad;
          // Push children in reverse order so they are processed left-to-right
          // We can do this with a secondary loop or just traverse, order doesn't matter for references
-      while (child != 0) {
+         while (child != 0) {
             let cPad = getNodePadding(child);
             let cLen = cPad + getNodeByteLength(child);
+            ensureTraverseStack(stackTop + 1);
             t_lspTraverseStack[stackTop] = child;
-            t_lspOffsetStack[stackTop] = (child == getNodeFirstChild(current)) ? offset : currOffset;
+            t_lspOffsetStack[stackTop] = currOffset;
             stackTop++;
             
             currOffset += cLen;

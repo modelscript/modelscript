@@ -1,4 +1,4 @@
-import { LspFacade, SYNTAX_NAMES } from "./bindings.js";
+import { LspFacade } from "./bindings.js";
 
 export interface Point {
   row: number;
@@ -21,7 +21,7 @@ export class SyntaxNode {
 
   get type(): string {
     if (this._cachedTypeId === 0) return "ERROR";
-    let name = SYNTAX_NAMES[this._cachedTypeId] || `node_${this._cachedTypeId}`;
+    let name = this.tree.facade.syntaxNames[this._cachedTypeId] || `node_${this._cachedTypeId}`;
     if (name.startsWith("T_")) name = name.substring(2);
     return name;
   }
@@ -57,7 +57,7 @@ export class SyntaxNode {
       const typeFlags = mem32[childPtr / 4];
       const typeId = typeFlags & 0x03ff;
       const envHashPadding = mem32[(childPtr + 4) / 4];
-      const rawPad = typeFlags >>> 16;
+      const rawPad = typeFlags >>> 19;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad =
         isFat && this.tree.facade.exports.getFatPaddingPtr
@@ -245,7 +245,7 @@ export class Tree {
     const typeFlags = this.mem32[this.rootPtr / 4];
     const typeId = typeFlags & 0x03ff;
     const envHashPadding = this.mem32[(this.rootPtr + 4) / 4];
-    const rawPad = typeFlags >>> 16;
+    const rawPad = typeFlags >>> 19;
     const isFat = (envHashPadding >>> 23) & 1;
     const pad =
       isFat && this.facade.exports.getFatPaddingPtr

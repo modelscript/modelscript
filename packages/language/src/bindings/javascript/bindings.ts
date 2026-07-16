@@ -299,7 +299,7 @@ export function createWasmImports(grammar: any, facade: LspFacade): any {
 }
 
 export class LspFacade {
-  private syntaxNames: string[] = SYNTAX_NAMES;
+  public syntaxNames: string[] = SYNTAX_NAMES;
   private wasmMemory: WebAssembly.Memory;
   public exports: any;
   private lastAstRoot: number = 0;
@@ -1003,7 +1003,7 @@ export class LspFacade {
 
       let childStrs: string[] = [];
 
-      let childOffset = currentOffset;
+      let childOffset = startOffset;
       let childPtr = mem32[(ptr + 8) / 4];
       let slowPtr = childPtr;
       let step = 0;
@@ -1101,10 +1101,16 @@ export class LspFacade {
 
       let renderedChildren = 0;
 
-      let childOffset = currentOffset;
+      let childOffset = startOffset;
       let childPtr = mem32[(ptr + 8) / 4];
       let slowPtr = childPtr;
       let step = 0;
+
+      if (typeName === "Program" || depth < 2) {
+        console.log(
+          `[JS_DEBUG] toHtml(${typeName}): ptr=${ptr}, childPtr=${childPtr}, mem32[(ptr+8)/4]=${mem32[(ptr + 8) / 4]}, len=${len}`,
+        );
+      }
 
       let nodeIndex = -1;
       if (shouldPrint) {
@@ -1277,7 +1283,7 @@ export class LspFacade {
           }
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
-          let typeName = SYNTAX_NAMES[typeId] || `node_${typeId}`;
+          let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
           const isInvisible = (cTypeFlags & (1 << 12)) !== 0;
 
           let fieldId = -1;
@@ -1458,7 +1464,7 @@ export class SyntaxNode {
 
   get type(): string {
     if (this._cachedTypeId === 0) return "ERROR";
-    let name = SYNTAX_NAMES[this._cachedTypeId] || `node_${this._cachedTypeId}`;
+    let name = this.tree.facade.syntaxNames[this._cachedTypeId] || `node_${this._cachedTypeId}`;
     if (name.startsWith("T_")) name = name.substring(2);
     return name;
   }
@@ -1489,12 +1495,12 @@ export class SyntaxNode {
     const kids: SyntaxNode[] = [];
 
     const collect = (ptr: number, offset: number, parentNode: SyntaxNode) => {
-      let childOffset = offset;
+      let childOffset = offset + this._cachedPad;
       let childPtr = mem32[(ptr + 8) / 4];
       while (childPtr !== 0) {
         const typeFlags = mem32[childPtr / 4];
         const typeId = typeFlags & 0x03ff;
-        const name = SYNTAX_NAMES[typeId] || `node_${typeId}`;
+        const name = this.tree.facade.syntaxNames[typeId] || `node_${typeId}`;
         const envHashPadding = mem32[(childPtr + 4) / 4];
         const rawPad = typeFlags >>> 19;
         const isFat = (envHashPadding >>> 23) & 1;

@@ -40,6 +40,7 @@ import {
   prod_aliases as _prod_aliases,
   prod_dynamic_prec as _prod_dynamic_prec,
   prod_is_invisible as _prod_is_invisible,
+  prod_is_structural as _prod_is_structural,
   prod_is_list as _prod_is_list,
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
@@ -112,6 +113,7 @@ export const sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertio
 
 export const prod_lengths = changetype<StaticTable>(_prod_lengths);
 export const prod_lhs = changetype<StaticTable>(_prod_lhs);
+export const prod_is_structural = changetype<StaticTable>(_prod_is_structural);
 export const prod_is_invisible = changetype<StaticTable>(_prod_is_invisible);
 export const prod_is_list = changetype<StaticTable>(_prod_is_list);
 export const prod_dynamic_prec = changetype<StaticTable>(_prod_dynamic_prec);

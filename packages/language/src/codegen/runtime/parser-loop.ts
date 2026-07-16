@@ -7,9 +7,9 @@ import {
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED, FLAG_EXTRACTED,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
     getNodeEnvHash, getInputBuffer,
-    atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks
+    atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2
 } from "./arena";
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import {
@@ -19,7 +19,7 @@ import {
 import {
     TOKEN_EOF, TOKEN_UNKNOWN, NODE_TYPE_ERROR, ACTION_SHIFT, ACTION_REDUCE, ACTION_ACCEPT,
     action_offsets, action_data, goto_offsets, goto_data, mrd_data, token_insert_costs,
-    prod_lengths, prod_lhs, prod_is_invisible, prod_is_list, prod_dynamic_prec, prod_aliases, alias_data,
+    prod_lengths, prod_lhs, prod_is_structural, prod_is_invisible, prod_is_list, prod_dynamic_prec, prod_aliases, alias_data,
     type_fields, type_field_data,
     MAX_ERRORS, MAX_PARALLEL_HEADS, INFINITE_COST, MAX_CHILD_NODES, MIN_LOOP_LIMIT, ARENA_BUFFER_SIZE,
     MAX_LOOKAHEAD_DEPTH, MAX_AST_TRAVERSAL_DEPTH, LOOP_MULTIPLIER_LIMIT, MAX_PANIC_SCAN_TOKENS,
@@ -102,7 +102,7 @@ function actionLookupFnBool(state: i32, token: i32): boolean {
 }
 
 function stateCanAcceptFnBool(state: i32, token: i32): boolean {
-  return stateCanAccept(null, state, token, 0) > 0;
+  return stateCanAccept(null, state, token) > 0;
 }
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   let prevHead: ParseHead | null = null;
@@ -379,102 +379,94 @@ function acceptCacheSet(key: u64, result: i32): void {
 }
 function acceptCacheClear(): void {
 }
-export let g_stateCanAcceptMaxDepth: i32 = MAX_LOOKAHEAD_DEPTH;
 
-export function stateCanAccept(
-  head: ParseHead | null,
-  state: i32,
-  tok: i32,
-  depth: i32 = 0,
-  simCount: i32 = 0,
-  sim0: i32 = 0,
-  sim1: i32 = 0,
-  sim2: i32 = 0,
-  sim3: i32 = 0,
-  sim4: i32 = 0,
-  sim5: i32 = 0,
-  sim6: i32 = 0,
-  sim7: i32 = 0,
-  sim8: i32 = 0,
-  sim9: i32 = 0,
-): i32 {
-  if (depth > g_stateCanAcceptMaxDepth) return 0;
+export let t_stateReachability: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_stateReachabilityComputed: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
+let computingReachability = false;
+
+export function isEpsilonReachable(state: i32, tok: i32): boolean {
+  let mappedTok = tok;
+  if (tok == TOKEN_EOF) mappedTok = 0;
+  else if (tok > MAX_TERMINAL_ID) return false;
+
+  if (changetype<usize>(t_stateReachability) == 0) {
+    let numStates = action_offsets.length;
+    let u32PerState = (MAX_TERMINAL_ID >> 5) + 1;
+    t_stateReachability = changetype<UnmanagedUint32Array>(atomicChunkAlloc(numStates * u32PerState * 4));
+    t_stateReachabilityComputed = changetype<UnmanagedUint8Array>(atomicChunkAlloc(numStates));
+    memory.fill(changetype<usize>(t_stateReachability), 0, numStates * u32PerState * 4);
+    memory.fill(changetype<usize>(t_stateReachabilityComputed), 0, numStates);
+  }
+  if (t_stateReachabilityComputed[state] == 0) {
+    t_stateReachabilityComputed[state] = 1;
+    let u32PerState = (MAX_TERMINAL_ID >> 5) + 1;
+    let baseIdx = state * u32PerState;
+    computingReachability = true;
+    for (let t = 0; t <= MAX_TERMINAL_ID; t++) {
+      let checkTok = t == 0 ? TOKEN_EOF : t;
+      let res = stateCanAccept(null, state, checkTok);
+      if (res == 2) {
+         // Special code: ALL TOKENS REACHABLE!
+         for(let t2=0; t2 <= MAX_TERMINAL_ID; t2++) {
+             t_stateReachability[baseIdx + (t2 >> 5)] |= (1 << (t2 & 31));
+         }
+         break;
+      }
+      if (res > 0) {
+        t_stateReachability[baseIdx + (t >> 5)] |= (1 << (t & 31));
+      }
+    }
+    computingReachability = false;
+  }
+  let u32PerState = (MAX_TERMINAL_ID >> 5) + 1;
+  let idx = (state * u32PerState) + (mappedTok >> 5);
+  let bit = 1 << (mappedTok & 31);
+  return (t_stateReachability[idx] & bit) != 0;
+}
+
+export let g_stateCanAcceptMaxCost: i32 = MAX_LOOKAHEAD_DEPTH * 10;
+
+export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0): i32 {
+  if (depth > 50) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
-
-
+  if (head == null && !computingReachability) {
+    if (!isEpsilonReachable(state, tok)) return 0;
+  }
 
   let actionOffset = action_offsets[state];
-  if (actionOffset < 0 || actionOffset >= action_data.length) {
-    return 0;
-  }
+  if (actionOffset < 0 || actionOffset >= action_data.length) return 0;
 
   let actionCount = action_data[actionOffset];
   let idx = actionOffset + 1;
   for (let i = 0; i < actionCount; i++) {
-    if (idx < 0 || idx + 1 >= action_data.length) {
-      return 0;
-    }
     let sym = action_data[idx];
+    if (computingReachability && sym == tok) return 1;
     let actCount = action_data[idx + 1];
     let actIdx = idx + 2;
     if (sym == tok || sym == 0) {
       for (let j = 0; j < actCount; j++) {
         let type = action_data[actIdx++];
         let target = action_data[actIdx++];
-        if (type == ACTION_SHIFT) {
-          return target + 1;
-        }
-        if (type == ACTION_ACCEPT) {
-          return 1;
-        }
+        if (type == ACTION_SHIFT) return target + 1;
+        if (type == ACTION_ACCEPT) return 1;
         if (type == ACTION_REDUCE) {
-
           let ruleLen = prod_lengths[target];
           let ruleLHS = prod_lhs[target];
-
-          let rem = ruleLen;
-          let newSimCount = simCount;
+          
           let pHead = head;
-
-          if (newSimCount >= rem) {
-            newSimCount -= rem;
-            rem = 0;
-          } else {
-            rem -= newSimCount;
-            newSimCount = 0;
-          }
-
-          let remCounter = rem;
+          let remCounter = ruleLen;
           while (remCounter > 0 && pHead != null) {
             let pNode = pHead.astNode;
             let pIsInserted = pNode != 0 ? (getNodeFlags(pNode) & FLAG_IS_INSERTED) != 0 : false;
             if (pNode != 0 && isPureErrorNode(pNode) && !pIsInserted) {
-              // Skip pure error nodes, just like real reduce does not decrement 'needed'
               pHead = pHead.prev;
             } else {
               pHead = pHead.prev;
               remCounter--;
             }
           }
-
-          let topState = -1;
-          if (newSimCount > 0) {
-            if (newSimCount == 1) topState = sim0;
-            else if (newSimCount == 2) topState = sim1;
-            else if (newSimCount == 3) topState = sim2;
-            else if (newSimCount == 4) topState = sim3;
-            else if (newSimCount == 5) topState = sim4;
-            else if (newSimCount == 6) topState = sim5;
-            else if (newSimCount == 7) topState = sim6;
-            else if (newSimCount == 8) topState = sim7;
-            else if (newSimCount == 9) topState = sim8;
-            else if (newSimCount == 10) topState = sim9;
-          } else {
-            if (pHead != null) topState = pHead.state;
-          }
-
-          if (depth > 0) {}
-
+          
+          let topState = pHead != null ? pHead.state : -1;
           let nextState = -1;
           if (topState != -1) {
             let gOffset = goto_offsets[topState];
@@ -485,43 +477,22 @@ export function stateCanAccept(
                 if (goto_data[gIdx++] == ruleLHS) {
                   nextState = goto_data[gIdx++];
                   break;
-                } else {
-                  gIdx++;
-                }
+                } else gIdx++;
               }
             }
           }
-
+          
           if (nextState != -1) {
-
-            let ns0 = sim0, ns1 = sim1, ns2 = sim2, ns3 = sim3, ns4 = sim4, ns5 = sim5, ns6 = sim6, ns7 = sim7, ns8 = sim8, ns9 = sim9;
-            let nextSimCount = newSimCount + 1;
-            if (newSimCount == 0) ns0 = nextState;
-            else if (newSimCount == 1) ns1 = nextState;
-            else if (newSimCount == 2) ns2 = nextState;
-            else if (newSimCount == 3) ns3 = nextState;
-            else if (newSimCount == 4) ns4 = nextState;
-            else if (newSimCount == 5) ns5 = nextState;
-            else if (newSimCount == 6) ns6 = nextState;
-            else if (newSimCount == 7) ns7 = nextState;
-            else if (newSimCount == 8) ns8 = nextState;
-            else if (newSimCount == 9) ns9 = nextState;
-
-
-
-            let res = stateCanAccept(pHead, nextState, tok, depth + 1, nextSimCount, ns0, ns1, ns2, ns3, ns4, ns5, ns6, ns7, ns8, ns9);
-            if (res > 0) {
-              return res;
-            }
+            let res = stateCanAccept(pHead, nextState, tok, depth + 1);
+            if (res > 0) return res;
           } else {
-            // if (depth > 0) debugLog(60007, ruleLHS, topState, 0); // goto failed
+            if (computingReachability) return 2;
           }
         }
       }
     }
     idx += 2 + actCount * 2;
   }
-
   return 0;
 }
 
@@ -587,30 +558,38 @@ function sanitizeTree(root: u32): void {
 
       if (childType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
         // Corrupt node: REMOVE it by unlinking from the chain.
-        if (prevChild == 0) setFirstChild(node, nextSib);
-        else setNextSibling(prevChild, nextSib);
-        modified = true;
+        if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
+          // Cannot mutate Gen1 nodes. Leave as is.
+        } else {
+          if (prevChild == 0) setFirstChild(node, nextSib);
+          else setNextSibling(prevChild, nextSib);
+          modified = true;
+        }
       } else {
         // Check if this child was already visited (shared subtree)
         let cFlags = getNodeFlags(child);
         let isShared = (cFlags & FLAG_LSP_VISITED) != 0;
         
         if (isShared) {
-          // Deep-clone to break shared-pointer aliasing
-          let freshClone = deepCloneSubtree(child, 0);
-          if (freshClone != 0) {
-            setNextSibling(freshClone, nextSib);
-            if (prevChild == 0) setFirstChild(node, freshClone);
-            else setNextSibling(prevChild, freshClone);
-            prevChild = freshClone;
-            // Mark the fresh clone as visited and push for sanitization
-            t_sanitizeVisited.push(freshClone);
-            t_sanitizeStack.push(freshClone);
+          if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
+            // Cannot mutate Gen1 nodes to break aliasing. Skip.
           } else {
-            // Clone failed (too deep); unlink to prevent cycle
-            if (prevChild == 0) setFirstChild(node, nextSib);
-            else setNextSibling(prevChild, nextSib);
-            modified = true;
+            // Deep-clone to break shared-pointer aliasing
+            let freshClone = deepCloneSubtree(child, 0);
+            if (freshClone != 0) {
+              setNextSibling(freshClone, nextSib);
+              if (prevChild == 0) setFirstChild(node, freshClone);
+              else setNextSibling(prevChild, freshClone);
+              prevChild = freshClone;
+              // Mark the fresh clone as visited and push for sanitization
+              t_sanitizeVisited.push(freshClone);
+              t_sanitizeStack.push(freshClone);
+            } else {
+              // Clone failed (too deep); unlink to prevent cycle
+              if (prevChild == 0) setFirstChild(node, nextSib);
+              else setNextSibling(prevChild, nextSib);
+              modified = true;
+            }
           }
         } else {
           // Mark as visited and recurse
@@ -638,8 +617,8 @@ function sanitizeTree(root: u32): void {
   }
 }
 
-function injectStrandedNodes(acceptedNode: u32, headPtr: u32): void {
-  if (headPtr == 0 || acceptedNode == 0) return;
+function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
+  if (headPtr == 0 || acceptedNode == 0) return acceptedNode;
   
   let curr: ParseHead | null = changetype<ParseHead>(headPtr);
   let c_idx: u32 = 0;
@@ -668,7 +647,7 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): void {
     curr = curr.prev;
   }
   
-  if (c_idx == 0) return;
+  if (c_idx == 0) return acceptedNode;
   
   let firstChild = getNodeFirstChild(acceptedNode);
   let lastStranded = 0;
@@ -686,14 +665,32 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): void {
   }
   
   if (firstStranded != 0) {
+    let type = getNodeType(acceptedNode);
+    let isTerm = type <= (MAX_TERMINAL_ID as u16) && type != NODE_TYPE_ERROR;
+    
+    if (!isNodeGen2(acceptedNode)) {
+      acceptedNode = cloneNodeShallow(acceptedNode);
+    }
+    
+    if (isTerm) {
+      let errorRoot = allocNode(NODE_TYPE_ERROR, getNodePadding(acceptedNode), getNodeByteLength(acceptedNode), 0);
+      setNodePadding(acceptedNode, 0);
+      setFirstChild(errorRoot, acceptedNode);
+      setNextSibling(acceptedNode, firstStranded);
+      return errorRoot;
+    }
+
     let p = getNodePadding(firstStranded);
     setNodePadding(acceptedNode, p);
     setNodePadding(firstStranded, 0);
+    
+    let firstChild = getNodeFirstChild(acceptedNode);
     setNextSibling(lastStranded, firstChild);
     setFirstChild(acceptedNode, firstStranded);
+    
     fixNodeLength(acceptedNode);
   }
-  
+  return acceptedNode;
 }
 
 function wrapWithTrailingErrors(acceptedNode: u32): u32 {
@@ -753,6 +750,7 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
     let pad: u32 = srcLexPos > lexP ? srcLexPos - lexP : 0;
 
     let tNode = allocNode((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) as u16, pad, tLen, 0);
+    setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
     if (lastTokNode == 0) {
       setNodePadding(tNode, 0);
       setFirstChild(errorNode, tNode);
@@ -769,22 +767,13 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   srcLexPos = savedSrcLexPos;
   currentScannerState = savedScannerState;
 
-  let newRoot = acceptedNode;
-  if (getNodeType(acceptedNode) != NODE_TYPE_ERROR) {
-      newRoot = allocNode((MAX_TERMINAL_ID + 1) as u16, 0, inputLength, 0);
-      setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
-      setFirstChild(newRoot, acceptedNode);
-      setNextSibling(acceptedNode, errorNode);
-  } else {
-      let lastChild = getNodeFirstChild(acceptedNode);
-      let prevChild = 0;
-      while (lastChild != 0) {
-          prevChild = lastChild;
-          lastChild = getNodeNextSibling(lastChild);
-      }
-      if (prevChild == 0) setFirstChild(acceptedNode, errorNode);
-      else setNextSibling(prevChild, errorNode);
+  let newRoot = allocNode(NODE_TYPE_ERROR, 0, inputLength, 0);
+  setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
+  if (!isNodeGen2(acceptedNode)) {
+    acceptedNode = cloneNodeShallow(acceptedNode);
   }
+  setFirstChild(newRoot, acceptedNode);
+  setNextSibling(acceptedNode, errorNode);
   return newRoot;
 }
 export function cloneNodeShallow(gc: u32): u32 {
@@ -835,6 +824,7 @@ function fixNodeLength(node: u32): void {
     totalLen += getNodePadding(gc) + getNodeByteLength(gc);
     gc = getNodeNextSibling(gc);
   }
+  
   setNodeByteLength(node, totalLen);
 }
 export function getListDepth(node: u32, listSym: u16): u32 {
@@ -1144,7 +1134,7 @@ function isMutable(ptr: u32): boolean {
   // Note: The current head is popped from the queue during evaluation,
   // so if activeHeadsCount > 0, it means there is at least one OTHER head.
   if (activeHeadsCount > 0) return false;
-  if ((getNodeFlags(ptr) & FLAG_EXTRACTED) != 0) return false;
+  if ((getNodeFlags(ptr) & (FLAG_EXTRACTED | FLAG_IS_SHARED)) != 0) return false;
   return ptr >= incrementalStartOffset;
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
@@ -1542,15 +1532,87 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
 
 
-let furthestDyingPos: u32 = 0;
-let bestDyingHead: u32 = 0;
-let bestAcceptingHead: u32 = 0;
-let acceptedNode: u32 = 0;
-let bestAcceptedCost: i32 = 999999; // = INFINITE_COST (literal to avoid ASC forward-ref)
-let bestAcceptedRealBytes: u32 = 0;
-let bestAcceptedCount: u32 = 0xffffffff;
-let bestAcceptedPad: u32 = 0xffffffff;
 
+export function resetSimulator(targetCost: i32, maxTokens: i32): void {
+  bestAcceptingHead = 0;
+  bestAcceptedCost = targetCost;
+  g_simulatorMaxCost = targetCost;
+  g_simulatorMaxTokens = maxTokens;
+}
+
+let savedLexPos: u32 = 0;
+let savedLexLen: u32 = 0;
+let savedSrcLexPos: u32 = 0;
+let savedCurrentScannerState: i32 = 0;
+let savedTokenBufferReadIdx: u32 = 0;
+let savedTokenBufferWriteIdx: u32 = 0;
+let savedTokenBufferLastPos: u32 = 0;
+let savedExpectedTokens = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+
+let savedSimulatorMaxCost: i32 = 999999;
+let savedSimulatorMaxTokens: i32 = 0;
+let savedBestAcceptingHead: u32 = 0;
+let savedAcceptedNode: u32 = 0;
+let savedBestAcceptedCost: i32 = 999999;
+let savedBestAcceptedRealBytes: u32 = 0;
+let savedBestAcceptedCount: u32 = 0xffffffff;
+let savedBestAcceptedPad: u32 = 0xffffffff;
+
+export function saveSimulationState(): void {
+  savedLexPos = lexPos;
+  savedLexLen = lexLen;
+  savedSrcLexPos = srcLexPos;
+  savedCurrentScannerState = currentScannerState;
+  savedTokenBufferReadIdx = tokenBufferReadIdx;
+  savedTokenBufferWriteIdx = tokenBufferWriteIdx;
+  savedTokenBufferLastPos = tokenBufferLastPos;
+  savedSimulatorMaxCost = g_simulatorMaxCost;
+  savedSimulatorMaxTokens = g_simulatorMaxTokens;
+  
+  savedBestAcceptingHead = bestAcceptingHead;
+  savedAcceptedNode = acceptedNode;
+  savedBestAcceptedCost = bestAcceptedCost;
+  savedBestAcceptedRealBytes = bestAcceptedRealBytes;
+  savedBestAcceptedCount = bestAcceptedCount;
+  savedBestAcceptedPad = bestAcceptedPad;
+
+  memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), 2048);
+}
+
+export function restoreSimulationState(): void {
+  setLexPos(savedLexPos);
+  setLexLen(savedLexLen);
+  setSrcLexPos(savedSrcLexPos);
+  setCurrentScannerState(savedCurrentScannerState);
+  tokenBufferReadIdx = savedTokenBufferReadIdx;
+  tokenBufferWriteIdx = savedTokenBufferWriteIdx;
+  tokenBufferLastPos = savedTokenBufferLastPos;
+  g_simulatorMaxCost = savedSimulatorMaxCost;
+  g_simulatorMaxTokens = savedSimulatorMaxTokens;
+  
+  bestAcceptingHead = savedBestAcceptingHead;
+  acceptedNode = savedAcceptedNode;
+  bestAcceptedCost = savedBestAcceptedCost;
+  bestAcceptedRealBytes = savedBestAcceptedRealBytes;
+  bestAcceptedCount = savedBestAcceptedCount;
+  bestAcceptedPad = savedBestAcceptedPad;
+
+  memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), 2048);
+}
+export function getBestAcceptingHead(): u32 {
+  return bestAcceptingHead;
+}
+export let furthestDyingPos: u32 = 0;
+export let bestDyingHead: u32 = 0;
+export let bestAcceptingHead: u32 = 0;
+export let acceptedNode: u32 = 0;
+export let bestAcceptedCost: i32 = 999999;
+export let bestAcceptedRealBytes: u32 = 0;
+export let bestAcceptedCount: u32 = 0xffffffff;
+export let bestAcceptedPad: u32 = 0xffffffff;
+
+export let g_simulatorMaxTokens: i32 = 0;
+export let g_simulatorMaxCost: i32 = 999999;
 
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean): void {
   let newBalance = head.balanceHash;
@@ -1582,6 +1644,20 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
   let nPos = srcLexPos + lexLen;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
+          if (g_simulatorMaxTokens > 0 && newShifts >= g_simulatorMaxTokens) {
+            // we will allocate newHead just for saving it.
+            let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
+            let finalHead = allocParseHead(
+              target, leaf, head, nPos, currentScannerState, newCost, newShifts, head.balanceHash, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
+              vq0, vq1, vq2, vCount
+            );
+            if (newCost < bestAcceptedCost) {
+              bestAcceptedCost = newCost;
+              bestAcceptingHead = changetype<u32>(finalHead);
+            }
+            return; // Stop advancing this head
+          }
+
   let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
 
   let newHead = allocParseHead(
@@ -1894,6 +1970,8 @@ function processAcceptAction(head: ParseHead): void {
         }
         t_curr = t_curr.prev;
       }
+
+
 
       if (bestRoot != 0) {
         let newRoot = cloneNodeShallow(bestRoot);
@@ -2313,103 +2391,14 @@ function pruneGSS(pos: u32): void {
 
 
 
-export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
-  globalIsCatastrophic = false;
-  globalSearchIterations = 0;
 
-  if (changetype<usize>(t_activeHeads) == 0) {
-    initGSS();
-    t_globalReduceCollected = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
-    t_globalChildNodes = changetype<UnmanagedInt32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
-    t_globalChildren = changetype<UnmanagedInt32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
-    t_tokenBufferArena = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
-    t_tokenBufferLenArena = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
-    t_lrStateStack = createChunkedUint32Array(10000);
-    t_lrNodeStack = createChunkedUint32Array(10000);
+export let g_editStart: u32 = 0;
+export let g_editOldEnd: u32 = 0;
+export let g_editNewEnd: u32 = 0;
 
-    initQueryArena();
-  } else {
-    t_lrStateStack.clear();
-    t_lrNodeStack.clear();
-  }
-
+export function advanceGLR(): void {
   let pos: u32 = 0;
   let token: i32 = 0;
-
-  // Only perform complete reset if we are not resuming from an async suspend
-  if (!isSuspended) {
-    if (oldTree == 0) {
-      resetGeneration(1);
-      incrementalStartOffset = 0;
-    } else {
-      incrementalStartOffset = S().arenaOffset;
-      // Clear the free list: free-list nodes are from the old tree's Gen1 space
-      // and have addresses below incrementalStartOffset. Reclaiming them would
-      // make isMutable() return false, and their proximity to live old-tree nodes
-      // can cause memory corruption during cursor traversal.
-      S().freeNodeHead = 0;
-    }
-    globalLoopGuard = 0;
-    resetGeneration(0);
-    resetQueryArena();
-    clearDiagnostics();
-    errorCount = 0;
-    if (changetype<usize>(t_acceptCache) == 0) {
-      t_acceptCache = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ACCEPT_CACHE_CAPACITY * 12));
-    }
-    acceptCacheClear();
-    mergeTableInit();
-    lexPos = 0;
-    lexLen = 0;
-    currentScannerState = 0;
-    pos = 0;
-
-    tokenBufferWriteIdx = 0;
-    tokenBufferReadIdx = 0;
-    tokenBufferLastPos = 0;
-
-
-
-    initGlobalCursor(oldTree);
-
-    if (oldTree == 0) {
-      currentParserMode = MODE_LR;
-      let accepted = parseLR();
-      if (currentParserMode == MODE_LR) {
-        clearAstMarks(accepted);
-        return accepted;
-      }
-    } else {
-      currentParserMode = MODE_GLR;
-      activeHeadsCount = 0;
-      t_activeHeads[activeHeadsCount++] = changetype<u32>(allocParseHead(0, 0, null, pos, currentScannerState, 0, 0, 0, 0, 0));
-      activeHeadsCount = 1;
-
-      updateExpectedTokens();
-      token = invokeLexer(pos);
-      while (load<u8>(is_extra_token + token) == 1) {
-        pos += lexLen;
-        token = invokeLexer(pos);
-      }
-      
-    }
-  }
-  isSuspended = false;
-
-  // Error recovery trackers
-  furthestDyingPos = 0;
-  bestDyingHead = 0;
-
-  bestAcceptingHead = 0;
-  acceptedNode = 0;
-  bestAcceptedCost = INFINITE_COST;
-  bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
-  bestAcceptedCount = 0xffffffff; // Track GSS fragmentation (fewer is better)
-  bestAcceptedPad = 0xffffffff; // Track leftmost match padding (smaller is better)
-  lastBestCost = INFINITE_COST;
-  lastIterCount = 0;
-  globalLoopIterations = 0;
-
   let maxHeads: u32 = 0;
   let iterGuard: u32 = 0;
 
@@ -2574,6 +2563,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
     let head = changetype<ParseHead>(headPtr);
 
+    if (g_simulatorMaxCost < 999999 && head.errorCost > g_simulatorMaxCost) {
+      continue;
+    }
+
     // Dump all active heads (using op 7 for queue trace)
     for (let k: u32 = 0; k < activeHeadsCount; k++) {
       let qh = changetype<ParseHead>(t_activeHeads[k]);
@@ -2654,23 +2647,25 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       return 0xffffffff; // Special yield signal
     }
 
+
+
     let currentState = head.state;
     if (currentState < 0 || currentState >= action_offsets.length) {
-      throw new Error("BAD currentState: " + currentState.toString());
+      throw new Error("BAD currentState: " + currentState.toString() + " (max " + action_offsets.length.toString() + ")");
     }
 
     let oldPos = lexPos;
     let oldSrcLexPos = srcLexPos;
 
-    if (lexPos >= editNewEnd) {
-      oldPos = editOldEnd + (lexPos - editNewEnd);
-    } else if (lexPos >= editStart) {
+    if (lexPos >= g_editNewEnd) {
+      oldPos = g_editOldEnd + (lexPos - g_editNewEnd);
+    } else if (lexPos >= g_editStart) {
       oldPos = 0xffffffff;
     }
 
-    if (srcLexPos >= editNewEnd) {
-      oldSrcLexPos = editOldEnd + (srcLexPos - editNewEnd);
-    } else if (srcLexPos >= editStart) {
+    if (srcLexPos >= g_editNewEnd) {
+      oldSrcLexPos = g_editOldEnd + (srcLexPos - g_editNewEnd);
+    } else if (srcLexPos >= g_editStart) {
       oldSrcLexPos = 0xffffffff;
     }
 
@@ -2688,8 +2683,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         oldSrcLexPos,
         currentState,
         head.balanceHash & 0xff,
-        editStart,
-        editOldEnd,
+        g_editStart,
+        g_editOldEnd,
         headSym,
         expectedPadding
       );
@@ -2841,6 +2836,15 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
       // Match the exact token, or token 0 (which signifies a wildcard/default action)
       if (sym == token || sym == 0) {
+        if (actCount > 1) {
+          let uCurr: ParseHead | null = head;
+          while (uCurr != null) {
+            if (uCurr.astNode != 0 && isNodeGen2(uCurr.astNode)) {
+              setNodeFlags(uCurr.astNode, getNodeFlags(uCurr.astNode) | FLAG_IS_SHARED);
+            }
+            uCurr = uCurr.prev;
+          }
+        }
         for (let j = 0; j < actCount; j++) {
           let type = action_data[idx++];
           let target = action_data[idx++];
@@ -2866,22 +2870,28 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     }
 
     if (acceptedNode != 0 && activeHeadsCount == 0) {
-      
-      commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
-      injectStrandedNodes(acceptedNode, bestAcceptingHead);
-      sanitizeTree(acceptedNode);
-      let finalTree = wrapWithTrailingErrors(acceptedNode);
-      clearAstMarks(finalTree);
-      return finalTree;
+      return;
     }
 
     if (!anyAction) {
+      if (g_simulatorMaxCost < 999999) {
+        continue; // In simulation mode, do not spawn recursive recoveries
+      }
+
       // --------------------------------------------------------------------
       // PHASE 3: GLR Error Recovery Forking
       // --------------------------------------------------------------------
       // When a parse head cannot shift or reduce the current token, it enters error recovery.
       // We branch the GSS in multiple directions (Deletion, Insertion, Forced Reduction)
       // and assign a penalty cost to each branch.
+      
+      let uCurr: ParseHead | null = head;
+      while (uCurr != null) {
+        if (uCurr.astNode != 0 && isNodeGen2(uCurr.astNode)) {
+          setNodeFlags(uCurr.astNode, getNodeFlags(uCurr.astNode) | FLAG_IS_SHARED);
+        }
+        uCurr = uCurr.prev;
+      }
 
       if (head.pos >= furthestDyingPos) {
         furthestDyingPos = head.pos;
@@ -2927,6 +2937,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       // insertion preserves more of the parse tree (e.g., inserting a missing
       // Number before `;` in `let x = ;` completes the Decl properly).
       recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
+
       recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
       // Restore expected_tokens after recovery — the recovery functions call
       // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
@@ -2945,10 +2956,114 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   }
   
   
-  if (acceptedNode != 0) {
-    
-    commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
-      injectStrandedNodes(acceptedNode, bestAcceptingHead);
+
+}
+
+export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
+  g_editStart = editStart;
+  g_editOldEnd = editOldEnd;
+  g_editNewEnd = editNewEnd;
+  globalIsCatastrophic = false;
+  globalSearchIterations = 0;
+
+  if (changetype<usize>(t_activeHeads) == 0) {
+    initGSS();
+    t_globalReduceCollected = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
+    t_globalChildNodes = changetype<UnmanagedInt32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
+    t_globalChildren = changetype<UnmanagedInt32Array>(atomicChunkAlloc(MAX_CHILD_NODES * 4));
+    t_tokenBufferArena = changetype<UnmanagedInt32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
+    t_tokenBufferLenArena = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
+    t_lrStateStack = createChunkedUint32Array(10000);
+    t_lrNodeStack = createChunkedUint32Array(10000);
+
+    initQueryArena();
+  } else {
+    t_lrStateStack.clear();
+    t_lrNodeStack.clear();
+  }
+
+  let pos: u32 = 0;
+  let token: i32 = 0;
+
+  // Only perform complete reset if we are not resuming from an async suspend
+  if (!isSuspended) {
+    if (oldTree == 0) {
+      resetGeneration(1);
+      incrementalStartOffset = 0;
+    } else {
+      incrementalStartOffset = S().arenaOffset;
+      // Clear the free list: free-list nodes are from the old tree's Gen1 space
+      // and have addresses below incrementalStartOffset. Reclaiming them would
+      // make isMutable() return false, and their proximity to live old-tree nodes
+      // can cause memory corruption during cursor traversal.
+      S().freeNodeHead = 0;
+    }
+    globalLoopGuard = 0;
+    resetGeneration(0);
+    resetQueryArena();
+    clearDiagnostics();
+    errorCount = 0;
+    if (changetype<usize>(t_acceptCache) == 0) {
+      t_acceptCache = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ACCEPT_CACHE_CAPACITY * 12));
+    }
+    acceptCacheClear();
+    mergeTableInit();
+    lexPos = 0;
+    lexLen = 0;
+    currentScannerState = 0;
+    pos = 0;
+
+    tokenBufferWriteIdx = 0;
+    tokenBufferReadIdx = 0;
+    tokenBufferLastPos = 0;
+
+
+
+    initGlobalCursor(oldTree);
+
+    if (oldTree == 0) {
+      currentParserMode = MODE_LR;
+      let accepted = parseLR();
+      if (currentParserMode == MODE_LR) {
+        clearAstMarks(accepted);
+        return accepted;
+      }
+    } else {
+      currentParserMode = MODE_GLR;
+      activeHeadsCount = 0;
+      t_activeHeads[activeHeadsCount++] = changetype<u32>(allocParseHead(0, 0, null, pos, currentScannerState, 0, 0, 0, 0, 0));
+      activeHeadsCount = 1;
+
+      updateExpectedTokens();
+      token = invokeLexer(pos);
+      while (load<u8>(is_extra_token + token) == 1) {
+        pos += lexLen;
+        token = invokeLexer(pos);
+      }
+      
+    }
+  }
+  isSuspended = false;
+
+  // Error recovery trackers
+  furthestDyingPos = 0;
+  bestDyingHead = 0;
+
+  bestAcceptingHead = 0;
+  acceptedNode = 0;
+  bestAcceptedCost = 999999;
+  bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
+  bestAcceptedCount = 0xffffffff; // Track GSS fragmentation (fewer is better)
+  bestAcceptedPad = 0xffffffff; // Track leftmost match padding (smaller is better)
+  lastBestCost = 999999;
+  lastIterCount = 0;
+  globalLoopIterations = 0;
+
+  advanceGLR();
+
+    if (acceptedNode != 0) {
+      commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
+      acceptedNode = injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
       let finalTree = wrapWithTrailingErrors(acceptedNode);
       clearAstMarks(finalTree);
@@ -2994,7 +3109,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let firstPad: u32 = missingPadding;
       let peekTok = invokeLexer(p);
       let errLen = remainingLen;
-      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0, true);
+      unparsedNode = allocNode(NODE_TYPE_ERROR, firstPad, errLen, 0, false);
       let lastTokNode = 0;
 
       // Report a single monolithic error for the entire unparsed remainder
@@ -3014,6 +3129,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         if (tLen == 0) break; // prevent infinite loop
 
         let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
+        setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
         if (lastTokNode == 0) {
           setFirstChild(unparsedNode, tNode);
         } else {
@@ -3153,5 +3269,6 @@ export function findReusableNode(
       }
     }
   }
+  
   return 0;
 }

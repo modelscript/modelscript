@@ -50,6 +50,8 @@ export const Parse: CommandModule<{}, ParseArgs> = {
       console.error(`Could not find .wasm file in ${distDir}.`);
       process.exit(1);
     }
+    console.log("WRAPPER PATH:", wrapperPath);
+    console.log("WASM FILE:", join(distDir, wasmFile));
 
     const wrapperUrl = "file://" + wrapperPath.replace(/\\/g, "/");
     const { Parser, WasmRuntime, InputEncoding } = await import(wrapperUrl);

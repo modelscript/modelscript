@@ -2186,7 +2186,7 @@
       "format": "esm"
     },
     "../language/build/src-gen/runtime-templates.js": {
-      "bytes": 420095,
+      "bytes": 435246,
       "imports": [{ "path": "<define:process.env>", "kind": "import-statement", "external": true }],
       "format": "esm"
     },
@@ -2356,7 +2356,7 @@
       "format": "esm"
     },
     "../language/dist/codegen/parser.js": {
-      "bytes": 17889,
+      "bytes": 19198,
       "imports": [
         { "path": "../language/dist/automata.js", "kind": "import-statement", "original": "../automata.js" },
         { "path": "../language/dist/grammar.js", "kind": "import-statement", "original": "../grammar.js" },
@@ -8658,7 +8658,7 @@
         "src/step-workspace-index.ts": { "bytesInOutput": 9733 },
         "src/step-assembly-extractor.ts": { "bytesInOutput": 4139 }
       },
-      "bytes": 51154828
+      "bytes": 51177340
     },
     "dist/step-worker.js": {
       "imports": [],

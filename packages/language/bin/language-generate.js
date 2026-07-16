@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
-import { buildParser } from "../src/api.js";
+import { buildParser } from "../dist/api.js";
 
 async function main() {
   const args = process.argv.slice(2);

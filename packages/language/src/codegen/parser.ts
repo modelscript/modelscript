@@ -80,7 +80,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array } from "./array";\nimport { allocNode, getInputBuffer } from "./arena";\nimport { DaeBuilder } from "./dae";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc } from "./arena";\nimport { DaeBuilder } from "./dae";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {\n  let ptr = atomicChunkAlloc(numElements * 4);\n  let arr = changetype<UnmanagedUint32Array>(ptr);\n  for (let i = 0; i < numElements; i++) {\n     let val: u32 = 0;\n     for (let j = 0; j < 8; j++) {\n        let c = hex.charCodeAt(i * 8 + j);\n        let nibble = c >= 97 ? c - 97 + 10 : (c >= 65 ? c - 65 + 10 : c - 48);\n        val = (val << 4) | (nibble as u32);\n     }\n     arr[i] = val;\n  }\n  return ptr;\n}\n\n`;
 
   // Lexer, Types, etc.
   code += generateTypes(originalGrammar, grammar);
@@ -122,12 +122,12 @@ export function generateParserTables(
 
   const generateStaticArray = (arr: number[], name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
-    const chunks = [arr.length.toString()];
+    let hex = "";
     for (let i = 0; i < arr.length; i++) {
       const val = arr[i] === undefined ? 1 : arr[i];
-      chunks.push(val.toString());
+      hex += (val >>> 0).toString(16).padStart(8, "0");
     }
-    return `export const ${name}: usize = memory.data<i32>([${chunks.join(", ")}]) + 4;\n`;
+    return `export const ${name}: usize = decodeHexIntArray("${hex}", ${arr.length});\n`;
   };
 
   code += generateStaticArray(actionOffsets, "action_offsets");
@@ -214,6 +214,7 @@ export function generateParserTables(
 
   const prodLengths: number[] = [];
   const prodLhs: number[] = [];
+  const prodIsStructural: number[] = [];
   const prodIsInvisible: number[] = [];
   const prodIsList: number[] = [];
   const prodDynamicPrec: number[] = [];
@@ -234,6 +235,29 @@ export function generateParserTables(
     prodIsInvisible.push(p.isInvisible ? 1 : 0);
     prodIsList.push(p.isList ? 1 : 0);
     prodDynamicPrec.push(p.dynamicPrec || 0);
+
+    let isStructural = 0;
+    if (
+      p.left.endsWith("_list") ||
+      p.left.endsWith("_clause") ||
+      p.left.endsWith("_section") ||
+      p.left.endsWith("_prefixes") ||
+      p.left.includes("declaration") ||
+      p.left.includes("definition") ||
+      p.left.includes("statement") ||
+      p.left.includes("specifier")
+    ) {
+      isStructural = 1;
+    }
+    if (
+      p.left.includes("expression") ||
+      p.left.includes("term") ||
+      p.left.includes("factor") ||
+      p.left.includes("literal")
+    ) {
+      isStructural = 0;
+    }
+    prodIsStructural.push(isStructural);
 
     if (p.aliases && p.aliases.length > 0) {
       prodAliases.push(aliasData.length);
@@ -322,6 +346,7 @@ export function generateParserTables(
 
   code += generateStaticArray(prodLengths, "prod_lengths");
   code += generateStaticArray(prodLhs, "prod_lhs");
+  code += generateStaticArray(prodIsStructural, "prod_is_structural");
   code += generateStaticArray(prodIsInvisible, "prod_is_invisible");
   code += generateStaticArray(prodIsList, "prod_is_list");
   code += generateStaticArray(prodDynamicPrec, "prod_dynamic_prec");

@@ -21,10 +21,12 @@ export const Playground: CommandModule = {
 
         const dslPath = join(__dirname, "../../../../packages/language/src/dsl.ts");
         let dslLibStr = "";
+        let dslLibModuleStr = "";
         if (existsSync(dslPath)) {
-          dslLibStr = readFileSync(dslPath, "utf-8").replace(/^export\s+/gm, "");
+          dslLibModuleStr = readFileSync(dslPath, "utf-8");
+          dslLibStr = dslLibModuleStr.replace(/^export\s+/gm, "");
         }
-        res.end(getIndexHtml(dslLibStr));
+        res.end(getIndexHtml(dslLibStr, dslLibModuleStr));
       } else if (urlPath === "/worker-compiler.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
@@ -146,7 +148,7 @@ export const Playground: CommandModule = {
   },
 };
 
-function getIndexHtml(dslLibStr = "") {
+function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -258,6 +260,13 @@ function getIndexHtml(dslLibStr = "") {
                 "}"
             ].join("\\n");
             
+            const dslLibModuleStrRaw = \`${dslLibModuleStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
+            const dslLibModule = [
+                "declare module '@modelscript/language' {",
+                dslLibModuleStrRaw,
+                "}"
+            ].join("\\n");
+            
             monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
                 target: monaco.languages.typescript.ScriptTarget.ESNext,
                 allowNonTsExtensions: true,
@@ -267,6 +276,7 @@ function getIndexHtml(dslLibStr = "") {
                 noEmit: true
             });
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLibModule, 'ts:filename/dsl-module.d.ts');
 
             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
             const editorTheme = prefersDark ? 'vs-dark' : 'vs';
@@ -707,6 +717,7 @@ scope {
 
                                 const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
                                 
+                                console.log("[AST Patch] op=" + op + ", ptr=" + ptr + ", typeName=" + typeName + ", childCount=" + childCount);
                                 if (op === 1) { // INSERT
                                     nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, children });
                                     hasUpdates = true;
@@ -911,9 +922,20 @@ self.onmessage = async (e) => {
             console.log("Evaluating DSL definition...");
             self.postMessage({ type: 'progress', message: 'Evaluating DSL definition...' });
             
-            // 1. Evaluate the grammar definition
-            // Support ES module syntax by transforming 'export default' into 'return'
-            let dslCode = e.data.dsl.replace(/export\\s+default\\s+/, 'return ');
+            let dslCode = e.data.dsl;
+            
+            // Remove imports
+            dslCode = dslCode.replace(/import\\s+[\\s\\S]*?from\\s+['"][^'"]+['"];?/g, '');
+            
+            // Transform 'export default' into 'return'
+            dslCode = dslCode.replace(/export\\s+default\\s+/, 'return ');
+            
+            // Transform 'export const myLanguage = language(...)' into 'return language(...)'
+            dslCode = dslCode.replace(/export\\s+(?:const|let|var)\\s+\\w+\\s*=\\s*(language\\s*\\()/g, 'return $1');
+            
+            // Strip any remaining exports
+            dslCode = dslCode.replace(/export\\s+/g, '');
+            
             if (!dslCode.includes('return ')) {
                 dslCode += '\\nreturn typeof __grammar !== "undefined" ? __grammar : null;';
             }
@@ -927,58 +949,72 @@ self.onmessage = async (e) => {
             }
             
             console.log("Building parser artifacts...");
-            self.postMessage({ type: 'progress', message: 'Building parser artifacts...' });
-            // 2. Generate AssemblyScript files
-            const result = Language.buildParser(grammarDef);
+            self.postMessage({ type: 'progress', message: 'Building parser artifacts (this may take a few minutes for complex grammars)...' });
             
-            // 3. Setup Virtual File System for AssemblyScript
-            const vfs = {};
-            for (const file of result.assemblyScriptFiles) {
-                vfs[file.filename] = file.content;
-            }
-            
-            console.log("Compiling to WASM with asc...");
-            self.postMessage({ type: 'progress', message: 'Compiling to WASM with asc...' });
-            // 4. Compile with asc
-            const ascResult = await asc.main([
-                "parser.ts",
-                "-O3",
-                "--enable", "threads",
-                "--runtime", "stub",
-                "--exportRuntime",
-                "--importMemory",
-                "--sharedMemory",
-                "--maximumMemory", "16384",
-                "--memoryBase", "65536",
-                "--disableWarning",
-                "--outFile", "parser.wasm",
-                "--textFile", "parser.wat"
-            ], {
-                readFile: (name) => {
-                    if (Object.prototype.hasOwnProperty.call(vfs, name)) return vfs[name];
-                    return null;
-                },
-                writeFile: (name, data) => {
-                    vfs[name] = data;
-                },
-                listFiles: () => Object.keys(vfs)
-            });
-            
-            if (ascResult.error) {
-                throw new Error("AssemblyScript compilation failed: " + ascResult.stderr.toString());
-            }
-            
-            console.log("WASM compiled successfully!");
-            
-            self.postMessage({ 
-                type: 'success', 
-                wasm: vfs['parser.wasm'], 
-                jsWrapper: result.javascriptWrapper.js,
-                syntaxNames: result.javascriptWrapper.syntaxNames,
-                fieldNames: result.javascriptWrapper.fieldNames,
-                semanticLegend: result.javascriptWrapper.semanticLegend,
-                langName: grammarDef.name
-            });
+            setTimeout(async () => {
+                try {
+                    // 2. Generate AssemblyScript files
+                    const result = Language.buildParser(grammarDef);
+                    
+                    // 3. Setup Virtual File System for AssemblyScript
+                    const vfs = {};
+                    for (const file of result.assemblyScriptFiles) {
+                        vfs[file.filename] = file.content;
+                    }
+                    
+                    console.log("Compiling to WASM with asc...");
+                    self.postMessage({ type: 'progress', message: 'Compiling to WASM with asc...' });
+                    
+                    setTimeout(async () => {
+                        try {
+                            // 4. Compile with asc
+                            const ascResult = await asc.main([
+                                "parser.ts",
+                                "-O0",
+                                "--enable", "threads",
+                                "--runtime", "stub",
+                                "--exportRuntime",
+                                "--importMemory",
+                                "--sharedMemory",
+                                "--maximumMemory", "16384",
+                                "--memoryBase", "65536",
+                                "--disableWarning",
+                                "--outFile", "parser.wasm",
+                                "--textFile", "parser.wat"
+                            ], {
+                                readFile: (name) => {
+                                    if (Object.prototype.hasOwnProperty.call(vfs, name)) return vfs[name];
+                                    return null;
+                                },
+                                writeFile: (name, data) => {
+                                    vfs[name] = data;
+                                },
+                                listFiles: () => Object.keys(vfs)
+                            });
+                            
+                            if (ascResult.error) {
+                                throw new Error("AssemblyScript compilation failed: " + ascResult.stderr.toString());
+                            }
+                            
+                            console.log("WASM compiled successfully!");
+                            
+                            self.postMessage({ 
+                                type: 'success', 
+                                wasm: vfs['parser.wasm'], 
+                                jsWrapper: result.javascriptWrapper.js,
+                                syntaxNames: result.javascriptWrapper.syntaxNames,
+                                fieldNames: result.javascriptWrapper.fieldNames,
+                                semanticLegend: result.javascriptWrapper.semanticLegend,
+                                langName: grammarDef.name
+                            });
+                        } catch (err) {
+                            self.postMessage({ type: 'error', error: err.message });
+                        }
+                    }, 50);
+                } catch (err) {
+                    self.postMessage({ type: 'error', error: err.message });
+                }
+            }, 50);
         } catch (err) {
             self.postMessage({ type: 'error', error: err.message });
         }
@@ -1171,11 +1207,15 @@ self.addEventListener('message', async (e) => {
                     if (cat === 888802) console.log("[NODE_INFO]", "len=" + v1, "ptr=" + v2, "inError=" + v3);
                     if (cat === 888803) console.log("  [CHILD_CALC]", "childType=" + v1, "parentOffset=" + v2, "childPad=" + v3);
                     if (cat === 888804) console.log("  [CHILD_CALC2]", "childLen=" + v1, "cLen(pad+len)=" + v2);
+                    if (cat >= 900) console.log("DEBUG [" + cat + "]", v1, v2, v3);
                 } },
                 parser: { 
                     logInt: function(val) {},
                     emitTextEdit: function(op, len, start, end) {},
                     getSourceSlice: function(start, end) { return 0; }
+                },
+                host: {
+                    runHostQuery: function(a, b, c, d) { return 0; }
                 }
             };
 
@@ -1221,6 +1261,7 @@ self.addEventListener('message', async (e) => {
             });
 
             console.log("LspFacade successfully loaded inside worker.");
+            console.log("FACADE SYNTAX NAMES: ", JSON.stringify(lspFacade.syntaxNames));
             if (e.data.initialConfig) {
                 lspFacade.setParserConfig(e.data.initialConfig.branchA1, e.data.initialConfig.branchB, e.data.initialConfig.branchC, e.data.initialConfig.islandMode);
             }
@@ -1420,10 +1461,11 @@ self.addEventListener('message', async (e) => {
             
             // Clamp token length to not extend past the end of the current line
             // (prevents Monaco's "end character > model.getLineLength" error)
+            // Note: lineStarts diff includes \\n or \\r\\n. We subtract 1 as a safe buffer.
             if (line + 1 < lineStarts.length) {
-                const lineEndChar = (lineStarts[line + 1] - lineStarts[line]) / 2;
+                const lineEndChar = Math.max(0, ((lineStarts[line + 1] - lineStarts[line]) / 2) - 1);
                 if (charOffset + charLength > lineEndChar) {
-                    charLength = Math.max(1, lineEndChar - charOffset);
+                    charLength = Math.max(0, lineEndChar - charOffset);
                 }
             }
             
@@ -1440,9 +1482,9 @@ self.addEventListener('message', async (e) => {
             prevChar = charOffset;
         }
         
-        console.log("Semantic Tokens computed:", validCount, "tokens in range", startOffset, "to", endOffset);
-        // Transfer the buffer directly to avoid structured cloning overhead
-        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: data.buffer } }, [data.buffer]);
+        console.log("Semantic Tokens computed:", (dataIdx / 5), "valid tokens (", validCount, "total) in range", startOffset, "to", endOffset);
+        const slicedBuffer = data.buffer.slice(0, dataIdx * 4);
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: slicedBuffer } }, [slicedBuffer]);
     }
 });
 `;

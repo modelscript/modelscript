@@ -221,7 +221,7 @@ class LspWorkerProxy {
     private msgId = 0;
     private callbacks = new Map<number, Function>();
 
-    constructor(wasmUri: string) {
+    constructor(wasmUri: string, sharedMemory: WebAssembly.Memory) {
         const workerCode = \`
             let wasmExports;
             let wasmMemory;
@@ -232,7 +232,7 @@ class LspWorkerProxy {
                     try {
                         const response = await fetch(msg.wasmUri);
                         const wasmBytes = await response.arrayBuffer();
-                        wasmMemory = new WebAssembly.Memory({ initial: 4000, maximum: 16000, shared: true });
+                        wasmMemory = msg.sharedMemory;
                         const env = {
                             memory: wasmMemory,
                             abort: () => console.error("WASM Abort in Worker"),
@@ -276,7 +276,7 @@ class LspWorkerProxy {
             }
         };
         
-        this.send('init', { wasmUri });
+        this.send('init', { wasmUri, sharedMemory });
     }
     
     private send(command: string, payload: any): Promise<any> {
@@ -378,7 +378,7 @@ export async function activate(context: vscode.ExtensionContext) {
     wasmExports.initArena(10 * 1024 * 1024);
     
     // Initialize the Phase 2 Web Worker!
-    lspWorker = new LspWorkerProxy(wasmUri.toString());
+    lspWorker = new LspWorkerProxy(wasmUri.toString(), wasmMemory);
 
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('${langId}');
     context.subscriptions.push(diagnosticCollection);
