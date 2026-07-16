@@ -76,7 +76,7 @@ export let globalSearchIterations: u32 = 0;
 export function getSearchIterations(): u32 {
   return globalSearchIterations;
 }
-export let incrementalStartOffset: u32 = 0;
+
 
 /**
  * Zero-allocation static wrapper for baked WASM memory tables.

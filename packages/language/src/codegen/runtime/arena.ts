@@ -1294,7 +1294,7 @@ export function assertGen(parent: u32, child: u32): void {
   if (parent == 0 || child == 0) return;
   if (S().activeGeneration != 2) return; 
   if (!isNodeGen2(parent) && isNodeGen2(child)) {
-    debugLog(999999, parent, child, 0);
+    debugLog(999999, parent, child, getNodeType(parent));
     unreachable(); // Cross-generation pointer violation
   }
 }

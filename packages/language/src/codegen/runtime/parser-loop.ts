@@ -33,7 +33,6 @@ import {
     reportGlobalError, debugLog, pushDiagnostic,
     expected_tokens,
     findMergeCandidate, registerMergeCandidate,
-    incrementalStartOffset,
     TOKEN_SUSPEND, releaseFieldCursor,
     globalIsCatastrophic, commitDiagnostics,
     lastBestCost, lastIterCount, lastMaxHeads,
@@ -668,7 +667,7 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
     let type = getNodeType(acceptedNode);
     let isTerm = type <= (MAX_TERMINAL_ID as u16) && type != NODE_TYPE_ERROR;
     
-    if (!isNodeGen2(acceptedNode)) {
+    if (!isMutable(acceptedNode)) {
       acceptedNode = cloneNodeShallow(acceptedNode);
     }
     
@@ -769,7 +768,7 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
 
   let newRoot = allocNode(NODE_TYPE_ERROR, 0, inputLength, 0);
   setNodeFlags(newRoot, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
-  if (!isNodeGen2(acceptedNode)) {
+  if (!isMutable(acceptedNode)) {
     acceptedNode = cloneNodeShallow(acceptedNode);
   }
   setFirstChild(newRoot, acceptedNode);
@@ -778,7 +777,10 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
 }
 export function cloneNodeShallow(gc: u32): u32 {
   if (gc == 0) return 0;
-  setNodeFlags(gc, getNodeFlags(gc) | FLAG_EXTRACTED);
+  // Mark the original node as shared so its child list isn't mutated in-place,
+  // ruining the clone. We use FLAG_IS_SHARED instead of FLAG_EXTRACTED to avoid
+  // confusing `injectStrandedNodes` into thinking the original node is a clone.
+  setNodeFlags(gc, getNodeFlags(gc) | FLAG_IS_SHARED);
   let clone = allocNode(getNodeType(gc), getNodePadding(gc), getNodeByteLength(gc), getNodeEnvHash(gc));
   // Keep FLAG_EXTRACTED on the clone so its shared children are not mutated in-place
   setNodeFlags(clone, (getNodeFlags(gc) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED)); 
@@ -1135,7 +1137,7 @@ function isMutable(ptr: u32): boolean {
   // so if activeHeadsCount > 0, it means there is at least one OTHER head.
   if (activeHeadsCount > 0) return false;
   if ((getNodeFlags(ptr) & (FLAG_EXTRACTED | FLAG_IS_SHARED)) != 0) return false;
-  return ptr >= incrementalStartOffset;
+  return isNodeGen2(ptr);
 }
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
   let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & FLAG_HAS_ERROR;
@@ -2989,9 +2991,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   if (!isSuspended) {
     if (oldTree == 0) {
       resetGeneration(1);
-      incrementalStartOffset = 0;
     } else {
-      incrementalStartOffset = S().arenaOffset;
       // Clear the free list: free-list nodes are from the old tree's Gen1 space
       // and have addresses below incrementalStartOffset. Reclaiming them would
       // make isMutable() return false, and their proximity to live old-tree nodes
