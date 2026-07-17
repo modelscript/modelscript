@@ -233,11 +233,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // We always emit a diagnostic for them so the user knows what was expected,
       // and so the JS-side merging logic can combine it with adjacent garbage tokens.
       if (!isTainted) {
-        let dStart = nodeStart;
-        let dEnd = nodeStart + 2;
+        let dStart = start; // Place diagnostic BEFORE the padding
+        let dEnd = start + 2; // 2 bytes wide (1 character) to prevent spilling over newlines
         if (dEnd > inputLength) {
           dEnd = inputLength;
-          if (dEnd > 0) dStart = dEnd - 2;
+          if (dEnd > 0) dStart = dEnd - 1;
           if (dStart < 0) dStart = 0;
         }
         lsp_allocDiagnostic(dStart, dEnd, type);

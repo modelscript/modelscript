@@ -1262,29 +1262,29 @@ export class LspFacade {
       return children;
     };
 
-    const getFlattenedChildren = (ptr: number): { ptr: number; field: string | null }[] => {
-      const children: { ptr: number; field: string | null }[] = [];
-      const collect = (nodePtr: number, parentField: string | null) => {
-        if (!nodePtr) return;
-        if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
-        opsCount++;
-        const firstChild = mem32[(nodePtr + 8) / 4];
-        let childPtr = firstChild;
-        const typeFlags = mem32[nodePtr / 4];
-        const parentTypeId = typeFlags & 0x03ff;
-        let slowPtr = firstChild;
-        let step = 0;
+    const getFlattenedChildren = (ptr: number): any[] => {
+      if (!ptr) return [];
+      const children: any[] = [];
+
+      const collect = (nodePtr: number, parentField: string | null, initialPad: number): number => {
+        if (!nodePtr) return initialPad;
+
+        let currentAccumulatedPad = initialPad;
+        const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
+
+        let childPtr = mem32[(nodePtr + 8) / 4];
         let childIndex = 0;
+        let step = 0;
+        let slowPtr = childPtr;
 
         while (childPtr !== 0) {
           if (step > 0 && slowPtr === childPtr) {
-            // console.warn("Cycle detected in AST child list for node", nodePtr);
             break;
           }
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
           let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
-          const isInvisible = (cTypeFlags & (1 << 12)) !== 0;
+          const isInvisible = (cTypeFlags & (1 << 12)) !== 0 || typeName.startsWith("_");
 
           let fieldId = -1;
           if (this.exports.getFieldIdForChild) {
@@ -1292,29 +1292,48 @@ export class LspFacade {
           }
           const field = fieldId >= 0 ? fieldIdToName[fieldId] : parentField;
 
-          if (typeName.startsWith("_") || isInvisible) {
-            collect(childPtr, field);
+          const childEnvHashPadding = mem32[(childPtr + 4) / 4];
+          const childRawPad = cTypeFlags >>> 19;
+          const childIsFat = (childEnvHashPadding >>> 23) & 1;
+          const childPad =
+            childIsFat && this.exports.getFatPaddingPtr
+              ? mem32[this.exports.getFatPaddingPtr(childRawPad) / 4]
+              : childRawPad;
+
+          const childLen = childEnvHashPadding & 0x007fffff;
+          const hasChildren = mem32[(childPtr + 8) / 4] !== 0;
+
+          if (isInvisible) {
+            if (hasChildren) {
+              currentAccumulatedPad = collect(childPtr, field, currentAccumulatedPad + childPad);
+            } else {
+              currentAccumulatedPad += childPad + childLen;
+            }
           } else {
-            children.push({ ptr: childPtr, field });
+            children.push({ ptr: childPtr, field, invisiblePad: currentAccumulatedPad });
+            currentAccumulatedPad = 0; // Consume the accumulated padding!
           }
+
           childPtr = mem32[(childPtr + 12) / 4];
           if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
           step++;
           childIndex++;
         }
+        return currentAccumulatedPad;
       };
 
-      collect(ptr, null);
+      collect(ptr, null, 0);
       return children;
     };
 
-    const buildInsertions = (startPtr: number): void => {
+    const buildInsertions = (startPtr: number, initialInvisiblePad: number = 0): void => {
       if (!startPtr) return;
-      const stack: number[] = [startPtr];
+      const stack: { ptr: number; invisiblePad: number }[] = [{ ptr: startPtr, invisiblePad: initialInvisiblePad }];
       while (stack.length > 0) {
         if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
         opsCount++;
-        const ptr = stack.pop()!;
+        const item = stack.pop()!;
+        const ptr = item.ptr;
         if (!ptr) continue;
         const typeFlags = mem32[ptr / 4];
         const typeId = typeFlags & 0x03ff;
@@ -1323,15 +1342,22 @@ export class LspFacade {
         const envHashPadding = mem32[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 19;
         const isFat = (envHashPadding >>> 23) & 1;
-        const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
 
         const children = getFlattenedChildren(ptr);
+
+        pad += item.invisiblePad;
+        if (typeName === "print" || typeName === "let") {
+          console.log(
+            `[DEBUG-INSERT] typeName=${typeName} rawPad=${rawPad} invisiblePad=${item.invisiblePad} pad=${pad} len=${len}`,
+          );
+        }
         listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
 
         // Push children in reverse so they are processed in forward order
         for (let i = children.length - 1; i >= 0; i--) {
-          stack.push(children[i].ptr);
+          stack.push({ ptr: children[i].ptr, invisiblePad: children[i].invisiblePad });
         }
       }
     };
@@ -1352,14 +1378,24 @@ export class LspFacade {
       }
     };
 
-    const diffNodes = (oldPtr: number, newPtr: number): void => {
+    const diffNodes = (
+      oldPtr: number,
+      newPtr: number,
+      oldInvisiblePad: number = 0,
+      newInvisiblePad: number = 0,
+    ): void => {
       if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
-      if (oldPtr === newPtr) {
+      if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
         listener.onNodeRetained(newPtr);
         return;
       }
+      if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
+        buildDeletions(oldPtr);
+        buildInsertions(newPtr, newInvisiblePad);
+        return;
+      }
       if (!oldPtr) {
-        buildInsertions(newPtr);
+        buildInsertions(newPtr, newInvisiblePad);
         return;
       }
       if (!newPtr) {
@@ -1372,7 +1408,7 @@ export class LspFacade {
 
       if (oldTypeId !== newTypeId) {
         buildDeletions(oldPtr);
-        buildInsertions(newPtr);
+        buildInsertions(newPtr, newInvisiblePad);
         return;
       }
 
@@ -1382,17 +1418,24 @@ export class LspFacade {
       const envHashPadding = mem32[(newPtr + 4) / 4];
       const rawPad = typeFlags >>> 19;
       const isFat = (envHashPadding >>> 23) & 1;
-      const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+      let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
 
+      pad += newInvisiblePad;
+      if (typeName === "print" || typeName === "let") {
+        console.log(
+          `[DEBUG-UPDATE] typeName=${typeName} rawPad=${rawPad} newInvisiblePad=${newInvisiblePad} pad=${pad} len=${len}`,
+        );
+      }
       listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, newCh);
       opsCount++;
 
       let start = 0;
       while (start < oldCh.length && start < newCh.length && oldCh[start].ptr === newCh[start].ptr) {
+        if (oldCh[start].invisiblePad !== newCh[start].invisiblePad) break;
         listener.onNodeRetained(newCh[start].ptr);
         start++;
       }
@@ -1400,6 +1443,7 @@ export class LspFacade {
       let oldEnd = oldCh.length - 1;
       let newEnd = newCh.length - 1;
       while (oldEnd >= start && newEnd >= start && oldCh[oldEnd].ptr === newCh[newEnd].ptr) {
+        if (oldCh[oldEnd].invisiblePad !== newCh[newEnd].invisiblePad) break;
         oldEnd--;
         newEnd--;
       }
@@ -1408,8 +1452,11 @@ export class LspFacade {
       for (let i = 0; i < maxMiddle; i++) {
         const oPtr = start + i <= oldEnd ? oldCh[start + i].ptr : 0;
         const nPtr = start + i <= newEnd ? newCh[start + i].ptr : 0;
-        if (oPtr && nPtr) diffNodes(oPtr, nPtr);
-        else if (nPtr) buildInsertions(nPtr);
+        const oPad = start + i <= oldEnd ? oldCh[start + i].invisiblePad : 0;
+        const nPad = start + i <= newEnd ? newCh[start + i].invisiblePad : 0;
+
+        if (oPtr && nPtr) diffNodes(oPtr, nPtr, oPad, nPad);
+        else if (nPtr) buildInsertions(nPtr, nPad);
         else if (oPtr) buildDeletions(oPtr);
       }
 
@@ -1495,7 +1542,7 @@ export class SyntaxNode {
     const kids: SyntaxNode[] = [];
 
     const collect = (ptr: number, offset: number, parentNode: SyntaxNode) => {
-      let childOffset = offset + this._cachedPad;
+      let childOffset = offset;
       let childPtr = mem32[(ptr + 8) / 4];
       while (childPtr !== 0) {
         const typeFlags = mem32[childPtr / 4];
@@ -1512,7 +1559,7 @@ export class SyntaxNode {
         const isInvisible = (typeFlags & (1 << 12)) !== 0;
 
         if (name.startsWith("_") || isInvisible) {
-          collect(childPtr, childOffset, parentNode);
+          collect(childPtr, childOffset + pad, parentNode);
         } else {
           kids.push(new SyntaxNode(this.tree, childPtr, childOffset, parentNode, pad, len, typeId));
         }
@@ -1522,7 +1569,7 @@ export class SyntaxNode {
       }
     };
 
-    collect(this.ptr, this._startOffset, this);
+    collect(this.ptr, this._startOffset + this._cachedPad, this);
     return kids;
   }
 

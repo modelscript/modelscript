@@ -33,6 +33,7 @@ import {
   srcLexPos,
   currentScannerState,
   invokeLexer,
+  is_extra_token,
   lex,
   expected_tokens,
   setLexPos,
@@ -434,17 +435,37 @@ export function recoverUnwindAndMutate(
                   }
                 }
 
+                let gapStart: u32 = unwindCurr.pos;
+                for (let k = childCount - 1; k >= 0; k--) {
+                  let child = t_globalChildNodes[k];
+                  if (child != 0) {
+                    gapStart += getNodePadding(child) + getNodeByteLength(child);
+                  }
+                }
+                let lostPad: u32 = head.pos > gapStart ? head.pos - gapStart : 0;
+
                 memory.fill(changetype<usize>(expected_tokens), 1, 2048);
                 let p = head.pos;
                 let newTail = head.errorTail;
+                let isFirstLoopToken = true;
                 while (p < a1NextScanPos) {
                   let tok = invokeLexer(p);
-                  if (tok == -1) break;
-                  if (srcLexPos >= a1NextScanPos) break;
+                  let tempPad = isFirstLoopToken ? lostPad : 0;
+                  isFirstLoopToken = false;
+                  while (tok != -1 && load<u8>(is_extra_token + tok) == 1 && srcLexPos < a1NextScanPos) {
+                    tempPad += lexLen;
+                    p += lexLen;
+                    tok = invokeLexer(p);
+                  }
+                  if (tok == -1 || srcLexPos >= a1NextScanPos) break;
                   let tLen = lexLen;
                   if (tLen == 0) break;
-                  let pad = srcLexPos > p ? srcLexPos - p : 0;
-                  if (lastChild == 0) pad = 0; // Parent holds the padding
+                  let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
+                  if (lastChild == 0) {
+                    errPad += pad;
+                    setNodePadding(errNode, errPad);
+                    pad = 0;
+                  }
                   newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
                   let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
                   setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
@@ -768,6 +789,7 @@ export function recoverIslandMode(
 
             let islandPad: u32 = 0;
             let islandScannerState = targetScannerState;
+            
             if (childCount > 0) {
               let firstChildId = t_globalChildNodes[childCount - 1];
               islandPad = getNodePadding(firstChildId);
@@ -797,12 +819,19 @@ export function recoverIslandMode(
               
               if (getNodeType(child) == NODE_TYPE_ERROR) {
                 let errChild = getNodeFirstChild(child);
+                let isFirstErrChild = true;
                 while (errChild != 0) {
                   let clone = cloneNodeShallow(errChild);
                   if (lastChild == 0) {
                     setNodePadding(clone, 0);
                     setFirstChild(islandLeaf, clone);
-                  } else setNextSibling(lastChild, clone);
+                  } else {
+                    if (isFirstErrChild) {
+                      setNodePadding(clone, getNodePadding(child) + getNodePadding(errChild));
+                    }
+                    setNextSibling(lastChild, clone);
+                  }
+                  isFirstErrChild = false;
                   lastChild = clone;
                   errChild = getNodeNextSibling(errChild);
                 }
@@ -845,8 +874,25 @@ export function recoverIslandMode(
               setCurrentScannerState(savedSS);
             }
 
+            let gapStart: u32 = currPop != null ? currPop.pos : head.pos;
+            for (let k = childCount - 1; k >= 0; k--) {
+              let child = t_globalChildNodes[k];
+              if (child != 0) {
+                gapStart += getNodePadding(child) + getNodeByteLength(child);
+              }
+            }
+            let lostPad: u32 = head.pos > gapStart ? head.pos - gapStart : 0;
+
+            let isFirstLoopToken = true;
             while (p < (resumePos as u32)) {
               let tok = invokeLexer(p);
+              let tempPad = isFirstLoopToken ? lostPad : 0;
+              isFirstLoopToken = false;
+              while (tok != -1 && load<u8>(is_extra_token + tok) == 1) {
+                tempPad += lexLen;
+                p += lexLen;
+                tok = invokeLexer(p);
+              }
               if (tok == -1) break;
               if (srcLexPos >= (resumePos as u32)) break;
 
@@ -861,12 +907,18 @@ export function recoverIslandMode(
               let insCost = tok == TOKEN_UNKNOWN ? 2 : token_insert_costs[tok];
               islandCost += (insCost > 0 ? insCost : 3);
 
-              let pad = srcLexPos > p ? srcLexPos - p : 0;
+              let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
 
               let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
               setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
+                if (childCount > 0) {
+                  islandPad += pad;
+                } else {
+                  islandPad = pad;
+                }
+                setNodePadding(islandLeaf, islandPad);
                 setNodePadding(tNode, 0);
                 setFirstChild(islandLeaf, tNode);
               } else setNextSibling(lastChild, tNode);
