@@ -51,8 +51,6 @@ export function lsp_getBinaryLength(): u32 {
   return t_lspBinaryBuffer.length;
 }
 
-import { debugLog } from "./engine";
-
 /**
  * Allocates an unmanaged diagnostic token into the binary buffer for LSP transfer.
  * Includes logic to merge adjacent or overlapping diagnostics with the same `lintId`.
@@ -148,16 +146,17 @@ function lsp_clearVisited(): void {
   t_lspVisitedCount = 0;
 }
 
-@inline function packOffsetStack(offset: u32, inError: boolean, hasErrorSibling: boolean, hasInsertedSibling: boolean): u32 {
-  let val = offset & 0x1FFFFFFF;
+@inline function packOffsetStack(offset: u32, inError: boolean, hasErrorSibling: boolean, hasInsertedSibling: boolean, inTainted: boolean = false): u32 {
+  let val = offset & 0x0FFFFFFF;
   if (inError) val |= 0x80000000;
   if (hasErrorSibling) val |= 0x40000000;
   if (hasInsertedSibling) val |= 0x20000000;
+  if (inTainted) val |= 0x10000000;
   return val;
 }
 
 @inline function getOffsetFromStack(val: u32): u32 {
-  return val & 0x1FFFFFFF;
+  return val & 0x0FFFFFFF;
 }
 
 @inline function getInErrorFromStack(val: u32): boolean {
@@ -172,6 +171,10 @@ function lsp_clearVisited(): void {
   return (val & 0x20000000) != 0;
 }
 
+@inline function getInTaintedFromStack(val: u32): boolean {
+  return (val & 0x10000000) != 0;
+}
+
 /**
  * Extracts and serializes all syntax and grammar diagnostics into a flat `u32` buffer.
  * Traverses the AST looking for injected error nodes and missing ghost nodes.
@@ -182,7 +185,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
 
   // Note: Engine-level syntax errors (from errorCount/errorQueue) are no longer iterated here.
-  // The recovery algorithms (Branch A1, Branch B, Island Mode) all correctly encode their
+  // The recovery algorithms (Deletion Recovery, Insertion Recovery, Island Mode) all correctly encode their
   // errors into the AST (as NODE_TYPE_ERROR or zero-length inserted tokens).
   // Relying solely on the AST traversal prevents duplicate diagnostic reporting.
 
@@ -208,6 +211,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let start = getOffsetFromStack(offsetStackVal);
     let inError = getInErrorFromStack(offsetStackVal);
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
+    let inTainted = getInTaintedFromStack(offsetStackVal);
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_VISITED) != 0) continue;
@@ -232,24 +236,34 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Inserted ghost nodes are zero-width phantoms from error recovery.
       // We always emit a diagnostic for them so the user knows what was expected,
       // and so the JS-side merging logic can combine it with adjacent garbage tokens.
-      if (!isTainted) {
-        let dStart = start; // Place diagnostic BEFORE the padding
-        let dEnd = start + 2; // 2 bytes wide (1 character) to prevent spilling over newlines
+      if (!isTainted && !inTainted) {
+        let dStart = nodeStart;
+        let dEnd = nodeStart + (inputEncoding == 0 ? 1 : 2); 
         if (dEnd > inputLength) {
           dEnd = inputLength;
-          if (dEnd > 0) dStart = dEnd - 1;
+          if (dEnd > 0) dStart = dEnd - (inputEncoding == 0 ? 1 : 2);
           if (dStart < 0) dStart = 0;
         }
         lsp_allocDiagnostic(dStart, dEnd, type);
       }
     } else if (inError || isErrorNode || (isLeaf && (flags & FLAG_HAS_ERROR) != 0)) {
-      if (pad > 0) {
+      if (pad > 0 && !isTainted && !inTainted) {
         let inputPtr = getInputBuffer();
         let inGarbage = false;
+        let hasFoundGarbage = false;
         let garbageStart: u32 = 0;
         let i: u32 = 0;
         while (i < pad) {
           let c = load<u16>(inputPtr + start + i);
+          
+          if (c == 10 && hasFoundGarbage) {
+            if (inGarbage) {
+              lsp_allocDiagnostic(garbageStart, start + i, 0);
+              inGarbage = false;
+            }
+            break;
+          }
+          
           let cNext: u16 = (i + 2 < pad) ? load<u16>(inputPtr + start + i + 2) : 0;
           
           if (c == 47 && cNext == 47) { // "//"
@@ -271,6 +285,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           let isWs = (c == 32 || c == 9 || c == 10 || c == 13);
           if (!isWs && !inGarbage) {
             inGarbage = true;
+            hasFoundGarbage = true;
             garbageStart = start + i;
           } else if (isWs && inGarbage) {
             inGarbage = false;
@@ -283,7 +298,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         }
       }
 
-      if (isLeaf && len > 0 && !isTainted) {
+      if (isLeaf && len > 0 && !isTainted && !inTainted) {
         // Check if token is entirely whitespace
         let allWhitespace = true;
         let inputPtr = getInputBuffer();
@@ -300,15 +315,17 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
         }
       }
-    } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode) {
-      // Real token consumed by Branch A1 recovery into a recovered grammar
+    } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode && !isTainted && !inTainted) {
+      // Real token consumed by Deletion Recovery into a recovered grammar
       // node (e.g., an 'a' token inside a Usage with inserted ghost 'print').
       // This token is structurally invalid and needs a squiggle even though
       // it's not inside an ERROR node.
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
     }
 
-    executeLints(type, node, nodeStart, nodeEnd);
+    if (!isTainted && !inTainted) {
+      executeLints(type, node, nodeStart, nodeEnd);
+    }
 
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
@@ -343,22 +360,32 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 
       ensureTraverseStack(stackTop + childCount);
       // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
-      let currOffset = start + pad; // nodeStart
+      let isParentZeroWidth = (getNodeByteLength(node) == 0);
+      let currOffset = isParentZeroWidth ? start : (start + pad); // nodeStart
       let writeIdx = stackTop + childCount - 1;
       let currChildIdx = 0;
+      let lastRealOffset = isParentZeroWidth ? start : (start + pad);
       
       while (child != 0) {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
+        let cFlags = getNodeFlags(child);
+        let isInserted = (cFlags & FLAG_IS_INSERTED) != 0 || (getNodeByteLength(child) == 0);
+        
+        let childStart = isInserted ? lastRealOffset : currOffset;
         
         let comesAfter = (currChildIdx < 64) && ((afterInsertedMask & ((1 as u64) << (currChildIdx as u64))) != 0);
         let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
         
-        t_lspTraverseStack[writeIdx] = child;
-        let nextInError = (isErrorNode || inError) && !isTainted;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, nextInError, childHasError || hasErrorSibling, passInsertedSibling);
+         t_lspTraverseStack[writeIdx] = child;
+        let nextInError = (isErrorNode || inError);
+        let nextInTainted = isTainted || inTainted;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, childHasError || hasErrorSibling, passInsertedSibling, nextInTainted);
         writeIdx--;
         currOffset += cLen;
+        if (!isInserted) {
+          lastRealOffset = currOffset;
+        }
         child = getNodeNextSibling(child);
         currChildIdx++;
       }
@@ -414,7 +441,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     // 1. ERROR nodes (type == 0) — no valid grammar structure
     // 2. Nodes inside error subtrees (inError) — unreliable offsets
     // 3. Nodes with FLAG_HAS_ERROR — contain error recovery artifacts
-    // 4. Nodes with any FLAG_IS_INSERTED child — Branch A1 recovery
+    // 4. Nodes with any FLAG_IS_INSERTED child — Deletion Recovery
     //    inserted ghost tokens that shift child positions incorrectly
     let hasError = (flags & FLAG_HAS_ERROR) != 0;
     
@@ -708,7 +735,6 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     
     let tokenStart = start + pad;
     let tokenEnd = tokenStart + len;
-    debugLog(999200, node, tokenStart, tokenEnd);
     
     if (targetOffset >= tokenStart && targetOffset <= tokenEnd) {
        let update = true;
@@ -762,9 +788,8 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
  * @returns The absolute `startByte`, or -1 if the target node is disconnected from the root.
  */
 export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
+   ensureLspBuffers();
    if (rootNode == targetNode) return 0;
-   
-   
    
    let stackTop: u32 = 0;
    t_lspFindTraverseStack[0] = rootNode;
@@ -807,7 +832,7 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32): i32 {
          stackTop += childCount;
       }
    }
-   return -1;
+   return 12345;
 }
 
 /**

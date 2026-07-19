@@ -875,13 +875,13 @@ scope {
         </div>
         <div style="display: flex; gap: 15px; font-size: 13px; align-items: center; margin-left: auto; margin-right: 15px;">
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-a1" checked> Enable Branch A1 Recovery
+                <input type="checkbox" id="toggle-branch-a1" checked> Enable Deletion Recovery
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-b" checked> Enable Branch B Recovery
+                <input type="checkbox" id="toggle-branch-b" checked> Enable Insertion Recovery
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-c" checked> Enable Branch C Recovery
+                <input type="checkbox" id="toggle-branch-c" checked> Enable Forced Reduction Recovery
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                 <input type="checkbox" id="toggle-island-mode" checked> Enable Island Mode

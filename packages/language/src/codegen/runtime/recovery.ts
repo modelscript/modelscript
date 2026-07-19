@@ -4,7 +4,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableIslandMode, ACTION_REDUCE
 } from "./engine";
 import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState } from "./parser-loop";
-import { prod_lengths, prod_lhs } from "./parser";
+import { prod_lengths, prod_lhs, logInt } from "./parser";
 import { 
   getNodePadding, 
   setNodePadding,
@@ -45,7 +45,8 @@ import {
   SYMBOL_COUNT,
   peekChar,
   peekCharLen,
-  inputEncoding
+  inputEncoding,
+  reachability_matrix
 } from "./parser";
 
 const t_branchB_outTokens = new Int32Array(8);
@@ -62,7 +63,8 @@ export function simulateLookahead(
   tok3: i32 = -1,
   targetCost: i32 = 999999,
   maxTokens: i32 = 3,
-  resumePos: i32 = -1
+  resumePos: i32 = -1,
+  tok1Len: i32 = 0
 ): i32 {
   // 1. Backup globals
   let savedCount = activeHeadsCount;
@@ -80,23 +82,25 @@ export function simulateLookahead(
     let p = resumePos == -1 ? baseHead.pos : (resumePos as u32);
     tempHead = baseHead;
     for(let i: i32 = 0; i <= depth; i++) {
-      tempHead = allocParseHead(outStates[i], 0, tempHead, p, baseHead.scannerState, 0, 0, 0, 0, baseHead.dynamicPrec, 0, baseHead.errorTail, 0, 0, 0, 0);
+      tempHead = allocParseHead(outStates[i], 0, tempHead, p, baseHead.scannerState, 0, 0, 0, 0, baseHead.dynamicPrec, 0, baseHead.errorTail, 0, 0, 0, 0, 0, 0);
     }
   } else {
     // Clone baseHead into the Scratch Arena to safely receive virtual tokens without mutating the Main Arena
     let p = resumePos == -1 ? baseHead.pos : (resumePos as u32);
-    tempHead = allocParseHead(baseHead.state, baseHead.astNode, baseHead.prev, p, baseHead.scannerState, baseHead.errorCost, baseHead.pendingPadding, baseHead.balanceHash, baseHead.consecutiveInsertions, baseHead.dynamicPrec, baseHead.pendingPadding, baseHead.errorTail, 0, 0, 0, 0);
+    tempHead = allocParseHead(baseHead.state, baseHead.astNode, baseHead.prev, p, baseHead.scannerState, baseHead.errorCost, baseHead.successfulShifts, baseHead.balanceHash, baseHead.consecutiveInsertions, baseHead.dynamicPrec, baseHead.pendingPadding, baseHead.errorTail, 0, 0, 0, 0, 0, 0);
   }
   
   // 3. Setup Virtual Tokens
   let vCount = 0;
-  if (tok1 != -1) {
-    tempHead.virtualQueue0 = tok1;
+  // ONLY put tok1 in the virtual queue if it is HALLUCINATED (tok1Len == 0)!
+  // If it is a real token, the parser will naturally read it from the input buffer via invokeLexer!
+  if (tok1 != -1 && tok1Len == 0) {
+    tempHead.virtualQueue0 = (tok1 & 0xFFFF) | ((tok1Len as u32) << 16);
     vCount++;
-    if (tok2 != -1) {
+    if (tok2 != -1 && tok1Len == 0) { // wait, if tok1 is real, tok2 shouldn't exist, but just in case
       tempHead.virtualQueue1 = tok2;
       vCount++;
-      if (tok3 != -1) {
+      if (tok3 != -1 && tok1Len == 0) {
         tempHead.virtualQueue2 = tok3;
         vCount++;
       }
@@ -138,7 +142,9 @@ function searchBudgetedInsertions(
   depth: i32,
   maxDepth: i32,
   outTokens: Int32Array,
-  outStates: Int32Array
+  outStates: Int32Array,
+  laTokLen: i32 = 0,
+  laTokPos: i32 = -1
 ): i32 {
   if (depth >= maxDepth) return -1;
   
@@ -175,18 +181,29 @@ function searchBudgetedInsertions(
     
     // Branch 1: Try shifting terminal
     if (shiftTarget != -1 && sym <= MAX_TERMINAL_ID) {
-      if (!isEpsilonReachable(shiftTarget, laTok)) continue;
+      let remainingDepth = maxDepth - depth - 1;
+      let dist = 255;
+      if (laTok <= MAX_TERMINAL_ID) {
+        dist = load<u32>(reachability_matrix + ((shiftTarget * (MAX_TERMINAL_ID + 1) + laTok) << 2));
+      } else {
+        dist = 0; // Don't prune EOF or special tokens
+      }
+
+      if (dist > remainingDepth) continue;
       outTokens[depth] = sym;
       outStates[depth] = shiftTarget;
       
-      if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + 250) > 0) {
+      let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + 250, 3, laTokPos, laTokLen);
+
+      if (simRes > 0) {
         return depth + 1;
       }
       
       let res = searchBudgetedInsertions(
         unwindCurr, shiftTarget, laTok,
         budget - numTerminals, depth + 1, maxDepth,
-        outTokens, outStates
+        outTokens, outStates,
+        laTokLen, laTokPos
       );
       if (res > 0) return res;
     }
@@ -209,18 +226,26 @@ function searchBudgetedInsertions(
       }
       
       if (nextState != -1) {
-        if (!isEpsilonReachable(nextState, laTok)) continue;
+        let remainingDepth = maxDepth - depth - 1;
+        let dist = 255;
+        if (laTok <= MAX_TERMINAL_ID) {
+          dist = load<u32>(reachability_matrix + ((nextState * (MAX_TERMINAL_ID + 1) + laTok) << 2));
+        } else {
+          dist = 0;
+        }
+        if (dist > remainingDepth) continue;
         outTokens[depth] = ruleLHS;
         outStates[depth] = nextState;
         
-        if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + 250) > 0) {
+        if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + 250, 3, laTokPos, laTokLen) > 0) {
           return depth + 1;
         }
         
         let res = searchBudgetedInsertions(
           unwindCurr, nextState, laTok,
           budget, depth + 1, maxDepth, // don't decrease budget for empty reductions
-          outTokens, outStates
+          outTokens, outStates,
+          laTokLen, laTokPos
         );
         if (res > 0) return res;
       }
@@ -266,15 +291,16 @@ export function recoverUnwindAndMutate(
   bestAcceptedCost: i32
 ): boolean {
         // === ERROR RECOVERY ENTRY ===
+
         
-        // ERROR BRANCH A & B: Unwind and Mutate
+        // ERROR RECOVERY: Deletion and Insertion (Unwind & Mutate)
         // ----------------------------------------------------------------
         let initialScannerState = currentScannerState;
         
         // If forced reduction didn't work, we iteratively pop (unwind) states from the GSS
         // up to a depth of 5. For each popped state, we attempt:
-        // Branch A: Deleting the current token (skip)
-        // Branch B: Inserting a missing token (virtual shift)
+        // Branch A (Deletion): Deleting the current token (skip)
+        // Branch B (Insertion): Inserting a missing token (virtual shift)
         let unwindCurr: ParseHead | null = head;
         let unwindDepth = 0;
 
@@ -293,7 +319,7 @@ export function recoverUnwindAndMutate(
           // is sufficient to naturally prevent excessively deep unwinds.
 
           // ------------------------------------------------------------
-          // Branch A: Deletion (Skip Token)
+          // Branch A (Deletion): Skip Token
           // ------------------------------------------------------------
           if (token != TOKEN_EOF) {
             let pCount = unwindDepth;
@@ -313,25 +339,37 @@ export function recoverUnwindAndMutate(
 
             let baseDelCost =
               getDeleteCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * PENALTY_UNWIND_NODE + droppedBytes;
+            let hasNewline = false;
+            let p_nl = head.pos;
+            while (p_nl < srcLexPos) {
+              let ch = peekChar(p_nl);
+              if (ch == 10 || ch == 13) {
+                hasNewline = true;
+                break;
+              }
+              p_nl += peekCharLen(p_nl);
+            }
+            if (hasNewline) baseDelCost += 4000; // Heavily penalize merging lines via deletion
+
             if (lexLen == 1 && lexPos < inputLength) {
               let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
               if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
               else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
                 newBalance--;
-                baseDelCost = getDeleteCost(token) + (unwindDepth as i32);
+                baseDelCost = getDeleteCost(token) + (unwindDepth as i32) + (hasNewline ? 1000 : 0);
               }
             }
 
             // A1. Standard Deletion: Discard current token(s) and advance scanner
             // We scan forward up to 5 tokens to see if deleting them allows the state to recover.
             // If unwindDepth > 0, we also try skipCount=0 (just unwinding without dropping the current token).
-            let maxSkips: u32 = 5;
+            let maxSkips: u32 = 3;
             let startSkip: u32 = unwindDepth == 0 ? 1 : 0;
             let a1NextScanPos = startSkip == 1 ? (srcLexPos + lexLen) : srcLexPos;
             
             // baseDelCost includes the cost of dropping 'token'. If we do startSkip=0,
             // we are NOT dropping 'token', so we refund its cost in a1DelCost.
-            let a1DelCost = startSkip == 0 ? -getDeleteCost(token == TOKEN_EOF ? 0 : token) : 0;
+            let a1DelCost = startSkip == 0 ? -(getDeleteCost(token == TOKEN_EOF ? 0 : token) + (hasNewline ? 1000 : 0)) : 0;
 
             if (configEnableBranchA1) {
             // Force lexer to recognize all tokens during recovery forward scan
@@ -346,6 +384,8 @@ export function recoverUnwindAndMutate(
               let searchPos = srcLexPos;
               let stateBeforeLex = currentScannerState;
               
+              let nextTokenLen = lexLen;
+
               let tok2Pos = srcLexPos + lexLen;
               let tok2 = invokeLexer(tok2Pos);
 
@@ -366,10 +406,10 @@ export function recoverUnwindAndMutate(
               let tokCost = getDeleteCost(nextToken == TOKEN_EOF ? 0 : nextToken);
               
               t_branchA1_outStates[0] = recState;
-              let canAccept = simulateLookahead(unwindCurr, t_branchA1_outStates, 0, nextToken, tok2, tok3, 0);
+              let canAccept = simulateLookahead(unwindCurr, null, 0, nextToken, tok2, tok3, 999999, 3, a1NextScanPos, nextTokenLen);
 
               
-              if (canAccept) {
+              if (canAccept && (a1DelCost + tokCost) < 4000) {
                 // ── 2-token lookahead validation ──
                 // After finding that nextToken can be accepted from recState,
                 // check whether the SECOND token ahead can also be processed
@@ -408,7 +448,7 @@ export function recoverUnwindAndMutate(
                   setCurrentScannerState(savedScannerState);
                 }
 
-                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff, true);
+                let errNode = allocNode(NODE_TYPE_ERROR, errPad, 0, newBalance & 0xff, false);
                 let lastChild = 0;
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
@@ -478,6 +518,13 @@ export function recoverUnwindAndMutate(
                 let errByteLen = p > unwindCurr.pos + errPad ? p - unwindCurr.pos - errPad : 0;
                 setNodeByteLength(errNode, errByteLen);
 
+                let finalErrNode = errNode;
+                let finalUnwindCurr: ParseHead | null = unwindCurr;
+                let finalPendingPadding = 0;
+                if (unwindDepth == 0) {
+                  finalUnwindCurr = head;
+                }
+
                 // Weak recovery penalty: if the 2-token check showed the path
                 // will fail right after resumption, inflate the cost so deeper
                 // unwind paths that genuinely recover can compete.
@@ -488,25 +535,24 @@ export function recoverUnwindAndMutate(
                 // Only push delHead if we actually dropped tokens.
                 // Pushing delHead when skipCount == 0 (0 dropped tokens)
                 // will just infinite loop the parser at the exact same position and state.
-                let shouldPushDelHead = (skipCount > 0);
+                let shouldPushDelHead = (skipCount > 0 || unwindDepth > 0);
                 
                 let delHead = allocParseHead(
                   recState,
-                  errNode,
-                  unwindCurr,
+                  finalErrNode,
+                  finalUnwindCurr,
                   p, // Preserve whitespace between the last garbage token and the resumed token
                   initialScannerState,
                   delHeadCost,
-                  0, // pendingPadding (reset after recovery)
+                  0, // successfulShifts
                   newBalance,
                   0, // consecutiveInsertions
                   recPrec,
-                  0,
+                  finalPendingPadding, // Absorb skipped bytes if unwindDepth == 0
                   newTail
                 );
                 
                 if (shouldPushDelHead) {
-
                   pushActiveHead(changetype<u32>(delHead));
                 }
                 break;
@@ -526,7 +572,7 @@ export function recoverUnwindAndMutate(
           }
 
           // ------------------------------------------------------------
-          // Branch B: Insertion (Virtual Shift)
+          // Branch B (Insertion): Virtual Shift
           // ------------------------------------------------------------
           // Search the action table for any valid SHIFT out of the unwound state.
           // Create a zero-length virtual AST node for that expected token.
@@ -537,6 +583,7 @@ export function recoverUnwindAndMutate(
           // absorb inter-scope garbage into the preceding node's byte length.
           // Island mode will handle the garbage correctly instead.
           if (configEnableBranchB) {
+
           let skipBranchB = false;
           if (unwindDepth == 0 && head.pos > 0) {
             // Scan backwards past whitespace to find the last significant character
@@ -571,20 +618,21 @@ export function recoverUnwindAndMutate(
             for (let skip = 0; skip <= 3; skip++) {
               if (laScanPos >= inputLength) {
                 if (skip == 0 && token == TOKEN_EOF) {
-                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 100, 0, 3, t_branchB_outTokens, t_branchB_outStates);
+                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 5000, 0, 5, t_branchB_outTokens, t_branchB_outStates, 0, inputLength);
 
-                  if (seqLen > 0 && seqLen <= 3) candidateViable = true;
+                  if (seqLen > 0 && seqLen <= 5) candidateViable = true;
                 }
                 break;
               }
 
               setLexPos(laScanPos);
-              let laTok = lex(laScanPos);
+              let laTok = invokeLexer(laScanPos);
               let laEnd = srcLexPos + lexLen;
 
-              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 100, 0, 3, t_branchB_outTokens, t_branchB_outStates);
+              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 5000, 0, 5, t_branchB_outTokens, t_branchB_outStates, lexLen, laScanPos);
 
-              if (seqLen > 0 && seqLen <= 3) {
+
+              if (seqLen > 0 && seqLen <= 5) {
                 candidateViable = true;
                 break;
               }
@@ -627,6 +675,8 @@ export function recoverUnwindAndMutate(
                 let v0 = seqLen > 0 ? t_branchB_outTokens[0] : 0;
                 let v1 = seqLen > 1 ? t_branchB_outTokens[1] : 0;
                 let v2 = seqLen > 2 ? t_branchB_outTokens[2] : 0;
+                let v3 = seqLen > 3 ? t_branchB_outTokens[3] : 0;
+                let v4 = seqLen > 4 ? t_branchB_outTokens[4] : 0;
                 
                 let currentHead = allocParseHead(
                   unwindCurr.state,
@@ -641,11 +691,9 @@ export function recoverUnwindAndMutate(
                   unwindCurr.dynamicPrec,
                   unwindCurr.pendingPadding,
                   head.errorTail,
-                  v0, v1, v2, seqLen
+                  v0, v1, v2, v3, v4, seqLen
                 );
-
                 pushActiveHead(changetype<u32>(currentHead));
-
                 return true;
               }
             }
@@ -664,7 +712,7 @@ export function recoverIslandMode(
   bestAcceptedCost: i32,
   activeHeadsCount: u32
 ): void {
-        // ERROR BRANCH D: Island Parsing (Panic Mode)
+        // ERROR RECOVERY: Island Parsing (Block-Level Panic Mode)
         // --------------------------------------------------------------------
         // If local insertions/deletions fail, we fallback to a coarse panic mode.
         // We advance the scanner forward until we hit a "sync token" (e.g. `}`, `;`, `end`).
@@ -733,7 +781,6 @@ export function recoverIslandMode(
             let canAcceptTok = stateCanAccept(currPop, currPop.state, tok, 0) ? 1 : 0;
             let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok, 0) ? 1 : 0;
 
-
             if (canAcceptTok > 0) {
               foundTarget = currPop.state;
               resumePos = searchPos;
@@ -765,15 +812,19 @@ export function recoverIslandMode(
             // Calculate the true penalty for Panic Mode
             let poppedDepth = 0;
             let tempPop: ParseHead | null = head;
+            let poppedValidBytes: u32 = 0;
             while (tempPop != null && tempPop != currPop) {
               poppedDepth++;
+              if (tempPop.astNode != 0 && !isPureErrorNode(tempPop.astNode)) {
+                poppedValidBytes += getNodeByteLength(tempPop.astNode);
+              }
               tempPop = tempPop.prev;
             }
             let islandCost =
-              head.errorCost +
-              poppedDepth * PENALTY_UNWIND_NODE +
-              syncCost * PENALTY_SYNC_TOKEN +
-              100; // BASE PENALTY FOR ISLAND MODE
+              poppedDepth * 50 +
+              syncCost * 10 +
+              50; // BASE PENALTY FOR ISLAND MODE
+            
             if (bestAcceptedCost < 20000 && islandCost >= bestAcceptedCost) return;
             // Collect all the AST nodes that were parsed between the anchor state and the failure point
             let currChild: ParseHead | null = head;
@@ -807,7 +858,7 @@ export function recoverIslandMode(
             }
 
             // Allocate a monolithic ERROR node container
-            let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff, false);
+            let islandLeaf = allocNode(NODE_TYPE_ERROR, islandPad, 0, head.balanceHash & 0xff, true);
 
             // Mount the discarded AST nodes as children of the ERROR node,
             // so the language server can still offer completions inside broken blocks.
@@ -947,14 +998,15 @@ export function recoverIslandMode(
               // We just drop this branch.
             } else {
               // Branch the GSS from the recovery anchor, shifting the new ERROR node.
-              // We give it an artificially low errorCost so it ALWAYS survives the
-              // primary culling phase against greedy local insertions, ensuring global recovery completes.
+              // Instead of pushing an extra head (which corrupts GSS depth), we REPLACE currPop
+              // with a new head that has the same state and prev, but merges the ERROR node into its astNode.
               let nextConsecutive = ((resumePos as u32) == head.pos) ? head.consecutiveInsertions : 0;
+              let mergedNode = concatLists(currPop.astNode, islandLeaf, NODE_TYPE_ERROR, 0);
 
               let islandHead = allocParseHead(
-                currPop.state, // MUST be currPop.state so virtual tokens can be shifted from the initial anchor
-                islandLeaf,
-                currPop,
+                currPop.state, 
+                mergedNode,
+                currPop.prev, // Use currPop.prev to maintain correct GSS depth!
                 resumePos as u32,
                 islandScannerState,
                 currPop.errorCost + islandCost,
@@ -967,7 +1019,6 @@ export function recoverIslandMode(
                 0, 0, 0, 0 // No virtual tokens in Island Mode
               );
               pushActiveHead(changetype<u32>(islandHead));
-              
             }
           }
         }

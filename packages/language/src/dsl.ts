@@ -501,6 +501,11 @@ export interface LanguageOptions<
   moduleSystem?: {
     resolve_module?: boolean;
   };
+
+  /** Error Recovery Configuration */
+  recovery?: {
+    sync: string[];
+  };
 }
 
 /**

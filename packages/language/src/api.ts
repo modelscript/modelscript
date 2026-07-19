@@ -35,6 +35,7 @@ export interface BuildResult {
     fieldNames?: string[];
     semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
   };
+  table?: any;
 }
 
 /**
@@ -55,7 +56,12 @@ export function buildParser(languageDef: LanguageOptions): BuildResult {
     statesCount: result.table.actionTable.size,
   };
 
-  const assemblyScriptFiles = generateParserTables(languageDef, result.grammar, result.table);
+  const assemblyScriptFiles = generateParserTables(
+    languageDef,
+    result.grammar,
+    result.table,
+    languageDef.recovery?.sync || [],
+  );
 
   const javascriptWrapper = generateJavaScriptWrapper(languageDef, result.grammar);
 
@@ -63,5 +69,5 @@ export function buildParser(languageDef: LanguageOptions): BuildResult {
   assemblyScriptFiles.push({ filename: "tmLanguage.json", content: textMateContent.tm });
   assemblyScriptFiles.push({ filename: "monarch.json", content: textMateContent.monarch });
 
-  return { parserInfo, assemblyScriptFiles, javascriptWrapper };
+  return { parserInfo, assemblyScriptFiles, javascriptWrapper, table: result.table };
 }

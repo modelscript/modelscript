@@ -213,6 +213,7 @@ function runTestInWorker(
   omcMode = false,
 ): Promise<TestResult> {
   return new Promise((resolve) => {
+    console.log("STARTING TEST:", testCase.file);
     const start = Date.now();
     const child = spawn(process.execPath, ["--import", "tsx", WORKER_SCRIPT], {
       cwd: path.resolve(import.meta.dirname ?? __dirname, ".."),

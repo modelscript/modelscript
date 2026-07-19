@@ -663,7 +663,10 @@ export class LspFacade {
 
   public getLineStarts(): Uint32Array {
     if (this._cachedLineStarts) return this._cachedLineStarts;
-    const lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength;
+    let lenBytes = this.currentInputLength * 2;
+    if (lenBytes === 0) {
+      lenBytes = this.exports.inputLength?.value ?? this.exports.inputLength ?? 0;
+    }
     const lenChars = lenBytes / 2;
     const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
 
@@ -695,7 +698,7 @@ export class LspFacade {
 
     let lineStartByte = lineStarts[line];
     const charOffset = (offset - lineStarts[line]) / 2;
-    return { line: line, character: charOffset };
+    return { line, character: charOffset };
   }
 
   getDiagnostics(astRoot: number): Diagnostic[] {
@@ -986,10 +989,6 @@ export class LspFacade {
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
 
-      if (typeId === 5) {
-        console.log(`[JS_DEBUG] node_5: pad=${pad} len=${len} typeFlags=${typeFlags} ptr=${ptr}`);
-      }
-
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
 
@@ -1106,12 +1105,6 @@ export class LspFacade {
       let slowPtr = childPtr;
       let step = 0;
 
-      if (typeName === "Program" || depth < 2) {
-        console.log(
-          `[JS_DEBUG] toHtml(${typeName}): ptr=${ptr}, childPtr=${childPtr}, mem32[(ptr+8)/4]=${mem32[(ptr + 8) / 4]}, len=${len}`,
-        );
-      }
-
       let nodeIndex = -1;
       if (shouldPrint) {
         const isGhost = len === 0 && typeName !== "ERROR";
@@ -1200,6 +1193,8 @@ export class LspFacade {
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
+
+    this.currentInputLength = text.length;
 
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = lenBytes;

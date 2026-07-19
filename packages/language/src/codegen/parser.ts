@@ -152,14 +152,32 @@ export function generateParserTables(
   const mrd = table.automaton.computeMRD();
   code += generateStaticArray(mrd, "mrd_data");
 
+  const terminalFreq = new Map<string, number>();
+  for (const p of grammar.productions) {
+    for (const sym of p.right) {
+      terminalFreq.set(sym, (terminalFreq.get(sym) || 0) + 1);
+    }
+  }
+
   const tokenInsertCosts: number[] = new Array(symToInt.size + 1).fill(1);
   for (const [sym, id] of symToInt.entries()) {
-    if (sym.startsWith('"') && sym.match(/^"[A-Za-z0-9_]+"$/)) {
-      tokenInsertCosts[id] = 3;
-    } else if (sym.startsWith("/")) {
-      tokenInsertCosts[id] = 2;
-    } else {
+    if (sym.startsWith('"') && sym.match(/^"[^a-zA-Z0-9_]+"$/)) {
+      // Pure punctuation (e.g. ";", "=", "{") is always cheap to hallucinate
       tokenInsertCosts[id] = 1;
+    } else if (sym.startsWith('"') || sym.startsWith("/")) {
+      // Keywords or regexes
+      const freq = terminalFreq.get(sym) || 0;
+      if (freq >= 5) {
+        tokenInsertCosts[id] = 1; // Ubiquitous keywords
+      } else if (freq >= 2) {
+        tokenInsertCosts[id] = 2; // Moderate keywords
+      } else {
+        tokenInsertCosts[id] = 4; // Rare structural keywords
+      }
+    } else {
+      // Non-terminals (e.g. Expression, Statement) represent complex sub-trees.
+      // Hallucinating them should be expensive.
+      tokenInsertCosts[id] = 5;
     }
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
@@ -173,6 +191,98 @@ export function generateParserTables(
   const sortedSymbols = Array.from({ length: symToInt.size }, (_, i) => i + 1).filter((id) => id <= maxTerminalId);
   sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
   code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
+
+  const MAX_REACHABILITY_DEPTH = 5;
+  const reachabilityMatrix = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
+  reachabilityMatrix.fill(255);
+
+  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+    const actions = table.actionTable.get(stateId);
+    if (actions) {
+      for (const [sym, acts] of actions.entries()) {
+        if (acts.some((a) => a.type === 0)) {
+          // 0 is SHIFT
+          const symId = symToInt.get(sym);
+          if (symId !== undefined && symId <= maxTerminalId) {
+            reachabilityMatrix[stateId * (maxTerminalId + 1) + symId] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  console.log("Building Reachability Matrix for", table.actionTable.size, "states and", maxTerminalId, "terminals");
+
+  // Precompute GOTO targets for each non-terminal
+  const gotoTargets = new Map<number, number[]>();
+  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+    const gotos = table.gotoTable.get(stateId);
+    if (gotos) {
+      for (const [sym, nextState] of gotos.entries()) {
+        const symId = symToInt.get(sym);
+        if (symId !== undefined) {
+          if (!gotoTargets.has(symId)) gotoTargets.set(symId, []);
+          gotoTargets.get(symId)!.push(nextState);
+        }
+      }
+    }
+  }
+
+  let matrixChanged = true;
+  for (let iter = 0; iter < MAX_REACHABILITY_DEPTH; iter++) {
+    if (!matrixChanged) break;
+    matrixChanged = false;
+    const newMatrix = new Uint8Array(reachabilityMatrix);
+    for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+      const actions = table.actionTable.get(stateId);
+      const gotos = table.gotoTable.get(stateId);
+      if (actions) {
+        for (const [sym, acts] of actions.entries()) {
+          for (const act of acts) {
+            if (act.type === 0 && act.target !== undefined) {
+              const nextState = act.target;
+              for (let t = 1; t <= maxTerminalId; t++) {
+                const altCost = 1 + reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+                  newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
+                  matrixChanged = true;
+                }
+              }
+            } else if (act.type === 1 && act.target !== undefined) {
+              // REDUCE action: cost is 0 GSS transitions (reductions are "free" lookahead steps)
+              const prod = table.grammar.productions[act.target];
+              const ruleSymId = symToInt.get(prod.left);
+              if (ruleSymId !== undefined && gotoTargets.has(ruleSymId)) {
+                for (const nextState of gotoTargets.get(ruleSymId)!) {
+                  for (let t = 1; t <= maxTerminalId; t++) {
+                    const altCost = reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+                    if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+                      newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
+                      matrixChanged = true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      if (gotos) {
+        for (const [sym, nextState] of gotos.entries()) {
+          const cost = 1; // GOTO counts as 1 GSS transition (shifting a non-terminal)
+          for (let t = 1; t <= maxTerminalId; t++) {
+            const altCost = cost + reachabilityMatrix[nextState * (maxTerminalId + 1) + t];
+            if (altCost < newMatrix[stateId * (maxTerminalId + 1) + t]) {
+              newMatrix[stateId * (maxTerminalId + 1) + t] = altCost;
+              matrixChanged = true;
+            }
+          }
+        }
+      }
+    }
+    reachabilityMatrix.set(newMatrix);
+  }
+  code += generateStaticArray(Array.from(reachabilityMatrix), "reachability_matrix");
 
   const syncIds: number[] = [];
   for (const t of syncTokens) {
@@ -213,6 +323,8 @@ export function generateParserTables(
   code += generateStaticArray(tokenDeleteCosts, "token_delete_costs");
 
   const prodLengths: number[] = [];
+  const prodRightOffsets: number[] = [];
+  const prodRightSymbols: number[] = [];
   const prodLhs: number[] = [];
   const prodIsStructural: number[] = [];
   const prodIsInvisible: number[] = [];
@@ -226,6 +338,10 @@ export function generateParserTables(
   console.log("MAX symId:", symToInt.size);
   const sortedProds = [...grammar.productions].sort((a, b) => a.id - b.id);
   for (const p of sortedProds) {
+    prodRightOffsets.push(prodRightSymbols.length);
+    for (const sym of p.right) {
+      prodRightSymbols.push(symToInt.get(sym) || 0);
+    }
     prodLengths.push(p.right.length);
     const lhs = symToInt.get(p.left);
     if (lhs === undefined) {
@@ -345,6 +461,8 @@ export function generateParserTables(
   }
 
   code += generateStaticArray(prodLengths, "prod_lengths");
+  code += generateStaticArray(prodRightOffsets, "prod_right_offsets");
+  code += generateStaticArray(prodRightSymbols, "prod_right_symbols");
   code += generateStaticArray(prodLhs, "prod_lhs");
   code += generateStaticArray(prodIsStructural, "prod_is_structural");
   code += generateStaticArray(prodIsInvisible, "prod_is_invisible");
@@ -430,7 +548,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, logInt, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
+  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

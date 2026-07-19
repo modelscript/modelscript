@@ -44,6 +44,8 @@ import {
   prod_is_list as _prod_is_list,
   prod_lengths as _prod_lengths,
   prod_lhs as _prod_lhs,
+  prod_right_offsets as _prod_right_offsets,
+  prod_right_symbols as _prod_right_symbols,
   token_insert_costs as _token_insert_costs,
   token_delete_costs as _token_delete_costs,
   sorted_insertion_symbols as _sorted_insertion_symbols,
@@ -112,6 +114,8 @@ export const token_delete_costs = changetype<StaticTable>(_token_delete_costs);
 export const sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
 
 export const prod_lengths = changetype<StaticTable>(_prod_lengths);
+export const prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);
+export const prod_right_symbols = changetype<StaticTable>(_prod_right_symbols);
 export const prod_lhs = changetype<StaticTable>(_prod_lhs);
 export const prod_is_structural = changetype<StaticTable>(_prod_is_structural);
 export const prod_is_invisible = changetype<StaticTable>(_prod_is_invisible);
@@ -480,7 +484,6 @@ export let lastMaxHeads = 0;
  * @returns A pointer to the newly allocated AST root node.
  */
 export function testEntry(): void {
-  debugLog(999, 0, 0, 0);
 }
 
 
