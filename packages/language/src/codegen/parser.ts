@@ -548,7 +548,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
+  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

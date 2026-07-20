@@ -155,4 +155,24 @@ describe("GLR Parser Error Recovery Branches", () => {
       }
     });
   }
+  describe("Regression Tests", () => {
+    it("should anchor the missing semicolon diagnostic to the previous token instead of the next line", () => {
+      facade.setParserConfig(false, false, true, false); // Only Branch C
+      const code = "scope {\n  let velocity = 100;\n  let mass = 50;\n  let x = 1\n  print velocity;\n}";
+      const astRoot = facade.parse(code);
+      const diags = facade.getDiagnostics(astRoot);
+      // There should be a diagnostic for the missing semicolon after '1'
+      expect(diags.length).toBeGreaterThan(0);
+
+      const missingSemi = diags[0];
+
+      // Check line and column of the diagnostic (0-indexed)
+      // The '1' is on line 3, column 10 to 11.
+      // The diagnostic should be anchored near it, so on line 3 (not line 4).
+      const startPos = missingSemi.range.start;
+
+      // Check that it's NOT on line 4 (where the 'p' of print is)
+      expect(startPos.line).not.toBe(4);
+    });
+  });
 });

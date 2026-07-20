@@ -238,7 +238,22 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // and so the JS-side merging logic can combine it with adjacent garbage tokens.
       if (!isTainted && !inTainted) {
         let dStart = nodeStart;
-        let dEnd = nodeStart + (inputEncoding == 0 ? 1 : 2); 
+        
+        // If the inserted token lands on whitespace (e.g. \n), the editor may push the squiggle 
+        // to the next line. We scan backwards to anchor the diagnostic on the previous visible character.
+        if (dStart > 0) {
+          let scan = dStart;
+          while (scan > 0) {
+            scan -= (inputEncoding == 0 ? 1 : 2);
+            let ch = peekChar(scan);
+            if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {
+              dStart = scan;
+              break;
+            }
+          }
+        }
+        
+        let dEnd = dStart + (inputEncoding == 0 ? 1 : 2); 
         if (dEnd > inputLength) {
           dEnd = inputLength;
           if (dEnd > 0) dStart = dEnd - (inputEncoding == 0 ? 1 : 2);
