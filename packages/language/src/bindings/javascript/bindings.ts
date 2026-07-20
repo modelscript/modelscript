@@ -713,6 +713,107 @@ export class LspFacade {
     const memory = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
 
+    // Pre-calculate all needed nodePtr offsets in a single O(N) pass
+    // to prevent O(N^2) lockups caused by repeated WASM lsp_findNodeOffset calls.
+    const requiredNodePtrs = new Set<number>();
+    for (let i = 0; i < numElements * 7; i += 7) {
+      const lintId = memory[(dirPtr >> 2) + i + 2];
+      if (
+        lintId >= this.syntaxNames.length &&
+        LINT_MESSAGES[lintId.toString()] &&
+        typeof LINT_MESSAGES[lintId.toString()] === "function"
+      ) {
+        const arg0 = memory[(dirPtr >> 2) + i + 3];
+        const arg1 = memory[(dirPtr >> 2) + i + 4];
+        const arg2 = memory[(dirPtr >> 2) + i + 5];
+        const arg3 = memory[(dirPtr >> 2) + i + 6];
+        if (arg0) requiredNodePtrs.add(arg0);
+        if (arg1) requiredNodePtrs.add(arg1);
+        if (arg2) requiredNodePtrs.add(arg2);
+        if (arg3) requiredNodePtrs.add(arg3);
+      }
+    }
+
+    const offsetCache = new Map<number, number>();
+    if (requiredNodePtrs.size > 0 && astRoot) {
+      let stackPtrs = new Uint32Array(50000);
+      let stackOffsets = new Uint32Array(50000);
+      let stackTop = 0;
+      stackPtrs[0] = astRoot;
+      stackOffsets[0] = 0;
+      stackTop++;
+
+      while (stackTop > 0 && requiredNodePtrs.size > 0) {
+        stackTop--;
+        const ptr = stackPtrs[stackTop];
+        const currentOffset = stackOffsets[stackTop];
+
+        const typeFlags = memory[ptr / 4];
+        const envHashPadding = memory[(ptr + 4) / 4];
+        const rawPad = typeFlags >>> 19;
+        const isFat = ((envHashPadding >>> 23) & 1) === 1;
+        const pad = isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        const len = envHashPadding & 0x007fffff;
+
+        const tokenStart = currentOffset + pad;
+
+        if (requiredNodePtrs.has(ptr)) {
+          offsetCache.set(ptr, tokenStart);
+          requiredNodePtrs.delete(ptr);
+        }
+
+        let childPtr = memory[(ptr + 8) / 4];
+        if (childPtr) {
+          let childCount = 0;
+          let c = childPtr;
+          let slow = c;
+          let step = 0;
+          while (c) {
+            childCount++;
+            c = memory[(c + 12) / 4];
+            if (step !== 0 && c === slow) break; // CYCLE
+            if (step % 2 === 1) slow = memory[(slow + 12) / 4];
+            step++;
+          }
+
+          if (stackTop + childCount > stackPtrs.length) {
+            const newPtrs = new Uint32Array(stackPtrs.length * 2);
+            newPtrs.set(stackPtrs);
+            stackPtrs = newPtrs;
+            const newOffsets = new Uint32Array(stackOffsets.length * 2);
+            newOffsets.set(stackOffsets);
+            stackOffsets = newOffsets;
+          }
+
+          let writeIdx = stackTop + childCount - 1;
+          let cOffset = tokenStart;
+          c = childPtr;
+          slow = c;
+          step = 0;
+          while (c) {
+            const cTypeFlags = memory[c / 4];
+            const cEnvHashPadding = memory[(c + 4) / 4];
+            const cRawPad = cTypeFlags >>> 19;
+            const cIsFat = ((cEnvHashPadding >>> 23) & 1) === 1;
+            const cPad =
+              cIsFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(cRawPad) / 4] : cRawPad;
+            const cLen = cEnvHashPadding & 0x007fffff;
+
+            stackPtrs[writeIdx] = c;
+            stackOffsets[writeIdx] = cOffset;
+            writeIdx--;
+            cOffset += cPad + cLen;
+
+            c = memory[(c + 12) / 4];
+            if (step !== 0 && c === slow) break;
+            if (step % 2 === 1) slow = memory[(slow + 12) / 4];
+            step++;
+          }
+          stackTop += childCount;
+        }
+      }
+    }
+
     for (let i = 0; i < numElements * 7; i += 7) {
       let startByte = memory[(dirPtr >> 2) + i];
       let endByte = memory[(dirPtr >> 2) + i + 1];
@@ -755,7 +856,9 @@ export class LspFacade {
                 const pad = typeFlags >>> 19;
                 const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
                 let actualStart = startByte - pad;
-                if (this.exports.lsp_findNodeOffset) {
+                if (offsetCache.has(nodePtr)) {
+                  actualStart = offsetCache.get(nodePtr)!;
+                } else if (this.exports.lsp_findNodeOffset) {
                   const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
                   if (offset >= 0) actualStart = offset;
                 }
