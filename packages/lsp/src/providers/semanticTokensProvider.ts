@@ -451,7 +451,21 @@ export function registerSemanticTokensProvider(
           p = p.parent;
         }
 
-        if (
+        let inError = false;
+        let curr = node.parent;
+        while (curr) {
+          if (curr.type === "ERROR") {
+            inError = true;
+            break;
+          }
+          curr = curr.parent;
+        }
+
+        if (typeKeywords.includes(node.text)) {
+          tokenType = "type";
+        } else if (inError) {
+          tokenType = "variable";
+        } else if (
           p?.type === "LongClassSpecifier" ||
           p?.type === "long_class_specifier" ||
           p?.type === "ShortClassSpecifier" ||
@@ -468,8 +482,6 @@ export function registerSemanticTokensProvider(
           tokenType = "type";
         } else if (p?.type === "Declaration" || p?.type === "component_declaration" || p?.type === "declaration") {
           tokenType = "variable";
-        } else if (typeKeywords.includes(node.text)) {
-          tokenType = "type";
         } else {
           tokenType = "variable";
         }
