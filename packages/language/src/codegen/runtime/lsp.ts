@@ -243,7 +243,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         // to the next line. We scan backwards to anchor the diagnostic on the previous visible character.
         if (dStart > 0) {
           let scan = dStart;
-          let step: u32 = inputEncoding == 0 ? 1 : 2;
+          let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
           while (scan >= step) {
             scan -= step;
             let ch = peekChar(scan);
@@ -254,11 +254,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           }
         }
         
-        let dEnd = dStart + (inputEncoding == 0 ? 1 : 2); 
+        let charLen: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+        let dEnd = dStart + charLen;
         if (dEnd > inputLength) {
           dEnd = inputLength;
-          if (dEnd > 0) dStart = dEnd - (inputEncoding == 0 ? 1 : 2);
-          if (dStart < 0) dStart = 0;
+          if (dEnd > charLen) dStart = dEnd - charLen;
+          else dStart = 0;
         }
         lsp_allocDiagnostic(dStart, dEnd, type);
       }

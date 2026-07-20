@@ -559,9 +559,9 @@ export function recoverUnwindAndMutate(
           if (unwindDepth == 0 && head.pos > 0) {
             // Scan backwards past whitespace to find the last significant character
             let scanBack: u32 = head.pos;
-            while (scanBack > 0) {
-              scanBack -= (inputEncoding == 0 ? 1 : inputEncoding <= 2 ? 2 : 4);
-              if (scanBack == 0) break;
+            let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+            while (scanBack >= step) {
+              scanBack -= step;
               let ch = peekChar(scanBack);
               if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {  // not space/tab/LF/CR
                 if (ch == 125 || ch == 41 || ch == 93) {  // } ) ]
