@@ -243,8 +243,9 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         // to the next line. We scan backwards to anchor the diagnostic on the previous visible character.
         if (dStart > 0) {
           let scan = dStart;
-          while (scan > 0) {
-            scan -= (inputEncoding == 0 ? 1 : 2);
+          let step: u32 = inputEncoding == 0 ? 1 : 2;
+          while (scan >= step) {
+            scan -= step;
             let ch = peekChar(scan);
             if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {
               dStart = scan;
@@ -349,24 +350,12 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       let childCount: u32 = 0;
       let childHasError: boolean = false;
       let countChild = child;
-      let afterInsertedMask: u64 = 0;
-      let lastRealChildIdx: i32 = -1;
-      
       while (countChild != 0) {
         let cFlags = getNodeFlags(countChild);
         let cType = getNodeType(countChild);
         
         if ((cFlags & FLAG_HAS_ERROR) != 0 || cType == 0) {
             childHasError = true;
-        }
-        
-        if ((cFlags & FLAG_IS_INSERTED) != 0) {
-            // Taint the last real child we saw so it gets a diagnostic squiggle!
-            if (lastRealChildIdx >= 0 && lastRealChildIdx < 64) {
-                afterInsertedMask |= (1 as u64) << (lastRealChildIdx as u64);
-            }
-        } else if (cType != 0 && getNodeByteLength(countChild) > 0) {
-            lastRealChildIdx = childCount;
         }
         
         childCount++;
@@ -385,11 +374,28 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         let padVal = getNodePadding(child);
         let cLen = padVal + getNodeByteLength(child);
         let cFlags = getNodeFlags(child);
+        let cType = getNodeType(child);
         let isInserted = (cFlags & FLAG_IS_INSERTED) != 0 || (getNodeByteLength(child) == 0);
         
         let childStart = isInserted ? lastRealOffset : currOffset;
         
-        let comesAfter = (currChildIdx < 64) && ((afterInsertedMask & ((1 as u64) << (currChildIdx as u64))) != 0);
+        let comesAfter = false;
+        if (cType != 0 && getNodeByteLength(child) > 0) {
+          let lookahead = getNodeNextSibling(child);
+          while (lookahead != 0) {
+            let lFlags = getNodeFlags(lookahead);
+            let lType = getNodeType(lookahead);
+            if ((lFlags & FLAG_IS_INSERTED) != 0) {
+              comesAfter = true;
+              break;
+            }
+            if (lType != 0 && getNodeByteLength(lookahead) > 0) {
+              break;
+            }
+            lookahead = getNodeNextSibling(lookahead);
+          }
+        }
+        
         let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
         
          t_lspTraverseStack[writeIdx] = child;

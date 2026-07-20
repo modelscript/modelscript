@@ -817,6 +817,10 @@ export class LspFacade {
       const MAX_LINES = 3;
       const MAX_COLS = 120;
 
+      if (startPos.character > MAX_COLS) {
+        startPos = { line: startPos.line, character: MAX_COLS };
+      }
+
       if (endPos.line > startPos.line + MAX_LINES) {
         endPos = { line: startPos.line + MAX_LINES, character: 0 };
       }
