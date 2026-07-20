@@ -1,7 +1,8 @@
 import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
-import { GeneratedFile, generateParser, generateParserTables } from "./codegen/parser.js";
+import type { GeneratedFile } from "./codegen/parser.js";
+import { generateParser, generateParserTables } from "./codegen/parser.js";
 import { generateTextMate } from "./codegen/textmate.js";
-import { LanguageOptions } from "./dsl.js";
+import type { LanguageOptions } from "./dsl.js";
 
 /**
  * Metadata about the generated grammar parser.

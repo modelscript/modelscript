@@ -10,7 +10,7 @@ export const Playground: CommandModule = {
   command: "playground",
   describe: "Launch the dual-editor DSL workbench",
   handler: async () => {
-    const port = 3000;
+    const port = 3002;
 
     const server = createServer(async (req, res) => {
       const urlPath = req.url?.split("?")[0] || "/";
@@ -709,6 +709,7 @@ scope {
                                 const pad = ints[i++];
                                 const len = ints[i++];
                                 const childCount = ints[i++];
+                                const flags = ints[i++];
                                 
                                 const children = [];
                                 for (let c = 0; c < childCount; c++) {
@@ -717,16 +718,16 @@ scope {
 
                                 const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
                                 
-                                console.log("[AST Patch] op=" + op + ", ptr=" + ptr + ", typeName=" + typeName + ", childCount=" + childCount);
+                                console.log("[AST Patch] op=" + op + ", ptr=" + ptr + ", typeName=" + typeName + ", childCount=" + childCount + ", flags=" + flags);
                                 if (op === 1) { // INSERT
-                                    nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, children });
+                                    nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, flags, children });
                                     hasUpdates = true;
                                 } else if (op === 3) { // DELETE
                                     nodeMap.current.delete(ptr);
                                     hasUpdates = true;
                                 } else if (op === 2) { // UPDATE
                                     const oldNode = nodeMap.current.get(oldPtr);
-                                    nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, children });
+                                    nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, flags, children });
                                     nodeMap.current.delete(oldPtr);
                                     hasUpdates = true;
                                 }
@@ -779,8 +780,11 @@ scope {
                     }
                     
                     const currentOffset = parentOffset + (node.pad || 0);
-                    const isError = node.typeName === "ERROR";
-                    const isGhost = node.len === 0 && !isError;
+                    const hasErrorFlag = (node.flags & 0x0080) !== 0; // FLAG_HAS_ERROR
+                    const isTainted = (node.flags & 0x0010) !== 0; // FLAG_IS_TAINED
+                    const isInserted = (node.flags & 0x0100) !== 0; // FLAG_IS_INSERTED
+                    const isError = node.typeName === "ERROR" || hasErrorFlag || isTainted;
+                    const isGhost = (node.len === 0 && !isError) || isInserted;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
                     
@@ -1042,8 +1046,8 @@ let patchBuffer = patchBufferA;
 let patchInt32 = new Int32Array(patchBuffer);
 let patchOffset = 0;
 
-function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
-    if (patchOffset + 10 + (children ? children.length : 0) > patchInt32.length) {
+function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
+    if (patchOffset + 12 + (children ? children.length : 0) > patchInt32.length) {
         try {
             const newSize = Math.min(patchBuffer.byteLength * 2, 64 * 1024 * 1024);
             if (newSize <= patchBuffer.byteLength) return; // Cannot grow further
@@ -1066,6 +1070,7 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, children) {
     patchInt32[patchOffset++] = pad || 0;
     patchInt32[patchOffset++] = len || 0;
     patchInt32[patchOffset++] = children ? children.length : 0;
+    patchInt32[patchOffset++] = flags || 0;
     if (Number.isNaN(pad) || Number.isNaN(len)) {
         console.error("pushPatch received NaN! pad:", pad, "len:", len, "typeId:", typeId);
     }
@@ -1254,10 +1259,10 @@ self.addEventListener('message', async (e) => {
             lspFacade = new LspFacade(memory, instance.exports);
             
             lspFacade.addAstChangeListener({
-                onNodeInserted: (ptr, typeId, typeName, pad, len, children) => pushPatch(1, ptr, typeId, 0, pad, len, children),
-                onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, null),
+                onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
+                onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, 0, null),
                 onNodeRetained: (ptr) => {},
-                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, children)
+                onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, flags, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, flags, children)
             });
 
             console.log("LspFacade successfully loaded inside worker.");

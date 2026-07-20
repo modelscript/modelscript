@@ -60,6 +60,10 @@ export default defineConfig([
             "packages/language/src/codegen/runtime/array.ts",
             "packages/language/src/codegen/runtime/cursor.ts",
             "packages/language/examples/calc/src/language.ts",
+            "packages/language/tests/test-recovery-integration.test.ts",
+            "packages/language/jest.config.ts",
+            "apps/cli/tests/test-recovery-branches.test.ts",
+            "apps/cli/jest.config.ts",
           ],
         },
         tsconfigRootDir: import.meta.dirname,
@@ -91,10 +95,16 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/core/tests/debug-*.ts", "packages/core/tests/redeclare_test.ts"],
+    files: [
+      "packages/core/tests/debug-*.ts",
+      "packages/core/tests/redeclare_test.ts",
+      "packages/language/tests/**/*.ts",
+      "apps/cli/tests/**/*.ts",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-empty-function": "off",
     },
   },
   {

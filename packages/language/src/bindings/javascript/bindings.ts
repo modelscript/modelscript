@@ -268,7 +268,8 @@ export interface AstChangeListener {
     typeName: string,
     pad: number,
     len: number,
-    children: { ptr: number; field: string | null }[],
+    flags: number,
+    children: { ptr: number; field: string | null; invisiblePad: number }[],
   ): void;
   onNodeUpdated(
     newPtr: number,
@@ -277,7 +278,8 @@ export interface AstChangeListener {
     typeName: string,
     pad: number,
     len: number,
-    children: { ptr: number; field: string | null }[],
+    flags: number,
+    children: { ptr: number; field: string | null; invisiblePad: number }[],
   ): void;
 }
 
@@ -1028,7 +1030,12 @@ export class LspFacade {
         return { strs: childStrs, nextOffset: endOffset };
       }
 
-      let str = `(${typeName} ${posStr}`;
+      let flags = (typeFlags >> 10) & 0x1ff;
+      let flagStr = "";
+      if (flags & 256) flagStr += " (I)";
+      if (flags & 128) flagStr += " (E)";
+      if (flags & 16) flagStr += " (T)";
+      let str = `(${typeName}${flagStr} ${posStr}`;
       if (childStrs.length > 0) {
         for (const cs of childStrs) {
           str += "\n" + indent + "  " + cs;
@@ -1086,6 +1093,7 @@ export class LspFacade {
       const isFat = (envHashPadding >>> 23) & 1;
       const pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
+      if (typeName === "ERROR") console.log("ERROR NODE MEMORY:", envHashPadding, len, "typeFlags:", typeFlags);
 
       const startOffset = currentOffset + pad;
       const endOffset = startOffset + len;
@@ -1339,6 +1347,7 @@ export class LspFacade {
         const isFat = (envHashPadding >>> 23) & 1;
         let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
+        if (typeName === "ERROR") console.log("ERROR NODE MEMORY:", envHashPadding, len, "typeFlags:", typeFlags);
 
         const children = getFlattenedChildren(ptr);
 
@@ -1348,7 +1357,8 @@ export class LspFacade {
             `[DEBUG-INSERT] typeName=${typeName} rawPad=${rawPad} invisiblePad=${item.invisiblePad} pad=${pad} len=${len}`,
           );
         }
-        listener.onNodeInserted(ptr, typeId, typeName, pad, len, children);
+        const flags = (typeFlags >> 10) & 0x1ff;
+        listener.onNodeInserted(ptr, typeId, typeName, pad, len, flags, children);
 
         // Push children in reverse so they are processed in forward order
         for (let i = children.length - 1; i >= 0; i--) {
@@ -1415,6 +1425,7 @@ export class LspFacade {
       const isFat = (envHashPadding >>> 23) & 1;
       let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
+      if (typeName === "ERROR") console.log("ERROR NODE MEMORY:", envHashPadding, len, "typeFlags:", typeFlags);
 
       const oldCh = getFlattenedChildren(oldPtr);
       const newCh = getFlattenedChildren(newPtr);
@@ -1425,7 +1436,8 @@ export class LspFacade {
           `[DEBUG-UPDATE] typeName=${typeName} rawPad=${rawPad} newInvisiblePad=${newInvisiblePad} pad=${pad} len=${len}`,
         );
       }
-      listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, newCh);
+      const flags = (typeFlags >> 10) & 0x1ff;
+      listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, flags, newCh);
       opsCount++;
 
       let start = 0;
@@ -1551,6 +1563,7 @@ export class SyntaxNode {
             ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
             : rawPad;
         const len = envHashPadding & 0x007fffff;
+        if (typeName === "ERROR") console.log("ERROR NODE MEMORY:", envHashPadding, len, "typeFlags:", typeFlags);
         const isInvisible = (typeFlags & (1 << 12)) !== 0;
 
         if (name.startsWith("_") || isInvisible) {
@@ -1755,6 +1768,7 @@ export class Tree {
         ? this.mem32[this.facade.exports.getFatPaddingPtr(rawPad) / 4]
         : rawPad;
     const len = envHashPadding & 0x007fffff;
+    if (typeName === "ERROR") console.log("ERROR NODE MEMORY:", envHashPadding, len, "typeFlags:", typeFlags);
 
     return new SyntaxNode(this, this.rootPtr, 0, null, pad, len, typeId);
   }

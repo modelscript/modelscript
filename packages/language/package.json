@@ -49,6 +49,9 @@
     "build:templates": "node scripts/bundle-templates.js",
     "clean": "rimraf dist src/src-gen",
     "lint": "eslint src",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:diagnostics": "tsx tests/test-diagnostics.ts",
+    "test:recovery": "NODE_OPTIONS=--experimental-vm-modules jest tests/test-recovery-integration.test.ts",
     "watch": "tsc --watch"
   },
   "lint-staged": {

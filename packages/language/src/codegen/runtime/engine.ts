@@ -396,6 +396,13 @@ export let configEnableBranchB: boolean = true;
 export let configEnableBranchC: boolean = true;
 export let configEnableIslandMode: boolean = true;
 
+// Error Recovery Heuristics
+export let configPenaltyUnwindNode: i32 = 500;
+export let configPenaltySyncToken: i32 = 50;
+export let configIslandBasePenalty: i32 = 50;
+export let configIslandSyncMultiplier: i32 = 10;
+export let configIslandPoppedMultiplier: i32 = 50;
+
 export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let lrStackDepth: i32 = 0;

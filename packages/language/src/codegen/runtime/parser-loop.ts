@@ -23,7 +23,6 @@ import {
     type_fields, type_field_data,
     MAX_ERRORS, MAX_PARALLEL_HEADS, INFINITE_COST, MAX_CHILD_NODES, MIN_LOOP_LIMIT, ARENA_BUFFER_SIZE,
     MAX_LOOKAHEAD_DEPTH, MAX_AST_TRAVERSAL_DEPTH, LOOP_MULTIPLIER_LIMIT, MAX_PANIC_SCAN_TOKENS,
-    PENALTY_UNWIND_NODE, PENALTY_SYNC_TOKEN,
     CHAR_LBRACE, CHAR_RBRACE, CHAR_LBRACKET, CHAR_RBRACKET, CHAR_LPAREN, CHAR_RPAREN,
     LIST_MAX_CHILDREN, LIST_SPLIT_POINT,
     t_tokenBufferArena, t_tokenBufferLenArena,
@@ -1618,6 +1617,7 @@ export let bestAcceptedPad: u32 = 0xffffffff;
 
 export let g_simulatorMaxTokens: i32 = 0;
 export let g_simulatorMaxCost: i32 = 999999;
+export let g_configIslandMode: boolean = true;
 
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean, cameFromVirtualQueue: boolean): void {
   let newBalance = head.balanceHash;
@@ -2287,7 +2287,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
       if (lastC == 0) setFirstChild(parentNode, clone);
       else setNextSibling(lastC, clone);
       lastC = clone;
-      if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+      if (getNodeType(c) == 0 || (getNodeFlags(c) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) {
         appendedError = true;
       }
     }
@@ -2341,7 +2341,7 @@ function pruneGSS(pos: u32): void {
     let writeIdx = 0;
     for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
       let ah = changetype<ParseHead>(t_activeHeads[i]);
-      let margin: i32 = ah.pos > bestPos ? 1000 : 15;
+      let margin: i32 = ah.pos > bestPos ? 3000 : 800;
 
       if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
         t_activeHeads[writeIdx++] = changetype<u32>(ah);
@@ -2608,13 +2608,31 @@ export function advanceGLR(): void {
       token = head.virtualQueue0 & 0xFFFF;
       lexLen = head.virtualQueue0 >> 16;
       is_current_token_virtual = (lexLen == 0);
-      srcLexPos = pos; // CRITICAL: Update srcLexPos since invokeLexer was skipped!
+      // Peek at the actual next token to anchor the diagnostic properly
+      let savedLexLen = lexLen;
+      let savedLexPos = lexPos;
+      let savedScanner = currentScannerState;
+      invokeLexer(pos);
+      let peekSrcLexPos = srcLexPos;
+      lexLen = savedLexLen;
+      lexPos = savedLexPos;
+      srcLexPos = peekSrcLexPos;
+      currentScannerState = savedScanner;
     } else if (tokenBufferReadIdx < tokenBufferWriteIdx) {
       let rIdx = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
       token = t_tokenBufferArena[rIdx];
       lexLen = t_tokenBufferLenArena[rIdx];
       tokenBufferLastPos = pos;
-      srcLexPos = pos; // CRITICAL: Update srcLexPos since invokeLexer was skipped!
+      // Peek at the actual next token to anchor the diagnostic properly
+      let savedLexLen = lexLen;
+      let savedLexPos = lexPos;
+      let savedScanner = currentScannerState;
+      invokeLexer(pos);
+      let peekSrcLexPos = srcLexPos;
+      lexLen = savedLexLen;
+      lexPos = savedLexPos;
+      srcLexPos = peekSrcLexPos;
+      currentScannerState = savedScanner;
     } else {
       updateExpectedTokens();
       // Also include the current head's expected tokens.
@@ -2953,7 +2971,10 @@ export function advanceGLR(): void {
       // Number before `;` in `let x = ;` completes the Decl properly).
       recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
 
-      recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
+      if (g_configIslandMode) {
+        recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
+      }
+      
       // Restore expected_tokens after recovery — the recovery functions call
       // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
       // the main parse loop needs the correct filtered set.
