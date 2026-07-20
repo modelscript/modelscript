@@ -37,7 +37,7 @@
     "exit-hook": "5.1.0",
     "pathe": "^1.1.2",
     "pkg-types": "^2.3.0",
-    "react-refresh": "^0.14.0",
+    "react-refresh": "^0.18.0",
     "typescript": "^5.9.2",
     "valibot": "^1.2.0",
     "vite": "^8.0.14",
