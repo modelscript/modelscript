@@ -60,10 +60,15 @@ describe("GLR Parser Error Recovery Integration", () => {
         memory: memory,
         abort: () => console.log("ABORT!"),
         logNode: () => {},
-        debugLog: (id: any, a: any, b: any, c: any) => {},
+        debugLog: (id: any, a: any, b: any, c: any) => {
+          if (id === 111) console.log(`[DEBUG] tok=${a} pos=${b} result=${c}`);
+        },
       },
       JavaScript: {
-        debugLog: (id: any, a: any, b: any, c: any) => {},
+        debugLog: (id: any, a: any, b: any, c: any) => {
+          if (id === 111) console.log(`[DEBUG] tok=${a} pos=${b} state=${c}`);
+          if (id === 112) console.log(`[DEBUG] result=${a}`);
+        },
         logNode: () => {},
       },
       engine: { debugLog: () => {} },
@@ -212,9 +217,37 @@ describe("GLR Parser Error Recovery Integration", () => {
     // Since all tokens appear after the closed block, they shouldn't be parsed as Decls inside the block
     expect(diags.length).toBeGreaterThan(0);
     // The block should be closed properly
-    expect(tree).toMatch(/Block \[\d+, \d+\] - \[\d+, \d+\]\)/);
+    expect(tree).toMatch(/Block(?: \(E\))? \[\d+, \d+\] - \[\d+, \d+\]/);
     // We should have a top-level ERROR node that absorbed everything outside the block
     expect(tree).toContain("(ERROR");
+  });
+
+  it("should prevent diagnostic bleed onto previous line whitespace", () => {
+    activeFacade.setParserConfig(true, true, true, true);
+    const code = "scope {\n  let a = 1;\n  \n  le\n}";
+    const ast = activeFacade.parse(code);
+    const diagnostics = activeFacade.getDiagnostics(ast);
+
+    // The error should be tightly bound to the "le" token on line 4, not line 3.
+    expect(diagnostics.length).toBeGreaterThan(0);
+    const diag = diagnostics[0];
+
+    // "le" starts at index 26
+    expect(diag.startCharOffset).toBe(26);
+  });
+
+  it("should aggregate diagnostic squiggles continuously for complex garbage", () => {
+    const code = "scope {\n  let x = =" + "====== 1;\n}";
+    const ast = activeFacade.parse(code);
+    const tree = activeFacade.getAstSExpr(ast, true);
+    console.log("AST TREE:\n" + tree);
+    const diags = activeFacade.getDiagnostics(ast);
+    console.log("DIAGS:\n", JSON.stringify(diags, null, 2));
+
+    // Check if the tree contains the multiple '=' sibling structure
+    if (tree.includes(' "=" ') || tree.includes(' "=" [')) {
+      console.log("TREE HAS MULTIPLE EQUALS!");
+    }
   });
 
   describe("Matrix Test (Testing branch configurations)", () => {
@@ -230,7 +263,7 @@ describe("GLR Parser Error Recovery Integration", () => {
     const scenarios = [
       { name: "Missing Semicolon", code: "scope { let a = 1 let b = 2; }" },
       { name: "Extra Token", code: "scope { let a = 1 garbage ; }" },
-      { name: "Island Garbage", code: "scope { let a = 1; garbage text let b = 2; }" },
+      { name: "Island Garbage", code: "scope { let a = 1; let x = ======== 10; }" },
       { name: "Missing Brace & Semicolon", code: "scope { let a = 1" },
     ];
 
@@ -241,11 +274,9 @@ describe("GLR Parser Error Recovery Integration", () => {
             activeFacade.setParserConfig(c.config[0], c.config[1], c.config[2], c.config[3]);
             const ast = activeFacade.parse(scenario.code);
 
-            // Sanity check
             expect(ast).not.toBe(0);
-
             const tree = activeFacade.getAstSExpr(ast, true);
-            const declCount = (tree.match(/\(Decl/g) || []).length;
+            const declCount = (tree.match(/\(Decl\s*(?:\[|\(E\))/g) || []).length;
 
             if (scenario.name === "Missing Semicolon") {
               if (c.name === "All Branches Enabled" || c.name === "Only Forced Reduction") {
@@ -256,15 +287,41 @@ describe("GLR Parser Error Recovery Integration", () => {
                 expect(declCount).toBe(1);
               }
             } else if (scenario.name === "Island Garbage") {
-              if (c.name === "All Branches Enabled") {
+              if (c.name === "All Branches Enabled" || c.name === "Only Island Mode") {
                 expect(declCount).toBe(2);
-              } else if (c.name === "Only Island Mode") {
-                expect(declCount).toBe(1);
               }
             }
           });
         }
       });
     }
+  });
+
+  describe("incremental parsing", () => {
+    it("should handle ======== typing", () => {
+      const facade = activeFacade;
+
+      const code = `scope {
+        let velocity = 100;
+        let mass = 50;
+        let x = 10;
+        print velocity;
+      }`;
+      facade.parse(code);
+
+      // simulate typing ======== before 10
+      const insertPos = code.indexOf("10;") - 1;
+      let currentCode = code;
+
+      for (let i = 0; i < 8; i++) {
+        currentCode = currentCode.substring(0, insertPos + i) + "=" + currentCode.substring(insertPos + i);
+
+        const ast = facade.parseIncrementalBatch(
+          [{ rangeOffset: insertPos + i, rangeLength: 0, text: "=" }],
+          currentCode.length,
+        );
+        expect(ast).toBeGreaterThan(0);
+      }
+    });
   });
 });

@@ -519,13 +519,60 @@ export function generateParserTables(
   lintSwitchStr += "  }\n}\n";
   code += lintSwitchStr;
 
-  code += `\nexport * from "./engine";\nexport * from "./lsp";\nexport * from "./graph";\nexport * from "./arena";\nexport * from "./parser-loop";\nexport * from "./gss";\nexport * from "./recovery";\nexport * from "./blt";\n`;
+  const extractExports = (codeStr: string, moduleName: string) => {
+    const exports: string[] = [];
+    const regex = /^export\s+(function|const|let|var)\s+([a-zA-Z0-9_]+)/gm;
+    let match;
+    const ignoreList = new Set([
+      "action_offsets",
+      "action_data",
+      "goto_offsets",
+      "goto_data",
+      "mrd_data",
+      "token_insert_costs",
+      "token_delete_costs",
+      "sorted_insertion_symbols",
+      "prod_lengths",
+      "prod_right_offsets",
+      "prod_right_symbols",
+      "prod_lhs",
+      "prod_is_structural",
+      "prod_is_invisible",
+      "prod_is_list",
+      "prod_dynamic_prec",
+      "prod_aliases",
+      "alias_data",
+      "type_fields",
+      "type_field_data",
+    ]);
+    while ((match = regex.exec(codeStr)) !== null) {
+      if (!ignoreList.has(match[2])) {
+        exports.push(match[2]);
+      }
+    }
+    if (exports.length > 0) {
+      return `export { ${exports.join(", ")} } from "${moduleName}";\n`;
+    }
+    return "";
+  };
+
+  code += "\n";
+  code += extractExports(engineCode, "./engine");
+  code += extractExports(lspCode, "./lsp");
+  code += extractExports(generateCodeGraphBridge(originalGrammar), "./graph");
+  code += extractExports(arenaCode, "./arena");
+  code += extractExports(parserLoopCode, "./parser-loop");
+  code += extractExports(gssCode, "./gss");
+  code += extractExports(recoveryCode, "./recovery");
+  code += extractExports(bltCode, "./blt");
 
   if (originalGrammar.typeSystem) {
-    code += `\nexport * from "./typesys";\n`;
+    const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
+    code += "\n" + extractExports(tsCode, "./typesys");
   }
   if (originalGrammar.semantics) {
-    code += `\nexport * from "./reasoner";\n`;
+    const rsCode = generateReasoner(originalGrammar, grammar);
+    code += "\n" + extractExports(rsCode, "./reasoner");
   }
 
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {

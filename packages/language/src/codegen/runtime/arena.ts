@@ -524,6 +524,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
   if (isTainted) {
     initialFlags |= (FLAG_IS_TAINED as u32) << 10;
+    debugLog(999, ptr, type, 0);
   }
 
   let node = changetype<ASTNode>(ptr);
@@ -631,6 +632,9 @@ export function getNodeFlags(ptr: u32): u16 {
 }
 
 export function setNodeFlags(ptr: u32, flags: u16): void {
+  if ((flags & FLAG_IS_TAINED) != 0) {
+    debugLog(998, ptr, flags, 0);
+  }
   changetype<ASTNode>(ptr).flags = flags;
 }
 

@@ -1920,13 +1920,13 @@ function processAcceptAction(head: ParseHead): void {
   
   
 
-  if (
+  if (g_simulatorMaxTokens == 0 && (
     acceptedNode == 0 ||
     effectiveCost < bestAcceptedCost ||
     (effectiveCost == bestAcceptedCost && realBytes > bestAcceptedRealBytes) ||
     (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad < bestAcceptedPad) ||
     (effectiveCost == bestAcceptedCost && realBytes == bestAcceptedRealBytes && firstPad == bestAcceptedPad && t_count < bestAcceptedCount)
-  ) {
+  )) {
     if (t_count <= 1) {
       bestAcceptingHead = changetype<u32>(head);
       bestAcceptedCost = effectiveCost;

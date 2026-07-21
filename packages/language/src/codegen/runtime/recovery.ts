@@ -147,6 +147,7 @@ function searchBudgetedInsertions(
   laTokPos: i32 = -1
 ): i32 {
   if (depth >= maxDepth) return -1;
+  debugLog(222, depth, currentState, budget);
   
   let actOffset = action_offsets[currentState];
   if (actOffset < 0 || actOffset >= action_data.length) return -1;
@@ -507,7 +508,7 @@ export function recoverUnwindAndMutate(
                   }
                 }
 
-                debugLog(111, unwindDepth, delHeadCost, canAccept ? 1 : 0);
+
                 let delHead = allocParseHead(
                   recState,
                   mergedNode,
@@ -753,6 +754,20 @@ export function recoverIslandMode(
             let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok, 0) ? 1 : 0;
 
             if (canAcceptTok > 0) {
+              let simRes = simulateLookahead(currPop, null, 0, tok, nextTok, nextNextTok, 999999, 3, searchPos, lexLen);
+              debugLog(111, tok, searchPos, currPop.state);
+              debugLog(112, simRes, 0, 0);
+              if (simRes == 0) {
+                canAcceptTok = 0;
+              }
+            }
+            if (canAcceptTok == 0 && canAcceptNext > 0) {
+              if (simulateLookahead(currPop, null, 0, nextTok, nextNextTok, -1, 999999, 2, nextPos, nextTokLen) == 0) {
+                canAcceptNext = 0;
+              }
+            }
+
+            if (canAcceptTok > 0) {
               foundTarget = currPop.state;
               resumePos = searchPos;
               targetScannerState = stateBeforeLex;
@@ -923,11 +938,10 @@ export function recoverIslandMode(
             // start up to the resume position (where the parser picks back
             // up). The parser resumes at `resumePos` and the next token's
             // padding is computed relative to that position. If we used
-            // `actualEnd` (end of last garbage token) instead, there would
-            // be a gap of uncovered bytes (trailing whitespace/newlines
-            // between the error tokens and the resume point) that no node
-            // accounts for, causing all subsequent sibling offsets to drift.
-            let islandByteLen = (resumePos as u32) > head.pos + islandPad ? (resumePos as u32) - head.pos - islandPad : 0;
+            // `head.pos`, any gap between the re-appended nodes (gapStart)
+            // and the failure point (head.pos) would cause the byte length
+            // to fall short, leading to cascading offset drift.
+            let islandByteLen = (resumePos as u32) > gapStart + islandPad ? (resumePos as u32) - gapStart - islandPad : 0;
             setNodeByteLength(islandLeaf, islandByteLen);
 
             if ((resumePos as u32) == head.pos && foundTarget == head.state) {
@@ -946,10 +960,15 @@ export function recoverIslandMode(
               for (let k = childCount - 1; k >= 0; k--) {
                 let child = t_globalChildNodes[k];
                 if (child == 0) continue;
+                
+                let clonedChild = cloneNodeShallow(child);
+                setNodeFlags(clonedChild, getNodeFlags(clonedChild) | FLAG_HAS_ERROR);
+                
                 if (mergedNode != 0) {
-                  mergedNode = appendToList(mergedNode, child, parentType as u16, 0);
+                  // appendToList handles its own cloning, but passing clonedChild is safer
+                  mergedNode = appendToList(mergedNode, clonedChild, parentType as u16, 0);
                 } else {
-                  mergedNode = cloneNodeShallow(child);
+                  mergedNode = clonedChild;
                 }
               }
 

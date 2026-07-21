@@ -238,6 +238,8 @@ export interface Diagnostic {
   message: string;
   severity: number;
   code?: number | string;
+  startCharOffset?: number;
+  endCharOffset?: number;
 }
 
 declare const __SYNTAX_NAMES_LITERAL__: string[];
@@ -633,7 +635,15 @@ export class LspFacade {
     // Count new newlines in changeText
     const newLineStarts: number[] = [];
     for (let i = 0; i < changeText.length; i++) {
-      if (changeText.charCodeAt(i) === 10) {
+      const c = changeText.charCodeAt(i);
+      if (c === 13) {
+        if (i + 1 < changeText.length && changeText.charCodeAt(i + 1) === 10) {
+          newLineStarts.push((rangeOffset + i + 2) * 2);
+          i++; // Skip LF
+        } else {
+          newLineStarts.push((rangeOffset + i + 1) * 2);
+        }
+      } else if (c === 10 || c === 0x2028 || c === 0x2029) {
         newLineStarts.push((rangeOffset + i + 1) * 2);
       }
     }
@@ -674,7 +684,16 @@ export class LspFacade {
 
     const starts: number[] = [0];
     for (let i = 0; i < lenChars; i++) {
-      if (textBuffer[i] === 10) {
+      const c = textBuffer[i];
+      if (c === 13) {
+        // CR
+        if (i + 1 < lenChars && textBuffer[i + 1] === 10) {
+          starts.push((i + 2) * 2);
+          i++; // Skip LF
+        } else {
+          starts.push((i + 1) * 2);
+        }
+      } else if (c === 10 || c === 0x2028 || c === 0x2029) {
         starts.push((i + 1) * 2);
       }
     }
@@ -940,14 +959,17 @@ export class LspFacade {
         endPos = { line: endPos.line - 1, character: startPos.character + 1 };
       }
 
+      const range = {
+        start: startPos,
+        end: endPos,
+      };
       diags.push({
-        range: {
-          start: startPos,
-          end: endPos,
-        },
+        range,
         message: msg,
         severity: severity,
         code: codeStr,
+        startCharOffset: Math.floor(startByte / 2),
+        endCharOffset: Math.floor(endByte / 2),
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -969,7 +991,31 @@ export class LspFacade {
       return a.range.start.character - b.range.start.character;
     });
 
-    return uniqueDiags;
+    const mergedDiags: Diagnostic[] = [];
+    for (const d of uniqueDiags) {
+      if (mergedDiags.length > 0) {
+        const prev = mergedDiags[mergedDiags.length - 1];
+        // Merge if both are generic Syntax Errors and they are contiguous.
+        // This consolidates fragmented contiguous errors (e.g. from Island Mode)
+        // into a single cohesive squiggle.
+        if (
+          prev.message === "Syntax Error" &&
+          d.message === "Syntax Error" &&
+          prev.endCharOffset === d.startCharOffset &&
+          prev.code === undefined &&
+          d.code === undefined
+        ) {
+          prev.range.end = d.range.end;
+          if (prev.endCharOffset !== undefined && d.endCharOffset !== undefined) {
+            prev.endCharOffset = Math.max(prev.endCharOffset, d.endCharOffset);
+          }
+          continue;
+        }
+      }
+      mergedDiags.push(d);
+    }
+
+    return mergedDiags;
   }
 
   getSemanticTokens(astRoot: number): Uint32Array {
@@ -1107,7 +1153,8 @@ export class LspFacade {
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
       const isInvisible = (typeFlags & (1 << 12)) !== 0;
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
+      let shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
+      shouldPrint = true;
 
       let childStrs: string[] = [];
 
@@ -1211,7 +1258,7 @@ export class LspFacade {
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
 
       const isInvisible = (typeFlags & (1 << 12)) !== 0;
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
+      const shouldPrint = true; // Debug: print all nodes
 
       let renderedChildren = 0;
 
@@ -1502,8 +1549,21 @@ export class LspFacade {
         return;
       }
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
-        buildDeletions(oldPtr);
-        buildInsertions(newPtr, newInvisiblePad);
+        const typeFlags = mem32[newPtr / 4];
+        const newTypeId = typeFlags & 0x03ff;
+        let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
+        if (typeName.startsWith("T_")) typeName = typeName.substring(2);
+        const envHashPadding = mem32[(newPtr + 4) / 4];
+        const rawPad = typeFlags >>> 19;
+        const isFat = (envHashPadding >>> 23) & 1;
+        let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        const len = envHashPadding & 0x007fffff;
+        const flags = (typeFlags >> 10) & 0x1ff;
+        const newCh = getFlattenedChildren(newPtr);
+        pad += newInvisiblePad;
+
+        listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, flags, newCh);
+        opsCount++;
         return;
       }
       if (!oldPtr) {

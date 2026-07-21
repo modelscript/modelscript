@@ -16,6 +16,7 @@ import {
   FLAG_INVISIBLE,
   FLAG_IS_TAINED,
   FLAG_IS_INSERTED,
+  FLAG_IS_LIST,
   getInputBuffer,
 } from "./arena";
 import { errorCount, getErrorEnd, getErrorStart, NODE_TYPE_ERROR } from "./engine";
@@ -58,11 +59,27 @@ export function lsp_getBinaryLength(): u32 {
  */
 let lastDiagStart: u32 = 0xffffffff;
 let lastDiagEnd: u32 = 0xffffffff;
+let lastLintId: u32 = 0xffffffff;
 
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
   if (t_lspBinaryBuffer.length >= 1000 * 7) return;
-  // Duplicate diagnostic filtering is now performed in O(N log N) on the JS side
-  // via Set/Sort to prevent WASM thread blocking.
+
+  if (lintId == lastLintId && start <= lastDiagEnd && lastDiagStart != 0xffffffff) {
+    if (end > lastDiagEnd) {
+      lastDiagEnd = end;
+      t_lspBinaryBuffer.set(t_lspBinaryBuffer.length - 6, end);
+    }
+    if (start < lastDiagStart) {
+      lastDiagStart = start;
+      t_lspBinaryBuffer.set(t_lspBinaryBuffer.length - 7, start);
+    }
+    return;
+  }
+
+  lastDiagStart = start;
+  lastDiagEnd = end;
+  lastLintId = lintId;
+
   t_lspBinaryBuffer.push(start);
   t_lspBinaryBuffer.push(end);
   t_lspBinaryBuffer.push(lintId);
@@ -184,6 +201,10 @@ function lsp_clearVisited(): void {
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
 
+  lastDiagStart = 0xffffffff;
+  lastDiagEnd = 0xffffffff;
+  lastLintId = 0xffffffff;
+
   // Note: Engine-level syntax errors (from errorCount/errorQueue) are no longer iterated here.
   // The recovery algorithms (Deletion Recovery, Insertion Recovery, Island Mode) all correctly encode their
   // errors into the AST (as NODE_TYPE_ERROR or zero-length inserted tokens).
@@ -263,76 +284,57 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         }
         lsp_allocDiagnostic(dStart, dEnd, type);
       }
-    } else if (inError || isErrorNode || (isLeaf && (flags & FLAG_HAS_ERROR) != 0)) {
-      if (pad > 0 && !isTainted && !inTainted) {
-        let inputPtr = getInputBuffer();
-        let inGarbage = false;
-        let hasFoundGarbage = false;
-        let garbageStart: u32 = 0;
-        let i: u32 = 0;
-        while (i < pad) {
-          let c = load<u16>(inputPtr + start + i);
-          
-          if (c == 10 && hasFoundGarbage) {
-            if (inGarbage) {
-              lsp_allocDiagnostic(garbageStart, start + i, 0);
-              inGarbage = false;
+    } else if (isErrorNode) {
+      if (!isTainted && !inTainted) {
+        let actualStart = nodeStart;
+        if (pad > 0) {
+          let inputPtr = getInputBuffer();
+          for (let i: u32 = 0; i < pad; i += 2) {
+            let c = load<u16>(inputPtr + start + i);
+            if (c != 32 && c != 9 && c != 10 && c != 13) {
+               actualStart = start + i;
+               break;
             }
-            break;
           }
-          
-          let cNext: u16 = (i + 2 < pad) ? load<u16>(inputPtr + start + i + 2) : 0;
-          
-          if (c == 47 && cNext == 47) { // "//"
-            if (inGarbage) { lsp_allocDiagnostic(garbageStart, start + i, 0); inGarbage = false; }
-            while (i < pad && load<u16>(inputPtr + start + i) != 10) i += 2;
-            continue;
-          } else if (c == 47 && cNext == 42) { // "/*"
-            if (inGarbage) { lsp_allocDiagnostic(garbageStart, start + i, 0); inGarbage = false; }
-            i += 4;
-            while (i < pad) {
-               if (load<u16>(inputPtr + start + i) == 42 && i + 2 < pad && load<u16>(inputPtr + start + i + 2) == 47) {
-                  i += 4; break;
-               }
-               i += 2;
+        } else {
+          // If pad is 0, the whitespace might be baked into the length of the node
+          // (e.g. from Island Mode appending a child with padding into a 0-pad ERROR node).
+          let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+          for (let i: u32 = 0; i < len; i += step) {
+             let c = peekChar(actualStart + i);
+             if (c != 32 && c != 9 && c != 10 && c != 13) {
+                 actualStart += i;
+                 break;
+             }
+          }
+        }
+        lsp_allocDiagnostic(actualStart, nodeEnd, 0);
+      }
+    } else if (!inError && isLeaf && (flags & FLAG_HAS_ERROR) != 0) {
+      if (!isTainted && !inTainted) {
+        let actualStart = nodeStart;
+        if (pad > 0) {
+          let inputPtr = getInputBuffer();
+          for (let i: u32 = 0; i < pad; i += 2) {
+            let c = load<u16>(inputPtr + start + i);
+            if (c != 32 && c != 9 && c != 10 && c != 13) {
+               actualStart = start + i;
+               break;
             }
-            continue;
           }
-          
-          let isWs = (c == 32 || c == 9 || c == 10 || c == 13);
-          if (!isWs && !inGarbage) {
-            inGarbage = true;
-            hasFoundGarbage = true;
-            garbageStart = start + i;
-          } else if (isWs && inGarbage) {
-            inGarbage = false;
-            lsp_allocDiagnostic(garbageStart, start + i, 0);
+        } else {
+          let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+          for (let i: u32 = 0; i < len; i += step) {
+             let c = peekChar(actualStart + i);
+             if (c != 32 && c != 9 && c != 10 && c != 13) {
+                 actualStart += i;
+                 break;
+             }
           }
-          i += 2;
         }
-        if (inGarbage) {
-          lsp_allocDiagnostic(garbageStart, start + pad, 0);
-        }
+        lsp_allocDiagnostic(actualStart, nodeEnd, 0);
       }
-
-      if (isLeaf && len > 0 && !isTainted && !inTainted) {
-        // Check if token is entirely whitespace
-        let allWhitespace = true;
-        let inputPtr = getInputBuffer();
-        for (let i: u32 = 0; i < len; i += 2) {
-          let c = load<u16>(inputPtr + nodeStart + i);
-          if (c != 32 && c != 9 && c != 10 && c != 13) {
-            allWhitespace = false;
-            break;
-          }
-        }
-        
-        // Garbage token or token inside discarded Island Mode block
-        if (!allWhitespace) {
-          lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
-        }
-      }
-    } else if (hasInsertedSibling && isLeaf && len > 0 && !isErrorNode && !isTainted && !inTainted) {
+    } else if (!inError && hasInsertedSibling && isLeaf && len > 0 && !isErrorNode && !isTainted && !inTainted) {
       // Real token consumed by Deletion Recovery into a recovered grammar
       // node (e.g., an 'a' token inside a Usage with inserted ghost 'print').
       // This token is structurally invalid and needs a squiggle even though
@@ -512,6 +514,13 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         }
 
         if (targetChild != 0) {
+          let targetFlags = getNodeFlags(targetChild);
+          while ((targetFlags & FLAG_INVISIBLE) != 0 && (targetFlags & FLAG_IS_LIST) != 0) {
+            let inner = getNodeFirstChild(targetChild);
+            if (inner == 0) break;
+            targetChild = inner;
+            targetFlags = getNodeFlags(targetChild);
+          }
           let cLen = getNodeByteLength(targetChild);
           if (cLen > 0) {
   
@@ -606,7 +615,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     let nodeEnd = nodeStart + getNodeByteLength(node);
 
     let isFolding = load<u32>(type_is_folding + (type << 2));
-    if (isFolding != 0 && !inError) {
+    if (isFolding != 0 && !inError && (flags & FLAG_INVISIBLE) == 0) {
 
       t_lspBinaryBuffer.push(nodeStart);
       t_lspBinaryBuffer.push(nodeEnd);
@@ -684,7 +693,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
     let nodeEnd = nodeStart + getNodeByteLength(node);
 
     let isOutline = load<u32>(type_is_outline + (type << 2));
-    if (isOutline != 0 && !inError) {
+    if (isOutline != 0 && !inError && (flags & FLAG_INVISIBLE) == 0) {
 
       t_lspBinaryBuffer.push(nodeStart);
       t_lspBinaryBuffer.push(nodeEnd);
@@ -784,11 +793,11 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     let child = getNodeFirstChild(node);
     if (child != 0) {
        ensureTraverseStack(stackTop + 1);
-      let currOffset = start + pad;
+      let currOffset: u32 = tokenStart;
       while (child != 0) {
           let cPad = getNodePadding(child);
           let cLen = getNodeByteLength(child);
-          let cFullEnd = currOffset + cPad + cLen;
+          let cFullEnd: u32 = currOffset + cPad + cLen;
           if (targetOffset >= currOffset && targetOffset <= cFullEnd) {
              t_lspTraverseStack[stackTop] = child;
              t_lspOffsetStack[stackTop] = currOffset;

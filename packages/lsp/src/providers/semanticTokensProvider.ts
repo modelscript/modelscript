@@ -269,6 +269,8 @@ function computeSysML2SemanticTokens(
     modifier: number;
   }[] = [];
 
+  const seenTokens = new Set<string>();
+
   // SysML2 node types for definition names (after 'def Something')
   const definitionTypes = new Set([
     "PartDefinition",
@@ -366,10 +368,8 @@ function computeSysML2SemanticTokens(
       const typeIndex = tokenTypes.indexOf(tokenType);
       if (typeIndex >= 0 && node.startPosition.row === node.endPosition.row) {
         const length = node.endPosition.column - node.startPosition.column;
-        if (
-          length > 0 &&
-          !rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)
-        ) {
+        if (length > 0 && !seenTokens.has(`${node.startPosition.row}:${node.startPosition.column}`)) {
+          seenTokens.add(`${node.startPosition.row}:${node.startPosition.column}`);
           rawTokens.push({
             line: node.startPosition.row,
             char: node.startPosition.column,
@@ -440,6 +440,8 @@ export function registerSemanticTokensProvider(
       modifier: number;
     }[] = [];
 
+    const seenTokens = new Set<string>();
+
     const traverseTree = (node: any) => {
       let tokenType: string | null = null;
       const modifier = 0;
@@ -503,7 +505,8 @@ export function registerSemanticTokensProvider(
       if (tokenType !== null) {
         const typeIndex = tokenTypes.indexOf(tokenType);
         if (typeIndex >= 0) {
-          if (!rawTokens.some((t) => t.line === node.startPosition.row && t.char === node.startPosition.column)) {
+          if (!seenTokens.has(`${node.startPosition.row}:${node.startPosition.column}`)) {
+            seenTokens.add(`${node.startPosition.row}:${node.startPosition.column}`);
             rawTokens.push({
               line: node.startPosition.row,
               char: node.startPosition.column,

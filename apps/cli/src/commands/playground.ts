@@ -497,19 +497,29 @@ scope {
                         if (msg.error) reject(msg.error);
                         else resolve(msg.result);
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
-                        const markers = msg.params.diagnostics.map(d => ({
-                            severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
-                                    : d.severity === 2 ? monaco.MarkerSeverity.Warning
-                                    : d.severity === 3 ? monaco.MarkerSeverity.Info
-                                    : monaco.MarkerSeverity.Hint,
-                            startLineNumber: d.range.start.line + 1,
-                            startColumn: d.range.start.character + 1,
-                            endLineNumber: d.range.end.line + 1,
-                            endColumn: d.range.end.character + 1,
-                            message: d.message,
-                            code: d.code ? String(d.code) : undefined,
-                            source: d.source
-                        }));
+                        const markers = msg.params.diagnostics.map(d => {
+                            let startPos, endPos;
+                            if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
+                                startPos = this.model.getPositionAt(d.startCharOffset);
+                                endPos = this.model.getPositionAt(d.endCharOffset);
+                            } else {
+                                startPos = { lineNumber: d.range.start.line + 1, column: d.range.start.character + 1 };
+                                endPos = { lineNumber: d.range.end.line + 1, column: d.range.end.character + 1 };
+                            }
+                            return {
+                                severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
+                                        : d.severity === 2 ? monaco.MarkerSeverity.Warning
+                                        : d.severity === 3 ? monaco.MarkerSeverity.Info
+                                        : monaco.MarkerSeverity.Hint,
+                                startLineNumber: startPos.lineNumber,
+                                startColumn: startPos.column,
+                                endLineNumber: endPos.lineNumber,
+                                endColumn: endPos.column,
+                                message: d.message,
+                                code: d.code ? String(d.code) : undefined,
+                                source: d.source
+                            };
+                        });
                         console.log("Client received diagnostics:", markers);
                         monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
                     } else if (msg.type === 'statusUpdate') {
@@ -728,7 +738,9 @@ scope {
                                 } else if (op === 2) { // UPDATE
                                     const oldNode = nodeMap.current.get(oldPtr);
                                     nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, flags, children });
-                                    nodeMap.current.delete(oldPtr);
+                                    if (ptr !== oldPtr) {
+                                        nodeMap.current.delete(oldPtr);
+                                    }
                                     hasUpdates = true;
                                 }
                             }
@@ -1153,6 +1165,8 @@ function triggerDiagnostics(changes = null) {
         const diagnostics = rawDiags.map(d => ({
             severity: d.severity,
             range: d.range,
+            startCharOffset: d.startCharOffset,
+            endCharOffset: d.endCharOffset,
             message: d.message,
             code: d.code,
             source: currentLangName
