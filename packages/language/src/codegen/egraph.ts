@@ -3,6 +3,8 @@ import { compileRewriteRules } from "./compile_rules.js";
 
 export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): string {
   let out =
+    'import { arenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "./arena";\n' +
+    'import { DaeBuilder } from "./dae";\n\n' +
     "// --- EGraph Engine (Zero-GC) ---\n" +
     "export function unwrapNode(node: u32): u32 {\n" +
     "    return node;\n" +
@@ -169,7 +171,7 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
   } else {
     out += "export function saturateEGraph(): void {}\n";
     out += "export function initDPExtractor(): void {}\n";
-    out += "export function extractAst(rootClass: u32): u32 { return 0; }\n";
+    out += "export function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\n";
   }
 
   out +=

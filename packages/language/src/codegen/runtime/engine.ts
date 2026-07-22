@@ -51,6 +51,7 @@ import {
   sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
+  expected_tokens as _expected_tokens,
   currentScannerState,
   initExtras,
   inputLength,
@@ -104,27 +105,51 @@ class StaticTable {
   }
 }
 
-export const action_offsets = changetype<StaticTable>(_action_offsets);
-export const action_data = changetype<StaticTable>(_action_data);
-export const goto_offsets = changetype<StaticTable>(_goto_offsets);
-export const goto_data = changetype<StaticTable>(_goto_data);
-export const mrd_data = changetype<StaticTable>(_mrd_data);
-export const token_insert_costs = changetype<StaticTable>(_token_insert_costs);
-export const token_delete_costs = changetype<StaticTable>(_token_delete_costs);
-export const sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
+export let action_offsets: StaticTable = changetype<StaticTable>(0);
+export let action_data: StaticTable = changetype<StaticTable>(0);
+export let goto_offsets: StaticTable = changetype<StaticTable>(0);
+export let goto_data: StaticTable = changetype<StaticTable>(0);
+export let mrd_data: StaticTable = changetype<StaticTable>(0);
+export let token_insert_costs: StaticTable = changetype<StaticTable>(0);
+export let token_delete_costs: StaticTable = changetype<StaticTable>(0);
+export let sorted_insertion_symbols: StaticTable = changetype<StaticTable>(0);
 
-export const prod_lengths = changetype<StaticTable>(_prod_lengths);
-export const prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);
-export const prod_right_symbols = changetype<StaticTable>(_prod_right_symbols);
-export const prod_lhs = changetype<StaticTable>(_prod_lhs);
-export const prod_is_structural = changetype<StaticTable>(_prod_is_structural);
-export const prod_is_invisible = changetype<StaticTable>(_prod_is_invisible);
-export const prod_is_list = changetype<StaticTable>(_prod_is_list);
-export const prod_dynamic_prec = changetype<StaticTable>(_prod_dynamic_prec);
-export const prod_aliases = changetype<StaticTable>(_prod_aliases);
-export const alias_data = changetype<StaticTable>(_alias_data);
-export const type_fields = changetype<StaticTable>(_type_fields);
-export const type_field_data = changetype<StaticTable>(_type_field_data);
+export let prod_lengths: StaticTable = changetype<StaticTable>(0);
+export let prod_right_offsets: StaticTable = changetype<StaticTable>(0);
+export let prod_right_symbols: StaticTable = changetype<StaticTable>(0);
+export let prod_lhs: StaticTable = changetype<StaticTable>(0);
+export let prod_is_structural: StaticTable = changetype<StaticTable>(0);
+export let prod_is_invisible: StaticTable = changetype<StaticTable>(0);
+export let prod_is_list: StaticTable = changetype<StaticTable>(0);
+export let prod_dynamic_prec: StaticTable = changetype<StaticTable>(0);
+export let prod_aliases: StaticTable = changetype<StaticTable>(0);
+export let alias_data: StaticTable = changetype<StaticTable>(0);
+export let type_fields: StaticTable = changetype<StaticTable>(0);
+export let type_field_data: StaticTable = changetype<StaticTable>(0);
+
+export function initStaticTables(): void {
+  action_offsets = changetype<StaticTable>(_action_offsets);
+  action_data = changetype<StaticTable>(_action_data);
+  goto_offsets = changetype<StaticTable>(_goto_offsets);
+  goto_data = changetype<StaticTable>(_goto_data);
+  mrd_data = changetype<StaticTable>(_mrd_data);
+  token_insert_costs = changetype<StaticTable>(_token_insert_costs);
+  token_delete_costs = changetype<StaticTable>(_token_delete_costs);
+  sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
+  prod_lengths = changetype<StaticTable>(_prod_lengths);
+  prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);
+  prod_right_symbols = changetype<StaticTable>(_prod_right_symbols);
+  prod_lhs = changetype<StaticTable>(_prod_lhs);
+  prod_is_structural = changetype<StaticTable>(_prod_is_structural);
+  prod_is_invisible = changetype<StaticTable>(_prod_is_invisible);
+  prod_is_list = changetype<StaticTable>(_prod_is_list);
+  prod_dynamic_prec = changetype<StaticTable>(_prod_dynamic_prec);
+  prod_aliases = changetype<StaticTable>(_prod_aliases);
+  alias_data = changetype<StaticTable>(_alias_data);
+  type_fields = changetype<StaticTable>(_type_fields);
+  type_field_data = changetype<StaticTable>(_type_field_data);
+  expected_tokens = _expected_tokens;
+}
 
 
 
@@ -448,6 +473,7 @@ export function getLoopIterations(): u32 {
 
 /** Bootstraps the WASM memory arena with the requested byte capacity (default 96MB). */
 export function initCompiler(): void {
+  initStaticTables();
   const ARENA_SIZE = 96 * 1024 * 1024;
   initArena(ARENA_SIZE);
   initExtras();

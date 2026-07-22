@@ -147,19 +147,16 @@ class SharedState {
   }
 }
 
-const shared_state_ptr = changetype<UnmanagedUint32Array>(memory.data<u32>([0]));
+let global_shared_ptr: u32 = 0;
 
 /**
  * Retrieves the shared cross-worker memory state.
- * Thread-safe initialization using an atomic compare-and-exchange lock.
  */
 export function S(): SharedState {
-  let ptr = shared_state_ptr.atomicGet(0);
-  if (ptr == 0) {
-    let newPtr = atomicChunkAlloc(256); // Allocate 256 bytes for global state
-    memory.fill(newPtr as usize, 0, 256);
-    let old = shared_state_ptr.atomicCmpxchg(0, 0, newPtr);
-    if (old != 0) return changetype<SharedState>(old);
+  if (global_shared_ptr == 0) {
+    let newPtr = atomicChunkAlloc(512); // Allocate 512 bytes for global state
+    memory.fill(newPtr as usize, 0, 512);
+    global_shared_ptr = newPtr;
 
     let state = changetype<SharedState>(newPtr);
     state.currentInputBufferSize = INPUT_BUFFER_SIZE;
@@ -180,7 +177,7 @@ export function S(): SharedState {
     state.activeRootsPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(100 * 4)); // Up to 100 roots
     return state;
   }
-  return changetype<SharedState>(ptr);
+  return changetype<SharedState>(global_shared_ptr);
 }
 
 /**

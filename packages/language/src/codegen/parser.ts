@@ -80,11 +80,26 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc } from "./arena";\nimport { DaeBuilder } from "./dae";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {\n  let ptr = atomicChunkAlloc(numElements * 4);\n  let arr = changetype<UnmanagedUint32Array>(ptr);\n  for (let i = 0; i < numElements; i++) {\n     let val: u32 = 0;\n     for (let j = 0; j < 8; j++) {\n        let c = hex.charCodeAt(i * 8 + j);\n        let nibble = c >= 97 ? c - 97 + 10 : (c >= 65 ? c - 65 + 10 : c - 48);\n        val = (val << 4) | (nibble as u32);\n     }\n     arr[i] = val;\n  }\n  return ptr;\n}\n\n`;
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
+  let raw = atomicChunkAlloc((numElements + 1) * 4);
+  let ptr = (raw + 3) & ~3;
+  store<i32>(ptr, numElements);
+  let dataPtr = ptr + 4;
+  let arr = changetype<UnmanagedUint32Array>(dataPtr);
+  for (let i = 0; i < numElements; i++) {
+     let val: u32 = 0;
+     for (let j = 0; j < 8; j++) {
+        let c = hex.charCodeAt(i * 8 + j);
+        let nibble = c >= 97 ? c - 97 + 10 : (c >= 65 ? c - 65 + 10 : c - 48);
+        val = (val << 4) | (nibble as u32);
+     }
+     arr[i] = val;
+  }
+  return dataPtr;
+}\n\nexport let expected_tokens: usize = 0;\n\n`;
 
-  // Lexer, Types, etc.
+  // Types & SyntaxType enum
   code += generateTypes(originalGrammar, grammar);
-  code += generateLexer(originalGrammar, grammar);
 
   code += `\n// GLR Parser Tables\n`;
   code += `// Generated for ${grammar.productions.length} productions and ${table.actionTable.size} states\n\n`;
@@ -501,11 +516,18 @@ export function generateParserTables(
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
 
+  code += generateLexer(originalGrammar, grammar);
+
   code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
-  let lintSwitchStr = `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
+  let lintSwitchStr = "";
   if (originalGrammar.lints) {
+    const lintFns = Object.keys(originalGrammar.lints).map((n) => `lint_${n}`);
+    if (lintFns.length > 0) {
+      code += `import { ${lintFns.join(", ")} } from "./graph";\n`;
+    }
+    lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
     let nextLintId = 2000;
     const nodeLints = new Map<string, string[]>();
     for (const [lintName, lint] of Object.entries(originalGrammar.lints)) {
@@ -523,8 +545,10 @@ export function generateParserTables(
       }
       lintSwitchStr += `      break;\n`;
     }
+    lintSwitchStr += "  }\n}\n";
+  } else {
+    lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {}\n`;
   }
-  lintSwitchStr += "  }\n}\n";
   code += lintSwitchStr;
 
   const extractExports = (codeStr: string, moduleName: string) => {
@@ -552,6 +576,7 @@ export function generateParserTables(
       "alias_data",
       "type_fields",
       "type_field_data",
+      "expected_tokens",
     ]);
     while ((match = regex.exec(codeStr)) !== null) {
       if (!ignoreList.has(match[2])) {

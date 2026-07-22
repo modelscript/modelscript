@@ -2,8 +2,8 @@ import { TransformCombinator } from "../dsl.js";
 
 export interface RewriteRule {
   name: string;
-  lhs: TransformCombinator;
-  rhs: TransformCombinator;
+  lhs: TransformCombinator | string;
+  rhs: TransformCombinator | string;
 }
 
 export function compileRewriteRules(rules: RewriteRule[]): string {
@@ -89,7 +89,7 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    }\n";
   out += "}\n\n";
 
-  out += "export function extractAst(eClass: u32): u32 {\n";
+  out += "export function extractAst(eClass: u32, dae: DaeBuilder): u32 {\n";
   out += "    let root = ufFind(eClass);\n";
   out += "    let key = load<u64>(dpKeyOffset + root * 8);\n";
   out += "    if (key == 0) return 0; // Unreachable or not evaluated\n";
@@ -100,8 +100,8 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    } else if (op == 1280 || op == 1281 || op == 1282 || op == 1283) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let right = (key & 0xFFFFFF) as u32;\n";
-  out += "        let leftNode = extractAst(left);\n";
-  out += "        let rightNode = extractAst(right);\n";
+  out += "        let leftNode = extractAst(left, dae);\n";
+  out += "        let rightNode = extractAst(right, dae);\n";
   out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "        let binOp: u32 = 0;\n";
   out += "        if (op == 1280) binOp = 0;\n";
@@ -150,8 +150,20 @@ function getOpCode(op: string): number {
 
 function compileRule(rule: RewriteRule): string {
   let out = `            // Rule: ${rule.name}\n`;
-  let lhs = parseSExpr(rule.lhs.toSExpr());
-  let rhs = parseSExpr(rule.rhs.toSExpr());
+  let lhsStr =
+    typeof rule.lhs === "string"
+      ? rule.lhs
+      : typeof (rule.lhs as any)?.toSExpr === "function"
+        ? (rule.lhs as any).toSExpr()
+        : String(rule.lhs);
+  let rhsStr =
+    typeof rule.rhs === "string"
+      ? rule.rhs
+      : typeof (rule.rhs as any)?.toSExpr === "function"
+        ? (rule.rhs as any).toSExpr()
+        : String(rule.rhs);
+  let lhs = parseSExpr(lhsStr);
+  let rhs = parseSExpr(rhsStr);
 
   let uid = 0;
   let boundVars: Record<string, string> = {};
@@ -245,14 +257,14 @@ function compileRule(rule: RewriteRule): string {
     }
   }
 
-  let rhsStr = ``;
+  let rhsEmitStr = ``;
   if (typeof rhs === "string" && rhs.startsWith("?")) {
-    rhsStr = `                if (ufUnion(eClass, ${boundVars[rhs]}) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                if (ufUnion(eClass, ${boundVars[rhs]}) != eClass) anyMerged = true;\n`;
   } else if (typeof rhs === "string") {
-    rhsStr = `                if (ufUnion(eClass, ${boundConsts[rhs]}) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                if (ufUnion(eClass, ${boundConsts[rhs]}) != eClass) anyMerged = true;\n`;
   } else {
     let rhsCall = genRHS(rhs, "");
-    rhsStr = `                let newRhs = ${rhsCall};\n                if (ufUnion(eClass, newRhs) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                let newRhs = ${rhsCall};\n                if (ufUnion(eClass, newRhs) != eClass) anyMerged = true;\n`;
   }
 
   // Close blocks

@@ -41,7 +41,13 @@ ${subtypingLogic}
     customCode = extraTypes + customCode;
   }
 
-  return `// Semantic Analysis & Type System Engine
+  return `import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
+import { getNodeType, getNodeFirstChild, getNodeNextSibling, getNodePadding, getNodeByteLength, allocNode, arenaOffset } from "./arena";
+import { allocDiagnostic } from "./lsp";
+import { factExists } from "./reasoner";
+import { resolveFqnSymbol } from "./graph";
+
+// Semantic Analysis & Type System Engine
 // Generated for language: ${grammar.name}
 // High-performance Type Arena in Linear Memory
 

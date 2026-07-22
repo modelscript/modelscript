@@ -42,7 +42,7 @@ export type RuleLike<F extends string = never> = Rule<F> | string | RegExp;
  * A function that takes a map of all grammar rules and returns a grammar definition rule.
  */
 export type RuleBuilder<RuleName extends string, FieldName extends string = never> = (
-  $: Record<RuleName | (string & {}), RuleLike<never>>,
+  $: Record<RuleName | (string & {}), RuleLike<any>>,
 ) => RuleLike<FieldName>;
 
 /**
@@ -419,13 +419,13 @@ export interface LanguageOptions<
   /**
    * Tokens to skip automatically (e.g., whitespace, comments) everywhere in the grammar.
    */
-  extras?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => RuleLike<any>[];
+  extras?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[];
 
   /** Composable Scanner Primitives (Phase 1) */
   primitives?: ScannerPrimitives;
 
   /** External Scanner (Context-Sensitive Lexing) */
-  externals?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[];
+  externals?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[];
 
   /** External scanner logic (WASM fallback). Not typically used directly in DSL. */
   scanner?: (currentPos: number, scannerState: number) => number;
@@ -434,21 +434,21 @@ export interface LanguageOptions<
    * Tree-sitter Parity: Rules that serve as supertypes (interfaces/abstract classes)
    * in the generated AST. Useful for aliases and unifying node queries.
    */
-  supertypes?: ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[];
+  supertypes?: ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[];
 
   /** Rules that should be inlined directly into their parents during codegen to reduce AST depth. */
   inline?: NoInfer<RuleName>[];
 
   /** Expected GLR conflicts. Specifies arrays of rule names that can legitimately conflict. */
   conflicts?:
-    | (($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => RuleLike<any>[][])
+    | (($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => RuleLike<any>[][])
     | NoInfer<RuleName>[][];
 
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?: string[][];
 
   /** Reserved keywords to omit from generic identifier matching. */
-  reserved?: Record<string, ($: Record<string, Rule<never>> & Record<RuleName, Rule<never>>) => Rule<any>[]>;
+  reserved?: Record<string, ($: Record<string, Rule<any>> & Record<RuleName, Rule<any>>) => Rule<any>[]>;
 
   model?: Partial<
     Record<

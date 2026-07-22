@@ -20,7 +20,10 @@ interface ParsedRule {
 }
 
 export function generateReasoner(grammar: GrammarOptions, normalized: NormalizedGrammar): string {
-  let code = `// Semantic Reasoning Engine (OWL 2 RL / SysML v2) \n`;
+  let code = `import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
+import { getNodeFirstChild, getNodeNextSibling } from "./arena";
+
+// Semantic Reasoning Engine (OWL 2 RL / SysML v2) \n`;
 
   // Determine arity from config (default 2, min 3 to support CAD templates)
   const maxArity = Math.max(grammar.semantics?.maxArity || 2, 3);
