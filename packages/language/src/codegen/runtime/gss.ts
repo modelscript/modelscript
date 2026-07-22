@@ -21,11 +21,15 @@ const ARENA_BUFFER_SIZE: i32 = 16384;
 const MAX_CURSOR_DEPTH: i32 = 999999;
 
 export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_extractedHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeHeadsCount: u32 = 0;
 
 export function initGSS(): void {
   if (changetype<usize>(t_activeHeads) == 0) {
     t_activeHeads = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
+  }
+  if (changetype<usize>(t_extractedHeadsBuffer) == 0) {
+    t_extractedHeadsBuffer = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
   }
   activeHeadsCount = 0;
 }

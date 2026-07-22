@@ -159,25 +159,33 @@ export function generateParserTables(
     }
   }
 
-  const tokenInsertCosts: number[] = new Array(symToInt.size + 1).fill(1);
-  for (const [sym, id] of symToInt.entries()) {
-    if (sym.startsWith('"') && sym.match(/^"[^a-zA-Z0-9_]+"$/)) {
-      // Pure punctuation (e.g. ";", "=", "{") is always cheap to hallucinate
-      tokenInsertCosts[id] = 1;
+  const termList = Array.from(grammar.terminals);
+  const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
+  for (let i = 0; i < termList.length; i++) {
+    const sym = termList[i];
+    const symId = symToInt.get(sym) ?? i;
+    if (
+      sym.includes("}") ||
+      sym.includes("]") ||
+      sym.includes(")") ||
+      sym.includes("RBRACE") ||
+      sym.includes("RPAREN") ||
+      sym.includes("RBRACKET")
+    ) {
+      tokenInsertCosts[symId] = 20; // Structural closing delimiters are expensive to insert to prevent premature block escape
+    } else if (sym.startsWith('"') && sym.match(/^"[^a-zA-Z0-9_]+"$/)) {
+      tokenInsertCosts[symId] = 1;
     } else if (sym.startsWith('"') || sym.startsWith("/")) {
-      // Keywords or regexes
       const freq = terminalFreq.get(sym) || 0;
       if (freq >= 5) {
-        tokenInsertCosts[id] = 1; // Ubiquitous keywords
+        tokenInsertCosts[symId] = 1;
       } else if (freq >= 2) {
-        tokenInsertCosts[id] = 2; // Moderate keywords
+        tokenInsertCosts[symId] = 2;
       } else {
-        tokenInsertCosts[id] = 4; // Rare structural keywords
+        tokenInsertCosts[symId] = 4;
       }
     } else {
-      // Non-terminals (e.g. Expression, Statement) represent complex sub-trees.
-      // Hallucinating them should be expensive.
-      tokenInsertCosts[id] = 5;
+      tokenInsertCosts[symId] = 4;
     }
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");

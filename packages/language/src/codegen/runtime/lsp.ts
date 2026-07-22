@@ -268,7 +268,8 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           while (scan >= step) {
             scan -= step;
             let ch = peekChar(scan);
-            if (ch != 32 && ch != 9 && ch != 10 && ch != 13) {
+            if (ch == 10 || ch == 13) break; // DO NOT BLEED DIAGNOSTICS ACROSS LINE BREAKS!
+            if (ch != 32 && ch != 9) {
               dStart = scan;
               break;
             }

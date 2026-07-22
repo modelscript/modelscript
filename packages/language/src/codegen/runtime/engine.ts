@@ -394,12 +394,13 @@ export let currentParserMode: i32 = 0;
 export let configEnableBranchA1: boolean = true;
 export let configEnableBranchB: boolean = true;
 export let configEnableBranchC: boolean = true;
+export let configEnableBranchT: boolean = true;
 export let configEnableIslandMode: boolean = true;
 
 // Error Recovery Heuristics
 export let configPenaltyUnwindNode: i32 = 500;
 export let configPenaltySyncToken: i32 = 50;
-export let configIslandBasePenalty: i32 = 50;
+export let configIslandBasePenalty: i32 = 2000;
 export let configIslandSyncMultiplier: i32 = 10;
 export let configIslandPoppedMultiplier: i32 = 50;
 

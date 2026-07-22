@@ -1,7 +1,7 @@
 
 import {
     initGSS,
-    ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead,
+    ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead, t_extractedHeadsBuffer,
     globalCursorDepth, cursorNodeStack, cursorOffsetStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
@@ -49,7 +49,7 @@ const ACCEPT_CACHE_CAPACITY: u32 = 16384;
 const ACCEPT_CACHE_MASK: u32 = 16383;
 const ACCEPT_CACHE_PROBE_LIMIT: u32 = 8;
 let t_acceptCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-import { recoverUnwindAndMutate, recoverIslandMode } from "./recovery";
+import { recoverUnwindAndMutate, recoverIslandMode, findShiftTarget } from "./recovery";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
 function lookupActions(state: i32, token: i32): i32 {
@@ -132,7 +132,6 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
     prevHead.pendingPadding = pendingPadding;
     activeHeadsCount = 0;
     t_activeHeads[activeHeadsCount++] = changetype<u32>(prevHead);
-    activeHeadsCount = 1;
   }
   
   currentParserMode = MODE_GLR;
@@ -639,12 +638,24 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
 
     while (curr) {
       if (curr.astNode != 0 && curr.astNode != acceptedNode && curr.astNode != acceptBase && getNodeType(curr.astNode) != TOKEN_EOF) {
-      if (c_idx < (MAX_CHILD_NODES as u32)) {
-        t_globalChildNodes[c_idx++] = curr.astNode;
+        let nPos = curr.pos;
+        let accStart = getNodePadding(acceptBase);
+        let accLen = getNodeByteLength(acceptBase);
+        if (accLen == 0) accLen = inputLength;
+        let nPad = getNodePadding(curr.astNode);
+        let nLen = getNodeByteLength(curr.astNode);
+        let nEnd = nPos + nPad + nLen;
+        // If curr.astNode falls within the byte span of acceptedNode/acceptBase, it was already consumed in reductions!
+        if (accLen > 0 && nPos >= accStart && nEnd <= (accStart + accLen)) {
+          // Already inside acceptedNode! Skip!
+        } else {
+          if (c_idx < (MAX_CHILD_NODES as u32)) {
+            t_globalChildNodes[c_idx++] = curr.astNode;
+          }
+        }
       }
+      curr = curr.prev;
     }
-    curr = curr.prev;
-  }
   
   if (c_idx == 0) return acceptedNode;
   
@@ -1974,7 +1985,8 @@ function processAcceptAction(head: ParseHead): void {
           let cLen = getNodeByteLength(t_curr.astNode);
           if (cType != TOKEN_EOF && (cLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
             t_globalChildren[c_idx--] = t_curr.astNode;
-            if (cType != NODE_TYPE_ERROR && cLen > bestRootBytes) {
+            let isContainer = (getNodeFlags(t_curr.astNode) & FLAG_IS_LIST) != 0 || (getNodeByteLength(t_curr.astNode) == inputLength);
+            if (cType != NODE_TYPE_ERROR && isContainer && cLen > bestRootBytes) {
               bestRoot = t_curr.astNode;
               bestRootBytes = cLen;
             }
@@ -2183,7 +2195,9 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
       let missingTokenId = prod_right_symbols[tokenIndex];
       if (missingTokenId >= 0 && missingTokenId < token_insert_costs.length) {
         let baseCost = token_insert_costs[missingTokenId];
-        if (missingTokenId > MAX_TERMINAL_ID) {
+        if (baseCost >= 10) {
+          dynamicMissingCost += 15000; // Structural closing brace/paren penalty to prevent premature block escape
+        } else if (missingTokenId > MAX_TERMINAL_ID) {
           dynamicMissingCost += baseCost * 150; // Heavy penalty for virtual non-terminals (phantom AST subtrees)
         } else {
           dynamicMissingCost += baseCost * 50;  // Standard penalty for virtual terminal tokens
@@ -2509,11 +2523,10 @@ export function advanceGLR(): void {
               ci = smallest;
             }
           }
-          // Extract top-keepCount elements from the heap into a temporary array
-          let extracted = new Array<u32>(keepCount);
+          // Extract top-keepCount elements from the heap into static unmanaged buffer
           for (let ei: u32 = 0; ei < keepCount && heapLen > 0; ei++) {
             // The root of the heap is the smallest element
-            extracted[ei] = t_activeHeads[heapStart];
+            t_extractedHeadsBuffer[ei] = t_activeHeads[heapStart];
             
             // Move the last element to the root and shrink the heap
             let lastIdx = heapStart + heapLen - 1;
@@ -2550,7 +2563,7 @@ export function advanceGLR(): void {
           
           // Copy the extracted elements back to the active heads array
           for (let ei: u32 = 0; ei < keepCount; ei++) {
-            t_activeHeads[heapStart + ei] = extracted[ei];
+            t_activeHeads[heapStart + ei] = t_extractedHeadsBuffer[ei];
           }
         }
         activeHeadsCount =
@@ -2749,8 +2762,13 @@ export function advanceGLR(): void {
       // If it cannot, shifting this massive reused node would trap the parser immediately before a garbage token,
       // leading to catastrophic error recovery that swallows the node.
       if (nextState != -1) {
-        let canAccept = stateCanAccept(head, nextState, token);
-        
+        let endPos = pos + getNodePadding(reusedNode) + getNodeByteLength(reusedNode);
+        let nextTok = invokeLexer(endPos);
+        while (load<u8>(is_extra_token + nextTok) == 1) {
+          endPos += lexLen;
+          nextTok = invokeLexer(endPos);
+        }
+        let canAccept = stateCanAccept(head, nextState, nextTok);
         if (canAccept == 0) {
           nextState = -1;
         }
@@ -2885,8 +2903,41 @@ export function advanceGLR(): void {
           // TYPE 0: SHIFT ACTION
           // --------------------------------------------------------------------
           if (type == ACTION_SHIFT) {
+            let origState = head.state;
+            let origNode = head.astNode;
+            let origPrev = head.prev;
+            let origCost = head.errorCost;
+            let origBalance = head.balanceHash;
+            let origPrec = head.dynamicPrec;
+
             processShiftAction(head, target, token, pos, is_current_token_virtual, head.virtualQueueCount > 0);
             anyAction = true;
+
+            if (g_simulatorMaxTokens == 0 && !is_current_token_virtual && head.consecutiveInsertions == 0 && activeHeadsCount < MAX_PARALLEL_HEADS) {
+              let charLen = peekCharLen(pos);
+              if (charLen == 1) {
+                let c = peekChar(pos);
+                if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
+                  let delPos = pos + lexLen;
+                  let nextTail = pushDiagnostic(head.errorTail, pos, delPos);
+                  let delHead = allocParseHead(
+                    origState,
+                    origNode,
+                    origPrev,
+                    delPos,
+                    currentScannerState,
+                    origCost + 20,
+                    0,
+                    origBalance,
+                    0,
+                    origPrec,
+                    0,
+                    nextTail
+                  );
+                  pushActiveHead(changetype<u32>(delHead));
+                }
+              }
+            }
           } else if (type == ACTION_REDUCE) {
             if (processReduceAction(head, target, pos)) {
               anyAction = true;
@@ -2959,6 +3010,11 @@ export function advanceGLR(): void {
       // If we hallucinated a token that caused an error, the recovery path is dead.
       // Do not attempt to recover from our own recoveries, as this causes infinite loops.
       if (is_current_token_virtual) {
+         pruneGSS(pos);
+         continue;
+      }
+
+      if (g_simulatorMaxTokens > 0) {
          pruneGSS(pos);
          continue;
       }
@@ -3055,26 +3111,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
     initGlobalCursor(oldTree);
 
-    if (oldTree == 0) {
-      currentParserMode = MODE_LR;
-      let accepted = parseLR();
-      if (currentParserMode == MODE_LR) {
-        clearAstMarks(accepted);
-        return accepted;
-      }
-    } else {
-      currentParserMode = MODE_GLR;
-      activeHeadsCount = 0;
-      t_activeHeads[activeHeadsCount++] = changetype<u32>(allocParseHead(0, 0, null, pos, currentScannerState, 0, 0, 0, 0, 0));
-      activeHeadsCount = 1;
-
-      updateExpectedTokens();
-      token = invokeLexer(pos);
-      while (load<u8>(is_extra_token + token) == 1) {
-        pos += lexLen;
-        token = invokeLexer(pos);
-      }
-      
+    currentParserMode = MODE_LR;
+    let accepted = parseLR();
+    if (currentParserMode == MODE_LR) {
+      clearAstMarks(accepted);
+      return accepted;
     }
   }
   isSuspended = false;
@@ -3096,7 +3137,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   advanceGLR();
 
     if (acceptedNode != 0) {
-      commitDiagnostics(bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).errorTail : 0);
+    if (bestAcceptingHead != 0) {
+      let bah = changetype<ParseHead>(bestAcceptingHead);
+      commitDiagnostics(bah.errorTail);
+    }
       acceptedNode = injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
       let finalTree = wrapWithTrailingErrors(acceptedNode);
@@ -3272,7 +3316,7 @@ export function findReusableNode(
 
     if (absContentStart == targetSrcOldPos && absContentEnd > targetSrcOldPos) {
       if (
-        absContentEnd < editStart ||
+        absContentEnd <= editStart ||
         absContentStart >= editOldEnd
       ) {
         let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;

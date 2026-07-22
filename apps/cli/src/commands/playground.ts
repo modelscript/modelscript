@@ -728,7 +728,6 @@ scope {
 
                                 const typeName = typeId === 0 ? "ERROR" : (window['syntaxNames'] ? window['syntaxNames'][typeId] || ("UNKNOWN(" + typeId + ")") : ("UNKNOWN(" + typeId + ")"));
                                 
-                                console.log("[AST Patch] op=" + op + ", ptr=" + ptr + ", typeName=" + typeName + ", childCount=" + childCount + ", flags=" + flags);
                                 if (op === 1) { // INSERT
                                     nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, flags, children });
                                     hasUpdates = true;
@@ -746,17 +745,21 @@ scope {
                             }
                         }
                         
-                        if (hasUpdates || msg.rootId !== rootId) {
-                            setRootId(msg.rootId);
-                            setUpdateTick(t => t + 1);
-                        }
-                        
                         if (msg.lineStartsBuffer) {
                             setLineStarts(new Uint32Array(msg.lineStartsBuffer));
                         }
                         
                         if (msg.diagnostics) {
                             setDiagnostics(msg.diagnostics);
+                        }
+
+                        // Throttle React DOM AST tree re-rendering so heavy DOM updates don't block keypresses
+                        if (hasUpdates || msg.rootId !== rootId) {
+                            if (window._astUpdateTimeout) clearTimeout(window._astUpdateTimeout);
+                            window._astUpdateTimeout = setTimeout(() => {
+                                setRootId(msg.rootId);
+                                setUpdateTick(t => t + 1);
+                            }, 100);
                         }
                     } else if (msg.type === 'statusUpdate') {
                         setStatus(msg.message);
@@ -1095,91 +1098,92 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
 }
 
 let pendingChanges = [];
-let diagnosticTimeout = null;
+let isParsing = false;
 
 function triggerDiagnostics(changes = null) {
     if (changes && changes.length > 0) {
         pendingChanges.push(...changes);
     }
     
-    if (diagnosticTimeout) {
-        clearTimeout(diagnosticTimeout);
+    if (isParsing) return;
+    runDiagnosticsNow();
+}
+
+function runDiagnosticsNow() {
+    if (pendingChanges.length === 0 || !lspFacade || !latestUri) {
+        isParsing = false;
+        return;
     }
     
-    diagnosticTimeout = setTimeout(() => {
-        if (pendingChanges.length === 0 || !lspFacade || !latestUri) return;
-        
-        let astRoot = 0;
-        
-        const t0 = performance.now();
-        let newTotalLength = currentTextLength;
-        let requiresFull = false;
-        
-        for (const change of pendingChanges) {
-            if (change.rangeOffset === undefined) {
-                requiresFull = true;
-                newTotalLength = change.text.length;
-            } else {
-                newTotalLength = Math.max(0, newTotalLength - change.rangeLength + change.text.length);
-            }
-        }
-        
-        currentGenerationId++;
-        
-        if (requiresFull) {
-            const lastChange = pendingChanges[pendingChanges.length - 1];
-            globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, currentTextLength, newTotalLength);
+    isParsing = true;
+    const currentBatch = pendingChanges;
+    pendingChanges = [];
+    
+    let newTotalLength = currentTextLength;
+    let requiresFull = false;
+    
+    for (const change of currentBatch) {
+        if (change.rangeOffset === undefined) {
+            requiresFull = true;
+            newTotalLength = change.text.length;
         } else {
-            globalAstRoot = lspFacade.parseIncrementalBatch(pendingChanges, newTotalLength);
+            newTotalLength = Math.max(0, newTotalLength - change.rangeLength + change.text.length);
         }
-        
-        currentTextLength = newTotalLength;
-        const t1 = performance.now();
-        
-        const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
-        const t2 = performance.now();
-        
-        const lineStarts = lspFacade.getLineStarts();
-        const t3 = performance.now();
-        console.log("[LSP Timings] parse: " + Math.round(t1-t0) + "ms | diags: " + Math.round(t2-t1) + "ms | lineStarts: " + Math.round(t3-t2) + "ms");
-        
-        // Double-buffer swap: transfer the current buffer and switch to the other
-        const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
-        patchOffset = 0;
-        // Swap to the alternate buffer to avoid allocating a new one each edit
-        patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
-        patchInt32 = new Int32Array(patchBuffer);
-        
-        const lineStartsCopy = new Uint32Array(lineStarts);
-        const lineStartsBuffer = lineStartsCopy.buffer;
+    }
+    
+    currentGenerationId++;
+    
+    if (requiresFull) {
+        const lastChange = currentBatch[currentBatch.length - 1];
+        globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, currentTextLength, newTotalLength);
+    } else {
+        globalAstRoot = lspFacade.parseIncrementalBatch(currentBatch, newTotalLength);
+    }
+    
+    currentTextLength = newTotalLength;
+    
+    const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
+    const lineStarts = lspFacade.getLineStarts();
+    
+    // Double-buffer swap: transfer the current buffer and switch to the other
+    const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
+    patchOffset = 0;
+    // Swap to the alternate buffer to avoid allocating a new one each edit
+    patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
+    patchInt32 = new Int32Array(patchBuffer);
+    
+    const lineStartsCopy = new Uint32Array(lineStarts);
+    const lineStartsBuffer = lineStartsCopy.buffer;
 
-        self.postMessage({ 
-            type: 'astPatchBinary', 
-            buffer: transferBuffer, 
-            rootId: globalAstRoot, 
-            diagnostics: rawDiags,
-            lineStartsBuffer: lineStartsBuffer,
-            generationId: currentGenerationId
-        }, [transferBuffer, lineStartsBuffer]);
-        
-        const diagnostics = rawDiags.map(d => ({
-            severity: d.severity,
-            range: d.range,
-            startCharOffset: d.startCharOffset,
-            endCharOffset: d.endCharOffset,
-            message: d.message,
-            code: d.code,
-            source: currentLangName
-        }));
-        
-        self.postMessage({
-            jsonrpc: '2.0',
-            method: 'textDocument/publishDiagnostics',
-            params: { uri: latestUri, diagnostics }
-        });
-        
-        pendingChanges = [];
-    }, 20);
+    self.postMessage({ 
+        type: 'astPatchBinary', 
+        buffer: transferBuffer, 
+        rootId: globalAstRoot, 
+        diagnostics: rawDiags,
+        lineStartsBuffer: lineStartsBuffer,
+        generationId: currentGenerationId
+    }, [transferBuffer, lineStartsBuffer]);
+    
+    const diagnostics = rawDiags.map(d => ({
+        severity: d.severity,
+        range: d.range,
+        startCharOffset: d.startCharOffset,
+        endCharOffset: d.endCharOffset,
+        message: d.message,
+        code: d.code,
+        source: currentLangName
+    }));
+    
+    self.postMessage({
+        jsonrpc: '2.0',
+        method: 'textDocument/publishDiagnostics',
+        params: { uri: latestUri, diagnostics }
+    });
+    
+    isParsing = false;
+    if (pendingChanges.length > 0) {
+        queueMicrotask(runDiagnosticsNow);
+    }
 }
 
 // Listen for custom init message containing the WASM binary and generated JS
@@ -1490,6 +1494,8 @@ self.addEventListener('message', async (e) => {
             
             const deltaLine = line - prevLine;
             const deltaChar = deltaLine === 0 ? charOffset - prevChar : charOffset;
+            
+            if (deltaLine < 0 || deltaChar < 0 || charLength <= 0) continue;
             
             data[dataIdx++] = deltaLine;
             data[dataIdx++] = deltaChar;

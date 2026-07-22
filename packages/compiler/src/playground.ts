@@ -1877,11 +1877,8 @@ require(['vs/editor/editor.main'], function () {
                  endLineNumber: c.range.endLineNumber, endColumn: c.range.endColumn },
       });
     }
-    clearTimeout(debounceL);
-    debounceL = setTimeout(function () {
       var changes = pendingChangesL; pendingChangesL = [];
       sendMsg({ type: 'update', source: editorL.getValue(), changes: changes });
-    }, 300);
   });
 
   ${
