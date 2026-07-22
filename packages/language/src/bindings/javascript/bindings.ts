@@ -1094,8 +1094,40 @@ export class LspFacade {
         end: mem32[(dirPtr >> 2) + i + 1],
       });
     }
-    console.log(`[getReferences] final refs:`, references);
     return references;
+  }
+
+  getPipelines(): { id: string; label: string; target: string }[] {
+    if (!this.exports.lsp_getPipelinesInfo || !this.exports.lsp_getBinaryBuffer) return [];
+    const numElements = this.exports.lsp_getPipelinesInfo();
+    if (numElements === 0) return [];
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const pipelines: { id: string; label: string; target: string }[] = [];
+    for (let i = 0; i < numElements * 3; i += 3) {
+      const idPtr = mem32[(dirPtr >> 2) + i];
+      const labelPtr = mem32[(dirPtr >> 2) + i + 1];
+      const targetPtr = mem32[(dirPtr >> 2) + i + 2];
+      pipelines.push({
+        id: this.readWasmString(idPtr),
+        label: this.readWasmString(labelPtr),
+        target: this.readWasmString(targetPtr),
+      });
+    }
+    return pipelines;
+  }
+
+  executePipeline(astRoot: number, pipelineId: string): { success: boolean; data: any } {
+    if (!this.exports.lsp_executePipeline || !this.exports.lsp_getBinaryBuffer) {
+      return { success: false, data: null };
+    }
+    let hash: number = 5381;
+    for (let i = 0; i < pipelineId.length; i++) {
+      hash = (hash << 5) + hash + pipelineId.charCodeAt(i);
+    }
+    const resultPtr = this.exports.lsp_executePipeline(astRoot, hash >>> 0);
+    if (resultPtr === 0) return { success: false, data: null };
+    return { success: true, data: { resultPtr } };
   }
 
   private _lastDiagBinaryLength: number = 0;

@@ -369,6 +369,17 @@ export interface ModelProperty {
   default?: number | boolean | string;
 }
 
+export interface CompilationPipeline<
+  RuleName extends string = string,
+  FieldName extends string = never,
+  QueryName extends string = never,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  label: string;
+  target: "dae" | "blt" | "ast" | "wat" | "json" | "binary";
+  passes: ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>[];
+}
+
 /**
  * Configuration options for defining a ModelScript language grammar.
  * Modeled after Tree-sitter's Grammar API.
@@ -381,6 +392,11 @@ export interface LanguageOptions<
 > {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
+
+  /**
+   * Declarative Compilation & Lowering Pipelines (e.g. DAE Flattening, BLT Decomposition)
+   */
+  pipelines?: Record<string, CompilationPipeline<RuleName, FieldName, QueryName, ModelAttrs>>;
 
   /**
    * A rule name or token representing the language's typical keyword structure.
