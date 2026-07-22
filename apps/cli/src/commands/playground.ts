@@ -286,64 +286,160 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
             });
 
             const exampleDSL = \`export default language({
-  name: 'MyLang',
-  rules: {
-    Program: $ => repeat($.Block),
-    Block: $ => seq('scope', '{', repeat(choice($.Decl, $.Usage)), '}'),
-    Decl: $ => seq(semanticToken('keyword', 'let'), field('name', $.Identifier), '=', $.Number, ';'),
-    Usage: $ => seq(semanticToken('keyword', 'print'), field('target', $.Identifier), ';'),
-    Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
-    Number: $ => semanticToken('number', /[0-9]+/)
+  name: 'SysModel',
+
+  // 1. Scanner Primitives (Context-sensitive comments & multi-word keywords)
+  primitives: {
+    nestedComment: { open: '/*', close: '*/' },
+    lineComment: '//',
+    multiWordKeywords: ['end model']
   },
-  extras: $ => [/\\\\s/],
-  lsp: {
-    folding: ['Block'],
-    outline: ['Decl'],
-    definition: (db, node, $) => {
-        let type = db.ast.getType(node);
-        if (type == $.Identifier) {
-           return db.runQuery("resolveVar", node);
+
+  // 2. Grammar Rules & AST Combinators
+  rules: {
+    Program: $ => repeat($.ModelDef),
+    ModelDef: $ => seq(
+      semanticToken('keyword', 'model'), 
+      field('name', $.Identifier), 
+      '{', 
+      repeat(choice($.Decl, $.Equation)), 
+      semanticToken('keyword', 'end model'), 
+      ';'
+    ),
+    Decl: $ => seq(
+      field('type', $.Identifier), 
+      field('name', $.Identifier), 
+      optional(seq('=', field('value', $.Expr))), 
+      ';'
+    ),
+    Equation: $ => seq(
+      field('lhs', $.Expr), 
+      '=', 
+      field('rhs', $.Expr), 
+      ';'
+    ),
+    Expr: $ => choice($.BinaryExpr, $.Identifier, $.Number),
+    BinaryExpr: $ => prec(1, seq(
+      field('left', choice($.Identifier, $.Number)), 
+      field('op', choice('+', '-', '*')), 
+      field('right', choice($.Identifier, $.Number))
+    )),
+    Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
+    Number: $ => semanticToken('number', /[0-9]+(?:\\.[0-9]+)?/)
+  },
+  extras: $ => [/\\s/],
+
+  // 3. Model Attributes (WASM Linear Memory Blackboard)
+  model: {
+    Decl: { isComponent: { type: 'bool', default: true } },
+    ModelDef: { isScope: { type: 'bool', default: true } }
+  },
+
+  // 4. Zero-GC Subtyping Predicates
+  typeSystem: {
+    subtypingPredicates: ['Integer <: Real', 'Real <: Number']
+  },
+
+  // 5. Algebraic E-Graph Rewriting & Simplifications
+  simplification: {
+    rules: [
+      { name: 'add_zero', lhs: 'x + 0', rhs: 'x' },
+      { name: 'mul_one', lhs: 'x * 1', rhs: 'x' }
+    ]
+  },
+
+  // 6. Datalog Semantic Entailment Axioms
+  semantics: {
+    rules: ['Subtype(x, z) :- Subtype(x, y), Subtype(y, z)']
+  },
+
+  // 7. Imperative Diagnostic Lints
+  lints: {
+    unusedComponent: {
+      nodes: ['Decl'],
+      severity: 'warning',
+      message: 'Component declaration initialized',
+      query: (db, node, $) => {
+        let nameNode = db.ast.getChildByFieldId(node, 'name');
+        if (nameNode != 0) {
+          db.diagnostic(nameNode);
         }
-        return 0;
+      }
     }
   },
-  queries: {
-      resolveVar: (db, node, $) => {
-          let root = db.ast.getRootNode();
-          let targetHash = db.ast.hashSpan(db.ast.getTextSpan(node));
-          return db.runQuery("searchHash", root, targetHash);
-      },
-      searchHash: (db, node, targetHash, $) => {
-          if (db.ast.getType(node) == $.Decl) {
-              let nameNode = db.ast.getChildByFieldId(node, 'name');
-              if (db.ast.hashSpan(db.ast.getTextSpan(nameNode)) == targetHash) {
-                  return nameNode; // Found definition!
-              }
-          }
-          let child = db.ast.getFirstChild(node);
-          while (child != 0) {
-              let result = db.runQuery("searchHash", child, targetHash);
-              if (result != 0) return result;
-              child = db.ast.getNextSibling(child);
-          }
-          return 0;
+
+  // 8. Declarative Compilation & Lowering Pipelines
+  pipelines: {
+    flatten: {
+      label: 'Flatten DAE System',
+      target: 'dae',
+      passes: [
+        (graph, root) => graph.dae.extractEquations(root)
+      ]
+    },
+    blt: {
+      label: 'BLT Matrix Decomposition',
+      target: 'blt',
+      passes: [
+        (graph, root) => graph.blt.buildDependencies(),
+        (graph, root) => graph.blt.computeMatching()
+      ]
+    }
+  },
+
+  // 9. Language Server Protocol (LSP) Integrations
+  lsp: {
+    fileExtension: '.mo',
+    folding: ['ModelDef'],
+    outline: ['ModelDef', 'Decl'],
+    definition: (db, node, $) => {
+      let type = db.ast.getType(node);
+      if (type == $.Identifier) {
+        return db.runQuery('resolveVar', node);
       }
+      return 0;
+    }
+  },
+
+  // 10. AssemblyScript Query Engine
+  queries: {
+    resolveVar: (db, node, $) => {
+      let root = db.ast.getRootNode();
+      let targetHash = db.ast.hashSpan(db.ast.getTextSpan(node));
+      return db.runQuery('searchHash', root, targetHash);
+    },
+    searchHash: (db, node, targetHash, $) => {
+      if (db.ast.getType(node) == $.Decl) {
+        let nameNode = db.ast.getChildByFieldId(node, 'name');
+        if (db.ast.hashSpan(db.ast.getTextSpan(nameNode)) == targetHash) {
+          return nameNode;
+        }
+      }
+      let child = db.ast.getFirstChild(node);
+      while (child != 0) {
+        let result = db.runQuery('searchHash', child, targetHash);
+        if (result != 0) return result;
+        child = db.ast.getNextSibling(child);
+      }
+      return 0;
+    }
   }
 });\`;
 
-            const exampleCode = \`scope {
-  let velocity = 100;
-  let mass = 50;
-  
-  print velocity;
-}
+            const exampleCode = \`model ElectricalCircuit {
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
 
-scope {
-  let gravity = 9;
-  
-  print mass;
-  print gravity;
-}\`;
+  power = voltage * current;
+end model;
+
+model ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end model;\`;
 
             let latestUri = 'inmemory://example.mo';
             window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {
