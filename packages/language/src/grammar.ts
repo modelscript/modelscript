@@ -31,12 +31,14 @@ export interface Production {
   semantics?: { index: number; type: string; modifiers: any }[];
 }
 
+/** Context passed down during grammar flattening to propagate precedence and associativity. */
 export interface FlattenContext {
   prec?: number;
   assoc?: "left" | "right";
   dynamicPrec?: number;
 }
 
+/** The result of flattening a rule: a flat sequence of symbol names and their metadata. */
 export interface FlattenResult {
   sym: SymbolName;
   alias?: string;
@@ -44,11 +46,15 @@ export interface FlattenResult {
   semantic?: { type: string; modifiers: any };
 }
 
+/**
+ * Strategy interface for translating DSL rule trees into flattened BNF productions.
+ */
 export interface RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[];
   getEBNF(g: NormalizedGrammar, rule: any, getChild: (r: any) => any, getChildren: (r: any) => any[]): string;
 }
 
+/** Normalizes a direct symbol reference. */
 export class SymbolNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     return [{ sym: rule.value }];
@@ -58,6 +64,7 @@ export class SymbolNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a terminal token (string or regex), extracting it into the grammar's terminal set. */
 export class TokenNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     if (rule.children && rule.children.length > 0 && rule.value === undefined) {
@@ -86,6 +93,7 @@ export class TokenNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a sequence of rules by concatenating their flattened results. */
 export class SeqNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const seqSyms: FlattenResult[] = [];
@@ -101,6 +109,7 @@ export class SeqNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a choice of rules by creating a synthetic non-terminal with multiple productions. */
 export class ChoiceNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const choiceSym = g.nextSynthetic(g.getEBNF(rule), p);
@@ -120,6 +129,7 @@ export class ChoiceNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a zero-or-more repetition (*), creating a recursive synthetic list production. */
 export class RepeatNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
@@ -137,6 +147,7 @@ export class RepeatNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a one-or-more repetition (+), creating a recursive synthetic list production. */
 export class Repeat1Normalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP: FlattenContext = { ...p };
@@ -154,6 +165,7 @@ export class Repeat1Normalizer implements RuleNormalizer {
   }
 }
 
+/** Propagates static precedence to child rules without associativity. */
 export class PrecNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence };
@@ -169,6 +181,7 @@ export class PrecNormalizer implements RuleNormalizer {
   }
 }
 
+/** Propagates static precedence with left-associativity to child rules. */
 export class PrecLeftNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "left" as const };
@@ -184,6 +197,7 @@ export class PrecLeftNormalizer implements RuleNormalizer {
   }
 }
 
+/** Propagates static precedence with right-associativity to child rules. */
 export class PrecRightNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, prec: rule.value !== undefined ? rule.value : rule.precedence, assoc: "right" as const };
@@ -199,6 +213,7 @@ export class PrecRightNormalizer implements RuleNormalizer {
   }
 }
 
+/** Propagates dynamic precedence for runtime GLR conflict resolution. */
 export class PrecDynamicNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const childP = { ...p, dynamicPrec: rule.value !== undefined ? rule.value : rule.precedence };
@@ -223,6 +238,7 @@ export class DefRefNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes an optional rule (?) by creating an empty epsilon production. */
 export class OptionalNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const optSym = g.nextSynthetic(g.getEBNF(rule), p);
@@ -238,6 +254,7 @@ export class OptionalNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a completely blank (epsilon) rule. */
 export class BlankNormalizer implements RuleNormalizer {
   normalize(): FlattenResult[] {
     return [];
@@ -247,6 +264,7 @@ export class BlankNormalizer implements RuleNormalizer {
   }
 }
 
+/** Attaches an AST field name to the result of a child rule. */
 export class FieldNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const fieldName = rule.value;
@@ -266,6 +284,7 @@ export class FieldNormalizer implements RuleNormalizer {
   }
 }
 
+/** Attaches an AST alias to the result of a child rule. */
 export class AliasNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
@@ -279,6 +298,7 @@ export class AliasNormalizer implements RuleNormalizer {
   }
 }
 
+/** Attaches LSP semantic token modifiers to the result of a child rule. */
 export class SemanticNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const res = g.flatten(ctx, children[0], p);
@@ -292,6 +312,7 @@ export class SemanticNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes a syntax token by passing through its child rule transparently. */
 export class SyntaxTokenNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     return g.flatten(ctx, children[0], p);
@@ -301,6 +322,7 @@ export class SyntaxTokenNormalizer implements RuleNormalizer {
   }
 }
 
+/** Extracts synchronization tokens for error recovery and passes through the child rule. */
 export class SyncNormalizer implements RuleNormalizer {
   normalize(g: NormalizedGrammar, ctx: string, rule: any, children: any[], p: FlattenContext): FlattenResult[] {
     const tokens = rule.value as string[];
@@ -376,10 +398,8 @@ export class NormalizedGrammar {
         get: (target, prop: string) => ({ type: "SYMBOL", value: prop }),
       },
     );
-    console.log("Type of conflicts:", typeof grammar.conflicts);
     if (typeof grammar.conflicts === "function") {
       const confs = grammar.conflicts(dummy$ as any) as any[][];
-      console.log("Raw conflicts:", JSON.stringify(confs, null, 2));
       this.conflicts = confs.map((group) =>
         group
           .map((rule) => {
@@ -396,7 +416,6 @@ export class NormalizedGrammar {
     } else {
       this.conflicts = (grammar.conflicts as string[][]) || [];
     }
-    console.log("Loaded conflicts:", this.conflicts);
 
     if (grammar.extras) {
       this.extras = grammar.extras(dummy$ as any).map(toRule);

@@ -1,11 +1,21 @@
 import { LanguageOptions } from "../dsl.js";
 import { compileRewriteRules } from "./compile_rules.js";
 
+/**
+ * Generates an AssemblyScript e-graph saturation and Bellman-Ford DP extraction engine.
+ * Emits zero-GC union-find data structures, hash-consing tables, Boyer-Moore inductive proof helpers,
+ * and rule matching loops.
+ *
+ * @param grammar Language configuration options.
+ * @param rules Array of rewrite rule definitions.
+ * @returns AssemblyScript source code string for the e-graph runtime module.
+ */
 export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): string {
   let out =
     'import { arenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "./arena";\n' +
     'import { DaeBuilder } from "./dae";\n\n' +
     "// --- EGraph Engine (Zero-GC) ---\n" +
+    "export const MAX_ECLASSES: u32 = 65536;\n" +
     "export function unwrapNode(node: u32): u32 {\n" +
     "    return node;\n" +
     "}\n" +
@@ -14,9 +24,9 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "let ufCount: u32 = 0;\n" +
     "export function initEGraph(): void {\n" +
     "    ufParentOffset = arenaOffset;\n" +
-    "    arenaOffset += 10000 * 4;\n" +
+    "    arenaOffset += MAX_ECLASSES * 4;\n" +
     "    ufRankOffset = arenaOffset;\n" +
-    "    arenaOffset += 10000;\n" +
+    "    arenaOffset += MAX_ECLASSES;\n" +
     "    ufCount = 0;\n" +
     "}\n" +
     "export function ufMakeSet(): u32 {\n" +

@@ -107,6 +107,11 @@ export class LRAutomaton {
     }
   }
 
+  /**
+   * Constructs the LR(0) state machine.
+   * Begins with the start production and iteratively computes the closure and transitions
+   * for each state until no new states are discovered.
+   */
   private buildLR0() {
     // 1. Initial State
     const startProd = this.grammar.productions.find((p) => p.left === "_START")!;
@@ -288,7 +293,10 @@ export class LRAutomaton {
     }
   }
 
-  /** Digraph algorithm (Tarjan-style SCC) for propagating sets through a relation */
+  /**
+   * Digraph algorithm (Tarjan-style Strongly Connected Components)
+   * for efficiently propagating sets through the READS and INCLUDES relations.
+   */
   private digraphPropagate(
     nodes: string[],
     initial: Map<string, Set<SymbolName>>,
@@ -1051,12 +1059,20 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
   return parseAlt();
 }
 
+/** Internal representation of a Non-Deterministic Finite Automaton state. */
 interface NFAState {
   id: number;
   transitions: Map<number, NFAState[]>; // char -> states, -1 = epsilon
   accepts?: string;
 }
 
+/**
+ * Compiles an array of string and regex literal tokens into a unified, minimized
+ * Deterministic Finite Automaton (DFA).
+ *
+ * Uses Thompson's construction to build an NFA, performs subset construction
+ * to convert to DFA, and finally applies Hopcroft's algorithm for minimization.
+ */
 export function compileRegexToDFA(regexes: { pattern: string; tokenName: string }[]) {
   let stateId = 0;
   function newState(): NFAState {

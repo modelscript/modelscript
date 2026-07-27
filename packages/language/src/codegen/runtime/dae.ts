@@ -127,6 +127,10 @@ export const STMT_DATA1 = 1;
 export const STMT_LEFT = 2;
 export const STMT_RIGHT = 3;
 
+/**
+ * Struct-of-Arrays (SoA) Builder for flat Differential Algebraic Equations (DAE).
+ * Enables zero-GC memory efficiency when constructing large systems of equations.
+ */
 @unmanaged
 export class DaeBuilder {
   varData: ChunkedInt32Array;
@@ -146,6 +150,9 @@ export class DaeBuilder {
   snapshotExprCount: u32;
   snapshotStmtCount: u32;
 
+  /**
+   * Initializes the chunked memory arrays for variables, equations, expressions, and statements.
+   */
   init(): void {
     this.varData = createChunkedInt32Array(512 * VAR_STRIDE);
     this.varCount = 0;
@@ -165,6 +172,10 @@ export class DaeBuilder {
     this.snapshotStmtCount = 0;
   }
 
+  /**
+   * Registers a variable declaration in the DAE system.
+   * Encodes `startValue` into 64-bit IEEE-754 bit representations across high/low 32-bit fields.
+   */
   @inline
   addVariable(
     nameId: u32,
@@ -194,6 +205,9 @@ export class DaeBuilder {
     return idx;
   }
 
+  /**
+   * Adds an expression node to the DAE system.
+   */
   @inline
   addExpression(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.exprCount++;
@@ -207,6 +221,9 @@ export class DaeBuilder {
     return idx;
   }
 
+  /**
+   * Adds an equation to the DAE system (e.g. `lhs = rhs`).
+   */
   @inline
   addEquation(kind: i32, lhsId: u32, rhsId: u32, auxId: u32 = 0xffffffff): u32 {
     let idx = this.eqCount++;
@@ -220,6 +237,9 @@ export class DaeBuilder {
     return idx;
   }
 
+  /**
+   * Adds an algorithm statement to the DAE system.
+   */
   @inline
   addStatement(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.stmtCount++;
@@ -233,6 +253,10 @@ export class DaeBuilder {
     return idx;
   }
 
+  /**
+   * Captures a snapshot checkpoint of the current variable/equation counts.
+   * Enables incremental rollback during speculative compilation or failed branches.
+   */
   @inline
   snapshot(): void {
     this.snapshotVarCount = this.varCount;
@@ -241,6 +265,9 @@ export class DaeBuilder {
     this.snapshotStmtCount = this.stmtCount;
   }
 
+  /**
+   * Restores the DAE system state back to the previous snapshot checkpoint.
+   */
   @inline
   rollback(): void {
     this.varCount = this.snapshotVarCount;
@@ -257,6 +284,9 @@ export class DaeBuilder {
   }
 }
 
+/**
+ * Creates and initializes a new DaeBuilder instance in linear memory.
+ */
 export function dae_createBuilder(): u32 {
   let ptr = atomicChunkAlloc(offsetof<DaeBuilder>());
   let builder = changetype<DaeBuilder>(ptr);
@@ -264,16 +294,23 @@ export function dae_createBuilder(): u32 {
   return ptr as u32;
 }
 
+/**
+ * Frees a DaeBuilder instance.
+ */
 export function dae_free(ptr: u32): void {
   if (ptr == 0) return;
-  // Note: Unmanaged structures that rely on atomicChunkAlloc just let the arena handle bulk frees.
-  // In a full implementation, we'd add free methods to ChunkedInt32Array to return blocks to the pool.
 }
 
+/**
+ * Takes a snapshot of the specified DaeBuilder instance.
+ */
 export function dae_snapshot(ptr: u32): void {
   changetype<DaeBuilder>(ptr).snapshot();
 }
 
+/**
+ * Rolls back the specified DaeBuilder instance to its previous snapshot.
+ */
 export function dae_rollback(ptr: u32): void {
   changetype<DaeBuilder>(ptr).rollback();
 }

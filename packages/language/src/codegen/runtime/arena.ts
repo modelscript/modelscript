@@ -19,9 +19,10 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
  * Each AST node is allocated a fixed size of 16 bytes.
  *
  * Node Memory Layout:
- * offset + 0:  type (10 bits) | flags (6 bits) | paddingLength (16 bits)
- * offset + 4:  byteLength (24 bits) | envHash (8 bits)
- * offset + 8:  firstChild (u32, arena ptr)
+ * Node Memory Layout:
+ * offset + 0:  type (10 bits) | flags (12 bits) | paddingLength (10 bits)
+ * offset + 4:  byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
+ * offset + 8:  firstChild (u32, arena ptr / freeListNext)
  * offset + 12: nextSibling (u32, arena ptr)
  */
 
@@ -35,14 +36,15 @@ export class ASTNode {
   firstChild: u32;
   nextSibling: u32;
 
+  // --- Core Bitfield Accessors ---
   @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
   @inline set type(t: u16) { this.word0 = (this.word0 & ~0x03ff) | (t as u32 & 0x03ff); }
 
-  @inline get flags(): u16 { return ((this.word0 >> 10) & 0x1ff) as u16; }
-  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0x1ff << 10)) | ((f as u32 & 0x1ff) << 10); }
+  @inline get flags(): u16 { return ((this.word0 >> 10) & 0x0fff) as u16; }
+  @inline set flags(f: u16) { this.word0 = (this.word0 & ~(0x0fff << 10)) | ((f as u32 & 0x0fff) << 10); }
 
-  @inline get paddingLength(): u32 { return this.word0 >> 19; }
-  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x0007ffff) | (pad << 19); }
+  @inline get paddingLength(): u32 { return this.word0 >> 22; }
+  @inline set paddingLength(pad: u32) { this.word0 = (this.word0 & 0x003fffff) | (pad << 22); }
 
   @inline get byteLength(): u32 { return this.word1 & 0x007fffff; }
   @inline set byteLength(len: u32) { this.word1 = (this.word1 & 0xff800000) | (len & 0x007fffff); }
@@ -55,6 +57,33 @@ export class ASTNode {
 
   @inline get envHash(): u32 { return this.word1 >> 24; }
   @inline set envHash(hash: u32) { this.word1 = (this.word1 & ~(0xff << 24)) | ((hash & 0xff) << 24); }
+
+  // --- Bitwise Flag Helpers ---
+  @inline hasFlag(flag: u16): boolean { return (this.flags & flag) != 0; }
+  @inline setFlag(flag: u16): void { this.flags |= flag; }
+  @inline clearFlag(flag: u16): void { this.flags &= ~flag; }
+
+  // --- Strongly-Typed Flag Properties ---
+  @inline get hasError(): boolean { return this.hasFlag(FLAG_HAS_ERROR); }
+  @inline get isList(): boolean { return this.hasFlag(FLAG_IS_LIST); }
+  @inline get isListBoundary(): boolean { return this.hasFlag(FLAG_LIST_BOUNDARY); }
+  @inline get isInvisible(): boolean { return this.hasFlag(FLAG_INVISIBLE); }
+  @inline get isInserted(): boolean { return this.hasFlag(FLAG_IS_INSERTED); }
+  @inline get isShared(): boolean { return this.hasFlag(FLAG_IS_SHARED); }
+  @inline get isExtracted(): boolean { return this.hasFlag(FLAG_EXTRACTED); }
+
+  // --- Transient Traversal Flags ---
+  @inline get isGcMarked(): boolean { return this.hasFlag(FLAG_GC_MARK); }
+  @inline set isGcMarked(val: boolean) { val ? this.setFlag(FLAG_GC_MARK) : this.clearFlag(FLAG_GC_MARK); }
+
+  @inline get isLspVisited(): boolean { return this.hasFlag(FLAG_LSP_VISITED); }
+  @inline set isLspVisited(val: boolean) { val ? this.setFlag(FLAG_LSP_VISITED) : this.clearFlag(FLAG_LSP_VISITED); }
+
+  @inline get isTainted(): boolean { return this.hasFlag(FLAG_IS_TAINED); }
+
+  // --- Memory Management Aliases ---
+  @inline get freeListNext(): u32 { return this.firstChild; }
+  @inline set freeListNext(ptr: u32) { this.firstChild = ptr; }
 }
 
 /**
@@ -412,7 +441,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   // 1. Attempt to reclaim memory from the free list (structural sharing)
   if (s.freeNodeHead != 0) {
     ptr = s.freeNodeHead;
-    s.freeNodeHead = changetype<ASTNode>(ptr).firstChild; // The 'firstChild' slot is overloaded as the 'next' pointer
+    s.freeNodeHead = changetype<ASTNode>(ptr).freeListNext; // Reclaim using freeListNext alias
   } else {
     // 2. Perform atomic bump allocation in the currently active generation
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
@@ -485,12 +514,12 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     }
   }
 
-  // 4. Handle values that exceed the 16-bit inline padding limit
+  // 4. Handle values that exceed the 10-bit inline padding limit (0x03ff = 1023)
   // Fat padding arena is eagerly initialized in initArena(), no null check needed here
   let fatFlag: u32 = 0;
-  if (paddingLength >= 0x1fff) {
-    if (s.fatPaddingCount >= 0x1ffe) {
-      paddingLength = 0x1ffe; // gracefully cap
+  if (paddingLength >= 0x03ff) {
+    if (s.fatPaddingCount >= 0x03fe) {
+      paddingLength = 0x03fe; // gracefully cap
     } else {
       if (s.fatPaddingCount >= fatPaddingCapacity) {
       // Grow the fat padding arena dynamically
@@ -525,7 +554,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
 
   let node = changetype<ASTNode>(ptr);
-  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 19);
+  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
   node.firstChild = 0;
   node.nextSibling = 0;
@@ -683,33 +712,33 @@ export function rollbackMemory(): void {
 }
 
 export function markNode(ptr: u32): void {
-  changetype<ASTNode>(ptr).flags |= FLAG_GC_MARK;
+  changetype<ASTNode>(ptr).isGcMarked = true;
 }
 export function unmarkNode(ptr: u32): void {
-  changetype<ASTNode>(ptr).flags &= ~FLAG_GC_MARK;
+  changetype<ASTNode>(ptr).isGcMarked = false;
 }
 export function isNodeMarked(ptr: u32): boolean {
-  return (changetype<ASTNode>(ptr).flags & FLAG_GC_MARK) != 0;
+  return changetype<ASTNode>(ptr).isGcMarked;
 }
 
 export function markExtracted(ptr: u32): void {
-  changetype<ASTNode>(ptr).flags |= FLAG_EXTRACTED;
+  changetype<ASTNode>(ptr).setFlag(FLAG_EXTRACTED);
 }
 export function isExtracted(ptr: u32): boolean {
-  return (changetype<ASTNode>(ptr).flags & FLAG_EXTRACTED) != 0;
+  return changetype<ASTNode>(ptr).isExtracted;
 }
 
 export function markTainted(ptr: u32): void {
-  changetype<ASTNode>(ptr).flags |= FLAG_IS_TAINED;
+  changetype<ASTNode>(ptr).setFlag(FLAG_IS_TAINED);
 }
 @inline
 export function isTainted(ptr: u32): boolean {
-  return (changetype<ASTNode>(ptr).flags & FLAG_IS_TAINED) != 0;
+  return changetype<ASTNode>(ptr).isTainted;
 }
 
 @inline
 export function nodeHasError(ptr: u32): boolean {
-  return (changetype<ASTNode>(ptr).flags & FLAG_HAS_ERROR) != 0;
+  return changetype<ASTNode>(ptr).hasError;
 }
 
 export function setFirstChild(parentPtr: u32, childPtr: u32): void {
@@ -738,10 +767,10 @@ export function getNodePadding(ptr: u32): u32 {
 export function setNodePadding(ptr: u32, pad: u32): void {
   let s = S();
   let node = changetype<ASTNode>(ptr);
-  if (pad >= 0x1fff) {
-    if (s.fatPaddingCount >= 0x1ffe) {
-      // 13-bit index limit reached, gracefully degrade by capping
-      node.paddingLength = 0x1ffe;
+  if (pad >= 0x03ff) {
+    if (s.fatPaddingCount >= 0x03fe) {
+      // 10-bit index limit reached, gracefully degrade by capping
+      node.paddingLength = 0x03fe;
       node.isFatPadding = false;
       return;
     }
@@ -1446,9 +1475,9 @@ export function clearAstMarks(rootToKeep: u32): void {
 
     let currNode = changetype<ASTNode>(curr);
 
-    if ((currNode.flags & FLAG_GC_MARK) == 0) {
+    if (!currNode.isGcMarked) {
       // Mark this node as live
-      currNode.flags |= FLAG_GC_MARK;
+      currNode.isGcMarked = true;
 
       if (curr > gcHighWaterMark) gcHighWaterMark = curr;
 
@@ -1481,14 +1510,14 @@ export function clearAstMarks(rootToKeep: u32): void {
     for (let ptr = start; ptr < sweepEnd; ptr += NODE_SIZE) {
       let node = changetype<ASTNode>(ptr);
 
-      if ((node.flags & FLAG_GC_MARK) == 0) {
-        // Node is dead: add to free-list using the firstChild slot
-        node.firstChild = S().freeNodeHead;
+      if (!node.isGcMarked) {
+        // Node is dead: add to free-list using the freeListNext alias
+        node.freeListNext = S().freeNodeHead;
         S().freeNodeHead = ptr;
       } else {
         // Node is live: clear the GC and LSP flags for the next cycle
         lastLivePtr = ptr + NODE_SIZE;
-        node.flags &= ~(FLAG_GC_MARK | FLAG_LSP_VISITED);
+        node.clearFlag(FLAG_GC_MARK | FLAG_LSP_VISITED);
       }
     }
   }

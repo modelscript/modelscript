@@ -183,7 +183,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
 
       const typeFlags = runtime.readU32(node.getPtr());
       const envHashPadding = runtime.readU32(node.getPtr() + 4);
-      const rawPad = typeFlags >>> 19;
+      const rawPad = typeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
       const pad =
         isFat && wasmInstance.exports.getFatPaddingPtr
@@ -205,7 +205,7 @@ export const Parse: CommandModule<{}, ParseArgs> = {
 
       let child = node.getFirstChild();
 
-      const shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
+      const shouldPrint = true;
 
       let childStrs: string[] = [];
       let childOffset = startOffset;

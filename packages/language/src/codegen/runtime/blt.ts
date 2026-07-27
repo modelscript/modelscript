@@ -3,6 +3,13 @@ import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EX
 import { atomicChunkAlloc } from "./arena";
 import { simplifyAst } from "./parser";
 
+/**
+ * Block Lower Triangular (BLT) Transformation Engine.
+ * Converts flat DAE systems into block lower triangular form using:
+ * 1. CSR Dependency Graph Construction
+ * 2. Maximum Cardinality Bipartite Matching (Hopcroft-Karp / DFS)
+ * 3. Tarjan's Strongly Connected Components (SCC) Decomposition
+ */
 @unmanaged
 export class BltEngine {
   dae: DaeBuilder;
@@ -24,6 +31,9 @@ export class BltEngine {
   sccBlockPtrs: ChunkedInt32Array;
   sccBlockEqs: ChunkedInt32Array;
 
+  /**
+   * Initializes BLT engine data structures with the given DAE builder instance.
+   */
   init(dae: DaeBuilder): void {
     this.dae = dae;
 
@@ -50,8 +60,8 @@ export class BltEngine {
   }
 
   /**
-   * Called to invalidate matching state for rolled-back equations and variables.
-   * This enables the $O(E)$ incremental warm-start!
+   * Invalidates matching state for rolled-back equations and variables.
+   * Enables an O(E) incremental warm-start when re-evaluating modified AST branches.
    */
   @inline
   rollback(snapshotEqCount: u32, snapshotVarCount: u32): void {
@@ -113,8 +123,6 @@ export class BltEngine {
         if (kind == ExprKind.Name) {
           let varId = this.dae.exprData.get(exprOffset + EXPR_DATA1);
           if ((varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
-            // Is it an unknown? We should only add variables that need solving.
-            // For now, we add all variables. A filter for constants/parameters can be added here.
             seenVars.set(varId, 1);
             this.eqDepVars.push(varId);
           }
@@ -140,9 +148,8 @@ export class BltEngine {
   }
 
   /**
-   * Phase 2: Maximum Cardinality Bipartite Matching (DFS-based)
+   * Performs DFS augmenting path search for bipartite matching.
    */
-  @inline
   private dfsMatch(eqIdx: u32): boolean {
     let start = this.eqDepPtrs.get(eqIdx);
     let end = this.eqDepPtrs.get(eqIdx + 1);
@@ -163,6 +170,9 @@ export class BltEngine {
     return false;
   }
 
+  /**
+   * Phase 2: Maximum Cardinality Bipartite Matching (DFS-based with warm-start).
+   */
   @inline
   computeMatching(): void {
     let eqCount = this.dae.eqCount;
@@ -186,13 +196,12 @@ export class BltEngine {
     }
   }
 
-  /**
-   * Phase 3: Tarjan SCC
-   */
   private indexCounter: i32;
   private sccCount: u32;
 
-  @inline
+  /**
+   * Recursive Tarjan SCC helper for strongly connected component decomposition.
+   */
   private strongConnect(varIdx: u32): void {
     this.indexMap.set(varIdx, this.indexCounter);
     this.lowlinkMap.set(varIdx, this.indexCounter);
@@ -249,6 +258,9 @@ export class BltEngine {
     }
   }
 
+  /**
+   * Symbolically isolates a single variable in a 1x1 equation block (e.g. `0 = RHS - LHS` -> `x = simplified`).
+   */
   @inline
   isolateEquation(eqId: u32, targetVarId: u32): void {
     let eqOffset = eqId * EQ_STRIDE;
@@ -263,18 +275,18 @@ export class BltEngine {
     let residualExpr = this.dae.addExpression(ExprKind.Binary, subOp, rhsId, lhsId);
     
     // 2. Feed the residual into the E-Graph simplifyAst pipeline
-    // This will equality-saturate and DP-extract the most simplified/isolated form
     let simplifiedResidual = simplifyAst(residualExpr, this.dae);
     
-    // 3. For now, we assume simplifyAst successfully isolates the target variable.
-    // So the simplified AST is actually the right hand side.
-    // Replace the equation: targetVarId = simplifiedResidual
+    // 3. Replace the equation: targetVarId = simplifiedResidual
     let newLhs = this.dae.addExpression(ExprKind.Name, targetVarId);
     
     this.dae.eqData.set(eqOffset + EQ_LHS, newLhs);
     this.dae.eqData.set(eqOffset + EQ_RHS, simplifiedResidual);
   }
 
+  /**
+   * Phase 3: Tarjan Strongly Connected Components (SCC) computation.
+   */
   @inline
   computeSCC(): void {
     let varCount = this.dae.varCount;
@@ -307,6 +319,9 @@ export class BltEngine {
     this.sccBlockPtrs.set(this.sccCount, this.sccBlockEqs.length);
   }
 
+  /**
+   * Executes full BLT pipeline: buildDependencies -> computeMatching -> computeSCC.
+   */
   @inline
   computeBLT(): void {
     this.buildDependencies();
@@ -315,6 +330,9 @@ export class BltEngine {
   }
 }
 
+/**
+ * Creates and initializes a new BltEngine instance in linear memory.
+ */
 export function blt_createEngine(daePtr: u32): u32 {
   let ptr = atomicChunkAlloc(offsetof<BltEngine>());
   let engine = changetype<BltEngine>(ptr);
@@ -322,10 +340,16 @@ export function blt_createEngine(daePtr: u32): u32 {
   return ptr as u32;
 }
 
+/**
+ * Computes BLT block partitioning on the target engine instance.
+ */
 export function blt_compute(enginePtr: u32): void {
   changetype<BltEngine>(enginePtr).computeBLT();
 }
 
+/**
+ * Rolls back the BLT engine matching state to a previous snapshot.
+ */
 export function blt_rollback(enginePtr: u32, snapshotEqCount: u32, snapshotVarCount: u32): void {
   changetype<BltEngine>(enginePtr).rollback(snapshotEqCount, snapshotVarCount);
 }

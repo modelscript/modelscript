@@ -464,13 +464,13 @@ end model;\`;
             const cacheBuster = Date.now();
             const compilerWorker = new Worker('/worker-compiler.js?v=' + cacheBuster, { type: 'module' });
             compilerWorker.onerror = (e) => {
-                console.error("Compiler Worker Error:", e);
-                document.getElementById('status').innerText = "Compiler Worker Error: " + e.message;
+                console.error("Compiler Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
+                document.getElementById('status').innerText = "Compiler Worker Error: " + (e.message || "Unknown error");
             };
 
             const lspWorker = new Worker('/worker-lsp.js?v=' + cacheBuster, { type: 'module' });
             lspWorker.onerror = (e) => {
-                console.error("LSP Worker Error:", e);
+                console.error("LSP Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
             };
 
             document.getElementById('compile-btn').onclick = () => {
@@ -500,8 +500,8 @@ end model;\`;
                             getLegend,
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
                                 if (token.isCancellationRequested) return null;
-                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } });
-                                if (result && result.data) return { data: new Uint32Array(result.data), resultId: null };
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch(() => null);
+                                if (result && result.data && Array.isArray(result.data)) return { data: new Uint32Array(result.data), resultId: null };
                                 return null;
                             },
                             releaseDocumentSemanticTokens: function (resultId) { }
@@ -516,8 +516,8 @@ end model;\`;
                                         start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
                                         end: { line: range.endLineNumber - 1, character: range.endColumn - 1 }
                                     }
-                                });
-                                if (result && result.data) return { data: new Uint32Array(result.data), resultId: null };
+                                }).catch(() => null);
+                                if (result && result.data && Array.isArray(result.data)) return { data: new Uint32Array(result.data), resultId: null };
                                 return null;
                             }
                         });
@@ -957,7 +957,7 @@ end model;\`;
                                 if (node.isError) className += " ast-error";
                                 
                                 return (
-                                    <div key={node.id} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
+                                    <div key={node.id + "_" + i} className={className} style={{ marginLeft: node.depth * 15, cursor: 'pointer' }} onClick={() => handleNodeClick(node.currentOffset, node.len)}>
                                         {node.parentField && (
                                             <span style={{ color: '#6e7781', marginRight: '4px' }}>
                                                 {node.parentField}:
@@ -1086,15 +1086,14 @@ self.onmessage = async (e) => {
                             const ascResult = await asc.main([
                                 "parser.ts",
                                 "-O0",
-                                "--enable", "threads",
-                                "--runtime", "stub",
+                                "--enable=threads",
+                                "--runtime=stub",
                                 "--exportRuntime",
                                 "--importMemory",
-                                "--sharedMemory",
-                                "--maximumMemory", "16384",
-                                "--memoryBase", "65536",
-                                "--disableWarning",
-                                "--outFile", "parser.wasm",
+                                "--maximumMemory=16384",
+                                "--memoryBase=65536",
+                                "--disableWarning=235",
+                                "--outFile=parser.wasm",
                                 "--textFile", "parser.wat"
                             ], {
                                 readFile: (name) => {
@@ -1142,6 +1141,10 @@ function getLspWorkerJs() {
   return `
 // LSP Worker (Standalone JSON-RPC without CDNs)
 console.log("LSP Worker started");
+
+self.onerror = function(message, source, lineno, colno, error) {
+    console.error("[LSP Worker Error Details]:", message, "at line", lineno, "col", colno, error);
+};
 
 let lspFacade = null;
 let latestUri = undefined;
@@ -1307,7 +1310,7 @@ self.addEventListener('message', async (e) => {
         if (langName) currentLangName = langName;
         
         try {
-            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 16384, shared: true });
+            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 16384 });
             const baseImports = { 
                 env: { memory, emitTextEdit: function(a,b,c,d) {}, abort: function(msg, file, line, col) {
                     let str = "unknown";
@@ -1358,9 +1361,25 @@ self.addEventListener('message', async (e) => {
             
             // initCompiler is called by LspFacade constructor; do NOT call it here
             
-            const blob = new Blob([jsWrapper], { type: 'application/javascript' });
-            const url = URL.createObjectURL(blob);
-            const { LspFacade } = await import(url);
+            let LspFacade;
+            try {
+                const blob = new Blob([jsWrapper], { type: 'application/javascript' });
+                const url = URL.createObjectURL(blob);
+                const mod = await import(url);
+                LspFacade = mod.LspFacade;
+                URL.revokeObjectURL(url);
+            } catch (e1) {
+                console.warn("Blob import failed in worker, falling back to Function evaluator:", e1);
+                try {
+                    const cleanedJs = jsWrapper.replace(/^export\\s+/gm, "");
+                    const fn = new Function("exports", cleanedJs + "\\nreturn typeof LspFacade !== 'undefined' ? LspFacade : exports.LspFacade;");
+                    const exportsObj = {};
+                    LspFacade = fn(exportsObj);
+                } catch (e2) {
+                    console.error("Function evaluation fallback also failed:", e2);
+                    throw e2;
+                }
+            }
 
             const origLog = console.log;
             console.log = function(...args) {
@@ -1514,98 +1533,117 @@ self.addEventListener('message', async (e) => {
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
     } else if (e.data.method === 'textDocument/semanticTokens/full' || e.data.method === 'textDocument/semanticTokens/range') {
-        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
-        const t0 = performance.now();
-        const tokensArray = lspFacade.getSemanticTokens(globalAstRoot);
-        const t1 = performance.now();
-        
-        if (!tokensArray || tokensArray.length === 0) {
-            return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
-        }
-        
-        const lineStarts = lspFacade.getLineStarts();
-        let startOffset = 0;
-        let endOffset = 0xFFFFFFFF;
-        
-        if (e.data.method === 'textDocument/semanticTokens/range' && e.data.params.range) {
-            const range = e.data.params.range;
-            startOffset = (range.start.line < lineStarts.length ? lineStarts[range.start.line] : 0) + range.start.character * 2;
-            endOffset = (range.end.line < lineStarts.length ? lineStarts[range.end.line] : lineStarts[lineStarts.length - 1]) + range.end.character * 2;
-        }
-        
-        const count = tokensArray.length / 4;
-        const validIndices = [];
-        for (let i = 0; i < count; i++) {
-            const offset = tokensArray[i * 4];
-            if (offset >= startOffset && offset <= endOffset) {
-                validIndices.push(i);
+        try {
+            if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+            const t0 = performance.now();
+            const tokensArray = lspFacade.getSemanticTokens(globalAstRoot);
+            const t1 = performance.now();
+            
+            if (!tokensArray || tokensArray.length === 0) {
+                return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
             }
-        }
-        
-        // Sort indices by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
-        validIndices.sort((a, b) => tokensArray[a * 4] - tokensArray[b * 4]);
-        
-        const validCount = validIndices.length;
-        const data = new Uint32Array(validCount * 5);
-        let dataIdx = 0;
-        let prevLine = 0;
-        let prevChar = 0;
-        
-        for (let i = 0; i < validCount; i++) {
-            const baseIdx = validIndices[i] * 4;
-            const offset = tokensArray[baseIdx];
-            const length = tokensArray[baseIdx + 1];
-            const tokenType = tokensArray[baseIdx + 2];
-            const tokenModifiers = tokensArray[baseIdx + 3];
             
-            // Skip tokens with offsets past the end of the source text
-            // (can happen when ERROR node byte lengths are inflated during recovery)
-            if (offset >= lineStarts[lineStarts.length - 1] + 10000) continue;
-            if (length === 0) continue;
-            
-            let line = 0;
-            let low = 0;
-            let high = lineStarts.length - 1;
-            while (low <= high) {
-                let mid = (low + high) >> 1;
-                if (lineStarts[mid] <= offset) {
-                    line = mid;
-                    low = mid + 1;
-                } else {
-                    high = mid - 1;
-                }
+            const lineStarts = lspFacade.getLineStarts();
+            if (!lineStarts || lineStarts.length === 0) {
+                return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
             }
-            const charOffset = (offset - lineStarts[line]) / 2;
-            let charLength = length / 2;
             
-            // Clamp token length to not extend past the end of the current line
-            // (prevents Monaco's "end character > model.getLineLength" error)
-            // Note: lineStarts diff includes \\n or \\r\\n. We subtract 1 as a safe buffer.
-            if (line + 1 < lineStarts.length) {
-                const lineEndChar = Math.max(0, ((lineStarts[line + 1] - lineStarts[line]) / 2) - 1);
-                if (charOffset + charLength > lineEndChar) {
-                    charLength = Math.max(0, lineEndChar - charOffset);
+            let startOffset = 0;
+            let endOffset = 0xFFFFFFFF;
+            
+            if (e.data.method === 'textDocument/semanticTokens/range' && e.data.params.range) {
+                const range = e.data.params.range;
+                startOffset = (range.start.line < lineStarts.length ? lineStarts[range.start.line] : 0) + range.start.character * 2;
+                endOffset = (range.end.line < lineStarts.length ? lineStarts[range.end.line] : lineStarts[lineStarts.length - 1]) + range.end.character * 2;
+            }
+            
+            const count = tokensArray.length / 4;
+            const validIndices = [];
+            for (let i = 0; i < count; i++) {
+                const offset = tokensArray[i * 4];
+                if (offset >= startOffset && offset <= endOffset) {
+                    validIndices.push(i);
                 }
             }
             
-            const deltaLine = line - prevLine;
-            const deltaChar = deltaLine === 0 ? charOffset - prevChar : charOffset;
+            // Sort indices by absolute offset to satisfy Monaco's requirement for strictly ascending token positions
+            // If offsets are equal, sort by length ASCENDING so more specific tokens take precedence
+            validIndices.sort((a, b) => {
+                const diff = tokensArray[a * 4] - tokensArray[b * 4];
+                if (diff !== 0) return diff;
+                return tokensArray[a * 4 + 1] - tokensArray[b * 4 + 1];
+            });
             
-            if (deltaLine < 0 || deltaChar < 0 || charLength <= 0) continue;
+            const validCount = validIndices.length;
+            const data = new Uint32Array(validCount * 5);
+            let dataIdx = 0;
+            let prevLine = 0;
+            let prevChar = 0;
+            let prevEndOffset = -1;
             
-            data[dataIdx++] = deltaLine;
-            data[dataIdx++] = deltaChar;
-            data[dataIdx++] = charLength;
-            data[dataIdx++] = tokenType;
-            data[dataIdx++] = tokenModifiers;
+            for (let i = 0; i < validCount; i++) {
+                const baseIdx = validIndices[i] * 4;
+                const offset = tokensArray[baseIdx];
+                const length = tokensArray[baseIdx + 1];
+                const tokenType = tokensArray[baseIdx + 2];
+                const tokenModifiers = tokensArray[baseIdx + 3];
+                
+                // Skip tokens with offsets past the end of the source text
+                // (can happen when ERROR node byte lengths are inflated during recovery)
+                if (offset >= lineStarts[lineStarts.length - 1] + 10000) continue;
+                if (length === 0) continue;
+                
+                // Enforce LSP specification: tokens MUST be strictly non-overlapping
+                if (offset < prevEndOffset) continue;
+                
+                let line = 0;
+                let low = 0;
+                let high = lineStarts.length - 1;
+                while (low <= high) {
+                    let mid = (low + high) >> 1;
+                    if (lineStarts[mid] <= offset) {
+                        line = mid;
+                        low = mid + 1;
+                    } else {
+                        high = mid - 1;
+                    }
+                }
+                const charOffset = (offset - lineStarts[line]) / 2;
+                let charLength = length / 2;
+                
+                // Clamp token length to not extend past the end of the current line
+                // (prevents Monaco's "end character > model.getLineLength" error)
+                // Note: lineStarts diff includes \\n or \\r\\n. We subtract 1 as a safe buffer.
+                if (line + 1 < lineStarts.length) {
+                    const lineEndChar = Math.max(0, ((lineStarts[line + 1] - lineStarts[line]) / 2) - 1);
+                    if (charOffset + charLength > lineEndChar) {
+                        charLength = Math.max(0, lineEndChar - charOffset);
+                    }
+                }
+                
+                const deltaLine = line - prevLine;
+                const deltaChar = deltaLine === 0 ? charOffset - prevChar : charOffset;
+                
+                if (deltaLine < 0 || deltaChar < 0 || charLength <= 0) continue;
+                
+                data[dataIdx++] = deltaLine;
+                data[dataIdx++] = deltaChar;
+                data[dataIdx++] = charLength;
+                data[dataIdx++] = tokenType;
+                data[dataIdx++] = tokenModifiers;
+                
+                prevLine = line;
+                prevChar = charOffset;
+                prevEndOffset = offset + length;
+            }
             
-            prevLine = line;
-            prevChar = charOffset;
+            console.log("Semantic Tokens computed:", (dataIdx / 5), "valid tokens (", validCount, "total) in range", startOffset, "to", endOffset);
+            const tokensList = Array.from(data.subarray(0, dataIdx));
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: tokensList } });
+        } catch (err) {
+            console.error("Semantic Tokens Worker Error:", err);
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         }
-        
-        console.log("Semantic Tokens computed:", (dataIdx / 5), "valid tokens (", validCount, "total) in range", startOffset, "to", endOffset);
-        const slicedBuffer = data.buffer.slice(0, dataIdx * 4);
-        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: slicedBuffer } }, [slicedBuffer]);
     }
 });
 `;

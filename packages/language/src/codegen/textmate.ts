@@ -1,9 +1,21 @@
 import { LanguageOptions, Rule, TokenClass } from "../dsl.js";
 
+/**
+ * Escapes special regular expression meta-characters in a raw string.
+ * @param string The input string to escape.
+ * @returns Escaped regex string safe for inclusion in RegExp patterns.
+ */
 function escapeRegExp(string: string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Recursively traverses grammar DSL rules to extract string literals grouped by TokenClass.
+ *
+ * @param rule The current rule tree node being inspected.
+ * @param acc Accumulator dictionary mapping token classes to sets of token strings.
+ * @param currentClass Inherited token class override.
+ */
 function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, currentClass?: TokenClass) {
   if (!rule) return;
   if (rule.type === "SYNTAX_TOKEN") {
@@ -36,6 +48,12 @@ function collectTokens(rule: Rule<any>, acc: Record<string, Set<string>>, curren
   }
 }
 
+/**
+ * Generates VS Code TextMate (.tmLanguage.json) and Monaco Editor (Monarch) syntax highlighters.
+ *
+ * @param langConfig Language DSL configuration options.
+ * @returns Object containing formatted JSON strings for TextMate (`tm`) and Monarch (`monarch`) rules.
+ */
 export function generateTextMate(langConfig: LanguageOptions): { tm: string; monarch: string } {
   const acc: Record<string, Set<string>> = {};
 

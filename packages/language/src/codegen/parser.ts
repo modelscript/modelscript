@@ -518,7 +518,7 @@ export function generateParserTables(
 
   code += generateLexer(originalGrammar, grammar);
 
-  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\n`;
+  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${symToInt.size};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
   let lintSwitchStr = "";
@@ -628,7 +628,7 @@ export function generateParserTables(
     .replace("export const CHAR_RPAREN: u8 = 41;", `export const CHAR_RPAREN: u8 = ${hasToken(")") ? 41 : 0};`);
   let lspCodeTemplate = lspCode;
 
-  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, executeLints } from "./parser";\n`;
+  let lspImports = `import { inputLength, inputEncoding, logInt, SyntaxType, peekChar, type_semantics, type_semantic_data, type_is_folding, type_is_outline, MAX_TERMINAL_ID, MAX_SYMBOL_ID, executeLints } from "./parser";\n`;
   let importedLints = new Set<string>();
   if (originalGrammar.lints) {
     for (const lintName of Object.keys(originalGrammar.lints)) {

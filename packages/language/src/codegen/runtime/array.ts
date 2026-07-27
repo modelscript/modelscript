@@ -37,8 +37,9 @@ export class ChunkedArray<T> {
    * @param initialElements The expected number of elements, used to eagerly allocate chunks.
    */
   public init(initialElements: u32 = 0): void {
+    if (this.directory != 0) return; // Prevent memory leak from re-initialization
     this.dirCapacity = 1024;
-    this.directory = atomicChunkAlloc(this.dirCapacity * sizeof<usize>());
+    this.directory = heap.alloc(this.dirCapacity * sizeof<usize>()) as usize;
     this.allocatedChunks = 0;
     this.length = 0;
 
@@ -58,8 +59,11 @@ export class ChunkedArray<T> {
   private addChunk(): void {
     if (this.allocatedChunks >= this.dirCapacity) {
       let newDirCapacity = this.dirCapacity == 0 ? 1024 : this.dirCapacity * 2;
-      let newDirectory = atomicChunkAlloc(newDirCapacity * sizeof<usize>());
-      memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
+      let newDirectory = heap.alloc(newDirCapacity * sizeof<usize>()) as usize;
+      if (this.directory != 0) {
+        memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
+        heap.free(this.directory);
+      }
       this.directory = newDirectory;
       this.dirCapacity = newDirCapacity;
     }
@@ -167,6 +171,21 @@ export class ChunkedArray<T> {
   }
 
   /**
+   * Frees the directory buffer to prevent memory leaks when the array is no longer needed.
+   * Note: Chunks allocated via atomicChunkAlloc are not freed individually.
+   */
+  @inline
+  public dispose(): void {
+    if (this.directory != 0) {
+      heap.free(this.directory);
+      this.directory = 0;
+      this.dirCapacity = 0;
+      this.allocatedChunks = 0;
+      this.length = 0;
+    }
+  }
+
+  /**
    * Bulk-copies elements from a source ChunkedArray.
    * Extremely optimized for zero-GC mass array cloning (e.g., AST stack duplication).
    * @param src The source array to copy from.
@@ -269,6 +288,11 @@ export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32A
   return arr;
 }
 
+/**
+ * Factory function to safely instantiate an unmanaged `ChunkedFloat64Array`.
+ * Bypasses the `new` keyword to allocate directly from the `atomicChunkAlloc` linear arena.
+ * @param initialElements The number of elements to pre-allocate chunks for.
+ */
 export function createChunkedFloat64Array(initialElements: u32 = 0): ChunkedFloat64Array {
   let ptr = atomicChunkAlloc(offsetof<ChunkedFloat64Array>());
   let arr = changetype<ChunkedFloat64Array>(ptr);
@@ -276,6 +300,11 @@ export function createChunkedFloat64Array(initialElements: u32 = 0): ChunkedFloa
   return arr;
 }
 
+/**
+ * Factory function to safely instantiate an unmanaged `ChunkedUint8Array`.
+ * Bypasses the `new` keyword to allocate directly from the `atomicChunkAlloc` linear arena.
+ * @param initialElements The number of elements to pre-allocate chunks for.
+ */
 export function createChunkedUint8Array(initialElements: u32 = 0): ChunkedUint8Array {
   let ptr = atomicChunkAlloc(offsetof<ChunkedUint8Array>());
   let arr = changetype<ChunkedUint8Array>(ptr);
@@ -283,55 +312,79 @@ export function createChunkedUint8Array(initialElements: u32 = 0): ChunkedUint8A
   return arr;
 }
 
+/**
+ * Unmanaged wrapper for raw 32-bit signed integer memory buffers.
+ */
 @unmanaged
 export class UnmanagedInt32Array {
   @inline @operator("[]") get(index: i32): i32 {
+    if (index < 0) return 0;
     return load<i32>(changetype<usize>(this) + ((index as u32) << 2));
   }
   @inline @operator("[]=") set(index: i32, value: i32): void {
+    if (index < 0) return;
     store<i32>(changetype<usize>(this) + ((index as u32) << 2), value);
   }
 }
 
+/**
+ * Unmanaged wrapper for raw 32-bit unsigned integer memory buffers.
+ * Supports atomic operations for concurrent multithreaded WASM access.
+ */
 @unmanaged
 export class UnmanagedUint32Array {
   @inline @operator("[]") get(index: i32): u32 {
+    if (index < 0) return 0;
     return load<u32>(changetype<usize>(this) + ((index as u32) << 2));
   }
   @inline @operator("[]=") set(index: i32, value: u32): void {
-    store<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
+    if (index < 0) return;
+    store<i32>(changetype<usize>(this) + ((index as u32) << 2), value);
   }
   @inline atomicGet(index: i32): u32 {
+    if (index < 0) return 0;
     return atomic.load<u32>(changetype<usize>(this) + ((index as u32) << 2));
   }
   @inline atomicSet(index: i32, value: u32): void {
+    if (index < 0) return;
     atomic.store<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
   }
   @inline atomicCmpxchg(index: i32, expected: u32, replacement: u32): u32 {
+    if (index < 0) return 0;
     return atomic.cmpxchg<u32>(changetype<usize>(this) + ((index as u32) << 2), expected, replacement);
   }
   @inline atomicAdd(index: i32, value: u32): u32 {
+    if (index < 0) return 0;
     return atomic.add<u32>(changetype<usize>(this) + ((index as u32) << 2), value);
   }
 }
 
-
+/**
+ * Unmanaged wrapper for raw 16-bit unsigned integer memory buffers.
+ */
 @unmanaged
 export class UnmanagedUint16Array {
   @inline @operator("[]") get(index: i32): u16 {
+    if (index < 0) return 0;
     return load<u16>(changetype<usize>(this) + ((index as u32) << 1));
   }
   @inline @operator("[]=") set(index: i32, value: u16): void {
+    if (index < 0) return;
     store<u16>(changetype<usize>(this) + ((index as u32) << 1), value);
   }
 }
 
+/**
+ * Unmanaged wrapper for raw 8-bit unsigned integer byte buffers.
+ */
 @unmanaged
 export class UnmanagedUint8Array {
   @inline @operator("[]") get(index: i32): u8 {
+    if (index < 0) return 0;
     return load<u8>(changetype<usize>(this) + (index as u32));
   }
   @inline @operator("[]=") set(index: i32, value: u8): void {
+    if (index < 0) return;
     store<u8>(changetype<usize>(this) + (index as u32), value);
   }
 }

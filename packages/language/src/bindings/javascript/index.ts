@@ -1,6 +1,19 @@
 import { bindingsTemplateDtsCode, bindingsTemplateJsCode } from "../../../build/src-gen/runtime-templates.js";
 import { NormalizedGrammar } from "../../grammar.js";
 
+/**
+ * Generates the standalone JavaScript wrapper string and its TypeScript definitions
+ * for a compiled ModelScript parser.
+ *
+ * This function injects the dynamically generated syntax names, field names,
+ * and diagnostic lint dictionaries into the statically compiled `bindingsTemplateJsCode`
+ * via string replacement, producing a zero-dependency CommonJS/ESM module that can
+ * be instantiated in the browser or Node.js.
+ *
+ * @param grammarDef - The raw grammar definition object containing metadata and lints.
+ * @param normalized - The normalized grammar object containing resolved symbol/field maps and productions.
+ * @returns An object containing the final JS source, DTS source, and exported syntax/field arrays.
+ */
 export function generateJavaScriptWrapper(
   grammarDef: any,
   normalized: NormalizedGrammar,

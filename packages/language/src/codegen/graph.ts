@@ -2,6 +2,13 @@ import * as ts from "typescript";
 import { graphCode } from "../../build/src-gen/runtime-templates.js";
 import { LanguageOptions } from "../dsl.js";
 
+/**
+ * Generates the CodeGraph AssemblyScript bridge, transpiling TypeScript user query functions
+ * into zero-GC incremental arena queries with automatic cursor management and AST field lookups.
+ *
+ * @param grammar Language DSL options object containing query definitions.
+ * @returns AssemblyScript source code string for the graph query bridge.
+ */
 export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   let switchCode = "";
   let customQueries = "";

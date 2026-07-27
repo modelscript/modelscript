@@ -188,18 +188,25 @@ const MERGE_PROBE_LIMIT: u32 = 4;
 let t_mergeTable: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0); // pointer to raw memory: MERGE_TABLE_SIZE * 8 bytes
 export let mergeGeneration: u32 = 0;
 
+/**
+ * Initializes the GLR state merge hash table.
+ */
 export function mergeTableInit(): void {
   if (changetype<usize>(t_mergeTable) == 0) {
     t_mergeTable = changetype<UnmanagedUint32Array>(atomicChunkAlloc(MERGE_TABLE_SIZE * 8));
   }
 }
 
+/**
+ * Rebuilds the merge hash index from the currently active GSS heads.
+ * @param activeHeadsCount Number of active GSS parse heads.
+ * @param t_activeHeads Array of active head pointers.
+ */
 export function rebuildMergeTable(activeHeadsCount: u32, t_activeHeads: UnmanagedUint32Array): void {
   if (changetype<usize>(t_mergeTable) == 0) return;
   mergeGeneration++;
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let h = changetype<ParseHead>(t_activeHeads[i]);
-    // Inline registerMergeCandidate to avoid circular imports or just use the same logic
     let hash = ((h.pos ^ ((h.state as u32) * 0x9e3779b9)) >> 4) & MERGE_TABLE_MASK;
     for (let j: u32 = 0; j < MERGE_PROBE_LIMIT; j++) {
       let slotIdx = ((hash + j) & MERGE_TABLE_MASK) << 1;
@@ -213,7 +220,7 @@ export function rebuildMergeTable(activeHeadsCount: u32, t_activeHeads: Unmanage
 }
 
 /**
- * Find a merge candidate in the active heads matching (pos, state, prev).
+ * Finds a merge candidate in the active heads matching (pos, state).
  * Returns the index into t_activeHeads, or -1 if not found.
  */
 export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null): i32 {
@@ -234,7 +241,7 @@ export function findMergeCandidate(pos: u32, state: i32, prev: ParseHead | null)
 }
 
 /**
- * Register a newly pushed head in the merge hash index.
+ * Registers a newly pushed head in the merge hash index.
  */
 export function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void {
   if (changetype<usize>(t_mergeTable) == 0) return;
@@ -253,12 +260,17 @@ export function registerMergeCandidate(headIdx: u32, pos: u32, state: i32): void
   t_mergeTable[slotIdx + 1] = mergeGeneration;
 }
 
-
-
+/**
+ * Retrieves the start byte offset of a reported syntax error by index.
+ */
 export function getErrorStart(index: i32): u32 {
   if (index < 0 || index >= errorCount) return 0;
   return t_errorStarts[index];
 }
+
+/**
+ * Retrieves the end byte offset of a reported syntax error by index.
+ */
 export function getErrorEnd(index: i32): u32 {
   if (index < 0 || index >= errorCount) return 0;
   return t_errorEnds[index];

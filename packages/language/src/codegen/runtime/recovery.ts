@@ -115,6 +115,7 @@ export function simulateLookahead(
   setActiveHeadsCount(1);
   t_activeHeads[0] = changetype<u32>(tempHead);
   
+  let startPos: u32 = resumePos == -1 ? baseHead.pos : (resumePos as u32);
   let simSteps = 0;
   let maxSimSteps = maxTokens + vCount + 2;
   while (activeHeadsCount > 0 && getBestAcceptingHead() == 0 && simSteps < maxSimSteps) {
@@ -122,7 +123,15 @@ export function simulateLookahead(
     simSteps++;
   }
   
-  let result = (getBestAcceptingHead() != 0 || activeHeadsCount > 0) ? 1 : 0;
+  let hasShifted = false;
+  for (let i: u32 = 0; i < activeHeadsCount; i++) {
+    let h = changetype<ParseHead>(t_activeHeads[i]);
+    if (h.pos > startPos || h.successfulShifts > 0) {
+      hasShifted = true;
+      break;
+    }
+  }
+  let result = (getBestAcceptingHead() != 0 || (activeHeadsCount > 0 && hasShifted)) ? 1 : 0;
   
   restoreSimulationState();
   resetGeneration(2);
@@ -608,8 +617,15 @@ export function recoverUnwindAndMutate(
                 }
                 if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
 
-                let mergedNode = unwindCurr != null ? unwindCurr.astNode : 0;
-                let parentHead = unwindCurr != null ? unwindCurr.prev : null;
+                let mergedNode: u32 = 0;
+                let parentHead: ParseHead | null = unwindCurr;
+                if (unwindCurr != null && unwindCurr.astNode != 0) {
+                  let uType = getNodeType(unwindCurr.astNode);
+                  if (uType == NODE_TYPE_ERROR || isListNode(uType)) {
+                    mergedNode = unwindCurr.astNode;
+                    parentHead = unwindCurr.prev;
+                  }
+                }
                 if (mergedNode != 0 && !isListNode(getNodeType(mergedNode)) && parentHead != null && parentHead.astNode != 0 && isListNode(getNodeType(parentHead.astNode))) {
                   mergedNode = concatLists(parentHead.astNode, mergedNode, getNodeType(parentHead.astNode), 0);
                   recState = parentHead.state;
@@ -673,7 +689,7 @@ export function recoverUnwindAndMutate(
                   p = srcLexPos + tLen;
                 }
                 
-                let expectedStart = head.pos + getNodePadding(errNode);
+                let expectedStart = unwindCurr.pos + getNodePadding(errNode);
                 let errByteLen = p > expectedStart ? p - expectedStart : 0;
                 setNodeByteLength(errNode, errByteLen);
 
@@ -685,9 +701,13 @@ export function recoverUnwindAndMutate(
                 
                 if (lastChild != 0 || errByteLen > 0) {
                   if (mergedNode != 0) {
-                      mergedNode = concatLists(mergedNode, errNode, parentType, 0);
+                    mergedNode = concatLists(mergedNode, errNode, parentType, 0);
+                  } else if (parentHead != null && parentHead.astNode != 0) {
+                    let pType = getNodeType(parentHead.astNode);
+                    mergedNode = concatLists(parentHead.astNode, errNode, pType, 0);
+                    parentHead = parentHead.prev;
                   } else {
-                      mergedNode = errNode;
+                    mergedNode = errNode;
                   }
                 }
 
@@ -695,7 +715,7 @@ export function recoverUnwindAndMutate(
                 let delHead = allocParseHead(
                   recState,
                   mergedNode,
-                  unwindCurr != null ? unwindCurr.prev : null,
+                  parentHead,
                   p,
                   initialScannerState,
                   delHeadCost,
@@ -808,7 +828,7 @@ export function recoverUnwindAndMutate(
                 let sym = t_branchB_outTokens[k];
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
                 if (baseCost <= 0) baseCost = 10;
-                if ((sym > MAX_TERMINAL_ID || (sym <= MAX_TERMINAL_ID && token_insert_costs[sym] >= 20)) && token != TOKEN_EOF) {
+                if ((sym > MAX_TERMINAL_ID || (sym <= MAX_TERMINAL_ID && token_insert_costs[sym] >= 50)) && token != TOKEN_EOF) {
                   baseCost += 15000;
                 }
                 actualCost += baseCost;
@@ -881,7 +901,7 @@ export function recoverIslandMode(
           let hasCleanLocalHead = false;
           for (let hIdx: u32 = 0; hIdx < activeHeadsCount; hIdx++) {
             let hPtr = changetype<ParseHead>(t_activeHeads[hIdx]);
-            if (hPtr != head && (hPtr.errorCost <= head.errorCost + 2000 || hPtr.pos > head.pos)) {
+            if (hPtr != head && hPtr.errorCost <= head.errorCost + 2000) {
               hasCleanLocalHead = true;
               break;
             }

@@ -19,6 +19,15 @@ interface ParsedRule {
   source: string;
 }
 
+/**
+ * Generates an AssemblyScript OWL 2 RL / SysML v2 stratified Datalog reasoning engine.
+ * Computes semi-naive fixpoints, negation via stratification, type fact extraction,
+ * and axiom rule evaluation in linear memory.
+ *
+ * @param grammar Language DSL options object.
+ * @param normalized Normalized grammar representation.
+ * @returns AssemblyScript source code string for the semantic reasoner module.
+ */
 export function generateReasoner(grammar: GrammarOptions, normalized: NormalizedGrammar): string {
   let code = `import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
 import { getNodeFirstChild, getNodeNextSibling } from "./arena";
@@ -373,67 +382,50 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     for (let ai = 0; ai < b0.args.length; ai++) {
       const v = b0.args[ai];
       if (!varMap[v]) varMap[v] = [];
-      varMap[v].push(`${prefix}_d_arg${ai + 1}`);
+      varMap[v].push(`${prefix}_arg0_${ai + 1}`);
     }
-
-    // If we have a second positive atom, generate a join
-    const hasJoin = positiveAtoms.length >= 2;
-    const b1 = hasJoin ? positiveAtoms[1] : null;
-
-    if (b1) {
-      for (let ai = 0; ai < b1.args.length; ai++) {
-        const v = b1.args[ai];
-        if (!varMap[v]) varMap[v] = [];
-        varMap[v].push(`${prefix}_f_arg${ai + 1}`);
-      }
-    }
-
-    // Join conditions
-    let joinChecks: string[] = [];
-    for (const [, positions] of Object.entries(varMap)) {
-      if (positions.length >= 2) {
-        for (let pi = 1; pi < positions.length; pi++) {
-          joinChecks.push(`${positions[0]} == ${positions[pi]}`);
-        }
-      }
-    }
-    let joinCheck = joinChecks.length > 0 ? joinChecks.join(" && ") : "true";
-
-    // Head arg expressions
-    let headArgExprs: string[] = [];
-    for (const ha of rule.headArgs) {
-      headArgExprs.push(varMap[ha]?.[0] || "0");
-    }
-    while (headArgExprs.length < maxArity) headArgExprs.push("0");
 
     // Outer loop: iterate delta for first positive atom
     out += `
         // Rule: ${rule.source}
         for (let ${prefix}_di: u32 = deltaStart; ${prefix}_di < deltaEnd; ${prefix}_di++) {
-            let ${prefix}_didx = ${prefix}_di * ${FACT_STRIDE};
-            if (factTable[${prefix}_didx] != ${b0.pred}) continue;
+            let ${prefix}_idx0 = ${prefix}_di * FACT_STRIDE;
+            if (factTable[${prefix}_idx0] != ${b0.pred}) continue;
 `;
     for (let ai = 0; ai < b0.args.length; ai++) {
-      out += `            let ${prefix}_d_arg${ai + 1} = factTable[${prefix}_didx + ${ai + 1}];\n`;
+      out += `            let ${prefix}_arg0_${ai + 1} = factTable[${prefix}_idx0 + ${ai + 1}];\n`;
     }
 
-    if (hasJoin && b1) {
-      // Inner loop: hash-indexed scan via predicate index chain
-      // Only visits facts with predicate == b1.pred, O(k) instead of O(n)
-      out += `            let ${prefix}_fchain = predIndexHead[(${b1.pred} >>> 0) & PRED_INDEX_MASK];
-            while (${prefix}_fchain != 0) {
-                let ${prefix}_fi = ${prefix}_fchain - 1;
-                ${prefix}_fchain = predIndexNext[${prefix}_fi];
-                let ${prefix}_fidx = ${prefix}_fi * ${FACT_STRIDE};
-                if (factTable[${prefix}_fidx] != ${b1.pred}) continue;
-`;
-      for (let ai = 0; ai < b1.args.length; ai++) {
-        out += `                let ${prefix}_f_arg${ai + 1} = factTable[${prefix}_fidx + ${ai + 1}];\n`;
+    // Inner loops for positive atoms 1 to N-1
+    for (let k = 1; k < positiveAtoms.length; k++) {
+      const bk = positiveAtoms[k];
+      out += `            let ${prefix}_chain${k} = predIndexHead[(${bk.pred} >>> 0) & PRED_INDEX_MASK];\n`;
+      out += `            while (${prefix}_chain${k} != 0) {\n`;
+      out += `                let ${prefix}_i${k} = ${prefix}_chain${k} - 1;\n`;
+      out += `                ${prefix}_chain${k} = predIndexNext[${prefix}_i${k}];\n`;
+      out += `                let ${prefix}_idx${k} = ${prefix}_i${k} * FACT_STRIDE;\n`;
+      out += `                if (factTable[${prefix}_idx${k}] != ${bk.pred}) continue;\n`;
+
+      for (let ai = 0; ai < bk.args.length; ai++) {
+        out += `                let ${prefix}_arg${k}_${ai + 1} = factTable[${prefix}_idx${k} + ${ai + 1}];\n`;
+        const v = bk.args[ai];
+        if (!varMap[v]) varMap[v] = [];
+        varMap[v].push(`${prefix}_arg${k}_${ai + 1}`);
       }
-      out += `                if (${joinCheck}) {\n`;
-    } else {
-      // Single positive atom — no join needed
-      out += `            if (true) {\n`;
+
+      let levelJoinChecks: string[] = [];
+      for (const [, positions] of Object.entries(varMap)) {
+        if (positions.length >= 2) {
+          const lastPos = positions[positions.length - 1];
+          if (lastPos.startsWith(`${prefix}_arg${k}_`)) {
+            for (let pi = 0; pi < positions.length - 1; pi++) {
+              levelJoinChecks.push(`${lastPos} == ${positions[pi]}`);
+            }
+          }
+        }
+      }
+      let levelJoinCheck = levelJoinChecks.length > 0 ? levelJoinChecks.join(" && ") : "true";
+      out += `                if (${levelJoinCheck}) {\n`;
     }
 
     // Task 4.5: Negation checks — scan fact table to verify absence
@@ -455,13 +447,20 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       out += `                    // Negation check: NOT ${neg.predName}(${neg.args.join(", ")})\n`;
       out += `                    let ${negLabel}_found = false;\n`;
       out += `                    for (let ${negLabel}_i: u32 = 0; ${negLabel}_i < factCount; ${negLabel}_i++) {\n`;
-      out += `                        let ${negLabel}_idx = ${negLabel}_i * ${FACT_STRIDE};\n`;
+      out += `                        let ${negLabel}_idx = ${negLabel}_i * FACT_STRIDE;\n`;
       out += `                        if (${negArgChecks.join(" && ")}) {\n`;
       out += `                            ${negLabel}_found = true; break;\n`;
       out += `                        }\n`;
       out += `                    }\n`;
       out += `                    if (${negLabel}_found) {} else {\n`;
     }
+
+    // Head arg expressions
+    let headArgExprs: string[] = [];
+    for (const ha of rule.headArgs) {
+      headArgExprs.push(varMap[ha]?.[0] || "0");
+    }
+    while (headArgExprs.length < maxArity) headArgExprs.push("0");
 
     // Emit head fact
     out += `                    if (!factExists(${rule.headHash}, ${headArgExprs.join(", ")})) {\n`;
@@ -475,11 +474,9 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     }
 
     // Close join/condition
-    if (hasJoin) {
+    for (let k = positiveAtoms.length - 1; k >= 1; k--) {
       out += `                }\n`;
       out += `            }\n`; // Close while (fchain)
-    } else {
-      out += `            }\n`;
     }
 
     out += `        }\n`;
@@ -659,8 +656,10 @@ const FACT_HASH_CAPACITY: u32 = ${Math.max(MAX_FACTS * 4, 16384)};
 let factHashTable = new ChunkedUint32Array(FACT_HASH_CAPACITY);
 
 function factHashKey(${addFactParams.join(", ")}): u32 {
-    // Fibonacci hashing on (pred, arg1) for good distribution
-    return ((pred ^ (${maxArity >= 1 ? "arg1" : "0"} * 2654435761)) >>> 0) % FACT_HASH_CAPACITY;
+    // Fibonacci hashing on all available arguments for good distribution
+    let h = pred;
+    ${Array.from({ length: maxArity }, (_, i) => `h = (h ^ (arg${i + 1} * 2654435761)) >>> 0;`).join("\n    ")}
+    return h % FACT_HASH_CAPACITY;
 }
 
 export function addFact(${addFactParams.join(", ")}): void {

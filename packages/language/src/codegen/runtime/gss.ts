@@ -1,5 +1,6 @@
+/* eslint-disable */
+// @ts-nocheck
 import {
-  atomicChunkAlloc,
   allocGen0,
   getNodeFirstChild,
   getNodeNextSibling,
@@ -24,16 +25,24 @@ export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array
 export let t_extractedHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeHeadsCount: u32 = 0;
 
+/**
+ * Initializes the Graph-Structured Stack (GSS) active heads buffer memory.
+ */
 export function initGSS(): void {
   if (changetype<usize>(t_activeHeads) == 0) {
-    t_activeHeads = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
+    t_activeHeads = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
   }
   if (changetype<usize>(t_extractedHeadsBuffer) == 0) {
-    t_extractedHeadsBuffer = changetype<UnmanagedUint32Array>(atomicChunkAlloc(ARENA_BUFFER_SIZE * 4));
+    t_extractedHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
   }
   activeHeadsCount = 0;
 }
 
+/**
+ * Pushes a new active parse head to the GSS queue.
+ * @param headPtr Pointer to the ParseHead instance.
+ * @returns true if pushed successfully, false if the queue is full.
+ */
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
   t_activeHeads[activeHeadsCount] = headPtr;
@@ -41,11 +50,18 @@ export function pushActiveHead(headPtr: u32): boolean {
   return true;
 }
 
+/**
+ * Retrieves the active parse head pointer at the specified queue index.
+ * @param index Array index in t_activeHeads.
+ */
 export function getActiveHead(index: u32): u32 {
   if (index >= activeHeadsCount) return 0;
   return t_activeHeads[index];
 }
 
+/**
+ * Updates the total count of active parse heads in the GSS queue.
+ */
 export function setActiveHeadsCount(count: u32): void {
   activeHeadsCount = count;
 }
@@ -108,6 +124,9 @@ export class ParseHead {
   virtualQueueCount: u32;
 }
 
+/**
+ * Allocates and initializes a new ParseHead instance in Generation 0 linear memory.
+ */
 export function allocParseHead(
   state: i32,
   astNode: u32,
@@ -151,6 +170,9 @@ export function allocParseHead(
   return h;
 }
 
+/**
+ * Represents an error recovery branch candidate tracked during GLR parsing.
+ */
 @unmanaged
 export class ErrorBranch {
   head: u32;
@@ -165,6 +187,9 @@ export class ErrorBranch {
   next: u32;
 }
 
+/**
+ * Allocates and initializes an ErrorBranch instance in Generation 0 memory.
+ */
 export function allocErrorBranch(
   head: u32,
   cost: i32,
@@ -197,11 +222,13 @@ export function allocErrorBranch(
 
 export const cursorNodeStack = createChunkedUint32Array();
 export const cursorOffsetStack = createChunkedUint32Array();
-export const savedCursorNodeStack = createChunkedUint32Array();
-export const savedCursorOffsetStack = createChunkedUint32Array();
 
 export let globalCursorDepth: i32 = -1;
 
+/**
+ * Initializes the global singleton tree cursor at the root node.
+ * @param rootPtr Arena pointer to the root AST node.
+ */
 export function initGlobalCursor(rootPtr: u32): void {
   if (rootPtr != 0) {
     globalCursorDepth = 0;
@@ -212,11 +239,17 @@ export function initGlobalCursor(rootPtr: u32): void {
   }
 }
 
+/**
+ * Gets the current AST node pointer under the global cursor.
+ */
 export function globalCursorCurrentNode(): u32 {
   if (globalCursorDepth < 0) return 0;
   return cursorNodeStack[globalCursorDepth];
 }
 
+/**
+ * Moves the global cursor to the first child of the current node.
+ */
 export function globalCursorGotoFirstChild(): boolean {
   if (globalCursorDepth < 0 || globalCursorDepth >= MAX_CURSOR_DEPTH) return false;
 
@@ -224,9 +257,7 @@ export function globalCursorGotoFirstChild(): boolean {
   let child = getNodeFirstChild(cPtr);
   if (child == 0) return false;
 
-  let parentStart = cursorOffsetStack[globalCursorDepth] + getNodePadding(cPtr);
-  let childPad = getNodePadding(child);
-  let absStart: u32 = parentStart >= childPad ? parentStart - childPad : 0;
+  let absStart = cursorOffsetStack[globalCursorDepth];
 
   globalCursorDepth++;
   cursorNodeStack[globalCursorDepth] = child;
@@ -234,6 +265,9 @@ export function globalCursorGotoFirstChild(): boolean {
   return true;
 }
 
+/**
+ * Moves the global cursor to the next sibling of the current node.
+ */
 export function globalCursorGotoNextSibling(): boolean {
   if (globalCursorDepth < 0) return false;
 
@@ -248,6 +282,9 @@ export function globalCursorGotoNextSibling(): boolean {
   return true;
 }
 
+/**
+ * Moves the global cursor up to the parent node.
+ */
 export function globalCursorGotoParent(): boolean {
   if (globalCursorDepth <= 0) return false;
   globalCursorDepth--;

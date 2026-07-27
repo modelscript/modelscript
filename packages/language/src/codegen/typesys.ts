@@ -1,6 +1,14 @@
 import { LanguageOptions as GrammarOptions } from "../dsl.js";
 import { getDJB2Hash } from "./utils.js";
 
+/**
+ * Generates an AssemblyScript Hindley-Milner type inference, unification, and subtyping engine.
+ * Emits type tables, constructor helpers, occurs-check routines, and assignability logic.
+ *
+ * @param grammar Language configuration options.
+ * @param customCode Supplemental AssemblyScript code provided by the DSL.
+ * @returns AssemblyScript source code string for the type system engine.
+ */
 export function generateTypeSystem(grammar: GrammarOptions, customCode: string): string {
   let subtypingLogic = "";
   if (grammar.typeSystem?.subtypingPredicates) {

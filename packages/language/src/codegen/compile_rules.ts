@@ -1,11 +1,21 @@
 import { TransformCombinator } from "../dsl.js";
 
+/**
+ * Interface representing an algebraic or AST rewrite rule.
+ */
 export interface RewriteRule {
   name: string;
   lhs: TransformCombinator | string;
   rhs: TransformCombinator | string;
 }
 
+/**
+ * Compiles a list of algebraic rewrite rules into an optimized AOT AssemblyScript
+ * e-graph saturation and Bellman-Ford DP extraction engine.
+ *
+ * @param rules Array of AST rewrite rules (LHS pattern -> RHS target).
+ * @returns AssemblyScript source code string for saturation and extraction.
+ */
 export function compileRewriteRules(rules: RewriteRule[]): string {
   let out = "// --- AOT Compiled Rewrite Rules ---\n";
   out += "function allocEClass(opType: u16, leftClass: u32, rightClass: u32): u32 {\n";
@@ -50,10 +60,10 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "let dpKeyOffset: u32 = 0;\n";
   out += "export function initDPExtractor(): void {\n";
   out += "    dpCostOffset = arenaOffset;\n";
-  out += "    arenaOffset += 10000 * 4;\n";
+  out += "    arenaOffset += MAX_ECLASSES * 4;\n";
   out += "    dpKeyOffset = arenaOffset;\n";
-  out += "    arenaOffset += 10000 * 8;\n";
-  out += "    for (let i: u32 = 0; i < 10000; i++) {\n";
+  out += "    arenaOffset += MAX_ECLASSES * 8;\n";
+  out += "    for (let i: u32 = 0; i < MAX_ECLASSES; i++) {\n";
   out += "        store<u32>(dpCostOffset + i * 4, 0xFFFFFFFF);\n";
   out += "        store<u64>(dpKeyOffset + i * 8, 0);\n";
   out += "    }\n";
@@ -118,6 +128,10 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
 
 type Expr = string | { op: string; left: Expr; right: Expr };
 
+/**
+ * Parses an S-expression string into an expression tree representation.
+ * @param s S-expression string (e.g. "(add ?a (mul ?b 0))").
+ */
 function parseSExpr(s: string): Expr {
   s = s.trim();
   if (!s.startsWith("(")) return s; // var or const
@@ -140,6 +154,9 @@ function parseSExpr(s: string): Expr {
   return { op: parts[0], left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
 }
 
+/**
+ * Maps binary operation string names to their encoded opcode values.
+ */
 function getOpCode(op: string): number {
   if (op === "add") return 1280; // (5 << 8) | 0
   if (op === "sub") return 1281; // (5 << 8) | 1
@@ -148,6 +165,9 @@ function getOpCode(op: string): number {
   return 0;
 }
 
+/**
+ * Compiles a single rewrite rule into AssemblyScript conditional matching and union logic.
+ */
 function compileRule(rule: RewriteRule): string {
   let out = `            // Rule: ${rule.name}\n`;
   let lhsStr =

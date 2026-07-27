@@ -1,37 +1,44 @@
 import { LanguageOptions } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
+/**
+ * Generates AssemblyScript / TypeScript enum definitions (`SyntaxType`, `NodeFlag`, `FieldId`)
+ * corresponding to the grammar's symbols, fields, and flag attributes.
+ *
+ * @param grammar The user-defined language DSL options object.
+ * @param normalized The normalized grammar containing symbol-to-int mapping tables.
+ * @returns The generated TypeScript/AssemblyScript source code string for enum definitions.
+ */
 export function generateTypes(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
   let typeCode = `// Token and Node Types for ${grammar.name}\n`;
 
   typeCode += `export enum SyntaxType {\n`;
   typeCode += `  ERROR = 0,\n`;
 
-  // Create reverse mapping
+  // Create reverse mapping from integer ID to symbol string
   const intToSym = new Map<number, string>();
   for (const [sym, i] of normalized.symToInt.entries()) {
     intToSym.set(i, sym);
   }
 
-  // Output in order
+  // Output symbols in strict sequential ID order
   const emittedNames = new Set<string>();
   for (let i = 1; i <= intToSym.size; i++) {
     const sym = intToSym.get(i);
     if (!sym) continue;
 
-    // Create a safe identifier for enum.
-    // If it's a string literal like "{", map it to a literal name or just "T_" + i
-    // since we only need the value in the lexer.
+    // Convert symbol strings (e.g. literals or regex) to safe C-style identifiers
     let safeName = sym.replace(/[^a-zA-Z0-9]/g, "_");
     if (sym.startsWith('"') || sym.startsWith("/")) {
-      safeName = "T_" + i; // guarantee uniqueness for tokens
+      safeName = "T_" + i; // Guarantee identifier uniqueness for terminal literals
     } else {
       safeName = safeName.toUpperCase();
     }
 
-    // Prepend if safeName starts with number
+    // Prepend underscore if identifier starts with a digit
     if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
 
+    // Deduplicate enum field names using numerical suffixing
     let finalName = safeName;
     let suffix = 1;
     while (emittedNames.has(finalName)) {

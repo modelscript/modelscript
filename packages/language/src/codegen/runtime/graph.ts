@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck
 // True CodeGraph Incremental Database and LSP Bridge
 // Pure Arena Implementation (Zero-GC, Integer-based)
 import { 
@@ -78,11 +80,29 @@ export let dirtyFilesBitsetOffset: UnmanagedUint32Array = changetype<UnmanagedUi
 const HASH_TABLE_CAPACITY = 4096;
 const FQN_HASH_TABLE_CAPACITY = 4096;
 
-// Diagnostic Node (16 bytes):
-// +0: startByte (u32)
-// +4: endByte (u32)
-// +8: argPtr (u32) - Pointer to WASM string or extra u32 data
-// +12: nextDiagPtr (u32)
+export let graphArenaStart: u32 = 0;
+export let graphArenaOffset: u32 = 0;
+const GRAPH_ARENA_CAPACITY = 16 * 1024 * 1024; // 16MB
+
+/**
+ * Allocates a block of memory from the 16MB CodeGraph linear arena.
+ * Ensures 4-byte pointer alignment.
+ * @param size Allocation size in bytes.
+ */
+function allocGraph(size: u32): u32 {
+  if (graphArenaStart == 0) {
+    graphArenaStart = heap.alloc(GRAPH_ARENA_CAPACITY) as u32;
+    graphArenaOffset = graphArenaStart;
+  }
+  let rem = graphArenaOffset % 4;
+  if (rem != 0) graphArenaOffset += (4 - rem);
+  if (graphArenaOffset + size > graphArenaStart + GRAPH_ARENA_CAPACITY) {
+    return heap.alloc(size) as u32; // Fallback
+  }
+  let ptr = graphArenaOffset;
+  graphArenaOffset += size;
+  return ptr;
+}
 
 export let diagArenaStart: u32 = 0;
 export let diagArenaOffset: u32 = 0;
@@ -121,6 +141,10 @@ export function resetQueryArena(): void {
   if (changetype<usize>(dirtyFilesBitsetOffset) != 0) {
       memory.fill(changetype<usize>(dirtyFilesBitsetOffset), 0, 128);
   }
+  if (graphArenaStart != 0) {
+      graphArenaOffset = graphArenaStart;
+  }
+  scopedImportHead = 0;
 }
 
 /**
@@ -185,15 +209,13 @@ export function allocDiagnostic(startByte: u32, endByte: u32, argPtr: u32, nextP
   return ptr;
 }
 
-// Removed legacy 1-key functions: hashQueryKey, getQueryNode, allocQueryNode
-
 /**
  * Allocates an 8-byte edge node to link query dependencies.
  * @param targetPtr Pointer to the target query node.
  * @param nextPtr Pointer to the next edge in the linked list.
  */
 export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
-  let ptr = heap.alloc(8) as u32;
+  let ptr = allocGraph(8);
   let edge = changetype<EdgeNode>(ptr);
   edge.targetPtr = targetPtr;
   edge.nextEdgePtr = nextPtr;
@@ -208,7 +230,7 @@ export function allocEdge(targetPtr: u32, nextPtr: u32): u32 {
  */
 export function exportSymbol(fqnHash: u32, nodeId: u32): void {
   let idx = fqnHash & (FQN_HASH_TABLE_CAPACITY - 1);
-  let ptr = heap.alloc(12) as u32;
+  let ptr = allocGraph(12);
   let sym = changetype<FqnSymbol>(ptr);
   sym.hash = fqnHash;
   sym.nodeId = nodeId;
@@ -249,9 +271,7 @@ export let scopedImportHead: u32 = 0;
  * @param visibility Optional visibility modifier (0 = public, 1 = private).
  */
 export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: u8 = 0): void {
-  // Phase 6B: Added visibility (0=public, 1=private)
-  // Allocate 16 bytes to fit u8 properly with alignment, or just 12 and pack. We'll use 16.
-  let ptr = heap.alloc(16) as u32;
+  let ptr = allocGraph(16);
   let imp = changetype<ScopedImport>(ptr);
   imp.scopeId = scopeId;
   imp.moduleHash = moduleHash;
@@ -260,22 +280,6 @@ export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: 
   scopedImportHead = ptr;
 }
 
-// =====================================================================
-// Section 2: Query Execution & Dependency Tracking (v2 — Full 32-bit Keys)
-// =====================================================================
-
-// Query Node Layout (36 bytes):
-// +0:  queryType (u32)   — discriminator for the compute function
-// +4:  arg1      (u32)   — primary argument (e.g. node pointer)
-// +8:  arg2      (u32)   — optional argument 2
-// +12: arg3      (u32)   — optional argument 3
-// +16: revision  (u32)   — last-computed revision
-// +20: value     (u32)   — cached result
-// +24: firstDep  (u32)   — linked list of dependency edges
-// +28: firstSub  (u32)   — linked list of subscriber edges
-// +32: nextHash  (u32)   — hash bucket chain
-
-// Combines queryType and arguments into a hash table index.
 /**
  * Combines a query type and three arbitrary 32-bit arguments into a single 32-bit hash.
  * Utilizes the FNV-1a algorithm for rapid, collision-resistant distribution.
@@ -318,7 +322,7 @@ export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): 
  * and dependency edges for future incremental runs.
  */
 export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
-  let ptr = heap.alloc(36) as u32;
+  let ptr = allocGraph(36);
   let node = changetype<QueryNode>(ptr);
   node.queryType = queryType;
   node.arg1 = arg1;
@@ -371,6 +375,9 @@ export function invalidateNode(nodePtr: u32): void {
   }
 }
 
+/**
+ * Increments the global database revision counter.
+ */
 export function incrementGlobalRevision(): void {
   globalRevision++;
 }
@@ -380,10 +387,10 @@ export const activeQueryStack = new Uint32Array(1024);
 export let activeQueryDepth: i32 = 0;
 
 /**
- * Ensures a directed edge is established between two query nodes.
- * Walks the edge list to prevent duplicate edges from being allocated.
- * @param headPtrOffset The offset of the linked list head within the query node.
- * @param targetPtr The target node to link to.
+ * Ensures a directed dependency edge is established from parent to target.
+ * Walks the edge list to prevent duplicate edge allocations.
+ * @param parentPtr Parent query node pointer.
+ * @param targetPtr Target dependency query node pointer.
  */
 export function addDependencyEdgeIfMissing(parentPtr: u32, targetPtr: u32): void {
     let parent = changetype<QueryNode>(parentPtr);
@@ -396,6 +403,12 @@ export function addDependencyEdgeIfMissing(parentPtr: u32, targetPtr: u32): void
     parent.firstDependencyEdge = allocEdge(targetPtr, parent.firstDependencyEdge);
 }
 
+/**
+ * Ensures a subscriber edge is established from child to parent.
+ * Walks the edge list to prevent duplicate edge allocations.
+ * @param childPtr Child query node pointer.
+ * @param parentPtr Subscriber parent query node pointer.
+ */
 export function addSubscriberEdgeIfMissing(childPtr: u32, parentPtr: u32): void {
     let child = changetype<QueryNode>(childPtr);
     let curr = child.firstSubscriberEdge;
@@ -452,7 +465,9 @@ export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0
 __CUSTOM_QUERIES__
 __OUTLINE_QUERY_WRAPPER__
 
-
+/**
+ * Low-level WASM bridge API for n-dimensional tensor creation and manipulation.
+ */
 export class TensorAPI {
   @inline create(type: u32, rank: u32, elementCount: u32): u32 { return ast_createTensor(type, rank, elementCount); }
   @inline setShape(handle: u32, dimIndex: u32, size: u32): void { ast_setTensorShape(handle, dimIndex, size); }
@@ -488,11 +503,13 @@ export class TensorAPI {
 
 let t_modelProperties: usize = 0;
 
+/**
+ * Model API for AST node creation, property attachment, and tree manipulation.
+ */
 export class ModelAPI {
   @inline create(type: u16): u32 { return ast_createNode(type); }
   @inline clone(nodeId: u32, deep: boolean): u32 { return cloneNode(nodeId, deep); }
   @inline compute(nodeId: u32, attrName: u32): u32 { return runQuery(attrName, nodeId); }
-
 
   @inline getProperty<T>(nodeId: u32, propId: u32): T {
     if (t_modelProperties == 0) return 0 as T;
@@ -545,6 +562,9 @@ export class ModelAPI {
   @inline getSemanticChildren(nodeId: u32): SemanticCursor { return getSemanticChildren(nodeId); }
 }
 
+/**
+ * Hashing utility class for string spans and single byte hashing.
+ */
 export class HashAPI {
   @inline init(): u32 { return 2166136261; }
   @inline span(currentHash: u32, span: u64): u32 { return ast_hashSpan(span, currentHash); }
@@ -565,6 +585,9 @@ export class HashAPI {
   }
 }
 
+/**
+ * AST navigation and node span query API.
+ */
 export class AstAPI {
   @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
       if (nodeA == nodeB) return true;
@@ -588,7 +611,6 @@ export class AstAPI {
   @inline getDescendants(nodeId: u32, filterType: u16 = 0xFFFF): DescendantCursor { return getDescendants(nodeId, filterType); }
   @inline getPathTokens(nodeId: u32): DescendantCursor { return getPathTokens(nodeId); }
 
-
   @inline getType(nodeId: u32): u16 { return getNodeType(nodeId); }
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
@@ -605,6 +627,9 @@ export class AstAPI {
   @inline hashSpan(span: u64): u32 { return ast_hashSpan(span); }
 }
 
+/**
+ * Set operations API.
+ */
 export class SetAPI {
   @inline create(): u32 { return createSet64(); }
   @inline add(setId: u32, hash: u64): void { changetype<UnmanagedSet64>(setId).add(hash); }
@@ -612,6 +637,9 @@ export class SetAPI {
   @inline release(setId: u32): void { changetype<UnmanagedSet64>(setId).release(); }
 }
 
+/**
+ * Map operations API.
+ */
 export class MapAPI {
   @inline create(): u32 { return createMap64(); }
   @inline set(mapId: u32, hash: u64, valueId: u32): void { changetype<UnmanagedMap64>(mapId).set(hash, valueId); }

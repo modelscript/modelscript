@@ -101,6 +101,10 @@ export interface TensorAPI {
   getBool(handle: TensorHandle, flatIndex: u32): boolean;
 }
 
+/**
+ * The core Arena-Native CodeGraph API bridging TypeScript to WASM.
+ * Exposes methods to query AST nodes, allocate memory, and interact with the Semantic Reasoner.
+ */
 export interface CodeGraph<
   ModelAttrs extends Record<string, Record<string, any>> = any,
   RuleName extends string = any,
@@ -121,6 +125,10 @@ export interface CodeGraph<
   diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
 }
 
+/**
+ * Methods for querying the Abstract Syntax Tree inside the WASM Arena.
+ * Nodes are represented by their `u32` pointer offsets.
+ */
 export interface AstAPI<RuleName extends string, FieldName extends string = never> {
   getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): Cursor;
@@ -142,6 +150,9 @@ export interface AstAPI<RuleName extends string, FieldName extends string = neve
   hashSpan(span: u64): u32;
 }
 
+/**
+ * DJB2 Hashing API for fast symbol and string interning in WASM.
+ */
 export interface HashAPI {
   init(): u32;
   span(currentHash: u32, span: u64): u32;
@@ -149,6 +160,9 @@ export interface HashAPI {
   span64(span: u64): u64;
 }
 
+/**
+ * Open-addressing Hash Set API.
+ */
 export interface SetAPI {
   create(): u32;
   add(setId: u32, hash: u64): void;
@@ -156,6 +170,9 @@ export interface SetAPI {
   release(setId: u32): void;
 }
 
+/**
+ * Differential Algebraic Equation (DAE) Builder API for the Modelica flattener.
+ */
 export interface DaeAPI {
   addVariable(nameId: u32, type: u8, variability: u8, causality: u8, startValue: f64, flags?: i32): u32;
   addExpression(kind: u8, data1: u32, left?: u32, right?: u32): u32;
@@ -163,6 +180,9 @@ export interface DaeAPI {
   addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
 }
 
+/**
+ * Block Lower Triangular (BLT) Transformation API.
+ */
 export interface BltAPI {
   computeBLT(): void;
   rollback(snapshotEqCount: u32, snapshotVarCount: u32): void;
@@ -265,6 +285,9 @@ export enum StmtKind {
   Block = 9,
 }
 
+/**
+ * Open-addressing Hash Map API.
+ */
 export interface MapAPI {
   create(): u32;
   set(mapId: u32, hash: u64, valueId: u32): void;
@@ -272,6 +295,9 @@ export interface MapAPI {
   release(mapId: u32): void;
 }
 
+/**
+ * API for instantiating and mutating logical entities and objects in the typed model graph.
+ */
 export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>> {
   create(type: Extract<keyof ModelAttrs, string> | (string & {}) | u16): u32;
   clone(nodeId: u32, deep: boolean): u32;
@@ -552,23 +578,40 @@ export function toRule<F extends string = never>(r: RuleLike<F>): Rule<F> {
 
 /**
  * Matches a sequence of rules, one after the other.
+ * Equivalent to concatenation in EBNF: `A B C`
  */
 export function seq<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "SEQ", children: rules.map(toRule) };
 }
 
+/**
+ * Matches any one of the provided rules.
+ * Equivalent to alternation in EBNF: `A | B | C`
+ */
 export function choice<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[number]>> {
   return { type: "CHOICE", children: rules.map(toRule) };
 }
 
+/**
+ * Matches zero or more repetitions of the given rule.
+ * Equivalent to Kleene star in EBNF: `A*`
+ */
 export function repeat<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return { type: "REPEAT", children: [toRule(rule)] };
 }
 
+/**
+ * Matches one or more repetitions of the given rule.
+ * Equivalent to Kleene plus in EBNF: `A+`
+ */
 export function repeat1<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return seq(rule, repeat(rule));
 }
 
+/**
+ * Makes the given rule optional.
+ * Equivalent to optional in EBNF: `A?`
+ */
 export function optional<F extends string = never>(rule: RuleLike<F>): Rule<F> {
   return choice(rule, seq());
 }
@@ -601,6 +644,10 @@ export function sepByTrailing<F1 extends string, F2 extends string>(
   return optional(sepBy1Trailing(rule, separator));
 }
 
+/**
+ * Assigns a specific field name to the matched rule in the AST output.
+ * Fields make querying and traversing the AST substantially easier.
+ */
 export function field<F extends string = never>(name: F, rule: RuleLike<any>): Rule<F> {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
@@ -622,6 +669,7 @@ export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
 
 /**
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
+ * For example, aliasing a `binary_expression` as `argument`.
  */
 export function alias<F extends string = never>(rule: RuleLike<F>, name: string | Rule<never>): Rule<F> {
   const nameValue = typeof name === "string" ? name : name.value;
@@ -702,10 +750,17 @@ export function reserved<F extends string = never>(wordset: string, rule: RuleLi
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }
 
+/**
+ * Resolves GLR shift/reduce or reduce/reduce conflicts by assigning static or dynamic precedences.
+ */
 export interface PrecFunction {
+  /** Assigns a static precedence level. Higher numbers bind tighter. */
   <F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
+  /** Assigns a static precedence level with left associativity. */
   left<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  /** Assigns a static precedence level with right associativity. */
   right<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  /** Assigns a dynamic precedence for GLR tie-breaking at runtime. */
   dynamic<F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
 }
 
@@ -729,6 +784,10 @@ prec.dynamic = function <F extends string = never>(value: number, rule: Rule<F>)
 
 // --- E-Graph Rewrite Rule Combinators ---
 
+/**
+ * Defines algebraic rewrite rules for the Equality Saturation E-Graph.
+ * Nodes represent expressions to be dynamically simplified at compile time.
+ */
 export class TransformCombinator {
   constructor(
     public op: string,

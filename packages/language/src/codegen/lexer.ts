@@ -3,6 +3,15 @@ import type { LanguageOptions, Rule } from "../dsl.js";
 import { toRule } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
 
+/**
+ * Generates an AssemblyScript DFA-based lexer state machine for the specified grammar.
+ * Emits code for UTF-8/UTF-16 character decoding, string literal matching,
+ * regex DFA state transitions, whitespace/comment skipping, and multi-word keyword lookahead.
+ *
+ * @param grammar Language configuration options from the DSL.
+ * @param normalized Normalized grammar containing symbol-to-integer mappings.
+ * @returns AssemblyScript source code string for the lexer.
+ */
 export function generateLexer(grammar: LanguageOptions<any>, normalized: NormalizedGrammar): string {
   // Extract all token patterns from the grammar rules
   const stringTokens = new Map<string, string>();
