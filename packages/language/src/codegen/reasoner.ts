@@ -29,7 +29,7 @@ interface ParsedRule {
  * @returns AssemblyScript source code string for the semantic reasoner module.
  */
 export function generateReasoner(grammar: GrammarOptions, normalized: NormalizedGrammar): string {
-  let code = `import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
+  let code = `import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
 import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
 // Semantic Reasoning Engine (OWL 2 RL / SysML v2) \n`;
@@ -637,7 +637,7 @@ export function resolveDottedName(rootElement: u32, dottedNamePtr: u32): u32 {
 
   code += `
 const FACT_STRIDE: u32 = ${FACT_STRIDE};
-export let factTable = new ChunkedUint32Array(${MAX_FACTS * FACT_STRIDE});
+export let factTable = createChunkedUint32Array(${MAX_FACTS * FACT_STRIDE});
 export let factCount: u32 = 0;
 const MAX_FACTS: u32 = ${MAX_FACTS};
 
@@ -646,14 +646,14 @@ const MAX_FACTS: u32 = ${MAX_FACTS};
 // Each fact has a 'next' pointer forming a singly-linked list per predicate.
 const PRED_INDEX_CAPACITY: u32 = 4096; // Must be power of 2
 const PRED_INDEX_MASK: u32 = PRED_INDEX_CAPACITY - 1;
-let predIndexHead = new ChunkedUint32Array(PRED_INDEX_CAPACITY); // Head fact index (1-based, 0 = empty)
-let predIndexNext = new ChunkedUint32Array(${MAX_FACTS});         // Next fact in predicate chain (1-based, 0 = end)
+let predIndexHead = createChunkedUint32Array(PRED_INDEX_CAPACITY); // Head fact index (1-based, 0 = empty)
+let predIndexNext = createChunkedUint32Array(${MAX_FACTS});         // Next fact in predicate chain (1-based, 0 = end)
 
 // --- Hash Index for O(1) Fact Existence Checks ---
 // Open-addressing hash table: each slot stores the fact index (1-based) or 0 for empty.
 // Key = (pred XOR arg1 * 2654435761) to distribute across buckets.
 const FACT_HASH_CAPACITY: u32 = ${Math.max(MAX_FACTS * 4, 16384)};
-let factHashTable = new ChunkedUint32Array(FACT_HASH_CAPACITY);
+let factHashTable = createChunkedUint32Array(FACT_HASH_CAPACITY);
 
 function factHashKey(${addFactParams.join(", ")}): u32 {
     // Fibonacci hashing on all available arguments for good distribution
@@ -706,7 +706,7 @@ export function initFactArena(): void {
    for (let i: u32 = 0; i < PRED_INDEX_CAPACITY; i++) predIndexHead[i] = 0;
 }
 
-let globalTraverseStack = new ChunkedUint32Array(100000);
+let globalTraverseStack = createChunkedUint32Array(100000);
 
 export function traverseAndExtract(newRoot: u32): void {
   if (newRoot == 0) return;

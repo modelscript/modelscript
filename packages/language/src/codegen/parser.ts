@@ -611,7 +611,7 @@ export function generateParserTables(
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
     code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
   } else {
-    code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\nexport function simplifyAst(exprId: u32, dae: DaeBuilder): u32 { return exprId; }\n`;
+    code += `\nexport function saturateEGraph(): void {}\nexport function initDPExtractor(): void {}\nexport function extractAst(rootClass: u32, dae: DaeBuilder): u32 { return 0; }\nexport function simplifyAst(exprId: u32, dae: DaeBuilder): u32 { return exprId; }\nexport function proveInductive(rootNode: u32, dae: DaeBuilder): boolean { return false; }\n`;
   }
 
   let engineCodeTemplate = engineCode;

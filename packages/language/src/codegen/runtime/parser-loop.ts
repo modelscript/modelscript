@@ -1,3 +1,15 @@
+/**
+ * @fileoverview GLR Parser Engine Loop
+ * 
+ * This file contains the core graph-structured stack (GSS) manipulation and
+ * error recovery algorithms for the ModelScript parser. It implements a hybrid
+ * LR/GLR architecture: it starts in fast LR mode for deterministic code, and
+ * transitions to GLR mode upon encountering ambiguities or syntax errors.
+ * 
+ * It also handles AST memory management (allocating nodes in the Arena),
+ * structural incremental reuse (splicing nodes from a previous AST), and
+ * complex heuristics for list flattening to maintain O(log N) operations.
+ */
 
 import {
     initGSS,
@@ -52,6 +64,14 @@ let t_acceptCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 import { recoverUnwindAndMutate, recoverIslandMode, findShiftTarget } from "./recovery";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
+/**
+ * Looks up the GLR action count for a given parser state and token.
+ * This checks the `action_offsets` and `action_data` tables.
+ * 
+ * @param state The current parser state.
+ * @param token The token ID to look up (terminal or non-terminal).
+ * @returns The number of possible actions (1 for LR, >1 for GLR conflicts).
+ */
 function lookupActions(state: i32, token: i32): i32 {
   let actionOffset = action_offsets[state];
   if (actionOffset < 0 || actionOffset + 1 >= action_data.length) {
@@ -92,13 +112,28 @@ function lookupActions(state: i32, token: i32): i32 {
   return count;
 }
 
+/**
+ * Fast boolean check if an action exists for the given state and token.
+ */
 function actionLookupFnBool(state: i32, token: i32): boolean {
   return lookupActions(state, token) != 0;
 }
 
+/**
+ * Fast boolean check if the token can eventually be accepted from this state
+ * (performing simulated lookahead through error recoveries if necessary).
+ */
 function stateCanAcceptFnBool(state: i32, token: i32): boolean {
   return stateCanAccept(null, state, token) > 0;
 }
+/**
+ * Transitions the parser from fast LR mode to full GLR mode.
+ * Converts the flat LR stack into a Graph-Structured Stack (GSS) head.
+ * 
+ * @param pos Current byte offset in the input stream.
+ * @param pendingPadding Extraneous whitespace/comments accumulated before the current token.
+ * @param scannerState The state of the lexer at transition time.
+ */
 function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void {
   let prevHead: ParseHead | null = null;
   let currentPos: u32 = 0;
@@ -136,10 +171,21 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
   
   currentParserMode = MODE_GLR;
 }
-  function invokeLexer(pos: u32): i32 {
-    let token = lex(pos);
-    return token;
-  }
+/**
+ * Interacts with the lexer module to fetch the next token ID.
+ * The `lex` function also updates global `lexLen` and `srcLexPos`.
+ */
+function invokeLexer(pos: u32): i32 {
+  let token = lex(pos);
+  return token;
+}
+/**
+ * Fast-path LR parser. This parser loop handles deterministic code sections.
+ * If an ambiguity is encountered (actionCount > 1) or an error occurs (actionCount == 0),
+ * it calls `transitionToGlr` to switch over to the heavy GLR machinery.
+ * 
+ * @returns The final accepted AST root node pointer, or 0 if transitioning to GLR.
+ */
 function parseLR(): u32 {
   let pos: u32 = 0;
   let token: i32 = 0;
@@ -324,6 +370,11 @@ function parseLR(): u32 {
   
   return 0;
 }
+/**
+ * Updates the `expected_tokens` bitset based on the valid action transitions
+ * from the active parsing heads (either the single LR head or all GLR heads).
+ * This acts as context-aware feedback for the lexer (for keywords vs identifiers).
+ */
 function updateExpectedTokens(): void {
   if (expected_tokens == 0) {
     expected_tokens = atomicChunkAlloc(2048);
@@ -366,14 +417,18 @@ function updateExpectedTokens(): void {
     }
   }
 }
+/** @deprecated Used for structural accept caching. Returns the hash. */
 function acceptCacheHash(key: u64): u32 {
   return 0;
 }
+/** @deprecated Used for structural accept caching. Returns the cached result. */
 function acceptCacheGet(key: u64): i32 {
   return -1;
 }
+/** @deprecated Used for structural accept caching. Stores a result. */
 function acceptCacheSet(key: u64, result: i32): void {
 }
+/** @deprecated Used for structural accept caching. Clears the cache. */
 function acceptCacheClear(): void {
 }
 
@@ -381,6 +436,14 @@ export let t_stateReachability: UnmanagedUint32Array = changetype<UnmanagedUint3
 export let t_stateReachabilityComputed: UnmanagedUint8Array = changetype<UnmanagedUint8Array>(0);
 let computingReachability = false;
 
+/**
+ * Pre-computes and checks if a target token is reachable from a state via
+ * an epsilon transition (a reduction sequence that consumes no input).
+ * 
+ * @param state The anchor parse state.
+ * @param tok The token to search for.
+ * @returns True if `tok` can be shifted/reduced within `MAX_LOOKAHEAD_DEPTH`.
+ */
 export function isEpsilonReachable(state: i32, tok: i32): boolean {
   let mappedTok = tok;
   if (tok == TOKEN_EOF) mappedTok = 0;
@@ -423,6 +486,17 @@ export function isEpsilonReachable(state: i32, tok: i32): boolean {
 
 export let g_stateCanAcceptMaxCost: i32 = MAX_LOOKAHEAD_DEPTH * 10;
 
+/**
+ * Core reachability simulation. Simulates parsing forward on a cloned GSS head
+ * to determine if `tok` is eventually accepted.
+ * Used for Error Recovery (checking if a virtual token is helpful).
+ * 
+ * @param head The parse head (can be null if doing static state reachability).
+ * @param state The state to look ahead from.
+ * @param tok The token ID that we want to successfully shift/accept.
+ * @param depth The current lookahead recursion depth (capped to prevent infinite loops).
+ * @returns 1 if reachable, 2 if infinitely reachable, 0 if not reachable.
+ */
 export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0): i32 {
   if (depth > 50) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
@@ -499,6 +573,15 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
  * with clean ERROR nodes. This prevents UNKNOWN nodes from appearing in the
  * final tree output.
  */
+/**
+ * Deep clones an AST subtree.
+ * Memory corruption from GLR ambiguity or incremental reuse can cause invalid type IDs,
+ * so this deep-cloning ensures clean separation of shared subtrees.
+ * 
+ * @param node The node to clone.
+ * @param depth The current recursion depth (capped to prevent stack overflows on cyclic trees).
+ * @returns A fresh, independent clone of the subtree.
+ */
 function deepCloneSubtree(node: u32, depth: i32): u32 {
   if (node == 0 || depth > 250) return 0;
   let clone = allocNode(getNodeType(node), getNodePadding(node), getNodeByteLength(node), getNodeEnvHash(node));
@@ -523,6 +606,14 @@ function deepCloneSubtree(node: u32, depth: i32): u32 {
 let t_sanitizeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 let t_sanitizeVisited: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 
+/**
+ * Post-parse sanitization algorithm. Walk the AST to:
+ * 1. Remove nodes with corrupt/invalid Type IDs that occasionally slip through error recovery.
+ * 2. Identify shared subtrees (aliased pointers resulting from GLR tree forks) and clone them
+ *    so the final AST is a strict DAG, preventing infinite loops during LSP traversal.
+ * 
+ * @param root The accepted AST root node.
+ */
 function sanitizeTree(root: u32): void {
   if (root == 0) return;
   
@@ -614,6 +705,16 @@ function sanitizeTree(root: u32): void {
   }
 }
 
+/**
+ * Scans the parsing head history for "stranded nodes" (nodes that were parsed but never 
+ * reduced into the final accepted tree because they were dropped by error recovery or
+ * skipped by the GLR acceptor). Re-injects these nodes as error nodes into the AST to ensure
+ * total token fidelity (so the LSP doesn't lose user code).
+ * 
+ * @param acceptedNode The best accepted root node from the GLR parse.
+ * @param headPtr The best accepting ParseHead pointer.
+ * @returns The new root node containing both the accepted nodes and stranded nodes.
+ */
 function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
   if (headPtr == 0 || acceptedNode == 0) return acceptedNode;
   
@@ -702,6 +803,14 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
   return acceptedNode;
 }
 
+/**
+ * If the parser accepts a prefix of the file but leaves unparsed trailing text,
+ * this function captures the remainder and wraps it in an ERROR node appended 
+ * to the AST root. This ensures `inputLength` bytes are fully represented.
+ * 
+ * @param acceptedNode The AST root node.
+ * @returns The wrapped node.
+ */
 function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   let nodeSpan = getNodePadding(acceptedNode) + getNodeByteLength(acceptedNode);
   
@@ -789,6 +898,13 @@ function wrapWithTrailingErrors(acceptedNode: u32): u32 {
   setNextSibling(acceptedNode, errorNode);
   return newRoot;
 }
+/**
+ * Creates a shallow clone of an AST node (copying its type, padding, length, and env hash).
+ * Marks the original node as shared so it isn't mutated in-place by subsequent GLR branches.
+ * 
+ * @param gc The original node pointer.
+ * @returns A new node pointer with the same properties.
+ */
 export function cloneNodeShallow(gc: u32): u32 {
   if (gc == 0) return 0;
   // Mark the original node as shared so its child list isn't mutated in-place,
@@ -801,6 +917,11 @@ export function cloneNodeShallow(gc: u32): u32 {
   setFirstChild(clone, getNodeFirstChild(gc)); // Keep original children
   return clone;
 }
+/**
+ * Checks if a node consists entirely of error nodes (or lists of error nodes).
+ * Pure error nodes are handled differently during reductions to avoid wrapping
+ * garbage tokens in legitimate non-terminals.
+ */
 export function isPureErrorNode(node: u32): boolean {
   if (node == 0) return false;
   if (getNodeType(node) != NODE_TYPE_ERROR) return false;
@@ -817,6 +938,10 @@ export function isPureErrorNode(node: u32): boolean {
   }
   return true;
 }
+/**
+ * Helper to shallow-clone the children of `leftNode` and attach them to `p`.
+ * Used during list concatenation/appending when mutating `leftNode` in-place is unsafe.
+ */
 function copyChildren(p: u32, leftNode: u32): u32 {
   let gc = getNodeFirstChild(leftNode);
   let lastChild = 0;
@@ -829,6 +954,10 @@ function copyChildren(p: u32, leftNode: u32): u32 {
   }
   return lastChild;
 }
+/**
+ * Recalculates the total byte length of a parent node by summing the padding
+ * and byte length of all its direct children.
+ */
 function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
@@ -843,6 +972,10 @@ function fixNodeLength(node: u32): void {
   
   setNodeByteLength(node, totalLen);
 }
+/**
+ * Measures the nested list depth of a node for a specific list symbol.
+ * E.g., `StatementList -> StatementList Statement` is a left-recursive list.
+ */
 export function getListDepth(node: u32, listSym: u16): u32 {
   let depth: u32 = 0;
   let curr = node;
@@ -855,6 +988,9 @@ export function getListDepth(node: u32, listSym: u16): u32 {
   }
   return depth;
 }
+/**
+ * Gets the number of direct children in a list node.
+ */
 function getListChildCount(node: u32, listSym: u16): u32 {
   if (getNodeType(node) != listSym || (getNodeFlags(node) & FLAG_IS_LIST) == 0) return 0;
   let count = 0;
@@ -869,6 +1005,12 @@ function getListChildCount(node: u32, listSym: u16): u32 {
 let _listRecurDepth: u32 = 0;
 let appendListCalls = 0;
 
+/**
+ * Concatenates two AST nodes into a single list of type `listSym`.
+ * Extremely complex logic handles flattening uneven trees and splitting
+ * trees that exceed `LIST_MAX_CHILDREN` (to ensure operations on the AST 
+ * remain O(log N) instead of O(N) when scanning siblings).
+ */
 export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash: u32): u32 {
   _listRecurDepth++;
   // Cycle detection guard
@@ -994,7 +1136,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       let cloneLeft = allocNode(listSym, 0, 0, envHash);
       setNodeFlags(cloneLeft, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
-      let cloneRight = allocNode(listSym, getNodePadding(rightNode), 0, envHash);
+      let cloneRight = allocNode(listSym, 0, 0, envHash); // Initialize with 0 padding
       setNodeFlags(cloneRight, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let total = lDirectChildCount + rDirectChildCount;
@@ -1002,20 +1144,31 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
 
       let gc = getNodeFirstChild(leftNode);
       let rc = getNodeFirstChild(rightNode);
+      let isFirstRight = true;
 
       let lastChild = 0;
       for (let i = 0; i < (leftHalf as i32); i++) {
         let curr: u32 = 0;
+        let pAdd: u32 = 0;
         if (gc != 0) {
           curr = gc;
           gc = getNodeNextSibling(gc);
         } else {
           curr = rc;
+          if (isFirstRight) {
+             pAdd = getNodePadding(rightNode);
+             isFirstRight = false;
+          }
           rc = getNodeNextSibling(rc);
         }
         let clone = cloneNodeShallow(curr);
-        if (lastChild == 0) setFirstChild(cloneLeft, clone);
-        else setNextSibling(lastChild, clone);
+        setNodePadding(clone, getNodePadding(clone) + pAdd);
+
+        if (lastChild == 0) {
+           setNodePadding(clone, 0); // padding transferred to `p`
+           setFirstChild(cloneLeft, clone);
+        } else setNextSibling(lastChild, clone);
+        
         setNextSibling(clone, 0);
         lastChild = clone;
       }
@@ -1024,21 +1177,27 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       lastChild = 0;
       for (let i = leftHalf as i32; i < (total as i32); i++) {
         let curr: u32 = 0;
+        let pAdd: u32 = 0;
         if (gc != 0) {
           curr = gc;
           gc = getNodeNextSibling(gc);
         } else {
           curr = rc;
+          if (isFirstRight) {
+             pAdd = getNodePadding(rightNode);
+             isFirstRight = false;
+          }
           rc = getNodeNextSibling(rc);
         }
         let clone = cloneNodeShallow(curr);
-        if (i == leftHalf && cloneRight != 0 && curr == rc) {
-           // If the first child of cloneRight came from rightNode, it might need rightNode's padding!
-           // But cloneRight already has rightNode's padding! So clone gets pad=0.
-           // Actually, if it's the first child, it shouldn't have double padding.
-        }
-        if (lastChild == 0) setFirstChild(cloneRight, clone);
-        else setNextSibling(lastChild, clone);
+        setNodePadding(clone, getNodePadding(clone) + pAdd);
+
+        if (lastChild == 0) {
+           setNodePadding(cloneRight, getNodePadding(clone)); // Transfer padding to cloneRight
+           setNodePadding(clone, 0);
+           setFirstChild(cloneRight, clone);
+        } else setNextSibling(lastChild, clone);
+        
         setNextSibling(clone, 0);
         lastChild = clone;
       }
@@ -1143,6 +1302,11 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
     return p;
   }
 }
+/**
+ * Determines whether an AST node can be mutated in-place safely.
+ * Returns false if in GLR mode (where subtrees are shared across heads),
+ * if the node was extracted/shared, or if it belongs to an older incremental generation.
+ */
 function isMutable(ptr: u32): boolean {
   // In GLR mode (multiple active heads), never mutate in-place:
   // shared list nodes can be referenced by multiple heads, and
@@ -1153,6 +1317,11 @@ function isMutable(ptr: u32): boolean {
   if ((getNodeFlags(ptr) & (FLAG_EXTRACTED | FLAG_IS_SHARED)) != 0) return false;
   return isNodeGen2(ptr);
 }
+/**
+ * Appends a single leaf node to a list node of type `listSym`.
+ * Tries to perform an in-place mutation if `leftNode` is mutable and has room.
+ * Otherwise, clones the list structure to safely append without disturbing shared branches.
+ */
 export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash: u32, isBoundary: boolean = true): u32 {
   let combinedErrorFlag = (getNodeFlags(leftNode) | getNodeFlags(leafOrig)) & FLAG_HAS_ERROR;
   appendListCalls++;
@@ -1549,6 +1718,11 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
 
 
 
+/**
+ * Prepares the parser engine for simulated lookahead during error recovery.
+ * @param targetCost The cost threshold for the simulation.
+ * @param maxTokens The maximum number of tokens to simulate.
+ */
 export function resetSimulator(targetCost: i32, maxTokens: i32): void {
   bestAcceptingHead = 0;
   bestAcceptedCost = targetCost;
@@ -1576,6 +1750,10 @@ let savedBestAcceptedRealBytes: u32 = 0;
 let savedBestAcceptedCount: u32 = 0xffffffff;
 let savedBestAcceptedPad: u32 = 0xffffffff;
 
+/**
+ * Checkpoints the global parser state (lexer pos, buffer, costs, best head)
+ * before running speculative simulation branches.
+ */
 export function saveSimulationState(): void {
   savedLexPos = lexPos;
   savedLexLen = lexLen;
@@ -1597,6 +1775,9 @@ export function saveSimulationState(): void {
   memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), 2048);
 }
 
+/**
+ * Restores the global parser state from the checkpoint after a simulation completes.
+ */
 export function restoreSimulationState(): void {
   setLexPos(savedLexPos);
   setLexLen(savedLexLen);
@@ -1617,6 +1798,9 @@ export function restoreSimulationState(): void {
 
   memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), 2048);
 }
+/**
+ * Retrieves the best accepting head found so far.
+ */
 export function getBestAcceptingHead(): u32 {
   return bestAcceptingHead;
 }
@@ -1633,6 +1817,17 @@ export let g_simulatorMaxTokens: i32 = 0;
 export let g_simulatorMaxCost: i32 = 999999;
 export let g_configIslandMode: boolean = true;
 
+/**
+ * Processes a SHIFT action in the GLR parser.
+ * A SHIFT action consumes a token and pushes it onto the GSS.
+ * 
+ * @param head The current parsing head.
+ * @param target The target state to transition to.
+ * @param token The token ID being shifted.
+ * @param pos The current byte offset in the input stream.
+ * @param isVirtual True if the token is hallucinated by error recovery.
+ * @param cameFromVirtualQueue True if the token was pulled from the virtual queue.
+ */
 function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, isVirtual: boolean, cameFromVirtualQueue: boolean): void {
   let newBalance = head.balanceHash;
   let charLen = peekCharLen(lexPos);
@@ -1706,6 +1901,17 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
 }
 
 
+/**
+ * Processes a REDUCE action in the GLR parser.
+ * Pops nodes off the GSS stack according to the production length, groups them
+ * under a new non-terminal parent node, and shifts the parent node into the 
+ * state returned by the GOTO table.
+ * 
+ * @param head The current parsing head.
+ * @param reduceProd The index of the production rule to reduce.
+ * @param pos The current byte offset in the input stream.
+ * @returns True if a valid GOTO transition was found, false if the path is dead.
+ */
 function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolean {
   if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
     throw new Error("BAD reduceProd: " + reduceProd.toString());
@@ -1890,6 +2096,14 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
 }
 
 
+/**
+ * Processes an ACCEPT action in the GLR parser.
+ * Constructs the final AST from the successful path in the GSS.
+ * Calculates an "effective cost" for the accepted tree (penalizing error nodes
+ * and fragmented trees) and updates `bestAcceptingHead` if this is the best so far.
+ * 
+ * @param head The accepting parse head.
+ */
 function processAcceptAction(head: ParseHead): void {
 
   let t_curr: ParseHead | null = head;
@@ -2029,25 +2243,12 @@ function processAcceptAction(head: ParseHead): void {
               oc = getNodeNextSibling(oc);
             }
           } else {
-            let isNonTerminal = getNodeType(c) > (MAX_TERMINAL_ID as u16) && getNodeType(c) != NODE_TYPE_ERROR;
-            if (isNonTerminal) {
-              // Flatten non-terminals to prevent exponential nesting in incremental parsing
-              let oc = getNodeFirstChild(c);
-              while (oc != 0) {
-                let cloned = cloneNodeShallow(oc);
-                if (firstCloned == 0) firstCloned = cloned;
-                if (lastC2 != 0) setNextSibling(lastC2, cloned);
-                lastC2 = cloned;
-                oc = getNodeNextSibling(oc);
-              }
-            } else {
-              let clone = cloneNodeShallow(c);
-              if (lastC2 == 0) firstCloned = clone;
-              if (lastC2 != 0) setNextSibling(lastC2, clone);
-              lastC2 = clone;
-              if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
-                appendedError = true;
-              }
+            let clone = cloneNodeShallow(c);
+            if (lastC2 == 0) firstCloned = clone;
+            if (lastC2 != 0) setNextSibling(lastC2, clone);
+            lastC2 = clone;
+            if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+              appendedError = true;
             }
           }
         }
@@ -2083,6 +2284,10 @@ function processAcceptAction(head: ParseHead): void {
 let t_dfsVisited: Int32Array | null = null;
 let t_dfsReductions: Int32Array | null = null;
 
+/**
+ * Initializes the Depth-First Search (DFS) buffers used for traversing
+ * the Graph-Structured Stack.
+ */
 function initDfsBuffers(): void {
   if (t_dfsVisited == null) {
     t_dfsVisited = new Int32Array(32);
@@ -2090,11 +2295,28 @@ function initDfsBuffers(): void {
   }
 }
 
+/**
+ * Checks if a parsed token matches the expected symbol in a production rule.
+ * 
+ * @param expected The expected symbol ID.
+ * @param actual The actual parsed token ID.
+ * @returns True if the symbol matches directly or via an invisible production.
+ */
 function symbolMatches(expected: i32, actual: i32): boolean {
   if (expected == actual) return true;
   return isDerivableInvisible(expected, actual, 0);
 }
 
+/**
+ * Checks if an `actual` token can be derived from an `expected` non-terminal
+ * exclusively through invisible (wrapper) productions.
+ * Used during forced reductions to align the stack with production rules.
+ * 
+ * @param expected The expected non-terminal symbol.
+ * @param actual The actual token ID.
+ * @param depth The current derivation recursion depth (capped to prevent loops).
+ * @returns True if derivable.
+ */
 function isDerivableInvisible(expected: i32, actual: i32, depth: i32): boolean {
   if (depth > 3) return false;
   let totalProds = prod_lengths.length;
@@ -2109,6 +2331,17 @@ function isDerivableInvisible(expected: i32, actual: i32, depth: i32): boolean {
   return false;
 }
 
+/**
+ * GLR Error Recovery: Forced Reduction
+ * Attempts to force a reduction even if the input doesn't match. It finds the "best"
+ * production rule that matches a suffix of the symbols on the GSS stack, hallucinates
+ * any missing tokens required by the rule, and performs the reduction.
+ * 
+ * @param head The parse head in distress.
+ * @param actionOffset The action table offset for the current state.
+ * @param count2 The number of actions in the state.
+ * @returns True if a forced reduction successfully branched a new head.
+ */
 function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32): boolean {
 
 
@@ -2360,6 +2593,13 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
 }
 
 
+/**
+ * Prunes the Graph-Structured Stack (GSS) to prevent combinatorial explosion.
+ * This is invoked during error recovery to discard branches that have accumulated
+ * too much cost compared to the current lowest-cost branch.
+ * 
+ * @param pos The current byte offset.
+ */
 function pruneGSS(pos: u32): void {
   let activeHeadsTrimCount = activeHeadsCount;
   if (activeHeadsTrimCount > 0) {
@@ -2401,7 +2641,7 @@ function pruneGSS(pos: u32): void {
     }
   }
 
-  if (activeHeadsTrimCount > 64) {
+  if (activeHeadsTrimCount > MAX_PARALLEL_HEADS) {
     let heapLen = activeHeadsTrimCount;
     for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
       let ci: u32 = hi as u32;
@@ -2427,14 +2667,36 @@ function pruneGSS(pos: u32): void {
       }
     }
     let sortLimit: u32 = heapLen < MAX_PARALLEL_HEADS ? heapLen : MAX_PARALLEL_HEADS;
-    for (let ei: u32 = 0; ei < sortLimit && heapLen > 1; ei++) {
+    for (let ei: u32 = 0; ei < sortLimit && heapLen > 0; ei++) {
+      t_extractedHeadsBuffer[ei] = t_activeHeads[0];
+      t_activeHeads[0] = t_activeHeads[heapLen - 1];
       heapLen--;
-      let tmp = t_activeHeads[ei];
-      if (ei < heapLen) {
-        t_activeHeads[ei] = t_activeHeads[ei + 1];
+      let ci: u32 = 0;
+      while (true) {
+        let smallest = ci;
+        let left = ci * 2 + 1;
+        let right = ci * 2 + 2;
+        if (left < heapLen) {
+          let hL = changetype<ParseHead>(t_activeHeads[left]);
+          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
+          if (hL.errorCost < hS.errorCost || (hL.errorCost == hS.errorCost && hL.pos > hS.pos)) smallest = left;
+        }
+        if (right < heapLen) {
+          let hR = changetype<ParseHead>(t_activeHeads[right]);
+          let hS = changetype<ParseHead>(t_activeHeads[smallest]);
+          if (hR.errorCost < hS.errorCost || (hR.errorCost == hS.errorCost && hR.pos > hS.pos)) smallest = right;
+        }
+        if (smallest == ci) break;
+        let tmp = t_activeHeads[ci];
+        t_activeHeads[ci] = t_activeHeads[smallest];
+        t_activeHeads[smallest] = tmp;
+        ci = smallest;
       }
     }
-    activeHeadsCount = MAX_PARALLEL_HEADS;
+    for (let ei: u32 = 0; ei < sortLimit; ei++) {
+      t_activeHeads[ei] = t_extractedHeadsBuffer[ei];
+    }
+    activeHeadsCount = sortLimit;
   }
 }
 
@@ -2445,6 +2707,12 @@ export let g_editStart: u32 = 0;
 export let g_editOldEnd: u32 = 0;
 export let g_editNewEnd: u32 = 0;
 
+/**
+ * The main GLR parsing engine loop.
+ * Iteratively advances all active parsing heads in parallel.
+ * Handles head merging, simulated lookahead for error recovery, and 
+ * catastrophic fallback when all branches die.
+ */
 export function advanceGLR(): void {
   let pos: u32 = 0;
   let token: i32 = 0;
@@ -3069,6 +3337,15 @@ export function advanceGLR(): void {
 
 }
 
+/**
+ * Entry point for the ModelScript incremental parser.
+ * 
+ * @param oldTree Pointer to the root of the previously parsed AST (for incremental reuse), or 0 for fresh parse.
+ * @param editStart Byte offset where the edit starts.
+ * @param editOldEnd Byte offset where the old replaced text ended.
+ * @param editNewEnd Byte offset where the new inserted text ends.
+ * @returns Pointer to the new AST root node.
+ */
 export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd: u32): u32 {
   g_editStart = editStart;
   g_editOldEnd = editOldEnd;
@@ -3280,6 +3557,20 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   return 0;
 }
 
+/**
+ * Searches the old incremental tree for a sub-tree that matches the current parsing
+ * state and hasn't been modified by the user's edits.
+ * 
+ * @param targetOldPos The expected byte offset of the node in the old tree.
+ * @param targetSrcOldPos The expected starting position (excluding whitespace padding).
+ * @param currentState The current state of the parser to verify GOTO transitions.
+ * @param envHash Lexer environment hash matching.
+ * @param editStart Start of edits.
+ * @param editOldEnd End of replaced region.
+ * @param headSym The symbol currently at the top of the GSS head (used for splices).
+ * @param expectedPadding Expected leading whitespace.
+ * @returns Pointer to a reusable AST node, or 0 if none found.
+ */
 export function findReusableNode(
   targetOldPos: u32,
   targetSrcOldPos: u32,

@@ -71,7 +71,10 @@ export class TokenNormalizer implements RuleNormalizer {
       return g.flatten(ctx, rule.children[0], p);
     }
     const val = rule.value !== undefined ? rule.value : rule.arg;
-    if (typeof val !== "string" && !(val instanceof RegExp)) {
+    if (
+      typeof val !== "string" &&
+      !(val instanceof RegExp || Object.prototype.toString.call(val) === "[object RegExp]")
+    ) {
       throw new Error(`Invalid token value in context '${ctx}': expected string or RegExp, got ${typeof val}`);
     }
     let tokenName = val.toString();
@@ -87,7 +90,7 @@ export class TokenNormalizer implements RuleNormalizer {
     }
     return typeof rule.value === "string"
       ? `"${rule.value}"`
-      : rule.value instanceof RegExp
+      : rule.value instanceof RegExp || Object.prototype.toString.call(rule.value) === "[object RegExp]"
         ? `/${rule.value.source}/`
         : "token";
   }
@@ -493,7 +496,7 @@ export class NormalizedGrammar {
       const wordRule = this.evaluatedRules[grammar.word];
       if (wordRule.type === "TOKEN" && wordRule.value) {
         let patternStr = "";
-        if (wordRule.value instanceof RegExp) {
+        if (wordRule.value instanceof RegExp || Object.prototype.toString.call(wordRule.value) === "[object RegExp]") {
           patternStr = wordRule.value.source;
         } else if (
           typeof wordRule.value === "string" &&
@@ -623,7 +626,7 @@ export class NormalizedGrammar {
 
   getEBNF(rule: any): string {
     if (typeof rule === "string") return rule;
-    if (rule instanceof RegExp) return `/${rule.source}/`;
+    if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") return `/${rule.source}/`;
     if (!rule || !rule.type) return "unknown";
 
     const getChild = (r: any): any => {
@@ -673,7 +676,11 @@ export class NormalizedGrammar {
       );
     }
 
-    if (typeof rule === "string" || rule instanceof RegExp) {
+    if (
+      typeof rule === "string" ||
+      rule instanceof RegExp ||
+      Object.prototype.toString.call(rule) === "[object RegExp]"
+    ) {
       rule = { type: "TOKEN", value: rule };
     }
     const ruleType = (rule.type || "").toUpperCase();

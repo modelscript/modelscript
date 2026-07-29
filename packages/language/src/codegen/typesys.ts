@@ -49,15 +49,17 @@ ${subtypingLogic}
     customCode = extraTypes + customCode;
   }
 
-  return `import { ChunkedUint32Array, UnmanagedUint32Array } from "./array";
-import { getNodeType, getNodeFirstChild, getNodeNextSibling, getNodePadding, getNodeByteLength, allocNode, arenaOffset } from "./arena";
-import { allocDiagnostic } from "./lsp";
+  return `import { ChunkedUint32Array, UnmanagedUint32Array, createChunkedUint32Array } from "./array";
+import { atomicChunkAlloc, getNodeType, getNodeFirstChild, getNodeNextSibling, getNodePadding, getNodeByteLength, allocNode } from "./arena";
+import { lsp_allocDiagnostic as allocDiagnostic } from "./lsp";
 import { factExists } from "./reasoner";
 import { resolveFqnSymbol } from "./graph";
 
 // Semantic Analysis & Type System Engine
 // Generated for language: ${grammar.name}
 // High-performance Type Arena in Linear Memory
+
+export let scopedImportHead: u32 = 0;
 
 // Type Node represented in a ChunkedUint32Array (Stride: 6 u32s)
 // [idx+0]: kind (u16) | flags (u16 << 16)
@@ -68,7 +70,7 @@ import { resolveFqnSymbol } from "./graph";
 // [idx+5]: ctorArg2 (u32)  — second constructor param
 
 export const TYPE_STRIDE: u32 = 6;
-export let typeTable = new ChunkedUint32Array(600000); // Up to 100k types
+export let typeTable = createChunkedUint32Array(600000); // Up to 100k types
 export let typeCount: u32 = 1; // 0 is reserved for null type
 
 export const TYPE_VARIABLE: u16 = 6;
@@ -99,7 +101,7 @@ export const CTOR_SHAPE_NIL: u32 = 8;
 
 // Error tracking for diagnostics
 export let unifyErrorCount: u32 = 0;
-let unifyErrorNodes = new ChunkedUint32Array(10000);
+let unifyErrorNodes = createChunkedUint32Array(10000);
 export function getUnifyErrorCount(): u32 { return unifyErrorCount; }
 
 export function allocTypeVar(): u32 {
@@ -449,10 +451,10 @@ export const SYMBOL_KIND_LEXICAL: u16 = 0;
 export const SYMBOL_KIND_VIRTUAL_SPECIALIZATION: u16 = 1;
 
 export const SYMBOL_STRIDE: u32 = 8;
-export let symbolTable = new ChunkedUint32Array(800000);
+export let symbolTable = createChunkedUint32Array(800000);
 export let symbolCount: u32 = 1;
 
-export let nodeScopeSymbols = new ChunkedUint32Array(100000);
+export let nodeScopeSymbols = createChunkedUint32Array(100000);
 
 export function getSymbolForNode(nodeId: u32): u32 {
     return nodeScopeSymbols.get(nodeId);
@@ -651,7 +653,7 @@ export function type_builder_record(firstField: u32): u32 {
 
 // --- Node ↔ TypeVariable Mapping ---
 
-let nodeTypeVars = new ChunkedUint32Array(100000);
+let nodeTypeVars = createChunkedUint32Array(100000);
 
 export function getTypeOfNode(nodeId: u32): u32 {
     if (nodeId == 0) return 0;
@@ -665,7 +667,7 @@ export function getTypeOfNode(nodeId: u32): u32 {
 
 // --- AST Traversal & Constraint Generation ---
 
-let inferStack = new ChunkedUint32Array(1000000);
+let inferStack = createChunkedUint32Array(1000000);
 
 export function inferTypes(astRoot: u32): void {
     if (astRoot == 0) return;
@@ -694,8 +696,8 @@ export function inferTypes(astRoot: u32): void {
 
 // --- Diagnostic Emission ---
 
-let diagStack = new ChunkedUint32Array(1000000);
-let diagOffsetStack = new ChunkedUint32Array(1000000);
+let diagStack = createChunkedUint32Array(1000000);
+let diagOffsetStack = createChunkedUint32Array(1000000);
 
 export function emitTypeDiagnostics(astRoot: u32): void {
     if (astRoot == 0) return;

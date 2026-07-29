@@ -62,6 +62,7 @@ export default defineConfig([
             "packages/language/examples/calc/src/language.ts",
             "packages/language/tests/test-recovery-integration.test.ts",
             "packages/language/tests/test-hashmap.test.ts",
+            "packages/language/tests/test-playground-model.test.ts",
             "packages/language/jest.config.ts",
             "apps/cli/tests/test-recovery-branches.test.ts",
             "apps/cli/jest.config.ts",

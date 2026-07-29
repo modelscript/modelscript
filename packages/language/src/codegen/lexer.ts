@@ -19,7 +19,11 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
   function extractTokens(rule: Rule<any>) {
     if (!rule) return;
-    if (typeof rule === "string" || rule instanceof RegExp) {
+    if (
+      typeof rule === "string" ||
+      rule instanceof RegExp ||
+      Object.prototype.toString.call(rule) === "[object RegExp]"
+    ) {
       rule = { type: "TOKEN", value: rule } as any;
     }
     const ruleType = (rule.type || "").toUpperCase();
@@ -27,6 +31,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     if (ruleType === "TOKEN" && ruleValue) {
       const isRegex =
         ruleValue instanceof RegExp ||
+        Object.prototype.toString.call(ruleValue) === "[object RegExp]" ||
         (typeof ruleValue === "string" && ruleValue.startsWith("/") && ruleValue.endsWith("/") && ruleValue.length > 1);
       const key = ruleValue.toString();
 
@@ -98,7 +103,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     }
     if (rType === "TOKEN" && rule.value) {
       let patternStr = "";
-      if (rule.value instanceof RegExp) {
+      if (rule.value instanceof RegExp || Object.prototype.toString.call(rule.value) === "[object RegExp]") {
         patternStr = rule.value.source;
       } else if (typeof rule.value === "string" && rule.value.startsWith("/") && rule.value.lastIndexOf("/") > 0) {
         patternStr = rule.value.substring(1, rule.value.lastIndexOf("/"));
@@ -141,6 +146,24 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
         const mappedInt = normalized.symToInt.get(val);
         if (mappedInt !== undefined) {
           lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+        }
+      } else if (rType === "SYMBOL") {
+        const symName = (rule as any).name || (rule as any).value;
+        // Find evaluated rule that corresponds to this symbol
+        const evalRule = normalized.evaluatedRules[symName];
+        if (evalRule && evalRule.type === "TOKEN") {
+          let val = evalRule.value.toString();
+          if (typeof evalRule.value === "string") val = `"${evalRule.value}"`;
+          const mappedInt = normalized.symToInt.get(val);
+          if (mappedInt !== undefined) {
+            lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+          }
+        } else {
+          // If the symbol resolves to a regex, symToInt will have the symName or regex string
+          const mappedInt = normalized.symToInt.get(symName);
+          if (mappedInt !== undefined) {
+            lexerCode += `  store<u8>(is_extra_token + <u32>SyntaxType.T_${mappedInt}, 1);\n`;
+          }
         }
       }
     }
@@ -245,29 +268,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 `;
   }
 
-  let hasWhitespaceExtra = false;
-  if (normalized.extras) {
-    for (const rule of normalized.extras) {
-      if (rule.type === "TOKEN") {
-        let val = rule.value.toString();
-        if (
-          val === "/\\s/" ||
-          val === "/\\s+/" ||
-          val === "/[\\s]/" ||
-          val === "/[\\s]+/" ||
-          val === "/[ \\t\\n\\r]+/" ||
-          val === "/[ \\t\\n\\r]/"
-        ) {
-          hasWhitespaceExtra = true;
-        }
-      }
-    }
-  }
-
   const sp = (grammar as any).primitives;
   const hasComments = sp && (sp.nestedComment || sp.lineComment);
 
-  if (hasWhitespaceExtra || hasComments) {
+  if (hasComments) {
     // Skip whitespace and comments (scanner primitives aware)
     lexerCode += `  // Skip extra tokens`;
     lexerCode += `\n`;
@@ -275,13 +279,6 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  while (lexPos < inputLength) {\n`;
     lexerCode += `    let c: i32 = peekChar(lexPos);\n`;
     lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
-
-    if (hasWhitespaceExtra) {
-      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13) {\n`;
-      lexerCode += `      lexPos += charLen;\n`;
-      lexerCode += `      continue;\n`;
-      lexerCode += `    }\n`;
-    }
 
     // Task 1.3: Line comment scanner
     if (sp && sp.lineComment) {
@@ -334,8 +331,9 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   }
 
   lexerCode += `  srcLexPos = lexPos;\n`;
-  lexerCode += `  if (lexPos >= inputLength) return 1023; // EOF\n\n`;
+  lexerCode += `  if (lexPos >= inputLength) return 1023; // EOF\n`;
 
+  lexerCode += `  // --- Lexical State Machine (DFA) ---\n`;
   lexerCode += `  let char0: i32 = peekChar(lexPos);\n`;
   lexerCode += `  let char0Len: u32 = peekCharLen(lexPos);\n\n`;
 

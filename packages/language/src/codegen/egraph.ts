@@ -12,7 +12,7 @@ import { compileRewriteRules } from "./compile_rules.js";
  */
 export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): string {
   let out =
-    'import { arenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "./arena";\n' +
+    'import { atomicChunkAlloc, getNodeType, getNodeFirstChild, getNodeNextSibling, allocNode } from "./arena";\n' +
     'import { DaeBuilder } from "./dae";\n\n' +
     "// --- EGraph Engine (Zero-GC) ---\n" +
     "export const MAX_ECLASSES: u32 = 65536;\n" +
@@ -23,10 +23,10 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "let ufRankOffset: u32 = 0;\n" +
     "let ufCount: u32 = 0;\n" +
     "export function initEGraph(): void {\n" +
-    "    ufParentOffset = arenaOffset;\n" +
-    "    arenaOffset += MAX_ECLASSES * 4;\n" +
-    "    ufRankOffset = arenaOffset;\n" +
-    "    arenaOffset += MAX_ECLASSES;\n" +
+    "    if (ufParentOffset == 0) {\n" +
+    "        ufParentOffset = atomicChunkAlloc(MAX_ECLASSES * 4);\n" +
+    "        ufRankOffset = atomicChunkAlloc(MAX_ECLASSES);\n" +
+    "    }\n" +
     "    ufCount = 0;\n" +
     "}\n" +
     "export function ufMakeSet(): u32 {\n" +
@@ -37,10 +37,10 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "}\n" +
     "export function ufFind(x: u32): u32 {\n" +
     "    let root = x;\n" +
-    "    let p = load<u32>(ufParentOffset + root * 4);\n" +
-    "    while (p != root) {\n" +
-    "        root = p;\n" +
-    "        p = load<u32>(ufParentOffset + root * 4);\n" +
+    "    while (true) {\n" +
+    "        let parent = load<u32>(ufParentOffset + root * 4);\n" +
+    "        if (parent == root) break;\n" +
+    "        root = parent;\n" +
     "    }\n" +
     "    let curr = x;\n" +
     "    while (curr != root) {\n" +
@@ -70,7 +70,7 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "}\n";
 
   out +=
-    "\n// --- Hash Consing & AST Loader (Open-Addressing Hash Table) ---\n" +
+    "\n// --- Hash-Consing Table (Deduplication) ---\n" +
     "let hashKeysOffset: u32 = 0;\n" +
     "let hashValsOffset: u32 = 0;\n" +
     "let hashCount: u32 = 0;\n" +
@@ -78,10 +78,10 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "const HASH_MASK: u32 = HASH_CAPACITY - 1;\n" +
     "let hashOccupied: u32 = 0; // Track load factor\n" +
     "export function initHashCons(): void {\n" +
-    "    hashKeysOffset = arenaOffset;\n" +
-    "    arenaOffset += HASH_CAPACITY * 8; // u64 keys\n" +
-    "    hashValsOffset = arenaOffset;\n" +
-    "    arenaOffset += HASH_CAPACITY * 4; // u32 vals\n" +
+    "    if (hashKeysOffset == 0) {\n" +
+    "        hashKeysOffset = atomicChunkAlloc(HASH_CAPACITY * 8);\n" +
+    "        hashValsOffset = atomicChunkAlloc(HASH_CAPACITY * 4);\n" +
+    "    }\n" +
     "    hashCount = 0;\n" +
     "    hashOccupied = 0;\n" +
     "    // Zero out key slots (0 = empty sentinel)\n" +
@@ -295,11 +295,11 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "    return allocNode(type, newChild1, newChild2, 0);\n" +
     "}\n" +
     "\n// --- Boyer-Moore Inductive Waterfall (Phase 5) ---\n" +
-    "export function proveInductive(rootNode: u32): boolean {\n" +
+    "export function proveInductive(rootNode: u32, dae: DaeBuilder): boolean {\n" +
     "    // Step 1: Simplification using E-Graph\n" +
     "    initEGraph();\n" +
     "    initHashCons();\n" +
-    "    let rootClass = addENode(rootNode);\n" +
+    "    let rootClass = addENode(rootNode, dae);\n" +
     "    saturateEGraph();\n" +
     "    \n" +
     "    // If E-Graph reduced the formula directly to true (tautology)\n" +
@@ -326,13 +326,10 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "    let inductiveStep = substituteVar(generalizedAst, inductionVar, constructorNode);\n" +
     "\n" +
     "    // Step 4: Sub-Query Dispatching\n" +
-    "    // Prove base case: negate and check UNSAT (UNSAT = theorem holds)\n" +
-    "    let baseCaseProved = !solveDPLL(negateNode(baseCase)); \n" +
+    "    let baseCaseProved = isConstant(addENode(baseCase, dae), 1);\n" +
     "    if (!baseCaseProved) return false; // Base case failed\n" +
     "\n" +
-    "    // Prove inductive step under the inductive hypothesis P(x)\n" +
-    "    // We assert P(freshIH) as an assumption, then check if P(constructorNode) follows\n" +
-    "    let stepProved = !solveDPLL(negateNode(inductiveStep));\n" +
+    "    let stepProved = isConstant(addENode(inductiveStep, dae), 1);\n" +
     "    \n" +
     "    return stepProved;\n" +
     "}\n" +

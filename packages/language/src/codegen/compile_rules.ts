@@ -59,10 +59,10 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "let dpCostOffset: u32 = 0;\n";
   out += "let dpKeyOffset: u32 = 0;\n";
   out += "export function initDPExtractor(): void {\n";
-  out += "    dpCostOffset = arenaOffset;\n";
-  out += "    arenaOffset += MAX_ECLASSES * 4;\n";
-  out += "    dpKeyOffset = arenaOffset;\n";
-  out += "    arenaOffset += MAX_ECLASSES * 8;\n";
+  out += "    if (dpCostOffset == 0) {\n";
+  out += "        dpCostOffset = atomicChunkAlloc(MAX_ECLASSES * 4);\n";
+  out += "        dpKeyOffset = atomicChunkAlloc(MAX_ECLASSES * 8);\n";
+  out += "    }\n";
   out += "    for (let i: u32 = 0; i < MAX_ECLASSES; i++) {\n";
   out += "        store<u32>(dpCostOffset + i * 4, 0xFFFFFFFF);\n";
   out += "        store<u64>(dpKeyOffset + i * 8, 0);\n";
@@ -134,7 +134,24 @@ type Expr = string | { op: string; left: Expr; right: Expr };
  */
 function parseSExpr(s: string): Expr {
   s = s.trim();
-  if (!s.startsWith("(")) return s; // var or const
+  if (!s.startsWith("(")) {
+    const infixOps = [
+      { op: "add", sym: "+" },
+      { op: "sub", sym: "-" },
+      { op: "mul", sym: "*" },
+      { op: "div", sym: "/" },
+    ];
+    for (const opInfo of infixOps) {
+      if (s.includes(` ${opInfo.sym} `)) {
+        const parts = s.split(` ${opInfo.sym} `);
+        return { op: opInfo.op, left: parseSExpr(parts[0]), right: parseSExpr(parts[1]) };
+      }
+    }
+    if (isNaN(Number(s)) && !s.startsWith("?")) {
+      return `?${s}`;
+    }
+    return s;
+  }
   // e.g. "(add ?a (mul ?b 0))"
   let inner = s.substring(1, s.length - 1).trim();
   let parts = [];
@@ -263,7 +280,7 @@ function compileRule(rule: RewriteRule): string {
   function genRHS(expr: Expr, indent: string): string {
     if (typeof expr === "string") {
       if (expr.startsWith("?")) {
-        return boundVars[expr];
+        return boundVars[expr] || "0";
       } else {
         if (boundConsts[expr]) return boundConsts[expr]; // Reusing matched constant E-class
         let constVal = parseFloat(expr);
@@ -278,9 +295,9 @@ function compileRule(rule: RewriteRule): string {
   }
 
   let rhsEmitStr = ``;
-  if (typeof rhs === "string" && rhs.startsWith("?")) {
+  if (typeof rhs === "string" && rhs.startsWith("?") && boundVars[rhs]) {
     rhsEmitStr = `                if (ufUnion(eClass, ${boundVars[rhs]}) != eClass) anyMerged = true;\n`;
-  } else if (typeof rhs === "string") {
+  } else if (typeof rhs === "string" && boundConsts[rhs]) {
     rhsEmitStr = `                if (ufUnion(eClass, ${boundConsts[rhs]}) != eClass) anyMerged = true;\n`;
   } else {
     let rhsCall = genRHS(rhs, "");
@@ -298,7 +315,7 @@ function compileRule(rule: RewriteRule): string {
   }
 
   out += matchStr;
-  out += rhsStr;
+  out += rhsEmitStr;
   out += closeStr;
 
   return out;

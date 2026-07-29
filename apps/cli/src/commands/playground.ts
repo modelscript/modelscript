@@ -90,6 +90,18 @@ export const Playground: CommandModule = {
               /from\s*["']assemblyscript["']/g,
               'from "/node_modules/assemblyscript/dist/assemblyscript.js"',
             );
+            content = content.replace(
+              /import\s*\(\s*["'](?:node:)?(?:fs|module|path|url|crypto)["']\s*\)/g,
+              "Promise.resolve({})",
+            );
+            content = content.replace(/await\s+import\s*\(/g, "await Promise.resolve(");
+            res.end(content);
+          } else if (urlPath.endsWith("binaryen/index.js")) {
+            let content = readFileSync(filePath, "utf-8");
+            content = content.replace(
+              /import\s*\(\s*["'](?:node:)?(?:fs|module|path|url|crypto)["']\s*\)/g,
+              "Promise.resolve({})",
+            );
             res.end(content);
           } else {
             res.end(readFileSync(filePath));
@@ -319,10 +331,10 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
       ';'
     ),
     Expr: $ => choice($.BinaryExpr, $.Identifier, $.Number),
-    BinaryExpr: $ => prec(1, seq(
-      field('left', choice($.Identifier, $.Number)), 
+    BinaryExpr: $ => prec.left(1, seq(
+      field('left', $.Expr), 
       field('op', choice('+', '-', '*')), 
-      field('right', choice($.Identifier, $.Number))
+      field('right', $.Expr)
     )),
     Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
     Number: $ => semanticToken('number', /[0-9]+(?:\\.[0-9]+)?/)
@@ -464,8 +476,9 @@ end model;\`;
             const cacheBuster = Date.now();
             const compilerWorker = new Worker('/worker-compiler.js?v=' + cacheBuster, { type: 'module' });
             compilerWorker.onerror = (e) => {
-                console.error("Compiler Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
-                document.getElementById('status').innerText = "Compiler Worker Error: " + (e.message || "Unknown error");
+                console.error("Compiler Worker Error Details:", e, e.message, e.filename, e.lineno, e.colno, e.error);
+                const msg = e.message || (e.filename ? "Error in " + e.filename + ":" + e.lineno + ":" + e.colno : "Worker initialization failed (see browser console)");
+                document.getElementById('status').innerText = "Compiler Worker Error: " + msg;
             };
 
             const lspWorker = new Worker('/worker-lsp.js?v=' + cacheBuster, { type: 'module' });
@@ -480,7 +493,12 @@ end model;\`;
             };
             
             compilerWorker.onmessage = (e) => {
-                if (e.data.type === 'progress') {
+                if (e.data.type === 'ready') {
+                    document.getElementById('status').innerText = "Compiler Worker ready. Compiling DSL...";
+                    compilerWorker.postMessage({ type: 'compile', dsl: window.dslEditor.getValue() });
+                } else if (e.data.type === 'error') {
+                    document.getElementById('status').innerText = "Compiler Worker Error: " + e.data.error;
+                } else if (e.data.type === 'progress') {
                     document.getElementById('status').innerText = e.data.message;
                 } else if (e.data.type === 'success') {
                     const kb = (e.data.wasm.byteLength / 1024).toFixed(1);
@@ -1026,10 +1044,32 @@ end model;\`;
 
 function getCompilerWorkerJs() {
   return `
-import * as Language from '/browser.js?v=${Date.now()}';
-import asc from '/asc.js';
+let Language = null;
+let asc = null;
 
-console.log("Compiler Worker started", Language);
+async function init() {
+    try {
+        console.log("[Worker] Loading /browser.js...");
+        Language = await import('/browser.js?v=' + Date.now());
+        console.log("[Worker] /browser.js loaded:", Language);
+
+        console.log("[Worker] Loading /node_modules/binaryen/index.js...");
+        const binModule = await import('/node_modules/binaryen/index.js');
+        console.log("[Worker] /node_modules/binaryen/index.js loaded:", binModule);
+
+        console.log("[Worker] Loading /node_modules/assemblyscript/dist/asc.js...");
+        const ascModule = await import('/node_modules/assemblyscript/dist/asc.js');
+        console.log("[Worker] asc.js loaded:", ascModule);
+
+        asc = ascModule.default || ascModule;
+        self.postMessage({ type: 'ready' });
+    } catch (err) {
+        console.error("[Compiler Worker Initialization Error]:", err);
+        self.postMessage({ type: 'error', error: 'Worker initialization failed: ' + (err.stack || err.message || err) });
+    }
+}
+
+init();
 
 self.onmessage = async (e) => {
     if (e.data.type === 'compile') {
@@ -1054,7 +1094,8 @@ self.onmessage = async (e) => {
             if (!dslCode.includes('return ')) {
                 dslCode += '\\nreturn typeof __grammar !== "undefined" ? __grammar : null;';
             }
-            dslCode = 'const {' + Object.keys(Language).join(', ') + '} = Language;\\n' + dslCode;
+            const validKeys = Object.keys(Language).filter(k => k !== 'default' && k !== '__esModule' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
+            dslCode = 'const {' + validKeys.join(', ') + '} = Language;\\n' + dslCode;
             
             const createGrammar = new Function('Language', dslCode);
             const grammarDef = createGrammar(Language);
@@ -1068,13 +1109,20 @@ self.onmessage = async (e) => {
             
             setTimeout(async () => {
                 try {
+                    console.log("grammarDef.extras:", grammarDef.extras);
                     // 2. Generate AssemblyScript files
                     const result = Language.buildParser(grammarDef);
+                    const parserFile = result.assemblyScriptFiles.find(f => f.filename === 'parser.ts');
+                    console.log("Generated parser.ts has whitespace skip?:", parserFile && parserFile.content.includes('c == 32'));
                     
                     // 3. Setup Virtual File System for AssemblyScript
                     const vfs = {};
                     for (const file of result.assemblyScriptFiles) {
                         vfs[file.filename] = file.content;
+                        vfs['./' + file.filename] = file.content;
+                        const base = file.filename.replace(/\\.ts$/, '');
+                        vfs[base] = file.content;
+                        vfs['./' + base] = file.content;
                     }
                     
                     console.log("Compiling to WASM with asc...");
@@ -1097,7 +1145,11 @@ self.onmessage = async (e) => {
                                 "--textFile", "parser.wat"
                             ], {
                                 readFile: (name) => {
+                                    console.log("asc readFile:", name);
                                     if (Object.prototype.hasOwnProperty.call(vfs, name)) return vfs[name];
+                                    const clean = name.replace(/^\\.\\//, '');
+                                    if (Object.prototype.hasOwnProperty.call(vfs, clean)) return vfs[clean];
+                                    if (Object.prototype.hasOwnProperty.call(vfs, clean + '.ts')) return vfs[clean + '.ts'];
                                     return null;
                                 },
                                 writeFile: (name, data) => {

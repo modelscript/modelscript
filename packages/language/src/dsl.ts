@@ -573,7 +573,8 @@ type ExtractF<T> = T extends Rule<infer F> ? (string extends F ? never : F) : ne
  * Coerces strings and RegExps into `token` rules, leaving existing `Rule` objects unchanged.
  */
 export function toRule<F extends string = never>(r: RuleLike<F>): Rule<F> {
-  return typeof r === "string" || r instanceof RegExp ? token(r) : (r as Rule<F>);
+  const isRegExp = r instanceof RegExp || Object.prototype.toString.call(r) === "[object RegExp]";
+  return typeof r === "string" || isRegExp ? token(r as string | RegExp) : (r as Rule<F>);
 }
 
 /**
@@ -657,7 +658,11 @@ export function field<F extends string = never>(name: F, rule: RuleLike<any>): R
  * For other rules, groups them into a single monolithic token in the lexer.
  */
 export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
-  if (typeof pattern === "string" || pattern instanceof RegExp) {
+  if (
+    typeof pattern === "string" ||
+    pattern instanceof RegExp ||
+    Object.prototype.toString.call(pattern) === "[object RegExp]"
+  ) {
     return { type: "TOKEN", value: pattern };
   }
   return { type: "TOKEN", children: [toRule(pattern)] };
