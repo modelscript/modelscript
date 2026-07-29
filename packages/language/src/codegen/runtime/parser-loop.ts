@@ -1837,7 +1837,11 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) newBalance--;
   }
 
-  let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + head.pendingPadding;
+  let paddingLength = head.pendingPadding;
+  if (!isVirtual) {
+    paddingLength += (srcLexPos > pos ? srcLexPos - pos : 0);
+  }
+
   let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
   
   let vq0 = head.virtualQueue0;
@@ -1861,7 +1865,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     }
   }
 
-  let nPos = srcLexPos + lexLen;
+  let nPos = isVirtual ? pos : srcLexPos + lexLen;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
           if (g_simulatorMaxTokens > 0 && newShifts >= g_simulatorMaxTokens) {
@@ -2891,19 +2895,14 @@ export function advanceGLR(): void {
     lexPos = pos;
 
     // Token Buffer Arena Consumption
-    // Advance buffer read index only if we have moved past the previous buffer token
-    if (pos > tokenBufferLastPos && tokenBufferReadIdx < tokenBufferWriteIdx) {
-      // If position jumped forward (e.g., island recovery), invalidate the buffer
-      // to prevent serving stale tokens from the old position.
-      if (pos > tokenBufferLastPos + 4) {
-        tokenBufferReadIdx = tokenBufferWriteIdx; // flush buffer
-      } else {
-        tokenBufferReadIdx++;
-      }
+    // If position changed (e.g. after shift or recovery), flush stale buffered lookahead
+    if (pos != tokenBufferLastPos) {
+      tokenBufferReadIdx = tokenBufferWriteIdx;
     }
 
     let is_current_token_virtual = false;
     if (head.virtualQueueCount > 0) {
+      tokenBufferReadIdx = tokenBufferWriteIdx; // Flush token buffer when consuming virtual tokens
       token = head.virtualQueue0 & 0xFFFF;
       lexLen = head.virtualQueue0 >> 16;
       is_current_token_virtual = (lexLen == 0);
@@ -3308,9 +3307,9 @@ export function advanceGLR(): void {
       // --------------------------------------------------------------------
       // ERROR RECOVERY: Token Deletion / Insertion (via Unwind & Mutate)
       // --------------------------------------------------------------------
-      // Try inserting/deleting tokens FIRST before forced reductions, because
-      // insertion preserves more of the parse tree (e.g., inserting a missing
-      // Number before `;` in `let x = ;` completes the Decl properly).
+      // Clear expected tokens to allow the lexer to match any keyword or symbol
+      // during the lookahead simulation in recovery functions.
+      memory.fill(changetype<usize>(expected_tokens), 1, 2048);
       recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
 
       if (g_configIslandMode) {

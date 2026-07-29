@@ -212,6 +212,8 @@ function searchBudgetedInsertions(
       let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
       if (simRes > 0) {
+        outTokens[depth] = sym;
+        outStates[depth] = shiftTarget;
         return depth + 1;
       }
       
@@ -221,7 +223,11 @@ function searchBudgetedInsertions(
         outTokens, outStates,
         laTokLen, laTokPos
       );
-      if (res > 0) return res;
+      if (res > 0) {
+        outTokens[depth] = sym;
+        outStates[depth] = shiftTarget;
+        return res;
+      }
     }
     
     // Branch 2: Try empty reduction (hallucinating non-terminal)
@@ -401,10 +407,12 @@ export function recoverUnwindAndMutate(
                         let errBraceNode = allocNode(NODE_TYPE_ERROR, 0, 0, 0);
                         setNodeFlags(errBraceNode, FLAG_HAS_ERROR | FLAG_IS_INSERTED);
                         openBlockNode = concatLists(openBlockNode, errBraceNode, getNodeType(topNode), 0);
-                        setNodeFlags(openBlockNode, getNodeFlags(openBlockNode) | FLAG_HAS_ERROR);
                         let reopenCost = unwindCurr.errorCost + 20 + (unwindDepth * 10);
                         let errPos = unwindCurr.pos > 0 ? unwindCurr.pos - 1 : 0;
-                        let newTailR = pushDiagnostic(unwindCurr.errorTail, errPos, unwindCurr.pos);
+                        let newTailR = unwindCurr.errorTail;
+                        if (errPos >= head.pos) {
+                          newTailR = pushDiagnostic(unwindCurr.errorTail, errPos, unwindCurr.pos);
+                        }
                         let reopenHead = allocParseHead(
                           st2,
                           openBlockNode,
@@ -680,7 +688,9 @@ export function recoverUnwindAndMutate(
                     setNodePadding(errNode, pad);
                     pad = 0;
                   }
-                  newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
+                  if (srcLexPos >= head.pos) {
+                    newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
+                  }
                   let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
                   setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
                   if (lastChild == 0) setFirstChild(errNode, tNode);
@@ -689,8 +699,8 @@ export function recoverUnwindAndMutate(
                   p = srcLexPos + tLen;
                 }
                 
-                let expectedStart = unwindCurr.pos + getNodePadding(errNode);
-                let errByteLen = p > expectedStart ? p - expectedStart : 0;
+                let expectedStart = gapStart + getNodePadding(errNode);
+                let errByteLen = (a1NextScanPos as u32) > expectedStart ? (a1NextScanPos as u32) - expectedStart : (p > expectedStart ? p - expectedStart : 0);
                 setNodeByteLength(errNode, errByteLen);
 
                 let weakPenalty: i32 = weakRecovery ? 50 : 0;
@@ -889,7 +899,7 @@ export function recoverIslandMode(
   head: ParseHead,
   inputLength: u32,
   bestAcceptedCost: i32,
-  activeHeadsCount: u32
+  initialHeadsCount: u32
 ): void {
         // ERROR RECOVERY: Island Parsing (Block-Level Panic Mode)
         // --------------------------------------------------------------------
@@ -906,7 +916,7 @@ export function recoverIslandMode(
               break;
             }
           }
-          if (!hasCleanLocalHead && head.consecutiveInsertions == 0) {
+          if (!hasCleanLocalHead && head.consecutiveInsertions <= 3) {
           let syncCost = 5; // Balanced initial penalty for destroying a span of code
           let searchPos = head.pos;
           let foundTarget = -1;
@@ -960,8 +970,7 @@ export function recoverIslandMode(
 
             currPop = head;
             let gssDepth: i32 = 0;
-            // Remove artificial constraint: allow popping as deep as needed (cost will penalize).
-            while (currPop != null && gssDepth < 20) {
+            while (currPop != null && gssDepth < 3) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
               
@@ -1132,7 +1141,9 @@ export function recoverIslandMode(
               lastChild = tNode;
 
               // Emit a diagnostic specifically for this garbage token
-              newTail = pushDiagnostic(newTail, srcLexPos, srcLexPos + tLen);
+              if (srcLexPos >= head.pos) {
+                newTail = pushDiagnostic(newTail, srcLexPos, srcLexPos + tLen);
+              }
 
               p = srcLexPos + tLen;
             }
@@ -1165,7 +1176,6 @@ export function recoverIslandMode(
                 if (child == 0) continue;
                 
                 let clonedChild = cloneNodeShallow(child);
-                setNodeFlags(clonedChild, getNodeFlags(clonedChild) | FLAG_HAS_ERROR);
                 
                 if (mergedNode != 0) {
                   // appendToList handles its own cloning, but passing clonedChild is safer

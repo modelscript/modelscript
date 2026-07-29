@@ -819,6 +819,7 @@ export class LspFacade {
    * are resolved by extracting the underlying text from the source buffer.
    */
   getDiagnostics(astRoot: number): Diagnostic[] {
+    this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
     const numElements = this.exports.lsp_getDiagnostics(astRoot);
     const diags: Diagnostic[] = [];
@@ -1259,7 +1260,7 @@ export class LspFacade {
    * Traverses the AST and returns a string representation in Lisp-like S-Expressions.
    * Useful for debugging syntax trees and writing test expectations.
    */
-  getAstSExpr(astRoot: number): string {
+  getAstSExpr(astRoot: number, verbose: boolean = false): string {
     if (!astRoot) return "";
     const lineStarts = this.getLineStarts();
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
@@ -1294,8 +1295,7 @@ export class LspFacade {
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
       const isInvisible = (typeFlags & (1 << 12)) !== 0;
-      let shouldPrint = !typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible;
-      shouldPrint = true;
+      const shouldPrint = verbose || (!typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible);
 
       let childStrs: string[] = [];
 

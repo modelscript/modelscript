@@ -268,10 +268,15 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 `;
   }
 
+  let hasWhitespaceExtra = false;
+  if (normalized.extras && normalized.extras.length > 0) {
+    hasWhitespaceExtra = true;
+  }
+
   const sp = (grammar as any).primitives;
   const hasComments = sp && (sp.nestedComment || sp.lineComment);
 
-  if (hasComments) {
+  if (hasWhitespaceExtra || hasComments) {
     // Skip whitespace and comments (scanner primitives aware)
     lexerCode += `  // Skip extra tokens`;
     lexerCode += `\n`;
@@ -279,6 +284,13 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `  while (lexPos < inputLength) {\n`;
     lexerCode += `    let c: i32 = peekChar(lexPos);\n`;
     lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
+
+    if (hasWhitespaceExtra) {
+      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13) {\n`;
+      lexerCode += `      lexPos += charLen;\n`;
+      lexerCode += `      continue;\n`;
+      lexerCode += `    }\n`;
+    }
 
     // Task 1.3: Line comment scanner
     if (sp && sp.lineComment) {
