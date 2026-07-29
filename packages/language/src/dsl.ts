@@ -1,7 +1,7 @@
 /**
  * Represents a single rule in the grammar's AST representation.
  */
-export interface Rule<F extends string = never> {
+export interface Rule<F extends string = string> {
   __fields?: F;
   /** The type of the rule (e.g., 'SEQ', 'CHOICE', 'TOKEN', 'FIELD', etc.) */
   type: string;
@@ -36,12 +36,12 @@ export interface ScannerPrimitives {
 /**
  * A type that accepts either a strict `Rule` object, a string literal, or a regular expression.
  */
-export type RuleLike<F extends string = never> = Rule<F> | string | RegExp;
+export type RuleLike<F extends string = string> = Rule<F> | string | RegExp;
 
 /**
  * A function that takes a map of all grammar rules and returns a grammar definition rule.
  */
-export type RuleBuilder<RuleName extends string, FieldName extends string = never> = (
+export type RuleBuilder<RuleName extends string, FieldName extends string = string> = (
   $: Record<RuleName | (string & {}), RuleLike<any>>,
 ) => RuleLike<FieldName>;
 
@@ -108,7 +108,8 @@ export interface TensorAPI {
 export interface CodeGraph<
   ModelAttrs extends Record<string, Record<string, any>> = any,
   RuleName extends string = any,
-  FieldName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
 > {
   tensor: TensorAPI;
   hash: HashAPI;
@@ -120,7 +121,7 @@ export interface CodeGraph<
   blt: BltAPI;
 
   error(message: string): void;
-  runQuery(queryId: u32, queryArg: u32, queryArg2?: u32): u32;
+  runQuery(queryId: QueryName | (string & {}) | u32, queryArg?: u32, queryArg2?: u32): u32;
   runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
   diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
 }
@@ -129,7 +130,7 @@ export interface CodeGraph<
  * Methods for querying the Abstract Syntax Tree inside the WASM Arena.
  * Nodes are represented by their `u32` pointer offsets.
  */
-export interface AstAPI<RuleName extends string, FieldName extends string = never> {
+export interface AstAPI<RuleName extends string, FieldName extends string = string> {
   getChildByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): u32;
   getChildrenByFieldId(nodeId: u32, fieldId: FieldName | (string & {}) | i32): Cursor;
 
@@ -178,6 +179,7 @@ export interface DaeAPI {
   addExpression(kind: u8, data1: u32, left?: u32, right?: u32): u32;
   addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId?: u32): u32;
   addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+  extractEquations(rootId: u32): void;
 }
 
 /**
@@ -186,6 +188,8 @@ export interface DaeAPI {
 export interface BltAPI {
   computeBLT(): void;
   rollback(snapshotEqCount: u32, snapshotVarCount: u32): void;
+  buildDependencies(): void;
+  computeMatching(): void;
 }
 
 export enum VarType {
@@ -349,15 +353,15 @@ export interface ModelAPI<ModelAttrs extends Record<string, Record<string, any>>
 
 export type ASTQueryFunction<
   RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean;
+> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean | undefined;
 
 export type ASTLintFunction<
   RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > = (
   graph: CodeGraph<ModelAttrs, RuleName, FieldName>,
@@ -372,8 +376,8 @@ export interface DiagnosticContext<FieldName extends string = string> {
 
 export interface CompilerLint<
   RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
@@ -397,8 +401,8 @@ export interface ModelProperty {
 
 export interface CompilationPipeline<
   RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   label: string;
@@ -412,8 +416,8 @@ export interface CompilationPipeline<
  */
 export interface LanguageOptions<
   RuleName extends string = string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   /** The name of the language (e.g., 'modelica', 'javascript'). */
@@ -508,7 +512,7 @@ export interface LanguageOptions<
 
   /** Equality Saturation and E-Graph Algebraic Simplifications */
   simplification?: {
-    rules: { name: string; lhs: TransformCombinator; rhs: TransformCombinator }[];
+    rules: { name: string; lhs: TransformCombinator | string; rhs: TransformCombinator | string }[];
   };
 
   /** Zero-GC Hindley-Milner Type System Engine Configuration */
@@ -558,8 +562,8 @@ export interface LanguageOptions<
  */
 export function language<
   RuleName extends string,
-  FieldName extends string = never,
-  QueryName extends string = never,
+  FieldName extends string = string,
+  QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
 >(
   options: LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs>,
@@ -567,12 +571,12 @@ export function language<
   return options;
 }
 
-type ExtractF<T> = T extends Rule<infer F> ? (string extends F ? never : F) : never;
+type ExtractF<T> = T extends (infer U)[] ? (U extends Rule<infer F> ? F : any) : T extends Rule<infer F> ? F : any;
 
 /**
  * Coerces strings and RegExps into `token` rules, leaving existing `Rule` objects unchanged.
  */
-export function toRule<F extends string = never>(r: RuleLike<F>): Rule<F> {
+export function toRule<F extends string = string>(r: RuleLike<F>): Rule<F> {
   const isRegExp = r instanceof RegExp || Object.prototype.toString.call(r) === "[object RegExp]";
   return typeof r === "string" || isRegExp ? token(r as string | RegExp) : (r as Rule<F>);
 }
@@ -597,7 +601,7 @@ export function choice<T extends RuleLike<any>[]>(...rules: T): Rule<ExtractF<T[
  * Matches zero or more repetitions of the given rule.
  * Equivalent to Kleene star in EBNF: `A*`
  */
-export function repeat<F extends string = never>(rule: RuleLike<F>): Rule<F> {
+export function repeat<F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return { type: "REPEAT", children: [toRule(rule)] };
 }
 
@@ -605,7 +609,7 @@ export function repeat<F extends string = never>(rule: RuleLike<F>): Rule<F> {
  * Matches one or more repetitions of the given rule.
  * Equivalent to Kleene plus in EBNF: `A+`
  */
-export function repeat1<F extends string = never>(rule: RuleLike<F>): Rule<F> {
+export function repeat1<F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return seq(rule, repeat(rule));
 }
 
@@ -613,7 +617,7 @@ export function repeat1<F extends string = never>(rule: RuleLike<F>): Rule<F> {
  * Makes the given rule optional.
  * Equivalent to optional in EBNF: `A?`
  */
-export function optional<F extends string = never>(rule: RuleLike<F>): Rule<F> {
+export function optional<F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return choice(rule, seq());
 }
 
@@ -649,7 +653,7 @@ export function sepByTrailing<F1 extends string, F2 extends string>(
  * Assigns a specific field name to the matched rule in the AST output.
  * Fields make querying and traversing the AST substantially easier.
  */
-export function field<F extends string = never>(name: F, rule: RuleLike<any>): Rule<F> {
+export function field<F extends string = string>(name: F, rule: RuleLike<any>): Rule<F> {
   return { type: "FIELD", value: name, children: [toRule(rule)] };
 }
 
@@ -657,7 +661,7 @@ export function field<F extends string = never>(name: F, rule: RuleLike<any>): R
  * Defines a lexer token. For strings and RegExps, defines the match pattern.
  * For other rules, groups them into a single monolithic token in the lexer.
  */
-export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
+export function token<F extends string = string>(pattern: RuleLike<F>): Rule<F> {
   if (
     typeof pattern === "string" ||
     pattern instanceof RegExp ||
@@ -668,7 +672,7 @@ export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
   return { type: "TOKEN", children: [toRule(pattern)] };
 }
 
-(token as any).immediate = function <F extends string = never>(rule: RuleLike<F>): Rule<F> {
+(token as any).immediate = function <F extends string = string>(rule: RuleLike<F>): Rule<F> {
   return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
 };
 
@@ -676,22 +680,22 @@ export function token<F extends string = never>(pattern: RuleLike<F>): Rule<F> {
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
  * For example, aliasing a `binary_expression` as `argument`.
  */
-export function alias<F extends string = never>(rule: RuleLike<F>, name: string | Rule<never>): Rule<F> {
+export function alias<F extends string = string>(rule: RuleLike<F>, name: string | Rule<never>): Rule<F> {
   const nameValue = typeof name === "string" ? name : name.value;
   return { type: "ALIAS", value: nameValue, children: [toRule(rule)] };
 }
 
 export type TokenClass = "keyword" | "type" | "operator" | "string" | "number" | "comment" | "punctuation";
 
-export function syntaxToken<F extends string = never>(tokenClass: TokenClass, rule: RuleLike<F>): any {
+export function syntaxToken<F extends string = string>(tokenClass: TokenClass, rule: RuleLike<F>): any {
   return { type: "SYNTAX_TOKEN", value: tokenClass, children: [toRule(rule)] };
 }
 
-export function keyword<F extends string = never>(rule: RuleLike<F>): any {
+export function keyword<F extends string = string>(rule: RuleLike<F>): any {
   return syntaxToken("keyword", rule);
 }
 
-export function op<F extends string = never>(rule: RuleLike<F>): any {
+export function op<F extends string = string>(rule: RuleLike<F>): any {
   return syntaxToken("operator", rule);
 }
 
@@ -751,7 +755,16 @@ export function semanticToken<
   return { type: "SEMANTIC", value: { type: tokenType, modifiers: modifiers || [] }, children: [toRule(rule)] };
 }
 
-export function reserved<F extends string = never>(wordset: string, rule: RuleLike<F>): Rule<F> {
+export interface DefineLanguageConfig<
+  RuleName extends string = string,
+  F extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+> {
+  options: LanguageOptions<RuleName, FieldName, QueryName>;
+}
+
+export function reserved<F extends string = string>(wordset: string, rule: RuleLike<F>): Rule<F> {
   return { type: "RESERVED", value: wordset, children: [toRule(rule)] };
 }
 
@@ -759,31 +772,32 @@ export function reserved<F extends string = never>(wordset: string, rule: RuleLi
  * Resolves GLR shift/reduce or reduce/reduce conflicts by assigning static or dynamic precedences.
  */
 export interface PrecFunction {
-  /** Assigns a static precedence level. Higher numbers bind tighter. */
-  <F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
+  <F extends string = string>(value: number, rule: Rule<F>): Rule<F>;
   /** Assigns a static precedence level with left associativity. */
-  left<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  left<F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
   /** Assigns a static precedence level with right associativity. */
-  right<F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
+  right<F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F>;
   /** Assigns a dynamic precedence for GLR tie-breaking at runtime. */
-  dynamic<F extends string = never>(value: number, rule: Rule<F>): Rule<F>;
+  dynamic<F extends string = string>(value: number, rule: Rule<F>): Rule<F>;
 }
 
-export const prec: PrecFunction = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
-  return { type: "PREC", value, children: [rule] };
+export const prec: PrecFunction = function <F extends string = string>(value: number, rule: Rule<F>): Rule<F> {
+  return { type: "PREC", value, children: [toRule(rule)] };
 } as PrecFunction;
 
-prec.left = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
-  if (typeof value === "object") return { type: "PREC_LEFT", value: 0, children: [value] };
-  return { type: "PREC_LEFT", value, children: [rule!] };
+prec.left = function <F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+  const r = rule !== undefined ? rule : (value as Rule<F>);
+  const val = rule !== undefined ? (value as number) : 0;
+  return { type: "PREC_LEFT", value: val, children: [toRule(r)] };
 };
 
-prec.right = function <F extends string = never>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
-  if (typeof value === "object") return { type: "PREC_RIGHT", value: 0, children: [value] };
-  return { type: "PREC_RIGHT", value, children: [rule!] };
+prec.right = function <F extends string = string>(value: number | Rule<F>, rule?: Rule<F>): Rule<F> {
+  const r = rule !== undefined ? rule : (value as Rule<F>);
+  const val = rule !== undefined ? (value as number) : 0;
+  return { type: "PREC_RIGHT", value: val, children: [toRule(r)] };
 };
 
-prec.dynamic = function <F extends string = never>(value: number, rule: Rule<F>): Rule<F> {
+prec.dynamic = function <F extends string = string>(value: number, rule: Rule<F>): Rule<F> {
   return { type: "PREC_DYNAMIC", value, children: [rule] };
 };
 

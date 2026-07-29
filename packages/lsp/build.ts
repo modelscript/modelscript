@@ -79,7 +79,7 @@ async function run() {
     const result = await esbuild.build(buildOptions);
     if (result.metafile) {
       const fs = await import("fs/promises");
-      await fs.writeFile("metafile.json", JSON.stringify(result.metafile));
+      await fs.writeFile(resolve(__dirname, "dist/metafile.json"), JSON.stringify(result.metafile));
     }
     console.log("Build complete.");
   }

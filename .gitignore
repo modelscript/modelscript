@@ -8,6 +8,8 @@ build/
 prebuilds/
 coverage/
 ctrf/
+scratch_build*/
+scratch_*
 
 # Compiled / binary artifacts
 *.wasm
