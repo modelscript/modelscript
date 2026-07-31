@@ -38,7 +38,21 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
   const maxArity = Math.max(grammar.semantics?.maxArity || 2, 3);
   const FACT_STRIDE = 1 + maxArity;
 
-  let rules: string[] = [...(grammar.semantics?.rules || [])];
+  let rawRules = [...(grammar.semantics?.rules || []), ...(grammar.semantics?.axioms || [])];
+  let rules: string[] = rawRules.map((r: any) => {
+    if (typeof r === "string") return r;
+    if (typeof r === "function") {
+      const paramNames = ["x", "y", "z", "w", "a", "b", "c", "d"];
+      const args = paramNames.slice(0, r.length);
+      r = r(...args);
+    }
+    if (typeof r === "object" && r !== null && r.head && r.body) {
+      const headStr = `${r.head.predicate}(${r.head.args.join(", ")})`;
+      const bodyStr = r.body.map((b: any) => `${b.predicate}(${b.args.join(", ")})`).join(", ");
+      return `${headStr} :- ${bodyStr}`;
+    }
+    return String(r);
+  });
   // Vocabularies and extensions are now fully driven by the DSL configuration.
 
   // ---- Extraction Code ----
@@ -200,48 +214,7 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     }
   }
 
-  // ---- Axiom Code ----
-  let axiomCode = "";
-  let axioms = grammar.semantics?.axioms || [];
-  for (let axiom of axioms) {
-    let headBodyMatch = axiom.match(/^(\w+)\(([^)]+)\)\s*:-\s*(.+)\.$/);
-    if (headBodyMatch) {
-      let headPred = headBodyMatch[1];
-      let headArgs = headBodyMatch[2].split(",").map((s: string) => s.trim());
-      let bodyStr = headBodyMatch[3];
-      let conditions = bodyStr.split("),").map((s: string) => s.trim() + (s.endsWith(")") ? "" : ")"));
-
-      axiomCode += `\n    // Axiom: ${axiom}\n`;
-      axiomCode += `    for (let i: u32 = 0; i < factCount; i++) {\n`;
-
-      let firstCondMatch = conditions[0].match(/^(\w+)\(\?A,\s*(\w+)\)$/);
-      if (firstCondMatch) {
-        let predHash = getDJB2Hash(firstCondMatch[1]);
-        let targetHash = getDJB2Hash(firstCondMatch[2]);
-        axiomCode += `        let idx = i * ${FACT_STRIDE};\n`;
-        axiomCode += `        let p = factTable[idx];\n`;
-        axiomCode += `        let arg1 = factTable[idx + 1];\n`;
-        axiomCode += `        let arg2 = factTable[idx + 2];\n`;
-        axiomCode += `        if (p == ${predHash} && arg2 == ${targetHash}) {\n`;
-
-        let padArgs = Array(maxArity - 2).fill("0");
-        if (headPred === "Error" && headArgs[1] && headArgs[1].startsWith("'")) {
-          let errorMsg = headArgs[1].substring(1, headArgs[1].length - 1);
-          let msgHash = getDJB2Hash(errorMsg);
-          let argsStr = ["arg1", String(msgHash), ...padArgs].join(", ");
-          axiomCode += `            addFact(${getDJB2Hash("Error")}, ${argsStr});\n`;
-        } else {
-          // General fallback for other predicates
-          let headPredHash = getDJB2Hash(headPred);
-          let argsStr = ["arg1", "0", ...padArgs].join(", ");
-          axiomCode += `            addFact(${headPredHash}, ${argsStr});\n`;
-        }
-
-        axiomCode += `        }\n`;
-      }
-      axiomCode += `    }\n`;
-    }
-  }
+  // Axioms are merged directly into Datalog rules for unified semi-naive fixpoint evaluation
 
   // ==================================================================
   // Phase 4A: Parse rules with negation support, then stratify
@@ -377,23 +350,20 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
 
     const b0 = positiveAtoms[0];
 
-    // Build variable-to-position map
+    // Build variable-to-position map and handle constants in b0
     const varMap: Record<string, string[]> = {};
     for (let ai = 0; ai < b0.args.length; ai++) {
       const v = b0.args[ai];
-      if (!varMap[v]) varMap[v] = [];
-      varMap[v].push(`${prefix}_arg0_${ai + 1}`);
-    }
-
-    // Outer loop: iterate delta for first positive atom
-    out += `
-        // Rule: ${rule.source}
-        for (let ${prefix}_di: u32 = deltaStart; ${prefix}_di < deltaEnd; ${prefix}_di++) {
-            let ${prefix}_idx0 = ${prefix}_di * FACT_STRIDE;
-            if (factTable[${prefix}_idx0] != ${b0.pred}) continue;
-`;
-    for (let ai = 0; ai < b0.args.length; ai++) {
       out += `            let ${prefix}_arg0_${ai + 1} = factTable[${prefix}_idx0 + ${ai + 1}];\n`;
+      if (v.startsWith("'") && v.endsWith("'")) {
+        const hashVal = getDJB2Hash(v.substring(1, v.length - 1));
+        out += `            if (${prefix}_arg0_${ai + 1} != ${hashVal}) continue;\n`;
+      } else if (!isNaN(Number(v)) && v.trim() !== "") {
+        out += `            if (${prefix}_arg0_${ai + 1} != ${v.trim()}) continue;\n`;
+      } else {
+        if (!varMap[v]) varMap[v] = [];
+        varMap[v].push(`${prefix}_arg0_${ai + 1}`);
+      }
     }
 
     // Inner loops for positive atoms 1 to N-1
@@ -407,10 +377,17 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       out += `                if (factTable[${prefix}_idx${k}] != ${bk.pred}) continue;\n`;
 
       for (let ai = 0; ai < bk.args.length; ai++) {
-        out += `                let ${prefix}_arg${k}_${ai + 1} = factTable[${prefix}_idx${k} + ${ai + 1}];\n`;
         const v = bk.args[ai];
-        if (!varMap[v]) varMap[v] = [];
-        varMap[v].push(`${prefix}_arg${k}_${ai + 1}`);
+        out += `                let ${prefix}_arg${k}_${ai + 1} = factTable[${prefix}_idx${k} + ${ai + 1}];\n`;
+        if (v.startsWith("'") && v.endsWith("'")) {
+          const hashVal = getDJB2Hash(v.substring(1, v.length - 1));
+          out += `                if (${prefix}_arg${k}_${ai + 1} != ${hashVal}) continue;\n`;
+        } else if (!isNaN(Number(v)) && v.trim() !== "") {
+          out += `                if (${prefix}_arg${k}_${ai + 1} != ${v.trim()}) continue;\n`;
+        } else {
+          if (!varMap[v]) varMap[v] = [];
+          varMap[v].push(`${prefix}_arg${k}_${ai + 1}`);
+        }
       }
 
       let levelJoinChecks: string[] = [];
@@ -433,15 +410,21 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
       const neg = negativeAtoms[ni];
       const negLabel = `${prefix}_neg${ni}`;
 
-      // Build negation arg expressions by binding from the varMap
+      // Build negation arg expressions by binding from the varMap or handling constants
       let negArgChecks: string[] = [`factTable[${negLabel}_idx] == ${neg.pred}`];
       for (let ai = 0; ai < neg.args.length; ai++) {
         const argVar = neg.args[ai];
-        const boundExpr = varMap[argVar]?.[0];
-        if (boundExpr) {
-          negArgChecks.push(`factTable[${negLabel}_idx + ${ai + 1}] == ${boundExpr}`);
+        if (argVar.startsWith("'") && argVar.endsWith("'")) {
+          const hashVal = getDJB2Hash(argVar.substring(1, argVar.length - 1));
+          negArgChecks.push(`factTable[${negLabel}_idx + ${ai + 1}] == ${hashVal}`);
+        } else if (!isNaN(Number(argVar)) && argVar.trim() !== "") {
+          negArgChecks.push(`factTable[${negLabel}_idx + ${ai + 1}] == ${argVar.trim()}`);
+        } else {
+          const boundExpr = varMap[argVar]?.[0];
+          if (boundExpr) {
+            negArgChecks.push(`factTable[${negLabel}_idx + ${ai + 1}] == ${boundExpr}`);
+          }
         }
-        // Unbound variables in negation are existentially checked (any match blocks)
       }
 
       out += `                    // Negation check: NOT ${neg.predName}(${neg.args.join(", ")})\n`;
@@ -458,7 +441,14 @@ import { getNodeFirstChild, getNodeNextSibling } from "./arena";
     // Head arg expressions
     let headArgExprs: string[] = [];
     for (const ha of rule.headArgs) {
-      headArgExprs.push(varMap[ha]?.[0] || "0");
+      if (ha.startsWith("'") && ha.endsWith("'")) {
+        const strVal = ha.substring(1, ha.length - 1);
+        headArgExprs.push(String(getDJB2Hash(strVal)));
+      } else if (!isNaN(Number(ha)) && ha.trim() !== "") {
+        headArgExprs.push(ha.trim());
+      } else {
+        headArgExprs.push(varMap[ha]?.[0] || "0");
+      }
     }
     while (headArgExprs.length < maxArity) headArgExprs.push("0");
 
@@ -831,7 +821,7 @@ export function runDatalogMaterialization(): void {
 }
 
 export function runAxiomValidation(): void {
-${axiomCode}
+    runDatalogMaterialization();
 }
 
 export function datalog_ask_string(q: string): boolean {

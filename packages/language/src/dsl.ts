@@ -356,7 +356,8 @@ export type ASTQueryFunction<
   FieldName extends string = string,
   QueryName extends string = string,
   ModelAttrs extends Record<string, Record<string, any>> = any,
-> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+> = (graph: CodeGraph<ModelAttrs, RuleName, FieldName>, queryArg: u32, ...args: any[]) => u32 | boolean | void;
 
 export type ASTLintFunction<
   RuleName extends string = string,
@@ -510,22 +511,37 @@ export interface LanguageOptions<
     definition?: string | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   };
 
+  /** Zero-GC Code Formatter & Unparser Configuration */
+  formatting?: {
+    indentSize?: number;
+    newlineBeforeBrace?: boolean;
+    rules?: Record<string, (node: any, out: any) => void>;
+  };
+
   /** Equality Saturation and E-Graph Algebraic Simplifications */
   simplification?: {
-    rules: { name: string; lhs: TransformCombinator | string; rhs: TransformCombinator | string }[];
+    rules: (
+      | {
+          name: string;
+          lhs: TransformCombinator | string | ((...args: any[]) => any);
+          rhs: TransformCombinator | string | ((...args: any[]) => any);
+        }
+      | Record<string, (...args: any[]) => [any, any] | any>
+      | Record<string, any>
+    )[];
   };
 
   /** Zero-GC Hindley-Milner Type System Engine Configuration */
   typeSystem?: {
     constraints?: ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>;
-    subtypingPredicates?: string[];
+    subtypingPredicates?: (string | ((db: any, sourceId: number, targetId: number) => boolean))[];
     customCode?: string;
   };
 
   /** DL-Lite / Datalog Semantic Reasoning Engine Configuration */
   semantics?: {
-    rules?: string[];
-    axioms?: string[];
+    rules?: (string | ((...args: any[]) => any) | object)[];
+    axioms?: (string | ((...args: any[]) => any) | object)[];
     vocabularies?: string[];
     extensions?: Record<string, string[]>;
     maxArity?: number;
@@ -833,11 +849,115 @@ export function mul(a: any, b: any) {
 export function div(a: any, b: any) {
   return new TransformCombinator("div", [a, b]);
 }
-export function variable(name: string) {
-  return new TransformCombinator("variable", [name]);
-}
-export const v = variable;
 export function constant(val: number) {
   return new TransformCombinator("constant", [val]);
 }
 export const c = constant;
+export function variable(name: string) {
+  return new TransformCombinator("variable", [name]);
+}
+export const v = variable;
+export function neg(a: any) {
+  return new TransformCombinator("neg", [a]);
+}
+export function abs(a: any) {
+  return new TransformCombinator("abs", [a]);
+}
+export function eq(a: any, b: any) {
+  return new TransformCombinator("eq", [a, b]);
+}
+export function neq(a: any, b: any) {
+  return new TransformCombinator("neq", [a, b]);
+}
+export function lt(a: any, b: any) {
+  return new TransformCombinator("lt", [a, b]);
+}
+export function gt(a: any, b: any) {
+  return new TransformCombinator("gt", [a, b]);
+}
+export function and(a: any, b: any) {
+  return new TransformCombinator("and", [a, b]);
+}
+export function or(a: any, b: any) {
+  return new TransformCombinator("or", [a, b]);
+}
+export function not(a: any) {
+  return new TransformCombinator("not", [a]);
+}
+
+export const ruleCombinators = {
+  add,
+  sub,
+  mul,
+  div,
+  neg,
+  abs,
+  eq,
+  neq,
+  lt,
+  gt,
+  and,
+  or,
+  not,
+  var: variable,
+  v: variable,
+  const: constant,
+  c: constant,
+};
+
+export function subtype(sourceType: any, targetType: any) {
+  const unwrap = (v: any) => (typeof v === "object" && v !== null ? v.value || v.name || v.id || String(v) : String(v));
+  const f = fact("subtype", unwrap(sourceType), unwrap(targetType));
+  const fn: any = (db: any, source: number, target: number) => {
+    const sType = typeof sourceType === "number" ? sourceType : db.ast.getType(source);
+    const tType = typeof targetType === "number" ? targetType : db.ast.getType(target);
+    return sType === tType;
+  };
+  Object.assign(fn, f);
+  fn.args = [sourceType, targetType];
+  return fn;
+}
+export const Subtype = subtype;
+
+export function fact(predicate: string, ...args: string[]) {
+  return {
+    predicate,
+    args,
+    if(...body: { predicate: string; args: string[] }[]) {
+      return {
+        head: { predicate, args },
+        body,
+      };
+    },
+  };
+}
+export const Fact = fact;
+
+export const $: any = new Proxy(
+  {},
+  {
+    get(_target, prop: string) {
+      return { type: "REF", value: prop };
+    },
+  },
+);
+
+declare global {
+  interface Number {
+    is(targetType: any): boolean;
+  }
+}
+
+if (typeof Number !== "undefined" && !(Number.prototype as any).is) {
+  Object.defineProperty(Number.prototype, "is", {
+    value: function (targetType: any) {
+      const val =
+        typeof targetType === "object" && targetType !== null
+          ? targetType.value || targetType.id || targetType.type
+          : targetType;
+      return Number(this) === Number(val);
+    },
+    configurable: true,
+    writable: true,
+  });
+}

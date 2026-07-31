@@ -62,7 +62,6 @@ export class ChunkedArray<T> {
       let newDirectory = heap.alloc(newDirCapacity * sizeof<usize>()) as usize;
       if (this.directory != 0) {
         memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
-        heap.free(this.directory);
       }
       this.directory = newDirectory;
       this.dirCapacity = newDirCapacity;
@@ -177,7 +176,6 @@ export class ChunkedArray<T> {
   @inline
   public dispose(): void {
     if (this.directory != 0) {
-      heap.free(this.directory);
       this.directory = 0;
       this.dirCapacity = 0;
       this.allocatedChunks = 0;

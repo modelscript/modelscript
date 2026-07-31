@@ -749,8 +749,6 @@ export function releaseFieldCursor(cursor: FieldCursor): void {
   if (cursorPoolDepth < 16) {
     cursorPool[cursorPoolDepth] = cursor;
     cursorPoolDepth++;
-  } else {
-    heap.free(changetype<usize>(cursor));
   }
 }
 
@@ -890,9 +888,6 @@ export function releaseAncestorCursor(cursor: AncestorCursor): void {
   if (ancestorCursorPoolDepth < 16) {
     ancestorCursorPool[ancestorCursorPoolDepth] = cursor;
     ancestorCursorPoolDepth++;
-  } else {
-    heap.free(cursor.pathStack as usize);
-    heap.free(changetype<usize>(cursor));
   }
 }
 
@@ -990,9 +985,6 @@ export function releaseDescendantCursor(cursor: DescendantCursor): void {
   if (descendantCursorPoolDepth < 16) {
     descendantCursorPool[descendantCursorPoolDepth] = cursor;
     descendantCursorPoolDepth++;
-  } else {
-    heap.free(cursor.stack as usize);
-    heap.free(changetype<usize>(cursor));
   }
 }
 
@@ -1050,8 +1042,6 @@ export function releaseSemanticCursor(cursor: SemanticCursor): void {
   if (semanticCursorPoolDepth < 16) {
     semanticCursorPool[semanticCursorPoolDepth] = cursor;
     semanticCursorPoolDepth++;
-  } else {
-    heap.free(changetype<usize>(cursor));
   }
 }
 

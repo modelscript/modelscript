@@ -176,6 +176,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
 
 // Internal decode helpers
 export function peekChar(pos: u32): i32 {
+    if (pos >= inputLength) return 0;
     if (inputEncoding == 0) {
         let b0 = load<u8>(getInputBuffer() + pos);
         if (b0 >= 0xC0) {
@@ -211,6 +212,7 @@ export function peekChar(pos: u32): i32 {
 }
 
 export function peekCharLen(pos: u32): u32 {
+    if (pos >= inputLength) return 0;
     if (inputEncoding == 0) {
         let b0 = load<u8>(getInputBuffer() + pos);
         if (b0 >= 0xF0) return 4;

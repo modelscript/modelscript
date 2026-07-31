@@ -1,12 +1,12 @@
-import { TransformCombinator } from "../dsl.js";
+import { ruleCombinators, TransformCombinator } from "../dsl.js";
 
 /**
  * Interface representing an algebraic or AST rewrite rule.
  */
 export interface RewriteRule {
   name: string;
-  lhs: TransformCombinator | string;
-  rhs: TransformCombinator | string;
+  lhs: TransformCombinator | string | ((...args: any[]) => any);
+  rhs: TransformCombinator | string | ((...args: any[]) => any);
 }
 
 /**
@@ -27,7 +27,7 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    return id;\n";
   out += "}\n\n";
   out += "function allocConstantEClass(val: f64): u32 {\n";
-  out += "    let key: u64 = ((512 as u64) << 48) | (reinterpret<u64>(val) >>> 32);\n"; // 512 is (ExprKind.RealLiteral << 8)
+  out += "    let key: u64 = ((512 as u64) << 48) | (reinterpret<u64>(val) >>> 16);\n"; // 512 is (ExprKind.RealLiteral << 8)
   out += "    let existing = hashFind(key);\n";
   out += "    if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "    let id = ufMakeSet();\n";
@@ -46,7 +46,20 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "            let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "            let right = (key & 0xFFFFFF) as u32;\n\n";
 
-  for (const rule of rules) {
+  for (let rule of rules) {
+    if (typeof rule === "object" && rule !== null && !(rule as any).lhs) {
+      const keys = Object.keys(rule);
+      if (keys.length === 1) {
+        const name = keys[0];
+        const fn = (rule as any)[name];
+        if (typeof fn === "function") {
+          const res = fn(ruleCombinators.var("x"), ruleCombinators.var("y"));
+          if (Array.isArray(res) && res.length === 2) {
+            rule = { name, lhs: res[0], rhs: res[1] };
+          }
+        }
+      }
+    }
     out += compileRule(rule);
   }
 
@@ -84,7 +97,7 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "                let rCost = load<u32>(dpCostOffset + ufFind(right) * 4);\n";
   out += "                if (lCost == 0xFFFFFFFF || rCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
   out += "                else cost += lCost + rCost;\n";
-  out += "            } else if (op == 512 || op == 0) {\n"; // RealLiteral or Name
+  out += "            } else if (op == 512 || op == 256 || op == 0) {\n"; // RealLiteral, IntLiteral, Name
   out += "                cost = 1;\n";
   out += "            }\n";
   out += "            if (cost != 0xFFFFFFFF) {\n";
@@ -102,22 +115,24 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "export function extractAst(eClass: u32, dae: DaeBuilder): u32 {\n";
   out += "    let root = ufFind(eClass);\n";
   out += "    let key = load<u64>(dpKeyOffset + root * 8);\n";
-  out += "    if (key == 0) return 0; // Unreachable or not evaluated\n";
+  out += "    if (key == 0) return 0;\n";
   out += "    let op = (key >> 48) as u16;\n";
-  out += "    if (op == 512 || op == 0) {\n"; // RealLiteral or Name
-  out += "        let originalNode = (key & 0xFFFFFFFF) as u32;\n"; // Hack for now
+  out += "    if (op == 512) {\n"; // RealLiteral
+  out += "        let valBits = (key & 0xFFFFFFFFFFFF) << 16;\n";
+  out += "        return dae.addRealLiteral(reinterpret<f64>(valBits));\n";
+  out += "    } else if (op == 256) {\n"; // IntLiteral
+  out += "        let val = (key & 0xFFFFFFFF) as i32;\n";
+  out += "        return dae.addIntLiteral(val);\n";
+  out += "    } else if (op == 0) {\n"; // Name
+  out += "        let originalNode = (key & 0xFFFFFFFF) as u32;\n";
   out += "        return originalNode;\n";
-  out += "    } else if (op == 1280 || op == 1281 || op == 1282 || op == 1283) {\n";
+  out += "    } else if (op >= 1280 && op <= 1283) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let right = (key & 0xFFFFFF) as u32;\n";
   out += "        let leftNode = extractAst(left, dae);\n";
   out += "        let rightNode = extractAst(right, dae);\n";
   out += "        if (leftNode == 0xFFFFFFFF || rightNode == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
-  out += "        let binOp: u32 = 0;\n";
-  out += "        if (op == 1280) binOp = 0;\n";
-  out += "        if (op == 1281) binOp = 1;\n";
-  out += "        if (op == 1282) binOp = 2;\n";
-  out += "        if (op == 1283) binOp = 3;\n";
+  out += "        let binOp: u32 = op - 1280;\n";
   out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
   out += "    }\n";
   out += "    return 0;\n";
@@ -129,56 +144,134 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
 type Expr = string | { op: string; left: Expr; right: Expr };
 
 /**
- * Parses an S-expression string into an expression tree representation.
- * @param s S-expression string (e.g. "(add ?a (mul ?b 0))").
+ * Resolves rule LHS/RHS from function lambdas, TransformCombinators, or strings.
  */
-function parseSExpr(s: string): Expr {
-  s = s.trim();
-  if (!s.startsWith("(")) {
-    const infixOps = [
-      { op: "add", sym: "+" },
-      { op: "sub", sym: "-" },
-      { op: "mul", sym: "*" },
-      { op: "div", sym: "/" },
-    ];
-    for (const opInfo of infixOps) {
-      if (s.includes(` ${opInfo.sym} `)) {
-        const parts = s.split(` ${opInfo.sym} `);
-        return { op: opInfo.op, left: parseSExpr(parts[0]), right: parseSExpr(parts[1]) };
-      }
+function resolveRuleExpr(expr: any): string {
+  if (typeof expr === "function") {
+    const paramNames = ["x", "y", "z", "w", "a", "b", "c", "d"];
+    const args: any[] = [ruleCombinators];
+    const funcLength = expr.length;
+    for (let i = 1; i < funcLength; i++) {
+      args.push(ruleCombinators.var(paramNames[(i - 1) % paramNames.length]));
     }
-    if (isNaN(Number(s)) && !s.startsWith("?")) {
-      return `?${s}`;
-    }
-    return s;
+    const res = expr(...args);
+    return res instanceof TransformCombinator ? res.toSExpr() : String(res);
   }
-  // e.g. "(add ?a (mul ?b 0))"
-  let inner = s.substring(1, s.length - 1).trim();
-  let parts = [];
-  let depth = 0;
-  let curr = "";
-  for (const c of inner) {
-    if (c === "(") depth++;
-    if (c === ")") depth--;
-    if (c === " " && depth === 0) {
-      if (curr.length > 0) parts.push(curr);
-      curr = "";
-    } else {
-      curr += c;
-    }
+  if (typeof expr === "object" && typeof expr?.toSExpr === "function") {
+    return expr.toSExpr();
   }
-  if (curr.length > 0) parts.push(curr);
-  return { op: parts[0], left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
+  return String(expr);
 }
 
 /**
- * Maps binary operation string names to their encoded opcode values.
+ * Parses an S-expression or infix expression string into an expression tree.
+ */
+function parseSExpr(s: string): Expr {
+  s = s.trim();
+  if (s.startsWith("(") && s.endsWith(")")) {
+    let depth = 0;
+    let matchedOuter = true;
+    for (let i = 0; i < s.length - 1; i++) {
+      if (s[i] === "(") depth++;
+      else if (s[i] === ")") depth--;
+      if (depth === 0 && i > 0) {
+        matchedOuter = false;
+        break;
+      }
+    }
+    if (matchedOuter) {
+      const inner = s.substring(1, s.length - 1).trim();
+      const spaceIdx = inner.indexOf(" ");
+      const firstToken = spaceIdx !== -1 ? inner.substring(0, spaceIdx) : inner;
+      const knownOps = ["add", "sub", "mul", "div", "neg", "abs", "eq", "neq", "lt", "gt", "and", "or", "not"];
+      if (knownOps.includes(firstToken)) {
+        const parts: string[] = [];
+        let pDepth = 0;
+        let curr = "";
+        for (const c of inner) {
+          if (c === "(") pDepth++;
+          else if (c === ")") pDepth--;
+          if (c === " " && pDepth === 0) {
+            if (curr.length > 0) parts.push(curr);
+            curr = "";
+          } else {
+            curr += c;
+          }
+        }
+        if (curr.length > 0) parts.push(curr);
+        if (parts.length === 2) {
+          return { op: parts[0], left: parseSExpr(parts[1]), right: "" };
+        }
+        return { op: parts[0], left: parseSExpr(parts[1]), right: parseSExpr(parts[2]) };
+      } else {
+        return parseSExpr(inner);
+      }
+    }
+  }
+
+  const opGroups = [
+    [
+      { sym: "==", op: "eq" },
+      { sym: "!=", op: "neq" },
+      { sym: "<=", op: "lte" },
+      { sym: ">=", op: "gte" },
+      { sym: "<", op: "lt" },
+      { sym: ">", op: "gt" },
+    ],
+    [
+      { sym: "+", op: "add" },
+      { sym: "-", op: "sub" },
+    ],
+    [
+      { sym: "*", op: "mul" },
+      { sym: "/", op: "div" },
+    ],
+  ];
+
+  for (const group of opGroups) {
+    let depth = 0;
+    for (let i = s.length - 1; i >= 0; i--) {
+      const c = s[i];
+      if (c === ")") depth++;
+      else if (c === "(") depth--;
+      else if (depth === 0) {
+        for (const opInfo of group) {
+          const len = opInfo.sym.length;
+          if (i >= len - 1 && s.substring(i - len + 1, i + 1) === opInfo.sym) {
+            const leftStr = s.substring(0, i - len + 1).trim();
+            const rightStr = s.substring(i + 1).trim();
+            if (leftStr.length > 0 && rightStr.length > 0) {
+              return { op: opInfo.op, left: parseSExpr(leftStr), right: parseSExpr(rightStr) };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (isNaN(Number(s)) && !s.startsWith("?")) {
+    return `?${s}`;
+  }
+  return s;
+}
+
+/**
+ * Maps binary/unary operation string names to their encoded opcode values.
  */
 function getOpCode(op: string): number {
   if (op === "add") return 1280; // (5 << 8) | 0
   if (op === "sub") return 1281; // (5 << 8) | 1
   if (op === "mul") return 1282; // (5 << 8) | 2
   if (op === "div") return 1283; // (5 << 8) | 3
+  if (op === "neg") return 1024; // (4 << 8) | 0
+  if (op === "abs") return 1025; // (4 << 8) | 1
+  if (op === "eq") return 1536; // (6 << 8) | 0
+  if (op === "neq") return 1537;
+  if (op === "lt") return 1538;
+  if (op === "gt") return 1539;
+  if (op === "and") return 1792; // (7 << 8) | 0
+  if (op === "or") return 1793;
+  if (op === "not") return 1026;
   return 0;
 }
 
@@ -187,18 +280,8 @@ function getOpCode(op: string): number {
  */
 function compileRule(rule: RewriteRule): string {
   let out = `            // Rule: ${rule.name}\n`;
-  let lhsStr =
-    typeof rule.lhs === "string"
-      ? rule.lhs
-      : typeof (rule.lhs as any)?.toSExpr === "function"
-        ? (rule.lhs as any).toSExpr()
-        : String(rule.lhs);
-  let rhsStr =
-    typeof rule.rhs === "string"
-      ? rule.rhs
-      : typeof (rule.rhs as any)?.toSExpr === "function"
-        ? (rule.rhs as any).toSExpr()
-        : String(rule.rhs);
+  let lhsStr = resolveRuleExpr(rule.lhs);
+  let rhsStr = resolveRuleExpr(rule.rhs);
   let lhs = parseSExpr(lhsStr);
   let rhs = parseSExpr(rhsStr);
 
@@ -301,7 +384,7 @@ function compileRule(rule: RewriteRule): string {
     rhsEmitStr = `                if (ufUnion(eClass, ${boundConsts[rhs]}) != eClass) anyMerged = true;\n`;
   } else {
     let rhsCall = genRHS(rhs, "");
-    rhsEmitStr = `                let newRhs = ${rhsCall};\n                if (ufUnion(eClass, newRhs) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                {\n                  let newRhs = ${rhsCall};\n                  if (ufUnion(eClass, newRhs) != eClass) anyMerged = true;\n                }\n`;
   }
 
   // Close blocks

@@ -60,6 +60,15 @@ export class SyntaxNode {
   }
 
   /**
+   * Returns true if this node was inserted by the parser to recover from a syntax error.
+   */
+  isMissing(): boolean {
+    if (this.ptr === 0) return false;
+    const typeFlags = this.tree.mem32[this.ptr / 4];
+    return (typeFlags & 256) !== 0;
+  }
+
+  /**
    * The line and column where this node starts.
    */
   get startPosition(): Point {
@@ -185,13 +194,6 @@ export class SyntaxNode {
   }
 
   /**
-   * Returns true if the node is a missing node inserted by the error recovery parser.
-   */
-  isMissing(): boolean {
-    return this._cachedLen === 0 && this._cachedTypeId !== 0;
-  }
-
-  /**
    * Returns true if the node is a named node.
    */
   isNamed(): boolean {
@@ -251,6 +253,10 @@ export class TreeCursor {
 
   get endIndex(): number {
     return this.current.endIndex;
+  }
+
+  isMissing(): boolean {
+    return this.current.isMissing();
   }
 
   get startPosition(): Point {

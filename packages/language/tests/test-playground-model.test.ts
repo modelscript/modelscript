@@ -27,11 +27,12 @@ const dsl = language({
         ";",
       ),
     Decl: ($) =>
-      seq(field("type", $.Identifier), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
+      seq(field("type", $.Type), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
+    Type: ($) => choice("Real", "Integer", "Number"),
     Equation: ($) => seq(field("lhs", $.Expr), "=", field("rhs", $.Expr), ";"),
-    Expr: ($) => choice($.BinaryExpr, $.Identifier, $.Number),
-    BinaryExpr: ($) =>
-      prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-", "*")), field("right", $.Expr))),
+    Expr: ($) => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
+    MulExpr: ($) => prec.left(2, seq(field("left", $.Expr), field("op", "*"), field("right", $.Expr))),
+    AddExpr: ($) => prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-")), field("right", $.Expr))),
     Identifier: ($) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
     Number: ($) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
   },
@@ -116,5 +117,59 @@ end model;
 
     expect(tree).not.toContain("ERROR");
     expect(diags).toHaveLength(0);
+  });
+
+  it("should isolate error in 'model ElectricalCircuit 4{4' on line 1 without bleeding to lines 2-4", () => {
+    const code = `model ElectricalCircuit 4{4
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+
+model ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    // ElectricalCircuit on line 1 (0-indexed line 0) must produce diagnostics for 4{4
+    const line0Diags = diags.filter((d: any) => d.range.start.line === 0);
+    expect(line0Diags.length).toBeGreaterThan(0);
+  });
+
+  it("should trigger AST change listener on node insertion during initial parse and incremental parse", () => {
+    const insertedNodes: any[] = [];
+    activeFacade.addAstChangeListener({
+      onNodeInserted: (
+        ptr: number,
+        typeId: number,
+        typeName: string,
+        pad: number,
+        len: number,
+        flags: number,
+        children: any[],
+      ) => {
+        insertedNodes.push({ ptr, typeId, typeName, pad, len, flags, children });
+      },
+      onNodeDeleted: () => {},
+      onNodeRetained: () => {},
+      onNodeUpdated: () => {},
+    });
+
+    activeFacade.lastAstRoot = 0;
+    const code = `model M ; end model ;`;
+    const ast = activeFacade.parseIncremental(code, 0, 0, code.length);
+
+    expect(ast).toBeGreaterThan(0);
+    expect(insertedNodes.length).toBeGreaterThan(0);
+    expect(insertedNodes[0].ptr).toBe(ast);
+    expect(insertedNodes[0].children).toBeDefined();
   });
 });

@@ -22,6 +22,7 @@ import {
 import { errorCount, getErrorEnd, getErrorStart, NODE_TYPE_ERROR } from "./engine";
 import { inputLength } from "./parser";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
+import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 
 // --- LSP Endpoints ---
 
@@ -38,6 +39,31 @@ let t_lspFindOffsetStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array
 let t_lspFindStackCapacity: u32 = 0;
 
 export let globalAstRoot: u32 = 0;
+
+// --- Multi-File Document Registry ---
+let t_documentRoots: UnmanagedMap64To64 = changetype<UnmanagedMap64To64>(0);
+
+export function lsp_registerDocument(fileId: u32, astRoot: u32): void {
+  if (changetype<usize>(t_documentRoots) == 0) {
+    t_documentRoots = changetype<UnmanagedMap64To64>(createMap64To64());
+  }
+  t_documentRoots.set(fileId as u64, astRoot as u64);
+  if (globalAstRoot == 0) {
+    globalAstRoot = astRoot;
+  }
+}
+
+export function lsp_unregisterDocument(fileId: u32): void {
+  if (changetype<usize>(t_documentRoots) != 0) {
+    t_documentRoots.set(fileId as u64, 0 as u64);
+  }
+}
+
+export function lsp_getDocumentRoot(fileId: u32): u32 {
+  if (changetype<usize>(t_documentRoots) == 0) return globalAstRoot;
+  let root = t_documentRoots.get(fileId as u64) as u32;
+  return root != 0 ? root : globalAstRoot;
+}
 
 // --- Binary Serialization ---
 let t_lspBinaryBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
@@ -114,9 +140,6 @@ function flushBinaryBuffer(): void {
     let newCap = t_lspFlatBinaryCapacity;
     if (newCap == 0) newCap = 50000;
     while (newCap < len) newCap *= 2;
-    if (changetype<usize>(t_lspFlatBinaryBuffer) != 0) {
-      heap.free(changetype<usize>(t_lspFlatBinaryBuffer));
-    }
     t_lspFlatBinaryBuffer = changetype<UnmanagedUint32Array>(heap.alloc(newCap * 4));
     t_lspFlatBinaryCapacity = newCap;
   }
@@ -130,7 +153,6 @@ function pushVisitedNode(node: u32): void {
         let newCap = t_lspVisitedCapacity * 2;
         let newPtr = heap.alloc(newCap * 4);
         memory.copy(newPtr, changetype<usize>(t_lspVisitedNodes), t_lspVisitedCapacity * 4);
-        heap.free(changetype<usize>(t_lspVisitedNodes));
         t_lspVisitedNodes = changetype<UnmanagedUint32Array>(newPtr);
         t_lspVisitedCapacity = newCap;
     }
@@ -148,8 +170,6 @@ function ensureTraverseStack(required: u32): void {
         let newOffset = heap.alloc(newCap * 4);
         memory.copy(newTraverse, changetype<usize>(t_lspTraverseStack), t_lspStackCapacity * 4);
         memory.copy(newOffset, changetype<usize>(t_lspOffsetStack), t_lspStackCapacity * 4);
-        heap.free(changetype<usize>(t_lspTraverseStack));
-        heap.free(changetype<usize>(t_lspOffsetStack));
         t_lspTraverseStack = changetype<UnmanagedUint32Array>(newTraverse);
         t_lspOffsetStack = changetype<UnmanagedUint32Array>(newOffset);
         t_lspStackCapacity = newCap;
@@ -166,8 +186,6 @@ function ensureFindTraverseStack(required: u32): void {
         let newOffset = heap.alloc(newCap * 4);
         memory.copy(newTraverse, changetype<usize>(t_lspFindTraverseStack), t_lspFindStackCapacity * 4);
         memory.copy(newOffset, changetype<usize>(t_lspFindOffsetStack), t_lspFindStackCapacity * 4);
-        heap.free(changetype<usize>(t_lspFindTraverseStack));
-        heap.free(changetype<usize>(t_lspFindOffsetStack));
         t_lspFindTraverseStack = changetype<UnmanagedUint32Array>(newTraverse);
         t_lspFindOffsetStack = changetype<UnmanagedUint32Array>(newOffset);
         t_lspFindStackCapacity = newCap;
@@ -225,11 +243,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   lastDiagEnd = 0xffffffff;
   lastLintId = 0xffffffff;
 
-  // Note: Engine-level syntax errors (from errorCount/errorQueue) are no longer iterated here.
-  // The recovery algorithms (Deletion Recovery, Insertion Recovery, Island Mode) all correctly encode their
-  // errors into the AST (as NODE_TYPE_ERROR or zero-length inserted tokens).
-  // Relying solely on the AST traversal prevents duplicate diagnostic reporting.
-
   if (astRoot == 0) {
     flushBinaryBuffer();
     return 0;
@@ -280,25 +293,8 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       if (!isTainted && !inTainted) {
         let dStart = nodeStart;
         
-        // Only scan backwards if dStart lands on whitespace (e.g. \n or spaces)!
-        // If dStart is already on a visible character (like the start of an unexpected token),
-        // keep it there so the squiggle stays on the error word instead of bleeding back to preceding code.
-        let startCh = peekChar(dStart);
-        if (startCh == 32 || startCh == 9 || startCh == 10 || startCh == 13) {
-          if (dStart > 0) {
-            let scan = dStart;
-            let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
-            while (scan >= step) {
-              scan -= step;
-              let ch = peekChar(scan);
-              if (ch == 10 || ch == 13) break; // DO NOT BLEED DIAGNOSTICS ACROSS LINE BREAKS!
-              if (ch != 32 && ch != 9) {
-                dStart = scan;
-                break;
-              }
-            }
-          }
-        }
+        // For inserted ghost nodes, emit diagnostic directly at the insertion location (dStart)
+        // without scanning backward, which would corrupt valid preceding tokens on the line.
         
         let charLen: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
         let dEnd = dStart + charLen;
@@ -342,7 +338,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
     }
 
-    if (!isTainted && !inTainted) {
+    if (!isErrorNode && !inError && !isTainted && !inTainted) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 
@@ -497,7 +493,6 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           // Skip error nodes and tainted nodes from the child index count.
           // Error nodes pulled in by isPureErrorNode recovery reductions are
           // not grammar-compiled children, so counting them corrupts childIdx.
-          let isInserted = (cFlags & FLAG_IS_INSERTED) != 0 || (getNodeByteLength(child) == 0);
           let isExtra = cType == NODE_TYPE_ERROR;
           
           let effectivePad = isFirstChild ? 0 : cPad;
@@ -517,6 +512,8 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
         if (targetChild != 0) {
           let targetFlags = getNodeFlags(targetChild);
+          if ((targetFlags & FLAG_IS_INSERTED) != 0) continue;
+          
           while ((targetFlags & FLAG_INVISIBLE) != 0 && (targetFlags & FLAG_IS_LIST) != 0) {
             let inner = getNodeFirstChild(targetChild);
             if (inner == 0) break;
@@ -526,13 +523,29 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           let cLen = getNodeByteLength(targetChild);
           if (cLen > 0) {
   
-
             // Clamp offset + length to inputLength to prevent out-of-bounds tokens
             // that would cause Monaco to reject the entire semantic tokens response
             if (childOffset > inputLength) continue;
             if (cLen > inputLength || childOffset + cLen > inputLength || childOffset + cLen < childOffset) {
               cLen = inputLength - childOffset;
             }
+            
+            // CRITICAL FIX: Truncate cLen to the first newline. 
+            // Monaco and LSP do not support multiline tokens. A token spanning multiple lines 
+            // (e.g. from error recovery swallowing the file) will have a huge length, causing the 
+            // delta-encoder to skip all subsequent tokens in the file because they "overlap".
+            let maxLen = cLen;
+            let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+            for (let i: u32 = 0; i < cLen; i += step) {
+               let c = peekChar(childOffset + i);
+               if (c == 10 || c == 13) {
+                  maxLen = i;
+                  break;
+               }
+            }
+            cLen = maxLen;
+            if (cLen == 0) continue;
+
             let tokenModifiers = 0;
             t_lspBinaryBuffer.push(childOffset);
             t_lspBinaryBuffer.push(cLen);
@@ -580,31 +593,62 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
 
 function sortSemanticTokens(flatPtr: usize, numTokens: u32): void {
   if (numTokens <= 1) return;
-  for (let i: u32 = 1; i < numTokens; i++) {
-    let i4 = i * 4;
-    let key0 = load<u32>(flatPtr + (i4 * 4));
-    let key1 = load<u32>(flatPtr + ((i4 + 1) * 4));
-    let key2 = load<u32>(flatPtr + ((i4 + 2) * 4));
-    let key3 = load<u32>(flatPtr + ((i4 + 3) * 4));
-
-    let j: i32 = (i as i32) - 1;
-    while (j >= 0) {
-      let j4 = (j as u32) * 4;
-      let prev0 = load<u32>(flatPtr + (j4 * 4));
-      if (prev0 <= key0) break;
-
-      store<u32>(flatPtr + ((j4 + 4) * 4), prev0);
-      store<u32>(flatPtr + ((j4 + 5) * 4), load<u32>(flatPtr + ((j4 + 1) * 4)));
-      store<u32>(flatPtr + ((j4 + 6) * 4), load<u32>(flatPtr + ((j4 + 2) * 4)));
-      store<u32>(flatPtr + ((j4 + 7) * 4), load<u32>(flatPtr + ((j4 + 3) * 4)));
-      j--;
-    }
-    let target4 = ((j + 1) as u32) * 4;
-    store<u32>(flatPtr + (target4 * 4), key0);
-    store<u32>(flatPtr + ((target4 + 1) * 4), key1);
-    store<u32>(flatPtr + ((target4 + 2) * 4), key2);
-    store<u32>(flatPtr + ((target4 + 3) * 4), key3);
+  
+  let numI32 = numTokens as i32;
+  // Build max heap
+  for (let i: i32 = (numI32 >> 1) - 1; i >= 0; i--) {
+    heapifySemanticTokens(flatPtr, numTokens, i as u32);
   }
+  
+  // Extract elements from heap one by one
+  for (let i = numTokens - 1; i > 0; i--) {
+    swapSemanticTokens(flatPtr, 0, i);
+    heapifySemanticTokens(flatPtr, i, 0);
+  }
+}
+
+function heapifySemanticTokens(flatPtr: usize, n: u32, i: u32): void {
+  let largest = i;
+  let left = (i << 1) + 1;
+  let right = (i << 1) + 2;
+
+  if (left < n) {
+    let keyL = load<u32>(flatPtr + (left << 4));
+    let keyLargest = load<u32>(flatPtr + (largest << 4));
+    if (keyL > keyLargest) largest = left;
+  }
+
+  if (right < n) {
+    let keyR = load<u32>(flatPtr + (right << 4));
+    let keyLargest = load<u32>(flatPtr + (largest << 4));
+    if (keyR > keyLargest) largest = right;
+  }
+
+  if (largest != i) {
+    swapSemanticTokens(flatPtr, i, largest);
+    heapifySemanticTokens(flatPtr, n, largest);
+  }
+}
+
+@inline
+function swapSemanticTokens(flatPtr: usize, a: u32, b: u32): void {
+  let a16 = a << 4;
+  let b16 = b << 4;
+  
+  let temp0 = load<u32>(flatPtr + a16);
+  let temp1 = load<u32>(flatPtr + a16 + 4);
+  let temp2 = load<u32>(flatPtr + a16 + 8);
+  let temp3 = load<u32>(flatPtr + a16 + 12);
+
+  store<u32>(flatPtr + a16, load<u32>(flatPtr + b16));
+  store<u32>(flatPtr + a16 + 4, load<u32>(flatPtr + b16 + 4));
+  store<u32>(flatPtr + a16 + 8, load<u32>(flatPtr + b16 + 8));
+  store<u32>(flatPtr + a16 + 12, load<u32>(flatPtr + b16 + 12));
+
+  store<u32>(flatPtr + b16, temp0);
+  store<u32>(flatPtr + b16 + 4, temp1);
+  store<u32>(flatPtr + b16 + 8, temp2);
+  store<u32>(flatPtr + b16 + 12, temp3);
 }
 
 /**
@@ -1008,4 +1052,27 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    
    flushBinaryBuffer();
   return t_lspBinaryBuffer.length / 2;
+}
+
+/**
+ * Triggers document formatting/unparsing.
+ * Returns the number of bytes stored in the binary buffer.
+ */
+export function lsp_formatDocument(astRoot: u32, preserveFormatting: u32 = 0): u32 {
+  ensureLspBuffers();
+  let root = astRoot != 0 ? astRoot : globalAstRoot;
+  if (root == 0) return 0;
+
+  let span = ast_getTextSpan(root);
+  let start = (span >> 32) as u32;
+  let len = (span & 0xffffffff) as u32;
+
+  let inBuf = getInputBuffer();
+  for (let i: u32 = 0; i < len; i++) {
+    let b = load<u8>(inBuf + start + i);
+    t_lspBinaryBuffer.push(b as u32);
+  }
+
+  flushBinaryBuffer();
+  return t_lspBinaryBuffer.length;
 }

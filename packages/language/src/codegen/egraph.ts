@@ -128,20 +128,12 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "}\n" +
     "export function isConstant(eClass: u32, val: f64): boolean {\n" +
     "    let root = ufFind(eClass);\n" +
-    "    for (let slot: u32 = 0; slot < HASH_CAPACITY; slot++) {\n" +
-    "        let key = load<u64>(hashKeysOffset + slot * 8);\n" +
-    "        if (key == 0) continue;\n" +
-    "        let nodeClass = ufFind(load<u32>(hashValsOffset + slot * 4));\n" +
-    "        if (nodeClass == root) {\n" +
-    "            let op = (key >> 48) as u16;\n" +
-    "            if (op == 512 || op == 256) {\n" + // RealLiteral or IntLiteral
-    "                let packedVal = (key & 0xFFFFFFFFFF) as u32;\n" +
-    "                // In a full implementation, we'd lookup `packedVal` in dae.constData\n" +
-    "                // For simple rules like x*0, x+0, we can assume the frontend folded simple integers directly into data1\n" +
-    "                if (packedVal == (val as u32)) return true;\n" +
-    "            }\n" +
-    "        }\n" +
-    "    }\n" +
+    "    let keyReal: u64 = ((512 as u64) << 48) | (reinterpret<u64>(val) >>> 16);\n" +
+    "    let classReal = hashFind(keyReal);\n" +
+    "    if (classReal != 0xFFFFFFFF && ufFind(classReal) == root) return true;\n" +
+    "    let keyInt: u64 = ((256 as u64) << 48) | ((val as u32) & 0xFFFFFFFF);\n" +
+    "    let classInt = hashFind(keyInt);\n" +
+    "    if (classInt != 0xFFFFFFFF && ufFind(classInt) == root) return true;\n" +
     "    return false;\n" +
     "}\n";
   out += "export function addENode(exprId: u32, dae: DaeBuilder): u32 {\n";

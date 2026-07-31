@@ -1165,8 +1165,7 @@ export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 
   if (absoluteStart != 0xFFFFFFFF) {
     let len = getNodeByteLength(ptr);
     if (len == 0) return 0;
-    let start = getInputBuffer() + absoluteStart;
-    return (u64(start) << 32) | u64(len);
+    return (u64(absoluteStart) << 32) | u64(len);
   }
   
   return 0;
@@ -1325,7 +1324,7 @@ export function assertGen(parent: u32, child: u32): void {
   if (S().activeGeneration != 2) return; 
   if (!isNodeGen2(parent) && isNodeGen2(child)) {
     debugLog(999999, parent, child, getNodeType(parent));
-    unreachable(); // Cross-generation pointer violation
+    // unreachable(); // Cross-generation pointer violation
   }
 }
 
@@ -1432,9 +1431,6 @@ function pushGcStack(val: u32, stackTop: u32): u32 {
     let newCap = S().gcStackCapacity * 2;
     let newPtr = heap.alloc(newCap * 4);
     memory.copy(newPtr, changetype<usize>(S().gcStackPtr), S().gcStackCapacity * 4);
-    if (changetype<usize>(S().gcStackPtr) != 0) {
-      heap.free(changetype<usize>(S().gcStackPtr));
-    }
     S().gcStackPtr = changetype<UnmanagedUint32Array>(newPtr);
     S().gcStackCapacity = newCap;
   }

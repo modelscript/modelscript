@@ -44,11 +44,12 @@ export class QueryNode {
   arg1: u32;                  // +4
   arg2: u32;                  // +8
   arg3: u32;                  // +12
-  revision: u32;              // +16
-  value: u32;                 // +20
-  firstDependencyEdge: u32;   // +24
-  firstSubscriberEdge: u32;   // +28
-  nextHashBucketPtr: u32;     // +32
+  arg4: u32;                  // +16
+  revision: u32;              // +20
+  value: u32;                 // +24
+  firstDependencyEdge: u32;   // +28
+  firstSubscriberEdge: u32;   // +32
+  nextHashBucketPtr: u32;     // +36
 }
 
 @unmanaged
@@ -143,6 +144,9 @@ export function resetQueryArena(): void {
   }
   if (graphArenaStart != 0) {
       graphArenaOffset = graphArenaStart;
+  }
+  if (t_modelProperties != 0) {
+      changetype<UnmanagedMap64To64>(t_modelProperties).init();
   }
   scopedImportHead = 0;
 }
@@ -284,7 +288,7 @@ export function registerScopedImport(scopeId: u32, moduleHash: u32, visibility: 
  * Combines a query type and three arbitrary 32-bit arguments into a single 32-bit hash.
  * Utilizes the FNV-1a algorithm for rapid, collision-resistant distribution.
  */
-function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
+function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
    let h: u32 = 0x811c9dc5;
    h ^= queryType;
    h = (h * 0x01000193) >>> 0;
@@ -294,6 +298,8 @@ function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
    h = (h * 0x01000193) >>> 0;
    h ^= arg3;
    h = (h * 0x01000193) >>> 0;
+   h ^= arg4;
+   h = (h * 0x01000193) >>> 0;
    return h & (HASH_TABLE_CAPACITY - 1);
 }
 
@@ -302,38 +308,40 @@ function combineQueryKey(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
  * If found, it indicates that the query has been evaluated previously.
  * @returns The query node pointer, or 0 if not found.
  */
-export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
-   let idx = combineQueryKey(queryType, arg1, arg2, arg3);
+export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
+   let idx = combineQueryKey(queryType, arg1, arg2, arg3, arg4);
    let ptr = queryHashTableOffset[idx];
    while (ptr != 0) {
       let node = changetype<QueryNode>(ptr);
       if (node.queryType == queryType && 
           node.arg1 == arg1 && 
           node.arg2 == arg2 && 
-          node.arg3 == arg3) return ptr;
+          node.arg3 == arg3 &&
+          node.arg4 == arg4) return ptr;
       ptr = node.nextHashBucketPtr;
    }
    return 0;
 }
 
 /**
- * Allocates a new 36-byte query node from linear memory and inserts it into the
+ * Allocates a new 40-byte query node from linear memory and inserts it into the
  * open-addressing hash table. This node will track its execution state, cached value,
  * and dependency edges for future incremental runs.
  */
-export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32): u32 {
-  let ptr = allocGraph(36);
+export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
+  let ptr = allocGraph(40);
   let node = changetype<QueryNode>(ptr);
   node.queryType = queryType;
   node.arg1 = arg1;
   node.arg2 = arg2;
   node.arg3 = arg3;
+  node.arg4 = arg4;
   node.revision = 0;
   node.value = 0;
   node.firstDependencyEdge = 0;
   node.firstSubscriberEdge = 0;
   
-  let idx = combineQueryKey(queryType, arg1, arg2, arg3);
+  let idx = combineQueryKey(queryType, arg1, arg2, arg3, arg4);
   node.nextHashBucketPtr = queryHashTableOffset[idx];
   queryHashTableOffset[idx] = ptr;
   
@@ -426,10 +434,12 @@ export function addSubscriberEdgeIfMissing(childPtr: u32, parentPtr: u32): void 
  * If not, it executes the query via the generated `__GRAPH_SWITCH_CODE__` logic,
  * establishes dependency edges automatically via the `activeQueryStack`, and caches the result.
  */
-export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0): u32 {
-   let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3);
+export function runQuery(queryType: u32, arg1: u32, arg2: u32 = 0, arg3: u32 = 0, arg4: u32 = 0): u32 {
+   if (activeQueryDepth >= 256) return 0; // Stack depth guard to prevent WASM stack overflow
+
+   let nodePtr = getQueryNode2(queryType, arg1, arg2, arg3, arg4);
    if (nodePtr == 0) {
-      nodePtr = allocQueryNode2(queryType, arg1, arg2, arg3);
+      nodePtr = allocQueryNode2(queryType, arg1, arg2, arg3, arg4);
    } else {
       let rev = changetype<QueryNode>(nodePtr).revision;
       if (rev > 0 && rev == globalRevision) return changetype<QueryNode>(nodePtr).value;

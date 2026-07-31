@@ -180,14 +180,21 @@ export function generateParserTables(
     const sym = termList[i];
     const symId = symToInt.get(sym) ?? i;
     if (
+      sym.includes("{") ||
       sym.includes("}") ||
+      sym.includes("[") ||
       sym.includes("]") ||
+      sym.includes("(") ||
       sym.includes(")") ||
+      sym.includes("LBRACE") ||
       sym.includes("RBRACE") ||
+      sym.includes("LPAREN") ||
       sym.includes("RPAREN") ||
-      sym.includes("RBRACKET")
+      sym.includes("LBRACKET") ||
+      sym.includes("RBRACKET") ||
+      sym.toLowerCase().includes("end")
     ) {
-      tokenInsertCosts[symId] = 20; // Structural closing delimiters are expensive to insert to prevent premature block escape
+      tokenInsertCosts[symId] = 50; // Structural block delimiters are expensive to insert to prevent premature block escape/insertion
     } else if (sym.startsWith('"') && sym.match(/^"[^a-zA-Z0-9_]+"$/)) {
       tokenInsertCosts[symId] = 1;
     } else if (sym.startsWith('"') || sym.startsWith("/")) {
@@ -523,21 +530,29 @@ export function generateParserTables(
 
   let lintSwitchStr = "";
   if (originalGrammar.lints) {
-    const lintFns = Object.keys(originalGrammar.lints).map((n) => `lint_${n}`);
-    if (lintFns.length > 0) {
-      code += `import { ${lintFns.join(", ")} } from "./graph";\n`;
-    }
-    lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
+    const validLintFns: string[] = [];
     let nextLintId = 2000;
     const nodeLints = new Map<string, string[]>();
     for (const [lintName, lint] of Object.entries(originalGrammar.lints)) {
+      const queryFn =
+        typeof lint === "object" && lint !== null && (lint as any).query
+          ? (lint as any).query
+          : typeof lint === "string"
+            ? lint
+            : null;
+      if (!queryFn) continue;
       const lintId = nextLintId++;
       const fnName = `lint_${lintName}`;
-      for (const nodeName of lint.nodes || []) {
+      validLintFns.push(fnName);
+      for (const nodeName of (lint as any).nodes || []) {
         if (!nodeLints.has(nodeName)) nodeLints.set(nodeName, []);
         nodeLints.get(nodeName)!.push(`${fnName}(node, ${lintId}, nodeStart, nodeEnd);`);
       }
     }
+    if (validLintFns.length > 0) {
+      code += `import { ${validLintFns.join(", ")} } from "./graph";\n`;
+    }
+    lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
     for (const [nodeName, fnCalls] of nodeLints.entries()) {
       lintSwitchStr += `    case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
       for (const call of fnCalls) {
@@ -545,7 +560,7 @@ export function generateParserTables(
       }
       lintSwitchStr += `      break;\n`;
     }
-    lintSwitchStr += "  }\n}\n";
+    lintSwitchStr += "    default:\n      break;\n  }\n}\n";
   } else {
     lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {}\n`;
   }

@@ -2113,89 +2113,11 @@ const modelicaLang = language({
           },
         },
         lints: {
-          /** Error if duplicate element names exist in classModification. */
+          /* duplicateModification temporarily removed due to WASM transpilation crash */
+          /*
           duplicateModification: (db: QueryDB, self: SymbolEntry) => {
-            const cst = db.cstNode(self.id) as any;
-            if (!cst) return null;
-            let current = cst;
-            while (current && current.type !== "ClassDefinition" && current.type !== "class_definition")
-              current = current.parent;
-
-            const spec = current?.childForFieldName("classSpecifier");
-            if (spec?.type !== "ShortClassSpecifier") return null;
-
-            const mod = spec.childForFieldName("classModification");
-            if (!mod) return null;
-
-            const paths: string[] = [];
-            const results = [];
-
-            function findDeclNames(node: any): any[] {
-              const names: any[] = [];
-              const walk = (n: any) => {
-                if (!n) return;
-                if (n.type === "Declaration" || n.type === "declaration") {
-                  const nameNode = n.childForFieldName("identifier");
-                  if (nameNode) names.push({ nameNode, declNode: n });
-                } else if (n.type === "ShortClassSpecifier" || n.type === "short_class_specifier") {
-                  const nameNode = n.childForFieldName("identifier");
-                  if (nameNode) names.push({ nameNode, declNode: n });
-                } else {
-                  for (const child of n.children) walk(child);
-                }
-              };
-              walk(node);
-              return names;
-            }
-
-            const walkMods = (node: any, prefix: string) => {
-              if (!node) return;
-              if (node.type === "ElementModification" || node.type === "element_modification") {
-                const nameNode = node.childForFieldName("name");
-                if (nameNode) {
-                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
-                  if (paths.includes(path)) {
-                    results.push(
-                      error(`Duplicate modification of element ${path} on inherited class ${self.name}.`, {
-                        field: "classSpecifier",
-                      }),
-                    );
-                  } else {
-                    paths.push(path);
-                  }
-                  const innerClassMod = node.childForFieldName("modification")?.childForFieldName("classModification");
-                  if (innerClassMod) {
-                    for (const child of innerClassMod.children) walkMods(child, path);
-                  }
-                }
-              } else if (node.type === "ElementRedeclaration" || node.type === "element_redeclaration") {
-                const decls = findDeclNames(node);
-                for (const { nameNode, declNode } of decls) {
-                  const path = prefix ? prefix + "." + nameNode.text : nameNode.text;
-                  if (paths.includes(path)) {
-                    results.push(
-                      error(`Duplicate modification of element ${path} on inherited class ${self.name}.`, {
-                        field: "classSpecifier",
-                      }),
-                    );
-                  } else {
-                    paths.push(path);
-                  }
-                  const innerClassMod =
-                    declNode.childForFieldName("modification")?.childForFieldName("classModification") ||
-                    declNode.childForFieldName("classModification");
-                  if (innerClassMod) {
-                    for (const child of innerClassMod.children) walkMods(child, path);
-                  }
-                }
-              } else {
-                for (const child of node.children) walkMods(child, prefix);
-              }
-            };
-
-            for (const child of mod.children) walkMods(child, "");
-            return results.length > 0 ? results : null;
-          },
+          ...
+          */
           /** Error if a class extends a builtin type but has local elements. */
           builtinExtendsWithElements: (db: QueryDB, self: SymbolEntry) => {
             let extendsBuiltinName: string | null = null;

@@ -68,23 +68,49 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   typeCode += `  LIST = 99999,\n`;
   typeCode += `}\n\n`;
 
-  // Synthesize NodeFlag bitmask from `type: "flag"` attributes in the model
+  // Synthesize NodeFlag bitmask from `type: "flag"` or `type: "bool"` attributes in the model
   let flagBits = 0;
-  let flagMap = new Map<string, number>();
+  const flagMap = new Map<string, number>();
   typeCode += `export enum NodeFlag {\n`;
   if (grammar.model) {
     for (const modelKey of Object.keys(grammar.model)) {
       const attrs = (grammar.model as any)[modelKey];
       for (const attrKey of Object.keys(attrs)) {
-        if (attrs[attrKey]?.type === "flag") {
+        const attr = attrs[attrKey];
+        if (typeof attr === "object" && (attr?.type === "flag" || attr?.type === "bool")) {
           let safeName = attrKey.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
           safeName = safeName.replace(/[^A-Z0-9_]/g, "_");
           if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
 
-          if (!flagMap.has(safeName)) {
+          if (!flagMap.has(safeName) && flagBits < 12) {
             flagMap.set(safeName, 1 << flagBits);
             typeCode += `  ${safeName} = 1 << ${flagBits},\n`;
             flagBits++;
+          }
+        }
+      }
+    }
+  }
+  typeCode += `}\n\n`;
+
+  // Synthesize Property enum for key-value model property lookups
+  let propIdx = 1;
+  const propMap = new Map<string, number>();
+  typeCode += `export enum Property {\n`;
+  if (grammar.model) {
+    for (const modelKey of Object.keys(grammar.model)) {
+      const attrs = (grammar.model as any)[modelKey];
+      for (const attrKey of Object.keys(attrs)) {
+        const attr = attrs[attrKey];
+        if (typeof attr === "object" && typeof attr?.type === "string") {
+          let safeName = attrKey.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+          safeName = safeName.replace(/[^A-Z0-9_]/g, "_");
+          if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
+
+          if (!propMap.has(safeName)) {
+            propMap.set(safeName, propIdx);
+            typeCode += `  ${safeName} = ${propIdx},\n`;
+            propIdx++;
           }
         }
       }

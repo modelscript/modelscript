@@ -197,6 +197,7 @@ function parseLR(): u32 {
   
   token = invokeLexer(pos);
   while (load<u8>(is_extra_token + token) == 1) {
+    if (lexLen == 0) break;
     pendingPadding += lexLen;
     pos += lexLen;
     token = invokeLexer(pos);
@@ -227,6 +228,7 @@ function parseLR(): u32 {
       token = invokeLexer(pos);
       pendingPadding = 0;
       while (load<u8>(is_extra_token + token) == 1) {
+        if (lexLen == 0) break;
         pendingPadding += lexLen;
         pos += lexLen;
         token = invokeLexer(pos);
@@ -958,7 +960,7 @@ function copyChildren(p: u32, leftNode: u32): u32 {
  * Recalculates the total byte length of a parent node by summing the padding
  * and byte length of all its direct children.
  */
-function fixNodeLength(node: u32): void {
+export function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
 
@@ -1017,6 +1019,10 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
   if (_listRecurDepth > 50) {
     _listRecurDepth--;
     return cloneNodeShallow(rightNode); // bail: cycle detected
+  }
+
+  if (listSym == 0) {
+    listSym = getNodeType(leftNode) != 0 ? getNodeType(leftNode) : getNodeType(rightNode);
   }
 
   if (leftNode == 0) {
@@ -1503,216 +1509,8 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
       }
     }
 
-
-  if (isMutable(leftNode)) {
-    let prevOfRightMost = 0;
-    let rightMost = getNodeFirstChild(leftNode);
-    let allChildrenMutable = true;
-    while (getNodeNextSibling(rightMost) != 0) {
-      prevOfRightMost = rightMost;
-      rightMost = getNodeNextSibling(rightMost);
-    }
-    
-    // CRITICAL FIX: Even if the list node itself is mutable, if its children
-    // have been extracted (shared with another clone), we cannot mutate
-    // the last child's nextSibling pointer in-place!
-    if ((getNodeFlags(rightMost) & FLAG_EXTRACTED) != 0 || 
-        (prevOfRightMost != 0 && (getNodeFlags(prevOfRightMost) & FLAG_EXTRACTED) != 0)) {
-       allChildrenMutable = false;
-    }
-
-    if (allChildrenMutable) {
-      let newRightMost = appendToList(rightMost, leaf, listSym, envHash, isBoundary);
-
-    let nrDepth = getListDepth(newRightMost, listSym);
-    if (nrDepth == lDepth) {
-      let origC1 = getNodeFirstChild(newRightMost);
-      let origC2 = getNodeNextSibling(origC1);
-
-      let c1 = isMutable(origC1) ? origC1 : cloneNodeShallow(origC1);
-      let c2 = isMutable(origC2) ? origC2 : cloneNodeShallow(origC2);
-
-      if (directChildCount < LIST_MAX_CHILDREN || !isBoundary) {
-        if (prevOfRightMost == 0) setFirstChild(leftNode, c1);
-        else setNextSibling(prevOfRightMost, c1);
-        setNextSibling(c1, c2);
-        if (c2 != 0) setNextSibling(c2, 0);
-        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-        fixNodeLength(leftNode);
-        _listRecurDepth--;
-        return leftNode;
-      } else {
-        // Split leftNode in-place
-        let splitTail = getNodeFirstChild(leftNode);
-        for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
-          if (getNodeNextSibling(splitTail) == 0) break;
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        while (getNodeNextSibling(splitTail) != 0 && (getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) == 0) {
-          splitTail = getNodeNextSibling(splitTail);
-        }
-
-        let splitHead = getNodeNextSibling(splitTail);
-        setNextSibling(splitTail, 0); // truncate leftNode
-        setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-        fixNodeLength(leftNode);
-
-        let rightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
-        setNodeFlags(rightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        setNodePadding(splitHead, 0); // Avoid double padding!
-        setFirstChild(rightChunk, splitHead);
-
-        // Find the node before rightMost in the rightChunk sublist
-        let curr = splitHead;
-        while (getNodeNextSibling(curr) != rightMost && getNodeNextSibling(curr) != 0) {
-          curr = getNodeNextSibling(curr);
-        }
-        if (curr == rightMost) {
-          setFirstChild(rightChunk, c1);
-          setNextSibling(c1, c2);
-          setNextSibling(c2, 0);
-        } else {
-          setNextSibling(curr, c1);
-          setNextSibling(c1, c2);
-          setNextSibling(c2, 0);
-        }
-        fixNodeLength(rightChunk);
-  
-
-        let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        setFirstChild(superP, leftNode);
-        setNextSibling(leftNode, rightChunk);
-        setNextSibling(rightChunk, 0);
-        fixNodeLength(superP);
-
-        _listRecurDepth--;
-        return superP;
-      }
-    } else {
-      if (prevOfRightMost == 0) setFirstChild(leftNode, newRightMost);
-      else setNextSibling(prevOfRightMost, newRightMost);
-      setNextSibling(newRightMost, 0);
-      setNodeFlags(leftNode, getNodeFlags(leftNode) | combinedErrorFlag);
-      fixNodeLength(leftNode);
-      _listRecurDepth--;
-      }
-    }
-  }
-  
-  // If we reach here, we must clone the list and its children to avoid mutating shared state.
-  {
-    let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-    let gc = getNodeFirstChild(leftNode);
-    let lastChild = 0;
-    for (let i = 0; i < directChildCount - 1; i++) {
-      let clone = cloneNodeShallow(gc);
-      if (lastChild == 0) setFirstChild(p, clone);
-      else setNextSibling(lastChild, clone);
-      setNextSibling(clone, 0);
-      lastChild = clone;
-      gc = getNodeNextSibling(gc);
-    }
-
-    let rightMost = gc;
-    let newRightMost = appendToList(rightMost, leaf, listSym, envHash, isBoundary);
-
-    let nrDepth = getListDepth(newRightMost, listSym);
-    if (nrDepth == lDepth) {
-      let origC1 = getNodeFirstChild(newRightMost);
-      let origC2 = getNodeNextSibling(origC1);
-
-      let c1 = cloneNodeShallow(origC1);
-      let c2 = cloneNodeShallow(origC2);
-
-      if (directChildCount < LIST_MAX_CHILDREN || !isBoundary) {
-        if (lastChild == 0) setFirstChild(p, c1);
-        else setNextSibling(lastChild, c1);
-        setNextSibling(c1, c2);
-        if (c2 != 0) setNextSibling(c2, 0);
-        setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-        fixNodeLength(p);
-        _listRecurDepth--;
-        return p;
-      } else {
-        let superP = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
-        setNodeFlags(superP, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        let gc2 = getNodeFirstChild(leftNode);
-        let splitTail = gc2;
-        for (let i = 0; i < LIST_SPLIT_POINT - 1; i++) {
-          if (getNodeNextSibling(splitTail) == 0) break;
-          splitTail = getNodeNextSibling(splitTail);
-        }
-        while (getNodeNextSibling(splitTail) != 0 && (getNodeFlags(splitTail) & FLAG_LIST_BOUNDARY) == 0) {
-          splitTail = getNodeNextSibling(splitTail);
-        }
-
-        let actualSplitCount = 0;
-        let curr = gc2;
-        while (curr != 0) {
-          actualSplitCount++;
-          if (curr == splitTail) break;
-          curr = getNodeNextSibling(curr);
-        }
-
-        let lastChild2 = 0;
-        for (let i = 0; i < actualSplitCount; i++) {
-          let clone = cloneNodeShallow(gc2);
-          if (lastChild2 == 0) setFirstChild(p, clone);
-          else setNextSibling(lastChild2, clone);
-          setNextSibling(clone, 0);
-          lastChild2 = clone;
-          if (gc2 == splitTail) {
-            gc2 = getNodeNextSibling(gc2);
-            break;
-          }
-          gc2 = getNodeNextSibling(gc2);
-        }
-        fixNodeLength(p);
-
-        let splitHead = gc2;
-        let newRightChunk = allocNode(listSym, getNodePadding(splitHead), 0, envHash);
-        setNodeFlags(newRightChunk, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-
-        lastChild2 = 0;
-        while (gc2 != rightMost && gc2 != 0) {
-          let clone = cloneNodeShallow(gc2);
-          if (lastChild2 == 0) {
-            setNodePadding(clone, 0); // Avoid double padding!
-            setFirstChild(newRightChunk, clone);
-          } else {
-            setNextSibling(lastChild2, clone);
-          }
-          setNextSibling(clone, 0);
-          lastChild2 = clone;
-          gc2 = getNodeNextSibling(gc2);
-        }
-        if (lastChild2 == 0) setFirstChild(newRightChunk, c1);
-        else setNextSibling(lastChild2, c1);
-        setNextSibling(c1, c2);
-        setNextSibling(c2, 0);
-        fixNodeLength(newRightChunk);
-
-
-        setFirstChild(superP, p);
-        setNextSibling(p, newRightChunk);
-        setNextSibling(newRightChunk, 0);
-        fixNodeLength(superP);
-        
-        _listRecurDepth--;
-        return superP;
-      }
-    } else {
-      if (lastChild == 0) setFirstChild(p, newRightMost);
-      else setNextSibling(lastChild, newRightMost);
-      setNextSibling(newRightMost, 0);
-      setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
-      fixNodeLength(p);
-      _listRecurDepth--;
-      return p;
-    }
-  }
+  _listRecurDepth--;
+  return leftNode;
 }
 
 
@@ -2311,6 +2109,11 @@ function symbolMatches(expected: i32, actual: i32): boolean {
   return isDerivableInvisible(expected, actual, 0);
 }
 
+function symbolMatchesUnit(expected: i32, actual: i32): boolean {
+  if (expected == actual) return true;
+  return isDerivableUnit(expected, actual, 0);
+}
+
 /**
  * Checks if an `actual` token can be derived from an `expected` non-terminal
  * exclusively through invisible (wrapper) productions.
@@ -2330,6 +2133,20 @@ function isDerivableInvisible(expected: i32, actual: i32, depth: i32): boolean {
       let rhsSym = prod_right_symbols[rOffset];
       if (rhsSym == actual) return true;
       if (isDerivableInvisible(rhsSym, actual, depth + 1)) return true;
+    }
+  }
+  return false;
+}
+
+function isDerivableUnit(expected: i32, actual: i32, depth: i32): boolean {
+  if (depth > 3) return false;
+  let totalProds = prod_lengths.length;
+  for (let p = 0; p < totalProds; p++) {
+    if (prod_lhs[p] == expected && prod_lengths[p] == 1) {
+      let rOffset = prod_right_offsets[p];
+      let rhsSym = prod_right_symbols[rOffset];
+      if (rhsSym == actual) return true;
+      if (isDerivableUnit(rhsSym, actual, depth + 1)) return true;
     }
   }
   return false;
@@ -2386,9 +2203,26 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
 
     let missingCount = popCount - needed;
 
+    // Filter: Error Cost Budget / Missing Token Cap (Strategy #2)
+    // Prevent the parser from hallucinating too many consecutive virtual tokens 
+    // across multiple chained forced reductions without consuming a real token.
+    if (head.consecutiveInsertions + missingCount > 3) {
+      continue;
+    }
+
     // Filter: we require at least one matched symbol (or it's an epsilon production)
     if (needed == 0 && popCount > 0) {
       continue;
+    }
+
+    // Filter: prevent self-referential recursive forced reductions.
+    // If missingCount > 0 and needed == 1, popping head.astNode (which already matches lhsSym)
+    // to produce another lhsSym node without consuming input causes runaway recursive AST nesting.
+    if (missingCount > 0 && needed == 1 && head.astNode != 0) {
+      let topNodeType = getNodeType(head.astNode);
+      if (topNodeType == lhsSym || symbolMatchesUnit(lhsSym, topNodeType) || symbolMatchesUnit(topNodeType, lhsSym)) {
+        continue;
+      }
     }
 
     // Filter: we must have a valid GOTO transition from the state BEFORE the matched prefix on the GSS stack
@@ -2585,7 +2419,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
   if (nextState != -1) {
     let newHead = allocParseHead(
       nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + 50,
-      head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
+      head.successfulShifts, head.balanceHash, head.consecutiveInsertions + missingCount,
       head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
       head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueue3, head.virtualQueue4, head.virtualQueueCount
     );
@@ -2954,6 +2788,7 @@ export function advanceGLR(): void {
       
       token = invokeLexer(pos);
       while (load<u8>(is_extra_token + token) == 1) {
+        if (lexLen == 0) break;
         head.pendingPadding += lexLen;
         pos += lexLen;
         token = invokeLexer(pos);
@@ -3050,6 +2885,7 @@ export function advanceGLR(): void {
         let endPos = pos + getNodePadding(reusedNode) + getNodeByteLength(reusedNode);
         let nextTok = invokeLexer(endPos);
         while (load<u8>(is_extra_token + nextTok) == 1) {
+          if (lexLen == 0) break;
           endPos += lexLen;
           nextTok = invokeLexer(endPos);
         }
@@ -3102,6 +2938,7 @@ export function advanceGLR(): void {
         pos = newPos;
         token = invokeLexer(pos);
         while (load<u8>(is_extra_token + token) == 1) {
+          if (lexLen == 0) break;
           head.pendingPadding += lexLen;
           pos += lexLen;
           token = invokeLexer(pos);
@@ -3139,6 +2976,7 @@ export function advanceGLR(): void {
         pos = newPos;
         token = invokeLexer(pos);
         while (load<u8>(is_extra_token + token) == 1) {
+          if (lexLen == 0) break;
           head.pendingPadding += lexLen;
           pos += lexLen;
           token = invokeLexer(pos);

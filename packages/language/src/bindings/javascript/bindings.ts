@@ -473,8 +473,11 @@ export class LspFacade {
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
 
-    if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
-      this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed
+    if (this.lastAstRoot === 0 || (editStart === 0 && editOldEnd === 0 && editNewEnd === 0)) {
+      this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed or initial parse
+      editStart = 0;
+      editOldEnd = 0;
+      editNewEnd = 0;
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -605,8 +608,11 @@ export class LspFacade {
     let editOldEndByte = maxOrigEnd * 2;
     let editNewEndByte = maxNewEnd * 2;
 
-    if (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0) {
+    if (this.lastAstRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
       this.lastAstRoot = 0;
+      editStartByte = 0;
+      editOldEndByte = 0;
+      editNewEndByte = 0;
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -956,11 +962,15 @@ export class LspFacade {
           }
           let msgVal = LINT_MESSAGES[lintId.toString()];
           if (typeof msgVal === "function") {
-            const lenChars = this.exports.inputLength ? this.exports.inputLength.value / 2 : 0;
-            const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+            const lenBytes = this.exports.inputLength
+              ? typeof this.exports.inputLength.value === "number"
+                ? this.exports.inputLength.value
+                : Number(this.exports.inputLength) || 0
+              : 0;
+            const textBuffer = new Uint8Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenBytes);
             let chars = "";
-            for (let j = startByte / 2; j < endByte / 2; j++) {
-              if (j < lenChars) chars += String.fromCharCode(textBuffer[j]);
+            if (startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+              chars = new TextDecoder().decode(textBuffer.subarray(startByte, endByte));
             }
 
             const createContext = (nodePtr: number, fallbackText: string) => {
@@ -1199,6 +1209,19 @@ export class LspFacade {
       });
     }
     return references;
+  }
+
+  /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
+  formatDocument(astRoot: number, preserveFormatting: boolean = false): string {
+    if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";
+    const numBytes = this.exports.lsp_formatDocument(astRoot, preserveFormatting ? 1 : 0);
+    if (numBytes === 0) return "";
+
+    const mem8 = new Uint8Array(this.wasmMemory.buffer);
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const bytes = mem8.subarray(dirPtr, dirPtr + numBytes);
+    return new TextDecoder().decode(bytes);
   }
 
   /** Retrieves available compiler pipelines that can be executed. */
@@ -1543,7 +1566,7 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
-    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const getMem32 = () => new Uint32Array(this.wasmMemory.buffer);
     let opsCount = 0;
     const MAX_DIFF_OPS = 50000;
 
@@ -1553,6 +1576,7 @@ export class LspFacade {
     }
 
     const getChildren = (ptr: number): { ptr: number; field: string | null }[] => {
+      const mem32 = getMem32();
       const children: { ptr: number; field: string | null }[] = [];
       const firstChild = mem32[(ptr + 8) / 4];
       let curr = firstChild;
@@ -1569,7 +1593,7 @@ export class LspFacade {
         }
         const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
         children.push({ ptr: curr, field });
-        curr = mem32[(curr + 12) / 4];
+        curr = getMem32()[(curr + 12) / 4];
         childIndex++;
       }
       return children;
@@ -1591,7 +1615,7 @@ export class LspFacade {
 
       let nodePtr = startPtr;
       let parentField: string | null = null;
-      let childPtr = mem32[(nodePtr + 8) / 4];
+      let childPtr = getMem32()[(nodePtr + 8) / 4];
       let childIndex = 0;
       let step = 0;
       let slowPtr = childPtr;
@@ -1603,6 +1627,7 @@ export class LspFacade {
             continue;
           }
 
+          const mem32 = getMem32();
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
           let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
@@ -1649,7 +1674,7 @@ export class LspFacade {
               currentAccumulatedPad += childPad + childLen;
             }
           } else {
-            children.push({ ptr: childPtr, field, invisiblePad: currentAccumulatedPad });
+            children.push({ ptr: childPtr, field, fieldId, invisiblePad: currentAccumulatedPad });
             currentAccumulatedPad = 0;
           }
 
@@ -1681,6 +1706,7 @@ export class LspFacade {
         const item = stack.pop()!;
         const ptr = item.ptr;
         if (!ptr) continue;
+        const mem32 = getMem32();
         const typeFlags = mem32[ptr / 4];
         const typeId = typeFlags & 0x03ff;
         let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
@@ -1732,6 +1758,7 @@ export class LspFacade {
         return;
       }
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
+        const mem32 = getMem32();
         const typeFlags = mem32[newPtr / 4];
         const newTypeId = typeFlags & 0x03ff;
         let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
@@ -1758,6 +1785,7 @@ export class LspFacade {
         return;
       }
 
+      const mem32 = getMem32();
       const oldTypeId = mem32[oldPtr / 4] & 0x03ff;
       const newTypeId = mem32[newPtr / 4] & 0x03ff;
 
@@ -1888,6 +1916,15 @@ export class SyntaxNode {
     return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
 
+  /**
+   * Returns true if this node was inserted by the parser to recover from a syntax error.
+   */
+  isMissing(): boolean {
+    if (this.ptr === 0) return false;
+    const typeFlags = this.tree.mem32[this.ptr / 4];
+    return (typeFlags & 256) !== 0;
+  }
+
   /** The line and column where this node starts. */
   get startPosition(): Point {
     return this.tree.offsetToPoint(this.startIndex * 2);
@@ -1995,11 +2032,6 @@ export class SyntaxNode {
     return null;
   }
 
-  /** Returns true if the node is a missing node inserted by error recovery. */
-  isMissing(): boolean {
-    return this._cachedLen === 0 && this._cachedTypeId !== 0;
-  }
-
   /**
    * Looks up a named field on this node and returns the corresponding child syntax node.
    * This bridges to WASM for efficient field extraction using the compiled field tables.
@@ -2079,6 +2111,10 @@ export class TreeCursor {
 
   get endIndex(): number {
     return this.current.endIndex;
+  }
+
+  isMissing(): boolean {
+    return this.current.isMissing();
   }
 
   get startPosition(): Point {
@@ -2182,3 +2218,5 @@ export class Tree {
     return { row: 0, column: offset / 2 };
   }
 }
+
+export const WasmLanguageBinding = LspFacade;

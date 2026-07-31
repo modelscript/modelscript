@@ -486,6 +486,8 @@ export async function activate(context: vscode.ExtensionContext) {
                         const type = tokens[i+2];
                         const mod = tokens[i+3];
                         
+                        if (len === 0) continue;
+                        
                         const startPos = document.positionAt(offset / 2);
                         
                         // Sanity check to avoid crashing the VS Code extension host

@@ -222,6 +222,25 @@ export class DaeBuilder {
   }
 
   /**
+   * Adds an integer literal expression.
+   */
+  @inline
+  addIntLiteral(value: i32): u32 {
+    return this.addExpression(ExprKind.IntLiteral, value as u32);
+  }
+
+  /**
+   * Adds a real literal expression.
+   */
+  @inline
+  addRealLiteral(value: f64): u32 {
+    let bits = reinterpret<u64>(value);
+    let lo = (bits & 0xffffffff) as u32;
+    let hi = (bits >>> 32) as u32;
+    return this.addExpression(ExprKind.RealLiteral, lo, hi);
+  }
+
+  /**
    * Adds an equation to the DAE system (e.g. `lhs = rhs`).
    */
   @inline

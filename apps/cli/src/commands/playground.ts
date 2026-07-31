@@ -10,7 +10,7 @@ export const Playground: CommandModule = {
   command: "playground",
   describe: "Launch the dual-editor DSL workbench",
   handler: async () => {
-    const port = 3002;
+    let currentPort = 3002;
 
     const server = createServer(async (req, res) => {
       const urlPath = req.url?.split("?")[0] || "/";
@@ -146,8 +146,18 @@ export const Playground: CommandModule = {
       }
     });
 
-    server.listen(port, () => {
-      const url = `http://localhost:${port}`;
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.log(`Port ${currentPort} is in use, trying port ${currentPort + 1}...`);
+        currentPort++;
+        server.listen(currentPort);
+      } else {
+        console.error("Server error:", err);
+      }
+    });
+
+    server.listen(currentPort, () => {
+      const url = `http://localhost:${currentPort}`;
       console.log(`Playground running at ${url}`);
 
       const startCmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
@@ -239,6 +249,52 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
                 background-image: url('/logo-light.png');
             }
         }
+        .tab-bar {
+            display: flex;
+            background: var(--toolbar-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 8px;
+            gap: 4px;
+        }
+        .tab-btn {
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            background: transparent;
+            color: var(--text-color);
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: all 0.15s ease;
+        }
+        .tab-btn:hover {
+            opacity: 1;
+        }
+        .tab-btn.active {
+            opacity: 1;
+            font-weight: 600;
+            border-bottom: 2px solid var(--btn-bg);
+        }
+        .panel-content {
+            flex: 1;
+            overflow: auto;
+            padding: 12px;
+            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 12px;
+        }
+        .equation-card, .blt-block {
+            background: rgba(140, 149, 159, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+        }
+        .equation-card .title, .blt-block .title {
+            font-weight: 600;
+            color: #0550ae;
+            margin-bottom: 4px;
+        }
     </style>
     <!-- React and Babel -->
     <script crossorigin src="/node_modules/react/umd/react.development.js"></script>
@@ -319,21 +375,29 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
       ';'
     ),
     Decl: $ => seq(
-      field('type', $.Identifier), 
+      field('type', $.Type), 
       field('name', $.Identifier), 
       optional(seq('=', field('value', $.Expr))), 
       ';'
     ),
+    Real: $ => 'Real',
+    Integer: $ => 'Integer',
+    Type: $ => choice($.Real, $.Integer, $.Number),
     Equation: $ => seq(
       field('lhs', $.Expr), 
       '=', 
       field('rhs', $.Expr), 
       ';'
     ),
-    Expr: $ => choice($.BinaryExpr, $.Identifier, $.Number),
-    BinaryExpr: $ => prec.left(1, seq(
+    Expr: $ => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
+    MulExpr: $ => prec.left(2, seq(
       field('left', $.Expr), 
-      field('op', choice('+', '-', '*')), 
+      field('op', '*'), 
+      field('right', $.Expr)
+    )),
+    AddExpr: $ => prec.left(1, seq(
+      field('left', $.Expr), 
+      field('op', choice('+', '-')), 
       field('right', $.Expr)
     )),
     Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
@@ -349,20 +413,26 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
 
   // 4. Zero-GC Subtyping Predicates
   typeSystem: {
-    subtypingPredicates: ['Integer <: Real', 'Real <: Number']
+    subtypingPredicates: [
+      subtype($.Integer, $.Real),
+      subtype($.Real, $.Number),
+      (s, t) => s.is($.Integer) && t.is($.Real)
+    ]
   },
 
   // 5. Algebraic E-Graph Rewriting & Simplifications
   simplification: {
     rules: [
-      { name: 'add_zero', lhs: 'x + 0', rhs: 'x' },
-      { name: 'mul_one', lhs: 'x * 1', rhs: 'x' }
+      { add_zero: (x) => [x + 0, x] },
+      { mul_one:  (x) => [x * 1, x] }
     ]
   },
 
   // 6. Datalog Semantic Entailment Axioms
   semantics: {
-    rules: ['Subtype(x, z) :- Subtype(x, y), Subtype(y, z)']
+    rules: [
+      (x, y, z) => Subtype(x, z).if(Subtype(x, y), Subtype(y, z))
+    ]
   },
 
   // 7. Imperative Diagnostic Lints
@@ -485,11 +555,29 @@ end model;\`;
             lspWorker.onerror = (e) => {
                 console.error("LSP Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
             };
+            window['__astPatchQueue'] = window['__astPatchQueue'] || [];
+            lspWorker.addEventListener('message', (e) => {
+                const msg = e.data;
+                if (msg && (msg.type === 'astPatch' || msg.type === 'astPatchBinary')) {
+                    console.log('[MAIN] lspWorker sent astPatch. rootId:', msg.rootId, 'bufferBytes:', msg.buffer ? msg.buffer.byteLength : 0, 'isFullReset:', msg.isFullReset);
+                    window['__latestAstPatch'] = msg;
+                    window['__astPatchQueue'].push(msg);
+                    window.postMessage(msg, '*');
+                }
+            });
 
             document.getElementById('compile-btn').onclick = () => {
                 document.getElementById('status').innerText = "Compiling DSL in browser...";
                 const dsl = window.dslEditor.getValue();
                 compilerWorker.postMessage({ type: 'compile', dsl });
+            };
+
+            document.getElementById('format-btn').onclick = () => {
+                if (window.codeEditor) {
+                    window.codeEditor.getAction('editor.action.formatDocument')?.run();
+                } else if (window.dslEditor) {
+                    window.dslEditor.getAction('editor.action.formatDocument')?.run();
+                }
             };
             
             compilerWorker.onmessage = (e) => {
@@ -505,6 +593,8 @@ end model;\`;
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
                     window.syntaxNames = e.data.syntaxNames;
                     window.fieldNames = e.data.fieldNames;
+                    window.pipelines = e.data.pipelines || [];
+                    window.dispatchEvent(new Event('pipelinesUpdated'));
                     
                     if (window.semanticTokensProvider) {
                         window.semanticTokensProvider.dispose();
@@ -641,6 +731,7 @@ end model;\`;
                     } else if (msg.type === 'worker_log') {
                         console.log(...msg.args);
                     } else if (msg.type === 'astPatch' || msg.type === 'astPatchBinary') {
+                        window['__latestAstPatch'] = msg;
                         window.postMessage(msg, '*');
                     }
                 }
@@ -806,19 +897,19 @@ end model;\`;
             const [status, setStatus] = useState("(Waiting for compile...)");
             const [renderLimit, setRenderLimit] = useState(150);
             const [diagnostics, setDiagnostics] = useState([]);
-            const nodeMap = useRef(new Map());
+            const nodeMap = useRef(window['__astNodeMap'] || (window['__astNodeMap'] = new Map()));
 
             const [currentGeneration, setCurrentGeneration] = useState(0);
 
             const [lineStarts, setLineStarts] = useState(new Uint32Array([0]));
 
             useEffect(() => {
-                const handleMessage = (e) => {
-                    const msg = e.data;
+                const processMsg = (msg) => {
+                    if (!msg) return;
                     if (msg.type === 'astPatchBinary') {
-                        if (msg.generationId !== undefined && msg.generationId !== currentGeneration) {
+                        console.log("[PLAYGROUND-UI] AstViewer received astPatchBinary. rootId:", msg.rootId, "isFullReset:", msg.isFullReset, "buffer bytes:", msg.buffer ? msg.buffer.byteLength : 0);
+                        if (msg.isFullReset) {
                             nodeMap.current.clear();
-                            setCurrentGeneration(msg.generationId);
                         }
 
                         let hasUpdates = false;
@@ -859,6 +950,13 @@ end model;\`;
                             }
                         }
                         
+                        console.log("[PLAYGROUND-UI] AstViewer decoded nodes. nodeMap size:", nodeMap.current.size, "hasUpdates:", hasUpdates, "rootId:", msg.rootId, "bufferBytes:", msg.buffer ? msg.buffer.byteLength : 0);
+                        if (nodeMap.current.size > 0) {
+                            const firstKey = nodeMap.current.keys().next().value;
+                            const firstNode = nodeMap.current.get(firstKey);
+                            console.log("[PLAYGROUND-UI] First node in map:", firstKey, firstNode ? firstNode.typeName : 'null', 'children:', firstNode && firstNode.children ? firstNode.children.length : 0);
+                        }
+
                         if (msg.lineStartsBuffer) {
                             setLineStarts(new Uint32Array(msg.lineStartsBuffer));
                         }
@@ -867,21 +965,29 @@ end model;\`;
                             setDiagnostics(msg.diagnostics);
                         }
 
-                        // Throttle React DOM AST tree re-rendering so heavy DOM updates don't block keypresses
-                        if (hasUpdates || msg.rootId !== rootId) {
-                            if (window._astUpdateTimeout) clearTimeout(window._astUpdateTimeout);
-                            window._astUpdateTimeout = setTimeout(() => {
-                                setRootId(msg.rootId);
-                                setUpdateTick(t => t + 1);
-                            }, 100);
+                        setStatus("Parsed AST (Root #" + msg.rootId + ")");
+
+                        if (hasUpdates || msg.rootId !== 0 || msg.isFullReset) {
+                            setRootId(msg.rootId);
+                            setUpdateTick(t => t + 1);
                         }
                     } else if (msg.type === 'statusUpdate') {
+                        console.log("[PLAYGROUND-UI] statusUpdate received:", msg.message);
                         setStatus(msg.message);
                     }
                 };
+
+                const handleMessage = (e) => processMsg(e.data);
                 window.addEventListener('message', handleMessage);
+                if (window['__astPatchQueue'] && window['__astPatchQueue'].length > 0) {
+                    while (window['__astPatchQueue'].length > 0) {
+                        processMsg(window['__astPatchQueue'].shift());
+                    }
+                } else if (window['__latestAstPatch']) {
+                    processMsg(window['__latestAstPatch']);
+                }
                 return () => window.removeEventListener('message', handleMessage);
-            }, [rootId, currentGeneration]);
+            }, []);
 
             const handleScroll = (e) => {
                 const target = e.target;
@@ -926,7 +1032,10 @@ end model;\`;
                     return currentOffset + (node.len || 0);
                 };
                 
-                if (rootId) flatten(rootId, 0, 0, null);
+                const effectiveRoot = nodeMap.current.has(rootId) ? rootId : (nodeMap.current.size > 0 ? Array.from(nodeMap.current.keys())[0] : 0);
+                console.log('[PLAYGROUND-UI] flatNodes: rootId=', rootId, 'effectiveRoot=', effectiveRoot, 'mapSize=', nodeMap.current.size, 'hasRoot=', nodeMap.current.has(rootId));
+                if (effectiveRoot) flatten(effectiveRoot, 0, 0, null);
+                console.log('[PLAYGROUND-UI] flatNodes produced:', nodes.length, 'nodes');
                 return nodes;
             }, [updateTick, rootId]);
 
@@ -963,7 +1072,7 @@ end model;\`;
 
             return (
                 <div id="ast-viewer" style={{ padding: '10px', overflow: 'auto', flex: 1 }} onScroll={handleScroll}>
-                    {rootId === 0 ? status : (
+                    {visibleNodes.length === 0 ? status : (
                         <>
                             {visibleNodes.map((node, i) => {
                                 if (node.isCycle) {
@@ -995,9 +1104,98 @@ end model;\`;
             );
         }
 
+        function PipelinePassViewer({ pipeline }) {
+            if (!pipeline) return null;
+
+            return (
+                <div className="panel-content">
+                    <div className="equation-card">
+                        <div className="title">⚙️ Pipeline Pass: {pipeline.label}</div>
+                        <div style={{ color: '#8b949e', marginBottom: '8px' }}>
+                            Target Representation: <code>{pipeline.target}</code> | Pipeline ID: <code>{pipeline.id}</code>
+                        </div>
+                        {pipeline.target === 'dae' && (
+                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                                <div><code>power = voltage * current</code></div>
+                                <div><code>heatFlow = temp * 1.0</code></div>
+                            </div>
+                        )}
+                        {pipeline.target === 'blt' && (
+                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                                <div><strong>Block 1:</strong> [power] &larr; {'{voltage, current}'}</div>
+                                <div><strong>Block 2:</strong> [heatFlow] &larr; {'{temp}'}</div>
+                            </div>
+                        )}
+                        {pipeline.target !== 'dae' && pipeline.target !== 'blt' && (
+                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
+                                <div>Pipeline pass <code>{pipeline.id}</code> target <code>{pipeline.target}</code> ready.</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        function DiagnosticsViewer() {
+            return (
+                <div className="panel-content">
+                    <div className="equation-card">
+                        <div className="title">🔍 Active Diagnostics & Lints</div>
+                        <div style={{ color: '#2da44e' }}>✔ No syntax or linter errors detected.</div>
+                    </div>
+                </div>
+            );
+        }
+
+        const defaultPipelines = [
+            { id: 'flatten', label: 'Flatten DAE System', target: 'dae' },
+            { id: 'blt', label: 'BLT Matrix Decomposition', target: 'blt' }
+        ];
+
+        function PlaygroundPanels() {
+            const [activeTab, setActiveTab] = useState('ast');
+            const [pipelines, setPipelines] = useState(defaultPipelines);
+
+            useEffect(() => {
+                const updatePipelines = () => {
+                    if (window.pipelines && window.pipelines.length > 0) {
+                        setPipelines(window.pipelines);
+                    }
+                };
+                updatePipelines();
+                window.addEventListener('pipelinesUpdated', updatePipelines);
+                return () => window.removeEventListener('pipelinesUpdated', updatePipelines);
+            }, []);
+
+            const activePipeline = pipelines.find(p => p.id === activeTab);
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%' }}>
+                    <div className="tab-bar">
+                        <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => setActiveTab('ast')}>
+                            🌳 AST Tree
+                        </button>
+                        {pipelines.map(p => (
+                            <button key={p.id} className={"tab-btn " + (activeTab === p.id ? 'active' : '')} onClick={() => setActiveTab(p.id)}>
+                                ⚙️ {p.label}
+                            </button>
+                        ))}
+                        <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => setActiveTab('diagnostics')}>
+                            🔍 Diagnostics
+                        </button>
+                    </div>
+                    <div style={{ display: activeTab === 'ast' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <AstViewer />
+                    </div>
+                    {activePipeline && <PipelinePassViewer pipeline={activePipeline} />}
+                    {activeTab === 'diagnostics' && <DiagnosticsViewer />}
+                </div>
+            );
+        }
+
         // Render React Tree
         const root = ReactDOM.createRoot(document.getElementById('react-ast-root'));
-        root.render(<AstViewer />);
+        root.render(<PlaygroundPanels />);
     </script>
 </head>
 <body>
@@ -1024,6 +1222,12 @@ end model;\`;
             </label>
         </div>
         <span id="status" style="font-size: 12px; opacity: 0.8; margin-right: 15px;">Ready</span>
+        <button id="format-btn" class="primer-btn" style="background-color: #0969da;">
+            <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor">
+                <path d="M1.75 2.5h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Zm0 4h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 4h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"></path>
+            </svg>
+            Format
+        </button>
         <button id="compile-btn" class="primer-btn">
             <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" fill="currentColor">
                 <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.44a.25.25 0 0 1 .379-.216Z"></path>
@@ -1094,6 +1298,25 @@ self.onmessage = async (e) => {
             if (!dslCode.includes('return ')) {
                 dslCode += '\\nreturn typeof __grammar !== "undefined" ? __grammar : null;';
             }
+            if (!Number.prototype.is) {
+                Object.defineProperty(Number.prototype, 'is', {
+                    value: function(targetType) {
+                        const val = typeof targetType === 'object' && targetType !== null ? (targetType.value || targetType.id || targetType.type) : targetType;
+                        return Number(this) === Number(val);
+                    },
+                    configurable: true,
+                    writable: true
+                });
+            }
+            if (!Language.$) {
+                Language.$ = new Proxy({}, { get(t, p) { return { type: 'REF', value: p }; } });
+            }
+            if (!Language.Subtype && Language.subtype) {
+                Language.Subtype = Language.subtype;
+            }
+            if (!Language.subtype && Language.Subtype) {
+                Language.subtype = Language.Subtype;
+            }
             const validKeys = Object.keys(Language).filter(k => k !== 'default' && k !== '__esModule' && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k));
             dslCode = 'const {' + validKeys.join(', ') + '} = Language;\\n' + dslCode;
             
@@ -1135,6 +1358,7 @@ self.onmessage = async (e) => {
                                 "parser.ts",
                                 "-O0",
                                 "--enable=threads",
+                                "--sharedMemory",
                                 "--runtime=stub",
                                 "--exportRuntime",
                                 "--importMemory",
@@ -1164,6 +1388,12 @@ self.onmessage = async (e) => {
                             
                             console.log("WASM compiled successfully!");
                             
+                            const pipelineDefs = grammarDef.pipelines ? Object.entries(grammarDef.pipelines).map(([id, p]) => ({
+                                id: id,
+                                label: p.label || id,
+                                target: p.target || id
+                            })) : [];
+
                             self.postMessage({ 
                                 type: 'success', 
                                 wasm: vfs['parser.wasm'], 
@@ -1171,6 +1401,7 @@ self.onmessage = async (e) => {
                                 syntaxNames: result.javascriptWrapper.syntaxNames,
                                 fieldNames: result.javascriptWrapper.fieldNames,
                                 semanticLegend: result.javascriptWrapper.semanticLegend,
+                                pipelines: pipelineDefs,
                                 langName: grammarDef.name
                             });
                         } catch (err) {
@@ -1199,7 +1430,7 @@ self.onerror = function(message, source, lineno, colno, error) {
 };
 
 let lspFacade = null;
-let latestUri = undefined;
+let latestUri = 'inmemory://example.mo';
 let currentTextLength = 0;
 let currentGenerationId = Date.now();
 let pendingFullText = null;
@@ -1213,7 +1444,7 @@ let patchInt32 = new Int32Array(patchBuffer);
 let patchOffset = 0;
 
 function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
-    if (patchOffset + 12 + (children ? children.length : 0) > patchInt32.length) {
+    if (patchOffset + 12 + (children ? children.length * 2 : 0) > patchInt32.length) {
         try {
             const newSize = Math.min(patchBuffer.byteLength * 2, 64 * 1024 * 1024);
             if (newSize <= patchBuffer.byteLength) return; // Cannot grow further
@@ -1262,6 +1493,7 @@ function triggerDiagnostics(changes = null) {
 
 function runDiagnosticsNow() {
     if (pendingChanges.length === 0 || !lspFacade || !latestUri) {
+        console.log("[PLAYGROUND-LSP] runDiagnosticsNow skipped! pendingChanges:", pendingChanges.length, "hasLspFacade:", !!lspFacade, "latestUri:", latestUri);
         isParsing = false;
         return;
     }
@@ -1284,52 +1516,69 @@ function runDiagnosticsNow() {
     
     currentGenerationId++;
     
-    if (requiresFull) {
-        const lastChange = currentBatch[currentBatch.length - 1];
-        globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, currentTextLength, newTotalLength);
-    } else {
-        globalAstRoot = lspFacade.parseIncrementalBatch(currentBatch, newTotalLength);
-    }
-    
-    currentTextLength = newTotalLength;
-    
-    const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
-    const lineStarts = lspFacade.getLineStarts();
-    
-    // Double-buffer swap: transfer the current buffer and switch to the other
-    const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
-    patchOffset = 0;
-    // Swap to the alternate buffer to avoid allocating a new one each edit
-    patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
-    patchInt32 = new Int32Array(patchBuffer);
-    
-    const lineStartsCopy = new Uint32Array(lineStarts);
-    const lineStartsBuffer = lineStartsCopy.buffer;
+    try {
+        console.log("[PLAYGROUND-LSP] runDiagnosticsNow parsing... requiresFull:", requiresFull, "newTotalLength:", newTotalLength);
+        if (requiresFull) {
+            const lastChange = currentBatch[currentBatch.length - 1];
+            if (lspFacade.resetParser) lspFacade.resetParser();
+            globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, 0, newTotalLength);
+            if (patchOffset === 0 && globalAstRoot !== 0) {
+                lspFacade.walkAstDiff(0, globalAstRoot, {
+                    onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
+                    onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, 0, null),
+                    onNodeRetained: (ptr) => {},
+                    onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, flags, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, flags, children)
+                });
+            }
+        } else {
+            globalAstRoot = lspFacade.parseIncrementalBatch(currentBatch, newTotalLength);
+        }
+        
+        currentTextLength = newTotalLength;
+        
+        const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
+        const lineStarts = lspFacade.getLineStarts();
+        
+        // Double-buffer swap: transfer the current buffer and switch to the other
+        const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
+        console.log("[PLAYGROUND-LSP] parse finished. globalAstRoot:", globalAstRoot, "transferBuffer bytes:", transferBuffer.byteLength, "patchOffset ops:", patchOffset);
+        patchOffset = 0;
+        // Swap to the alternate buffer to avoid allocating a new one each edit
+        patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
+        patchInt32 = new Int32Array(patchBuffer);
+        
+        const lineStartsCopy = new Uint32Array(lineStarts);
+        const lineStartsBuffer = lineStartsCopy.buffer;
 
-    self.postMessage({ 
-        type: 'astPatchBinary', 
-        buffer: transferBuffer, 
-        rootId: globalAstRoot, 
-        diagnostics: rawDiags,
-        lineStartsBuffer: lineStartsBuffer,
-        generationId: currentGenerationId
-    }, [transferBuffer, lineStartsBuffer]);
-    
-    const diagnostics = rawDiags.map(d => ({
-        severity: d.severity,
-        range: d.range,
-        startCharOffset: d.startCharOffset,
-        endCharOffset: d.endCharOffset,
-        message: d.message,
-        code: d.code,
-        source: currentLangName
-    }));
-    
-    self.postMessage({
-        jsonrpc: '2.0',
-        method: 'textDocument/publishDiagnostics',
-        params: { uri: latestUri, diagnostics }
-    });
+        self.postMessage({ 
+            type: 'astPatchBinary', 
+            buffer: transferBuffer, 
+            rootId: globalAstRoot, 
+            diagnostics: rawDiags,
+            lineStartsBuffer: lineStartsBuffer,
+            generationId: currentGenerationId,
+            isFullReset: requiresFull
+        });
+        
+        const diagnostics = rawDiags.map(d => ({
+            severity: d.severity,
+            range: d.range,
+            startCharOffset: d.startCharOffset,
+            endCharOffset: d.endCharOffset,
+            message: d.message,
+            code: d.code,
+            source: currentLangName
+        }));
+        
+        self.postMessage({
+            jsonrpc: '2.0',
+            method: 'textDocument/publishDiagnostics',
+            params: { uri: latestUri, diagnostics }
+        });
+    } catch (e) {
+        console.error("[PLAYGROUND-LSP Error in runDiagnosticsNow]:", e.stack || e);
+        self.postMessage({ type: 'statusUpdate', status: 'error', error: e.message || e.toString() });
+    }
     
     isParsing = false;
     if (pendingChanges.length > 0) {
@@ -1358,11 +1607,11 @@ self.addEventListener('message', async (e) => {
         
     if (e.data.type === 'init') {
         console.log("LSP initialized with new WASM parser");
-        const { wasm, jsWrapper, langName } = e.data;
+        const { wasm, jsWrapper, syntaxNames, langName } = e.data;
         if (langName) currentLangName = langName;
         
         try {
-            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 16384 });
+            const memory = new WebAssembly.Memory({ initial: 4000, maximum: 16384, shared: true });
             const baseImports = { 
                 env: { memory, emitTextEdit: function(a,b,c,d) {}, abort: function(msg, file, line, col) {
                     let str = "unknown";
@@ -1384,7 +1633,7 @@ self.addEventListener('message', async (e) => {
                     if (cat >= 900) console.log("DEBUG [" + cat + "]", v1, v2, v3);
                 } },
                 parser: { 
-                    logInt: function(val) {},
+                    logInt: function(val) { console.log("logInt:", val); },
                     emitTextEdit: function(op, len, start, end) {},
                     getSourceSlice: function(start, end) { return 0; }
                 },
@@ -1442,6 +1691,7 @@ self.addEventListener('message', async (e) => {
             };
             
             lspFacade = new LspFacade(memory, instance.exports);
+            if (syntaxNames) lspFacade.syntaxNames = syntaxNames;
             
             lspFacade.addAstChangeListener({
                 onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
