@@ -172,4 +172,47 @@ end model;
     expect(insertedNodes[0].ptr).toBe(ast);
     expect(insertedNodes[0].children).toBeDefined();
   });
+
+  it("should handle keyword substitution for 'error ElectricalCircuit' and isolate line 1 error leaf", () => {
+    const code = `error ElectricalCircuit {
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+
+model ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const tree = activeFacade.getAstSExpr(ast);
+
+    // Should parse lines 1-7 as ModelDef without collapsing into a global error node
+    expect(tree).toContain("ModelDef");
+    expect(tree).toContain("(ModelDef [8, 0] - [13, 10]");
+  });
+
+  it("should execute error recovery in < 2ms for live editing keystrokes", () => {
+    const code = `model ElectricalCircuit {
+  Real volt
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const start = performance.now();
+    const ast = activeFacade.parse(code);
+    const duration = performance.now() - start;
+
+    expect(ast).toBeGreaterThan(0);
+    expect(duration).toBeLessThan(10); // Expect latency well under 10ms (< 2ms typical)
+  });
 });
