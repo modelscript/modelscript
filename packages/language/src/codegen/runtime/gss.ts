@@ -45,6 +45,16 @@ export function initGSS(): void {
  */
 export function pushActiveHead(headPtr: u32): boolean {
   if (activeHeadsCount >= (ARENA_BUFFER_SIZE as u32)) return false;
+  let newHead = changetype<ParseHead>(headPtr);
+  for (let i: u32 = 0; i < activeHeadsCount; i++) {
+    let existingHead = changetype<ParseHead>(t_activeHeads[i]);
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (newHead.errorCost < existingHead.errorCost) {
+        t_activeHeads[i] = headPtr;
+      }
+      return true;
+    }
+  }
   t_activeHeads[activeHeadsCount] = headPtr;
   activeHeadsCount++;
   return true;
