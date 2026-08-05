@@ -288,6 +288,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           pEnd = start + i + step;
         } else {
           if (pStart != 0xffffffff && pEnd > pStart) {
+            logInt(291);
             lsp_allocDiagnostic(pStart, pEnd, 0);
             pStart = 0xffffffff;
           }
@@ -313,6 +314,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         if (dEnd > charLen) dStart = dEnd - charLen;
         else dStart = 0;
       }
+      logInt(316);
       lsp_allocDiagnostic(dStart, dEnd, type);
     } else if (isErrorNode) {
       let actualStart = nodeStart;
@@ -348,6 +350,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           pEnd = actualStart + i + step;
         } else {
           if (pStart != 0xffffffff && pEnd > pStart) {
+            logInt(351);
             lsp_allocDiagnostic(pStart, pEnd, 0);
             pStart = 0xffffffff;
           }
@@ -355,6 +358,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       }
     } else if (isTainted && isLeaf && len > 0 && !isErrorNode) {
       // Real token marked as tainted by error recovery.
+      logInt(358);
       lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
     }
 
@@ -420,7 +424,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
          t_lspTraverseStack[writeIdx] = child;
         let nextInError = (isErrorNode || inError);
         let nextInTainted = isTainted || inTainted;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, childHasError || hasErrorSibling, passInsertedSibling, nextInTainted);
+        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, hasErrorSibling, passInsertedSibling, nextInTainted);
         writeIdx--;
         currOffset += cLen;
         if (!isInserted) {

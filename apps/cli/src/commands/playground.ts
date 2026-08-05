@@ -1120,7 +1120,7 @@ end model;\`;
                     const hasErrorFlag = (node.flags & 0x0080) !== 0; // FLAG_HAS_ERROR
                     const isTainted = (node.flags & 0x0010) !== 0; // FLAG_IS_TAINED
                     const isInserted = (node.flags & 0x0100) !== 0; // FLAG_IS_INSERTED
-                    const isError = node.typeName === "ERROR" || hasErrorFlag || isTainted;
+                    const isError = node.typeName === "ERROR" || isTainted;
                     const isGhost = (node.len === 0 && !isError) || isInserted;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });

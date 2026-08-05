@@ -127,7 +127,8 @@ export function simulateLookahead(
   let hasShifted = false;
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let h = changetype<ParseHead>(t_activeHeads[i]);
-    if (h.pos > startPos || h.successfulShifts > 0) {
+    let requiredPos = (tok1Len > 0) ? (startPos + (tok1Len as u32) + 1) : (startPos + 1);
+    if (h.pos >= requiredPos || h.successfulShifts >= 2) {
       hasShifted = true;
       break;
     }
@@ -494,6 +495,103 @@ export function recoverUnwindAndMutate(
             setLexLen(initialLexLen);
             setCurrentScannerState(initialScannerState);
           }
+
+          // ------------------------------------------------------------
+          // Branch S (Substitution): Replace unexpected token with expected terminal
+          // ------------------------------------------------------------
+          if (token != TOKEN_EOF && unwindDepth == 0 && head.consecutiveInsertions == 0) {
+            let actOffsetS = action_offsets[recState];
+            if (actOffsetS >= 0 && actOffsetS < action_data.length) {
+              let numTerminalsS = action_data[actOffsetS];
+              let actIdxS = actOffsetS + 1;
+              let savedSrcLexPosS = srcLexPos;
+              let savedLexLenS = lexLen;
+              let posAfterTokenS = srcLexPos + lexLen;
+              let nextTokAfterS = (posAfterTokenS < inputLength) ? invokeLexer(posAfterTokenS) : TOKEN_EOF;
+              while (nextTokAfterS != TOKEN_EOF && nextTokAfterS != -1 && load<u8>(is_extra_token + nextTokAfterS) == 1) {
+                if (lexLen == 0) break;
+                posAfterTokenS += lexLen;
+                nextTokAfterS = (posAfterTokenS < inputLength) ? invokeLexer(posAfterTokenS) : TOKEN_EOF;
+              }
+              let nextTokLenS = (posAfterTokenS < inputLength) ? lexLen : 0;
+              srcLexPos = savedSrcLexPosS;
+              lexLen = savedLexLenS;
+              
+              for (let sIdx = 0; sIdx < numTerminalsS; sIdx++) {
+                let expSym = action_data[actIdxS];
+                let actCountS = action_data[actIdxS + 1];
+                let aIdxS = actIdxS + 2;
+                actIdxS += 2 + actCountS * 2;
+                
+                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
+                  let shiftTargetS = -1;
+                  for (let j = 0; j < actCountS; j++) {
+                    let aTypeS = action_data[aIdxS++];
+                    let aTargetS = action_data[aIdxS++];
+                    if (aTypeS == ACTION_SHIFT) {
+                      shiftTargetS = aTargetS;
+                      break;
+                    }
+                  }
+                  
+                  if (shiftTargetS != -1) {
+                    let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
+                    if (simS > 0) {
+                      let subCost = head.errorCost + 25;
+                      if (bestAcceptedCost >= 20000 || subCost < bestAcceptedCost) {
+                          let errLeafS = allocNode(((token == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : token) | 0x8000) as u16, 0, lexLen, 0, false);
+                          setNodeFlags(errLeafS, getNodeFlags(errLeafS) | FLAG_HAS_ERROR);
+                          
+                          let insNodeS = allocNode((expSym | 0x8000) as u16, 0, 0, 0, false);
+                          setNodeFlags(insNodeS, getNodeFlags(insNodeS) | FLAG_IS_INSERTED);
+                          
+                          let mergedNodeS: u32 = 0;
+                          if (unwindCurr != null && unwindCurr.astNode != 0) {
+                            let pType = getNodeType(unwindCurr.astNode);
+                            mergedNodeS = concatLists(unwindCurr.astNode, errLeafS, pType, 0);
+                            mergedNodeS = concatLists(mergedNodeS, insNodeS, pType, 0);
+                          } else {
+                            mergedNodeS = concatLists(errLeafS, insNodeS, expSym as u16, 0);
+                          }
+                          
+                          let newTailS = pushDiagnostic(head.errorTail, srcLexPos, posAfterTokenS);
+                          let baseHeadS = allocParseHead(
+                            recState,
+                            unwindCurr != null ? unwindCurr.astNode : 0,
+                            unwindCurr != null ? unwindCurr.prev : null,
+                            srcLexPos,
+                            initialScannerState,
+                            0,
+                            0,
+                            head.balanceHash,
+                            0,
+                            recPrec,
+                            0,
+                            head.errorTail
+                          );
+                          let subHead = allocParseHead(
+                            shiftTargetS,
+                            mergedNodeS,
+                            baseHeadS,
+                            posAfterTokenS,
+                            initialScannerState,
+                            subCost,
+                            0,
+                            head.balanceHash,
+                            0,
+                            recPrec,
+                            0,
+                            newTailS
+                          );
+                          pushActiveHead(changetype<u32>(subHead));
+                          break;
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
           // ------------------------------------------------------------
           // Branch A (Deletion): Skip Token
