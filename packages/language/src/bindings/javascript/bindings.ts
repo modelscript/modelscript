@@ -464,6 +464,7 @@ export class LspFacade {
       memArray16[rangeOffset + i] = changeText.charCodeAt(i);
     }
 
+    this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
     else if (this.exports.setInputEncoding) this.exports.setInputEncoding(1);
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
@@ -811,8 +812,14 @@ export class LspFacade {
       }
     }
 
-    let lineStartByte = lineStarts[line];
-    const charOffset = (offset - lineStarts[line]) / 2;
+    const encoding =
+      this._inputEncoding !== undefined
+        ? this._inputEncoding
+        : this.exports.lsp_getInputEncoding
+          ? this.exports.lsp_getInputEncoding()
+          : 1;
+    const charDiv = encoding === 1 ? 2 : 1;
+    const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
   }
 
@@ -828,6 +835,7 @@ export class LspFacade {
     this._lastDiagBinaryLength = 0;
     const lineStarts = this.getLineStarts();
     const numElements = this.exports.lsp_getDiagnostics(astRoot);
+    console.log("[DIAG-WASM] lsp_getDiagnostics returned numElements:", numElements, "astRoot:", astRoot);
     const diags: Diagnostic[] = [];
 
     if (numElements === 0 || !this.exports.lsp_getBinaryBuffer) return diags;
@@ -944,6 +952,9 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
+      console.log(
+        `[DIAG-WASM] element[${i / 7}]: startByte=${startByte} endByte=${endByte} lintId=${lintId} args=${arg0},${arg1},${arg2},${arg3}`,
+      );
 
       let msg = "Syntax Error";
       let severity = 1; // Default to Error
@@ -1066,6 +1077,14 @@ export class LspFacade {
         endPos = { line: endPos.line - 1, character: startPos.character + 1 };
       }
 
+      const encoding =
+        this._inputEncoding !== undefined
+          ? this._inputEncoding
+          : this.exports.lsp_getInputEncoding
+            ? this.exports.lsp_getInputEncoding()
+            : 1;
+      const charDiv = encoding === 1 ? 2 : 1;
+
       const range = {
         start: startPos,
         end: endPos,
@@ -1075,8 +1094,8 @@ export class LspFacade {
         message: msg,
         severity: severity,
         code: codeStr,
-        startCharOffset: Math.floor(startByte / 2),
-        endCharOffset: Math.floor(endByte / 2),
+        startCharOffset: Math.floor(startByte / charDiv),
+        endCharOffset: Math.floor(endByte / charDiv),
       });
     }
     // Cache the raw binary length so getAstSExpr/getAstHtml can read without re-calling
@@ -1109,6 +1128,8 @@ export class LspFacade {
           prev.message === "Syntax Error" &&
           d.message === "Syntax Error" &&
           prev.endCharOffset === d.startCharOffset &&
+          prev.range.start.line === d.range.start.line &&
+          prev.range.end.line === d.range.end.line &&
           prev.code === undefined &&
           d.code === undefined
         ) {

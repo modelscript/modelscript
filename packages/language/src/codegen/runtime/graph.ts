@@ -3,7 +3,7 @@
 // True CodeGraph Incremental Database and LSP Bridge
 // Pure Arena Implementation (Zero-GC, Integer-based)
 import { 
-  getNodeType, getNodeFirstChild, getNodeNextSibling, 
+  getNodeType, getNodeFirstChild, getNodeNextSibling, getNodeByteLength,
   ast_createNode, ast_appendChild, ast_insertSibling, 
   ast_setLiteralString, ast_setLiteralFloat, ast_setLiteralInt,
   ast_getTextSpan, ast_hashSpan, ast_hashByte,

@@ -646,6 +646,7 @@ export const FLAG_GC_MARK: u16 = 1;
 export const FLAG_EXTRACTED: u16 = 2;
 export const FLAG_INVISIBLE: u16 = 4;
 export const FLAG_LSP_VISITED: u16 = 8;
+export const FLAG_LSP_TRAVERSED: u16 = 2048;
 export const FLAG_IS_TAINED: u16 = 16;
 export const FLAG_IS_LIST: u16 = 32;
 export const FLAG_LIST_BOUNDARY: u16 = 64;

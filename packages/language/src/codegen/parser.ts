@@ -420,27 +420,62 @@ export function generateParserTables(
   const typeFields: number[] = new Array(symToInt.size + 1).fill(-1);
   const typeFieldData: number[] = [];
 
-  for (let symId = 1; symId <= symToInt.size; symId++) {
-    const fieldsMap = new Map<number, Set<number>>();
+  function getFieldsForSymbol(
+    symName: string,
+    visited = new Set<string>(),
+  ): Map<number, { index: number; expectedType: number }[]> {
+    const map = new Map<number, { index: number; expectedType: number }[]>();
+    if (visited.has(symName)) return map;
+    visited.add(symName);
+
+    const symId = symToInt.get(symName) || 0;
     for (const p of grammar.productions) {
-      if ((symToInt.get(p.left) || 0) === symId && p.fields) {
-        for (const f of p.fields) {
-          if (!fieldsMap.has(f.fieldId)) {
-            fieldsMap.set(f.fieldId, new Set<number>());
+      if ((symToInt.get(p.left) || 0) === symId) {
+        if (p.fields) {
+          for (const f of p.fields) {
+            if (!map.has(f.fieldId)) map.set(f.fieldId, []);
+            const childSym = p.right[f.index];
+            const expectedType = symToInt.get(childSym) || 0;
+            const list = map.get(f.fieldId)!;
+            if (!list.some((e) => e.index === f.index && e.expectedType === expectedType)) {
+              list.push({ index: f.index, expectedType });
+            }
           }
-          fieldsMap.get(f.fieldId)!.add(f.index);
+        }
+        for (let i = 0; i < p.right.length; i++) {
+          const childSym = p.right[i];
+          if (childSym.startsWith("_")) {
+            const childFields = getFieldsForSymbol(childSym, new Set(visited));
+            const expectedType = symToInt.get(childSym) || 0;
+            for (const fieldId of childFields.keys()) {
+              if (!map.has(fieldId)) map.set(fieldId, []);
+              const list = map.get(fieldId)!;
+              const idx = i | 0x8000;
+              if (!list.some((e) => e.index === idx && e.expectedType === expectedType)) {
+                list.push({ index: idx, expectedType });
+              }
+            }
+          }
         }
       }
     }
+    return map;
+  }
+
+  for (let symId = 1; symId <= symToInt.size; symId++) {
+    const symName = Array.from(symToInt.entries()).find(([_, id]) => id === symId)?.[0];
+    if (!symName) continue;
+    const fieldsMap = getFieldsForSymbol(symName);
 
     if (fieldsMap.size > 0) {
       typeFields[symId] = typeFieldData.length;
       typeFieldData.push(fieldsMap.size);
-      for (const [fieldId, indices] of fieldsMap.entries()) {
+      for (const [fieldId, entries] of fieldsMap.entries()) {
         typeFieldData.push(fieldId);
-        typeFieldData.push(indices.size);
-        for (const index of indices) {
-          typeFieldData.push(index);
+        typeFieldData.push(entries.length);
+        for (const entry of entries) {
+          typeFieldData.push(entry.index);
+          typeFieldData.push(entry.expectedType);
         }
       }
     }
@@ -656,7 +691,7 @@ export function generateParserTables(
     lspImports += `import { lsp_invokeDefinition } from "./graph";\n`;
   }
 
-  lspCodeTemplate = lspCodeTemplate.replace('import { inputLength } from "./parser";', lspImports);
+  lspCodeTemplate = lspCodeTemplate.replace(/import\s*\{[^}]*\}\s*from\s*"[^\"]*parser";/, lspImports);
 
   const outFiles: GeneratedFile[] = [
     { filename: "parser.ts", content: code },

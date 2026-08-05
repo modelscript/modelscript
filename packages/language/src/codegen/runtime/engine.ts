@@ -568,11 +568,11 @@ export class FieldCursor {
   indexCount: i32;
   currentIdxPtr: i32;
 
-  stackDepth: i32;
-  stack0: u32; stack1: u32; stack2: u32; stack3: u32;
-  stack4: u32; stack5: u32; stack6: u32; stack7: u32;
-
-  currentChild: u32;
+  frameDepth: i32;
+  fNode0: u32; fOffset0: i32; fCount0: i32; fPtr0: i32;
+  fNode1: u32; fOffset1: i32; fCount1: i32; fPtr1: i32;
+  fNode2: u32; fOffset2: i32; fCount2: i32; fPtr2: i32;
+  fNode3: u32; fOffset3: i32; fCount3: i32; fPtr3: i32;
   
   private cachedNext: u32;
   private hasCachedNext: boolean;
@@ -587,10 +587,11 @@ export class FieldCursor {
     this.offset = -1;
     this.indexCount = 0;
     this.currentIdxPtr = 0;
-    this.stackDepth = 0;
-    this.stack0 = 0; this.stack1 = 0; this.stack2 = 0; this.stack3 = 0;
-    this.stack4 = 0; this.stack5 = 0; this.stack6 = 0; this.stack7 = 0;
-    this.currentChild = 0;
+    this.frameDepth = 0;
+    this.fNode0 = 0; this.fOffset0 = 0; this.fCount0 = 0; this.fPtr0 = 0;
+    this.fNode1 = 0; this.fOffset1 = 0; this.fCount1 = 0; this.fPtr1 = 0;
+    this.fNode2 = 0; this.fOffset2 = 0; this.fCount2 = 0; this.fPtr2 = 0;
+    this.fNode3 = 0; this.fOffset3 = 0; this.fCount3 = 0; this.fPtr3 = 0;
     this.isActive = true;
     
     if (node == 0) {
@@ -629,7 +630,7 @@ export class FieldCursor {
         this.currentIdxPtr = currentOffset + 2;
         return;
       }
-      currentOffset += 2 + indexCount;
+      currentOffset += 2 + (indexCount * 2);
     }
     this.offset = -1;
   }
@@ -652,67 +653,107 @@ export class FieldCursor {
   }
 
   private _advance(): u32 {
-    if (this.offset == -1) return 0;
-
     while (true) {
-      if (this.currentChild != 0) {
-        let child = this.currentChild;
-        this.currentChild = getNodeNextSibling(child);
-        
-        let flags = getNodeFlags(child);
-        if ((flags & FLAG_INVISIBLE) != 0) {
-          if (this.currentChild != 0) {
-             if (this.stackDepth < 8) {
-               if (this.stackDepth == 0) this.stack0 = this.currentChild;
-               else if (this.stackDepth == 1) this.stack1 = this.currentChild;
-               else if (this.stackDepth == 2) this.stack2 = this.currentChild;
-               else if (this.stackDepth == 3) this.stack3 = this.currentChild;
-               else if (this.stackDepth == 4) this.stack4 = this.currentChild;
-               else if (this.stackDepth == 5) this.stack5 = this.currentChild;
-               else if (this.stackDepth == 6) this.stack6 = this.currentChild;
-               else if (this.stackDepth == 7) this.stack7 = this.currentChild;
-               this.stackDepth++;
-             }
+      if (this.indexCount == 0) {
+        if (this.frameDepth > 0) {
+          this.frameDepth--;
+          if (this.frameDepth == 0) {
+            this.node = this.fNode0; this.offset = this.fOffset0; this.indexCount = this.fCount0; this.currentIdxPtr = this.fPtr0;
+          } else if (this.frameDepth == 1) {
+            this.node = this.fNode1; this.offset = this.fOffset1; this.indexCount = this.fCount1; this.currentIdxPtr = this.fPtr1;
+          } else if (this.frameDepth == 2) {
+            this.node = this.fNode2; this.offset = this.fOffset2; this.indexCount = this.fCount2; this.currentIdxPtr = this.fPtr2;
+          } else if (this.frameDepth == 3) {
+            this.node = this.fNode3; this.offset = this.fOffset3; this.indexCount = this.fCount3; this.currentIdxPtr = this.fPtr3;
           }
-          this.currentChild = getNodeFirstChild(child);
           continue;
         }
-        return child;
-      }
-
-      if (this.stackDepth > 0) {
-        this.stackDepth--;
-        if (this.stackDepth == 0) this.currentChild = this.stack0;
-        else if (this.stackDepth == 1) this.currentChild = this.stack1;
-        else if (this.stackDepth == 2) this.currentChild = this.stack2;
-        else if (this.stackDepth == 3) this.currentChild = this.stack3;
-        else if (this.stackDepth == 4) this.currentChild = this.stack4;
-        else if (this.stackDepth == 5) this.currentChild = this.stack5;
-        else if (this.stackDepth == 6) this.currentChild = this.stack6;
-        else if (this.stackDepth == 7) this.currentChild = this.stack7;
-        continue;
-      }
-
-      if (this.indexCount == 0) {
         this.offset = -1;
         return 0;
       }
-      
+
       if (this.currentIdxPtr < 0 || this.currentIdxPtr >= type_field_data.length) {
         this.offset = -1;
         return 0;
       }
-      let logicalIndex = type_field_data[this.currentIdxPtr];
-      this.currentIdxPtr++;
+
+      let rawIndex = type_field_data[this.currentIdxPtr];
+      let expectedType = type_field_data[this.currentIdxPtr + 1] as u16;
+      this.currentIdxPtr += 2;
       this.indexCount--;
+
+      let isSyntheticField = (rawIndex & 0x8000) != 0;
+      let logicalIndex = rawIndex & 0x7fff;
       
       let child = getNodeFirstChild(this.node);
-      for (let i = 0; i < logicalIndex; i++) {
-        if (child == 0) break;
-        child = getNodeNextSibling(child);
+      let flags = getNodeFlags(this.node);
+      let hasError = (flags & FLAG_HAS_ERROR) != 0;
+
+      if (hasError) {
+        let matchCount = 0;
+        while (child != 0) {
+          if (getNodeType(child) == expectedType) {
+            if (matchCount == logicalIndex) break;
+            matchCount++;
+          }
+          child = getNodeNextSibling(child);
+        }
+      } else {
+        for (let i = 0; i < logicalIndex; i++) {
+          if (child == 0) break;
+          child = getNodeNextSibling(child);
+        }
       }
-      this.currentChild = child;
+
+      if (child == 0) continue;
+
+      if (isSyntheticField) {
+        let isInvisible = (getNodeFlags(child) & FLAG_INVISIBLE) != 0;
+        if (isInvisible) {
+          if (this.frameDepth < 4) {
+            if (this.frameDepth == 0) {
+              this.fNode0 = this.node; this.fOffset0 = this.offset; this.fCount0 = this.indexCount; this.fPtr0 = this.currentIdxPtr;
+            } else if (this.frameDepth == 1) {
+              this.fNode1 = this.node; this.fOffset1 = this.offset; this.fCount1 = this.indexCount; this.fPtr1 = this.currentIdxPtr;
+            } else if (this.frameDepth == 2) {
+              this.fNode2 = this.node; this.fOffset2 = this.offset; this.fCount2 = this.indexCount; this.fPtr2 = this.currentIdxPtr;
+            } else if (this.frameDepth == 3) {
+              this.fNode3 = this.node; this.fOffset3 = this.offset; this.fCount3 = this.indexCount; this.fPtr3 = this.currentIdxPtr;
+            }
+            this.frameDepth++;
+
+            this.node = child;
+            this.offset = -1;
+            this.indexCount = 0;
+            
+            let type = getNodeType(child);
+            if (type < (type_fields.length as u16)) {
+              let offset = type_fields[type];
+              if (offset != -1 && offset >= 0 && offset < type_field_data.length) {
+                let fieldCount = type_field_data[offset];
+                let currentOffset = offset + 1;
+                for (let i = 0; i < fieldCount; i++) {
+                  if (currentOffset + 1 >= type_field_data.length) break;
+                  let currentFieldId = type_field_data[currentOffset];
+                  let indexCount = type_field_data[currentOffset + 1];
+                  if (currentFieldId == this.fieldId && indexCount > 0) {
+                    this.offset = currentOffset;
+                    this.indexCount = indexCount;
+                    this.currentIdxPtr = currentOffset + 2;
+                    break;
+                  }
+                  currentOffset += 2 + (indexCount * 2);
+                }
+              }
+            }
+          }
+          continue;
+        }
+      }
+      
+      return child;
     }
+    return 0;
   }
 
   @inline
@@ -773,9 +814,9 @@ export function getFieldIdForChild(type: u16, childIndex: u16): i32 {
     for (let j = 0; j < indexCount; j++) {
       if (idxPtr >= type_field_data.length) break;
       if (type_field_data[idxPtr] == (childIndex as i32)) return currentFieldId;
-      idxPtr++;
+      idxPtr += 2;
     }
-    currentOffset += 2 + indexCount;
+    currentOffset += 2 + (indexCount * 2);
   }
   return -1;
 }

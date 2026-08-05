@@ -72,6 +72,7 @@
     "lodash.merge": "^4.6.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "source-map": "^0.8.0",
     "tree-sitter": "^0.21.1"
   },
   "devDependencies": {

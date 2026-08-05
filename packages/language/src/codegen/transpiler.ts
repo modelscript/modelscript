@@ -198,31 +198,27 @@ export function transpileQuery(
             if (targetArg) {
               const targetNodeExpr = visitNode(targetArg) as ts.Expression;
               if (!ts.isIdentifier(targetNodeExpr) || targetNodeExpr.text !== "node") {
-                const spanExpr = ts.factory.createCallExpression(
-                  ts.factory.createPropertyAccessExpression(
-                    ts.factory.createPropertyAccessExpression(
-                      ts.factory.createIdentifier("graph"),
-                      ts.factory.createIdentifier("ast"),
-                    ),
-                    ts.factory.createIdentifier("getTextSpan"),
-                  ),
+                const foundOffset = ts.factory.createCallExpression(
+                  ts.factory.createIdentifier("lsp_findNodeOffset"),
                   undefined,
-                  [targetNodeExpr, ts.factory.createIdentifier("nodeStart")],
+                  [ts.factory.createIdentifier("node"), targetNodeExpr, ts.factory.createIdentifier("nodeStart")],
                 );
-                const startNodeOffset = ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [
+                const startNodeOffset = ts.factory.createConditionalExpression(
                   ts.factory.createBinaryExpression(
-                    spanExpr,
-                    ts.factory.createToken(ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken),
-                    ts.factory.createNumericLiteral("32"),
+                    foundOffset,
+                    ts.factory.createToken(ts.SyntaxKind.GreaterThanEqualsToken),
+                    ts.factory.createNumericLiteral("0"),
                   ),
-                ]);
-                const nodeLen = ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [
-                  ts.factory.createBinaryExpression(
-                    spanExpr,
-                    ts.factory.createToken(ts.SyntaxKind.AmpersandToken),
-                    ts.factory.createNumericLiteral("0xFFFFFFFF"),
-                  ),
-                ]);
+                  ts.factory.createToken(ts.SyntaxKind.QuestionToken),
+                  ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [foundOffset]),
+                  ts.factory.createToken(ts.SyntaxKind.ColonToken),
+                  ts.factory.createIdentifier("nodeStart"),
+                );
+                const nodeLen = ts.factory.createCallExpression(
+                  ts.factory.createIdentifier("getNodeByteLength"),
+                  undefined,
+                  [targetNodeExpr],
+                );
 
                 startExpr = startNodeOffset;
                 endExpr = ts.factory.createBinaryExpression(

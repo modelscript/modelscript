@@ -380,8 +380,8 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
       optional(seq('=', field('value', $.Expr))), 
       ';'
     ),
-    Real: $ => 'Real',
-    Integer: $ => 'Integer',
+    Real: $ => semanticToken('type', 'Real'),
+    Integer: $ => semanticToken('type', 'Integer'),
     Type: $ => choice($.Real, $.Integer, $.Number),
     Equation: $ => seq(
       field('lhs', $.Expr), 
@@ -437,14 +437,17 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
 
   // 7. Imperative Diagnostic Lints
   lints: {
-    unusedComponent: {
+    uninitializedComponent: {
       nodes: ['Decl'],
       severity: 'warning',
-      message: 'Component declaration initialized',
+      message: 'Component declaration uninitialized',
       query: (db, node, $) => {
-        let nameNode = db.ast.getChildByFieldId(node, 'name');
-        if (nameNode != 0) {
-          db.diagnostic(nameNode);
+        let valNode = db.ast.getChildByFieldId(node, 'value');
+        if (valNode == 0) {
+          let nameNode = db.ast.getChildByFieldId(node, 'name');
+          if (nameNode != 0) {
+            db.diagnostic(nameNode);
+          }
         }
       }
     }
@@ -535,7 +538,7 @@ end model;\`;
                 language: 'plaintext',
                 theme: editorTheme,
                 minimap: { enabled: false },
-                'semanticHighlighting.enabled': true
+                semanticHighlighting: { enabled: true }
             });
 
             window.addEventListener('resize', () => {
@@ -596,6 +599,52 @@ end model;\`;
                     window.pipelines = e.data.pipelines || [];
                     window.dispatchEvent(new Event('pipelinesUpdated'));
                     
+                    const langId = e.data.langName ? e.data.langName.toLowerCase() : 'exampledsl';
+                    if (!monaco.languages.getLanguages().some(l => l.id === langId)) {
+                        monaco.languages.register({ id: langId });
+                    }
+                    const keywords = [];
+                    const typeKeywords = ['Real', 'Integer', 'Boolean', 'String', 'Number'];
+                    if (e.data.syntaxNames && Array.isArray(e.data.syntaxNames)) {
+                        for (const name of e.data.syntaxNames) {
+                            if (name && name.startsWith('"') && name.endsWith('"')) {
+                                const raw = name.slice(1, -1);
+                                if (/^[a-zA-Z_][a-zA-Z0-9_ ]*$/.test(raw)) {
+                                    if (!typeKeywords.includes(raw)) {
+                                        keywords.push(raw);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // MONARCH TOKENIZER SETUP:
+                    // In stand-alone Monaco Editor, default 'vs' and 'vs-dark' themes rely on Monarch token rules
+                    // to style keywords, types, numbers, strings, and comments. 
+                    // NOTE: Double backslashes (e.g. \\w, \\d, \\[) are CRITICAL here because this code sits inside
+                    // a TypeScript template literal string. Single backslashes get stripped by tsc, which produces
+                    // broken JS regex syntax in the inline HTML output.
+                    monaco.languages.setMonarchTokensProvider(langId, {
+                        keywords,
+                        typeKeywords,
+                        tokenizer: {
+                            root: [
+                                [/\\/\\/.*/, 'comment'],
+                                [/\\/\\*[\\s\\S]*?\\*\\//, 'comment'],
+                                [/"[^"]*"/, 'string'],
+                                [/\\d+\\.?\\d*/, 'number'],
+                                [/[a-zA-Z_]\\w*/, {
+                                    cases: {
+                                        '@keywords': 'keyword',
+                                        '@typeKeywords': 'type',
+                                        '@default': 'identifier'
+                                    }
+                                }],
+                                [/[;,=(){}\\[\\].:+\\-*\\/]/, 'delimiter']
+                            ]
+                        }
+                    });
+
                     if (window.semanticTokensProvider) {
                         window.semanticTokensProvider.dispose();
                     }
@@ -604,19 +653,32 @@ end model;\`;
                     }
                     if (e.data.semanticLegend) {
                         const getLegend = function () { return e.data.semanticLegend; };
-                        window.semanticTokensProvider = monaco.languages.registerDocumentSemanticTokensProvider('plaintext', {
+                        const providerObj = {
                             getLegend,
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
+                                console.log('[SEMANTIC-DEBUG] provideDocumentSemanticTokens called for model:', model.uri.toString(), 'lang:', model.getLanguageId());
                                 if (token.isCancellationRequested) return null;
-                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch(() => null);
-                                if (result && result.data && Array.isArray(result.data)) return { data: new Uint32Array(result.data), resultId: null };
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch((err) => {
+                                    console.error('[SEMANTIC-DEBUG] sendRequest error:', err);
+                                    return null;
+                                });
+                                console.log('[SEMANTIC-DEBUG] provideDocumentSemanticTokens result:', JSON.stringify(result));
+                                if (result && result.data) {
+                                    const raw = result.data;
+                                    const uint32Data = raw instanceof Uint32Array ? raw
+                                                     : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : raw.buffer ? new Uint32Array(raw.buffer)
+                                                     : new Uint32Array(Object.values(raw));
+                                    return { data: uint32Data, resultId: String(Date.now()) };
+                                }
                                 return null;
                             },
                             releaseDocumentSemanticTokens: function (resultId) { }
-                        });
-                        window.semanticTokensRangeProvider = monaco.languages.registerDocumentRangeSemanticTokensProvider('plaintext', {
+                        };
+                        const rangeProviderObj = {
                             getLegend,
                             provideDocumentRangeSemanticTokens: async (model, range, token) => {
+                                console.log('[SEMANTIC-DEBUG] provideDocumentRangeSemanticTokens called for range:', JSON.stringify(range));
                                 if (token.isCancellationRequested) return null;
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/range', {
                                     textDocument: { uri: model.uri.toString() },
@@ -624,11 +686,32 @@ end model;\`;
                                         start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
                                         end: { line: range.endLineNumber - 1, character: range.endColumn - 1 }
                                     }
-                                }).catch(() => null);
-                                if (result && result.data && Array.isArray(result.data)) return { data: new Uint32Array(result.data), resultId: null };
+                                }).catch((err) => {
+                                    console.error('[SEMANTIC-DEBUG] sendRequest error:', err);
+                                    return null;
+                                });
+                                console.log('[SEMANTIC-DEBUG] provideDocumentRangeSemanticTokens result:', JSON.stringify(result));
+                                if (result && result.data) {
+                                    const raw = result.data;
+                                    const uint32Data = raw instanceof Uint32Array ? raw
+                                                     : Array.isArray(raw) ? new Uint32Array(raw)
+                                                     : raw.buffer ? new Uint32Array(raw.buffer)
+                                                     : new Uint32Array(Object.values(raw));
+                                    return { data: uint32Data, resultId: String(Date.now()) };
+                                }
                                 return null;
                             }
-                        });
+                        };
+                        window.semanticTokensProvider = monaco.languages.registerDocumentSemanticTokensProvider(langId, providerObj);
+                        window.semanticTokensRangeProvider = monaco.languages.registerDocumentRangeSemanticTokensProvider(langId, rangeProviderObj);
+                    }
+
+                    if (window.codeEditor && window.codeEditor.getModel()) {
+                        const model = window.codeEditor.getModel();
+                        monaco.editor.setModelLanguage(model, langId);
+                        if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                            model.tokenization.resetTokenization();
+                        }
                     }
 
                     const branchA1 = document.getElementById('toggle-branch-a1')?.checked ?? true;
@@ -656,18 +739,23 @@ end model;\`;
                 constructor(worker, editor) {
                     this.worker = worker;
                     this.editor = editor;
-                    this.model = editor.getModel();
                     
                     this.worker.addEventListener('message', (e) => this.handleMessage(e.data));
-                    this.model.onDidChangeContent((e) => this.syncDocument('textDocument/didChange', e.changes));
+                    this.editor.onDidChangeModelContent((e) => this.syncDocument('textDocument/didChange', e.changes));
                     
                     // Initialize
                     this.sendRequest('initialize', {
                         capabilities: {}
                     }).then(() => {
                         this.sendNotification('initialized', {});
-                        this.syncDocument('textDocument/didOpen', [{ text: this.model.getValue() }]);
+                        if (this.model) {
+                            this.syncDocument('textDocument/didOpen', [{ text: this.model.getValue() }]);
+                        }
                     });
+                }
+
+                get model() {
+                    return this.editor.getModel();
                 }
                 
                 syncDocument(method = 'textDocument/didChange', contentChanges = []) {
@@ -701,31 +789,43 @@ end model;\`;
                         if (msg.error) reject(msg.error);
                         else resolve(msg.result);
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
+                        console.log("[DIAG-DEBUG] Raw diagnostics from worker:", JSON.stringify(msg.params.diagnostics));
                         const markers = msg.params.diagnostics.map(d => {
                             let startPos, endPos;
                             if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
                                 startPos = this.model.getPositionAt(d.startCharOffset);
                                 endPos = this.model.getPositionAt(d.endCharOffset);
+                                console.log("[DIAG-DEBUG] Using charOffset:", d.startCharOffset, "->", d.endCharOffset, "=> startPos:", JSON.stringify(startPos), "endPos:", JSON.stringify(endPos));
                             } else {
                                 startPos = { lineNumber: d.range.start.line + 1, column: d.range.start.character + 1 };
                                 endPos = { lineNumber: d.range.end.line + 1, column: d.range.end.character + 1 };
+                                console.log("[DIAG-DEBUG] Using range fallback:", JSON.stringify(d.range), "=> startPos:", JSON.stringify(startPos), "endPos:", JSON.stringify(endPos));
+                            }
+                            let startLine = startPos.lineNumber;
+                            let startCol = startPos.column;
+                            let endLine = endPos.lineNumber;
+                            let endCol = endPos.column;
+                            if (startLine === endLine && startCol === endCol) {
+                                endCol = startCol + 1;
                             }
                             return {
                                 severity: d.severity === 1 ? monaco.MarkerSeverity.Error 
                                         : d.severity === 2 ? monaco.MarkerSeverity.Warning
                                         : d.severity === 3 ? monaco.MarkerSeverity.Info
                                         : monaco.MarkerSeverity.Hint,
-                                startLineNumber: startPos.lineNumber,
-                                startColumn: startPos.column,
-                                endLineNumber: endPos.lineNumber,
-                                endColumn: endPos.column,
+                                startLineNumber: startLine,
+                                startColumn: startCol,
+                                endLineNumber: endLine,
+                                endColumn: endCol,
                                 message: d.message,
                                 code: d.code ? String(d.code) : undefined,
                                 source: d.source
                             };
                         });
-                        console.log("Client received diagnostics:", markers);
-                        monaco.editor.setModelMarkers(this.model, 'dsl-lsp', markers);
+                        const currentModel = this.editor.getModel() || this.model;
+                        console.log("[DIAG-DEBUG] Setting markers on model:", currentModel.uri.toString(), "lang:", currentModel.getLanguageId(), "markers:", JSON.stringify(markers));
+                        monaco.editor.setModelMarkers(currentModel, 'dsl-lsp', markers);
+                        console.log("[DIAG-DEBUG] After setModelMarkers, getModelMarkers:", JSON.stringify(monaco.editor.getModelMarkers({ resource: currentModel.uri })));
                     } else if (msg.type === 'statusUpdate') {
                         document.getElementById('status').innerText = msg.message;
                     } else if (msg.type === 'worker_log') {
@@ -744,7 +844,7 @@ end model;\`;
             // Start the client
             const languageClient = new SimpleMonacoLanguageClient(lspWorker, window.codeEditor);
 
-            monaco.languages.registerDefinitionProvider('plaintext', {
+            monaco.languages.registerDefinitionProvider('*', {
                 provideDefinition: async (model, position, token) => {
                     const result = await languageClient.sendRequest('textDocument/definition', {
                         textDocument: { uri: model.uri.toString() },
@@ -765,7 +865,7 @@ end model;\`;
                 }
             });
 
-            monaco.languages.registerReferenceProvider('plaintext', {
+            monaco.languages.registerReferenceProvider('*', {
                 provideReferences: async (model, position, context, token) => {
                     const result = await languageClient.sendRequest('textDocument/references', {
                         textDocument: { uri: model.uri.toString() },
@@ -786,7 +886,7 @@ end model;\`;
                 }
             });
 
-            monaco.languages.registerFoldingRangeProvider('plaintext', {
+            monaco.languages.registerFoldingRangeProvider('*', {
                 provideFoldingRanges: async (model, context, token) => {
                     await new Promise(r => setTimeout(r, 150));
                     if (token.isCancellationRequested) return null;
@@ -805,7 +905,7 @@ end model;\`;
                 }
             });
 
-            monaco.languages.registerDocumentSymbolProvider('plaintext', {
+            monaco.languages.registerDocumentSymbolProvider('*', {
                 provideDocumentSymbols: async (model, token) => {
                     await new Promise(r => setTimeout(r, 150));
                     if (token.isCancellationRequested) return null;
@@ -827,7 +927,7 @@ end model;\`;
                 }
             });
 
-            monaco.languages.registerRenameProvider('plaintext', {
+            monaco.languages.registerRenameProvider('*', {
                 provideRenameEdits: async (model, position, newName, token) => {
                     const result = await languageClient.sendRequest('textDocument/rename', {
                         textDocument: { uri: model.uri.toString() },
@@ -963,6 +1063,8 @@ end model;\`;
                         
                         if (msg.diagnostics) {
                             setDiagnostics(msg.diagnostics);
+                            window['__latestDiagnostics'] = msg.diagnostics;
+                            window.dispatchEvent(new Event('diagnosticsUpdated'));
                         }
 
                         setStatus("Parsed AST (Root #" + msg.rootId + ")");
@@ -1137,11 +1239,55 @@ end model;\`;
         }
 
         function DiagnosticsViewer() {
+            const [diagnostics, setDiagnostics] = useState(window['__latestDiagnostics'] || []);
+
+            useEffect(() => {
+                const handler = () => {
+                    setDiagnostics(window['__latestDiagnostics'] || []);
+                };
+                window.addEventListener('diagnosticsUpdated', handler);
+                return () => window.removeEventListener('diagnosticsUpdated', handler);
+            }, []);
+
             return (
-                <div className="panel-content">
+                <div className="panel-content" style={{ padding: '15px' }}>
                     <div className="equation-card">
-                        <div className="title">🔍 Active Diagnostics & Lints</div>
-                        <div style={{ color: '#2da44e' }}>✔ No syntax or linter errors detected.</div>
+                        <div className="title" style={{ marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' }}>
+                            🔍 Active Diagnostics & Lints (\${diagnostics.length})
+                        </div>
+                        {diagnostics.length === 0 ? (
+                            <div style={{ color: '#2da44e', fontSize: '13px' }}>✔ No syntax or linter errors detected.</div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {diagnostics.map((d, idx) => {
+                                    const isError = d.severity === 1;
+                                    const startLine = d.range ? d.range.start.line + 1 : 1;
+                                    const startCol = d.range ? d.range.start.character + 1 : 1;
+                                    const endLine = d.range ? d.range.end.line + 1 : startLine;
+                                    const endCol = d.range ? d.range.end.character + 1 : startCol;
+                                    return (
+                                        <div key={idx} style={{
+                                            padding: '8px 12px',
+                                            borderRadius: '6px',
+                                            background: isError ? 'rgba(207,34,46,0.1)' : 'rgba(154,103,0,0.1)',
+                                            borderLeft: "4px solid " + (isError ? '#cf222e' : '#d97706'),
+                                            fontSize: '13px',
+                                            lineHeight: '1.4'
+                                        }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ fontWeight: 'bold', color: isError ? '#cf222e' : '#d97706' }}>
+                                                    {isError ? '❌ Error' : '⚠️ Warning'} {d.code ? "[M" + d.code + "]" : ''}
+                                                </span>
+                                                <span style={{ opacity: 0.7, fontFamily: 'monospace', fontSize: '12px' }}>
+                                                    L\${startLine}:\${startCol} - L\${endLine}:\${endCol}
+                                                </span>
+                                            </div>
+                                            <div style={{ color: 'var(--color-fg-default)' }}>{d.message}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -1423,10 +1569,12 @@ self.onmessage = async (e) => {
 function getLspWorkerJs() {
   return `
 // LSP Worker (Standalone JSON-RPC without CDNs)
-console.log("LSP Worker started");
-
 self.onerror = function(message, source, lineno, colno, error) {
     console.error("[LSP Worker Error Details]:", message, "at line", lineno, "col", colno, error);
+    try {
+        const errMsg = error ? (error.stack || error.message) : (typeof message === 'string' ? message : "Worker execution error");
+        self.postMessage({ type: 'error', error: 'LSP Worker Error: ' + errMsg });
+    } catch(e) {}
 };
 
 let lspFacade = null;
@@ -1491,103 +1639,121 @@ function triggerDiagnostics(changes = null) {
     runDiagnosticsNow();
 }
 
-function runDiagnosticsNow() {
-    if (pendingChanges.length === 0 || !lspFacade || !latestUri) {
-        console.log("[PLAYGROUND-LSP] runDiagnosticsNow skipped! pendingChanges:", pendingChanges.length, "hasLspFacade:", !!lspFacade, "latestUri:", latestUri);
-        isParsing = false;
-        return;
-    }
+async function runDiagnosticsNow() {
+    if (!lspFacade || pendingChanges.length === 0) return;
     
     isParsing = true;
-    const currentBatch = pendingChanges;
-    pendingChanges = [];
-    
-    let newTotalLength = currentTextLength;
-    let requiresFull = false;
-    
-    for (const change of currentBatch) {
-        if (change.rangeOffset === undefined) {
-            requiresFull = true;
-            newTotalLength = change.text.length;
-        } else {
-            newTotalLength = Math.max(0, newTotalLength - change.rangeLength + change.text.length);
-        }
-    }
-    
-    currentGenerationId++;
+    const batch = pendingChanges.splice(0, pendingChanges.length);
     
     try {
-        console.log("[PLAYGROUND-LSP] runDiagnosticsNow parsing... requiresFull:", requiresFull, "newTotalLength:", newTotalLength);
-        if (requiresFull) {
-            const lastChange = currentBatch[currentBatch.length - 1];
-            if (lspFacade.resetParser) lspFacade.resetParser();
-            globalAstRoot = lspFacade.parseIncremental(lastChange.text, 0, 0, newTotalLength);
-            if (patchOffset === 0 && globalAstRoot !== 0) {
-                lspFacade.walkAstDiff(0, globalAstRoot, {
-                    onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
-                    onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, 0, null),
-                    onNodeRetained: (ptr) => {},
-                    onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, flags, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, flags, children)
-                });
+        const lineStarts = lspFacade.getLineStarts();
+        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+        
+        let editsToApply = [];
+        let isFullReplacement = false;
+        let fullText = null;
+
+        for (const change of batch) {
+            if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
+                isFullReplacement = true;
+                fullText = change.text;
+                editsToApply = [];
+            } else if (!isFullReplacement) {
+                let rangeOffset = change.rangeOffset;
+                let rangeLength = change.rangeLength;
+                if (rangeOffset === undefined && change.range) {
+                    const startLine = change.range.startLineNumber !== undefined ? change.range.startLineNumber - 1 : change.range.start.line;
+                    const startCol = change.range.startColumn !== undefined ? change.range.startColumn - 1 : change.range.start.character;
+                    const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
+                    const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
+                    
+                    const startByte = (lineStarts && startLine < lineStarts.length ? lineStarts[startLine] : 0) + (startCol * charMult);
+                    const endByte = (lineStarts && endLine < lineStarts.length ? lineStarts[endLine] : 0) + (endCol * charMult);
+                    
+                    rangeOffset = Math.floor(startByte / charMult);
+                    rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
+                }
+                if (rangeOffset !== undefined) {
+                    editsToApply.push({
+                        rangeOffset: rangeOffset,
+                        rangeLength: rangeLength || 0,
+                        text: change.text || ""
+                    });
+                }
+            }
+        }
+
+        patchOffset = 0;
+        const t0 = performance.now();
+
+        if (isFullReplacement && fullText !== null) {
+            const oldLen = currentTextLength;
+            currentTextLength = fullText.length;
+            globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length);
+        } else if (editsToApply.length > 0) {
+            let newTotalLen = currentTextLength;
+            for (const edit of editsToApply) {
+                newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
+            }
+            currentTextLength = newTotalLen;
+            if (editsToApply.length === 1) {
+                const edit = editsToApply[0];
+                globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen);
+            } else {
+                globalAstRoot = lspFacade.parseIncrementalBatch(editsToApply, newTotalLen);
             }
         } else {
-            globalAstRoot = lspFacade.parseIncrementalBatch(currentBatch, newTotalLength);
+            return;
         }
-        
-        currentTextLength = newTotalLength;
-        
+
+        const t1 = performance.now();
+        const updatedLineStarts = lspFacade.getLineStarts();
         const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
-        const lineStarts = lspFacade.getLineStarts();
         
-        // Double-buffer swap: transfer the current buffer and switch to the other
-        const transferBuffer = patchBuffer.slice(0, patchOffset * 4);
-        console.log("[PLAYGROUND-LSP] parse finished. globalAstRoot:", globalAstRoot, "transferBuffer bytes:", transferBuffer.byteLength, "patchOffset ops:", patchOffset);
-        patchOffset = 0;
-        // Swap to the alternate buffer to avoid allocating a new one each edit
+        const diags = (rawDiags || []).map(d => ({
+            range: d.range,
+            severity: d.severity,
+            code: d.code,
+            message: d.message,
+            source: currentLangName,
+            startCharOffset: d.startCharOffset,
+            endCharOffset: d.endCharOffset
+        }));
+        
+        let patchBufToTransfer = patchBuffer.slice(0, patchOffset * 4);
         patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
         patchInt32 = new Int32Array(patchBuffer);
         
-        const lineStartsCopy = new Uint32Array(lineStarts);
-        const lineStartsBuffer = lineStartsCopy.buffer;
-
-        self.postMessage({ 
-            type: 'astPatchBinary', 
-            buffer: transferBuffer, 
-            rootId: globalAstRoot, 
-            diagnostics: rawDiags,
-            lineStartsBuffer: lineStartsBuffer,
-            generationId: currentGenerationId,
-            isFullReset: requiresFull
-        });
+        let lineStartsBuf = updatedLineStarts ? updatedLineStarts.buffer.slice(updatedLineStarts.byteOffset, updatedLineStarts.byteOffset + updatedLineStarts.byteLength) : null;
         
-        const diagnostics = rawDiags.map(d => ({
-            severity: d.severity,
-            range: d.range,
-            startCharOffset: d.startCharOffset,
-            endCharOffset: d.endCharOffset,
-            message: d.message,
-            code: d.code,
-            source: currentLangName
-        }));
+        const patchMsg = {
+            type: 'astPatchBinary',
+            rootId: globalAstRoot,
+            buffer: patchBufToTransfer,
+            lineStartsBuffer: lineStartsBuf,
+            diagnostics: diags,
+            isFullReset: isFullReplacement
+        };
         
+        self.postMessage(patchMsg, [patchBufToTransfer]);
         self.postMessage({
             jsonrpc: '2.0',
             method: 'textDocument/publishDiagnostics',
-            params: { uri: latestUri, diagnostics }
+            params: { uri: latestUri, diagnostics: diags }
         });
-    } catch (e) {
-        console.error("[PLAYGROUND-LSP Error in runDiagnosticsNow]:", e.stack || e);
-        self.postMessage({ type: 'statusUpdate', status: 'error', error: e.message || e.toString() });
-    }
-    
-    isParsing = false;
-    if (pendingChanges.length > 0) {
-        queueMicrotask(runDiagnosticsNow);
+    } catch(err) {
+        console.error("LSP Worker Diagnostics Error:", err);
+    } finally {
+        isParsing = false;
+        if (pendingChanges.length > 0) {
+            setTimeout(runDiagnosticsNow, 10);
+        }
     }
 }
 
-// Listen for custom init message containing the WASM binary and generated JS
-self.addEventListener('message', async (e) => {
+self.onmessage = async (e) => {
+    if (!e.data) return;
+    
     if (e.data.type === 'config' || e.data.type === 'setConfig') {
         if (lspFacade) {
             lspFacade.setParserConfig(e.data.config.branchA1, e.data.config.branchB, e.data.config.branchC, e.data.config.islandMode);
@@ -1658,28 +1824,28 @@ self.addEventListener('message', async (e) => {
                 }
             });
             
-            const { instance } = await WebAssembly.instantiate(wasm, imports);
-            
-            // initCompiler is called by LspFacade constructor; do NOT call it here
+            let wasmBytes = wasm;
+            if (wasmBytes && !(wasmBytes instanceof ArrayBuffer) && wasmBytes.buffer) {
+                wasmBytes = wasmBytes.buffer;
+            }
+            if (wasmBytes && wasmBytes instanceof ArrayBuffer) {
+                wasmBytes = new Uint8Array(wasmBytes);
+            }
+
+            const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
             
             let LspFacade;
             try {
-                const blob = new Blob([jsWrapper], { type: 'application/javascript' });
-                const url = URL.createObjectURL(blob);
-                const mod = await import(url);
-                LspFacade = mod.LspFacade;
-                URL.revokeObjectURL(url);
+                const cleanedJs = jsWrapper
+                    .replace(/^\\s*export\\s+\\{[\\s\\S]*?\\};?/gm, "")
+                    .replace(/^\\s*export\\s+default\\s+/gm, "")
+                    .replace(/^\\s*export\\s+(var|let|const|class|function|enum|interface|type|declare|async function)\\s+/gm, "$1 ")
+                    .replace(/^\\s*export\\b.*/gm, "// $&");
+                const evalFn = new Function(cleanedJs + "; return LspFacade;");
+                LspFacade = evalFn();
             } catch (e1) {
-                console.warn("Blob import failed in worker, falling back to Function evaluator:", e1);
-                try {
-                    const cleanedJs = jsWrapper.replace(/^export\\s+/gm, "");
-                    const fn = new Function("exports", cleanedJs + "\\nreturn typeof LspFacade !== 'undefined' ? LspFacade : exports.LspFacade;");
-                    const exportsObj = {};
-                    LspFacade = fn(exportsObj);
-                } catch (e2) {
-                    console.error("Function evaluation fallback also failed:", e2);
-                    throw e2;
-                }
+                console.error("Evaluation failed for LspFacade in worker-lsp:", e1);
+                throw e1;
             }
 
             const origLog = console.log;
@@ -1714,6 +1880,7 @@ self.addEventListener('message', async (e) => {
             }
         } catch(err) {
             console.error("LSP Worker WASM Init Error:", err);
+            self.postMessage({ type: 'error', error: 'LSP Worker WASM Init Error: ' + (err.stack || err.message || err) });
         }
     } else if (e.data.method === 'initialize') {
         self.postMessage({
@@ -1743,9 +1910,10 @@ self.addEventListener('message', async (e) => {
         const pos = e.data.params.position;
         // offset from pos logic might need lineStarts check, lspFacade provides offsetToPos, but we need posToOffset
         const lineStarts = lspFacade.getLineStarts();
+        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
         let offset = 0;
         if (pos.line < lineStarts.length) {
-            offset = lineStarts[pos.line] + (pos.character * 2);
+            offset = lineStarts[pos.line] + (pos.character * charMult);
         }
         const def = lspFacade.getDefinition(globalAstRoot, offset);
         if (def) {
@@ -1763,9 +1931,10 @@ self.addEventListener('message', async (e) => {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
         const pos = e.data.params.position;
         const lineStarts = lspFacade.getLineStarts();
+        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
         let offset = 0;
         if (pos.line < lineStarts.length) {
-            offset = lineStarts[pos.line] + (pos.character * 2);
+            offset = lineStarts[pos.line] + (pos.character * charMult);
         }
         const refs = lspFacade.getReferences(globalAstRoot, offset);
         const result = refs.map(ref => ({
@@ -1852,11 +2021,12 @@ self.addEventListener('message', async (e) => {
             
             let startOffset = 0;
             let endOffset = 0xFFFFFFFF;
-            
+            const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+
             if (e.data.method === 'textDocument/semanticTokens/range' && e.data.params.range) {
                 const range = e.data.params.range;
-                startOffset = (range.start.line < lineStarts.length ? lineStarts[range.start.line] : 0) + range.start.character * 2;
-                endOffset = (range.end.line < lineStarts.length ? lineStarts[range.end.line] : lineStarts[lineStarts.length - 1]) + range.end.character * 2;
+                startOffset = (range.start.line < lineStarts.length ? lineStarts[range.start.line] : 0) + range.start.character * charMult;
+                endOffset = (range.end.line < lineStarts.length ? lineStarts[range.end.line] : lineStarts[lineStarts.length - 1]) + range.end.character * charMult;
             }
             
             const count = tokensArray.length / 4;
@@ -1910,14 +2080,14 @@ self.addEventListener('message', async (e) => {
                         high = mid - 1;
                     }
                 }
-                const charOffset = (offset - lineStarts[line]) / 2;
-                let charLength = length / 2;
+                const charOffset = Math.floor((offset - lineStarts[line]) / charMult);
+                let charLength = Math.floor(length / charMult);
                 
                 // Clamp token length to not extend past the end of the current line
                 // (prevents Monaco's "end character > model.getLineLength" error)
-                // Note: lineStarts diff includes \\n or \\r\\n. We subtract 1 as a safe buffer.
+                // Note: lineStarts diff includes newline characters. We subtract 1 as a safe buffer.
                 if (line + 1 < lineStarts.length) {
-                    const lineEndChar = Math.max(0, ((lineStarts[line + 1] - lineStarts[line]) / 2) - 1);
+                    const lineEndChar = Math.max(0, Math.floor((lineStarts[line + 1] - lineStarts[line]) / charMult) - 1);
                     if (charOffset + charLength > lineEndChar) {
                         charLength = Math.max(0, lineEndChar - charOffset);
                     }
@@ -1947,6 +2117,6 @@ self.addEventListener('message', async (e) => {
             self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         }
     }
-});
+};
 `;
 }
