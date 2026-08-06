@@ -12,6 +12,8 @@ import {
     initWarmStartCache, getWarmStartValue, setWarmStartValue, solve1x1Newton, solveHomotopy
 } from "./runtime_isolation";
 
+export { initWarmStartCache, getWarmStartValue, setWarmStartValue, solve1x1Newton, solveHomotopy };
+
 // --- All 8 Symbolic Isolation Strategies Engine ---
 
 export const ISOLATION_EXPLICIT: u32 = 1;

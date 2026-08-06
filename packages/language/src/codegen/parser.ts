@@ -10,8 +10,11 @@ import {
   cursorCode,
   daeCode,
   engineCode,
+  evalCode,
+  eventsCode,
   gssCode,
   hashmapCode,
+  integratorsCode,
   isolationCode,
   lspCode,
   pantelidesCode,
@@ -728,6 +731,9 @@ export function generateParserTables(
     { filename: "recovery.ts", content: recoveryCode },
     { filename: "dae.ts", content: daeCode },
     { filename: "blt.ts", content: bltCode },
+    { filename: "eval.ts", content: evalCode },
+    { filename: "events.ts", content: eventsCode },
+    { filename: "integrators.ts", content: integratorsCode },
     { filename: "hashmap.ts", content: hashmapCode },
     { filename: "runtime_isolation.ts", content: isolationCode },
     { filename: "runtime_pantelides.ts", content: pantelidesCode },
@@ -758,6 +764,9 @@ export function generateParserTables(
     code += extractExports(octagonContent, "./octagon");
     code += extractExports(isolationContent, "./isolation");
     code += extractExports(pantelidesContent, "./pantelides");
+    code += extractExports(daeCode, "./dae");
+    code += extractExports(bltCode, "./blt");
+    code += extractExports(integratorsCode, "./integrators");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
     outFiles.push({ filename: "ssa.ts", content: ssaContent });

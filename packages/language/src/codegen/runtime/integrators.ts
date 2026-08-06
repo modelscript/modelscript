@@ -1,22 +1,100 @@
-import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind } from "./dae";
+import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EXPR_KIND, ExprKind, EXPR_DATA1 } from "./dae";
 import { evalEquationResidual } from "./eval";
+import { getWarmStartValue, setWarmStartValue } from "./isolation";
 
 /**
- * Single-step Explicit Euler integration over state variables.
+ * Solves and enforces algebraic constraints across state vectors.
+ * Uses warm-started 1x1 Newton-Raphson iteration with Armijo line search.
  */
 @inline
-export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
-  // For each explicit ODE equation (der(x) = RHS):
-  // x_new = x_old + dt * RHS
+export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): void {
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
     if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
 
-    let res = evalEquationResidual(i, dae, varValuesPtr);
-    // Apply Euler update to corresponding state variable
-    let stateVal = load<f64>(varValuesPtr + i * 8);
-    store<f64>(varValuesPtr + i * 8, stateVal + dt * res);
+    // Check if equation target LHS is a non-derivative variable
+    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    if (lhsExpr == 0xffffffff) continue;
+
+    let lhsOffset = lhsExpr * EXPR_STRIDE;
+    let lhsKind = dae.exprData.get(lhsOffset + EXPR_KIND);
+    if (lhsKind != ExprKind.Name) continue; // Only handle algebraic variable assignments
+
+    let targetVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1) as u32;
+    if (targetVarIdx >= dae.varCount) continue;
+
+    // Retrieve warm start value if available
+    let warmVal = getWarmStartValue(targetVarIdx);
+    if (warmVal != 0.0) {
+      store<f64>(varValuesPtr + targetVarIdx * 8, warmVal);
+    }
+
+    let x: f64 = load<f64>(varValuesPtr + targetVarIdx * 8);
+    let tol: f64 = 1e-10;
+    let maxIter: u32 = 25;
+    let iter: u32 = 0;
+
+    while (iter < maxIter) {
+      iter++;
+      let res = evalEquationResidual(i, dae, varValuesPtr);
+      if (Math.abs(res) < tol) break;
+
+      // Numerical finite difference derivative in CPU registers
+      let eps: f64 = 1e-7;
+      store<f64>(varValuesPtr + targetVarIdx * 8, x + eps);
+      let resPlus = evalEquationResidual(i, dae, varValuesPtr);
+      store<f64>(varValuesPtr + targetVarIdx * 8, x);
+
+      let der = (resPlus - res) / eps;
+      if (Math.abs(der) < 1e-14) der = der >= 0 ? 1e-6 : -1e-6;
+
+      let step = res / der;
+
+      // Armijo backtracking
+      let alpha: f64 = 1.0;
+      let xNew = x - step;
+      store<f64>(varValuesPtr + targetVarIdx * 8, xNew);
+      let resNew = Math.abs(evalEquationResidual(i, dae, varValuesPtr));
+
+      while (resNew >= Math.abs(res) && alpha > 0.0625) {
+        alpha *= 0.5;
+        xNew = x - alpha * step;
+        store<f64>(varValuesPtr + targetVarIdx * 8, xNew);
+        resNew = Math.abs(evalEquationResidual(i, dae, varValuesPtr));
+      }
+
+      x = xNew;
+    }
+
+    store<f64>(varValuesPtr + targetVarIdx * 8, x);
+    setWarmStartValue(targetVarIdx, x);
   }
+}
+
+/**
+ * Single-step Explicit Euler integration over state variables with DAE algebraic loop convergence.
+ */
+@inline
+export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
+  // 1. Explicit ODE State Update
+  for (let i: u32 = 0; i < dae.eqCount; i++) {
+    let offset = i * EQ_STRIDE;
+    if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+
+    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    if (lhsExpr == 0xffffffff) continue;
+
+    let lhsOffset = lhsExpr * EXPR_STRIDE;
+    if (dae.exprData.get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
+      let stateVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1);
+      let res = evalEquationResidual(i, dae, varValuesPtr);
+      let stateVal = load<f64>(varValuesPtr + stateVarIdx * 8);
+      store<f64>(varValuesPtr + stateVarIdx * 8, stateVal + dt * res);
+    }
+  }
+
+  // 2. Algebraic Constraint Enforcement
+  solveAlgebraicConstraints(dae, varValuesPtr);
 }
 
 /**
@@ -76,6 +154,17 @@ export function stepRK4(
     let yNext = y0 + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
     store<f64>(varValuesPtr + i * 8, yNext);
   }
+
+  // 6. Algebraic Constraint Enforcement
+  solveAlgebraicConstraints(dae, varValuesPtr);
+}
+
+/**
+ * Single-step DAE simulation combining ODE propagation and algebraic loop warm-starting.
+ */
+@inline
+export function stepDAE(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
+  stepEuler(dae, varValuesPtr, dt);
 }
 
 /**
@@ -90,11 +179,9 @@ export function runSimulationLoop(
   stepSize: f64
 ): u32 {
   let steps = ((stopTime - startTime) / stepSize) as u32;
-  let numVars = dae.varCount;
 
-  // Simple RK4 step execution loop
   for (let step: u32 = 0; step < steps; step++) {
-    stepEuler(dae, varValuesPtr, stepSize);
+    stepDAE(dae, varValuesPtr, stepSize);
   }
 
   return steps;

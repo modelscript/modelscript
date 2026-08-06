@@ -1,5 +1,5 @@
 import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array } from "./array";
-import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT, EQ_STRIDE, EQ_LHS, EQ_RHS } from "./dae";
+import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT, EQ_STRIDE, EQ_LHS, EQ_RHS, VAR_STRIDE, VAR_FLAGS, FLAG_TEARING_VAR } from "./dae";
 import { atomicChunkAlloc } from "./arena";
 import { simplifyAst } from "./parser";
 
@@ -293,17 +293,39 @@ export class BltEngine {
    */
   @inline
   tearAlgebraicLoop(blockOffset: i32, blockSize: i32): void {
-    // 1. Minimum Degree Heuristic to select tearing variables
-    // In a full implementation, we compute degrees of variables in the block and tear those
-    // that break the most cycles, reducing the residual system size.
-    
-    // For now, this serves as the structural entry point for tearing algorithms (e.g. Cellier's).
-    // Variables chosen as tearing vars should be flagged in the arena.
-    // e.g., this.dae.varData.set(..., this.dae.varData.get(...) | FLAG_TEARING_VAR);
+    if (blockSize <= 1) return;
 
-    // After tearing variables are selected, the inner system becomes structurally lower-triangular,
-    // and can be solved given guessed values for the tearing variables. The residuals are used by
-    // a non-linear solver (e.g. Newton-Raphson) to find the correct tearing variable values.
+    // Minimum Degree Heuristic (Cellier's Tearing Algorithm):
+    // 1. Calculate occurrence incidence (degree) of each variable in the SCC block.
+    let minDegree: i32 = 0x7fffffff;
+    let selectedTearVar: i32 = -1;
+
+    for (let i: i32 = 0; i < blockSize; i++) {
+      let eqIdx = this.sccBlockEqs.get(blockOffset + i);
+      let varIdx = this.matchEqToVar.get(eqIdx);
+      if (varIdx == -1) continue;
+
+      // Count dependencies of this variable within block equations
+      let start = this.eqDepPtrs.get(eqIdx);
+      let end = this.eqDepPtrs.get(eqIdx + 1);
+      let degree = (end - start) as i32;
+
+      if (degree > 0 && degree < minDegree) {
+        minDegree = degree;
+        selectedTearVar = varIdx;
+      }
+    }
+
+    if (selectedTearVar == -1) {
+      let firstEq = this.sccBlockEqs.get(blockOffset);
+      selectedTearVar = this.matchEqToVar.get(firstEq);
+    }
+
+    if (selectedTearVar != -1) {
+      let offset = selectedTearVar * VAR_STRIDE;
+      let curFlags = this.dae.varData.get(offset + VAR_FLAGS);
+      this.dae.varData.set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+    }
   }
 
 

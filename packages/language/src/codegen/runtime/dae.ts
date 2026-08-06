@@ -108,6 +108,7 @@ export const VAR_START_HI = 4;
 export const VAR_START_LO = 5;
 export const VAR_SHAPE_DIM = 6;
 export const VAR_FLAGS = 7;
+export const FLAG_TEARING_VAR: i32 = 1 << 0;
 
 export const EQ_STRIDE = 4;
 export const EQ_KIND = 0;
