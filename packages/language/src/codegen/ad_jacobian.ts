@@ -1,6 +1,6 @@
-import { CompilerOptions } from "../dsl";
+import { LanguageOptions } from "../dsl.js";
 
-export function generateAdJacobian(grammarDef: CompilerOptions, normalized: any): string {
+export function generateAdJacobian(grammarDef: LanguageOptions, normalized: any): string {
   if (!(grammarDef as any).acausal && (grammarDef as any).name !== "Calc") return "";
 
   return `

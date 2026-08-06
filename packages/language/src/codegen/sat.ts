@@ -1,6 +1,6 @@
-import { CompilerOptions } from "../dsl";
+import { LanguageOptions } from "../dsl.js";
 
-export function generateSAT(grammarDef: CompilerOptions, normalized: any): string {
+export function generateSAT(grammarDef: LanguageOptions, normalized: any): string {
   const reasonerExt = (grammarDef.semantics?.reasoner as any)?.extensions || {};
   const hasRecursiveFn = reasonerExt.recursiveUnroll
     ? (normalized.symToInt?.has(reasonerExt.recursiveUnroll) ?? false)
@@ -9,7 +9,7 @@ export function generateSAT(grammarDef: CompilerOptions, normalized: any): strin
     ? (normalized.symToInt?.has(reasonerExt.inductiveProof) ?? false)
     : false;
   const hasEgraph = !!(grammarDef as any).optimization?.egraph;
-  const hasLRA = !!grammarDef.semantics?.reasoner?.smt?.theories?.includes("LRA");
+  const hasLRA = !!(grammarDef.semantics?.reasoner as any)?.smt?.theories?.includes("LRA");
 
   return `
 // --- Native DPLL(T) Boolean Engine (Phase 1) ---

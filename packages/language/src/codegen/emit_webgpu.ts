@@ -1,6 +1,6 @@
-import { CompilerOptions } from "../dsl";
+import { LanguageOptions } from "../dsl.js";
 
-export function generateWebGPUEmitter(grammarDef: CompilerOptions): string {
+export function generateWebGPUEmitter(grammarDef: LanguageOptions): string {
   return `// --- Auto-Generated WebGPU Backend (Phase 5) ---
 // Cross-platform, browser-native tensor execution via WGSL Compute Shaders
 

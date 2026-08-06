@@ -5,7 +5,7 @@ import * as path from "path";
  * Interface representing the compiled ModelScript WASM compiler exports.
  */
 export interface CompilerWasmExports {
-  memory: WebAssembly.Memory;
+  memory: any;
   lsp_setup_ipopt: (objectiveNode: number, numVars: number, varsPtr: number, numCons: number, consPtr: number) => void;
   ffi_ipopt_eval_f: (n: number, xPtr: number, new_x: number, objValPtr: number, userData: number) => number;
   ffi_ipopt_eval_grad_f: (n: number, xPtr: number, new_x: number, gradPtr: number, userData: number) => number;
