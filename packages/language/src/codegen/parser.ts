@@ -17,6 +17,7 @@ import {
   integratorsCode,
   isolationCode,
   lspCode,
+  matrixCode,
   pantelidesCode,
   parserLoopCode,
   recoveryCode,
@@ -734,9 +735,10 @@ export function generateParserTables(
     { filename: "eval.ts", content: evalCode },
     { filename: "events.ts", content: eventsCode },
     { filename: "integrators.ts", content: integratorsCode },
+    { filename: "matrix.ts", content: matrixCode },
     { filename: "hashmap.ts", content: hashmapCode },
-    { filename: "runtime_isolation.ts", content: isolationCode },
-    { filename: "runtime_pantelides.ts", content: pantelidesCode },
+    { filename: "isolation.ts", content: isolationCode },
+    { filename: "pantelides.ts", content: pantelidesCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -748,6 +750,12 @@ export function generateParserTables(
   if (originalGrammar.semantics) {
     outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
   }
+
+  code += extractExports(daeCode, "./dae");
+  code += extractExports(bltCode, "./blt");
+  code += extractExports(eventsCode, "./events");
+  code += extractExports(integratorsCode, "./integrators");
+  code += extractExports(matrixCode, "./matrix");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();
@@ -764,9 +772,6 @@ export function generateParserTables(
     code += extractExports(octagonContent, "./octagon");
     code += extractExports(isolationContent, "./isolation");
     code += extractExports(pantelidesContent, "./pantelides");
-    code += extractExports(daeCode, "./dae");
-    code += extractExports(bltCode, "./blt");
-    code += extractExports(integratorsCode, "./integrators");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
     outFiles.push({ filename: "ssa.ts", content: ssaContent });

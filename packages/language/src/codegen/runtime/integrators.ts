@@ -2,6 +2,162 @@ import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EX
 import { evalEquationResidual } from "./eval";
 import { EventDetector } from "./events";
 import { getWarmStartValue, setWarmStartValue } from "./isolation";
+import { luFactor, luSolve, vectorNormInf } from "./matrix";
+
+/**
+ * Solves N x N coupled algebraic constraints using multi-variable Newton-Raphson
+ * iteration with numerical finite-difference Jacobian and Armijo line search.
+ *
+ * @param dae DaeBuilder reference.
+ * @param varValuesPtr Pointer to current variable values buffer.
+ * @param eqIndicesPtr Pointer to N equation indices.
+ * @param varIndicesPtr Pointer to N unknown variable indices.
+ * @param n Dimension of the coupled block (N equations, N variables).
+ * @param scratchPtr Pointer to a pre-allocated WASM scratch memory buffer.
+ */
+@inline
+export function solveBlockAlgebraicConstraints(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  eqIndicesPtr: u32,
+  varIndicesPtr: u32,
+  n: u32,
+  scratchPtr: u32
+): bool {
+  if (n == 0) return true;
+
+  // Lay out memory offsets in scratch buffer
+  // scratch layout:
+  // - residual R: n * 8 bytes
+  // - dx (step): n * 8 bytes
+  // - Jacobian matrix J (row major): n * n * 8 bytes
+  // - piv: n * 4 bytes
+  // - scale: n * 8 bytes
+  // - scratchForLu: n * 8 bytes
+  let rPtr = scratchPtr;
+  let dxPtr = rPtr + n * 8;
+  let jPtr = dxPtr + n * 8;
+  let pivPtr = jPtr + n * n * 8;
+  let scalePtr = pivPtr + n * 4;
+  let luScratchPtr = scalePtr + n * 8;
+
+  // Warm-start variables if cached values exist
+  for (let i: u32 = 0; i < n; i++) {
+    let vIdx = load<u32>(varIndicesPtr + i * 4);
+    let warmVal = getWarmStartValue(vIdx);
+    if (warmVal != 0.0) {
+      store<f64>(varValuesPtr + vIdx * 8, warmVal);
+    }
+  }
+
+  let tol: f64 = 1e-10;
+  let maxIter: u32 = 25;
+  let iter: u32 = 0;
+  let eps: f64 = 1e-7;
+
+  while (iter < maxIter) {
+    iter++;
+
+    // 1. Evaluate Residual Vector R
+    for (let i: u32 = 0; i < n; i++) {
+      let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+      let res = evalEquationResidual(eqIdx, dae, varValuesPtr);
+      store<f64>(rPtr + i * 8, res);
+    }
+
+    // 2. Check Convergence: ||R||_inf < tol
+    let normR = vectorNormInf(rPtr, n);
+    if (normR < tol) break;
+
+    // 3. Construct Finite-Difference Jacobian Matrix J (N x N)
+    for (let j: u32 = 0; j < n; j++) {
+      let vIdx = load<u32>(varIndicesPtr + j * 4);
+      let xOrig = load<f64>(varValuesPtr + vIdx * 8);
+
+      // Perturb variable x_j
+      store<f64>(varValuesPtr + vIdx * 8, xOrig + eps);
+
+      for (let i: u32 = 0; i < n; i++) {
+        let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+        let resPlus = evalEquationResidual(eqIdx, dae, varValuesPtr);
+        let resOrig = load<f64>(rPtr + i * 8);
+        let der = (resPlus - resOrig) / eps;
+
+        // Store into J[i, j] (row-major)
+        store<f64>(jPtr + (i * n + j) * 8, der);
+      }
+
+      // Restore variable x_j
+      store<f64>(varValuesPtr + vIdx * 8, xOrig);
+    }
+
+    // 4. LU Factorization of J
+    let success = luFactor(jPtr, pivPtr, scalePtr, n);
+    if (!success) return false;
+
+    // 5. Solve J * dx = R (dxPtr initially holds RHS = R)
+    for (let i: u32 = 0; i < n; i++) {
+      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+    }
+    luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, n);
+
+    // 6. Armijo Backtracking Line Search along direction -dx
+    let alpha: f64 = 1.0;
+    let stepAccepted = false;
+
+    while (alpha > 0.0625) {
+      // Apply candidate update: x_new = x_old - alpha * dx
+      for (let j: u32 = 0; j < n; j++) {
+        let vIdx = load<u32>(varIndicesPtr + j * 4);
+        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
+        let delta = load<f64>(dxPtr + j * 8);
+        store<f64>(varValuesPtr + vIdx * 8, xOrig - alpha * delta);
+      }
+
+      // Evaluate new residual norm
+      let maxNewRes: f64 = 0.0;
+      for (let i: u32 = 0; i < n; i++) {
+        let eqIdx = load<u32>(eqIndicesPtr + i * 4);
+        let resNew = Math.abs(evalEquationResidual(eqIdx, dae, varValuesPtr));
+        if (resNew > maxNewRes) maxNewRes = resNew;
+      }
+
+      if (maxNewRes < normR) {
+        stepAccepted = true;
+        break; // Step reduces residual, accept step
+      }
+
+      // Revert state update before reducing alpha
+      for (let j: u32 = 0; j < n; j++) {
+        let vIdx = load<u32>(varIndicesPtr + j * 4);
+        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
+        let delta = load<f64>(dxPtr + j * 8);
+        store<f64>(varValuesPtr + vIdx * 8, xOrig + alpha * delta);
+      }
+
+      alpha *= 0.5;
+    }
+
+    if (!stepAccepted) {
+      // If line search failed to reduce residual, take full step as fallback
+      for (let j: u32 = 0; j < n; j++) {
+        let vIdx = load<u32>(varIndicesPtr + j * 4);
+        let xOrig = load<f64>(varValuesPtr + vIdx * 8);
+        let delta = load<f64>(dxPtr + j * 8);
+        store<f64>(varValuesPtr + vIdx * 8, xOrig - delta);
+      }
+    }
+  }
+
+  // Update warm-start cache for all variables in block
+  for (let i: u32 = 0; i < n; i++) {
+    let vIdx = load<u32>(varIndicesPtr + i * 4);
+    let xFinal = load<f64>(varValuesPtr + vIdx * 8);
+    setWarmStartValue(vIdx, xFinal);
+  }
+
+  return true;
+}
 
 /**
  * Solves and enforces algebraic constraints across state vectors.
