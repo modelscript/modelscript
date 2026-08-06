@@ -1,5 +1,6 @@
 import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EXPR_KIND, ExprKind, EXPR_DATA1 } from "./dae";
 import { evalEquationResidual } from "./eval";
+import { EventDetector } from "./events";
 import { getWarmStartValue, setWarmStartValue } from "./isolation";
 
 /**
@@ -182,6 +183,55 @@ export function runSimulationLoop(
 
   for (let step: u32 = 0; step < steps; step++) {
     stepDAE(dae, varValuesPtr, stepSize);
+  }
+
+  return steps;
+}
+
+/**
+ * Main simulation loop with Zero-Crossing Event Localization & Hybrid State Resets.
+ */
+@inline
+export function runSimulationLoopWithEvents(
+  dae: DaeBuilder,
+  events: EventDetector,
+  varValuesPtr: u32,
+  tempValuesPtr: u32,
+  startTime: f64,
+  stopTime: f64,
+  stepSize: f64
+): u32 {
+  let steps = ((stopTime - startTime) / stepSize) as u32;
+  let numVars = dae.varCount;
+
+  for (let step: u32 = 0; step < steps; step++) {
+    let t0 = startTime + (step as f64) * stepSize;
+
+    // 1. Copy starting state to temp buffer
+    for (let v: u32 = 0; v < numVars; v++) {
+      store<f64>(tempValuesPtr + v * 8, load<f64>(varValuesPtr + v * 8));
+    }
+
+    // 2. Take candidate continuous step
+    stepDAE(dae, varValuesPtr, stepSize);
+
+    // 3. Check for zero-crossing events
+    let zcfIdx = events.checkZeroCrossings(varValuesPtr);
+    if (zcfIdx != -1) {
+      // Event localized in interval [t0, t0 + stepSize]
+      let tEvent = events.bisectEventTime(
+        zcfIdx as u32,
+        tempValuesPtr,
+        varValuesPtr,
+        varValuesPtr, // stores interpolated result
+        t0,
+        t0 + stepSize
+      );
+
+      // Enforce constraints & update signs at tEvent
+      solveAlgebraicConstraints(dae, varValuesPtr);
+      events.updateZcfSigns(varValuesPtr);
+    }
   }
 
   return steps;
