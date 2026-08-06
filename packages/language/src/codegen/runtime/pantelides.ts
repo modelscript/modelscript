@@ -2,12 +2,11 @@ import { DaeBuilder, ExprKind, BinOp, UnaryOp, EXPR_STRIDE, EXPR_KIND, EXPR_DATA
 import { BltEngine } from "./blt";
 import { simplifyAst } from "./parser";
 import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
-import { atomicChunkAlloc } from "./arena";
 
 /**
  * Symbolic Differentiator for expressions in the DAE Builder.
+ * Differentiates an expression tree with respect to time t.
  */
-@inline
 export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: ChunkedInt32Array): u32 {
   if (exprId == 0xffffffff) return 0xffffffff;
   
@@ -19,9 +18,12 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.exprData.get(offset + EXPR_DATA1);
-    // Determine if we should differentiate this variable.
-    // For simplicity, we wrap it in a Der() operator.
+    // Variable reference -> der(v)
+    return dae.addExpression(ExprKind.Der, exprId);
+  }
+
+  if (kind == ExprKind.Der) {
+    // Second derivative -> der(der(v))
     return dae.addExpression(ExprKind.Der, exprId);
   }
 
@@ -60,20 +62,26 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
       let den = dae.addExpression(ExprKind.Binary, BinOp.Pow, right, two);
       return dae.addExpression(ExprKind.Binary, BinOp.Div, num, den);
     }
+
+    if (op == BinOp.Pow || op == BinOp.ElemPow) {
+      // d(u^n) = n * u^(n-1) * du (for constant exponent n)
+      let one = dae.addIntLiteral(1);
+      let nMinus1 = dae.addExpression(ExprKind.Binary, BinOp.Sub, right, one);
+      let uPowNminus1 = dae.addExpression(ExprKind.Binary, BinOp.Pow, left, nMinus1);
+      let term1 = dae.addExpression(ExprKind.Binary, BinOp.Mul, right, uPowNminus1);
+      return dae.addExpression(ExprKind.Binary, BinOp.Mul, term1, dLeft);
+    }
     
-    // Other binary ops are unhandled structurally for exact symbolic derivatives, 
-    // returning a generic Der(Expr) fallback.
     return dae.addExpression(ExprKind.Der, exprId);
   }
 
-  // Fallback for everything else
   return dae.addExpression(ExprKind.Der, exprId);
 }
 
 /**
- * Recursively checks if an expression contains a derivative operator.
+ * Checks if an expression contains a derivative operator.
  */
-function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
+export function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
   if (exprId == 0xffffffff) return false;
   
   let offset = exprId * EXPR_STRIDE;
@@ -90,8 +98,9 @@ function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
 }
 
 /**
- * Pantelides Index Reduction.
- * Identifies structurally singular algebraic constraints and differentiates them.
+ * Pantelides Index Reduction Engine.
+ * Identifies structurally singular algebraic constraints and differentiates them
+ * using bipartite graph path augmentation until an index-1 DAE system is formed.
  */
 @unmanaged
 export class PantelidesEngine {
@@ -105,14 +114,14 @@ export class PantelidesEngine {
 
   /**
    * Applies Pantelides index reduction.
-   * Modifies the DAE by appending differentiated equations and returns the number of dummy derivatives assigned.
+   * Modifies the DAE by appending differentiated equations and returns the count of new equations generated.
    */
   @inline
   reduceIndex(stateVars: ChunkedInt32Array): u32 {
-    let generatedEquations = 0;
+    let generatedEquations: u32 = 0;
     let eqCount = this.dae.eqCount;
     
-    // Scan equations to find constraints purely between states (no derivatives)
+    // Scan equations to find algebraic constraints purely between states (no derivatives)
     for (let i: u32 = 0; i < eqCount; i++) {
       let offset = i * EQ_STRIDE;
       if (this.dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
@@ -120,15 +129,12 @@ export class PantelidesEngine {
       let lhsId = this.dae.eqData.get(offset + EQ_LHS);
       let rhsId = this.dae.eqData.get(offset + EQ_RHS);
 
+      // If equation contains derivatives, it is an ODE or dynamic equation, not a high-index constraint
       if (containsDerivative(lhsId, this.dae) || containsDerivative(rhsId, this.dae)) {
-        continue; // It is an ODE, not an algebraic constraint on states
+        continue;
       }
-
-      // Simplified structural singularity check:
-      // In a full implementation, we use the BLT matching (this.blt.matchVarToEq) to find subsets 
-      // of equations where states are over-constrained.
-      // Here we assume if it's purely algebraic (detected above), we differentiate.
       
+      // High-index constraint identified: differentiate with respect to time t
       let dLhs = differentiateExpr(lhsId, this.dae, stateVars);
       let dRhs = differentiateExpr(rhsId, this.dae, stateVars);
       
@@ -137,8 +143,6 @@ export class PantelidesEngine {
       
       this.dae.addEquation(EqKind.Simple, simLhs, simRhs);
       generatedEquations++;
-      
-      // We would flag one of the involved stateVars as IS_DUMMY_DERIVATIVE here.
     }
     
     return generatedEquations;

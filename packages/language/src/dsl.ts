@@ -1063,7 +1063,24 @@ export const domain = {
   product(...domains: any[]): any {
     return { kind: "product", domains };
   },
-  dae(opts?: { indexReduction?: "pantelides" | "none"; tearing?: "cellier" | "minimum_degree" | "none" }): any {
+  dae(opts?: {
+    indexReduction?: "pantelides" | "none";
+    tearing?: "cellier" | "minimum_degree" | "none";
+    groebnerPreReduction?: boolean;
+    warmStart?: boolean;
+    homotopy?: boolean;
+    dualAD?: boolean;
+    isolationMethods?: (
+      | "explicit"
+      | "linear"
+      | "quadratic"
+      | "harmonic"
+      | "lambertW"
+      | "treePeeling"
+      | "fixedPoint"
+      | "groebner"
+    )[];
+  }): any {
     return { kind: "dae", ...opts };
   },
   simulation(opts?: {

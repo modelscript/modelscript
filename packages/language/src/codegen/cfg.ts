@@ -14,7 +14,11 @@ import { LanguageOptions } from "../dsl.js";
 export function generateCFG(grammar: LanguageOptions<any>, normalized?: any): string {
   const cfgNodes = (grammar as any).cfgNodes;
   if (!cfgNodes || Object.keys(cfgNodes).length === 0) {
-    return "// CFG Construction Disabled (no cfgNodes configured)\n";
+    return `// CFG Construction Disabled (no cfgNodes configured)
+export let firstBlock: u32 = 0;
+export let currentBlock: u32 = 0;
+export function buildCFG(rootNodeId: u32): u32 { return 0; }
+`;
   }
 
   function getFieldSiblingIndex(ruleName: string, fieldName: string): number {

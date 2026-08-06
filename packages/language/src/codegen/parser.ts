@@ -12,7 +12,9 @@ import {
   engineCode,
   gssCode,
   hashmapCode,
+  isolationCode,
   lspCode,
+  pantelidesCode,
   parserLoopCode,
   recoveryCode,
   recoveryConfigCode,
@@ -23,8 +25,10 @@ import { generateDataflow } from "./dataflow.js";
 import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
 import { generateBlockLayoutConstants } from "./ir_layout.js";
+import { generateIsolationDomain } from "./isolation.js";
 import { generateLexer } from "./lexer.js";
 import { generateOctagonDomain } from "./octagon.js";
+import { generatePantelidesDomain } from "./pantelides.js";
 import { generateReasoner } from "./reasoner.js";
 import { generateSSA } from "./ssa.js";
 import { generateTypes } from "./types.js";
@@ -725,6 +729,8 @@ export function generateParserTables(
     { filename: "dae.ts", content: daeCode },
     { filename: "blt.ts", content: bltCode },
     { filename: "hashmap.ts", content: hashmapCode },
+    { filename: "runtime_isolation.ts", content: isolationCode },
+    { filename: "runtime_pantelides.ts", content: pantelidesCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -743,16 +749,22 @@ export function generateParserTables(
     let ssaContent = generateSSA();
     let aliasContent = generateAliasAnalysis();
     let octagonContent = generateOctagonDomain();
+    let isolationContent = generateIsolationDomain(originalGrammar);
+    let pantelidesContent = generatePantelidesDomain(originalGrammar);
     code += "\n" + extractExports(layoutContent, "./ir_layout");
     code += extractExports(cfgContent, "./cfg");
     code += extractExports(ssaContent, "./ssa");
     code += extractExports(aliasContent, "./alias");
     code += extractExports(octagonContent, "./octagon");
+    code += extractExports(isolationContent, "./isolation");
+    code += extractExports(pantelidesContent, "./pantelides");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
     outFiles.push({ filename: "ssa.ts", content: ssaContent });
     outFiles.push({ filename: "alias.ts", content: aliasContent });
     outFiles.push({ filename: "octagon.ts", content: octagonContent });
+    outFiles.push({ filename: "isolation.ts", content: isolationContent });
+    outFiles.push({ filename: "pantelides.ts", content: pantelidesContent });
   }
   if (originalGrammar.analysis) {
     let dfContent = generateDataflow(originalGrammar);
