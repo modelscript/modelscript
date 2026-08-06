@@ -1,6 +1,9 @@
 import { LanguageOptions } from "../dsl.js";
 
 export function generateWebGPUEmitter(grammarDef: LanguageOptions): string {
+  const tileSize = grammarDef.targets?.webgpu?.tileSize || 16;
+  const [wgX, wgY] = grammarDef.targets?.webgpu?.workgroupSize || [tileSize, tileSize];
+
   return `// --- Auto-Generated WebGPU Backend (Phase 5) ---
 // Cross-platform, browser-native tensor execution via WGSL Compute Shaders
 
@@ -20,13 +23,13 @@ struct TensorDim {
 }
 
 export function emit_wgsl_matmul(): string {
-    // Standard Tiled Matrix Multiplication Shader (Block size 16x16)
+    // Tiled Matrix Multiplication Shader
     return \`
-const TILE_SIZE = 16u;
-var<workgroup> tileA: array<f32, 256>; // 16 * 16
-var<workgroup> tileB: array<f32, 256>; // 16 * 16
+const TILE_SIZE = ${tileSize}u;
+var<workgroup> tileA: array<f32, ${tileSize * tileSize}>;
+var<workgroup> tileB: array<f32, ${tileSize * tileSize}>;
 
-@compute @workgroup_size(16, 16)
+@compute @workgroup_size(${wgX}, ${wgY})
 fn matmul_main(
     @builtin(global_invocation_id) global_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,

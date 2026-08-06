@@ -588,6 +588,36 @@ export interface LanguageOptions<
     };
   };
 
+  /** Target Hardware & Backend Code Generation Options */
+  targets?: {
+    /** WebGPU Compute Shader Options */
+    webgpu?: {
+      tileSize?: number;
+      workgroupSize?: [number, number];
+    };
+    /** WebAssembly Text (WAT) Emitter Options */
+    wat?: {
+      exportName?: string;
+      simd?: boolean;
+    };
+    /** WASM Interface Types (WIT) Generator Options */
+    wit?: {
+      package?: string;
+      world?: string;
+    };
+    /** CUDA GPU Kernel Emitter Options */
+    cuda?: {
+      blockSize?: number;
+      gridSize?: number;
+      arch?: string;
+    };
+    /** LLVM IR Backend Options */
+    llvm?: {
+      targetTriple?: string;
+      optLevel?: number;
+    };
+  };
+
   /** Module System Configuration */
   moduleSystem?: {
     resolve_module?: boolean;
