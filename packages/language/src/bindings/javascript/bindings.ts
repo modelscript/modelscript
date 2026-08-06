@@ -1204,32 +1204,41 @@ export class LspFacade {
   }
 
   /** Locates the definition of the symbol at the given byte offset. */
-  getDefinition(astRoot: number, targetOffset: number): { start: number; end: number } | null {
+  getDefinition(astRoot: number, targetOffset: number): { fileId: number; start: number; end: number } | null {
     if (!this.exports.lsp_getDefinition || !this.exports.lsp_getBinaryBuffer) return null;
     const numElements = this.exports.lsp_getDefinition(astRoot, targetOffset);
     if (numElements < 2) return null;
 
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
+    if (numElements >= 3) {
+      return {
+        fileId: mem32[dirPtr >> 2],
+        start: mem32[(dirPtr >> 2) + 1],
+        end: mem32[(dirPtr >> 2) + 2],
+      };
+    }
     return {
+      fileId: 0,
       start: mem32[dirPtr >> 2],
       end: mem32[(dirPtr >> 2) + 1],
     };
   }
 
-  /** Locates all references to the symbol at the given byte offset. */
-  getReferences(astRoot: number, targetOffset: number): { start: number; end: number }[] {
+  /** Locates all references to the symbol at the given byte offset across registered workspace files. */
+  getReferences(astRoot: number, targetOffset: number): { fileId: number; start: number; end: number }[] {
     if (!this.exports.lsp_getReferences || !this.exports.lsp_getBinaryBuffer) return [];
     const numElements = this.exports.lsp_getReferences(astRoot, targetOffset);
-    const references: { start: number; end: number }[] = [];
+    const references: { fileId: number; start: number; end: number }[] = [];
     if (numElements === 0) return references;
 
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    for (let i = 0; i < numElements * 2; i += 2) {
+    for (let i = 0; i < numElements * 3; i += 3) {
       references.push({
-        start: mem32[(dirPtr >> 2) + i],
-        end: mem32[(dirPtr >> 2) + i + 1],
+        fileId: mem32[(dirPtr >> 2) + i],
+        start: mem32[(dirPtr >> 2) + i + 1],
+        end: mem32[(dirPtr >> 2) + i + 2],
       });
     }
     return references;

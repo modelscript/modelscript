@@ -971,8 +971,8 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
 
 /**
  * Triggers a `Go to Definition` LSP request.
- * Locates the node under the cursor, queries the graph for its definition,
- * and serializes the target's start and end byte offsets.
+ * Locates the node under the cursor, queries the graph for its definition across all registered document roots,
+ * and serializes [fileId, startByte, endByte] (3-tuple).
  */
 export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    let node = lsp_getNodeAtByteOffset(rootNode, targetOffset);
@@ -981,8 +981,35 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    
    let defNode = lsp_invokeDefinition(node);
    if (defNode == 0) return 0;
-   
-   let startOffset = lsp_findNodeOffset(rootNode, defNode);
+
+   let targetFileId: u32 = 0;
+   let startOffset: i32 = -1;
+
+   if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.size > 0) {
+      let cap = t_documentRoots.capacity;
+      let keysPtr = t_documentRoots.keys;
+      let valsPtr = t_documentRoots.values;
+      for (let i: u32 = 0; i < cap; i++) {
+         let key = load<u64>(keysPtr + (i * 8));
+         if (key != 0) {
+            let root = load<u64>(valsPtr + (i * 8)) as u32;
+            if (root != 0) {
+               let offset = lsp_findNodeOffset(root, defNode);
+               if (offset >= 0) {
+                  targetFileId = key as u32;
+                  startOffset = offset;
+                  break;
+               }
+            }
+         }
+      }
+   }
+
+   if (startOffset < 0) {
+      startOffset = lsp_findNodeOffset(rootNode, defNode);
+      targetFileId = 0;
+   }
+
    if (startOffset < 0) return 0;
    
    let start = startOffset as u32;
@@ -990,16 +1017,18 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    
    ensureLspBuffers();
    
+   t_lspBinaryBuffer.push(targetFileId);
    t_lspBinaryBuffer.push(start);
    t_lspBinaryBuffer.push(end);
    flushBinaryBuffer();
-   return 2;
+   return 3;
 }
 
 /**
  * Triggers a `Find All References` LSP request.
- * Resolves the definition for the node under the cursor, then scans the entire AST
+ * Resolves the definition for the node under the cursor, then scans all registered document roots
  * to find all identifiers with identical text spans that point back to the exact same definition node.
+ * Serializes [fileId, startByte, endByte] (3-tuple) per reference.
  */
 export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    let node = lsp_getNodeAtByteOffset(rootNode, targetOffset);
@@ -1017,61 +1046,131 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    
    ensureLspBuffers();
    
-   let stackTop: u32 = 0;
-   t_lspTraverseStack[0] = rootNode;
-   t_lspOffsetStack[0] = 0;
-   stackTop++;
-   
-   while (stackTop > 0) {
-      stackTop--;
-      let current = t_lspTraverseStack[stackTop];
-      let offset = t_lspOffsetStack[stackTop];
-      
-      let child = getNodeFirstChild(current);
-      
-      let len = getNodeByteLength(current);
-      let pad = getNodePadding(current);
-      
-      // Candidate filtering by length and string hash
-      if (len == targetLen) {
-         let tokenStart = offset + pad;
-         let span = ast_getTextSpan(current, tokenStart);
-         if (ast_hashSpan(span) == targetHash) {
-            // Semantic verification
-            let candidateDef = lsp_invokeDefinition(current);
-            if (candidateDef == defNode) {
-               // Confirmed reference!
-               
-               t_lspBinaryBuffer.push(tokenStart);
-               t_lspBinaryBuffer.push(tokenStart + len);
+   let fileIds: u32[] = [];
+   let docRoots: u32[] = [];
+
+   if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.size > 0) {
+      let cap = t_documentRoots.capacity;
+      let keysPtr = t_documentRoots.keys;
+      let valsPtr = t_documentRoots.values;
+      for (let i: u32 = 0; i < cap; i++) {
+         let key = load<u64>(keysPtr + (i * 8));
+         if (key != 0) {
+            let root = load<u64>(valsPtr + (i * 8)) as u32;
+            if (root != 0) {
+               fileIds.push(key as u32);
+               docRoots.push(root);
             }
          }
       }
+   }
+
+   if (docRoots.length == 0) {
+      fileIds.push(0);
+      docRoots.push(rootNode);
+   }
+
+   for (let d = 0; d < docRoots.length; d++) {
+      let currentFileId = fileIds[d];
+      let currentRoot = docRoots[d];
+
+      let stackTop: u32 = 0;
+      t_lspTraverseStack[0] = currentRoot;
+      t_lspOffsetStack[0] = 0;
+      stackTop++;
       
-      if (child != 0) {
-         let childCount = 0;
-         let countChild = child;
-         while (countChild != 0) {
-            childCount++;
-            countChild = getNodeNextSibling(countChild);
+      while (stackTop > 0) {
+         stackTop--;
+         let current = t_lspTraverseStack[stackTop];
+         let offset = t_lspOffsetStack[stackTop];
+         
+         let child = getNodeFirstChild(current);
+         
+         let len = getNodeByteLength(current);
+         let pad = getNodePadding(current);
+         
+         // Candidate filtering by length and string hash
+         if (len == targetLen) {
+            let tokenStart = offset + pad;
+            let span = ast_getTextSpan(current, tokenStart);
+            if (ast_hashSpan(span) == targetHash) {
+               // Semantic verification
+               let candidateDef = lsp_invokeDefinition(current);
+               if (candidateDef == defNode) {
+                  // Confirmed reference!
+                  t_lspBinaryBuffer.push(currentFileId);
+                  t_lspBinaryBuffer.push(tokenStart);
+                  t_lspBinaryBuffer.push(tokenStart + len);
+               }
+            }
          }
-         ensureTraverseStack(stackTop + childCount);
-         let currOffset = offset + pad;
-         while (child != 0) {
-            let cPad = getNodePadding(child);
-            let cLen = cPad + getNodeByteLength(child);
-            t_lspTraverseStack[stackTop] = child;
-            t_lspOffsetStack[stackTop] = currOffset;
-            stackTop++;
-            
-            currOffset += cLen;
-            child = getNodeNextSibling(child);
+         
+         if (child != 0) {
+            let childCount = 0;
+            let countChild = child;
+            while (countChild != 0) {
+               childCount++;
+               countChild = getNodeNextSibling(countChild);
+            }
+            ensureTraverseStack(stackTop + childCount);
+            let currOffset = offset + pad;
+            while (child != 0) {
+               let cPad = getNodePadding(child);
+               let cLen = cPad + getNodeByteLength(child);
+               t_lspTraverseStack[stackTop] = child;
+               t_lspOffsetStack[stackTop] = currOffset;
+               stackTop++;
+               
+               currOffset += cLen;
+               child = getNodeNextSibling(child);
+            }
          }
       }
    }
    
    flushBinaryBuffer();
-  return t_lspBinaryBuffer.length / 2;
+   return t_lspBinaryBuffer.length / 3;
+}
+
+/**
+ * Re-evaluates diagnostics across all registered workspace document roots.
+ * Returns the total number of diagnostics stored in the binary buffer (7 elements per diagnostic).
+ */
+export function lsp_revalidateWorkspace(): u32 {
+   ensureLspBuffers();
+
+   let totalDiags: u32 = 0;
+
+   if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.size > 0) {
+      let cap = t_documentRoots.capacity;
+      let keysPtr = t_documentRoots.keys;
+      let valsPtr = t_documentRoots.values;
+      for (let i: u32 = 0; i < cap; i++) {
+         let key = load<u64>(keysPtr + (i * 8));
+         if (key != 0) {
+            let root = load<u64>(valsPtr + (i * 8)) as u32;
+            if (root != 0) {
+               let fileId = key as u32;
+               let prevLen = t_lspBinaryBuffer.length;
+               lsp_getDiagnostics(root);
+               let currentLen = t_lspBinaryBuffer.length;
+
+               let count = (currentLen - prevLen) / 7;
+               for (let c: u32 = 0; c < count; c++) {
+                  let baseIdx = prevLen + c * 7;
+                  t_lspBinaryBuffer.set(baseIdx + 3, fileId);
+               }
+               totalDiags += count;
+            }
+         }
+      }
+   } else if (globalAstRoot != 0) {
+      lsp_getDiagnostics(globalAstRoot);
+      totalDiags = t_lspBinaryBuffer.length / 7;
+   }
+
+   flushBinaryBuffer();
+   return totalDiags;
 }
 
 /**
