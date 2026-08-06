@@ -1,39 +1,51 @@
 import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array } from "./array";
 import { DaeBuilder } from "./dae";
 import { evalExpr } from "./eval";
+import { atomicChunkAlloc } from "./arena";
 
 /**
  * Hybrid DAE Event Detector & Zero-Crossing Manager.
- * Manages zero-crossing functions (ZCF), event localization via bisection root finding,
- * and discrete state event iterations.
+ * Manages zero-crossing functions (ZCF), direction-aware event localization,
+ * and Zeno chattering limit protection.
  */
 @unmanaged
 export class EventDetector {
   dae: DaeBuilder;
   zcfExprIds: ChunkedInt32Array;
   zcfSigns: ChunkedUint8Array;
+  zcfDirections: ChunkedInt32Array;
   zcfCount: u32;
+
+  consecutiveEvents: u32;
+  lastEventTime: f64;
+  zenoLimitReached: u8;
 
   init(dae: DaeBuilder): void {
     this.dae = dae;
     this.zcfExprIds = createChunkedInt32Array(128);
     this.zcfSigns = createChunkedUint8Array(128);
+    this.zcfDirections = createChunkedInt32Array(128);
     this.zcfCount = 0;
+    this.consecutiveEvents = 0;
+    this.lastEventTime = -1e18;
+    this.zenoLimitReached = 0;
   }
 
   /**
    * Registers a zero-crossing function expression into the event detector.
+   * targetDirection: 0 = any direction, 1 = rising (neg->pos), -1 = falling (pos->neg)
    */
   @inline
-  addZeroCrossingFunction(zcfExprId: u32, initialValue: f64 = 0.0): u32 {
+  addZeroCrossingFunction(zcfExprId: u32, initialValue: f64 = 0.0, targetDirection: i32 = 0): u32 {
     let idx = this.zcfCount++;
     this.zcfExprIds.push(zcfExprId as i32);
     this.zcfSigns.push(initialValue >= 0.0 ? 1 : 0);
+    this.zcfDirections.push(targetDirection);
     return idx;
   }
 
   /**
-   * Checks if any registered zero-crossing functions experienced a sign change.
+   * Checks if any registered zero-crossing functions experienced a sign change matching their specified direction.
    * Returns index of the first triggered zero-crossing function, or -1 if no event occurred.
    */
   @inline
@@ -45,7 +57,13 @@ export class EventDetector {
       let prevSign: u8 = this.zcfSigns.get(i);
 
       if (currSign != prevSign) {
-        return i as i32;
+        let reqDir = this.zcfDirections.get(i);
+        let isRising = (prevSign == 0 && currSign == 1);
+        let isFalling = (prevSign == 1 && currSign == 0);
+
+        if (reqDir == 0 || (reqDir == 1 && isRising) || (reqDir == -1 && isFalling)) {
+          return i as i32;
+        }
       }
     }
     return -1;
@@ -61,6 +79,26 @@ export class EventDetector {
       let val = evalExpr(exprId, this.dae, varValuesPtr);
       this.zcfSigns.set(i, val >= 0.0 ? 1 : 0);
     }
+  }
+
+  /**
+   * Checks whether rapid consecutive events violate the Zeno frequency limit.
+   */
+  @inline
+  checkZenoLimit(tEvent: f64, maxConsecutive: u32 = 10, windowTol: f64 = 1e-6): bool {
+    let dt = Math.abs(tEvent - this.lastEventTime);
+    if (dt < windowTol) {
+      this.consecutiveEvents++;
+    } else {
+      this.consecutiveEvents = 1;
+    }
+    this.lastEventTime = tEvent;
+
+    if (this.consecutiveEvents >= maxConsecutive) {
+      this.zenoLimitReached = 1;
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -110,4 +148,46 @@ export class EventDetector {
 
     return (tLeft + tRight) * 0.5;
   }
+}
+
+/**
+ * Creates and initializes an EventDetector in WASM linear memory.
+ */
+export function event_createDetector(daePtr: u32): u32 {
+  let ptr = atomicChunkAlloc(sizeof<EventDetector>());
+  let detector = changetype<EventDetector>(ptr);
+  detector.init(changetype<DaeBuilder>(daePtr));
+  return ptr as u32;
+}
+
+/**
+ * Registers a zero-crossing function on an EventDetector pointer.
+ */
+export function event_addZcf(detectorPtr: u32, zcfExprId: u32, initialValue: f64, targetDirection: i32): u32 {
+  let detector = changetype<EventDetector>(detectorPtr);
+  return detector.addZeroCrossingFunction(zcfExprId, initialValue, targetDirection);
+}
+
+/**
+ * Checks zero-crossing functions for direction-aware events.
+ */
+export function event_checkZeroCrossings(detectorPtr: u32, varValuesPtr: u32): i32 {
+  let detector = changetype<EventDetector>(detectorPtr);
+  return detector.checkZeroCrossings(varValuesPtr);
+}
+
+/**
+ * Checks Zeno limit protection on an EventDetector pointer.
+ */
+export function event_checkZenoLimit(detectorPtr: u32, tEvent: f64, maxConsecutive: u32, windowTol: f64): bool {
+  let detector = changetype<EventDetector>(detectorPtr);
+  return detector.checkZenoLimit(tEvent, maxConsecutive, windowTol);
+}
+
+/**
+ * Updates ZCF signs on an EventDetector pointer.
+ */
+export function event_updateZcfSigns(detectorPtr: u32, varValuesPtr: u32): void {
+  let detector = changetype<EventDetector>(detectorPtr);
+  detector.updateZcfSigns(varValuesPtr);
 }

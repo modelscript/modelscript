@@ -8,7 +8,7 @@ export function generatePantelidesDomain(grammarDef?: LanguageOptions<any>): str
 import { allocGen0 } from "./arena";
 import { DaeBuilder } from "./dae";
 import { BltEngine } from "./blt";
-import { PantelidesEngine, differentiateExpr, containsDerivative } from "./runtime_pantelides";
+import { PantelidesEngine, differentiateExpr, containsDerivative } from "./pantelides";
 
 // --- Pantelides WASM Bridge Routines ---
 

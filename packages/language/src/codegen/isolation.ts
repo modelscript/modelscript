@@ -10,7 +10,7 @@ import {
     Dual, createDual, dualConst, dualVar, dualAdd, dualSub, dualMul, dualDiv, dualSin, dualCos, dualExp, dualLog,
     inverseSinh, inverseCosh, inverseTanh, lambertW0,
     initWarmStartCache, getWarmStartValue, setWarmStartValue, solve1x1Newton, solveHomotopy
-} from "./runtime_isolation";
+} from "./isolation";
 
 export { initWarmStartCache, getWarmStartValue, setWarmStartValue, solve1x1Newton, solveHomotopy };
 

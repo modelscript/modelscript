@@ -24,8 +24,8 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.exprData.get(offset + EXPR_DATA1);
-    // Load f64 value from varValuesPtr + varId * 8
+    let varId = dae.exprData.get(offset + EXPR_DATA1) as u32;
+    if (varId == 0xffffffff || varId >= dae.varCount) return 0.0;
     return load<f64>(varValuesPtr + varId * 8);
   }
 

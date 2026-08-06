@@ -770,15 +770,15 @@ export function generateParserTables(
     code += extractExports(ssaContent, "./ssa");
     code += extractExports(aliasContent, "./alias");
     code += extractExports(octagonContent, "./octagon");
-    code += extractExports(isolationContent, "./isolation");
-    code += extractExports(pantelidesContent, "./pantelides");
+    code += extractExports(isolationContent, "./isolation-domain");
+    code += extractExports(pantelidesContent, "./pantelides-domain");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
     outFiles.push({ filename: "ssa.ts", content: ssaContent });
     outFiles.push({ filename: "alias.ts", content: aliasContent });
     outFiles.push({ filename: "octagon.ts", content: octagonContent });
-    outFiles.push({ filename: "isolation.ts", content: isolationContent });
-    outFiles.push({ filename: "pantelides.ts", content: pantelidesContent });
+    outFiles.push({ filename: "isolation-domain.ts", content: isolationContent });
+    outFiles.push({ filename: "pantelides-domain.ts", content: pantelidesContent });
   }
   if (originalGrammar.analysis) {
     let dfContent = generateDataflow(originalGrammar);

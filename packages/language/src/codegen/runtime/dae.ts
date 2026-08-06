@@ -308,7 +308,7 @@ export class DaeBuilder {
  * Creates and initializes a new DaeBuilder instance in linear memory.
  */
 export function dae_createBuilder(): u32 {
-  let ptr = atomicChunkAlloc(offsetof<DaeBuilder>());
+  let ptr = atomicChunkAlloc(sizeof<DaeBuilder>());
   let builder = changetype<DaeBuilder>(ptr);
   builder.init();
   return ptr as u32;
@@ -333,4 +333,18 @@ export function dae_snapshot(ptr: u32): void {
  */
 export function dae_rollback(ptr: u32): void {
   changetype<DaeBuilder>(ptr).rollback();
+}
+
+/**
+ * Helper export to register a variable on a DaeBuilder pointer.
+ */
+export function dae_addVariable(ptr: u32, nameId: u32, type: i32, variability: i32, causality: i32, startValue: f64): u32 {
+  return changetype<DaeBuilder>(ptr).addVariable(nameId, type, variability, causality, startValue);
+}
+
+/**
+ * Helper export to register an expression on a DaeBuilder pointer.
+ */
+export function dae_addExpression(ptr: u32, kind: i32, data1: u32, left: u32, right: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addExpression(kind, data1, left, right);
 }

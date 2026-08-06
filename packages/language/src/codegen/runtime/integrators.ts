@@ -392,3 +392,310 @@ export function runSimulationLoopWithEvents(
 
   return steps;
 }
+
+/**
+ * Computes derivative values dy/dt for all state variables.
+ */
+@inline
+export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: u32): void {
+  let numVars = dae.varCount;
+  for (let v: u32 = 0; v < numVars; v++) {
+    store<f64>(kOutPtr + v * 8, 0.0);
+  }
+
+  for (let i: u32 = 0; i < dae.eqCount; i++) {
+    let offset = i * EQ_STRIDE;
+    if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+
+    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    if (lhsExpr == 0xffffffff) continue;
+
+    let lhsOffset = lhsExpr * EXPR_STRIDE;
+    if (dae.exprData.get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
+      let stateVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1) as u32;
+      if (stateVarIdx < numVars) {
+        let res = evalEquationResidual(i, dae, varValuesPtr);
+        store<f64>(kOutPtr + stateVarIdx * 8, res);
+      }
+    }
+  }
+}
+
+/**
+ * Cubic Hermite interpolation for dense output between t0 and t0 + dt.
+ * Uses initial stage derivative (k1) and final stage derivative (k7).
+ */
+@inline
+export function hermiteInterpolate(
+  y0Ptr: u32,
+  y1Ptr: u32,
+  k1Ptr: u32,
+  k7Ptr: u32,
+  dt: f64,
+  theta: f64,
+  numVars: u32,
+  outPtr: u32
+): void {
+  let theta2 = theta * theta;
+  let theta3 = theta2 * theta;
+
+  let h00 = 2.0 * theta3 - 3.0 * theta2 + 1.0;
+  let h10 = theta3 - 2.0 * theta2 + theta;
+  let h01 = -2.0 * theta3 + 3.0 * theta2;
+  let h11 = theta3 - theta2;
+
+  for (let i: u32 = 0; i < numVars; i++) {
+    let y0 = load<f64>(y0Ptr + i * 8);
+    let y1 = load<f64>(y1Ptr + i * 8);
+    let f0 = load<f64>(k1Ptr + i * 8) * dt;
+    let f1 = load<f64>(k7Ptr + i * 8) * dt;
+    store<f64>(outPtr + i * 8, h00 * y0 + h10 * f0 + h01 * y1 + h11 * f1);
+  }
+}
+
+/**
+ * Single step Dormand-Prince 5(4) (DOPRI5) adaptive Runge-Kutta integrator with FSAL.
+ * Returns true if step was accepted within error bounds, false if rejected.
+ */
+@inline
+export function stepDopri5(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  kStagesPtr: u32,
+  tempValuesPtr: u32,
+  yNewPtr: u32,
+  dt: f64,
+  atol: f64,
+  rtol: f64
+): bool {
+  let numVars = dae.varCount;
+  if (numVars == 0) return true;
+
+  let k0Ptr = kStagesPtr;
+  let k1Ptr = kStagesPtr + numVars * 8;
+  let k2Ptr = kStagesPtr + numVars * 8 * 2;
+  let k3Ptr = kStagesPtr + numVars * 8 * 3;
+  let k4Ptr = kStagesPtr + numVars * 8 * 4;
+  let k5Ptr = kStagesPtr + numVars * 8 * 5;
+  let k6Ptr = kStagesPtr + numVars * 8 * 6;
+
+  // Stage 0: k0 = f(y0)
+  computeDerivatives(dae, varValuesPtr, k0Ptr);
+
+  // Stage 1
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    store<f64>(tempValuesPtr + v * 8, y0 + dt * (0.2) * k0);
+  }
+  computeDerivatives(dae, tempValuesPtr, k1Ptr);
+
+  // Stage 2
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k1 = load<f64>(k1Ptr + v * 8);
+    store<f64>(tempValuesPtr + v * 8, y0 + dt * ((3.0 / 40.0) * k0 + (9.0 / 40.0) * k1));
+  }
+  computeDerivatives(dae, tempValuesPtr, k2Ptr);
+
+  // Stage 3
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k1 = load<f64>(k1Ptr + v * 8);
+    let k2 = load<f64>(k2Ptr + v * 8);
+    store<f64>(tempValuesPtr + v * 8, y0 + dt * ((44.0 / 45.0) * k0 - (56.0 / 15.0) * k1 + (32.0 / 9.0) * k2));
+  }
+  computeDerivatives(dae, tempValuesPtr, k3Ptr);
+
+  // Stage 4
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k1 = load<f64>(k1Ptr + v * 8);
+    let k2 = load<f64>(k2Ptr + v * 8);
+    let k3 = load<f64>(k3Ptr + v * 8);
+    store<f64>(
+      tempValuesPtr + v * 8,
+      y0 + dt * ((19372.0 / 6561.0) * k0 - (25360.0 / 2187.0) * k1 + (64448.0 / 6561.0) * k2 - (212.0 / 729.0) * k3)
+    );
+  }
+  computeDerivatives(dae, tempValuesPtr, k4Ptr);
+
+  // Stage 5
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k1 = load<f64>(k1Ptr + v * 8);
+    let k2 = load<f64>(k2Ptr + v * 8);
+    let k3 = load<f64>(k3Ptr + v * 8);
+    let k4 = load<f64>(k4Ptr + v * 8);
+    store<f64>(
+      tempValuesPtr + v * 8,
+      y0 + dt * ((9017.0 / 3168.0) * k0 - (355.0 / 33.0) * k1 + (46732.0 / 5247.0) * k2 + (49.0 / 176.0) * k3 - (5103.0 / 18656.0) * k4)
+    );
+  }
+  computeDerivatives(dae, tempValuesPtr, k5Ptr);
+
+  // Stage 6 (5th order solution)
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k2 = load<f64>(k2Ptr + v * 8);
+    let k3 = load<f64>(k3Ptr + v * 8);
+    let k4 = load<f64>(k4Ptr + v * 8);
+    let k5 = load<f64>(k5Ptr + v * 8);
+    let y5th = y0 + dt * ((35.0 / 384.0) * k0 + (500.0 / 1113.0) * k2 + (125.0 / 192.0) * k3 - (2187.0 / 6784.0) * k4 + (11.0 / 84.0) * k5);
+    store<f64>(yNewPtr + v * 8, y5th);
+  }
+
+  // FSAL Stage 7: f(y5th)
+  computeDerivatives(dae, yNewPtr, k6Ptr);
+
+  // Error evaluation against scaled norm
+  let maxErrNorm: f64 = 0.0;
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    let y5th = load<f64>(yNewPtr + v * 8);
+    let k0 = load<f64>(k0Ptr + v * 8);
+    let k2 = load<f64>(k2Ptr + v * 8);
+    let k3 = load<f64>(k3Ptr + v * 8);
+    let k4 = load<f64>(k4Ptr + v * 8);
+    let k5 = load<f64>(k5Ptr + v * 8);
+    let k6 = load<f64>(k6Ptr + v * 8);
+
+    let errI = dt * ((71.0 / 57600.0) * k0 - (71.0 / 16695.0) * k2 + (71.0 / 1920.0) * k3 - (17253.0 / 339200.0) * k4 + (22.0 / 525.0) * k5 - (1.0 / 40.0) * k6);
+    let absY0 = Math.abs(y0);
+    let absY5th = Math.abs(y5th);
+    let maxY = absY0 > absY5th ? absY0 : absY5th;
+    let sc = atol + rtol * maxY;
+    if (sc < 1e-15) sc = 1e-15;
+    let scaledErr = Math.abs(errI) / sc;
+    if (scaledErr > maxErrNorm) maxErrNorm = scaledErr;
+  }
+
+  if (maxErrNorm <= 1.0) {
+    for (let v: u32 = 0; v < numVars; v++) {
+      store<f64>(varValuesPtr + v * 8, load<f64>(yNewPtr + v * 8));
+    }
+    solveAlgebraicConstraints(dae, varValuesPtr);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Executes a Backward Differentiation Formula (BDF) implicit integration step of order 1, 2, or 3 for stiff ODE systems.
+ */
+@inline
+export function stepBDF(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  historyBufPtr: u32,
+  scratchPtr: u32,
+  dt: f64,
+  order: i32
+): bool {
+  let numVars = dae.varCount;
+  if (numVars == 0) return true;
+
+  // BDF Coefficients
+  let beta0: f64 = 1.0;
+  let c1: f64 = 1.0;
+  let c2: f64 = 0.0;
+  let c3: f64 = 0.0;
+
+  if (order == 2) {
+    beta0 = 2.0 / 3.0;
+    c1 = 4.0 / 3.0;
+    c2 = -1.0 / 3.0;
+  } else if (order >= 3) {
+    beta0 = 6.0 / 11.0;
+    c1 = 18.0 / 11.0;
+    c2 = -9.0 / 11.0;
+    c3 = 2.0 / 11.0;
+  }
+
+  // Lay out memory offsets in scratch buffer
+  let yPredPtr = scratchPtr;
+  let rPtr = yPredPtr + numVars * 8;
+  let dxPtr = rPtr + numVars * 8;
+  let jPtr = dxPtr + numVars * 8;
+  let pivPtr = jPtr + numVars * numVars * 8;
+  let scalePtr = pivPtr + numVars * 4;
+  let luScratchPtr = scalePtr + numVars * 8;
+  let fEvalPtr = luScratchPtr + numVars * 8;
+  let fPerturbPtr = fEvalPtr + numVars * 8;
+
+  // Compute predictor y_pred from history steps
+  for (let v: u32 = 0; v < numVars; v++) {
+    let yHist1 = load<f64>(historyBufPtr + 0 * numVars * 8 + v * 8);
+    let yHist2 = load<f64>(historyBufPtr + 1 * numVars * 8 + v * 8);
+    let yHist3 = load<f64>(historyBufPtr + 2 * numVars * 8 + v * 8);
+
+    let pred = c1 * yHist1 + c2 * yHist2 + c3 * yHist3;
+    store<f64>(yPredPtr + v * 8, pred);
+    store<f64>(varValuesPtr + v * 8, pred); // Initial guess
+  }
+
+  let betaDt = beta0 * dt;
+  let maxIter: u32 = 20;
+  let tol: f64 = 1e-8;
+  let eps: f64 = 1e-7;
+
+  for (let iter: u32 = 0; iter < maxIter; iter++) {
+    computeDerivatives(dae, varValuesPtr, fEvalPtr);
+
+    // Compute residual R = y - yPred - betaDt * f(y)
+    for (let i: u32 = 0; i < numVars; i++) {
+      let yVal = load<f64>(varValuesPtr + i * 8);
+      let yPred = load<f64>(yPredPtr + i * 8);
+      let fVal = load<f64>(fEvalPtr + i * 8);
+      store<f64>(rPtr + i * 8, yVal - yPred - betaDt * fVal);
+    }
+
+    // Check convergence: ||R||_inf < tol
+    let normR = vectorNormInf(rPtr, numVars);
+    if (normR < tol) {
+      solveAlgebraicConstraints(dae, varValuesPtr);
+      return true;
+    }
+
+    // Build Jacobian J = I - betaDt * df/dy via finite differences
+    for (let j: u32 = 0; j < numVars; j++) {
+      let origY = load<f64>(varValuesPtr + j * 8);
+      let hJ = eps * Math.max(Math.abs(origY), 1.0);
+      store<f64>(varValuesPtr + j * 8, origY + hJ);
+
+      computeDerivatives(dae, varValuesPtr, fPerturbPtr);
+      store<f64>(varValuesPtr + j * 8, origY); // restore
+
+      for (let i: u32 = 0; i < numVars; i++) {
+        let fOrig = load<f64>(fEvalPtr + i * 8);
+        let fPert = load<f64>(fPerturbPtr + i * 8);
+        let dfdy = (fPert - fOrig) / hJ;
+
+        let ji = (i == j ? 1.0 : 0.0) - betaDt * dfdy;
+        store<f64>(jPtr + (i * numVars + j) * 8, ji);
+      }
+    }
+
+    // Solve J * dx = R
+    if (!luFactor(jPtr, pivPtr, scalePtr, numVars)) return false;
+    for (let i: u32 = 0; i < numVars; i++) {
+      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+    }
+    luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, numVars);
+
+    // Apply Newton step: y = y - dx
+    for (let i: u32 = 0; i < numVars; i++) {
+      let yVal = load<f64>(varValuesPtr + i * 8);
+      let dxVal = load<f64>(dxPtr + i * 8);
+      store<f64>(varValuesPtr + i * 8, yVal - dxVal);
+    }
+  }
+
+  return false;
+}
