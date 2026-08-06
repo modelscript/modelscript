@@ -79,6 +79,12 @@ describe("LSP Endpoints Integration Tests", () => {
     activeFacade = new LspFacade(exports.memory, exports);
   }, 60000);
 
+  beforeEach(() => {
+    if (typeof exports.lsp_clearDocuments === "function") {
+      exports.lsp_clearDocuments();
+    }
+  });
+
   it("should handle null astRoot (0) safely for all LSP endpoints without crash or state leakage", () => {
     expect(activeFacade.getFoldingRanges(0)).toEqual([]);
     expect(activeFacade.getDocumentSymbols(0)).toEqual([]);

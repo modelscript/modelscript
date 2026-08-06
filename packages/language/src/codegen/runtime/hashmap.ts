@@ -392,6 +392,7 @@ export class UnmanagedMap64To64 {
         this.size = 0;
         this.isActive = true;
         memory.fill(this.keys, 0, this.capacity * 8);
+        memory.fill(this.values, 0, this.capacity * 8);
     }
 
     /**

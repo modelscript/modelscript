@@ -110,7 +110,62 @@ function buildCFGNode(nodeId: u32, currentBlk: u32): u32 {
 
     code += `        case <u16>${safeName}: {\n`;
 
-    if (config.isBreak) {
+    if (config.type === "LOOP") {
+      const payload = config.payload;
+      code += `            // ${nodeName}: LOOP node\n`;
+      if (payload.cond) code += emitFieldAccess("condNode", nodeName, payload.cond.payload.name);
+      if (payload.body) code += emitFieldAccess("trueBodyNode", nodeName, payload.body.payload.name);
+      code += `            let trueBlock = allocBlock();\n`;
+      code += `            let exitBlock = allocBlock();\n`;
+      code += `            if (trueBlock == 0 || exitBlock == 0) return 0;\n\n`;
+      code += `            store<u32>(currentBlk + BLOCK_TRUE_BRANCH, trueBlock);\n`;
+      code += `            store<u32>(currentBlk + BLOCK_FALSE_BRANCH, exitBlock);\n`;
+      code += `            let saveHeader = currentLoopHeader;\n`;
+      code += `            let saveExit = currentLoopExit;\n`;
+      code += `            currentLoopHeader = currentBlk;\n`;
+      code += `            currentLoopExit = exitBlock;\n`;
+      code += `            let bodyEnd = buildCFGNode(trueBodyNode, trueBlock);\n`;
+      code += `            currentLoopHeader = saveHeader;\n`;
+      code += `            currentLoopExit = saveExit;\n`;
+      code += `            if (bodyEnd != 0) store<u32>(bodyEnd + BLOCK_TRUE_BRANCH, currentBlk);\n`;
+      code += `            return exitBlock;\n`;
+    } else if (config.type === "SEQ") {
+      const payload = config.payload;
+      code += `            // ${nodeName}: SEQ node\n`;
+      code += `            let blk = currentBlk;\n`;
+      for (let i = 0; i < payload.steps.length; i++) {
+        code += emitFieldAccess(`step${i}`, nodeName, payload.steps[i].payload.name);
+        code += `            if (step${i} != 0) blk = buildCFGNode(step${i}, blk);\n`;
+      }
+      code += `            return blk;\n`;
+    } else if (config.type === "CALL") {
+      const payload = config.payload;
+      code += `            // ${nodeName}: CALL inter-procedural node\n`;
+      if (payload.target) code += emitFieldAccess("targetNode", nodeName, payload.target.payload.name);
+      if (payload.arguments) code += emitFieldAccess("argsNode", nodeName, payload.arguments.payload.name);
+      code += `            let joinBlock = allocBlock();\n`;
+      code += `            if (joinBlock == 0) return 0;\n`;
+      code += `            // (1) Resolve function definition\n`;
+      code += `            // NOTE: In a real environment, you must provide resolveFunctionTarget and bindCallArguments\n`;
+      code += `            // let targetFunc = resolveFunctionTarget(targetNode);\n`;
+      code += `            let targetFunc = 0;\n`;
+      code += `            if (targetFunc != 0) {\n`;
+      code += `                // (2) Build call edge\n`;
+      code += `                let funcEntry = buildCFGNode(targetFunc, currentBlk);\n`;
+      code += `                if (funcEntry != 0) {\n`;
+      code += `                    store<u32>(funcEntry + BLOCK_TRUE_BRANCH, joinBlock);\n`;
+      code += `                }\n`;
+      code += `                // (3) Argument Binding & Defaults Logic (Edge Case Handling)\n`;
+      code += `                // When a call site specifies a subset of optional parameters, \n`;
+      code += `                // bindCallArguments iterates through the target function's parameters,\n`;
+      code += `                // mapping positional arguments first, then looking up keyword arguments,\n`;
+      code += `                // and critically: if neither exists, it fetches the parameter's AST default node.\n`;
+      code += `                // bindCallArguments(nodeId, targetFunc, currentBlk);\n`;
+      code += `                return joinBlock;\n`;
+      code += `            }\n`;
+      code += `            store<u32>(currentBlk + BLOCK_TRUE_BRANCH, joinBlock);\n`;
+      code += `            return joinBlock;\n`;
+    } else if (config.isBreak) {
       code += `            // ${nodeName}: break jump\n`;
       code += `            if (currentLoopExit != 0) {\n`;
       code += `                store<u32>(currentBlk + BLOCK_TRUE_BRANCH, currentLoopExit);\n`;

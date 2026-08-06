@@ -990,3 +990,99 @@ if (typeof Number !== "undefined" && !(Number.prototype as any).is) {
     writable: true,
   });
 }
+
+// --- Functional Combinators for CFG, DFA & Abstract Domains ---
+
+export interface FlowNode {
+  type: string;
+  payload: any;
+}
+
+export const flow = {
+  field(name: string, scope?: any): FlowNode {
+    return { type: "FIELD", payload: { name, scope } };
+  },
+  children(name: string, mapper?: (node: any) => any): FlowNode {
+    return { type: "CHILDREN", payload: { name, mapper } };
+  },
+  seq(...steps: any[]): FlowNode {
+    return { type: "SEQ", payload: { steps } };
+  },
+  branch(config: { cond: any; then: any; else?: any }): FlowNode {
+    return { type: "BRANCH", payload: config };
+  },
+  loop(config: { cond?: any; body: any; step?: any }): FlowNode {
+    return { type: "LOOP", payload: config };
+  },
+  for(config: { init?: any; cond?: any; step?: any; body: any }): FlowNode {
+    return { type: "FOR", payload: config };
+  },
+  switch(config: { discriminant: any; cases: any; default?: any }): FlowNode {
+    return { type: "SWITCH", payload: config };
+  },
+  try(config: { body: any; catchers?: any; else?: any; finally?: any }): FlowNode {
+    return { type: "TRY", payload: config };
+  },
+  call(config: {
+    target: any;
+    arguments?: any;
+    positional?: any;
+    keywords?: any;
+    spreadPositional?: any;
+    spreadKeywords?: any;
+  }): FlowNode {
+    return { type: "CALL", payload: config };
+  },
+  unwind(config: { body: any; cleanups: any }): FlowNode {
+    return { type: "UNWIND", payload: config };
+  },
+  rules(map: Record<string, FlowNode>): Record<string, FlowNode> {
+    return map;
+  },
+};
+
+export const domain = {
+  octagon(opts?: { varExtractor?: (node: any, graph: any) => string | null }): any {
+    return { kind: "octagon", varExtractor: opts?.varExtractor };
+  },
+  interval(): any {
+    return { kind: "interval" };
+  },
+  bitset(): any {
+    return { kind: "bitset" };
+  },
+  alias(): any {
+    return { kind: "alias" };
+  },
+  product(...domains: any[]): any {
+    return { kind: "product", domains };
+  },
+  dae(opts?: { indexReduction?: "pantelides" | "none"; tearing?: "cellier" | "minimum_degree" | "none" }): any {
+    return { kind: "dae", ...opts };
+  },
+};
+
+export const transfer = {
+  on(nodeType: any, transferFn: any): any {
+    return { nodeType, transferFn };
+  },
+  assign(lhs: any, rhs: any): any {
+    return { type: "ASSIGN", lhs, rhs };
+  },
+  assume(cond: any): any {
+    return { type: "ASSUME", cond };
+  },
+  kill(variable: any): any {
+    return { type: "KILL", variable };
+  },
+};
+
+export const check = {
+  assert(nodeType: any, predicate: any, message: string): any {
+    return { nodeType, predicate, message };
+  },
+};
+
+export function analysis(config: { cfg?: any; domain: any; transfers?: any[]; diagnostics?: any[] }): any {
+  return config;
+}

@@ -75,6 +75,12 @@ describe("Multi-File LSP Connector Features", () => {
     activeFacade = new LspFacade(exports.memory, exports);
   }, 60000);
 
+  beforeEach(() => {
+    if (typeof exports.lsp_clearDocuments === "function") {
+      exports.lsp_clearDocuments();
+    }
+  });
+
   it("should register and resolve multi-file document AST roots", () => {
     const fileId1 = 101;
     const fileId2 = 102;
@@ -105,13 +111,13 @@ describe("Multi-File LSP Connector Features", () => {
 
     activeFacade.lastAstRoot = 0;
     const ast1 = activeFacade.parse(doc1);
-    const ast2 = activeFacade.parse(doc2);
-
     exports.lsp_registerDocument(fileId1, ast1);
+
+    const ast2 = activeFacade.parse(doc2);
     exports.lsp_registerDocument(fileId2, ast2);
 
-    // "velocity" in doc1 is at offset 19
-    const refs = activeFacade.getReferences(ast1, 19);
+    const velOffset1 = doc1.indexOf("velocity");
+    const refs = activeFacade.getReferences(ast1, velOffset1);
     expect(refs.length).toBeGreaterThan(0);
 
     // Verify 3-tuple includes fileId
@@ -127,8 +133,8 @@ describe("Multi-File LSP Connector Features", () => {
     const ast1 = activeFacade.parse(doc1);
     exports.lsp_registerDocument(fileId1, ast1);
 
-    // Target "velocity" usage at offset 41
-    const def = activeFacade.getDefinition(ast1, 41);
+    const velUsageOffset = doc1.lastIndexOf("velocity");
+    const def = activeFacade.getDefinition(ast1, velUsageOffset);
     expect(def).not.toBeNull();
     expect(def?.fileId).toBe(fileId1);
     expect(def?.start).toBeLessThan(def?.end || 0);

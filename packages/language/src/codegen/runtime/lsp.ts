@@ -10,6 +10,7 @@ import {
   setNodeFlags,
   ast_getTextSpan,
   ast_hashSpan,
+  cacheNodeStrings,
   ASTNode,
   FLAG_HAS_ERROR,
   FLAG_INVISIBLE,
@@ -61,6 +62,10 @@ export function lsp_unregisterDocument(fileId: u32): void {
   if (changetype<usize>(t_documentRoots) != 0) {
     t_documentRoots.set(fileId as u64, 0 as u64);
   }
+}
+
+export function lsp_clearDocuments(): void {
+  t_documentRoots = changetype<UnmanagedMap64To64>(createMap64To64());
 }
 
 export function lsp_getDocumentRoot(fileId: u32): u32 {
@@ -239,15 +244,11 @@ function lsp_clearVisited(): void {
  * @param astRoot The root node pointer of the parsed tree.
  * @returns The number of `u32` records inside `t_lspBinaryBuffer` (4 u32s per diagnostic).
  */
-export function lsp_getDiagnostics(astRoot: u32): u32 {
-  ensureLspBuffers();
-
-  if (astRoot == 0) {
-    flushBinaryBuffer();
-    return 0;
-  }
-
+function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
+  if (astRoot == 0) return;
   globalAstRoot = astRoot;
+
+  let prevLen = t_lspBinaryBuffer.length;
 
   let stackTop: u32 = 0;
   t_lspTraverseStack[stackTop] = astRoot;
@@ -287,17 +288,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let isTainted = (flags & FLAG_IS_TAINED) != 0;
 
     if ((flags & FLAG_IS_INSERTED) != 0 && len == 0) {
-      // Inserted ghost nodes are zero-width phantoms from error recovery.
-      // We always emit a diagnostic for them so the user knows what was expected.
-      let dStart = nodeStart;
       let step: u32 = getEncodingStep();
+      let dStart = nodeStart;
       let dEnd = dStart + step;
-
-      // If this inserted node is a keyword substitution replacing a preceding error token,
-      // anchor the diagnostic range to cover the invalid token (e.g. "error" -> "model")
       if (nodeStart > 0) {
         let scanPos = nodeStart;
-        // Skip trailing whitespace backwards to reach the preceding word token
         let hasNl = false;
         while (scanPos >= step) {
           let c = peekChar(scanPos - step);
@@ -306,7 +301,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           if (!isWS) break;
           scanPos -= step;
         }
-        // If a preceding non-whitespace word token exists without crossing a newline boundary
         if (!hasNl && scanPos >= step) {
           let wordEnd = scanPos;
           let wordStart = wordEnd;
@@ -437,6 +431,27 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   }
 
   lsp_clearVisited();
+  if (fileId != 0) {
+     let currentLen = t_lspBinaryBuffer.length;
+     let count = (currentLen - prevLen) / 7;
+     for (let c: u32 = 0; c < count; c++) {
+        let baseIdx = prevLen + c * 7;
+        t_lspBinaryBuffer.set(baseIdx + 3, fileId);
+     }
+  }
+}
+
+/**
+ * Traverses the AST root to extract and serialize diagnostic error locations.
+ * Merges adjacent error nodes and writes 7-u32 tuple records into `t_lspBinaryBuffer`.
+ * @param astRoot The root AST node pointer.
+ * @returns The number of `u32` records inside `t_lspBinaryBuffer` (7 u32s per diagnostic).
+ */
+export function lsp_getDiagnostics(astRoot: u32): u32 {
+  ensureLspBuffers();
+  if (astRoot != 0) {
+    lsp_extractDiagnosticsForRoot(astRoot, 0);
+  }
   flushBinaryBuffer();
   return t_lspBinaryBuffer.length / 7;
 }
@@ -840,6 +855,7 @@ export let lspLastNodeOffset: u32 = 0;
  */
 export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
   if (rootNode == 0) return 0;
+  globalAstRoot = rootNode;
   lspLastNodeOffset = 0;
   
   ensureLspBuffers();
@@ -869,9 +885,11 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
           if (tokenStart == lspLastNodeOffset && len == bestLen) {
              let bestType = getNodeType(bestMatch);
              let nodeType = getNodeType(node);
-             if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
-                update = false;
-             }
+              if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
+                 update = true;
+              } else if (bestType <= (MAX_TERMINAL_ID as u16) && nodeType > (MAX_TERMINAL_ID as u16)) {
+                 update = false;
+              }
           }
        }
        if (update) {
@@ -980,7 +998,7 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    globalAstRoot = rootNode;
    
    let defNode = lsp_invokeDefinition(node);
-   if (defNode == 0) return 0;
+   if (defNode == 0) defNode = node;
 
    let targetFileId: u32 = 0;
    let startOffset: i32 = -1;
@@ -993,14 +1011,15 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
          let key = load<u64>(keysPtr + (i * 8));
          if (key != 0) {
             let root = load<u64>(valsPtr + (i * 8)) as u32;
-            if (root != 0) {
-               let offset = lsp_findNodeOffset(root, defNode);
-               if (offset >= 0) {
-                  targetFileId = key as u32;
-                  startOffset = offset;
-                  break;
-               }
-            }
+             if (root != 0) {
+                globalAstRoot = root;
+                let offset = lsp_findNodeOffset(root, defNode);
+                if (offset >= 0) {
+                   targetFileId = key as u32;
+                   startOffset = offset;
+                   break;
+                }
+             }
          }
       }
    }
@@ -1073,6 +1092,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    for (let d = 0; d < docRoots.length; d++) {
       let currentFileId = fileIds[d];
       let currentRoot = docRoots[d];
+      globalAstRoot = currentRoot;
 
       let stackTop: u32 = 0;
       t_lspTraverseStack[0] = currentRoot;
@@ -1094,9 +1114,9 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
             let tokenStart = offset + pad;
             let span = ast_getTextSpan(current, tokenStart);
             if (ast_hashSpan(span) == targetHash) {
-               // Semantic verification
+               // Semantic verification with text-matching fallback
                let candidateDef = lsp_invokeDefinition(current);
-               if (candidateDef == defNode) {
+               if (candidateDef == defNode || candidateDef == 0) {
                   // Confirmed reference!
                   t_lspBinaryBuffer.push(currentFileId);
                   t_lspBinaryBuffer.push(tokenStart);
@@ -1139,8 +1159,6 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
 export function lsp_revalidateWorkspace(): u32 {
    ensureLspBuffers();
 
-   let totalDiags: u32 = 0;
-
    if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.size > 0) {
       let cap = t_documentRoots.capacity;
       let keysPtr = t_documentRoots.keys;
@@ -1150,27 +1168,16 @@ export function lsp_revalidateWorkspace(): u32 {
          if (key != 0) {
             let root = load<u64>(valsPtr + (i * 8)) as u32;
             if (root != 0) {
-               let fileId = key as u32;
-               let prevLen = t_lspBinaryBuffer.length;
-               lsp_getDiagnostics(root);
-               let currentLen = t_lspBinaryBuffer.length;
-
-               let count = (currentLen - prevLen) / 7;
-               for (let c: u32 = 0; c < count; c++) {
-                  let baseIdx = prevLen + c * 7;
-                  t_lspBinaryBuffer.set(baseIdx + 3, fileId);
-               }
-               totalDiags += count;
+               lsp_extractDiagnosticsForRoot(root, key as u32);
             }
          }
       }
    } else if (globalAstRoot != 0) {
-      lsp_getDiagnostics(globalAstRoot);
-      totalDiags = t_lspBinaryBuffer.length / 7;
+      lsp_extractDiagnosticsForRoot(globalAstRoot, 0);
    }
 
    flushBinaryBuffer();
-   return totalDiags;
+   return t_lspBinaryBuffer.length / 7;
 }
 
 /**
