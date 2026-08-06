@@ -3,8 +3,10 @@ import {
   BLOCK_FALSE_BRANCH,
   BLOCK_FIRST_INSTR,
   BLOCK_NEXT,
+  BLOCK_STATE_FALSE,
   BLOCK_STATE_IN,
   BLOCK_STATE_OUT,
+  BLOCK_STATE_TRUE,
   BLOCK_TRUE_BRANCH,
   IR_INSTR_NEXT,
 } from "./ir_layout.js";
@@ -267,36 +269,89 @@ export function solveDataflow_${analysisName}(): void {
     computeRPO_${analysisName}();
     if (rpo_${analysisName}_count == 0) return;
 
-    let changed = true;
-    let iter: u32 = 0;
-    while (changed && iter < DATAFLOW_MAX_ITERATIONS) {
-        iter++;
-        changed = false;
-        
-        for (let ri: u32 = 0; ri < rpo_${analysisName}_count; ri++) {
-            let ptr = load<u32>(rpo_${analysisName}_buf + ri * 4);
+    let numBlocks = rpo_${analysisName}_count;
+    let worklistBuf = allocGen0((numBlocks + 1) * 4);
+    
+    let maxPtr: u32 = 0;
+    for (let i: u32 = 0; i < numBlocks; i++) {
+        let blk = load<u32>(rpo_${analysisName}_buf + i * 4);
+        if (blk > maxPtr) maxPtr = blk;
+    }
+    let maxBitIdx = maxPtr >> 2;
+    let inWorklistBitset = allocGen0(((maxBitIdx + 32) >> 5) * 4);
 
-            let sIn = load<u32>(ptr + ${BLOCK_STATE_IN}, 0);
-            let sOut = load<u32>(ptr + ${BLOCK_STATE_OUT}, 0); 
-            
-            let newOut = dataflowTransfer_${analysisName}(ptr, sIn);
-            
-            if (newOut != sOut) {
-                store<u32>(ptr + ${BLOCK_STATE_OUT}, newOut, 0);
-                changed = true;
-                
-                let tBranch = load<u32>(ptr + ${BLOCK_TRUE_BRANCH}, 0);
-                let fBranch = load<u32>(ptr + ${BLOCK_FALSE_BRANCH}, 0);
-                
-                if (tBranch != 0) {
-                    let oldIn = load<u32>(tBranch + ${BLOCK_STATE_IN}, 0);
-                    let nextIn = dataflowJoin_${analysisName}(oldIn, newOut);
+    let head: u32 = 0;
+    let tail: u32 = 0;
+
+    // Seed worklist with blocks in RPO order
+    for (let i: u32 = 0; i < numBlocks; i++) {
+        let blk = load<u32>(rpo_${analysisName}_buf + i * 4);
+        store<u32>(worklistBuf + tail * 4, blk);
+        tail++;
+        let bitIdx = blk >> 2;
+        let wordIdx = bitIdx >> 5;
+        let bitOffset = bitIdx & 31;
+        let wordVal = load<u32>(inWorklistBitset + wordIdx * 4);
+        store<u32>(inWorklistBitset + wordIdx * 4, wordVal | (1 << bitOffset));
+    }
+
+    let iter: u32 = 0;
+    while (head != tail && iter < DATAFLOW_MAX_ITERATIONS) {
+        iter++;
+        let ptr = load<u32>(worklistBuf + head * 4);
+        head = (head + 1) % (numBlocks + 1);
+
+        let popBitIdx = ptr >> 2;
+        let popWordIdx = popBitIdx >> 5;
+        let popBitOffset = popBitIdx & 31;
+        let popWordVal = load<u32>(inWorklistBitset + popWordIdx * 4);
+        store<u32>(inWorklistBitset + popWordIdx * 4, popWordVal & ~(1 << popBitOffset));
+
+        let sIn = load<u32>(ptr + ${BLOCK_STATE_IN}, 0);
+        let sOut = load<u32>(ptr + ${BLOCK_STATE_OUT}, 0);
+
+        let newOut = dataflowTransfer_${analysisName}(ptr, sIn);
+
+        if (newOut != sOut) {
+            store<u32>(ptr + ${BLOCK_STATE_OUT}, newOut, 0);
+
+            // Path-sensitive edge branching
+            store<u32>(ptr + ${BLOCK_STATE_TRUE}, newOut, 0);
+            store<u32>(ptr + ${BLOCK_STATE_FALSE}, newOut, 0);
+
+            let tBranch = load<u32>(ptr + ${BLOCK_TRUE_BRANCH}, 0);
+            let fBranch = load<u32>(ptr + ${BLOCK_FALSE_BRANCH}, 0);
+
+            if (tBranch != 0) {
+                let oldIn = load<u32>(tBranch + ${BLOCK_STATE_IN}, 0);
+                let nextIn = dataflowJoin_${analysisName}(oldIn, newOut);
+                if (nextIn != oldIn) {
                     store<u32>(tBranch + ${BLOCK_STATE_IN}, nextIn, 0);
+                    let tBitIdx = tBranch >> 2;
+                    let tWordIdx = tBitIdx >> 5;
+                    let tBitOffset = tBitIdx & 31;
+                    let tWordVal = load<u32>(inWorklistBitset + tWordIdx * 4);
+                    if ((tWordVal & (1 << tBitOffset)) == 0) {
+                        store<u32>(inWorklistBitset + tWordIdx * 4, tWordVal | (1 << tBitOffset));
+                        store<u32>(worklistBuf + tail * 4, tBranch);
+                        tail = (tail + 1) % (numBlocks + 1);
+                    }
                 }
-                if (fBranch != 0) {
-                    let oldIn = load<u32>(fBranch + ${BLOCK_STATE_IN}, 0);
-                    let nextIn = dataflowJoin_${analysisName}(oldIn, newOut);
+            }
+            if (fBranch != 0) {
+                let oldIn = load<u32>(fBranch + ${BLOCK_STATE_IN}, 0);
+                let nextIn = dataflowJoin_${analysisName}(oldIn, newOut);
+                if (nextIn != oldIn) {
                     store<u32>(fBranch + ${BLOCK_STATE_IN}, nextIn, 0);
+                    let fBitIdx = fBranch >> 2;
+                    let fWordIdx = fBitIdx >> 5;
+                    let fBitOffset = fBitIdx & 31;
+                    let fWordVal = load<u32>(inWorklistBitset + fWordIdx * 4);
+                    if ((fWordVal & (1 << fBitOffset)) == 0) {
+                        store<u32>(inWorklistBitset + fWordIdx * 4, fWordVal | (1 << fBitOffset));
+                        store<u32>(worklistBuf + tail * 4, fBranch);
+                        tail = (tail + 1) % (numBlocks + 1);
+                    }
                 }
             }
         }

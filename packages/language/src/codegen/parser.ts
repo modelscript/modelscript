@@ -17,6 +17,7 @@ import {
   recoveryCode,
   recoveryConfigCode,
 } from "../../build/src-gen/runtime-templates.js";
+import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
 import { generateDataflow } from "./dataflow.js";
 import { generateEGraphEngine } from "./egraph.js";
@@ -24,6 +25,7 @@ import { generateCodeGraphBridge } from "./graph.js";
 import { generateBlockLayoutConstants } from "./ir_layout.js";
 import { generateLexer } from "./lexer.js";
 import { generateReasoner } from "./reasoner.js";
+import { generateSSA } from "./ssa.js";
 import { generateTypes } from "./types.js";
 import { generateTypeSystem } from "./typesys.js";
 
@@ -737,10 +739,16 @@ export function generateParserTables(
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();
     let cfgContent = generateCFG(originalGrammar, grammar);
+    let ssaContent = generateSSA();
+    let aliasContent = generateAliasAnalysis();
     code += "\n" + extractExports(layoutContent, "./ir_layout");
     code += extractExports(cfgContent, "./cfg");
+    code += extractExports(ssaContent, "./ssa");
+    code += extractExports(aliasContent, "./alias");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
+    outFiles.push({ filename: "ssa.ts", content: ssaContent });
+    outFiles.push({ filename: "alias.ts", content: aliasContent });
   }
   if (originalGrammar.analysis) {
     let dfContent = generateDataflow(originalGrammar);
