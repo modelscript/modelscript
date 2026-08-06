@@ -913,6 +913,12 @@ export function or(a: any, b: any) {
 export function not(a: any) {
   return new TransformCombinator("not", [a]);
 }
+export function sin(a: any) {
+  return new TransformCombinator("sin", [a]);
+}
+export function cos(a: any) {
+  return new TransformCombinator("cos", [a]);
+}
 
 export const ruleCombinators = {
   add,
@@ -1060,6 +1066,25 @@ export const domain = {
   dae(opts?: { indexReduction?: "pantelides" | "none"; tearing?: "cellier" | "minimum_degree" | "none" }): any {
     return { kind: "dae", ...opts };
   },
+  simulation(opts?: {
+    solver?: "euler" | "rk4" | "radau" | "cvode";
+    startTime?: number;
+    stopTime?: number;
+    stepSize?: number;
+    tolerance?: number;
+  }): any {
+    return { kind: "simulation", ...opts };
+  },
+  workspace(opts?: { incrementalQueries?: boolean; memoization?: "salsa" | "naive" }): any {
+    return { kind: "workspace", ...opts };
+  },
+  reasoner(opts?: {
+    expressivity?: "OWL2RL" | "DL-Lite" | "RDFS";
+    datalogFixpoint?: "semi-naive" | "naive";
+    axioms?: any[];
+  }): any {
+    return { kind: "reasoner", ...opts };
+  },
 };
 
 export const transfer = {
@@ -1086,3 +1111,14 @@ export const check = {
 export function analysis(config: { cfg?: any; domain: any; transfers?: any[]; diagnostics?: any[] }): any {
   return config;
 }
+
+export {
+  AffineArithmeticMixin,
+  CSGMixin,
+  McCormickMixin,
+  SparsityMixin,
+  StandardAdjointMixin,
+  StandardHessianMixin,
+  StandardIntervalMixin,
+  StandardTangentMixin,
+} from "./codegen/transform_mixins.js";

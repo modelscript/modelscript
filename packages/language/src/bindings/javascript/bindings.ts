@@ -1161,7 +1161,7 @@ export class LspFacade {
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const result = new Uint32Array(numElements * 4);
-    result.set(mem32.subarray(dirPtr >> 2, (dirPtr >> 2) + numElements * 4));
+    result.set(mem32.subarray(dirPtr >>> 2, (dirPtr >>> 2) + numElements * 4));
     return result;
   }
 
@@ -1194,10 +1194,10 @@ export class LspFacade {
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 4; i += 4) {
       symbols.push({
-        start: this.offsetToPos(mem32[(dirPtr >> 2) + i], lineStarts),
-        end: this.offsetToPos(mem32[(dirPtr >> 2) + i + 1], lineStarts),
-        typeId: mem32[(dirPtr >> 2) + i + 2],
-        nodePtr: mem32[(dirPtr >> 2) + i + 3],
+        start: this.offsetToPos(mem32[(dirPtr >>> 2) + i], lineStarts),
+        end: this.offsetToPos(mem32[(dirPtr >>> 2) + i + 1], lineStarts),
+        typeId: mem32[(dirPtr >>> 2) + i + 2],
+        nodePtr: mem32[(dirPtr >>> 2) + i + 3],
       });
     }
     return symbols;
@@ -1211,17 +1211,18 @@ export class LspFacade {
 
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
+
     if (numElements >= 3) {
       return {
-        fileId: mem32[dirPtr >> 2],
-        start: mem32[(dirPtr >> 2) + 1],
-        end: mem32[(dirPtr >> 2) + 2],
+        fileId: mem32[(dirPtr >>> 2) + 0],
+        start: mem32[(dirPtr >>> 2) + 1],
+        end: mem32[(dirPtr >>> 2) + 2],
       };
     }
     return {
       fileId: 0,
-      start: mem32[dirPtr >> 2],
-      end: mem32[(dirPtr >> 2) + 1],
+      start: mem32[(dirPtr >>> 2) + 0],
+      end: mem32[(dirPtr >>> 2) + 1],
     };
   }
 
@@ -1236,9 +1237,9 @@ export class LspFacade {
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     for (let i = 0; i < numElements * 3; i += 3) {
       references.push({
-        fileId: mem32[(dirPtr >> 2) + i],
-        start: mem32[(dirPtr >> 2) + i + 1],
-        end: mem32[(dirPtr >> 2) + i + 2],
+        fileId: mem32[(dirPtr >>> 2) + i],
+        start: mem32[(dirPtr >>> 2) + i + 1],
+        end: mem32[(dirPtr >>> 2) + i + 2],
       });
     }
     return references;

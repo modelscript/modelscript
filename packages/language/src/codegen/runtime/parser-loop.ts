@@ -53,7 +53,7 @@ import {
     globalSearchIterations, mergeGeneration,
     tempActions, mergeTableInit, initGlobalCursor, errorCount,
     MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID,
-    configEnableBranchA1, configEnableBranchB, configEnableBranchC, configEnableIslandMode
+    configEnableBranchA1, configEnableBranchB, configEnableBranchC, configEnableIslandMode, configEnableMultiFile
 } from "./engine";
 
 const configEnableBranchA2 = false;
@@ -3263,8 +3263,14 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
   // Only perform complete reset if we are not resuming from an async suspend
   if (!isSuspended) {
+    logInt(configEnableMultiFile ? 1 : 0);
     if (oldTree == 0) {
-      resetGeneration(1);
+      if (configEnableMultiFile) {
+        resetGeneration(0);
+      } else {
+        resetGeneration(0);
+        resetGeneration(1);
+      };
     } else {
       // Clear the free list: free-list nodes are from the old tree's Gen1 space
       // and have addresses below incrementalStartOffset. Reclaiming them would

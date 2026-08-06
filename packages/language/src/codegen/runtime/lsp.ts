@@ -18,6 +18,7 @@ import {
   FLAG_IS_INSERTED,
   FLAG_IS_LIST,
   getInputBuffer,
+  debugLog,
 } from "./arena";
 import { NODE_TYPE_ERROR } from "./engine";
 import { inputLength } from "./parser";
@@ -56,6 +57,9 @@ export function lsp_registerDocument(fileId: u32, astRoot: u32): void {
   if (globalAstRoot == 0) {
     globalAstRoot = astRoot;
   }
+  
+  // Cache all leaf node strings into the stringArena for lexical multi-file fallback
+  cacheNodeStrings(astRoot, 0);
 }
 
 export function lsp_unregisterDocument(fileId: u32): void {
@@ -1064,9 +1068,16 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
    if (defNode == 0) defNode = node; // If no definition, assume we are on the definition
    
    ensureLspBuffers();
-   
-   let fileIds: u32[] = [];
-   let docRoots: u32[] = [];
+   let numRoots: u32 = 0;
+   // we will just reuse t_lspFindTraverseStack for fileIds and t_lspFindOffsetStack for docRoots since they are not used simultaneously in this function until AFTER.
+   // Wait, we DO use lsp_invokeDefinition which uses t_lspFindTraverseStack!
+   // So we cannot reuse them. We will use a static unmanaged buffer or just array allocation if we do it manually.
+   let allocCap: u32 = 1024;
+   if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.capacity > allocCap) {
+      allocCap = t_documentRoots.capacity;
+   }
+   let tempFileIds = changetype<UnmanagedUint32Array>(heap.alloc(allocCap * 4));
+   let tempDocRoots = changetype<UnmanagedUint32Array>(heap.alloc(allocCap * 4));
 
    if (changetype<usize>(t_documentRoots) != 0 && t_documentRoots.size > 0) {
       let cap = t_documentRoots.capacity;
@@ -1077,32 +1088,42 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
          if (key != 0) {
             let root = load<u64>(valsPtr + (i * 8)) as u32;
             if (root != 0) {
-               fileIds.push(key as u32);
-               docRoots.push(root);
+               tempFileIds[numRoots] = key as u32;
+               tempDocRoots[numRoots] = root;
+               numRoots++;
             }
          }
       }
    }
 
-   if (docRoots.length == 0) {
-      fileIds.push(0);
-      docRoots.push(rootNode);
+   if (numRoots == 0) {
+      tempFileIds[0] = 0;
+      tempDocRoots[0] = rootNode;
+      numRoots++;
    }
 
-   for (let d = 0; d < docRoots.length; d++) {
-      let currentFileId = fileIds[d];
-      let currentRoot = docRoots[d];
+   for (let d: u32 = 0; d < numRoots; d++) {
+      let currentFileId = tempFileIds[d];
+      let currentRoot = tempDocRoots[d];
       globalAstRoot = currentRoot;
 
       let stackTop: u32 = 0;
-      t_lspTraverseStack[0] = currentRoot;
-      t_lspOffsetStack[0] = 0;
+      ensureTraverseStack(1);
+      t_lspTraverseStack.set(0, currentRoot);
+      t_lspOffsetStack.set(0, 0);
       stackTop++;
       
       while (stackTop > 0) {
          stackTop--;
-         let current = t_lspTraverseStack[stackTop];
-         let offset = t_lspOffsetStack[stackTop];
+         let current = t_lspTraverseStack.get(stackTop);
+         let offset = t_lspOffsetStack.get(stackTop);
+         
+         let flags = getNodeFlags(current);
+         if ((flags & FLAG_LSP_TRAVERSED) != 0) {
+            continue;
+         }
+         setNodeFlags(current, flags | FLAG_LSP_TRAVERSED);
+         pushVisitedNode(current);
          
          let child = getNodeFirstChild(current);
          
@@ -1134,16 +1155,18 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
             }
             ensureTraverseStack(stackTop + childCount);
             let currOffset = offset + pad;
-            while (child != 0) {
-               let cPad = getNodePadding(child);
-               let cLen = cPad + getNodeByteLength(child);
-               t_lspTraverseStack[stackTop] = child;
-               t_lspOffsetStack[stackTop] = currOffset;
-               stackTop++;
-               
+            let c = child;
+            let childIdx = 0;
+            while (c != 0) {
+               let cPad = getNodePadding(c);
+               let cLen = cPad + getNodeByteLength(c);
+               t_lspTraverseStack.set(stackTop + childCount - 1 - childIdx, c);
+               t_lspOffsetStack.set(stackTop + childCount - 1 - childIdx, currOffset);
+               childIdx++;
                currOffset += cLen;
-               child = getNodeNextSibling(child);
+               c = getNodeNextSibling(c);
             }
+            stackTop += childCount;
          }
       }
    }

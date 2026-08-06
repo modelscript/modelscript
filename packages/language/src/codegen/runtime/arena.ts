@@ -1284,10 +1284,25 @@ export function isNodeTextEqualAt(nodeA: u32, absoluteStartA: u32, nodeB: u32, a
 
   let lenA = (spanA & 0xFFFFFFFF) as u32;
   let lenB = (spanB & 0xFFFFFFFF) as u32;
+  let strArenaCap = stringArenaCapacity;
+  let startA = (spanA >> 32) as u32;
+  let startB = (spanB >> 32) as u32;
+  let endA = startA + lenA;
+  let endB = startB + lenB;
+  if (startA >= strArenaCap || startB >= strArenaCap) return false;
+  if (endA > strArenaCap) { endA = strArenaCap; lenA = endA - startA; }
+  if (endB > strArenaCap) { endB = strArenaCap; lenB = endB - startB; }
+
   if (lenA != lenB) return false;
 
-  let ptrA = (spanA >> 32) as u32;
-  let ptrB = (spanB >> 32) as u32;
+  let ptrA = startA;
+  let ptrB = startB;
+
+  let isOverrideA = (stringArenaPtr != 0 && ptrA >= (stringArenaPtr as u32) && ptrA < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
+  let isOverrideB = (stringArenaPtr != 0 && ptrB >= (stringArenaPtr as u32) && ptrB < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
+
+  if (!isOverrideA) ptrA += getInputBuffer() as u32;
+  if (!isOverrideB) ptrB += getInputBuffer() as u32;
 
   let ptrA_arr = changetype<UnmanagedUint8Array>(ptrA);
   let ptrB_arr = changetype<UnmanagedUint8Array>(ptrB);
@@ -1759,12 +1774,14 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   let ptr = (span >> 32) as u32;
   let len = (span & 0xFFFFFFFF) as u32;
   
-  let isOverride = (ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
+  let isOverride = (stringArenaPtr != 0 && ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
   let encoding = inputEncoding;
   
   if (isOverride) {
     let rawLen = load<u32>(ptr - 4);
     encoding = (rawLen & 0x80000000) != 0 ? 0 : 1;
+  } else {
+    ptr += getInputBuffer() as u32;
   }
 
   if (encoding == 0) {

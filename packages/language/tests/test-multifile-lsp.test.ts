@@ -54,7 +54,28 @@ describe("Multi-File LSP Connector Features", () => {
     const imports = {
       env: {
         memory: memory,
-        abort: () => console.log("ABORT!"),
+        abort: (msg: number, file: number, line: number, col: number) => {
+          const mem32 = new Uint32Array(memory.buffer);
+          const mem16 = new Uint16Array(memory.buffer);
+          let m = "";
+          let f = "";
+          if (msg) {
+            for (let i = 0; i < 50; i++) {
+              const c = mem16[(msg >>> 1) + i];
+              if (c === 0) break;
+              m += String.fromCharCode(c);
+            }
+          }
+          if (file) {
+            for (let i = 0; i < 50; i++) {
+              const c = mem16[(file >>> 1) + i];
+              if (c === 0) break;
+              f += String.fromCharCode(c);
+            }
+          }
+          console.log("ABORT! RAW msg=", msg, "file=", file, "m=", m, "f=", f, "line=", line, "col=", col);
+          throw new Error("WASM ABORT!");
+        },
         logNode: () => {},
         debugLog: () => {},
       },
@@ -78,6 +99,10 @@ describe("Multi-File LSP Connector Features", () => {
   beforeEach(() => {
     if (typeof exports.lsp_clearDocuments === "function") {
       exports.lsp_clearDocuments();
+    }
+
+    if (typeof exports.lsp_setConfigEnableMultiFile === "function") {
+      exports.lsp_setConfigEnableMultiFile(true);
     }
   });
 
@@ -109,11 +134,14 @@ describe("Multi-File LSP Connector Features", () => {
     const doc1 = `scope ScopeA { let velocity = 100; print velocity; }`;
     const doc2 = `scope ScopeB { print velocity; }`;
 
+    console.log(Object.keys(exports));
+
     activeFacade.lastAstRoot = 0;
     const ast1 = activeFacade.parse(doc1);
     exports.lsp_registerDocument(fileId1, ast1);
 
     const ast2 = activeFacade.parse(doc2);
+    console.log("Memory byteLength:", activeFacade.wasmMemory.buffer.byteLength);
     exports.lsp_registerDocument(fileId2, ast2);
 
     const velOffset1 = doc1.indexOf("velocity");
@@ -135,6 +163,7 @@ describe("Multi-File LSP Connector Features", () => {
 
     const velUsageOffset = doc1.lastIndexOf("velocity");
     const def = activeFacade.getDefinition(ast1, velUsageOffset);
+    console.log("def:", def);
     expect(def).not.toBeNull();
     expect(def?.fileId).toBe(fileId1);
     expect(def?.start).toBeLessThan(def?.end || 0);

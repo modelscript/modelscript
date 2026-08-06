@@ -433,6 +433,11 @@ export let configEnableBranchB: boolean = true;
 export let configEnableBranchC: boolean = true;
 export let configEnableBranchT: boolean = true;
 export let configEnableIslandMode: boolean = true;
+export let configEnableMultiFile: boolean = false;
+
+export function lsp_setConfigEnableMultiFile(val: boolean): void {
+  configEnableMultiFile = val;
+}
 
 // Error Recovery Heuristics
 export {

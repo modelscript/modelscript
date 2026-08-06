@@ -254,6 +254,9 @@ export class BltEngine {
         if (eqId != -1) {
           this.isolateEquation(eqId as u32, varIdx);
         }
+      } else if (blockSize > 1) {
+        // Phase 4: Algebraic Loop Tearing for non-linear coupled systems
+        this.tearAlgebraicLoop(this.sccBlockEqs.length - blockSize, blockSize);
       }
     }
   }
@@ -283,6 +286,26 @@ export class BltEngine {
     this.dae.eqData.set(eqOffset + EQ_LHS, newLhs);
     this.dae.eqData.set(eqOffset + EQ_RHS, simplifiedResidual);
   }
+
+  /**
+   * Applies algebraic loop tearing to strongly connected components larger than 1x1.
+   * Partitions the block into Tearing Variables, Inner System, and Residual Equations.
+   */
+  @inline
+  tearAlgebraicLoop(blockOffset: i32, blockSize: i32): void {
+    // 1. Minimum Degree Heuristic to select tearing variables
+    // In a full implementation, we compute degrees of variables in the block and tear those
+    // that break the most cycles, reducing the residual system size.
+    
+    // For now, this serves as the structural entry point for tearing algorithms (e.g. Cellier's).
+    // Variables chosen as tearing vars should be flagged in the arena.
+    // e.g., this.dae.varData.set(..., this.dae.varData.get(...) | FLAG_TEARING_VAR);
+
+    // After tearing variables are selected, the inner system becomes structurally lower-triangular,
+    // and can be solved given guessed values for the tearing variables. The residuals are used by
+    // a non-linear solver (e.g. Newton-Raphson) to find the correct tearing variable values.
+  }
+
 
   /**
    * Phase 3: Tarjan Strongly Connected Components (SCC) computation.

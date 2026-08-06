@@ -391,7 +391,7 @@ export function incrementGlobalRevision(): void {
 }
 
 // 1024 stack depth max
-export const activeQueryStack = new Uint32Array(1024);
+export let activeQueryStack: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeQueryDepth: i32 = 0;
 
 /**
