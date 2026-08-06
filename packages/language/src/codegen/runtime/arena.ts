@@ -75,6 +75,7 @@ export class ASTNode {
   @inline get isInserted(): boolean { return this.hasFlag(FLAG_IS_INSERTED); }
   @inline get isShared(): boolean { return this.hasFlag(FLAG_IS_SHARED); }
   @inline get isExtracted(): boolean { return this.hasFlag(FLAG_EXTRACTED); }
+  @inline get isSynthetic(): boolean { return this.hasFlag(FLAG_IS_SYNTHETIC); }
 
   // --- Transient Traversal Flags ---
   @inline get isGcMarked(): boolean { return this.hasFlag(FLAG_GC_MARK); }
@@ -549,7 +550,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let isMutated = (type & 0x8000) != 0;
   type = type & 0x7FFF;
   
-  if (type == 0 || isMutated) { // 0 is NODE_TYPE_ERROR
+  if (type == 0) { // 0 is NODE_TYPE_ERROR
     initialFlags = (FLAG_HAS_ERROR as u32) << 10;
   }
   if (isTainted) {
@@ -667,6 +668,7 @@ export const FLAG_LIST_BOUNDARY: u16 = 64;
 export const FLAG_HAS_ERROR: u16 = 128;
 export const FLAG_IS_INSERTED: u16 = 256;
 export const FLAG_IS_SHARED: u16 = 512;
+export const FLAG_IS_SYNTHETIC: u16 = 1024;
 
 export function getNodeFlags(ptr: u32): u16 {
   return changetype<ASTNode>(ptr).flags;

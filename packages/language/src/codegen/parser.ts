@@ -17,8 +17,11 @@ import {
   recoveryCode,
   recoveryConfigCode,
 } from "../../build/src-gen/runtime-templates.js";
+import { generateCFG } from "./cfg.js";
+import { generateDataflow } from "./dataflow.js";
 import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
+import { generateBlockLayoutConstants } from "./ir_layout.js";
 import { generateLexer } from "./lexer.js";
 import { generateReasoner } from "./reasoner.js";
 import { generateTypes } from "./types.js";
@@ -730,6 +733,22 @@ export function generateParserTables(
   if (originalGrammar.semantics) {
     outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
   }
+
+  if (originalGrammar.cfgNodes || originalGrammar.analysis) {
+    let layoutContent = generateBlockLayoutConstants();
+    let cfgContent = generateCFG(originalGrammar, grammar);
+    code += "\n" + extractExports(layoutContent, "./ir_layout");
+    code += extractExports(cfgContent, "./cfg");
+    outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
+    outFiles.push({ filename: "cfg.ts", content: cfgContent });
+  }
+  if (originalGrammar.analysis) {
+    let dfContent = generateDataflow(originalGrammar);
+    code += "\n" + extractExports(dfContent, "./dataflow");
+    outFiles.push({ filename: "dataflow.ts", content: dfContent });
+  }
+
+  outFiles.find((f) => f.filename === "parser.ts")!.content = code;
 
   return outFiles;
 }

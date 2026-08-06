@@ -2,7 +2,7 @@ import * as ts from "typescript";
 import { getDJB2Hash } from "./utils.js";
 
 export interface TranspileOptions {
-  context?: "query" | "lint" | "lsp" | "subtyping";
+  context?: "query" | "lint" | "lsp" | "subtyping" | "dataflow";
   queryIdMap?: Map<string, number>;
   hostQueryIdMap?: Map<string, number>;
   attrIdMap?: Map<string, number>;
@@ -14,7 +14,7 @@ export interface TranspileOptions {
  */
 export function transpileQuery(
   queryFn: any,
-  options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" = "query",
+  options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): { body: string; params: string[] } {
   const opts: TranspileOptions = typeof options === "string" ? { context: options } : options;
   const context = opts.context || "query";

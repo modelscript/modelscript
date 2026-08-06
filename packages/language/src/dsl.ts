@@ -518,6 +518,35 @@ export interface LanguageOptions<
     rules?: Record<string, (node: any, out: any) => void>;
   };
 
+  /** Declarative Control Flow Graph Nodes Configuration */
+  cfgNodes?: Record<
+    string,
+    {
+      condition?: string;
+      trueBranch?: string;
+      falseBranch?: string;
+      branchList?: string;
+      isLoop?: boolean;
+      isBreak?: boolean;
+      isContinue?: boolean;
+      isReturn?: boolean;
+      tryBody?: string;
+      catchBody?: string;
+      finallyBody?: string;
+    }
+  >;
+
+  /** Declarative Lattice-Based Data Flow Analysis Engine Configuration */
+  analysis?: Record<
+    string,
+    {
+      lattice?: string[];
+      direction?: "forward" | "backward";
+      join?: (...args: any[]) => any;
+      transfer?: (...args: any[]) => any;
+    }
+  >;
+
   /** Equality Saturation and E-Graph Algebraic Simplifications */
   simplification?: {
     rules: (

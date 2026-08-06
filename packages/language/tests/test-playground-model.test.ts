@@ -13,7 +13,7 @@ const dsl = language({
   primitives: {
     nestedComment: { open: "/*", close: "*/" },
     lineComment: "//",
-    multiWordKeywords: ["end model"],
+    multiWordKeywords: ["end model", "end if", "end while"],
   },
   rules: {
     Program: ($) => repeat($.ModelDef),
@@ -22,7 +22,7 @@ const dsl = language({
         semanticToken("keyword", "model"),
         field("name", $.Identifier),
         "{",
-        repeat(choice($.Decl, $.Equation)),
+        repeat(choice($.Decl, $.Equation, $.IfStmt, $.WhileStmt)),
         semanticToken("keyword", "end model"),
         ";",
       ),
@@ -30,6 +30,17 @@ const dsl = language({
       seq(field("type", $.Type), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
     Type: ($) => choice("Real", "Integer", "Number"),
     Equation: ($) => seq(field("lhs", $.Expr), "=", field("rhs", $.Expr), ";"),
+    IfStmt: ($) =>
+      seq(
+        "if",
+        field("condition", $.Expr),
+        "then",
+        field("thenBody", $.Expr),
+        optional(seq("else", field("elseBody", $.Expr))),
+        "end if",
+        ";",
+      ),
+    WhileStmt: ($) => seq("while", field("condition", $.Expr), "do", field("body", $.Expr), "end while", ";"),
     Expr: ($) => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
     MulExpr: ($) => prec.left(2, seq(field("left", $.Expr), field("op", "*"), field("right", $.Expr))),
     AddExpr: ($) => prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-")), field("right", $.Expr))),
@@ -37,6 +48,18 @@ const dsl = language({
     Number: ($) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
   },
   extras: ($) => [/\s/],
+  cfgNodes: {
+    IfStmt: { condition: "condition", trueBranch: "thenBody", falseBranch: "elseBody" },
+    WhileStmt: { condition: "condition", trueBranch: "body", isLoop: true },
+  },
+  analysis: {
+    uninitialized: {
+      lattice: ["Initialized", "Uninitialized"],
+      direction: "forward",
+      join: (state1: number, state2: number) => (state1 > state2 ? state1 : state2),
+      transfer: (nodeId: number, stateIn: number) => stateIn,
+    },
+  },
 });
 
 describe("Playground Model Test", () => {

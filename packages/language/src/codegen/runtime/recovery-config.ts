@@ -165,3 +165,17 @@ export let configIslandSyncMultiplier: i32 = 10;
  * Multiplier for nodes popped during island mode unwinding.
  */
 export let configIslandPoppedMultiplier: i32 = 50;
+
+// ----------------------------------------------------------------------------
+// SOTA Pillar 1 & 2: A* Priority Queue & Scope-Aware Synchronization Anchors
+// ----------------------------------------------------------------------------
+
+/** Maximum expansion budget for A* multi-token recovery search trajectories */
+export const MAX_ASTAR_EXPANSIONS: i32 = 64;
+
+/** Weight multiplier for heuristic distance h(n) estimating tokens remaining to valid parser shift */
+export const HEURISTIC_LOOKAHEAD_WEIGHT: i32 = 5;
+
+/** Flag indicating an AST node acts as a parent scope boundary (e.g. ModelDef, IfStmt) */
+export const FLAG_SCOPE_BOUNDARY: u16 = 0x2000;
+
