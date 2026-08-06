@@ -919,14 +919,24 @@ export class LspFacade {
           requiredNodePtrs.delete(ptr);
         }
         let childPtr = memory[(ptr + 12) / 4];
+        let currOffset = tokenStart;
         let slow = childPtr;
         let step = 0;
         while (childPtr !== 0) {
+          const cTypeFlags = memory[childPtr / 4];
+          const cEnvHashPadding = memory[(childPtr + 4) / 4];
+          const cRawPad = cTypeFlags >>> 22;
+          const cIsFat = ((cEnvHashPadding >>> 23) & 1) === 1;
+          const cPad =
+            cIsFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(cRawPad) / 4] : cRawPad;
+          const cLen = cEnvHashPadding & 0x007fffff;
+
           if (stackTop < 50000) {
             stackPtrs[stackTop] = childPtr;
-            stackOffsets[stackTop] = tokenStart;
+            stackOffsets[stackTop] = currOffset;
             stackTop++;
           }
+          currOffset += cPad + cLen;
           step++;
           let c = memory[(childPtr + 16) / 4];
           if (c === slow) break;
@@ -989,6 +999,7 @@ export class LspFacade {
                   actualStart = offsetCache.get(nodePtr)!;
                 } else if (this.exports.lsp_findNodeOffset) {
                   const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
+                  memory = new Uint32Array(this.wasmMemory.buffer);
                   if (offset >= 0) actualStart = offset;
                 }
                 const dummyTree = {

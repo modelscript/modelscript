@@ -413,17 +413,8 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         let comesAfter = false;
         if (cType != 0 && getNodeByteLength(child) > 0) {
           let lookahead = getNodeNextSibling(child);
-          while (lookahead != 0) {
-            let lFlags = getNodeFlags(lookahead);
-            let lType = getNodeType(lookahead);
-            if ((lFlags & FLAG_IS_INSERTED) != 0) {
-              comesAfter = true;
-              break;
-            }
-            if (lType != 0 && getNodeByteLength(lookahead) > 0) {
-              break;
-            }
-            lookahead = getNodeNextSibling(lookahead);
+          if (lookahead != 0 && (getNodeFlags(lookahead) & FLAG_IS_INSERTED) != 0) {
+            comesAfter = true;
           }
         }
         
