@@ -406,7 +406,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         let cLen = padVal + getNodeByteLength(child);
         let cFlags = getNodeFlags(child);
         let cType = getNodeType(child);
-        let isInserted = (cFlags & FLAG_IS_INSERTED) != 0 || (getNodeByteLength(child) == 0);
+        let isInserted = (cFlags & FLAG_IS_INSERTED) != 0;
         
         let childStart = isInserted ? lastRealOffset : currOffset;
         
@@ -418,7 +418,7 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           }
         }
         
-        let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
+        let passInsertedSibling = comesAfter;
         
         t_lspTraverseStack[writeIdx] = child;
         let nextInError = (isErrorNode || inError);

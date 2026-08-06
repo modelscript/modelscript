@@ -144,6 +144,53 @@ end model;
     expect(line0Diags.length).toBeGreaterThan(0);
   });
 
+  it("should NOT bleed squiggles to lines 1-7 when line 9 has 'error ThermalSystem {'", () => {
+    const code = `model ElectricalCircuit {
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+
+error ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    console.log("[TEST-THERMAL] AST S-Expr:\n", activeFacade.getAstSExpr(ast, true));
+    const diags = activeFacade.getDiagnostics(ast);
+    console.log("[TEST-THERMAL] Diagnostics count:", diags.length);
+    console.log("[TEST-THERMAL] Diagnostics:", JSON.stringify(diags, null, 2));
+  });
+
+  it("should NOT produce extra diagnostics on line 9 when line 1 has 'error ElectricalCircuit {'", () => {
+    const code = `error ElectricalCircuit {
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+
+model ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+    console.log("[TEST-LINE9] Diagnostics count:", diags.length);
+    console.log("[TEST-LINE9] Diagnostics:", JSON.stringify(diags, null, 2));
+  });
+
   it("should trigger AST change listener on node insertion during initial parse and incremental parse", () => {
     const insertedNodes: any[] = [];
     activeFacade.addAstChangeListener({

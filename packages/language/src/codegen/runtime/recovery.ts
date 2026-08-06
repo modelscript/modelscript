@@ -558,7 +558,8 @@ export function recoverUnwindAndMutate(
                       let subCost = head.errorCost + (isKwS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
                       let hasNlS = false;
                       let p_nlS = srcLexPos;
-                      while (p_nlS < posAfterTokenS && p_nlS < inputLength) {
+                      let rawTokEndS = srcLexPos + lexLen;
+                      while (p_nlS < rawTokEndS && p_nlS < inputLength) {
                         let ch = peekChar(p_nlS);
                         if (ch == 10 || ch == 13) {
                           hasNlS = true;
@@ -571,19 +572,15 @@ export function recoverUnwindAndMutate(
                       }
 
                       if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCost < bestAcceptedCost) {
-                          let errLeafS = allocNode(((token == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : token) | 0x8000) as u16, 0, lexLen, 0, false);
-                          setNodeFlags(errLeafS, getNodeFlags(errLeafS) | FLAG_HAS_ERROR);
-                          
                           let insNodeS = allocNode((expSym | 0x8000) as u16, 0, 0, 0, false);
                           setNodeFlags(insNodeS, getNodeFlags(insNodeS) | FLAG_IS_INSERTED);
                           
                           let mergedNodeS: u32 = 0;
                           if (unwindCurr != null && unwindCurr.astNode != 0) {
                             let pType = getNodeType(unwindCurr.astNode);
-                            mergedNodeS = concatLists(unwindCurr.astNode, errLeafS, pType, 0);
-                            mergedNodeS = concatLists(mergedNodeS, insNodeS, pType, 0);
+                            mergedNodeS = concatLists(unwindCurr.astNode, insNodeS, pType, 0);
                           } else {
-                            mergedNodeS = concatLists(errLeafS, insNodeS, expSym as u16, 0);
+                            mergedNodeS = insNodeS;
                           }
                           
                           let newTailS = pushDiagnostic(head.errorTail, srcLexPos, posAfterTokenS);
