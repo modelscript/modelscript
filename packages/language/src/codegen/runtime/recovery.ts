@@ -4,6 +4,28 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableBranchT, configEnableIslandMode, ACTION_REDUCE, configPenaltyUnwindNode, configPenaltySyncToken, configIslandBasePenalty, configIslandSyncMultiplier, configIslandPoppedMultiplier, prod_is_list
 } from "./engine";
 import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, appendToList, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState, fixNodeLength } from "./parser-loop";
+import {
+  COST_SUBSTITUTION_KEYWORD,
+  COST_SUBSTITUTION_STANDARD,
+  COST_SHIFT_TRANSITION,
+  COST_SHIFT_REOPEN_BASE,
+  COST_SHIFT_REOPEN_PER_UNWIND,
+  COST_DELETE_BASE_MULTIPLIER,
+  PENALTY_DELETE_LINE_END_DANGLING,
+  PENALTY_DELETE_NEWLINE_CROSS,
+  PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE,
+  COST_DELETE_DUPLICATE_TOKEN,
+  THRESHOLD_DELETE_SCAN_LIMIT,
+  COST_INSERT_BASE_DEFAULT,
+  PENALTY_INSERT_STRUCTURAL_BRACE,
+  PENALTY_SUBSTITUTION_CROSS_LINE,
+  PENALTY_INSERT_CROSS_LINE,
+  PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE,
+  THRESHOLD_INSERT_MAX_COST,
+  THRESHOLD_PANIC_MODE_CUTOFF,
+  THRESHOLD_HEAD_PRUNING_DISTANCE,
+  COST_ISLAND_INITIAL_SYNC
+} from "./recovery-config";
 import { prod_lengths, prod_lhs, logInt } from "./parser";
 @inline function isListNodeByPtr(node: u32): boolean { return node != 0 && (getNodeFlags(node) & FLAG_IS_LIST) != 0; }
 import { 
@@ -210,7 +232,7 @@ function searchBudgetedInsertions(
 
       if (dist > remainingDepth) continue;
       let insCost = getInsertCost(sym);
-      if (insCost >= 10000 && laTok != TOKEN_EOF) continue;
+      if (insCost >= PENALTY_INSERT_STRUCTURAL_BRACE && laTok != TOKEN_EOF) continue;
       let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
       if (simRes > 0) {
@@ -261,7 +283,7 @@ function searchBudgetedInsertions(
         outTokens[depth] = ruleLHS;
         outStates[depth] = nextState;
         
-        if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + 250, 3, laTokPos, laTokLen) > 0) {
+        if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + (COST_SUBSTITUTION_STANDARD * 10), 3, laTokPos, laTokLen) > 0) {
           return depth + 1;
         }
         
@@ -298,9 +320,9 @@ const CHAR_RPAREN: u8 = 41;
 @inline
 function getInsertCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_insert_costs.length) return 250;
-  let baseCost = token_insert_costs[tok] * 25;
+  let baseCost = token_insert_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
   if (token_insert_costs[tok] >= 10) {
-    baseCost += 10000; // Structural closing braces ("}", "]", ")")
+    baseCost += PENALTY_INSERT_STRUCTURAL_BRACE; // Structural closing braces ("}", "]", ")")
   }
   return baseCost;
 }
@@ -309,7 +331,7 @@ function getInsertCost(tok: i32): i32 {
 function getDeleteCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_delete_costs.length) return 10;
   if (tok <= MAX_TERMINAL_ID && token_insert_costs[tok] >= 50) {
-    return 15000; // Structural keywords/delimiters are expensive to delete to prevent code destruction
+    return PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE; // Structural keywords/delimiters are expensive to delete to prevent code destruction
   }
   return token_delete_costs[tok];
 }
@@ -412,7 +434,7 @@ export function recoverUnwindAndMutate(
                         let errBraceNode = allocNode(NODE_TYPE_ERROR, 0, 0, 0);
                         setNodeFlags(errBraceNode, FLAG_HAS_ERROR | FLAG_IS_INSERTED);
                         openBlockNode = concatLists(openBlockNode, errBraceNode, getNodeType(topNode), 0);
-                        let reopenCost = unwindCurr.errorCost + 20 + (unwindDepth * 10);
+                        let reopenCost = unwindCurr.errorCost + COST_SHIFT_REOPEN_BASE + (unwindDepth * COST_SHIFT_REOPEN_PER_UNWIND);
                         let errPos = unwindCurr.pos > 0 ? unwindCurr.pos - 1 : 0;
                         let newTailR = unwindCurr.errorTail;
                         newTailR = pushDiagnostic(unwindCurr.errorTail, errPos, unwindCurr.pos);
@@ -459,8 +481,8 @@ export function recoverUnwindAndMutate(
                   if (simT > 0) {
                     let bestHead = changetype<ParseHead>(getBestAcceptingHead());
                     if (bestHead != null) {
-                      let transCost = head.errorCost + 15;
-                      if (bestAcceptedCost >= 20000 || transCost < bestAcceptedCost) {
+                      let transCost = head.errorCost + COST_SHIFT_TRANSITION;
+                      if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || transCost < bestAcceptedCost) {
                         let errNodeT = allocNode(NODE_TYPE_ERROR, 0, (pos3 > head.pos ? pos3 - head.pos : 0) as u32, head.balanceHash & 0xff, false);
                         let tNode1 = allocNode(((tok2 == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok2) | 0x8000) as u16, 0, tok2Len, 0, false);
                         let tNode2 = allocNode(((token == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : token) | 0x8000) as u16, 0, lexLen, 0, false);
@@ -526,21 +548,14 @@ export function recoverUnwindAndMutate(
                 let aIdxS = actIdxS + 2;
                 actIdxS += 2 + actCountS * 2;
                 
-                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (token > MAX_TERMINAL_ID || token_insert_costs[token] < 50)) {
-                  let shiftTargetS = -1;
-                  for (let j = 0; j < actCountS; j++) {
-                    let aTypeS = action_data[aIdxS++];
-                    let aTargetS = action_data[aIdxS++];
-                    if (aTypeS == ACTION_SHIFT) {
-                      shiftTargetS = aTargetS;
-                      break;
-                    }
-                  }
+                let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
+                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (isKwS || token > MAX_TERMINAL_ID || token_insert_costs[token] < 50)) {
+                  let shiftTargetS = findShiftTarget(recState, expSym as u16);
                   
                   if (shiftTargetS != -1) {
                     let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                     if (simS > 0) {
-                      let subCost = head.errorCost + 25;
+                      let subCost = head.errorCost + (isKwS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
                       let hasNlS = false;
                       let p_nlS = srcLexPos;
                       while (p_nlS < posAfterTokenS && p_nlS < inputLength) {
@@ -552,10 +567,10 @@ export function recoverUnwindAndMutate(
                         p_nlS += peekCharLen(p_nlS);
                       }
                       if (hasNlS) {
-                        subCost += 20000; // Heavily penalize substituting tokens across line boundaries to prevent keyword-to-operator pollution
+                        subCost += PENALTY_SUBSTITUTION_CROSS_LINE; // Heavily penalize substituting tokens across line boundaries to prevent keyword-to-operator pollution
                       }
 
-                      if (bestAcceptedCost >= 20000 || subCost < bestAcceptedCost) {
+                      if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCost < bestAcceptedCost) {
                           let errLeafS = allocNode(((token == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : token) | 0x8000) as u16, 0, lexLen, 0, false);
                           setNodeFlags(errLeafS, getNodeFlags(errLeafS) | FLAG_HAS_ERROR);
                           
@@ -589,7 +604,7 @@ export function recoverUnwindAndMutate(
                           let subHead = allocParseHead(
                             shiftTargetS,
                             mergedNodeS,
-                            baseHeadS,
+                            unwindCurr != null ? unwindCurr.prev : null,
                             posAfterTokenS,
                             initialScannerState,
                             subCost,
@@ -601,7 +616,7 @@ export function recoverUnwindAndMutate(
                             newTailS
                           );
                           pushActiveHead(changetype<u32>(subHead));
-                          break;
+                          return true;
                         }
                       }
                     }
@@ -643,9 +658,9 @@ export function recoverUnwindAndMutate(
             }
              if (hasNewline) {
                if (unwindDepth == 0) {
-                 baseDelCost += 100; // Low penalty for discarding dangling token at line end
+                 baseDelCost += PENALTY_DELETE_LINE_END_DANGLING; // Low penalty for discarding dangling token at line end
                } else {
-                 baseDelCost += 4000; // Heavily penalize merging lines via deletion across deeper unwinds
+                 baseDelCost += PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE; // Heavily penalize merging lines via deletion across deeper unwinds
                }
              }
 
@@ -654,7 +669,7 @@ export function recoverUnwindAndMutate(
               if (c == CHAR_LBRACE || c == CHAR_LBRACKET || c == CHAR_LPAREN) newBalance++;
               else if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
                 newBalance--;
-                baseDelCost = getDeleteCost(token) + (unwindDepth as i32) + (hasNewline ? 1000 : 0);
+                baseDelCost = getDeleteCost(token) + (unwindDepth as i32) + (hasNewline ? PENALTY_DELETE_NEWLINE_CROSS : 0);
               }
             }
 
@@ -681,7 +696,7 @@ export function recoverUnwindAndMutate(
             
             // baseDelCost includes the cost of dropping 'token'. If we do startSkip=0,
             // we are NOT dropping 'token', so we refund its cost in a1DelCost.
-            let a1DelCost = startSkip == 0 ? -(getDeleteCost(token == TOKEN_EOF ? 0 : token) + (hasNewline ? 1000 : 0)) : (dupCount * 5);
+            let a1DelCost = startSkip == 0 ? -(getDeleteCost(token == TOKEN_EOF ? 0 : token) + (hasNewline ? PENALTY_DELETE_NEWLINE_CROSS : 0)) : (dupCount * COST_DELETE_DUPLICATE_TOKEN);
 
             if (configEnableBranchA1) {
             for (let skipCount: u32 = startSkip; skipCount <= maxSkips; skipCount++) {
@@ -723,7 +738,7 @@ export function recoverUnwindAndMutate(
               }
 
               
-              if (canAccept && (a1DelCost + tokCost) < 4000) {
+              if (canAccept && (a1DelCost + tokCost) < THRESHOLD_DELETE_SCAN_LIMIT) {
                 // ── 2-token lookahead validation ──
                 // After finding that nextToken can be accepted from recState,
                 // check whether the SECOND token ahead can also be processed
@@ -831,7 +846,7 @@ export function recoverUnwindAndMutate(
                 }
                 let weakPenalty: i32 = weakRecovery ? 50 : 0;
                 let delHeadCost = head.errorCost + baseDelCost + a1DelCost + weakPenalty;
-                if (bestAcceptedCost < 20000 && delHeadCost >= bestAcceptedCost) break;
+                if (bestAcceptedCost < THRESHOLD_PANIC_MODE_CUTOFF && delHeadCost >= bestAcceptedCost) break;
                 
                 let shouldPushDelHead = (skipCount > 0 || unwindDepth > 0);
                 
@@ -963,9 +978,9 @@ export function recoverUnwindAndMutate(
               for (let k = 0; k < seqLen; k++) {
                 let sym = t_branchB_outTokens[k];
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
-                if (baseCost <= 0) baseCost = 10;
+                if (baseCost <= 0) baseCost = COST_INSERT_BASE_DEFAULT;
                 if ((sym > MAX_TERMINAL_ID || (sym <= MAX_TERMINAL_ID && token_insert_costs[sym] >= 50)) && token != TOKEN_EOF) {
-                  baseCost += 15000;
+                  baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
                 }
                 actualCost += baseCost;
               }
@@ -985,12 +1000,12 @@ export function recoverUnwindAndMutate(
                 p_nlB += peekCharLen(p_nlB);
               }
               if (hasNlB) {
-                retroCost += 10000; // Disallow inserting tokens across line boundaries during recovery
+                retroCost += PENALTY_INSERT_CROSS_LINE; // Disallow inserting tokens across line boundaries during recovery
               }
 
               actualCost += retroCost;
 
-              if (actualCost < 10000 && (bestAcceptedCost >= 20000 || (head.errorCost + actualCost) < bestAcceptedCost)) {
+              if (actualCost < THRESHOLD_INSERT_MAX_COST && (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || (head.errorCost + actualCost) < bestAcceptedCost)) {
                 let pCount = unwindDepth;
                 let uCurr: ParseHead | null = head;
                 let newBalance = head.balanceHash;
@@ -1052,13 +1067,13 @@ export function recoverIslandMode(
           let hasCleanLocalHead = false;
           for (let hIdx: u32 = 0; hIdx < activeHeadsCount; hIdx++) {
             let hPtr = changetype<ParseHead>(t_activeHeads[hIdx]);
-            if (hPtr != head && hPtr.errorCost <= head.errorCost + 2000) {
+            if (hPtr != head && hPtr.errorCost <= head.errorCost + THRESHOLD_HEAD_PRUNING_DISTANCE) {
               hasCleanLocalHead = true;
               break;
             }
           }
           if (!hasCleanLocalHead && head.consecutiveInsertions <= 3) {
-          let syncCost = 5; // Balanced initial penalty for destroying a span of code
+          let syncCost = COST_ISLAND_INITIAL_SYNC; // Balanced initial penalty for destroying a span of code
           let searchPos = head.pos;
           let foundTarget = -1;
           let foundBalance = head.balanceHash;
@@ -1179,7 +1194,7 @@ export function recoverIslandMode(
               if (uTemp != null) uTemp = uTemp.prev;
             }
             
-            if (bestAcceptedCost < 20000 && islandCost >= bestAcceptedCost) return;
+            // Allow panic mode recovery to branch from the recovery anchor
             // Collect all the AST nodes that were parsed between the anchor state and the failure point
             let currChild: ParseHead | null = head;
             let childCount = 0;

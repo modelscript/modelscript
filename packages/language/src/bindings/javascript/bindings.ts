@@ -176,11 +176,11 @@ export class WasmRuntime implements RuntimeAdapter {
 
   getNodeFirstChild(ptr: number): number {
     this.ensureMemory();
-    return this.mem32[(ptr + 8) / 4];
+    return this.mem32[(ptr + 12) / 4];
   }
   getNodeNextSibling(ptr: number): number {
     this.ensureMemory();
-    return this.mem32[(ptr + 12) / 4];
+    return this.mem32[(ptr + 16) / 4];
   }
   getNodeType(ptr: number): number {
     this.ensureMemory();
@@ -486,26 +486,6 @@ export class LspFacade {
     let newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-    // -----------------------------------------------------------------------
-    // Incremental reparse fallback: if the incremental parse produced stale
-    // error artifacts (ERROR children or zero-width inserted ghost nodes at
-    // the root level), retry with a full reparse. If the full reparse is
-    // clean, use it instead. This handles cases where the old tree's corrupt
-    // structure (from a previous error) bleeds through subtree reuse.
-    // -----------------------------------------------------------------------
-    if (wasIncremental && newAstRoot !== 0) {
-      const hasStaleErrors = this._hasTopLevelErrors(newAstRoot);
-      if (hasStaleErrors) {
-        // Try a full reparse with no old tree
-        const fullReparseRoot = this.exports.parse(0, 0, 0, 0);
-        if (fullReparseRoot !== 0 && !this._hasTopLevelErrors(fullReparseRoot)) {
-          // Full reparse is clean — the errors were stale artifacts
-          newAstRoot = fullReparseRoot;
-        }
-        // else: errors are real, keep the incremental result
-      }
-    }
-
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
         for (const listener of this.astListeners) {
@@ -534,22 +514,10 @@ export class LspFacade {
     return this.lastAstRoot;
   }
 
-  /**
-   * Checks whether the AST root has top-level ERROR nodes (type == 0) or
-   * zero-width inserted ghost nodes among its direct children.
-   * Reads the WASM linear memory directly for O(k) cost where k = number of
-   * root children.
-   *
-   * Node layout (16 bytes):
-   *   word0: type(10) | flags(12) | padding(10)
-   *   word1: byteLen(23) | fatPad(1) | envHash(8)
-   *   word2: firstChild (u32)
-   *   word3: nextSibling (u32)
-   */
   private _hasTopLevelErrors(astRoot: number): boolean {
     if (astRoot === 0) return false;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
-    let childPtr = mem32[(astRoot + 8) >>> 2]; // firstChild
+    let childPtr = mem32[(astRoot + 12) >>> 2];
     while (childPtr !== 0) {
       const w0 = mem32[childPtr >>> 2];
       const nodeType = w0 & 0x03ff;
@@ -557,13 +525,10 @@ export class LspFacade {
       const w1 = mem32[(childPtr + 4) >>> 2];
       const byteLen = w1 & 0x007fffff;
 
-      // ERROR node (type 0)
       if (nodeType === 0) return true;
-
-      // Zero-width inserted ghost node (FLAG_IS_INSERTED=0x100, byteLen=0)
       if (byteLen === 0 && (flags & 0x100) !== 0) return true;
 
-      childPtr = mem32[(childPtr + 12) >>> 2]; // nextSibling
+      childPtr = mem32[(childPtr + 16) >>> 2];
     }
     return false;
   }
@@ -672,20 +637,8 @@ export class LspFacade {
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const wasIncremental = this.lastAstRoot !== 0;
-    let newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
+    const newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
-
-    // Same incremental fallback as parseIncremental
-    if (wasIncremental && newAstRoot !== 0) {
-      const hasStaleErrors = this._hasTopLevelErrors(newAstRoot);
-      if (hasStaleErrors) {
-        const fullReparseRoot = this.exports.parse(0, 0, 0, 0);
-        if (fullReparseRoot !== 0 && !this._hasTopLevelErrors(fullReparseRoot)) {
-          newAstRoot = fullReparseRoot;
-        }
-      }
-    }
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -936,77 +889,49 @@ export class LspFacade {
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
+      let childPtr = memory[(ptr + 12) / 4];
+      let slow = childPtr;
+      let step = 0;
+      while (childPtr !== 0) {
+        requiredNodePtrs.add(childPtr);
+        step++;
+        let c = memory[(childPtr + 16) / 4];
+        if (c === slow) break;
+        if (step % 2 === 1) slow = memory[(slow + 16) / 4];
+        childPtr = c;
+      }
       stackPtrs[0] = astRoot;
       stackOffsets[0] = 0;
-      stackTop++;
-
-      while (stackTop > 0 && requiredNodePtrs.size > 0) {
+      stackTop = 1;
+      while (stackTop > 0) {
         stackTop--;
         const ptr = stackPtrs[stackTop];
         const currentOffset = stackOffsets[stackTop];
-
         const typeFlags = memory[ptr / 4];
         const envHashPadding = memory[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = ((envHashPadding >>> 23) & 1) === 1;
         const pad = isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
-
         const tokenStart = currentOffset + pad;
-
         if (requiredNodePtrs.has(ptr)) {
           offsetCache.set(ptr, tokenStart);
           requiredNodePtrs.delete(ptr);
         }
-
-        let childPtr = memory[(ptr + 8) / 4];
-        if (childPtr) {
-          let childCount = 0;
-          let c = childPtr;
-          let slow = c;
-          let step = 0;
-          while (c) {
-            childCount++;
-            c = memory[(c + 12) / 4];
-            if (step !== 0 && c === slow) break; // CYCLE
-            if (step % 2 === 1) slow = memory[(slow + 12) / 4];
-            step++;
+        let childPtr = memory[(ptr + 12) / 4];
+        let slow = childPtr;
+        let step = 0;
+        while (childPtr !== 0) {
+          if (stackTop < 50000) {
+            stackPtrs[stackTop] = childPtr;
+            stackOffsets[stackTop] = tokenStart;
+            stackTop++;
           }
-
-          if (stackTop + childCount > stackPtrs.length) {
-            const newPtrs = new Uint32Array(stackPtrs.length * 2);
-            newPtrs.set(stackPtrs);
-            stackPtrs = newPtrs;
-            const newOffsets = new Uint32Array(stackOffsets.length * 2);
-            newOffsets.set(stackOffsets);
-            stackOffsets = newOffsets;
-          }
-
-          let writeIdx = stackTop + childCount - 1;
-          let cOffset = tokenStart;
-          c = childPtr;
-          slow = c;
-          step = 0;
-          while (c) {
-            const cTypeFlags = memory[c / 4];
-            const cEnvHashPadding = memory[(c + 4) / 4];
-            const cRawPad = cTypeFlags >>> 22;
-            const cIsFat = ((cEnvHashPadding >>> 23) & 1) === 1;
-            const cPad =
-              cIsFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(cRawPad) / 4] : cRawPad;
-            const cLen = cEnvHashPadding & 0x007fffff;
-
-            stackPtrs[writeIdx] = c;
-            stackOffsets[writeIdx] = cOffset;
-            writeIdx--;
-            cOffset += cPad + cLen;
-
-            c = memory[(c + 12) / 4];
-            if (step !== 0 && c === slow) break;
-            if (step % 2 === 1) slow = memory[(slow + 12) / 4];
-            step++;
-          }
-          stackTop += childCount;
+          step++;
+          let c = memory[(childPtr + 16) / 4];
+          if (c === slow) break;
+          if (step % 2 === 1) slow = memory[(slow + 16) / 4];
+          childPtr = c;
         }
       }
     }
@@ -1023,8 +948,8 @@ export class LspFacade {
         `[DIAG-WASM] element[${i / 7}]: startByte=${startByte} endByte=${endByte} lintId=${lintId} args=${arg0},${arg1},${arg2},${arg3}`,
       );
 
-      let msg = "Syntax Error";
-      let severity = 1; // Default to Error
+      let msg = lintId > 0 ? `Linter Rule ${lintId}` : "Syntax Error";
+      let severity = lintId > 0 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr: number | string | undefined = lintId > 0 ? lintId : undefined;
 
       if (lintId > 0) {
@@ -1411,7 +1336,7 @@ export class LspFacade {
       let childStrs: string[] = [];
 
       let childOffset = startOffset;
-      let childPtr = mem32[(ptr + 8) / 4];
+      let childPtr = mem32[(ptr + 12) / 4];
       let slowPtr = childPtr;
       let step = 0;
 
@@ -1427,8 +1352,8 @@ export class LspFacade {
         }
         childOffset = childResult.nextOffset;
 
-        childPtr = mem32[(childPtr + 12) / 4];
-        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+        childPtr = mem32[(childPtr + 16) / 4];
+        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
         step++;
       }
 
@@ -1518,7 +1443,7 @@ export class LspFacade {
       let renderedChildren = 0;
 
       let childOffset = startOffset;
-      let childPtr = mem32[(ptr + 8) / 4];
+      let childPtr = mem32[(ptr + 12) / 4];
       let slowPtr = childPtr;
       let step = 0;
 
@@ -1541,8 +1466,8 @@ export class LspFacade {
         }
         childOffset = toHtml(childPtr, childOffset, shouldPrint ? depth + 1 : depth);
         renderedChildren++;
-        childPtr = mem32[(childPtr + 12) / 4];
-        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+        childPtr = mem32[(childPtr + 16) / 4];
+        if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
         step++;
       }
 
@@ -1574,12 +1499,12 @@ export class LspFacade {
     const lastChild = this._childTailCache.get(parentPtr);
     if (lastChild !== undefined) {
       // Wire nextSibling of the cached tail → new child
-      mem32[(lastChild + 12) / 4] = childPtr;
+      mem32[(lastChild + 16) / 4] = childPtr;
     } else {
       // Check if parent already has a firstChild
-      const firstChild = mem32[(parentPtr + 8) / 4];
+      const firstChild = mem32[(parentPtr + 12) / 4];
       if (firstChild === 0) {
-        mem32[(parentPtr + 8) / 4] = childPtr;
+        mem32[(parentPtr + 12) / 4] = childPtr;
       } else if (this.exports.ast_appendChild) {
         // Fallback: let WASM walk the chain (cold path)
         this.exports.ast_appendChild(parentPtr, childPtr);
@@ -1666,7 +1591,7 @@ export class LspFacade {
     const getChildren = (ptr: number): { ptr: number; field: string | null }[] => {
       const mem32 = getMem32();
       const children: { ptr: number; field: string | null }[] = [];
-      const firstChild = mem32[(ptr + 8) / 4];
+      const firstChild = mem32[(ptr + 12) / 4];
       let curr = firstChild;
       const typeFlags = mem32[ptr / 4];
       const parentTypeId = typeFlags & 0x03ff;
@@ -1681,7 +1606,7 @@ export class LspFacade {
         }
         const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
         children.push({ ptr: curr, field });
-        curr = getMem32()[(curr + 12) / 4];
+        curr = getMem32()[(curr + 16) / 4];
         childIndex++;
       }
       return children;
@@ -1703,7 +1628,7 @@ export class LspFacade {
 
       let nodePtr = startPtr;
       let parentField: string | null = null;
-      let childPtr = getMem32()[(nodePtr + 8) / 4];
+      let childPtr = getMem32()[(nodePtr + 12) / 4];
       let childIndex = 0;
       let step = 0;
       let slowPtr = childPtr;
@@ -1737,7 +1662,7 @@ export class LspFacade {
               : childRawPad;
 
           const childLen = childEnvHashPadding & 0x007fffff;
-          const hasChildren = mem32[(childPtr + 8) / 4] !== 0;
+          const hasChildren = mem32[(childPtr + 12) / 4] !== 0;
 
           if (isInvisible) {
             if (hasChildren) {
@@ -1745,15 +1670,15 @@ export class LspFacade {
               stack.push({
                 nodePtr,
                 parentField,
-                childPtr: mem32[(childPtr + 12) / 4],
+                childPtr: mem32[(childPtr + 16) / 4],
                 childIndex: childIndex + 1,
                 step: step + 1,
-                slowPtr: step % 2 === 1 ? mem32[(slowPtr + 12) / 4] : slowPtr,
+                slowPtr: step % 2 === 1 ? mem32[(slowPtr + 16) / 4] : slowPtr,
               });
 
               nodePtr = childPtr;
               parentField = field;
-              childPtr = mem32[(nodePtr + 8) / 4];
+              childPtr = mem32[(nodePtr + 12) / 4];
               childIndex = 0;
               step = 0;
               slowPtr = childPtr;
@@ -1766,8 +1691,8 @@ export class LspFacade {
             currentAccumulatedPad = 0;
           }
 
-          childPtr = mem32[(childPtr + 12) / 4];
-          if (step % 2 === 1) slowPtr = mem32[(slowPtr + 12) / 4];
+          childPtr = mem32[(childPtr + 16) / 4];
+          if (step % 2 === 1) slowPtr = mem32[(slowPtr + 16) / 4];
           step++;
           childIndex++;
         } else {
@@ -2038,7 +1963,7 @@ export class SyntaxNode {
     const kids: SyntaxNode[] = [];
     const stack: { nextChildPtr: number; nextOffset: number }[] = [];
 
-    let currentChildPtr = mem32[(this.ptr + 8) / 4];
+    let currentChildPtr = mem32[(this.ptr + 12) / 4];
     let currentOffset = this._startOffset + this._cachedPad;
 
     while (true) {
@@ -2056,12 +1981,12 @@ export class SyntaxNode {
         const len = envHashPadding & 0x007fffff;
         const isInvisible = (typeFlags & (1 << 12)) !== 0;
 
-        const nextChildPtr = mem32[(currentChildPtr + 12) / 4];
+        const nextChildPtr = mem32[(currentChildPtr + 16) / 4];
         const nextOffset = currentOffset + pad + len;
 
         if (name.startsWith("_") || isInvisible) {
           stack.push({ nextChildPtr, nextOffset });
-          currentChildPtr = mem32[(currentChildPtr + 8) / 4];
+          currentChildPtr = mem32[(currentChildPtr + 12) / 4];
           currentOffset = currentOffset + pad;
           continue;
         } else {

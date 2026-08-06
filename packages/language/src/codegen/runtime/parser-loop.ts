@@ -20,7 +20,7 @@ import {
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
-    getNodeEnvHash, getInputBuffer,
+    getNodeEnvHash, getNodeStartState, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2
 } from "./arena";
 import { UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedInt32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
@@ -664,7 +664,8 @@ function sanitizeTree(root: u32): void {
       let childType = getNodeType(child);
       let nextSib = getNodeNextSibling(child);
 
-      if (childType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
+      let cleanType = childType & 0x7FFF;
+      if (cleanType > (SYMBOL_COUNT as u16) && childType != TOKEN_EOF) {
         // Corrupt node: REMOVE it by unlinking from the chain.
         if (!isNodeGen2(node) || (prevChild != 0 && !isNodeGen2(prevChild))) {
           // Cannot mutate Gen1 nodes. Leave as is.
@@ -2905,8 +2906,9 @@ export function advanceGLR(): void {
         expectedPadding
       );
       if (reusedNode != 0) {
-        
-      } else {
+        let freshReuse = deepCloneSubtree(reusedNode, 0);
+        if (freshReuse != 0) reusedNode = freshReuse;
+        setNodePadding(reusedNode, expectedPadding);
       }
     }
 
@@ -3198,9 +3200,9 @@ export function advanceGLR(): void {
       // Clear expected tokens to allow the lexer to match any keyword or symbol
       // during the lookahead simulation in recovery functions.
       memory.fill(changetype<usize>(expected_tokens), 1, 2048);
-      recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
+      let recSuccess = recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
 
-      if (g_configIslandMode) {
+      if (g_configIslandMode && !recSuccess) {
         recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
       }
       
@@ -3305,16 +3307,17 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   bestAcceptingHead = 0;
   acceptedNode = 0;
   bestAcceptedCost = 999999;
-  bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
+bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
   bestAcceptedCount = 0xffffffff; // Track GSS fragmentation (fewer is better)
   bestAcceptedPad = 0xffffffff; // Track leftmost match padding (smaller is better)
   lastBestCost = 999999;
   lastIterCount = 0;
   globalLoopIterations = 0;
-
+  logInt(100000 + (oldTree != 0 ? 1 : 0));
   advanceGLR();
+  logInt(200000 + acceptedNode);
 
-    if (acceptedNode != 0) {
+  if (acceptedNode != 0) {
     if (bestAcceptingHead != 0) {
       let bah = changetype<ParseHead>(bestAcceptingHead);
       commitDiagnostics(bah.errorTail);
@@ -3325,6 +3328,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       clearAstMarks(finalTree);
       return finalTree;
   }
+  logInt(300000 + bestDyingHead);
   if (bestDyingHead != 0) {
     // ----------------------------------------------------------------------
     // CATASTROPHIC FAILURE FALLBACK
@@ -3443,7 +3447,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   }
   return 0;
 }
-
 function clearSubtreeErrorFlags(nodePtr: u32): void {
   if (nodePtr == 0) return;
   let typeFlags = getNodeFlags(nodePtr);
@@ -3456,7 +3459,6 @@ function clearSubtreeErrorFlags(nodePtr: u32): void {
     child = getNodeNextSibling(child);
   }
 }
-
 /**
  * Searches the old incremental tree for a sub-tree that matches the current parsing
  * state and hasn't been modified by the user's edits.
@@ -3500,7 +3502,9 @@ export function findReusableNode(
     let nodeType = getNodeType(cPtr);
 
     if (absContentEnd <= targetSrcOldPos) {
-      if (!globalCursorGotoNextSibling()) {
+      if (globalCursorDepth == 0 && getNodeFirstChild(cPtr) != 0) {
+        if (!globalCursorGotoFirstChild()) searching = false;
+      } else if (!globalCursorGotoNextSibling()) {
         if (!globalCursorGotoParent()) searching = false;
         else {
           while (!globalCursorGotoNextSibling()) {
@@ -3527,11 +3531,12 @@ export function findReusableNode(
         let isError = nodeType == 0;
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
         let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
-        if (!isError && !isMissing && nodeEnvHash == envHash) {
+        let nodeStartState = getNodeStartState(cPtr);
+        if (!isError && !isMissing && nodeEnvHash == envHash && nodeStartState == (currentState as u32)) {
             let typeFlags = getNodeFlags(cPtr);
+            let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
             let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
-            if (!isInvisible && (actionLookupFnBool(currentState, nodeType) || stateCanAcceptFnBool(currentState, nodeType))) {
-               clearSubtreeErrorFlags(cPtr);
+            if (!hasErrorFlags && !isInvisible) {
                return cPtr;
             }
         }

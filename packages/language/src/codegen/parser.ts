@@ -15,6 +15,7 @@ import {
   lspCode,
   parserLoopCode,
   recoveryCode,
+  recoveryConfigCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
@@ -713,6 +714,7 @@ export function generateParserTables(
     { filename: "graph.ts", content: generateCodeGraphBridge(originalGrammar) },
     { filename: "parser-loop.ts", content: parserLoopCode },
     { filename: "gss.ts", content: gssCode },
+    { filename: "recovery-config.ts", content: recoveryConfigCode },
     { filename: "recovery.ts", content: recoveryCode },
     { filename: "dae.ts", content: daeCode },
     { filename: "blt.ts", content: bltCode },

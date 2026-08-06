@@ -174,7 +174,7 @@ export const ARENA_BUFFER_SIZE: i32 = 16384;
 export const MAX_LOOKAHEAD_DEPTH: i32 = 6;
 export const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
 export const LOOP_MULTIPLIER_LIMIT: u32 = 100;
-export const MAX_PANIC_SCAN_TOKENS: u32 = 50;
+export const MAX_PANIC_SCAN_TOKENS: u32 = 500;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;
 export const PENALTY_SYNC_TOKEN: i32 = 50;
@@ -435,11 +435,33 @@ export let configEnableBranchT: boolean = true;
 export let configEnableIslandMode: boolean = true;
 
 // Error Recovery Heuristics
-export let configPenaltyUnwindNode: i32 = 500;
-export let configPenaltySyncToken: i32 = 50;
-export let configIslandBasePenalty: i32 = 2000;
-export let configIslandSyncMultiplier: i32 = 10;
-export let configIslandPoppedMultiplier: i32 = 50;
+export {
+  configPenaltyUnwindNode,
+  configPenaltySyncToken,
+  configIslandBasePenalty,
+  configIslandSyncMultiplier,
+  configIslandPoppedMultiplier,
+  COST_SUBSTITUTION_KEYWORD,
+  COST_SUBSTITUTION_STANDARD,
+  COST_SHIFT_TRANSITION,
+  COST_SHIFT_REOPEN_BASE,
+  COST_SHIFT_REOPEN_PER_UNWIND,
+  COST_DELETE_BASE_MULTIPLIER,
+  PENALTY_DELETE_LINE_END_DANGLING,
+  PENALTY_DELETE_NEWLINE_CROSS,
+  PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE,
+  COST_DELETE_DUPLICATE_TOKEN,
+  THRESHOLD_DELETE_SCAN_LIMIT,
+  COST_INSERT_BASE_DEFAULT,
+  PENALTY_INSERT_STRUCTURAL_BRACE,
+  PENALTY_SUBSTITUTION_CROSS_LINE,
+  PENALTY_INSERT_CROSS_LINE,
+  PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE,
+  THRESHOLD_INSERT_MAX_COST,
+  THRESHOLD_PANIC_MODE_CUTOFF,
+  THRESHOLD_HEAD_PRUNING_DISTANCE,
+  COST_ISLAND_INITIAL_SYNC
+} from "./recovery-config";
 
 export let t_lrStateStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 export let t_lrNodeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);

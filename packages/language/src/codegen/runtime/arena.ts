@@ -19,22 +19,26 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
  * Each AST node is allocated a fixed size of 16 bytes.
  *
  * Node Memory Layout:
- * Node Memory Layout:
+ * Node Memory Layout (24 bytes, 8-byte aligned):
  * offset + 0:  type (10 bits) | flags (12 bits) | paddingLength (10 bits)
  * offset + 4:  byteLength (23 bits) | isFatPadding (1 bit) | envHash (8 bits)
- * offset + 8:  firstChild (u32, arena ptr / freeListNext)
- * offset + 12: nextSibling (u32, arena ptr)
+ * offset + 8:  startState (u32, LR parser state)
+ * offset + 12: firstChild (u32, arena ptr / freeListNext)
+ * offset + 16: nextSibling (u32, arena ptr)
+ * offset + 20: pad (u32, 8-byte alignment padding)
  */
 
-const NODE_SIZE: u32 = 16;
+const NODE_SIZE: u32 = 24;
 const GLOBAL_BUMP_PTR: usize = 0;
 
 @unmanaged
 export class ASTNode {
   word0: u32;
   word1: u32;
+  startState: u32;
   firstChild: u32;
   nextSibling: u32;
+  pad: u32;
 
   // --- Core Bitfield Accessors ---
   @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
@@ -432,7 +436,7 @@ export function initArena(sizeBytes: u32): void {
  * @param envHash A structural hash used for rapid comparison and deduplication.
  * @returns A physical memory pointer (u32) to the newly allocated 16-byte node.
  */
-export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false): u32 {
+export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
   let s = S();
   s.allocCount++;
   let ptr: u32 = 0;
@@ -446,7 +450,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     // 2. Perform atomic bump allocation in the currently active generation
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
-    // Atomically claim a 16-byte slot (guaranteed 16-byte aligned by chunk allocators)
+    // Atomically claim a 24-byte slot (8-byte aligned)
     ptr = s.atomicAddOffset(NODE_SIZE);
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
@@ -556,10 +560,20 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let node = changetype<ASTNode>(ptr);
   node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
+  node.startState = startState;
   node.firstChild = 0;
   node.nextSibling = 0;
+  node.pad = 0;
 
   return ptr;
+}
+
+export function getNodeStartState(ptr: u32): u32 {
+  return changetype<ASTNode>(ptr).startState;
+}
+
+export function setNodeStartState(ptr: u32, state: u32): void {
+  changetype<ASTNode>(ptr).startState = state;
 }
 
 /**

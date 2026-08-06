@@ -1695,6 +1695,7 @@ async function runDiagnosticsNow() {
         if (isFullReplacement && fullText !== null) {
             const oldLen = currentTextLength;
             currentTextLength = fullText.length;
+            lspFacade.lastAstRoot = 0;
             globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length);
         } else if (editsToApply.length > 0) {
             let newTotalLen = currentTextLength;
