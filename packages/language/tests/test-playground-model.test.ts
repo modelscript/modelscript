@@ -173,6 +173,30 @@ end model;
     expect(insertedNodes[0].children).toBeDefined();
   });
 
+  it("should trigger AST change listener onNodeRetained and onNodeDeleted during incremental diff", () => {
+    const events: string[] = [];
+    activeFacade.addAstChangeListener({
+      onNodeInserted: () => events.push("inserted"),
+      onNodeDeleted: (ptr: number) => events.push("deleted"),
+      onNodeRetained: (ptr: number) => events.push("retained"),
+      onNodeUpdated: () => events.push("updated"),
+    });
+
+    activeFacade.lastAstRoot = 0;
+    const initialCode = `model M ; Real v = 1 ; end model ;`;
+    const initialAst = activeFacade.parse(initialCode);
+    expect(initialAst).toBeGreaterThan(0);
+
+    // Incremental parse modifying "Real v = 1 ;" to "Real v = 2 ;"
+    const updatedCode = `model M ; Real v = 2 ; end model ;`;
+    events.length = 0;
+    const newAst = activeFacade.parseIncremental(updatedCode, 0, initialCode.length, updatedCode.length);
+
+    expect(newAst).toBeGreaterThan(0);
+    expect(events.length).toBeGreaterThan(0);
+    expect(events).toContain("deleted");
+  });
+
   it("should handle keyword substitution for 'error ElectricalCircuit' and isolate line 1 error leaf", () => {
     const code = `error ElectricalCircuit {
   Real voltage = 12.0;
@@ -214,5 +238,29 @@ end model;
 
     expect(ast).toBeGreaterThan(0);
     expect(duration).toBeLessThan(10); // Expect latency well under 10ms (< 2ms typical)
+  });
+
+  it("should isolate error in 'model ElectricalCircuit { ERROR' on line 1 without bleeding to lines 2-14", () => {
+    const code = `model ElectricalCircuit { ERROR
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end model;
+
+model ThermalSystem {
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end model;
+`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    const nonLine0Diags = diags.filter((d: any) => d.range.start.line > 0);
+    expect(nonLine0Diags.length).toBe(0);
   });
 });

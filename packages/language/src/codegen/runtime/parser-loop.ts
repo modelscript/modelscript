@@ -19,7 +19,7 @@ import {
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
-    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
+    setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
     getNodeEnvHash, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2
 } from "./arena";
@@ -206,6 +206,24 @@ function parseLR(): u32 {
   while (currentParserMode == MODE_LR) {
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     let actionCount = lookupActions(currentState, token);
+
+    if (actionCount == 1 && token != TOKEN_EOF) {
+      let isDeclTok = (token <= MAX_TERMINAL_ID && token_insert_costs[token] >= 50);
+      if (isDeclTok && lrStackDepth > 1) {
+        let topNode = t_lrNodeStack[lrStackDepth - 1];
+        let topType = getNodeType(topNode);
+        let hasNl = false;
+        let pNl = pos;
+        while (pNl < srcLexPos) {
+          let ch = peekChar(pNl);
+          if (ch == 10 || ch == 13) { hasNl = true; break; }
+          pNl += peekCharLen(pNl);
+        }
+        if (hasNl && topType > (MAX_TERMINAL_ID as u16)) {
+          actionCount = 0;
+        }
+      }
+    }
     
     if (actionCount == 0 || actionCount > 1) {
       transitionToGlr(pos, pendingPadding, currentScannerState);
@@ -1023,6 +1041,11 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
 
   if (listSym == 0) {
     listSym = getNodeType(leftNode) != 0 ? getNodeType(leftNode) : getNodeType(rightNode);
+  }
+  if (listSym > (MAX_TERMINAL_ID as u16) && listSym < (prod_is_list.length as u16)) {
+    if (prod_is_list[listSym] != 1) {
+      listSym = 0; // Prevent non-list structural symbols (Equation/Decl) from creating phantom wrapper nodes
+    }
   }
 
   if (leftNode == 0) {
@@ -2000,7 +2023,7 @@ function processAcceptAction(head: ParseHead): void {
       let c_idx = t_count - 1;
       t_curr = head;
       let bestRoot: u32 = 0;
-      let bestRootBytes: u32 = 0;
+      let bestRootType: u16 = 65535;
       while (t_curr) {
         if (t_curr.astNode != 0) {
           let cType = getNodeType(t_curr.astNode);
@@ -2008,9 +2031,9 @@ function processAcceptAction(head: ParseHead): void {
           if (cType != TOKEN_EOF && (cLen > 0 || getNodeFirstChild(t_curr.astNode) != 0)) {
             t_globalChildren[c_idx--] = t_curr.astNode;
             let isNonTerminal = cType > (MAX_TERMINAL_ID as u16);
-            if (cType != NODE_TYPE_ERROR && isNonTerminal && cLen > bestRootBytes) {
+            if (cType != NODE_TYPE_ERROR && isNonTerminal && cType < bestRootType) {
               bestRoot = t_curr.astNode;
-              bestRootBytes = cLen;
+              bestRootType = cType;
             }
           }
         }
@@ -2215,6 +2238,23 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
       continue;
     }
 
+    // Filter: Do not force-reduce across newline boundaries when tokens are missing
+    if (missingCount > 0) {
+      let hasNl = false;
+      let pNl = head.pos;
+      while (pNl < srcLexPos) {
+        let ch = peekChar(pNl);
+        if (ch == 10 || ch == 13) {
+          hasNl = true;
+          break;
+        }
+        pNl += peekCharLen(pNl);
+      }
+      if (hasNl) {
+        continue; // Disallow forced reduction with missing tokens across newlines
+      }
+    }
+
     // Filter: prevent self-referential recursive forced reductions.
     // If missingCount > 0 and needed == 1, popping head.astNode (which already matches lhsSym)
     // to produce another lhsSym node without consuming input causes runaway recursive AST nesting.
@@ -2283,17 +2323,21 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
     let tokenIndex = rOffset + needed + m;
     if (tokenIndex >= 0 && tokenIndex < prod_right_symbols.length) {
       let missingTokenId = prod_right_symbols[tokenIndex];
-      if (missingTokenId >= 0 && missingTokenId < token_insert_costs.length) {
+      if (missingTokenId > MAX_TERMINAL_ID) {
+        dynamicMissingCost += 8000; // Heavy penalty for virtual non-terminals (phantom AST subtrees)
+      } else if (missingTokenId >= 0 && missingTokenId <= MAX_TERMINAL_ID) {
         let baseCost = token_insert_costs[missingTokenId];
         if (baseCost >= 10) {
           dynamicMissingCost += 15000; // Structural closing brace/paren penalty to prevent premature block escape
-        } else if (missingTokenId > MAX_TERMINAL_ID) {
-          dynamicMissingCost += baseCost * 150; // Heavy penalty for virtual non-terminals (phantom AST subtrees)
         } else {
           dynamicMissingCost += baseCost * 50;  // Standard penalty for virtual terminal tokens
         }
       }
     }
+  }
+
+  if (dynamicMissingCost >= 10000) {
+    return false; // Abort forced reduction if missing token cost exceeds budget
   }
 
   let c_idx2 = 99999;
@@ -2417,8 +2461,14 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
   }
 
   if (nextState != -1) {
+    let mrdCost = 0;
+    if (nextState >= 0 && nextState < mrd_data.length) {
+      mrdCost = mrd_data[nextState] * 20;
+      if (mrdCost > 2000) mrdCost = 2000;
+    }
+
     let newHead = allocParseHead(
-      nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + 50,
+      nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + 50 + mrdCost,
       head.successfulShifts, head.balanceHash, head.consecutiveInsertions + missingCount,
       head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
       head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueue3, head.virtualQueue4, head.virtualQueueCount
@@ -3394,6 +3444,19 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   return 0;
 }
 
+function clearSubtreeErrorFlags(nodePtr: u32): void {
+  if (nodePtr == 0) return;
+  let typeFlags = getNodeFlags(nodePtr);
+  if (getNodeType(nodePtr) != 0) {
+    setNodeFlags(nodePtr, (typeFlags & ~((FLAG_HAS_ERROR | FLAG_IS_TAINED) as u32)) as u16);
+  }
+  let child = getNodeFirstChild(nodePtr);
+  while (child != 0) {
+    clearSubtreeErrorFlags(child);
+    child = getNodeNextSibling(child);
+  }
+}
+
 /**
  * Searches the old incremental tree for a sub-tree that matches the current parsing
  * state and hasn't been modified by the user's edits.
@@ -3461,14 +3524,14 @@ export function findReusableNode(
         absContentEnd <= editStart ||
         absContentStart >= editOldEnd
       ) {
-        let isError = nodeType == 0 || (getNodeFlags(cPtr) & FLAG_HAS_ERROR) != 0;
+        let isError = nodeType == 0;
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
         let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
-        
         if (!isError && !isMissing && nodeEnvHash == envHash) {
             let typeFlags = getNodeFlags(cPtr);
             let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
             if (!isInvisible && (actionLookupFnBool(currentState, nodeType) || stateCanAcceptFnBool(currentState, nodeType))) {
+               clearSubtreeErrorFlags(cPtr);
                return cPtr;
             }
         }

@@ -1,6 +1,5 @@
 import {
   atomicChunkAlloc,
-  FLAG_LSP_VISITED,
   FLAG_LSP_TRAVERSED,
   getNodeByteLength,
   getNodeFirstChild,
@@ -8,7 +7,6 @@ import {
   getNodeNextSibling,
   getNodePadding,
   getNodeType,
-  nodeHasError,
   setNodeFlags,
   ast_getTextSpan,
   ast_hashSpan,
@@ -20,10 +18,15 @@ import {
   FLAG_IS_LIST,
   getInputBuffer,
 } from "./arena";
-import { errorCount, getErrorEnd, getErrorStart, NODE_TYPE_ERROR } from "./engine";
-import { inputLength, logInt } from "./parser";
+import { NODE_TYPE_ERROR } from "./engine";
+import { inputLength } from "./parser";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
+
+@inline
+function getEncodingStep(): u32 {
+  return inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+}
 
 // --- LSP Endpoints ---
 
@@ -84,16 +87,8 @@ export function lsp_getBinaryLength(): u32 {
  * Includes logic to merge adjacent or overlapping diagnostics with the same `lintId`.
  * If the buffer capacity is exceeded, it dynamically chunks a larger `t_lspBinaryBuffer`.
  */
-let lastDiagStart: u32 = 0xffffffff;
-let lastDiagEnd: u32 = 0xffffffff;
-let lastLintId: u32 = 0xffffffff;
-
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
   if (t_lspBinaryBuffer.length >= 10000 * 7) return;
-
-  logInt(77700000 + lintId);
-  logInt(start);
-  logInt(end);
 
   t_lspBinaryBuffer.push(start);
   t_lspBinaryBuffer.push(end);
@@ -129,7 +124,10 @@ function flushBinaryBuffer(): void {
     let newCap = t_lspFlatBinaryCapacity;
     if (newCap == 0) newCap = 50000;
     while (newCap < len) newCap *= 2;
-    t_lspFlatBinaryBuffer = changetype<UnmanagedUint32Array>(heap.alloc(newCap * 4));
+    let oldPtr = changetype<usize>(t_lspFlatBinaryBuffer);
+    let newPtr = heap.alloc(newCap * 4);
+    if (oldPtr != 0) heap.free(oldPtr);
+    t_lspFlatBinaryBuffer = changetype<UnmanagedUint32Array>(newPtr);
     t_lspFlatBinaryCapacity = newCap;
   }
   t_lspBinaryBuffer.copyToFlat(changetype<usize>(t_lspFlatBinaryBuffer));
@@ -141,7 +139,11 @@ function pushVisitedNode(node: u32): void {
     if (t_lspVisitedCount >= t_lspVisitedCapacity) {
         let newCap = t_lspVisitedCapacity * 2;
         let newPtr = heap.alloc(newCap * 4);
-        memory.copy(newPtr, changetype<usize>(t_lspVisitedNodes), t_lspVisitedCapacity * 4);
+        let oldPtr = changetype<usize>(t_lspVisitedNodes);
+        if (oldPtr != 0) {
+          memory.copy(newPtr, oldPtr, t_lspVisitedCapacity * 4);
+          heap.free(oldPtr);
+        }
         t_lspVisitedNodes = changetype<UnmanagedUint32Array>(newPtr);
         t_lspVisitedCapacity = newCap;
     }
@@ -157,9 +159,13 @@ function ensureTraverseStack(required: u32): void {
         if (newCap == 0) newCap = required;
         let newTraverse = heap.alloc(newCap * 4);
         let newOffset = heap.alloc(newCap * 4);
-        if (t_lspStackCapacity > 0) {
-           memory.copy(newTraverse, changetype<usize>(t_lspTraverseStack), t_lspStackCapacity * 4);
-           memory.copy(newOffset, changetype<usize>(t_lspOffsetStack), t_lspStackCapacity * 4);
+        let oldTraverse = changetype<usize>(t_lspTraverseStack);
+        let oldOffset = changetype<usize>(t_lspOffsetStack);
+        if (t_lspStackCapacity > 0 && oldTraverse != 0) {
+           memory.copy(newTraverse, oldTraverse, t_lspStackCapacity * 4);
+           memory.copy(newOffset, oldOffset, t_lspStackCapacity * 4);
+           heap.free(oldTraverse);
+           heap.free(oldOffset);
         }
         t_lspTraverseStack = changetype<UnmanagedUint32Array>(newTraverse);
         t_lspOffsetStack = changetype<UnmanagedUint32Array>(newOffset);
@@ -175,9 +181,13 @@ function ensureFindTraverseStack(required: u32): void {
         if (newCap == 0) newCap = required;
         let newTraverse = heap.alloc(newCap * 4);
         let newOffset = heap.alloc(newCap * 4);
-        if (t_lspFindStackCapacity > 0) {
-           memory.copy(newTraverse, changetype<usize>(t_lspFindTraverseStack), t_lspFindStackCapacity * 4);
-           memory.copy(newOffset, changetype<usize>(t_lspFindOffsetStack), t_lspFindStackCapacity * 4);
+        let oldTraverse = changetype<usize>(t_lspFindTraverseStack);
+        let oldOffset = changetype<usize>(t_lspFindOffsetStack);
+        if (t_lspFindStackCapacity > 0 && oldTraverse != 0) {
+           memory.copy(newTraverse, oldTraverse, t_lspFindStackCapacity * 4);
+           memory.copy(newOffset, oldOffset, t_lspFindStackCapacity * 4);
+           heap.free(oldTraverse);
+           heap.free(oldOffset);
         }
         t_lspFindTraverseStack = changetype<UnmanagedUint32Array>(newTraverse);
         t_lspFindOffsetStack = changetype<UnmanagedUint32Array>(newOffset);
@@ -232,10 +242,6 @@ function lsp_clearVisited(): void {
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
 
-  lastDiagStart = 0xffffffff;
-  lastDiagEnd = 0xffffffff;
-  lastLintId = 0xffffffff;
-
   if (astRoot == 0) {
     flushBinaryBuffer();
     return 0;
@@ -272,29 +278,6 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     let nodeEnd = nodeStart + len;
     let type = getNodeType(node);
 
-    // CRITICAL: When GLR error recovery skips unrecognized tokens (such as "ERROR" at line 1 col 1),
-    // the skipped bytes are placed into an ERROR node or absorbed into leading padding.
-    // We scan the byte range for contiguous non-whitespace word tokens and emit a diagnostic
-    // range for each word so Monaco can render exact red squiggles under each unrecognized token.
-    if (pad > 0) {
-      let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
-      let pStart: u32 = 0xffffffff;
-      let pEnd: u32 = 0;
-      for (let i: u32 = 0; i <= pad; i += step) {
-        let c: u32 = i < pad ? peekChar(start + i) : 32;
-        let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
-        if (!isWS) {
-          if (pStart == 0xffffffff) pStart = start + i;
-          pEnd = start + i + step;
-        } else {
-          if (pStart != 0xffffffff && pEnd > pStart) {
-            logInt(291);
-            lsp_allocDiagnostic(pStart, pEnd, 0);
-            pStart = 0xffffffff;
-          }
-        }
-      }
-    }
     let isErrorNode = type == 0;
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
@@ -307,25 +290,55 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
       // Inserted ghost nodes are zero-width phantoms from error recovery.
       // We always emit a diagnostic for them so the user knows what was expected.
       let dStart = nodeStart;
-      let charLen: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
-      let dEnd = dStart + charLen;
+      let step: u32 = getEncodingStep();
+      let dEnd = dStart + step;
+
+      // If this inserted node is a keyword substitution replacing a preceding error token,
+      // anchor the diagnostic range to cover the invalid token (e.g. "error" -> "model")
+      if (nodeStart > 0) {
+        let scanPos = nodeStart;
+        // Skip trailing whitespace backwards to reach the preceding word token
+        let hasNl = false;
+        while (scanPos >= step) {
+          let c = peekChar(scanPos - step);
+          if (c == 10 || c == 13) hasNl = true;
+          let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
+          if (!isWS) break;
+          scanPos -= step;
+        }
+        // If a preceding non-whitespace word token exists without crossing a newline boundary
+        if (!hasNl && scanPos >= step) {
+          let wordEnd = scanPos;
+          let wordStart = wordEnd;
+          while (wordStart >= step) {
+            let c = peekChar(wordStart - step);
+            let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
+            if (isWS) break;
+            wordStart -= step;
+          }
+          if (wordEnd > wordStart) {
+            dStart = wordStart;
+            dEnd = wordEnd;
+          }
+        }
+      }
+
       if (dEnd > inputLength) {
         dEnd = inputLength;
-        if (dEnd > charLen) dStart = dEnd - charLen;
+        if (dEnd > step) dStart = dEnd - step;
         else dStart = 0;
       }
-      logInt(316);
       lsp_allocDiagnostic(dStart, dEnd, type);
     } else if (isErrorNode) {
-      let actualStart = nodeStart;
-      let actualEnd = nodeEnd;
+      let actualStart = (len == 0 && pad > 0) ? start : nodeStart;
+      let actualEnd = (len == 0 && pad > 0) ? start + pad : nodeEnd;
       if (actualEnd <= actualStart && firstChild != 0) {
         let childLen = getNodeByteLength(firstChild);
         if (childLen > 0) {
           actualEnd = actualStart + getNodePadding(firstChild) + childLen;
         }
       }
-      let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+      let step: u32 = getEncodingStep();
       if (actualEnd <= actualStart) {
         let scanOffset: u32 = 0;
         while (actualStart + scanOffset < inputLength) {
@@ -350,16 +363,11 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
           pEnd = actualStart + i + step;
         } else {
           if (pStart != 0xffffffff && pEnd > pStart) {
-            logInt(351);
             lsp_allocDiagnostic(pStart, pEnd, 0);
             pStart = 0xffffffff;
           }
         }
       }
-    } else if (isTainted && isLeaf && len > 0 && !isErrorNode) {
-      // Real token marked as tainted by error recovery.
-      logInt(358);
-      lsp_allocDiagnostic(nodeStart, nodeEnd, 0);
     }
 
     if (!isErrorNode && !inError && !isTainted && !inTainted) {
@@ -421,10 +429,10 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
         
         let passInsertedSibling = comesAfter || (hasInsertedSibling && currChildIdx == 0);
         
-         t_lspTraverseStack[writeIdx] = child;
+        t_lspTraverseStack[writeIdx] = child;
         let nextInError = (isErrorNode || inError);
         let nextInTainted = isTainted || inTainted;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, hasErrorSibling, passInsertedSibling, nextInTainted);
+        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, childHasError, passInsertedSibling, nextInTainted);
         writeIdx--;
         currOffset += cLen;
         if (!isInserted) {
@@ -451,8 +459,10 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
 export function lsp_semanticTokens_full(astRoot: u32): u32 {
   ensureLspBuffers();
 
-
-  if (astRoot == 0) return 0;
+  if (astRoot == 0) {
+    flushBinaryBuffer();
+    return 0;
+  }
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
@@ -471,7 +481,6 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     if ((flags & FLAG_LSP_TRAVERSED) != 0) continue;
     setNodeFlags(node, flags | FLAG_LSP_TRAVERSED);
 
-    
     pushVisitedNode(node);
 
     let pad = getNodePadding(node);
@@ -480,17 +489,11 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     let isErrorNode = type == 0;
     let nodeStart = start + pad;
 
-    // Skip semantic token emission for:
-    // 1. ERROR nodes (type == 0) — no valid grammar structure
-    // 2. Nodes inside error subtrees (inError) — unreliable offsets
-    // 3. Nodes with FLAG_HAS_ERROR — contain error recovery artifacts
-    // 4. Nodes with any FLAG_IS_INSERTED child — Deletion Recovery
-    //    inserted ghost tokens that shift child positions incorrectly
     let hasError = (flags & FLAG_HAS_ERROR) != 0;
     
     let semOffset: i32 = -1;
     // @ts-ignore
-    if (!isErrorNode && (type as i32) <= MAX_SYMBOL_ID) {
+    if (!isErrorNode && !hasError && (type as i32) <= MAX_SYMBOL_ID) {
       // @ts-ignore
       semOffset = load<i32>(type_semantics + type * 4);
     }
@@ -513,9 +516,6 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           let cType = getNodeType(child);
           let cFlags = getNodeFlags(child);
           let cLen = getNodeByteLength(child);
-          // Skip error nodes and tainted nodes from the child index count.
-          // Error nodes pulled in by isPureErrorNode recovery reductions are
-          // not grammar-compiled children, so counting them corrupts childIdx.
           let isExtra = cType == NODE_TYPE_ERROR;
           
           let effectivePad = isFirstChild ? 0 : cPad;
@@ -545,20 +545,13 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
           }
           let cLen = getNodeByteLength(targetChild);
           if (cLen > 0) {
-  
-            // Clamp offset + length to inputLength to prevent out-of-bounds tokens
-            // that would cause Monaco to reject the entire semantic tokens response
             if (childOffset > inputLength) continue;
             if (cLen > inputLength || childOffset + cLen > inputLength || childOffset + cLen < childOffset) {
               cLen = inputLength - childOffset;
             }
             
-            // CRITICAL FIX: Truncate cLen to the first newline. 
-            // Monaco and LSP do not support multiline tokens. A token spanning multiple lines 
-            // (e.g. from error recovery swallowing the file) will have a huge length, causing the 
-            // delta-encoder to skip all subsequent tokens in the file because they "overlap".
             let maxLen = cLen;
-            let step: u32 = inputEncoding == 0 ? 1 : (inputEncoding <= 2 ? 2 : 4);
+            let step: u32 = getEncodingStep();
             for (let i: u32 = 0; i < cLen; i += step) {
                let c = peekChar(childOffset + i);
                if (c == 10 || c == 13) {
@@ -682,8 +675,10 @@ function swapSemanticTokens(flatPtr: usize, a: u32, b: u32): void {
 export function lsp_getFoldingRanges(astRoot: u32): u32 {
   ensureLspBuffers();
 
-
-  if (astRoot == 0) return 0;
+  if (astRoot == 0) {
+    flushBinaryBuffer();
+    return 0;
+  }
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
@@ -764,8 +759,10 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 export function lsp_getDocumentSymbols(astRoot: u32): u32 {
   ensureLspBuffers();
 
-
-  if (astRoot == 0) return 0;
+  if (astRoot == 0) {
+    flushBinaryBuffer();
+    return 0;
+  }
   globalAstRoot = astRoot;
 
   let stackTop: u32 = 0;
@@ -899,13 +896,13 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     
     let child = getNodeFirstChild(node);
     if (child != 0) {
-       ensureTraverseStack(stackTop + 1);
       let currOffset: u32 = tokenStart;
       while (child != 0) {
           let cPad = getNodePadding(child);
           let cLen = getNodeByteLength(child);
           let cFullEnd: u32 = currOffset + cPad + cLen;
           if (targetOffset >= currOffset && targetOffset <= cFullEnd) {
+             ensureTraverseStack(stackTop + 1);
              t_lspTraverseStack[stackTop] = child;
              t_lspOffsetStack[stackTop] = currOffset;
              stackTop++;
@@ -1002,8 +999,8 @@ export function lsp_getDefinition(rootNode: u32, targetOffset: u32): u32 {
    
    ensureLspBuffers();
    
-   t_lspBinaryBuffer.push(start as u32);
-   t_lspBinaryBuffer.push(end as u32);
+   t_lspBinaryBuffer.push(start);
+   t_lspBinaryBuffer.push(end);
    flushBinaryBuffer();
    return 2;
 }
@@ -1060,16 +1057,18 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
          }
       }
       
-      if (child == 0) {
-         // Leaf node, nothing more to push
-      } else {
+      if (child != 0) {
+         let childCount = 0;
+         let countChild = child;
+         while (countChild != 0) {
+            childCount++;
+            countChild = getNodeNextSibling(countChild);
+         }
+         ensureTraverseStack(stackTop + childCount);
          let currOffset = offset + pad;
-         // Push children in reverse order so they are processed left-to-right
-         // We can do this with a secondary loop or just traverse, order doesn't matter for references
          while (child != 0) {
             let cPad = getNodePadding(child);
             let cLen = cPad + getNodeByteLength(child);
-            ensureTraverseStack(stackTop + 1);
             t_lspTraverseStack[stackTop] = child;
             t_lspOffsetStack[stackTop] = currOffset;
             stackTop++;

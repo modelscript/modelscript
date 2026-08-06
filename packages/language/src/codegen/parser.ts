@@ -195,8 +195,18 @@ export function generateParserTables(
       sym.toLowerCase().includes("end")
     ) {
       tokenInsertCosts[symId] = 50; // Structural block delimiters are expensive to insert to prevent premature block escape/insertion
-    } else if (sym.startsWith('"') && sym.match(/^"[^a-zA-Z0-9_]+"$/)) {
-      tokenInsertCosts[symId] = 1;
+    } else if (sym.startsWith('"')) {
+      const cleanOp = sym.replace(/^"|"$/g, "");
+      if (
+        ["*", "/", "+", "-", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "&", "|", "^"].includes(cleanOp) ||
+        /^[a-zA-Z_]/.test(cleanOp)
+      ) {
+        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50+) for binary operators, keywords, and types
+      } else if (cleanOp === ";" || cleanOp === "," || cleanOp === ":") {
+        tokenInsertCosts[symId] = 1; // Low cost for structural punctuation ; , :
+      } else {
+        tokenInsertCosts[symId] = 4;
+      }
     } else if (sym.startsWith('"') || sym.startsWith("/")) {
       const freq = terminalFreq.get(sym) || 0;
       if (freq >= 5) {

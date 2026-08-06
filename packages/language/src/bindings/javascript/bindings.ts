@@ -294,7 +294,7 @@ export const FIELD_NAMES: Record<string, number> =
   typeof __FIELD_NAMES_LITERAL__ !== "undefined" ? __FIELD_NAMES_LITERAL__ : {};
 
 export interface AstChangeListener {
-  onNodeRetained(ptr: number): void;
+  onNodeRetained(ptr: number, flags?: number): void;
   onNodeDeleted(ptr: number): void;
   onNodeInserted(
     ptr: number,
@@ -482,8 +482,29 @@ export class LspFacade {
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    const wasIncremental = this.lastAstRoot !== 0;
+    let newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    // -----------------------------------------------------------------------
+    // Incremental reparse fallback: if the incremental parse produced stale
+    // error artifacts (ERROR children or zero-width inserted ghost nodes at
+    // the root level), retry with a full reparse. If the full reparse is
+    // clean, use it instead. This handles cases where the old tree's corrupt
+    // structure (from a previous error) bleeds through subtree reuse.
+    // -----------------------------------------------------------------------
+    if (wasIncremental && newAstRoot !== 0) {
+      const hasStaleErrors = this._hasTopLevelErrors(newAstRoot);
+      if (hasStaleErrors) {
+        // Try a full reparse with no old tree
+        const fullReparseRoot = this.exports.parse(0, 0, 0, 0);
+        if (fullReparseRoot !== 0 && !this._hasTopLevelErrors(fullReparseRoot)) {
+          // Full reparse is clean — the errors were stale artifacts
+          newAstRoot = fullReparseRoot;
+        }
+        // else: errors are real, keep the incremental result
+      }
+    }
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -511,6 +532,40 @@ export class LspFacade {
     }
 
     return this.lastAstRoot;
+  }
+
+  /**
+   * Checks whether the AST root has top-level ERROR nodes (type == 0) or
+   * zero-width inserted ghost nodes among its direct children.
+   * Reads the WASM linear memory directly for O(k) cost where k = number of
+   * root children.
+   *
+   * Node layout (16 bytes):
+   *   word0: type(10) | flags(12) | padding(10)
+   *   word1: byteLen(23) | fatPad(1) | envHash(8)
+   *   word2: firstChild (u32)
+   *   word3: nextSibling (u32)
+   */
+  private _hasTopLevelErrors(astRoot: number): boolean {
+    if (astRoot === 0) return false;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let childPtr = mem32[(astRoot + 8) >>> 2]; // firstChild
+    while (childPtr !== 0) {
+      const w0 = mem32[childPtr >>> 2];
+      const nodeType = w0 & 0x03ff;
+      const flags = (w0 >>> 10) & 0x0fff;
+      const w1 = mem32[(childPtr + 4) >>> 2];
+      const byteLen = w1 & 0x007fffff;
+
+      // ERROR node (type 0)
+      if (nodeType === 0) return true;
+
+      // Zero-width inserted ghost node (FLAG_IS_INSERTED=0x100, byteLen=0)
+      if (byteLen === 0 && (flags & 0x100) !== 0) return true;
+
+      childPtr = mem32[(childPtr + 12) >>> 2]; // nextSibling
+    }
+    return false;
   }
 
   /**
@@ -617,8 +672,20 @@ export class LspFacade {
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
+    const wasIncremental = this.lastAstRoot !== 0;
+    let newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    // Same incremental fallback as parseIncremental
+    if (wasIncremental && newAstRoot !== 0) {
+      const hasStaleErrors = this._hasTopLevelErrors(newAstRoot);
+      if (hasStaleErrors) {
+        const fullReparseRoot = this.exports.parse(0, 0, 0, 0);
+        if (fullReparseRoot !== 0 && !this._hasTopLevelErrors(fullReparseRoot)) {
+          newAstRoot = fullReparseRoot;
+        }
+      }
+    }
 
     if (this.astListeners && this.astListeners.length > 0) {
       if (this.lastAstRoot !== 0) {
@@ -1775,7 +1842,9 @@ export class LspFacade {
     ): void => {
       if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
       if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
-        listener.onNodeRetained(newPtr);
+        const mem32r = getMem32();
+        const retFlags = (mem32r[newPtr / 4] >> 10) & 0x0fff;
+        listener.onNodeRetained(newPtr, retFlags);
         return;
       }
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
@@ -1836,7 +1905,9 @@ export class LspFacade {
       let start = 0;
       while (start < oldCh.length && start < newCh.length && oldCh[start].ptr === newCh[start].ptr) {
         if (oldCh[start].invisiblePad !== newCh[start].invisiblePad) break;
-        listener.onNodeRetained(newCh[start].ptr);
+        const mem32s = getMem32();
+        const sFlags = (mem32s[newCh[start].ptr / 4] >> 10) & 0x0fff;
+        listener.onNodeRetained(newCh[start].ptr, sFlags);
         start++;
       }
 
@@ -1861,7 +1932,9 @@ export class LspFacade {
       }
 
       for (let i = newEnd + 1; i < newCh.length; i++) {
-        listener.onNodeRetained(newCh[i].ptr);
+        const mem32e = getMem32();
+        const eFlags = (mem32e[newCh[i].ptr / 4] >> 10) & 0x0fff;
+        listener.onNodeRetained(newCh[i].ptr, eFlags);
       }
     };
 

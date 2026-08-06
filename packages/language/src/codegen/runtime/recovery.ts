@@ -308,6 +308,9 @@ function getInsertCost(tok: i32): i32 {
 @inline
 function getDeleteCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_delete_costs.length) return 10;
+  if (tok <= MAX_TERMINAL_ID && token_insert_costs[tok] >= 50) {
+    return 15000; // Structural keywords/delimiters are expensive to delete to prevent code destruction
+  }
   return token_delete_costs[tok];
 }
 
@@ -376,7 +379,7 @@ export function recoverUnwindAndMutate(
           // ------------------------------------------------------------
           // Branch R (Re-open Premature Empty Block):
           // ------------------------------------------------------------
-          if (unwindCurr.astNode != 0 && unwindCurr.prev != null) {
+          if (unwindDepth == 0 && unwindCurr.astNode != 0 && unwindCurr.prev != null) {
             let hp = unwindCurr.prev;
             if (hp != null) {
               let topNode = unwindCurr.astNode;
@@ -465,7 +468,7 @@ export function recoverUnwindAndMutate(
                         setNextSibling(tNode1, tNode2);
                         setNodeFlags(errNodeT, getNodeFlags(errNodeT) | FLAG_HAS_ERROR);
 
-                        let newTailT = pushDiagnostic(head.errorTail, srcLexPos, pos3);
+                        let newTailT = pushDiagnostic(head.errorTail, initialSrcLexPos, pos3);
 
                         let mergedNodeT = unwindCurr.astNode != 0 ? concatLists(unwindCurr.astNode, errNodeT, getNodeType(unwindCurr.astNode), 0) : errNodeT;
 
@@ -523,7 +526,7 @@ export function recoverUnwindAndMutate(
                 let aIdxS = actIdxS + 2;
                 actIdxS += 2 + actCountS * 2;
                 
-                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
+                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (token > MAX_TERMINAL_ID || token_insert_costs[token] < 50)) {
                   let shiftTargetS = -1;
                   for (let j = 0; j < actCountS; j++) {
                     let aTypeS = action_data[aIdxS++];
@@ -538,6 +541,20 @@ export function recoverUnwindAndMutate(
                     let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                     if (simS > 0) {
                       let subCost = head.errorCost + 25;
+                      let hasNlS = false;
+                      let p_nlS = srcLexPos;
+                      while (p_nlS < posAfterTokenS && p_nlS < inputLength) {
+                        let ch = peekChar(p_nlS);
+                        if (ch == 10 || ch == 13) {
+                          hasNlS = true;
+                          break;
+                        }
+                        p_nlS += peekCharLen(p_nlS);
+                      }
+                      if (hasNlS) {
+                        subCost += 20000; // Heavily penalize substituting tokens across line boundaries to prevent keyword-to-operator pollution
+                      }
+
                       if (bestAcceptedCost >= 20000 || subCost < bestAcceptedCost) {
                           let errLeafS = allocNode(((token == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : token) | 0x8000) as u16, 0, lexLen, 0, false);
                           setNodeFlags(errLeafS, getNodeFlags(errLeafS) | FLAG_HAS_ERROR);
@@ -624,7 +641,13 @@ export function recoverUnwindAndMutate(
               }
               p_nl += peekCharLen(p_nl);
             }
-            if (hasNewline) baseDelCost += 4000; // Heavily penalize merging lines via deletion
+             if (hasNewline) {
+               if (unwindDepth == 0) {
+                 baseDelCost += 100; // Low penalty for discarding dangling token at line end
+               } else {
+                 baseDelCost += 4000; // Heavily penalize merging lines via deletion across deeper unwinds
+               }
+             }
 
             if (lexLen == 1 && lexPos < inputLength) {
               let c = changetype<UnmanagedUint8Array>(getInputBuffer())[lexPos];
@@ -684,7 +707,7 @@ export function recoverUnwindAndMutate(
               setSrcLexPos(searchPos);
               setCurrentScannerState(stateBeforeLex);
 
-              let tokenEndPos = srcLexPos + lexLen;
+              let tokenEndPos = srcLexPos + nextTokenLen;
 
               setLexPos(savedLexPos);
               setLexLen(savedLexLen);
@@ -710,7 +733,10 @@ export function recoverUnwindAndMutate(
                 // velocity matches Identifier but ';' doesn't match '=').
                 let weakRecovery: bool = false;
                 if (tokenEndPos < inputLength) {
-                  // Disabled 2-token validation to test if it's the culprit
+                  let simA1 = simulateLookahead(unwindCurr, null, 0, nextToken, tok2, -1, 999999, 2, a1NextScanPos, nextTokenLen);
+                  if (simA1 == 0) {
+                    weakRecovery = true;
+                  }
                 }
 
                 let currChild: ParseHead | null = head;
@@ -947,6 +973,21 @@ export function recoverUnwindAndMutate(
               let uPos = unwindCurr.pos;
               let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
               let retroCost = (unwindDepth as i32) * configPenaltyUnwindNode + (bDropped as i32);
+              
+              let hasNlB = false;
+              let p_nlB = uPos;
+              while (p_nlB < laScanPos && p_nlB < inputLength) {
+                let ch = peekChar(p_nlB);
+                if (ch == 10 || ch == 13) {
+                  hasNlB = true;
+                  break;
+                }
+                p_nlB += peekCharLen(p_nlB);
+              }
+              if (hasNlB) {
+                retroCost += 10000; // Disallow inserting tokens across line boundaries during recovery
+              }
+
               actualCost += retroCost;
 
               if (actualCost < 10000 && (bestAcceptedCost >= 20000 || (head.errorCost + actualCost) < bestAcceptedCost)) {

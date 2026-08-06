@@ -1046,6 +1046,12 @@ end model;\`;
                                         nodeMap.current.delete(oldPtr);
                                     }
                                     hasUpdates = true;
+                                } else if (op === 4) { // RETAINED_FLAG_UPDATE
+                                    const existingNode = nodeMap.current.get(ptr);
+                                    if (existingNode && existingNode.flags !== flags) {
+                                        nodeMap.current.set(ptr, { ...existingNode, flags });
+                                        hasUpdates = true;
+                                    }
                                 }
                             }
                         }
@@ -1862,7 +1868,11 @@ self.onmessage = async (e) => {
             lspFacade.addAstChangeListener({
                 onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
                 onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, 0, null),
-                onNodeRetained: (ptr) => {},
+                onNodeRetained: (ptr, flags) => {
+                    if (flags !== undefined) {
+                        pushPatch(4, ptr, 0, ptr, 0, 0, flags, null);
+                    }
+                },
                 onNodeUpdated: (newPtr, oldPtr, typeId, typeName, pad, len, flags, children) => pushPatch(2, newPtr, typeId, oldPtr, pad, len, flags, children)
             });
 

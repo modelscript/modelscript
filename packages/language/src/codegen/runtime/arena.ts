@@ -1512,9 +1512,13 @@ export function clearAstMarks(rootToKeep: u32): void {
         node.freeListNext = S().freeNodeHead;
         S().freeNodeHead = ptr;
       } else {
-        // Node is live: clear the GC and LSP flags for the next cycle
+        // Node is live: clear GC, LSP, error, and taint flags for the next cycle
         lastLivePtr = ptr + NODE_SIZE;
-        node.clearFlag(FLAG_GC_MARK | FLAG_LSP_VISITED);
+        if (node.type != 0) {
+          node.clearFlag((FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_HAS_ERROR | FLAG_IS_TAINED) as u16);
+        } else {
+          node.clearFlag((FLAG_GC_MARK | FLAG_LSP_VISITED) as u16);
+        }
       }
     }
   }
