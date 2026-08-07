@@ -6,7 +6,7 @@ import { DaeBuilder, ExprKind, BinOp, UnaryOp, EXPR_STRIDE, EXPR_KIND, EXPR_DATA
  */
 @inline
 export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
-  if (exprId == 0xffffffff) return 0.0;
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return 0.0;
 
   let offset = exprId * EXPR_STRIDE;
   let kind = dae.exprData.get(offset + EXPR_KIND);
@@ -50,6 +50,26 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
     if (op == BinOp.Pow || op == BinOp.ElemPow) return Math.pow(lVal, rVal);
   }
 
+  if (kind == ExprKind.Call) {
+    let funcId = dae.exprData.get(offset + EXPR_DATA1);
+    let arg1 = dae.exprData.get(offset + EXPR_LEFT);
+    let arg2 = dae.exprData.get(offset + EXPR_RIGHT);
+
+    let v1 = evalExpr(arg1, dae, varValuesPtr);
+    let v2 = evalExpr(arg2, dae, varValuesPtr);
+
+    if (funcId == 1) return Math.abs(v1);
+    if (funcId == 2) return Math.sqrt(v1);
+    if (funcId == 3) return Math.sin(v1);
+    if (funcId == 4) return Math.cos(v1);
+    if (funcId == 5) return Math.exp(v1);
+    if (funcId == 6) return Math.log(v1);
+    if (funcId == 7) return Math.floor(v1);
+    if (funcId == 8) return Math.ceil(v1);
+    if (funcId == 9) return Math.min(v1, v2);
+    if (funcId == 10) return Math.max(v1, v2);
+  }
+
   return 0.0;
 }
 
@@ -58,6 +78,7 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
  */
 @inline
 export function evalEquationResidual(eqId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
+  if (eqId >= dae.eqCount) return 0.0;
   let offset = eqId * EQ_STRIDE;
   let lhsId = dae.eqData.get(offset + EQ_LHS);
   let rhsId = dae.eqData.get(offset + EQ_RHS);

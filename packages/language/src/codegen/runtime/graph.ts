@@ -25,7 +25,7 @@ import {
   ast_bindChildHash, ast_resolveChildByHash,
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
 } from "./arena";
-import { UnmanagedUint32Array } from "./array";
+import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
 import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
@@ -700,4 +700,70 @@ export function packOutline(nameNode: u32, children: boolean): u32 {
     // nameNode is a 16-byte aligned arena pointer, so lowest 4 bits are always 0.
     // We pack 'children' flag into the lowest bit (bit 0).
     return nameNode | (children ? 1 : 0);
+}
+
+@unmanaged
+export class ArenaTopologyGraph {
+  nodeCount: u32;
+  edgeCount: u32;
+  edgesSrc: ChunkedUint32Array;
+  edgesDst: ChunkedUint32Array;
+  edgeFlags: ChunkedUint32Array;
+
+  init(): void {
+    this.nodeCount = 0;
+    this.edgeCount = 0;
+    this.edgesSrc = createChunkedUint32Array(1024);
+    this.edgesDst = createChunkedUint32Array(1024);
+    this.edgeFlags = createChunkedUint32Array(1024);
+  }
+
+  addEdge(src: u32, dst: u32, flags: u32 = 0): void {
+    let idx = this.edgeCount++;
+    this.edgesSrc.set(idx, src);
+    this.edgesDst.set(idx, dst);
+    this.edgeFlags.set(idx, flags);
+    if (src >= this.nodeCount) this.nodeCount = src + 1;
+    if (dst >= this.nodeCount) this.nodeCount = dst + 1;
+  }
+
+  setEdgeFlag(edgeIdx: u32, flag: u32): void {
+    let curr = this.edgeFlags.get(edgeIdx);
+    this.edgeFlags.set(edgeIdx, curr | flag);
+  }
+
+  hasEdgeFlag(edgeIdx: u32, flag: u32): boolean {
+    return (this.edgeFlags.get(edgeIdx) & flag) != 0;
+  }
+
+  getConnectedComponents(componentMap: ChunkedInt32Array): u32 {
+    let n = this.nodeCount;
+    for (let i: u32 = 0; i < n; i++) {
+      componentMap.set(i, -1);
+    }
+    let clusterCount: u32 = 0;
+
+    for (let i: u32 = 0; i < n; i++) {
+      if (componentMap.get(i) != -1) continue;
+      let clusterId = clusterCount++;
+      componentMap.set(i, clusterId);
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (let e: u32 = 0; e < this.edgeCount; e++) {
+          let u = this.edgesSrc.get(e);
+          let v = this.edgesDst.get(e);
+          if (componentMap.get(u) == clusterId && componentMap.get(v) == -1) {
+            componentMap.set(v, clusterId);
+            changed = true;
+          } else if (componentMap.get(v) == clusterId && componentMap.get(u) == -1) {
+            componentMap.set(u, clusterId);
+            changed = true;
+          }
+        }
+      }
+    }
+    return clusterCount;
+  }
 }

@@ -7,6 +7,7 @@ import {
   createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array
 } from "./array";
 import { inputEncoding } from "./parser";
+import { getChildByFieldId } from "./engine";
 
 @external("engine", "debugLog")
 export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
@@ -826,6 +827,18 @@ export function getNodeFirstChild(ptr: u32): u32 {
 
 export function getNodeNextSibling(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).nextSibling;
+}
+
+export function getNodeField(ptr: u32, fieldId: u16): u32 {
+  return getChildByFieldId(ptr, fieldId as i32);
+}
+
+export function getNodeTextSlice(nodePtr: u32, outBuffer: usize): u32 {
+  let len = getNodeByteLength(nodePtr);
+  if (len == 0 || outBuffer == 0) return 0;
+  let src = getInputBuffer() + getNodePadding(nodePtr);
+  memory.copy(outBuffer, src, len);
+  return len;
 }
 
 // ----------------------------------------------------------------------------

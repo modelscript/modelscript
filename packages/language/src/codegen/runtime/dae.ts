@@ -109,6 +109,15 @@ export const VAR_START_LO = 5;
 export const VAR_SHAPE_DIM = 6;
 export const VAR_FLAGS = 7;
 export const FLAG_TEARING_VAR: i32 = 1 << 0;
+export const FLAG_VAR_FLOW: i32 = 1 << 1;
+export const FLAG_VAR_STREAM: i32 = 1 << 2;
+export const FLAG_VAR_STATE: i32 = 1 << 3;
+export const FLAG_VAR_STATE_DER: i32 = 1 << 4;
+export const FLAG_VAR_FIXED: i32 = 1 << 5;
+
+export const FLAG_EQ_INITIAL: i32 = 1 << 0;
+export const FLAG_EQ_OVERCONSTRAINED: i32 = 1 << 1;
+export const FLAG_EQ_STREAM_CONNECT: i32 = 1 << 2;
 
 export const EQ_STRIDE = 4;
 export const EQ_KIND = 0;
@@ -271,6 +280,31 @@ export class DaeBuilder {
     this.stmtData.set(offset + STMT_RIGHT, right);
 
     return idx;
+  }
+
+  @inline
+  setVarFlag(varId: u32, flag: i32): void {
+    if (varId >= this.varCount) return;
+    let offset = varId * VAR_STRIDE + VAR_FLAGS;
+    let curr = this.varData.get(offset);
+    this.varData.set(offset, curr | flag);
+  }
+
+  @inline
+  hasVarFlag(varId: u32, flag: i32): boolean {
+    if (varId >= this.varCount) return false;
+    let offset = varId * VAR_STRIDE + VAR_FLAGS;
+    return (this.varData.get(offset) & flag) != 0;
+  }
+
+  @inline
+  exportDaeBinary(targetBuf: usize): u32 {
+    if (targetBuf == 0) return 0;
+    store<u32>(targetBuf, this.varCount);
+    store<u32>(targetBuf + 4, this.eqCount);
+    store<u32>(targetBuf + 8, this.exprCount);
+    store<u32>(targetBuf + 12, this.stmtCount);
+    return 16;
   }
 
   /**
