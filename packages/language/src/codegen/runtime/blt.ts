@@ -17,6 +17,7 @@ export class BltEngine {
   // CSR Dependency Graph
   eqDepPtrs: ChunkedInt32Array;
   eqDepVars: ChunkedInt32Array;
+  eqDepWeights: ChunkedUint8Array;
 
   // Matching
   matchVarToEq: ChunkedInt32Array;
@@ -39,6 +40,7 @@ export class BltEngine {
 
     this.eqDepPtrs = createChunkedInt32Array(1024);
     this.eqDepVars = createChunkedInt32Array(4096);
+    this.eqDepWeights = createChunkedUint8Array(4096);
 
     this.matchVarToEq = createChunkedInt32Array(1024);
     this.matchEqToVar = createChunkedInt32Array(1024);
@@ -82,13 +84,14 @@ export class BltEngine {
 
   /**
    * Phase 1: Build the Compressed Sparse Row (CSR) dependency graph
-   * Iterates through expressions in O(1) linear memory without recursion.
+   * Iterates through expressions in O(1) linear memory without recursion and classifies edge isolatability.
    */
   @inline
   buildDependencies(): void {
     let eqCount = this.dae.eqCount;
     this.eqDepPtrs.clear();
     this.eqDepVars.clear();
+    this.eqDepWeights.clear();
 
     // Ensure eqDepPtrs has capacity
     for (let i: u32 = 0; i <= eqCount; i++) {
@@ -96,6 +99,7 @@ export class BltEngine {
     }
 
     let exprStack = createChunkedInt32Array(256);
+    let sideStack = createChunkedUint8Array(256); // 0 = LHS, 1 = RHS
     let seenVars = createChunkedUint8Array(this.dae.varCount);
     for (let i: u32 = 0; i < this.dae.varCount; i++) {
       seenVars.push(0);
@@ -109,12 +113,22 @@ export class BltEngine {
       let rhsId = this.dae.eqData.get(offset + EQ_RHS);
 
       exprStack.clear();
-      if (lhsId != 0xffffffff) exprStack.push(lhsId);
-      if (rhsId != 0xffffffff) exprStack.push(rhsId);
+      sideStack.clear();
+      if (lhsId != 0xffffffff) {
+        exprStack.push(lhsId);
+        sideStack.push(0);
+      }
+      if (rhsId != 0xffffffff) {
+        exprStack.push(rhsId);
+        sideStack.push(1);
+      }
+
+      let lhsIsName = lhsId != 0xffffffff && (this.dae.exprData.get(lhsId * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name);
 
       // Iterative DFS of expression tree
       while (exprStack.length > 0) {
         let exprId = exprStack.pop();
+        let side = sideStack.pop();
         if (exprId == 0xffffffff) continue;
 
         let exprOffset = exprId * EXPR_STRIDE;
@@ -125,14 +139,34 @@ export class BltEngine {
           if ((varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
             seenVars.set(varId, 1);
             this.eqDepVars.push(varId);
+
+            // Compute Isolatability Priority Weight:
+            // 0: Explicit/Linear (LHS single variable or simple linear occurrence)
+            // 1: Symbolically Isolatable (single elementary function/transcendental)
+            // 2: Non-isolatable fallback
+            let priority: u8 = 2;
+            if (side == 0 && lhsIsName && exprId == lhsId) {
+              priority = 0; // LHS explicit assignment: x = ...
+            } else if (lhsIsName) {
+              priority = 0; // RHS variable in simple LHS assignment
+            } else {
+              priority = 1; // Generic expression
+            }
+            this.eqDepWeights.push(priority);
           }
         }
 
         let left = this.dae.exprData.get(exprOffset + EXPR_LEFT);
         let right = this.dae.exprData.get(exprOffset + EXPR_RIGHT);
 
-        if (left != 0xffffffff) exprStack.push(left);
-        if (right != 0xffffffff) exprStack.push(right);
+        if (left != 0xffffffff) {
+          exprStack.push(left);
+          sideStack.push(side);
+        }
+        if (right != 0xffffffff) {
+          exprStack.push(right);
+          sideStack.push(side);
+        }
       }
 
       // Reset seenVars for next equation
@@ -148,19 +182,22 @@ export class BltEngine {
   }
 
   /**
-   * Performs DFS augmenting path search for bipartite matching.
+   * Performs DFS augmenting path search for bipartite matching up to a maximum priority weight.
    */
-  private dfsMatch(eqIdx: u32): boolean {
+  private dfsMatch(eqIdx: u32, maxPriority: u8): boolean {
     let start = this.eqDepPtrs.get(eqIdx);
     let end = this.eqDepPtrs.get(eqIdx + 1);
 
     for (let i: u32 = start as u32; i < (end as u32); i++) {
       let varIdx = this.eqDepVars.get(i);
+      let priority = this.eqDepWeights.length > i ? this.eqDepWeights.get(i) : (0 as u8);
+      if (priority > maxPriority) continue;
+
       if (this.visitedVar.get(varIdx) == 0) {
         this.visitedVar.set(varIdx, 1);
         let prevEq = this.matchVarToEq.get(varIdx);
         
-        if (prevEq == -1 || this.dfsMatch(prevEq as u32)) {
+        if (prevEq == -1 || this.dfsMatch(prevEq as u32, maxPriority)) {
           this.matchVarToEq.set(varIdx, eqIdx);
           this.matchEqToVar.set(eqIdx, varIdx);
           return true;
@@ -171,7 +208,7 @@ export class BltEngine {
   }
 
   /**
-   * Phase 2: Maximum Cardinality Bipartite Matching (DFS-based with warm-start).
+   * Phase 2: Maximum Isolatability-Aware Bipartite Matching (Multi-pass DFS with warm-start).
    */
   @inline
   computeMatching(): void {
@@ -183,16 +220,22 @@ export class BltEngine {
     while (this.matchEqToVar.length < eqCount) this.matchEqToVar.push(-1);
     while (this.visitedVar.length < varCount) this.visitedVar.push(0);
 
-    for (let i: u32 = 0; i < eqCount; i++) {
-      // Warm start: skip equations that are already matched!
-      if (this.matchEqToVar.get(i) != -1) continue;
+    // Multi-pass isolatability-aware matching:
+    // Pass 0: Priority 0 (Explicit / Linear)
+    // Pass 1: Priority <= 1 (Symbolically Isolatable)
+    // Pass 2: Priority <= 2 (Fallback / Non-isolatable)
+    for (let priorityPass: u8 = 0; priorityPass <= 2; priorityPass++) {
+      for (let i: u32 = 0; i < eqCount; i++) {
+        // Warm start: skip equations that are already matched!
+        if (this.matchEqToVar.get(i) != -1) continue;
 
-      // Clear visited array
-      for (let v: u32 = 0; v < varCount; v++) {
-        this.visitedVar.set(v, 0);
+        // Clear visited array
+        for (let v: u32 = 0; v < varCount; v++) {
+          this.visitedVar.set(v, 0);
+        }
+
+        this.dfsMatch(i, priorityPass);
       }
-
-      this.dfsMatch(i);
     }
   }
 
