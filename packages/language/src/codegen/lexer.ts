@@ -80,7 +80,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
     const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
     let wResult = grammar.word;
     if (typeof grammar.word === "function") wResult = (grammar as any).word(dummy$ as any);
-    const wordRule = toRule(wResult);
+    const wordRule = toRule(wResult as any);
     if (wordRule.type === "SYMBOL") {
       wordName = wordRule.value as string;
     } else {
@@ -593,16 +593,39 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
         let isWordToken = false;
         if (wordName) {
-          if (tokenName === wordName) {
+          const wordSymInt = normalized.symToInt.get(wordName);
+          if (
+            tokenName.toUpperCase() === wordName.toUpperCase() ||
+            tokenName === wordName ||
+            (wordSymInt !== undefined && tokenName === "T_" + wordSymInt)
+          ) {
             isWordToken = true;
           } else {
             const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
             const wRule = toRule(grammar.rules[wordName](dummy$ as any));
-            const wKey = wRule.value?.toString() || "";
-            const wTokenInt = normalized.symToInt.get(wKey);
-            let wTokenStr = "T_" + wTokenInt;
-            if (wKey === wordName) wTokenStr = wordName;
-            if (wTokenStr === tokenName) isWordToken = true;
+            const checkWordRule = (r: any): boolean => {
+              if (!r) return false;
+              if (r.type === "TOKEN" && r.value) {
+                const strVal = r.value.toString();
+                const mappedInt = normalized.symToInt.get(strVal);
+                if (mappedInt !== undefined && "T_" + mappedInt === tokenName) return true;
+                if (
+                  strVal.toUpperCase() === tokenName.toUpperCase() ||
+                  strVal === tokenName ||
+                  (r as any).name === tokenName
+                )
+                  return true;
+              }
+              if (r.children) {
+                for (const child of r.children) {
+                  if (checkWordRule(child)) return true;
+                }
+              }
+              return false;
+            };
+            if (checkWordRule(wRule)) {
+              isWordToken = true;
+            }
           }
         }
 
@@ -699,7 +722,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       const firstWord = words[0];
       const restWords = words.slice(1).join(" ");
 
-      const tokenInt = normalized.symToInt.get(`"${mwk}"`);
+      const tokenInt = normalized.symToInt.get(`"${mwk}"`) ?? normalized.symToInt.get(mwk);
       if (tokenInt) {
         helpers += `  // "${mwk}"\n`;
         helpers += `  {\n`;

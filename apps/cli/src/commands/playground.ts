@@ -356,6 +356,8 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
             const exampleDSL = \`export default language({
   name: 'SysModel',
 
+  word: $ => $.Identifier,
+
   // 1. Scanner Primitives (Context-sensitive comments & multi-word keywords)
   primitives: {
     nestedComment: { open: '/*', close: '*/' },
@@ -791,20 +793,11 @@ end model;\`;
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
                         console.log("[DIAG-DEBUG] Raw diagnostics from worker:", JSON.stringify(msg.params.diagnostics));
                         const markers = msg.params.diagnostics.map(d => {
-                            let startPos, endPos;
-                            if (d.startCharOffset !== undefined && d.endCharOffset !== undefined) {
-                                startPos = this.model.getPositionAt(d.startCharOffset);
-                                endPos = this.model.getPositionAt(d.endCharOffset);
-                                console.log("[DIAG-DEBUG] Using charOffset:", d.startCharOffset, "->", d.endCharOffset, "=> startPos:", JSON.stringify(startPos), "endPos:", JSON.stringify(endPos));
-                            } else {
-                                startPos = { lineNumber: d.range.start.line + 1, column: d.range.start.character + 1 };
-                                endPos = { lineNumber: d.range.end.line + 1, column: d.range.end.character + 1 };
-                                console.log("[DIAG-DEBUG] Using range fallback:", JSON.stringify(d.range), "=> startPos:", JSON.stringify(startPos), "endPos:", JSON.stringify(endPos));
-                            }
-                            let startLine = startPos.lineNumber;
-                            let startCol = startPos.column;
-                            let endLine = endPos.lineNumber;
-                            let endCol = endPos.column;
+                            let startLine = d.range ? d.range.start.line + 1 : 1;
+                            let startCol = d.range ? d.range.start.character + 1 : 1;
+                            let endLine = d.range ? d.range.end.line + 1 : startLine;
+                            let endCol = d.range ? d.range.end.character + 1 : startCol;
+
                             if (startLine === endLine && startCol === endCol) {
                                 endCol = startCol + 1;
                             }
@@ -1072,6 +1065,9 @@ end model;\`;
                             window['__latestDiagnostics'] = msg.diagnostics;
                             window.dispatchEvent(new Event('diagnosticsUpdated'));
                         }
+                        if (msg.charMult) {
+                            window['__charMult'] = msg.charMult;
+                        }
 
                         setStatus("Parsed AST (Root #" + msg.rootId + ")");
 
@@ -1157,7 +1153,8 @@ end model;\`;
                     else high = mid - 1;
                 }
                 const line = high;
-                const colChars = Math.floor((offsetBytes - lineStarts[line]) / 2);
+                const charMult = window['__charMult'] || 2;
+                const colChars = Math.floor((offsetBytes - lineStarts[line]) / charMult);
                 return { line: line + 1, col: colChars + 1 };
             };
 
@@ -1285,7 +1282,7 @@ end model;\`;
                                                     {isError ? '❌ Error' : '⚠️ Warning'} {d.code ? "[M" + d.code + "]" : ''}
                                                 </span>
                                                 <span style={{ opacity: 0.7, fontFamily: 'monospace', fontSize: '12px' }}>
-                                                    L\${startLine}:\${startCol} - L\${endLine}:\${endCol}
+                                                    L{startLine}:{startCol} - L{endLine}:{endCol}
                                                 </span>
                                             </div>
                                             <div style={{ color: 'var(--color-fg-default)' }}>{d.message}</div>
@@ -1398,7 +1395,7 @@ end model;\`;
 </html>`;
 }
 
-function getCompilerWorkerJs() {
+export function getCompilerWorkerJs() {
   return `
 let Language = null;
 let asc = null;
@@ -1572,7 +1569,7 @@ self.onmessage = async (e) => {
 `;
 }
 
-function getLspWorkerJs() {
+export function getLspWorkerJs() {
   return `
 // LSP Worker (Standalone JSON-RPC without CDNs)
 self.onerror = function(message, source, lineno, colno, error) {
@@ -1653,7 +1650,7 @@ async function runDiagnosticsNow() {
     
     try {
         const lineStarts = lspFacade.getLineStarts();
-        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+        const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
         
         let editsToApply = [];
         let isFullReplacement = false;
@@ -1739,7 +1736,8 @@ async function runDiagnosticsNow() {
             buffer: patchBufToTransfer,
             lineStartsBuffer: lineStartsBuf,
             diagnostics: diags,
-            isFullReset: isFullReplacement
+            isFullReset: isFullReplacement,
+            charMult: charMult
         };
         
         self.postMessage(patchMsg, [patchBufToTransfer]);
@@ -1921,7 +1919,7 @@ self.onmessage = async (e) => {
         const pos = e.data.params.position;
         // offset from pos logic might need lineStarts check, lspFacade provides offsetToPos, but we need posToOffset
         const lineStarts = lspFacade.getLineStarts();
-        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+        const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
         let offset = 0;
         if (pos.line < lineStarts.length) {
             offset = lineStarts[pos.line] + (pos.character * charMult);
@@ -1942,7 +1940,7 @@ self.onmessage = async (e) => {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
         const pos = e.data.params.position;
         const lineStarts = lspFacade.getLineStarts();
-        const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+        const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
         let offset = 0;
         if (pos.line < lineStarts.length) {
             offset = lineStarts[pos.line] + (pos.character * charMult);
@@ -1986,8 +1984,9 @@ self.onmessage = async (e) => {
         const newName = e.data.params.newName;
         const lineStarts = lspFacade.getLineStarts();
         let offset = 0;
+        const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
         if (pos.line < lineStarts.length) {
-            offset = lineStarts[pos.line] + (pos.character * 2);
+            offset = lineStarts[pos.line] + (pos.character * charMult);
         }
         
         // Find all references
@@ -2032,7 +2031,7 @@ self.onmessage = async (e) => {
             
             let startOffset = 0;
             let endOffset = 0xFFFFFFFF;
-            const charMult = (lspFacade.exports.lsp_getInputEncoding && lspFacade.exports.lsp_getInputEncoding() === 1) ? 2 : 1;
+            const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
 
             if (e.data.method === 'textDocument/semanticTokens/range' && e.data.params.range) {
                 const range = e.data.params.range;

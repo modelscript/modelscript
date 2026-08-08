@@ -86,7 +86,7 @@ describe("Multi-File LSP Connector Features", () => {
       engine: {
         debugLog: () => {},
       },
-      parser: { logInt: () => {} },
+      parser: { logInt: (val: number) => console.log("logInt:", val) },
       recovery: {},
       host: { runHostQuery: () => {} },
     };
@@ -115,13 +115,14 @@ describe("Multi-File LSP Connector Features", () => {
 
     activeFacade.lastAstRoot = 0;
     const ast1 = activeFacade.parse(doc1);
+    exports.lsp_registerDocument(fileId1, ast1);
+
+    activeFacade.lastAstRoot = 0;
     const ast2 = activeFacade.parse(doc2);
+    exports.lsp_registerDocument(fileId2, ast2);
 
     expect(ast1).toBeGreaterThan(0);
     expect(ast2).toBeGreaterThan(0);
-
-    exports.lsp_registerDocument(fileId1, ast1);
-    exports.lsp_registerDocument(fileId2, ast2);
 
     expect(exports.lsp_getDocumentRoot(fileId1)).toBe(ast1);
     expect(exports.lsp_getDocumentRoot(fileId2)).toBe(ast2);
@@ -140,6 +141,7 @@ describe("Multi-File LSP Connector Features", () => {
     const ast1 = activeFacade.parse(doc1);
     exports.lsp_registerDocument(fileId1, ast1);
 
+    activeFacade.lastAstRoot = 0;
     const ast2 = activeFacade.parse(doc2);
     console.log("Memory byteLength:", activeFacade.wasmMemory.buffer.byteLength);
     exports.lsp_registerDocument(fileId2, ast2);
@@ -178,14 +180,53 @@ describe("Multi-File LSP Connector Features", () => {
 
     activeFacade.lastAstRoot = 0;
     const ast1 = activeFacade.parse(doc1);
-    const ast2 = activeFacade.parse(doc2);
-
     exports.lsp_registerDocument(fileId1, ast1);
+
+    activeFacade.lastAstRoot = 0;
+    const ast2 = activeFacade.parse(doc2);
     exports.lsp_registerDocument(fileId2, ast2);
 
     if (typeof exports.lsp_revalidateWorkspace === "function") {
       const numDiags = exports.lsp_revalidateWorkspace();
       expect(numDiags).toBeGreaterThan(0);
     }
+  });
+
+  it("should survive GC sweeps and catastrophic fallbacks across multiple documents without memory corruption", () => {
+    // This test specifically validates the fix for the cyclic AST cross-wiring bug.
+    // When a document with a catastrophic error is parsed, it creates nodes.
+    // If those nodes are properly registered as GC roots, subsequent parses won't sweep them
+    // and recycle their memory, preventing cyclic cross-wiring and infinite loops.
+    const fileId1 = 501;
+    const fileId2 = 502;
+    const fileId3 = 503;
+
+    // Doc 1: valid
+    const doc1 = `scope ValidScope { let a = 1; }`;
+    // Doc 2: catastrophic fallback (missing expression)
+    const doc2 = `scope BrokenA { let b = ; }`;
+    // Doc 3: catastrophic fallback (missing closing brace and expression)
+    const doc3 = `scope BrokenB { let c = `;
+
+    activeFacade.lastAstRoot = 0;
+    const ast1 = activeFacade.parse(doc1);
+    exports.lsp_registerDocument(fileId1, ast1); // Register immediately to protect from GC
+
+    activeFacade.lastAstRoot = 0;
+    const ast2 = activeFacade.parse(doc2);
+    exports.lsp_registerDocument(fileId2, ast2);
+
+    activeFacade.lastAstRoot = 0;
+    const ast3 = activeFacade.parse(doc3);
+    exports.lsp_registerDocument(fileId3, ast3);
+
+    // If memory is corrupted or cyclic, the diagnostic extraction will hang in an infinite loop
+    const diags1 = activeFacade.getDiagnostics(ast1);
+    const diags2 = activeFacade.getDiagnostics(ast2);
+    const diags3 = activeFacade.getDiagnostics(ast3);
+
+    // We just want to ensure it survives without infinite loops.
+    // doc1 is valid, so it should have 0 diagnostics.
+    expect(diags1.length).toBe(0);
   });
 });

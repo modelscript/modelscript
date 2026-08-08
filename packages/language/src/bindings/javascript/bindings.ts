@@ -162,7 +162,11 @@ export class WasmRuntime implements RuntimeAdapter {
   }
 
   getInputBuffer(): number {
-    return this.wasmExports.getInputBuffer();
+    return this.wasmExports.getInputBuffer
+      ? this.wasmExports.getInputBuffer()
+      : this.wasmExports.lsp_getInputBuffer
+        ? this.wasmExports.lsp_getInputBuffer()
+        : 0;
   }
   ensureInputBuffer(size: number): number {
     return this.wasmExports.ensureInputBuffer ? this.wasmExports.ensureInputBuffer(size) : this.getInputBuffer();
@@ -373,11 +377,20 @@ export class LspFacade {
     this._childTailCache.clear();
   }
 
+  public getInputEncoding(): number {
+    return this._inputEncoding !== undefined
+      ? this._inputEncoding
+      : this.exports.lsp_getInputEncoding
+        ? this.exports.lsp_getInputEncoding()
+        : 1;
+  }
+
   setParserConfig(
     enableBranchA1: boolean,
     enableBranchB: boolean,
     enableBranchC: boolean,
-    enableIslandMode: boolean,
+    enableIslandMode: boolean = false,
+    enableMultiFile: boolean = true,
   ): void {
     if (this.exports.configEnableBranchA1) {
       this.exports.configEnableBranchA1.value = enableBranchA1 ? 1 : 0;
@@ -391,6 +404,9 @@ export class LspFacade {
     if (this.exports.configEnableIslandMode) {
       this.exports.configEnableIslandMode.value = enableIslandMode ? 1 : 0;
     }
+    if (this.exports.configEnableMultiFile) {
+      this.exports.configEnableMultiFile.value = enableMultiFile ? 1 : 0;
+    }
   }
 
   /**
@@ -402,7 +418,8 @@ export class LspFacade {
    * @param newTotalLength - The new total length of the document in UTF-16 characters.
    */
   parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
-    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    if (!this.exports.parse || !getInputBuf) return 0;
 
     // Invalidate cached line starts on every edit.
     // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
@@ -427,7 +444,7 @@ export class LspFacade {
 
     const oldTotalLength = newTotalLength + rangeLength - changeText.length;
 
-    const oldTextPtr = this.exports.getInputBuffer();
+    const oldTextPtr = getInputBuf();
 
     // Snapshot old buffer contents BEFORE ensureInputBuffer which may grow memory
     // and detach existing typed array views
@@ -760,10 +777,7 @@ export class LspFacade {
   public getLineStarts(): Uint32Array {
     if (this._cachedLineStarts) return this._cachedLineStarts;
 
-    let encoding = 0;
-    if (this.exports.inputEncoding !== undefined) {
-      encoding = this.exports.inputEncoding?.value ?? this.exports.inputEncoding;
-    }
+    const encoding = this.getInputEncoding();
 
     let lenBytes = this.currentInputLength;
     if (encoding === 1) lenBytes *= 2;
@@ -775,9 +789,12 @@ export class LspFacade {
 
     const starts: number[] = [0];
 
+    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    const inputBufPtr = getInputBuf ? getInputBuf() : 0;
+
     if (encoding === 0) {
       const lenChars = lenBytes;
-      const textBuffer = new Uint8Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+      const textBuffer = new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
       for (let i = 0; i < lenChars; i++) {
         const c = textBuffer[i];
         if (c === 13) {
@@ -793,7 +810,7 @@ export class LspFacade {
       }
     } else {
       const lenChars = lenBytes / 2;
-      const textBuffer = new Uint16Array(this.wasmMemory.buffer, this.exports.getInputBuffer(), lenChars);
+      const textBuffer = new Uint16Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
       for (let i = 0; i < lenChars; i++) {
         const c = textBuffer[i];
         if (c === 13) {
@@ -832,12 +849,7 @@ export class LspFacade {
       }
     }
 
-    const encoding =
-      this._inputEncoding !== undefined
-        ? this._inputEncoding
-        : this.exports.lsp_getInputEncoding
-          ? this.exports.lsp_getInputEncoding()
-          : 1;
+    const encoding = this.getInputEncoding();
     const charDiv = encoding === 1 ? 2 : 1;
     const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
@@ -889,17 +901,6 @@ export class LspFacade {
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
-      let childPtr = memory[(ptr + 12) / 4];
-      let slow = childPtr;
-      let step = 0;
-      while (childPtr !== 0) {
-        requiredNodePtrs.add(childPtr);
-        step++;
-        let c = memory[(childPtr + 16) / 4];
-        if (c === slow) break;
-        if (step % 2 === 1) slow = memory[(slow + 16) / 4];
-        childPtr = c;
-      }
       stackPtrs[0] = astRoot;
       stackOffsets[0] = 0;
       stackTop = 1;
@@ -919,7 +920,7 @@ export class LspFacade {
           requiredNodePtrs.delete(ptr);
         }
         let childPtr = memory[(ptr + 12) / 4];
-        let currOffset = tokenStart;
+        let currOffset = currentOffset;
         let slow = childPtr;
         let step = 0;
         while (childPtr !== 0) {
@@ -955,7 +956,22 @@ export class LspFacade {
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
       console.log(
-        `[DIAG-WASM] element[${i / 7}]: startByte=${startByte} endByte=${endByte} lintId=${lintId} args=${arg0},${arg1},${arg2},${arg3}`,
+        "[DIAG-WASM] element[" +
+          i / 7 +
+          "]: startByte=" +
+          startByte +
+          " endByte=" +
+          endByte +
+          " lintId=" +
+          lintId +
+          " args=" +
+          arg0 +
+          "," +
+          arg1 +
+          "," +
+          arg2 +
+          "," +
+          arg3,
       );
 
       let msg = lintId > 0 ? `Linter Rule ${lintId}` : "Syntax Error";
@@ -969,6 +985,8 @@ export class LspFacade {
             name = name.slice(1, -1);
           }
           msg = `Expected '${name}'`;
+          severity = 1; // Syntax parse error (Expected Token) is Error = 1 (Red Squiggle)
+          codeStr = undefined;
         } else if (LINT_MESSAGES[lintId.toString()]) {
           if (LINT_SEVERITIES[lintId.toString()]) {
             severity = LINT_SEVERITIES[lintId.toString()];
@@ -1052,8 +1070,59 @@ export class LspFacade {
         // Range shifting and clamping removed to preserve WASM output
       }
 
+      // Ensure startByte and endByte cover full word tokens so squiggles never cut mid-word
+      const inputEncoding = this.getInputEncoding();
+      const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+      const inputBufPtr = getInputBuf ? getInputBuf() : 0;
+      if (inputBufPtr > 0 && inputEncoding === 1) {
+        const lenBytes = this.exports.inputLength
+          ? typeof this.exports.inputLength.value === "number"
+            ? this.exports.inputLength.value
+            : Number(this.exports.inputLength) || 0
+          : 0;
+        const lenChars = lenBytes / 2;
+        const u16View = new Uint16Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
+
+        let startCharIdx = Math.floor(startByte / 2);
+        while (startCharIdx < lenChars) {
+          const ch = String.fromCharCode(u16View[startCharIdx]);
+          if (ch === "\n" || ch === "\r") break;
+          if (!/\s/.test(ch)) break;
+          startCharIdx++;
+        }
+        if (startCharIdx < lenChars && /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[startCharIdx]))) {
+          while (startCharIdx > 0 && /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[startCharIdx - 1]))) {
+            startCharIdx--;
+          }
+          startByte = startCharIdx * 2;
+        }
+
+        let endCharIdx = Math.floor(endByte / 2);
+        if (
+          endCharIdx > 0 &&
+          endCharIdx <= lenChars &&
+          /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[endCharIdx - 1]))
+        ) {
+          while (endCharIdx < lenChars && /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[endCharIdx]))) {
+            endCharIdx++;
+          }
+          endByte = endCharIdx * 2;
+        }
+      }
+
       let startPos = this.offsetToPos(startByte, lineStarts);
       let endPos = this.offsetToPos(endByte, lineStarts);
+
+      const encoding = this.getInputEncoding();
+      const charDiv = encoding === 1 ? 2 : 1;
+
+      if (startPos.line > 0 && startPos.character === 0 && startByte > 0) {
+        const prevLineStart = lineStarts[startPos.line - 1];
+        const lineLenBytes = lineStarts[startPos.line] - prevLineStart;
+        const prevLineCharLen = Math.floor(lineLenBytes / charDiv);
+        const lastCol = prevLineCharLen > 0 ? prevLineCharLen - 1 : 0;
+        startPos = { line: startPos.line - 1, character: lastCol };
+      }
 
       // Clamp diagnostic ranges to a max of 3 lines to prevent Monaco UI freezes
       // when dealing with unclosed blocks or runaway string literals spanning 100k lines.
@@ -1079,14 +1148,6 @@ export class LspFacade {
       if (endPos.line > startPos.line && endPos.character === 0) {
         endPos = { line: endPos.line - 1, character: startPos.character + 1 };
       }
-
-      const encoding =
-        this._inputEncoding !== undefined
-          ? this._inputEncoding
-          : this.exports.lsp_getInputEncoding
-            ? this.exports.lsp_getInputEncoding()
-            : 1;
-      const charDiv = encoding === 1 ? 2 : 1;
 
       const range = {
         start: startPos,
@@ -1351,8 +1412,10 @@ export class LspFacade {
 
       const posStr = `[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]`;
       const indent = "  ".repeat(depth);
-      const isInvisible = (typeFlags & (1 << 12)) !== 0;
-      const shouldPrint = verbose || (!typeName.startsWith("_") && !typeName.startsWith('"') && !isInvisible);
+      const isInvisible = (typeFlags & (1 << 14)) !== 0;
+      const shouldPrint =
+        verbose ||
+        (!typeName.startsWith("_") && !typeName.startsWith('"') && !typeName.startsWith("node_") && !isInvisible);
 
       let childStrs: string[] = [];
 
@@ -1458,7 +1521,7 @@ export class LspFacade {
 
       const posStr = `<span style="color: #6e7781;">[${startPos.line}, ${startPos.character}] - [${endPos.line}, ${endPos.character}]</span>`;
 
-      const isInvisible = (typeFlags & (1 << 12)) !== 0;
+      const isInvisible = (typeFlags & (1 << 14)) !== 0;
       const shouldPrint = true; // Debug: print all nodes
 
       let renderedChildren = 0;
@@ -1541,15 +1604,14 @@ export class LspFacade {
    * Used as a fallback or for initial parsing.
    */
   parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
-    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
+    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    if (!this.exports.parse || !getInputBuf) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = text.length * 2;
-    const textPtr = this.exports.ensureInputBuffer
-      ? this.exports.ensureInputBuffer(lenBytes)
-      : this.exports.getInputBuffer();
+    const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytes) : getInputBuf();
 
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, text.length);
     for (let i = 0; i < text.length; i++) {
@@ -1665,7 +1727,7 @@ export class LspFacade {
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
           let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
-          const isInvisible = (cTypeFlags & (1 << 12)) !== 0 || typeName.startsWith("_");
+          const isInvisible = (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
 
           const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
           let fieldId = -1;
@@ -2000,7 +2062,7 @@ export class SyntaxNode {
             ? mem32[this.tree.facade.exports.getFatPaddingPtr(rawPad) / 4]
             : rawPad;
         const len = envHashPadding & 0x007fffff;
-        const isInvisible = (typeFlags & (1 << 12)) !== 0;
+        const isInvisible = (typeFlags & (1 << 14)) !== 0;
 
         const nextChildPtr = mem32[(currentChildPtr + 16) / 4];
         const nextOffset = currentOffset + pad + len;

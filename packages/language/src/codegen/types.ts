@@ -15,10 +15,19 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   typeCode += `export enum SyntaxType {\n`;
   typeCode += `  ERROR = 0,\n`;
 
-  // Create reverse mapping from integer ID to symbol string
+  // Create reverse mapping from integer ID to symbol string (preferring human-readable names)
   const intToSym = new Map<number, string>();
   for (const [sym, i] of normalized.symToInt.entries()) {
-    intToSym.set(i, sym);
+    const existing = intToSym.get(i);
+    if (!existing) {
+      intToSym.set(i, sym);
+    } else {
+      const existingIsLiteral = existing.startsWith('"') || existing.startsWith("/");
+      const symIsLiteral = sym.startsWith('"') || sym.startsWith("/");
+      if (existingIsLiteral && !symIsLiteral) {
+        intToSym.set(i, sym);
+      }
+    }
   }
 
   // Output symbols in strict sequential ID order
@@ -51,9 +60,9 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
   }
 
   // Automatically generate shadow SyntaxTypes for any types defined in `model` but not in `rules`
+  let shadowIdx = 10000;
   if (grammar.model) {
     // Start shadow types at a high offset to avoid collision with standard rules
-    let shadowIdx = 10000;
     for (const modelName of Object.keys(grammar.model)) {
       let safeName = modelName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase();
       if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
@@ -62,6 +71,16 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
         emittedNames.add(safeName);
         shadowIdx++;
       }
+    }
+  }
+
+  // Fallback shadow types commonly referenced in codegen/typesys
+  const commonFallbacks = ["IDENTIFIER", "NUMBER", "REAL", "STRING", "BOOLEAN"];
+  for (const fallback of commonFallbacks) {
+    if (!emittedNames.has(fallback)) {
+      typeCode += `  ${fallback} = ${shadowIdx},\n`;
+      emittedNames.add(fallback);
+      shadowIdx++;
     }
   }
 

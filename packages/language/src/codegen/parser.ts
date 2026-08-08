@@ -95,7 +95,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nexport { getInputBuffer };\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nexport { getInputBuffer } from "./arena";\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
   let raw = atomicChunkAlloc((numElements + 1) * 4);
   let ptr = (raw + 3) & ~3;
   store<i32>(ptr, numElements);
@@ -120,8 +120,11 @@ export function generateParserTables(
   code += `// Generated for ${grammar.productions.length} productions and ${table.actionTable.size} states\n\n`;
 
   const symToInt = grammar.symToInt;
+  const startSymName = Object.keys(originalGrammar.rules)[0] || "Program";
+  const startSymId = symToInt.get(startSymName) || 1;
   code += `export const SYMBOL_COUNT = ${symToInt.size};\n`;
-  code += `export const STATE_COUNT = ${table.actionTable.size};\n\n`;
+  code += `export const STATE_COUNT = ${table.actionTable.size};\n`;
+  code += `export const START_SYMBOL_ID = ${startSymId};\n\n`;
 
   const actionOffsets: number[] = [];
   const actionData: number[] = [];
@@ -191,10 +194,18 @@ export function generateParserTables(
 
   const termList = Array.from(grammar.terminals);
   const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
+
+  const customDelims = originalGrammar.recovery?.delimiters || [];
+  const customOps = originalGrammar.recovery?.operators || [];
+
   for (let i = 0; i < termList.length; i++) {
     const sym = termList[i];
     const symId = symToInt.get(sym) ?? i;
-    if (
+    const cleanSym = sym.replace(/^"|"$/g, "");
+
+    const isDelimiter =
+      customDelims.includes(sym) ||
+      customDelims.includes(cleanSym) ||
       sym.includes("{") ||
       sym.includes("}") ||
       sym.includes("[") ||
@@ -207,16 +218,19 @@ export function generateParserTables(
       sym.includes("RPAREN") ||
       sym.includes("LBRACKET") ||
       sym.includes("RBRACKET") ||
-      sym.toLowerCase().includes("end")
-    ) {
+      sym.toLowerCase().includes("end");
+
+    if (isDelimiter) {
       tokenInsertCosts[symId] = 50; // Structural block delimiters are expensive to insert to prevent premature block escape/insertion
     } else if (sym.startsWith('"')) {
-      const cleanOp = sym.replace(/^"|"$/g, "");
-      if (
+      const cleanOp = cleanSym;
+      const isOperatorOrKeyword =
+        customOps.includes(cleanOp) ||
         ["*", "/", "+", "-", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "&", "|", "^"].includes(cleanOp) ||
-        /^[a-zA-Z_]/.test(cleanOp)
-      ) {
-        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50+) for binary operators, keywords, and types
+        /^[a-zA-Z_]/.test(cleanOp);
+
+      if (isOperatorOrKeyword) {
+        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50+) for operators, keywords, and types
       } else if (cleanOp === ";" || cleanOp === "," || cleanOp === ":") {
         tokenInsertCosts[symId] = 1; // Low cost for structural punctuation ; , :
       } else {
@@ -388,9 +402,8 @@ export function generateParserTables(
   const prodAliases: number[] = [];
   const aliasData: number[] = [];
 
-  console.log("StoredDefinition ID:", symToInt.get("StoredDefinition"));
-  console.log("_START ID:", symToInt.get("_START"));
-  console.log("MAX symId:", symToInt.size);
+  const customStructural = originalGrammar.recovery?.structuralRules || [];
+
   const sortedProds = [...grammar.productions].sort((a, b) => a.id - b.id);
   for (const p of sortedProds) {
     prodRightOffsets.push(prodRightSymbols.length);
@@ -408,25 +421,31 @@ export function generateParserTables(
     prodDynamicPrec.push(p.dynamicPrec || 0);
 
     let isStructural = 0;
-    if (
-      p.left.endsWith("_list") ||
-      p.left.endsWith("_clause") ||
-      p.left.endsWith("_section") ||
-      p.left.endsWith("_prefixes") ||
-      p.left.includes("declaration") ||
-      p.left.includes("definition") ||
-      p.left.includes("statement") ||
-      p.left.includes("specifier")
-    ) {
-      isStructural = 1;
-    }
-    if (
-      p.left.includes("expression") ||
-      p.left.includes("term") ||
-      p.left.includes("factor") ||
-      p.left.includes("literal")
-    ) {
-      isStructural = 0;
+    if (customStructural.length > 0) {
+      isStructural = customStructural.includes(p.left as any) ? 1 : 0;
+    } else {
+      if (
+        p.left.endsWith("_list") ||
+        p.left.endsWith("_clause") ||
+        p.left.endsWith("_section") ||
+        p.left.endsWith("_prefixes") ||
+        p.left.includes("declaration") ||
+        p.left.includes("definition") ||
+        p.left.includes("statement") ||
+        p.left.includes("specifier") ||
+        p.left.includes("block") ||
+        p.left.includes("suite")
+      ) {
+        isStructural = 1;
+      }
+      if (
+        p.left.includes("expression") ||
+        p.left.includes("term") ||
+        p.left.includes("factor") ||
+        p.left.includes("literal")
+      ) {
+        isStructural = 0;
+      }
     }
     prodIsStructural.push(isStructural);
 

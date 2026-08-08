@@ -187,7 +187,7 @@ function searchBudgetedInsertions(
   laTokPos: i32 = -1
 ): i32 {
   if (depth >= maxDepth) return -1;
-  debugLog(222, depth, currentState, budget);
+
   
   let actOffset = action_offsets[currentState];
   if (actOffset < 0 || actOffset >= action_data.length) return -1;
@@ -330,10 +330,10 @@ function getInsertCost(tok: i32): i32 {
 @inline
 function getDeleteCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_delete_costs.length) return 10;
-  if (tok <= MAX_TERMINAL_ID && token_insert_costs[tok] >= 50) {
+  if (tok <= MAX_TERMINAL_ID && (token_insert_costs[tok] >= 50 || token_delete_costs[tok] <= 1)) {
     return PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE; // Structural keywords/delimiters are expensive to delete to prevent code destruction
   }
-  return token_delete_costs[tok];
+  return token_delete_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
 }
 
 export function findShiftTarget(state: i32, tok: u16): i32 {
@@ -583,7 +583,8 @@ export function recoverUnwindAndMutate(
                             mergedNodeS = insNodeS;
                           }
                           
-                          let newTailS = pushDiagnostic(head.errorTail, srcLexPos, posAfterTokenS);
+                          let diagStart = unwindCurr != null && unwindCurr.pos < srcLexPos ? unwindCurr.pos : srcLexPos;
+                          let newTailS = pushDiagnostic(head.errorTail, diagStart, posAfterTokenS);
                           let baseHeadS = allocParseHead(
                             recState,
                             unwindCurr != null ? unwindCurr.astNode : 0,

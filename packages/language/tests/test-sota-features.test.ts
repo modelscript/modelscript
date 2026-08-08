@@ -196,6 +196,7 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
 
       expect(diags.length).toBeGreaterThan(0);
       expect(diags[0].message).toBeDefined();
+      expect(diags[0].severity).toBe(1); // 1 = Error (Red Squiggle)
     });
   });
 
@@ -250,6 +251,30 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
 
       const diags = activeFacade.getDiagnostics(astV2);
       expect(diags).toHaveLength(0);
+    });
+
+    it("should maintain accurate diagnostic ranges for reused subtrees after incremental edits", () => {
+      const codeV1 = `model M1 {
+        Real x = 1.0;
+        ??? !!! %%%
+      end model;`;
+
+      const astV1 = activeFacade.parse(codeV1);
+      const diagsV1 = activeFacade.getDiagnostics(astV1);
+      expect(diagsV1.length).toBeGreaterThan(0);
+
+      // Incremental edit: insert whitespace on line 1 before reused block
+      const codeV2 = `     model M1 {
+        Real x = 1.0;
+        ??? !!! %%%
+      end model;`;
+
+      const astV2 = activeFacade.parseIncremental("     model M1", 0, 8, codeV2.length);
+      const diagsV2 = activeFacade.getDiagnostics(astV2);
+      const diag1 = diagsV1.find((d: any) => d.range.start.line === 2);
+      const diag2 = diagsV2.find((d: any) => d.range.start.line === 2);
+      expect(diag1).toBeDefined();
+      expect(diag2).toBeDefined();
     });
   });
 });

@@ -196,7 +196,16 @@ export class LRAutomaton {
       if (!targetState) continue;
       const dr = new Set<SymbolName>();
       for (const [sym] of targetState.transitions) {
-        if (!this.grammar.nonTerminals.has(sym)) dr.add(sym);
+        if (!this.grammar.nonTerminals.has(sym)) {
+          dr.add(sym);
+        } else {
+          const firstSet = this.firstSets.get(sym);
+          if (firstSet) {
+            for (const f of firstSet) {
+              if (f !== "") dr.add(f);
+            }
+          }
+        }
       }
       drSets.set(ntKey(nt), dr);
     }

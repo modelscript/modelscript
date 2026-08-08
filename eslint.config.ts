@@ -71,6 +71,7 @@ export default defineConfig([
             "packages/language/jest.config.ts",
             "packages/language/scripts/*.js",
             "apps/cli/tests/test-recovery-branches.test.ts",
+            "apps/cli/tests/test-playground-worker-syntax.test.ts",
             "apps/cli/jest.config.ts",
           ],
         },

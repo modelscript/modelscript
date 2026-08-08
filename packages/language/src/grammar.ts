@@ -462,10 +462,28 @@ export class NormalizedGrammar {
       }
     }
 
+    const isTerminalRule = (r: any): boolean => {
+      if (!r) return false;
+      if (r.type === "TOKEN" && r.value) return true;
+      if (r.children && r.children.length === 1) {
+        if (r.type === "SEMANTIC" || r.type === "ALIAS" || r.type === "SYNTAX_TOKEN") {
+          return isTerminalRule(r.children[0]);
+        }
+      }
+      return false;
+    };
+
     // Evaluate all rules to build the graph
     for (const ruleName in grammar.rules) {
-      this.evaluatedRules[ruleName] = toRule(grammar.rules[ruleName](dummy$ as any));
-      this.nonTerminals.add(ruleName);
+      const evalRule = toRule(grammar.rules[ruleName](dummy$ as any));
+      this.evaluatedRules[ruleName] = evalRule;
+      if (isTerminalRule(evalRule)) {
+        console.log(`grammar.ts: added ${ruleName} to terminals`);
+        this.terminals.add(ruleName);
+      } else {
+        console.log(`grammar.ts: added ${ruleName} to nonTerminals (type: ${evalRule.type})`);
+        this.nonTerminals.add(ruleName);
+      }
     }
 
     if (grammar.supertypes) {
@@ -491,9 +509,19 @@ export class NormalizedGrammar {
     }
 
     // Tree-sitter style keyword extraction
-    if (grammar.word && this.evaluatedRules[grammar.word]) {
+    let wordKey: string | null = null;
+    if (grammar.word) {
+      if (typeof grammar.word === "string") {
+        wordKey = grammar.word;
+      } else if (typeof grammar.word === "function") {
+        const dummy$ = new Proxy({}, { get: (t, p: string) => ({ type: "SYMBOL", value: p }) });
+        const res = (grammar.word as any)(dummy$);
+        wordKey = typeof res === "string" ? res : res?.value || res?.name;
+      }
+    }
+    if (wordKey && this.evaluatedRules[wordKey]) {
       let wordRegex: RegExp | null = null;
-      const wordRule = this.evaluatedRules[grammar.word];
+      const wordRule = this.evaluatedRules[wordKey];
       if (wordRule.type === "TOKEN" && wordRule.value) {
         let patternStr = "";
         if (wordRule.value instanceof RegExp || Object.prototype.toString.call(wordRule.value) === "[object RegExp]") {

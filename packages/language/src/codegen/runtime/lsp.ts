@@ -19,8 +19,10 @@ import {
   FLAG_IS_LIST,
   getInputBuffer,
   debugLog,
+  registerRoot,
+  dropRoot,
 } from "./arena";
-import { NODE_TYPE_ERROR } from "./engine";
+import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
 import { inputLength } from "./parser";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
@@ -60,10 +62,13 @@ export function lsp_registerDocument(fileId: u32, astRoot: u32): void {
   
   // Cache all leaf node strings into the stringArena for lexical multi-file fallback
   cacheNodeStrings(astRoot, 0);
+  registerRoot(astRoot);
 }
 
 export function lsp_unregisterDocument(fileId: u32): void {
   if (changetype<usize>(t_documentRoots) != 0) {
+    let oldRoot = t_documentRoots.get(fileId as u64) as u32;
+    if (oldRoot != 0) dropRoot(oldRoot);
     t_documentRoots.set(fileId as u64, 0 as u64);
   }
 }
@@ -81,10 +86,11 @@ export function lsp_getDocumentRoot(fileId: u32): u32 {
 // --- Binary Serialization ---
 let t_lspBinaryBuffer: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
 let t_lspFlatBinaryBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_lspFlatBinaryBufferPtr: u32 = 0;
 let t_lspFlatBinaryCapacity: u32 = 0;
 
 export function lsp_getBinaryBuffer(): u32 {
-  return changetype<u32>(t_lspFlatBinaryBuffer);
+  return t_lspFlatBinaryBufferPtr;
 }
 export function lsp_getBinaryLength(): u32 {
   if (changetype<usize>(t_lspBinaryBuffer) == 0) return 0;
@@ -99,6 +105,9 @@ export function lsp_getBinaryLength(): u32 {
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
   if (t_lspBinaryBuffer.length >= 10000 * 7) return;
 
+  debugLog(555, start, end, lintId);
+
+  debugLog(888, start, end, lintId);
   t_lspBinaryBuffer.push(start);
   t_lspBinaryBuffer.push(end);
   t_lspBinaryBuffer.push(lintId);
@@ -137,9 +146,10 @@ function flushBinaryBuffer(): void {
     let newPtr = heap.alloc(newCap * 4);
     if (oldPtr != 0) heap.free(oldPtr);
     t_lspFlatBinaryBuffer = changetype<UnmanagedUint32Array>(newPtr);
+    t_lspFlatBinaryBufferPtr = newPtr as u32;
     t_lspFlatBinaryCapacity = newCap;
   }
-  t_lspBinaryBuffer.copyToFlat(changetype<usize>(t_lspFlatBinaryBuffer));
+  t_lspBinaryBuffer.copyToFlat(t_lspFlatBinaryBufferPtr as usize);
 }
 
 
@@ -253,8 +263,10 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
   globalAstRoot = astRoot;
 
   let prevLen = t_lspBinaryBuffer.length;
+  ensureTraverseStack(1);
 
   let stackTop: u32 = 0;
+  lsp_clearVisited();
   t_lspTraverseStack[stackTop] = astRoot;
   t_lspOffsetStack[stackTop] = 0;
   stackTop++;
@@ -271,168 +283,185 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
 
+    if (stackTop > 10000) { break; }
+
+    let step: u32 = getEncodingStep();
     let flags = getNodeFlags(node);
-    if ((flags & FLAG_LSP_TRAVERSED) != 0) continue;
-    setNodeFlags(node, flags | FLAG_LSP_TRAVERSED);
-
-    pushVisitedNode(node);
-
     let pad = getNodePadding(node);
     let len = getNodeByteLength(node);
     let nodeStart = start + pad;
     let nodeEnd = nodeStart + len;
     let type = getNodeType(node);
 
-    let isErrorNode = type == 0;
+    debugLog(777, type, nodeStart, nodeEnd);
+
+    let isErrorNode = type == 0 || (type & 0x8000) != 0;
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
 
     let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 
     let isTainted = (flags & FLAG_IS_TAINED) != 0;
+    let hasErrorFlag = (flags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0 || isErrorNode;
 
-    if ((flags & FLAG_IS_INSERTED) != 0 && len == 0) {
-      let step: u32 = getEncodingStep();
+    if (hasErrorFlag && isLeaf) {
+      let totalInputBytes: u32 = inputLength * step;
       let dStart = nodeStart;
-      let dEnd = dStart + step;
-      if (nodeStart > 0) {
+      let dEnd = nodeEnd > nodeStart ? nodeEnd : dStart + step;
+
+      if (nodeStart > 0 && (flags & FLAG_IS_INSERTED) != 0) {
         let scanPos = nodeStart;
-        let hasNl = false;
         while (scanPos >= step) {
           let c = peekChar(scanPos - step);
-          if (c == 10 || c == 13) hasNl = true;
-          let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
+          if (c == 10 || c == 13) break;
+          let isWS = (c == 32 || c == 9 || c == 0);
           if (!isWS) break;
           scanPos -= step;
         }
-        if (!hasNl && scanPos >= step) {
-          let wordEnd = scanPos;
-          let wordStart = wordEnd;
-          while (wordStart >= step) {
-            let c = peekChar(wordStart - step);
-            let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
-            if (isWS) break;
-            wordStart -= step;
-          }
-          if (wordEnd > wordStart) {
-            dStart = wordStart;
-            dEnd = wordEnd;
+
+        if (scanPos >= step) {
+          let cPrev = peekChar(scanPos - step);
+          if (cPrev != 10 && cPrev != 13 && cPrev != 32 && cPrev != 9 && cPrev != 0) {
+            let wordEnd = scanPos;
+            let wordStart = scanPos - step;
+            while (wordStart >= step) {
+              let c = peekChar(wordStart - step);
+              if (c == 10 || c == 13 || c == 32 || c == 9 || c == 0) break;
+              wordStart -= step;
+            }
+            if (wordEnd > wordStart) {
+              dStart = wordStart;
+              dEnd = wordEnd;
+            }
           }
         }
       }
 
-      if (dEnd > inputLength) {
-        dEnd = inputLength;
+      if (totalInputBytes > 0 && dEnd > totalInputBytes) {
+        dEnd = totalInputBytes;
         if (dEnd > step) dStart = dEnd - step;
         else dStart = 0;
       }
-      lsp_allocDiagnostic(dStart, dEnd, type);
-    } else if (isErrorNode) {
-      let actualStart = (len == 0 && pad > 0) ? start : nodeStart;
-      let actualEnd = (len == 0 && pad > 0) ? start + pad : nodeEnd;
-      if (actualEnd <= actualStart && firstChild != 0) {
-        let childLen = getNodeByteLength(firstChild);
-        if (childLen > 0) {
-          actualEnd = actualStart + getNodePadding(firstChild) + childLen;
-        }
+      if (dEnd > dStart) {
+        lsp_allocDiagnostic(dStart, dEnd, type);
       }
-      let step: u32 = getEncodingStep();
-      if (actualEnd <= actualStart) {
-        let scanOffset: u32 = 0;
-        while (actualStart + scanOffset < inputLength) {
-          let c = peekChar(actualStart + scanOffset);
-          if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0) break;
-          scanOffset += step;
-        }
-        actualEnd = actualStart + (scanOffset > 0 ? scanOffset : step);
-      }
-      if (inputLength > 0 && actualEnd > inputLength) {
-        actualEnd = inputLength;
-      }
-
-      let pStart: u32 = 0xffffffff;
-      let pEnd: u32 = 0;
-      let errLen = actualEnd - actualStart;
-      for (let i: u32 = 0; i <= errLen; i += step) {
-        let c: u32 = i < errLen ? peekChar(actualStart + i) : 32;
-        let isWS = (c == 32 || c == 9 || c == 10 || c == 13 || c == 0);
-        if (!isWS) {
-          if (pStart == 0xffffffff) pStart = actualStart + i;
-          pEnd = actualStart + i + step;
-        } else {
-          if (pStart != 0xffffffff && pEnd > pStart) {
-            lsp_allocDiagnostic(pStart, pEnd, 0);
-            pStart = 0xffffffff;
+    } else {
+      if (isErrorNode) {
+        let totalInputBytes: u32 = inputLength * step;
+        let actualStart = nodeStart;
+        let actualEnd = nodeEnd > nodeStart ? nodeEnd : nodeStart + step;
+        if (actualEnd <= actualStart && firstChild != 0) {
+          let childLen = getNodeByteLength(firstChild);
+          if (childLen > 0) {
+            actualEnd = actualStart + getNodePadding(firstChild) + childLen;
           }
         }
-      }
-    }
+        if (actualEnd <= actualStart) {
+          let scanOffset: u32 = 0;
+          while (actualStart + scanOffset < totalInputBytes) {
+            let c = peekChar(actualStart + scanOffset);
+            if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0) break;
+            scanOffset += step;
+          }
+          actualEnd = actualStart + (scanOffset > 0 ? scanOffset : step);
+        }
+        if (totalInputBytes > 0 && actualEnd > totalInputBytes) {
+          actualEnd = totalInputBytes;
+        }
+        if (actualEnd < actualStart) {
+          actualEnd = actualStart;
+        }
 
-    if (!isErrorNode && !inError && !isTainted && !inTainted) {
-      executeLints(type, node, nodeStart, nodeEnd);
-    }
+        // Snap actualStart backward to beginning of word if it landed mid-identifier
+        if (actualStart < totalInputBytes) {
+          let currChar = peekChar(actualStart);
+          let isAlnum = (currChar >= 97 && currChar <= 122) || (currChar >= 65 && currChar <= 90) || (currChar >= 48 && currChar <= 57) || currChar == 95;
+          if (isAlnum) {
+            while (actualStart >= step) {
+              let prevChar = peekChar(actualStart - step);
+              let isPrevAlnum = (prevChar >= 97 && prevChar <= 122) || (prevChar >= 65 && prevChar <= 90) || (prevChar >= 48 && prevChar <= 57) || prevChar == 95;
+              if (!isPrevAlnum) break;
+              actualStart -= step;
+            }
+          }
+        }
+
+        // Snap actualEnd forward to end of word if it landed mid-identifier
+        if (actualEnd < totalInputBytes && actualEnd > 0) {
+          let prevChar = peekChar(actualEnd - step);
+          let isPrevAlnum = (prevChar >= 97 && prevChar <= 122) || (prevChar >= 65 && prevChar <= 90) || (prevChar >= 48 && prevChar <= 57) || prevChar == 95;
+          if (isPrevAlnum) {
+            while (actualEnd < totalInputBytes) {
+              let nextChar = peekChar(actualEnd);
+              let isNextAlnum = (nextChar >= 97 && nextChar <= 122) || (nextChar >= 65 && nextChar <= 90) || (nextChar >= 48 && nextChar <= 57) || nextChar == 95;
+              if (!isNextAlnum) break;
+              actualEnd += step;
+            }
+          }
+        }
+
+        // Clamp actualEnd to never cross newline boundary
+        let scanPos = actualStart;
+        while (scanPos < actualEnd && scanPos < totalInputBytes) {
+          let c = peekChar(scanPos);
+          if (c == 10 || c == 13) {
+            actualEnd = scanPos;
+            break;
+          }
+          scanPos += step;
+        }
+
+        if (actualEnd > actualStart) {
+          lsp_allocDiagnostic(actualStart, actualEnd, 0);
+        }
+      } else {
+        executeLints(type, node, nodeStart, nodeEnd);
+      }
 
     // Recurse into children (for both error and non-error nodes)
     let child = getNodeFirstChild(node);
     if (child != 0) {
-      // Count children and check for ERROR / INSERTED siblings in a single pass
       let childCount: u32 = 0;
-      let childHasError: boolean = false;
       let countChild = child;
+      let failsafe1 = 0;
       while (countChild != 0) {
-        let cFlags = getNodeFlags(countChild);
-        let cType = getNodeType(countChild);
-        
-        if ((cFlags & FLAG_HAS_ERROR) != 0 || cType == 0) {
-            childHasError = true;
-        }
-        
+        if (failsafe1++ > 10000) { break; }
         childCount++;
         countChild = getNodeNextSibling(countChild);
       }
 
-      ensureTraverseStack(stackTop + childCount);
-      // Single-pass: push children backwards directly to achieve in-order traversal via LIFO pop
-      let isParentZeroWidth = (getNodeByteLength(node) == 0);
-      let currOffset = isParentZeroWidth ? start : (start + pad); // nodeStart
-      let writeIdx = stackTop + childCount - 1;
-      let currChildIdx = 0;
-      let lastRealOffset = isParentZeroWidth ? start : (start + pad);
-      
-      while (child != 0) {
-        let padVal = getNodePadding(child);
-        let cLen = padVal + getNodeByteLength(child);
-        let cFlags = getNodeFlags(child);
-        let cType = getNodeType(child);
-        let isInserted = (cFlags & FLAG_IS_INSERTED) != 0;
+      if (childCount > 0) {
+        ensureTraverseStack(stackTop + childCount);
+        let currOffset = start;
+        let currChildIdx = 0;
+        let lastRealOffset = start;
         
-        let childStart = isInserted ? lastRealOffset : currOffset;
-        
-        let comesAfter = false;
-        if (cType != 0 && getNodeByteLength(child) > 0) {
-          let lookahead = getNodeNextSibling(child);
-          if (lookahead != 0 && (getNodeFlags(lookahead) & FLAG_IS_INSERTED) != 0) {
-            comesAfter = true;
+        while (child != 0) {
+          let padVal = getNodePadding(child);
+          let cLen = padVal + getNodeByteLength(child);
+          let cFlags = getNodeFlags(child);
+          let cType = getNodeType(child);
+          let isInserted = (cFlags & FLAG_IS_INSERTED) != 0;
+          
+          let childStart = isInserted ? lastRealOffset : currOffset;
+          
+          if (cType != 0 && getNodeByteLength(child) > 0) {
+            lastRealOffset = currOffset + padVal + getNodeByteLength(child);
           }
+          
+          let slot = stackTop + (childCount - 1 - currChildIdx);
+          t_lspTraverseStack[slot] = child;
+          t_lspOffsetStack[slot] = childStart;
+          
+          currOffset += cLen;
+          currChildIdx++;
+          child = getNodeNextSibling(child);
         }
-        
-        let passInsertedSibling = comesAfter;
-        
-        t_lspTraverseStack[writeIdx] = child;
-        let nextInError = (isErrorNode || inError);
-        let nextInTainted = isTainted || inTainted;
-        t_lspOffsetStack[writeIdx] = packOffsetStack(childStart, nextInError, childHasError, passInsertedSibling, nextInTainted);
-        writeIdx--;
-        currOffset += cLen;
-        if (!isInserted) {
-          lastRealOffset = currOffset;
-        }
-        child = getNodeNextSibling(child);
-        currChildIdx++;
+        stackTop += childCount;
       }
-      stackTop += childCount;
     }
   }
+}
 
   lsp_clearVisited();
   if (fileId != 0) {
@@ -456,6 +485,14 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
   if (astRoot != 0) {
     lsp_extractDiagnosticsForRoot(astRoot, 0);
   }
+  for (let i: i32 = 0; i < errorCount; i++) {
+    let s = t_errorStarts[i];
+    let e = t_errorEnds[i];
+    if (e > s) {
+      lsp_allocDiagnostic(s, e, 0);
+    }
+  }
+  lsp_clearVisited();
   flushBinaryBuffer();
   return t_lspBinaryBuffer.length / 7;
 }
@@ -594,7 +631,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
       
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start + pad;
+      let currOffset = start;
       let writeIdx = stackTop + childCount - 1;
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {
@@ -741,7 +778,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
       
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start + pad;
+      let currOffset = start;
       let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
@@ -827,7 +864,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
       
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start + pad;
+      let currOffset = start;
       let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
@@ -909,7 +946,7 @@ export function lsp_getNodeAtByteOffset(rootNode: u32, targetOffset: u32): u32 {
     
     let child = getNodeFirstChild(node);
     if (child != 0) {
-      let currOffset: u32 = tokenStart;
+      let currOffset: u32 = start;
       while (child != 0) {
           let cPad = getNodePadding(child);
           let cLen = getNodeByteLength(child);
@@ -946,6 +983,7 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
    ensureFindTraverseStack(1);
    if (rootNode == targetNode) return rootOffset as i32;
    
+   let step: u32 = getEncodingStep();
    let stackTop: u32 = 0;
    t_lspFindTraverseStack[0] = rootNode;
    t_lspFindOffsetStack[0] = rootOffset;
@@ -956,7 +994,7 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
       let current = t_lspFindTraverseStack[stackTop];
       let offset = t_lspFindOffsetStack[stackTop];
       
-      let pad = getNodePadding(current);
+      let pad = getNodePadding(current) * step;
       let tokenStart = offset + pad;
       
       if (current == targetNode) {
@@ -965,20 +1003,18 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
       
       let child = getNodeFirstChild(current);
       if (child != 0) {
-         let currOffset = offset;
-         // Push children in reverse order so they are popped left-to-right
          let childCount = 0;
          let c = child;
-      while (c != 0) { childCount++; c = getNodeNextSibling(c); }
+         while (c != 0) { childCount++; c = getNodeNextSibling(c); }
          
          ensureFindTraverseStack(stackTop + childCount);
-         // Push in reverse
-         currOffset = offset + pad;
+         
+         let currOffset = offset + pad;
          let writeIdx = stackTop + childCount - 1;
          c = child;
          while (c != 0) {
-            let cPad = getNodePadding(c);
-            let cLen = cPad + getNodeByteLength(c);
+            let cPad = getNodePadding(c) * step;
+            let cLen = cPad + (getNodeByteLength(c) * step);
             t_lspFindTraverseStack[writeIdx] = c;
             t_lspFindOffsetStack[writeIdx] = currOffset;
             writeIdx--;
@@ -1154,7 +1190,7 @@ export function lsp_getReferences(rootNode: u32, targetOffset: u32): u32 {
                countChild = getNodeNextSibling(countChild);
             }
             ensureTraverseStack(stackTop + childCount);
-            let currOffset = offset + pad;
+            let currOffset = offset;
             let c = child;
             let childIdx = 0;
             while (c != 0) {

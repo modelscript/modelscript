@@ -716,20 +716,9 @@ export class FieldCursor {
       let flags = getNodeFlags(this.node);
       let hasError = (flags & FLAG_HAS_ERROR) != 0;
 
-      if (hasError) {
-        let matchCount = 0;
-        while (child != 0) {
-          if (getNodeType(child) == expectedType) {
-            if (matchCount == logicalIndex) break;
-            matchCount++;
-          }
-          child = getNodeNextSibling(child);
-        }
-      } else {
-        for (let i = 0; i < logicalIndex; i++) {
-          if (child == 0) break;
-          child = getNodeNextSibling(child);
-        }
+      for (let i = 0; i < logicalIndex; i++) {
+        if (child == 0) break;
+        child = getNodeNextSibling(child);
       }
 
       if (child == 0) continue;
@@ -1130,6 +1119,9 @@ export function lsp_setInputLength(len: u32): void {
 }
 export function lsp_setInputEncoding(encoding: u8): void {
   setInputEncoding(encoding);
+}
+export function lsp_getInputEncoding(): u8 {
+  return inputEncoding;
 }
 
 

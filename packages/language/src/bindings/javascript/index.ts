@@ -27,9 +27,19 @@ export function generateJavaScriptWrapper(
   const langName = grammarDef.name;
 
   // Create an array mapping from symbol ID to symbol Name (like the C enum)
-  const syntaxNames: string[] = ["ERROR"];
+  const syntaxNames: string[] = [];
+  syntaxNames[0] = "ERROR";
   for (const [sym, id] of normalized.symToInt.entries()) {
-    syntaxNames[id] = sym;
+    if (id === 0) continue;
+    if (
+      !syntaxNames[id] ||
+      syntaxNames[id] === "UNKNOWN" ||
+      syntaxNames[id] === "ERROR" ||
+      syntaxNames[id].startsWith("_") ||
+      syntaxNames[id].startsWith("node_")
+    ) {
+      syntaxNames[id] = sym;
+    }
   }
 
   // Fill in gaps if symToInt skipped any

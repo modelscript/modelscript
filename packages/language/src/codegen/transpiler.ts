@@ -201,7 +201,7 @@ export function transpileQuery(
                 const foundOffset = ts.factory.createCallExpression(
                   ts.factory.createIdentifier("lsp_findNodeOffset"),
                   undefined,
-                  [ts.factory.createIdentifier("node"), targetNodeExpr, ts.factory.createIdentifier("nodeStart")],
+                  [ts.factory.createIdentifier("globalAstRoot"), targetNodeExpr],
                 );
                 const startNodeOffset = ts.factory.createConditionalExpression(
                   ts.factory.createBinaryExpression(

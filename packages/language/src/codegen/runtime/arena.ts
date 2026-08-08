@@ -443,7 +443,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   s.allocCount++;
   let ptr: u32 = 0;
 
-  let flags: u32 = type == 0 ? FLAG_HAS_ERROR : 0;
+  let flags: u32 = (type == 0 || (type & 0x8000) != 0) ? FLAG_HAS_ERROR : 0;
   // 1. Attempt to reclaim memory from the free list (structural sharing)
   if (s.freeNodeHead != 0) {
     ptr = s.freeNodeHead;
@@ -551,8 +551,8 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let isMutated = (type & 0x8000) != 0;
   type = type & 0x7FFF;
   
-  if (type == 0) { // 0 is NODE_TYPE_ERROR
-    initialFlags = (FLAG_HAS_ERROR as u32) << 10;
+  if (type == 0 || isMutated) { // 0 is NODE_TYPE_ERROR, isMutated is 0x8000 recovered error
+    initialFlags |= (FLAG_HAS_ERROR as u32) << 10;
   }
   if (isTainted) {
     initialFlags |= (FLAG_IS_TAINED as u32) << 10;
@@ -806,6 +806,15 @@ export function setNodePadding(ptr: u32, pad: u32): void {
   } else {
     node.paddingLength = pad;
     node.isFatPadding = false;
+  }
+}
+
+export function propagateFirstChildPadding(ptr: u32, pad: u32): void {
+  let curr = ptr;
+  let guard = 0;
+  while (curr != 0 && guard++ < 250) {
+    setNodePadding(curr, pad);
+    curr = getNodeFirstChild(curr);
   }
 }
 

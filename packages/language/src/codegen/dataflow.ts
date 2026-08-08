@@ -47,6 +47,7 @@ export function generateDataflow(grammarDef: LanguageOptions<any>): string {
   let out = `
 import { S, getNodePadding, getNodeByteLength, allocGen0, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
 import { allocDiagnostic } from "./graph";
+import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
 import { firstBlock } from "./cfg";
 import {
   BLOCK_STATE_IN,
@@ -64,10 +65,12 @@ const DATAFLOW_MAX_ITERATIONS: u32 = 1000;
 
 export function dataflowError(nodeId: u32, code: u32): void {
     if (nodeId == 0 || (getNodeFlags(nodeId) & FLAG_IS_SYNTHETIC) != 0) return;
-    let startByte = getNodePadding(nodeId);
+    let absStart = lsp_findNodeOffset(globalAstRoot, nodeId);
+    let startByte: u32 = absStart >= 0 ? (absStart as u32) : getNodePadding(nodeId);
     let endByte = startByte + getNodeByteLength(nodeId);
     allocDiagnostic(startByte, endByte, code, 0);
 }
+
 `;
 
   let latticeMap: Record<string, number> = { Bottom: 0, Top: 100 };

@@ -18,7 +18,7 @@ import {
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
-    getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding,
+    getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding, propagateFirstChildPadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
     getNodeEnvHash, getNodeStartState, getInputBuffer,
     atomicChunkAlloc, resetGeneration, S, ASTNode, clearAstMarks, isNodeGen2
@@ -557,7 +557,7 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
             }
           }
           
-          let topState = pHead != null ? pHead.state : -1;
+          let topState = pHead != null ? pHead.state : (ruleLen == 0 ? state : -1);
           let nextState = -1;
           if (topState != -1) {
             let gOffset = goto_offsets[topState];
@@ -727,6 +727,25 @@ function sanitizeTree(root: u32): void {
 }
 
 /**
+ * Checks if a node consists entirely of error nodes (or lists of error nodes).
+ * Pure error nodes are handled differently during reductions to avoid wrapping
+ * garbage tokens in legitimate non-terminals.
+ */
+function nodeHasAnyErrors(node: u32): boolean {
+  if (node == 0) return false;
+  let type = getNodeType(node);
+  if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0 || (getNodeFlags(node) & FLAG_HAS_ERROR) != 0) return true;
+  let child = getNodeFirstChild(node);
+  let depth = 0;
+  while (child != 0 && depth < 20) {
+    if (nodeHasAnyErrors(child)) return true;
+    child = getNodeNextSibling(child);
+    depth++;
+  }
+  return false;
+}
+
+/**
  * Scans the parsing head history for "stranded nodes" (nodes that were parsed but never 
  * reduced into the final accepted tree because they were dropped by error recovery or
  * skipped by the GLR acceptor). Re-injects these nodes as error nodes into the AST to ensure
@@ -817,8 +836,18 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
     
     let firstChild = getNodeFirstChild(acceptedNode);
     setNextSibling(lastStranded, firstChild);
+
     setFirstChild(acceptedNode, firstStranded);
     
+    let sCurr = firstStranded;
+    while (sCurr != 0) {
+      if (nodeHasAnyErrors(sCurr)) {
+        setNodeFlags(sCurr, getNodeFlags(sCurr) | FLAG_HAS_ERROR);
+        setNodeFlags(acceptedNode, getNodeFlags(acceptedNode) | FLAG_HAS_ERROR);
+      }
+      sCurr = getNodeNextSibling(sCurr);
+    }
+
     fixNodeLength(acceptedNode);
   }
   return acceptedNode;
@@ -968,8 +997,12 @@ function copyChildren(p: u32, leftNode: u32): u32 {
   let lastChild = 0;
   while (gc != 0) {
     let clone = cloneNodeShallow(gc);
-    if (lastChild == 0) setFirstChild(p, clone);
-    else setNextSibling(lastChild, clone);
+    if (lastChild == 0) {
+      setNodePadding(clone, 0);
+      setFirstChild(p, clone);
+    } else {
+      setNextSibling(lastChild, clone);
+    }
     lastChild = clone;
     gc = getNodeNextSibling(gc);
   }
@@ -1843,7 +1876,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
 
           }
 
-          let isError = getNodeType(child) == NODE_TYPE_ERROR;
+          let isError = getNodeType(child) == NODE_TYPE_ERROR || (getNodeType(child) & 0x8000) != 0;
           if (!isError && aliasPtr >= 0) {
             for (let a = 0; a < aliasCount; a++) {
               let aIndex = alias_data[aliasPtr + 1 + a * 2];
@@ -1994,9 +2027,10 @@ function processAcceptAction(head: ParseHead): void {
       while (rc) {
         if (rc.astNode != 0 && getNodeType(rc.astNode) != TOKEN_EOF) {
           let t = getNodeType(rc.astNode);
-          if (t >= 256 || singleNode == 0) {
+          if (t >= 256) {
             singleNode = rc.astNode;
-            if (t >= 256) break;
+          } else if (singleNode == 0) {
+            singleNode = rc.astNode;
           }
         }
         rc = rc.prev;
@@ -2102,6 +2136,24 @@ function processAcceptAction(head: ParseHead): void {
         }
         acceptedNode = root;
       }
+    }
+  }
+}
+
+function dropHead(head: ParseHead): void {
+
+  if (changetype<usize>(head) == bestDyingHead) {
+    // Do not free bestDyingHead, it is reserved for catastrophic fallback.
+    // It will be freed later if replaced, or at the end of parsing.
+    return;
+  }
+
+  // Find and remove from t_activeHeads
+  for (let i: u32 = 0; i < activeHeadsCount; i++) {
+    if (t_activeHeads[i] == changetype<u32>(head)) {
+      t_activeHeads[i] = t_activeHeads[activeHeadsCount - 1];
+      activeHeadsCount--;
+      break;
     }
   }
 }
@@ -2908,7 +2960,7 @@ export function advanceGLR(): void {
       if (reusedNode != 0) {
         let freshReuse = deepCloneSubtree(reusedNode, 0);
         if (freshReuse != 0) reusedNode = freshReuse;
-        setNodePadding(reusedNode, expectedPadding);
+        setNodePadding(reusedNode, expectedPadding + head.pendingPadding);
       }
     }
 
@@ -2967,6 +3019,7 @@ export function advanceGLR(): void {
         );
         setNodeFlags(cloneReused, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(cloneReused, getNodeFirstChild(reusedNode)); // Inherit old children
+        setNodePadding(cloneReused, expectedPadding + head.pendingPadding);
 
         // Splice it into the GSS head
         let merged = concatLists(head.astNode, cloneReused, nodeSym as u16, currentScannerState);
@@ -3007,6 +3060,7 @@ export function advanceGLR(): void {
         );
         setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(clone, getNodeFirstChild(reusedNode));
+        setNodePadding(clone, expectedPadding + head.pendingPadding);
 
         let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
 
@@ -3152,9 +3206,14 @@ export function advanceGLR(): void {
         uCurr = uCurr.prev;
       }
 
-      if (head.pos >= furthestDyingPos) {
-        furthestDyingPos = head.pos;
+      if (furthestDyingPos < head.pos || bestDyingHead == 0 || (head.errorCost < changetype<ParseHead>(bestDyingHead).errorCost && head.pos >= furthestDyingPos)) {
+        let oldBest = bestDyingHead;
         bestDyingHead = changetype<u32>(head);
+        furthestDyingPos = head.pos;
+        if (oldBest != 0 && oldBest != changetype<u32>(head)) {
+          // In ModelScript we rely on GC and Generation resets for memory management.
+          // oldBest will simply be collected or dropped.
+        }
       }
 
       // Prevent infinite error recovery loops by killing heads with catastrophic costs
@@ -3270,12 +3329,14 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       } else {
         resetGeneration(0);
         resetGeneration(1);
-      };
+      }
     } else {
       // Clear the free list: free-list nodes are from the old tree's Gen1 space
-      // and have addresses below incrementalStartOffset. Reclaiming them would
-      // make isMutable() return false, and their proximity to live old-tree nodes
-      // can cause memory corruption during cursor traversal.
+      S().freeNodeHead = 0;
+    }
+    
+    // Clear the free list anyway if we are resetting generation 1, or multi-file is ON but we want a fresh state
+    if (oldTree == 0) {
       S().freeNodeHead = 0;
     }
     globalLoopGuard = 0;
@@ -3394,7 +3455,7 @@ bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
         let tLen = lexLen;
         if (tLen == 0) break; // prevent infinite loop
 
-        let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
+        let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, lastTokNode == 0 ? 0 : pad, tLen, 0, false);
         setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
         if (lastTokNode == 0) {
           setFirstChild(unparsedNode, tNode);

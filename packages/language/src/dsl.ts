@@ -433,7 +433,7 @@ export interface LanguageOptions<
    * A rule name or token representing the language's typical keyword structure.
    * Tree-sitter uses this for keyword extraction optimization.
    */
-  word?: string;
+  word?: string | RuleBuilder<RuleName, FieldName>;
 
   /**
    * A dictionary of grammar rules defining the language's syntax.
@@ -625,7 +625,14 @@ export interface LanguageOptions<
 
   /** Error Recovery Configuration */
   recovery?: {
-    sync: string[];
+    /** Sync tokens for error recovery anchors */
+    sync?: string[];
+    /** Token names or strings treated as scope delimiters for insertion penalties */
+    delimiters?: string[];
+    /** Operator strings penalized during insertion */
+    operators?: string[];
+    /** Rule names classified as structural scope boundaries for unwind penalties */
+    structuralRules?: NoInfer<RuleName>[];
   };
 }
 
