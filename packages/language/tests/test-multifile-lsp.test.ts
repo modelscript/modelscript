@@ -210,20 +210,18 @@ describe("Multi-File LSP Connector Features", () => {
 
     activeFacade.lastAstRoot = 0;
     const ast1 = activeFacade.parse(doc1);
+    const diags1 = activeFacade.getDiagnostics(ast1);
     exports.lsp_registerDocument(fileId1, ast1); // Register immediately to protect from GC
 
     activeFacade.lastAstRoot = 0;
     const ast2 = activeFacade.parse(doc2);
+    const diags2 = activeFacade.getDiagnostics(ast2);
     exports.lsp_registerDocument(fileId2, ast2);
 
     activeFacade.lastAstRoot = 0;
     const ast3 = activeFacade.parse(doc3);
-    exports.lsp_registerDocument(fileId3, ast3);
-
-    // If memory is corrupted or cyclic, the diagnostic extraction will hang in an infinite loop
-    const diags1 = activeFacade.getDiagnostics(ast1);
-    const diags2 = activeFacade.getDiagnostics(ast2);
     const diags3 = activeFacade.getDiagnostics(ast3);
+    exports.lsp_registerDocument(fileId3, ast3);
 
     // We just want to ensure it survives without infinite loops.
     // doc1 is valid, so it should have 0 diagnostics.

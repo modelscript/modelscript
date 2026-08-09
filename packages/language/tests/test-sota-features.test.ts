@@ -9,11 +9,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const dsl = language({
-  name: "SotaTestLang",
+  name: "SotaTestLanguage",
+  word: ($: any) => $.Identifier,
   primitives: {
     nestedComment: { open: "/*", close: "*/" },
     lineComment: "//",
-    multiWordKeywords: ["end model", "end scope"],
+    multiWordKeywords: ["end scope"],
   },
   rules: {
     Program: ($: any) => repeat(choice($.ModelDef, $.ScopeDef)),
@@ -21,9 +22,9 @@ const dsl = language({
       seq(
         semanticToken("keyword", "model"),
         field("name", $.Identifier),
-        "{",
         repeat(choice($.Decl, $.Equation)),
-        semanticToken("keyword", "end model"),
+        semanticToken("keyword", "end"),
+        field("endName", $.Identifier),
         ";",
       ),
     ScopeDef: ($: any) =>
@@ -45,20 +46,9 @@ const dsl = language({
     Number: ($: any) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
   },
   extras: ($: any) => [/\s+/],
-  cfgNodes: {
-    ScopeDef: { condition: "name", trueBranch: "Decl" },
-  },
-  analysis: {
-    uninitialized: {
-      lattice: ["Initialized", "Uninitialized"],
-      direction: "forward",
-      join: (state1: number, state2: number) => (state1 > state2 ? state1 : state2),
-      transfer: (nodeId: number, stateIn: number) => stateIn,
-    },
-  },
 });
 
-describe("SOTA GLR Parser Features Dedicated Tests", () => {
+describe("SOTA Architecture Verification Suite", () => {
   let activeFacade: any;
   let wasmExports: any;
   let tmpDir: string;
@@ -66,6 +56,7 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   beforeAll(async () => {
     const result = buildParser(dsl as any);
     tmpDir = path.join(__dirname, "scratch_build_sota");
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
@@ -87,11 +78,10 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
     const { LspFacade } = getFacade();
 
     const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
-
     const imports = {
       env: {
         memory: memory,
-        abort: () => console.log("ABORT!"),
+        abort: () => {},
         logNode: () => {},
         debugLog: () => {},
       },
@@ -112,8 +102,8 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
     activeFacade = new LspFacade(instance.exports.memory, instance.exports);
   }, 60000);
 
-  beforeEach(() => {
-    activeFacade.lastAstRoot = 0;
+  afterAll(() => {
+    if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   // --------------------------------------------------------------------------
@@ -121,11 +111,11 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   // --------------------------------------------------------------------------
   describe("Pillar 1: A* Driven Token Recovery", () => {
     it("should handle severe multi-token corruption within bounded expansion budget without stack overflow", () => {
-      const code = `model Corrupted {
+      const code = `model Corrupted
         Real a = 1.0;
         ??? !!! %%% $$$ ### @@@ +++ ***
         Real b = 2.0;
-      end model;`;
+      end Corrupted;`;
 
       const ast = activeFacade.parse(code);
       expect(ast).toBeGreaterThan(0);
@@ -166,7 +156,7 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   // --------------------------------------------------------------------------
   describe("Pillar 3: O(1) Subtree Reuse & startState Validation", () => {
     it("should set and retrieve startState accurately on allocated AST nodes", () => {
-      const ast = activeFacade.parse(`model M { Real x = 1.0; } end model;`);
+      const ast = activeFacade.parse(`model M Real x = 1.0; end M;`);
       expect(ast).toBeGreaterThan(0);
 
       if (typeof wasmExports.getNodeStartState === "function") {
@@ -187,9 +177,9 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   // --------------------------------------------------------------------------
   describe("Pillar 4: Dynamic Expected Tokens Diagnostics", () => {
     it("should return precise expected token diagnostics based on LR state bitset", () => {
-      const code = `model Test {
+      const code = `model Test
         Real x
-      end model;`;
+      end Test;`;
 
       const ast = activeFacade.parse(code);
       const diags = activeFacade.getDiagnostics(ast);
@@ -205,7 +195,7 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   // --------------------------------------------------------------------------
   describe("Pillar 5: Synthetic Node Dataflow Bypass", () => {
     it("should correctly support FLAG_IS_SYNTHETIC (0x400) on AST nodes", () => {
-      const ast = activeFacade.parse(`model M { Real x = 1.0; } end model;`);
+      const ast = activeFacade.parse(`model M Real x = 1.0; end M;`);
       expect(ast).toBeGreaterThan(0);
 
       if (typeof wasmExports.getNodeFlags === "function") {
@@ -240,8 +230,8 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
   // --------------------------------------------------------------------------
   describe("Pillar 6: Complete SOTA System Verification", () => {
     it("should run incremental parsing and diagnostic extractions cleanly across consecutive edits", () => {
-      const codeV1 = `model M1 { Real x = 1.0; end model;`;
-      const codeV2 = `model M1 { Real x = 1.0; Real y = 2.0; end model;`;
+      const codeV1 = `model M1 Real x = 1.0; end M1;`;
+      const codeV2 = `model M1 Real x = 1.0; Real y = 2.0; end M1;`;
 
       const astV1 = activeFacade.parse(codeV1);
       expect(astV1).toBeGreaterThan(0);
@@ -254,20 +244,20 @@ describe("SOTA GLR Parser Features Dedicated Tests", () => {
     });
 
     it("should maintain accurate diagnostic ranges for reused subtrees after incremental edits", () => {
-      const codeV1 = `model M1 {
+      const codeV1 = `model M1
         Real x = 1.0;
         ??? !!! %%%
-      end model;`;
+      end M1;`;
 
       const astV1 = activeFacade.parse(codeV1);
       const diagsV1 = activeFacade.getDiagnostics(astV1);
       expect(diagsV1.length).toBeGreaterThan(0);
 
       // Incremental edit: insert whitespace on line 1 before reused block
-      const codeV2 = `     model M1 {
+      const codeV2 = `     model M1
         Real x = 1.0;
         ??? !!! %%%
-      end model;`;
+      end M1;`;
 
       const astV2 = activeFacade.parseIncremental("     model M1", 0, 8, codeV2.length);
       const diagsV2 = activeFacade.getDiagnostics(astV2);

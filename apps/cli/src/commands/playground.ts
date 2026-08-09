@@ -361,8 +361,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
   // 1. Scanner Primitives (Context-sensitive comments & multi-word keywords)
   primitives: {
     nestedComment: { open: '/*', close: '*/' },
-    lineComment: '//',
-    multiWordKeywords: ['end model']
+    lineComment: '//'
   },
 
   // 2. Grammar Rules & AST Combinators
@@ -371,9 +370,9 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
     ModelDef: $ => seq(
       semanticToken('keyword', 'model'), 
       field('name', $.Identifier), 
-      '{', 
       repeat(choice($.Decl, $.Equation)), 
-      semanticToken('keyword', 'end model'), 
+      semanticToken('keyword', 'end'), 
+      field('endName', $.Identifier), 
       ';'
     ),
     Decl: $ => seq(
@@ -513,20 +512,20 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
   }
 });\`;
 
-            const exampleCode = \`model ElectricalCircuit {
+            const exampleCode = \`model ElectricalCircuit
   Real voltage = 12.0;
   Real current = 2.5;
   Real power;
 
   power = voltage * current;
-end model;
+end ElectricalCircuit;
 
-model ThermalSystem {
+model ThermalSystem
   Real temp = 293.15;
   Real heatFlow;
 
   heatFlow = temp * 1 + 0;
-end model;\`;
+end ThermalSystem;\`;
 
             let latestUri = 'inmemory://example.mo';
             window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {

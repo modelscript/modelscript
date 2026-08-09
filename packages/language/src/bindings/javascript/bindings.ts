@@ -901,26 +901,27 @@ export class LspFacade {
       let stackPtrs = new Uint32Array(50000);
       let stackOffsets = new Uint32Array(50000);
       let stackTop = 0;
+
+      const rootTypeFlags = memory[astRoot / 4];
+      const rootEnvHashPadding = memory[(astRoot + 4) / 4];
+      const rootRawPad = rootTypeFlags >>> 22;
+      const rootIsFat = ((rootEnvHashPadding >>> 23) & 1) === 1;
+      const rootPad =
+        rootIsFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rootRawPad) / 4] : rootRawPad;
+
       stackPtrs[0] = astRoot;
-      stackOffsets[0] = 0;
+      stackOffsets[0] = rootPad;
       stackTop = 1;
       while (stackTop > 0) {
         stackTop--;
         const ptr = stackPtrs[stackTop];
-        const currentOffset = stackOffsets[stackTop];
-        const typeFlags = memory[ptr / 4];
-        const envHashPadding = memory[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        const pad = isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
-        const len = envHashPadding & 0x007fffff;
-        const tokenStart = currentOffset + pad;
+        const tokenStart = stackOffsets[stackTop];
         if (requiredNodePtrs.has(ptr)) {
           offsetCache.set(ptr, tokenStart);
           requiredNodePtrs.delete(ptr);
         }
         let childPtr = memory[(ptr + 12) / 4];
-        let currOffset = currentOffset;
+        let currOffset = tokenStart;
         let slow = childPtr;
         let step = 0;
         while (childPtr !== 0) {
@@ -934,7 +935,7 @@ export class LspFacade {
 
           if (stackTop < 50000) {
             stackPtrs[stackTop] = childPtr;
-            stackOffsets[stackTop] = currOffset;
+            stackOffsets[stackTop] = currOffset + cPad;
             stackTop++;
           }
           currOffset += cPad + cLen;
@@ -974,20 +975,21 @@ export class LspFacade {
           arg3,
       );
 
-      let msg = lintId > 0 ? `Linter Rule ${lintId}` : "Syntax Error";
-      let severity = lintId > 0 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
-      let codeStr: number | string | undefined = lintId > 0 ? lintId : undefined;
+      const rawLintId = lintId & 0x7fff;
+      let msg = lintId > 0 && lintId < 0x8000 ? `Linter Rule ${lintId}` : "Syntax Error";
+      let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
+      let codeStr: number | string | undefined = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
 
-      if (lintId > 0) {
-        if (lintId < this.syntaxNames.length) {
-          let name = this.syntaxNames[lintId];
+      if (rawLintId > 0) {
+        if (rawLintId < this.syntaxNames.length) {
+          let name = this.syntaxNames[rawLintId];
           if (name && name.startsWith('"') && name.endsWith('"')) {
             name = name.slice(1, -1);
           }
           msg = `Expected '${name}'`;
           severity = 1; // Syntax parse error (Expected Token) is Error = 1 (Red Squiggle)
           codeStr = undefined;
-        } else if (LINT_MESSAGES[lintId.toString()]) {
+        } else if (lintId < 0x8000 && LINT_MESSAGES[lintId.toString()]) {
           if (LINT_SEVERITIES[lintId.toString()]) {
             severity = LINT_SEVERITIES[lintId.toString()];
           }

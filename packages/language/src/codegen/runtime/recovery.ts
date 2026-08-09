@@ -149,8 +149,7 @@ export function simulateLookahead(
   let hasShifted = false;
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let h = changetype<ParseHead>(t_activeHeads[i]);
-    let requiredPos = (tok1Len > 0) ? (startPos + (tok1Len as u32) + 1) : (startPos + 1);
-    if (h.pos >= requiredPos || h.successfulShifts >= 2) {
+    if (h.pos > startPos || h.successfulShifts >= 1) {
       hasShifted = true;
       break;
     }
@@ -232,12 +231,12 @@ function searchBudgetedInsertions(
 
       if (dist > remainingDepth) continue;
       let insCost = getInsertCost(sym);
-      if (insCost >= PENALTY_INSERT_STRUCTURAL_BRACE && laTok != TOKEN_EOF) continue;
+      if (insCost >= 100 && laTok != TOKEN_EOF) continue;
+      outStates[depth] = shiftTarget;
       let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
       if (simRes > 0) {
         outTokens[depth] = sym;
-        outStates[depth] = shiftTarget;
         return depth + 1;
       }
       
@@ -330,10 +329,11 @@ function getInsertCost(tok: i32): i32 {
 @inline
 function getDeleteCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_delete_costs.length) return 10;
-  if (tok <= MAX_TERMINAL_ID && (token_insert_costs[tok] >= 50 || token_delete_costs[tok] <= 1)) {
+  if (tok <= MAX_TERMINAL_ID && (token_insert_costs[tok] >= 20 || token_delete_costs[tok] <= 1)) {
     return PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE; // Structural keywords/delimiters are expensive to delete to prevent code destruction
   }
-  return token_delete_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
+  let c = token_delete_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
+  return c < 10 ? 10 : c;
 }
 
 export function findShiftTarget(state: i32, tok: u16): i32 {
@@ -524,7 +524,7 @@ export function recoverUnwindAndMutate(
           // ------------------------------------------------------------
           // Branch S (Substitution): Replace unexpected token with expected terminal
           // ------------------------------------------------------------
-          if (token != TOKEN_EOF && unwindDepth == 0 && head.consecutiveInsertions == 0) {
+          if (token != TOKEN_EOF && unwindDepth == 0 && head.consecutiveInsertions == 0 && stateCanAccept(unwindCurr, recState, token, 0) == 0) {
             let actOffsetS = action_offsets[recState];
             if (actOffsetS >= 0 && actOffsetS < action_data.length) {
               let numTerminalsS = action_data[actOffsetS];
@@ -549,7 +549,7 @@ export function recoverUnwindAndMutate(
                 actIdxS += 2 + actCountS * 2;
                 
                 let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
-                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (isKwS || token > MAX_TERMINAL_ID || token_insert_costs[token] < 50)) {
+                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (isKwS || token > MAX_TERMINAL_ID || token_insert_costs[token] < 20)) {
                   let shiftTargetS = findShiftTarget(recState, expSym as u16);
                   
                   if (shiftTargetS != -1) {
@@ -567,12 +567,9 @@ export function recoverUnwindAndMutate(
                         }
                         p_nlS += peekCharLen(p_nlS);
                       }
-                      if (hasNlS) {
-                        subCost += PENALTY_SUBSTITUTION_CROSS_LINE; // Heavily penalize substituting tokens across line boundaries to prevent keyword-to-operator pollution
-                      }
-
                       if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCost < bestAcceptedCost) {
-                          let insNodeS = allocNode((expSym | 0x8000) as u16, 0, 0, 0, false);
+                          let tokLenS: u32 = rawTokEndS > srcLexPos ? (rawTokEndS - srcLexPos) : 0;
+                          let insNodeS = allocNode((expSym | 0x8000) as u16, 0, tokLenS, 0, false);
                           setNodeFlags(insNodeS, getNodeFlags(insNodeS) | FLAG_IS_INSERTED);
                           
                           let mergedNodeS: u32 = 0;
@@ -584,13 +581,13 @@ export function recoverUnwindAndMutate(
                           }
                           
                           let diagStart = unwindCurr != null && unwindCurr.pos < srcLexPos ? unwindCurr.pos : srcLexPos;
-                          let newTailS = pushDiagnostic(head.errorTail, diagStart, posAfterTokenS);
+                          let newTailS = pushDiagnostic(head.errorTail, diagStart, rawTokEndS);
                           let baseHeadS = allocParseHead(
                             recState,
                             unwindCurr != null ? unwindCurr.astNode : 0,
                             unwindCurr != null ? unwindCurr.prev : null,
                             srcLexPos,
-                            initialScannerState,
+                            0,
                             0,
                             0,
                             head.balanceHash,
@@ -604,9 +601,9 @@ export function recoverUnwindAndMutate(
                             mergedNodeS,
                             unwindCurr != null ? unwindCurr.prev : null,
                             posAfterTokenS,
-                            initialScannerState,
-                            subCost,
                             0,
+                            subCost,
+                            1,
                             head.balanceHash,
                             0,
                             recPrec,
@@ -925,8 +922,7 @@ export function recoverUnwindAndMutate(
               }
             }
           }
-          let isSemiTok = (peekChar(lexPos) == 59);
-          if (!skipBranchB && !isSemiTok && head.consecutiveInsertions < 8) {
+          if (!skipBranchB && head.consecutiveInsertions < 8) {
             let savedLexPosB = lexPos;
             let savedLexLenB = lexLen;
             let savedSrcLexPosB = srcLexPos;
@@ -978,7 +974,19 @@ export function recoverUnwindAndMutate(
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
                 if (baseCost <= 0) baseCost = COST_INSERT_BASE_DEFAULT;
                 if ((sym > MAX_TERMINAL_ID || (sym <= MAX_TERMINAL_ID && token_insert_costs[sym] >= 50)) && token != TOKEN_EOF) {
-                  baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                  let hasNewlineInGap = false;
+                  let p_gap = head.pos;
+                  while (p_gap < srcLexPos && p_gap < inputLength) {
+                    let ch = peekChar(p_gap);
+                    if (ch == 10 || ch == 13) {
+                      hasNewlineInGap = true;
+                      break;
+                    }
+                    p_gap += peekCharLen(p_gap);
+                  }
+                  if (hasNewlineInGap) {
+                    baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                  }
                 }
                 actualCost += baseCost;
               }
@@ -987,20 +995,6 @@ export function recoverUnwindAndMutate(
               let bDropped: u32 = head.pos > uPos ? head.pos - uPos : 0;
               let retroCost = (unwindDepth as i32) * configPenaltyUnwindNode + (bDropped as i32);
               
-              let hasNlB = false;
-              let p_nlB = uPos;
-              while (p_nlB < laScanPos && p_nlB < inputLength) {
-                let ch = peekChar(p_nlB);
-                if (ch == 10 || ch == 13) {
-                  hasNlB = true;
-                  break;
-                }
-                p_nlB += peekCharLen(p_nlB);
-              }
-              if (hasNlB) {
-                retroCost += PENALTY_INSERT_CROSS_LINE; // Disallow inserting tokens across line boundaries during recovery
-              }
-
               actualCost += retroCost;
 
               if (actualCost < THRESHOLD_INSERT_MAX_COST && (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || (head.errorCost + actualCost) < bestAcceptedCost)) {

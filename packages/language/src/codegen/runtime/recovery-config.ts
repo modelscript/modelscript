@@ -27,7 +27,7 @@
  * (e.g. `err` or `error` -> `model`). Kept at 10 to ensure keyword substitution strictly
  * beats token deletion (cost 20+).
  */
-export const COST_SUBSTITUTION_KEYWORD: i32 = 10;
+export const COST_SUBSTITUTION_KEYWORD: i32 = 6;
 
 /**
  * Base cost added to `head.errorCost` when substituting a standard (non-keyword) terminal in Branch S.

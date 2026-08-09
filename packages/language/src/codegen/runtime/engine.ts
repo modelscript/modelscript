@@ -11,6 +11,7 @@ import {
   FLAG_IS_LIST,
   FLAG_LIST_BOUNDARY,
   FLAG_HAS_ERROR,
+  FLAG_IS_INSERTED,
   FLAG_LSP_VISITED,
   getNodeByteLength,
   getNodeEnvHash,
@@ -716,17 +717,22 @@ export class FieldCursor {
       let flags = getNodeFlags(this.node);
       let hasError = (flags & FLAG_HAS_ERROR) != 0;
 
-      for (let i = 0; i < logicalIndex; i++) {
-        if (child == 0) break;
+      let idx = 0;
+      while (child != 0 && idx < logicalIndex) {
+        let childFlags = getNodeFlags(child);
+        let childType = getNodeType(child);
+        if ((childFlags & FLAG_IS_INSERTED) != 0 || childType == NODE_TYPE_ERROR || (childType & 0x8000) != 0) {
+          child = getNodeNextSibling(child);
+          continue;
+        }
+        idx++;
         child = getNodeNextSibling(child);
       }
 
       if (child == 0) continue;
 
       if (isSyntheticField) {
-        let isInvisible = (getNodeFlags(child) & FLAG_INVISIBLE) != 0;
-        if (isInvisible) {
-          if (this.frameDepth < 4) {
+        if (this.frameDepth < 4) {
             if (this.frameDepth == 0) {
               this.fNode0 = this.node; this.fOffset0 = this.offset; this.fCount0 = this.indexCount; this.fPtr0 = this.currentIdxPtr;
             } else if (this.frameDepth == 1) {
@@ -765,12 +771,10 @@ export class FieldCursor {
           }
           continue;
         }
+        return child;
       }
-      
-      return child;
+      return 0;
     }
-    return 0;
-  }
 
   @inline
   release(): void {

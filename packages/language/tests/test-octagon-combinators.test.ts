@@ -29,9 +29,9 @@ const modelicaCombinatorDsl = language({
       seq(
         semanticToken("keyword", "model"),
         field("name", $.Identifier),
-        "{",
         repeat(choice($.Decl, $.Stmt)),
-        semanticToken("keyword", "end model"),
+        semanticToken("keyword", "end"),
+        field("endName", $.Identifier),
         ";",
       ),
     Decl: ($: any) =>
