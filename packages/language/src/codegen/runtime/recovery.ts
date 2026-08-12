@@ -381,6 +381,118 @@ export function recoverUnwindAndMutate(
         // up to a depth of 5. For each popped state, we attempt:
         // Branch A (Deletion): Deleting the current token (skip)
         // Branch B (Insertion): Inserting a missing token (virtual shift)
+        // ------------------------------------------------------------
+        // Branch Summary (Active Stack Summary Recovery - Inspired by Tree-sitter):
+        // ------------------------------------------------------------
+        // Scan GSS ancestor history (head.prev, head.prev.prev, ...) to find
+        // the closest ancestor state S_A that can accept the lookahead token
+        // (or nextToken after skipping an invalid token). Unwind directly to S_A,
+        // wrapping intermediate subtrees in an isolated ERROR node.
+        if (head.prev != null && token != TOKEN_EOF) {
+          let ancCurr: ParseHead | null = head.prev;
+          let ancDepth = 1;
+          while (ancCurr != null && ancDepth <= 8) {
+            let ancState = ancCurr.state;
+            let scanTok = token;
+            let scanPos = srcLexPos;
+            let scanTokLen = lexLen;
+
+            // Test 1: Can ancState accept current token directly?
+            let canAcceptDirect = stateCanAccept(ancCurr, ancState, scanTok, 0);
+
+            // Test 2: If not, can ancState accept nextToken after skipping 1 token?
+            let canAcceptAfterSkip = false;
+            let nextScanPos = srcLexPos + lexLen;
+            let nextTok = TOKEN_EOF;
+            let nextTokLen = 0;
+            if (canAcceptDirect == 0 && nextScanPos < inputLength) {
+              let savedLP = lexPos;
+              let savedLL = lexLen;
+              let savedSLP = srcLexPos;
+              let savedSS = currentScannerState;
+
+              nextTok = invokeLexer(nextScanPos);
+              nextTokLen = lexLen;
+
+              setLexPos(savedLP);
+              setLexLen(savedLL);
+              setSrcLexPos(savedSLP);
+              setCurrentScannerState(savedSS);
+
+              if (nextTok != TOKEN_EOF && nextTok != -1) {
+                if (stateCanAccept(ancCurr, ancState, nextTok, 0) > 0) {
+                  canAcceptAfterSkip = true;
+                  scanTok = nextTok;
+                  scanPos = nextScanPos;
+                  scanTokLen = nextTokLen;
+                }
+              }
+            }
+
+            if (canAcceptDirect > 0 || canAcceptAfterSkip) {
+              let simRes = simulateLookahead(ancCurr, null, 0, scanTok, -1, -1, 999999, 2, scanPos + scanTokLen, 0);
+              if (simRes > 0) {
+                let summaryCost = head.errorCost + (ancDepth * configPenaltyUnwindNode) + (canAcceptAfterSkip ? PENALTY_DELETE_LINE_END_DANGLING : 0);
+                if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || summaryCost < bestAcceptedCost) {
+                  // Collect intermediate nodes between head and ancCurr
+                  let currNodePtr: ParseHead | null = head;
+                  let intermediateCount = 0;
+                  while (currNodePtr != null && currNodePtr != ancCurr) {
+                    if (intermediateCount < MAX_CHILD_NODES) {
+                      t_globalChildNodes[intermediateCount] = currNodePtr.astNode;
+                    }
+                    intermediateCount++;
+                    currNodePtr = currNodePtr.prev;
+                  }
+                  if (intermediateCount > MAX_CHILD_NODES) intermediateCount = MAX_CHILD_NODES;
+
+                  let errNodeSum = allocNode(NODE_TYPE_ERROR, 0, 0, ancCurr.balanceHash & 0xff, false);
+                  setNodeFlags(errNodeSum, FLAG_HAS_ERROR);
+                  let lastChildSum = 0;
+                  for (let k = intermediateCount - 1; k >= 0; k--) {
+                    let ch = t_globalChildNodes[k];
+                    if (ch == 0) continue;
+                    let clone = cloneNodeShallow(ch);
+                    setNodeFlags(clone, getNodeFlags(clone) | FLAG_HAS_ERROR);
+                    if (lastChildSum == 0) {
+                      setFirstChild(errNodeSum, clone);
+                    } else {
+                      setNextSibling(lastChildSum, clone);
+                    }
+                    lastChildSum = clone;
+                  }
+
+                  let mergedNodeSum = ancCurr.astNode != 0 ? concatLists(ancCurr.astNode, errNodeSum, getNodeType(ancCurr.astNode), 0) : errNodeSum;
+                  let diagStartSum = srcLexPos;
+                  let diagEndSum = srcLexPos + lexLen;
+                  if (diagEndSum <= diagStartSum) diagEndSum = diagStartSum + 1;
+                  let newTailSum = pushDiagnostic(head.errorTail, diagStartSum, diagEndSum);
+
+                  let summaryHead = allocParseHead(
+                    ancState,
+                    mergedNodeSum,
+                    ancCurr.prev,
+                    scanPos,
+                    initialScannerState,
+                    summaryCost,
+                    0,
+                    ancCurr.balanceHash,
+                    0,
+                    ancCurr.dynamicPrec,
+                    0,
+                    newTailSum
+                  );
+                  pushActiveHead(changetype<u32>(summaryHead));
+                  return true;
+                }
+              }
+            }
+
+            ancCurr = ancCurr.prev;
+            ancDepth++;
+          }
+        }
+
         let unwindCurr: ParseHead | null = head;
         let unwindDepth = 0;
 
