@@ -71,7 +71,8 @@ import {
   peekCharLen,
   inputEncoding,
   reachability_matrix,
-  precomputed_repairs
+  precomputed_repairs,
+  state_scope_bounds
 } from "./parser";
 
 const t_branchB_outTokens = new Int32Array(8);
@@ -335,6 +336,18 @@ function getDeleteCost(tok: i32): i32 {
   }
   let c = token_delete_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
   return c < 10 ? 10 : c;
+}
+
+@inline
+function getDeleteCostForState(tok: i32, state: i32): i32 {
+  let cost = getDeleteCost(tok);
+  if (state >= 0 && tok > 0 && tok <= MAX_TERMINAL_ID) {
+    let isBound = load<u8>(state_scope_bounds + (state * (MAX_TERMINAL_ID + 1) + tok));
+    if (isBound == 1) {
+      cost += PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE;
+    }
+  }
+  return cost;
 }
 
 export function findShiftTarget(state: i32, tok: u16): i32 {

@@ -494,6 +494,48 @@ export function generateParserTables(
   code += generateStaticArray(minYieldOffsets, "min_yield_offsets");
   code += generateStaticArray(minYieldData, "min_yield_data");
 
+  // 4. Compute Scope Dominator & Boundary Bitmaps (Phase 4)
+  const stateScopeBounds = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
+  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+    const lrState = table.automaton.states[stateId];
+    if (!lrState) continue;
+
+    for (const item of lrState.items) {
+      for (let pos = item.dot; pos < item.production.right.length; pos++) {
+        const sym = item.production.right[pos];
+        if (grammar.terminals.has(sym)) {
+          const symId = symToInt.get(sym);
+          const cleanSym = sym.replace(/^"|"$/g, "");
+          const isBoundary =
+            cleanSym === "}" ||
+            cleanSym === "]" ||
+            cleanSym === ")" ||
+            cleanSym === ";" ||
+            cleanSym === "end" ||
+            cleanSym === "else" ||
+            cleanSym === "elseif";
+
+          if (isBoundary && symId !== undefined && symId <= maxTerminalId) {
+            stateScopeBounds[stateId * (maxTerminalId + 1) + symId] = 1;
+          }
+        }
+      }
+
+      if (item.dot === item.production.right.length) {
+        for (const la of item.lookahead) {
+          const cleanLa = la.replace(/^"|"$/g, "");
+          const isBoundary =
+            cleanLa === "}" || cleanLa === "]" || cleanLa === ")" || cleanLa === ";" || cleanLa === "end";
+          const symId = symToInt.get(la);
+          if (isBoundary && symId !== undefined && symId <= maxTerminalId) {
+            stateScopeBounds[stateId * (maxTerminalId + 1) + symId] = 1;
+          }
+        }
+      }
+    }
+  }
+  code += generateStaticArray(Array.from(stateScopeBounds), "state_scope_bounds");
+
   const prodLengths: number[] = [];
   const prodRightOffsets: number[] = [];
   const prodRightSymbols: number[] = [];
