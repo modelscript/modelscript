@@ -432,6 +432,68 @@ export function generateParserTables(
 
   code += generateStaticArray(tokenDeleteCosts, "token_delete_costs");
 
+  // 3. Compute Minimal Yield Terminal Sequences (Phase 3)
+  const minYieldMap = new Map<string, number[]>();
+  for (const term of grammar.terminals) {
+    const id = symToInt.get(term);
+    if (id !== undefined) {
+      minYieldMap.set(term, [id]);
+    }
+  }
+
+  let yieldChanged = true;
+  while (yieldChanged) {
+    yieldChanged = false;
+    for (const p of grammar.productions) {
+      const lhs = p.left;
+      let valid = true;
+      let sequence: number[] = [];
+
+      for (const sym of p.right) {
+        const symYield = minYieldMap.get(sym);
+        if (!symYield) {
+          valid = false;
+          break;
+        }
+        sequence.push(...symYield);
+      }
+
+      if (valid) {
+        const existing = minYieldMap.get(lhs);
+        if (!existing || sequence.length < existing.length) {
+          minYieldMap.set(lhs, sequence);
+          yieldChanged = true;
+        }
+      }
+    }
+  }
+
+  const minYieldOffsets: number[] = new Array(symToInt.size + 1).fill(0);
+  const minYieldData: number[] = [];
+
+  for (let symId = 1; symId <= symToInt.size; symId++) {
+    minYieldOffsets[symId] = minYieldData.length;
+    let symName = "";
+    for (const [s, id] of symToInt.entries()) {
+      if (id === symId) {
+        symName = s;
+        break;
+      }
+    }
+    const seq = symName ? minYieldMap.get(symName) : undefined;
+    if (seq) {
+      minYieldData.push(seq.length);
+      for (const tId of seq) {
+        minYieldData.push(tId);
+      }
+    } else {
+      minYieldData.push(0);
+    }
+  }
+
+  code += generateStaticArray(minYieldOffsets, "min_yield_offsets");
+  code += generateStaticArray(minYieldData, "min_yield_data");
+
   const prodLengths: number[] = [];
   const prodRightOffsets: number[] = [];
   const prodRightSymbols: number[] = [];
