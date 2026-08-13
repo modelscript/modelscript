@@ -261,9 +261,9 @@ export function generateParserTables(
   sortedSymbols.sort((a, b) => tokenInsertCosts[a] - tokenInsertCosts[b]);
   code += generateStaticArray(sortedSymbols, "sorted_insertion_symbols");
 
-  const MAX_REACHABILITY_DEPTH = 5;
+  const MAX_REACHABILITY_DEPTH = Math.min(64, table.actionTable.size);
   const reachabilityMatrix = new Uint8Array(table.actionTable.size * (maxTerminalId + 1));
-  reachabilityMatrix.fill(255);
+  reachabilityMatrix.fill(254);
 
   for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
     const actions = table.actionTable.get(stateId);
@@ -280,7 +280,13 @@ export function generateParserTables(
     }
   }
 
-  console.log("Building Reachability Matrix for", table.actionTable.size, "states and", maxTerminalId, "terminals");
+  console.log(
+    "Building Unbounded Reachability Matrix for",
+    table.actionTable.size,
+    "states and",
+    maxTerminalId,
+    "terminals",
+  );
 
   // Precompute GOTO targets for each non-terminal
   const gotoTargets = new Map<number, number[]>();
@@ -352,6 +358,41 @@ export function generateParserTables(
     reachabilityMatrix.set(newMatrix);
   }
   code += generateStaticArray(Array.from(reachabilityMatrix), "reachability_matrix");
+
+  // Build Precomputed 1-Token Repair Table (Phase 2)
+  const precomputedRepairs = new Uint16Array(table.actionTable.size * (maxTerminalId + 1));
+  for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
+    const actions = table.actionTable.get(stateId);
+    if (!actions) continue;
+
+    const validShiftSyms: { symId: number; targetState: number }[] = [];
+    for (const [sym, acts] of actions.entries()) {
+      const symId = symToInt.get(sym);
+      if (symId !== undefined && symId <= maxTerminalId) {
+        for (const act of acts) {
+          if (act.type === 0 && act.target !== undefined) {
+            validShiftSyms.push({ symId, targetState: act.target });
+          }
+        }
+      }
+    }
+
+    for (let unexpectedTok = 1; unexpectedTok <= maxTerminalId; unexpectedTok++) {
+      let bestRepairTok = 0;
+      let minCost = 254;
+
+      for (const { symId, targetState } of validShiftSyms) {
+        const cost = reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok];
+        if (cost < minCost) {
+          minCost = cost;
+          bestRepairTok = symId;
+        }
+      }
+
+      precomputedRepairs[stateId * (maxTerminalId + 1) + unexpectedTok] = bestRepairTok;
+    }
+  }
+  code += generateStaticArray(Array.from(precomputedRepairs), "precomputed_repairs");
 
   const syncIds: number[] = [];
   for (const t of syncTokens) {

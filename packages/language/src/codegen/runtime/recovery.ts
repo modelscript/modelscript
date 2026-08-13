@@ -70,7 +70,8 @@ import {
   peekChar,
   peekCharLen,
   inputEncoding,
-  reachability_matrix
+  reachability_matrix,
+  precomputed_repairs
 } from "./parser";
 
 const t_branchB_outTokens = new Int32Array(8);
@@ -637,6 +638,59 @@ export function recoverUnwindAndMutate(
           // Branch S (Substitution): Replace unexpected token with expected terminal
           // ------------------------------------------------------------
           if (token != TOKEN_EOF && unwindDepth == 0 && head.consecutiveInsertions == 0 && stateCanAccept(unwindCurr, recState, token, 0) == 0) {
+            let savedSrcLexPosS = srcLexPos;
+            let savedLexLenS = lexLen;
+            let posAfterTokenS = srcLexPos + lexLen;
+            let nextTokAfterS = (posAfterTokenS < inputLength) ? invokeLexer(posAfterTokenS) : TOKEN_EOF;
+            while (nextTokAfterS != TOKEN_EOF && nextTokAfterS != -1 && load<u8>(is_extra_token + nextTokAfterS) == 1) {
+              if (lexLen == 0) break;
+              posAfterTokenS += lexLen;
+              nextTokAfterS = (posAfterTokenS < inputLength) ? invokeLexer(posAfterTokenS) : TOKEN_EOF;
+            }
+            srcLexPos = savedSrcLexPosS;
+            lexLen = savedLexLenS;
+
+            // O(1) Precomputed 1-Token Repair Table Fast-Path (Phase 2)
+            if (token > 0 && token <= MAX_TERMINAL_ID) {
+              let precomputedRepair = load<u16>(precomputed_repairs + (((recState * (MAX_TERMINAL_ID + 1) + token) as u32) << 1)) as i32;
+              if (precomputedRepair > 0 && precomputedRepair <= MAX_TERMINAL_ID) {
+                let shiftTargetP = findShiftTarget(recState, precomputedRepair as u16);
+                if (shiftTargetP != -1) {
+                  let simP = simulateLookahead(unwindCurr, null, 0, precomputedRepair, -1, -1, 999999, 3, posAfterTokenS, 0);
+                  if (simP > 0) {
+                    let isKwP = precomputedRepair <= MAX_TERMINAL_ID && load<u8>(is_extra_token + precomputedRepair) == 0;
+                    let subCostP = head.errorCost + (isKwP ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
+                    if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCostP < bestAcceptedCost) {
+                      let rawTokEndP = srcLexPos + lexLen;
+                      let tokLenP: u32 = rawTokEndP > srcLexPos ? (rawTokEndP - srcLexPos) : 0;
+                      let insNodeP = allocNode((precomputedRepair | 0x8000) as u16, 0, tokLenP, 0, false);
+                      setNodeFlags(insNodeP, getNodeFlags(insNodeP) | FLAG_IS_INSERTED);
+                      let mergedNodeP = unwindCurr.astNode != 0 ? concatLists(unwindCurr.astNode, insNodeP, getNodeType(unwindCurr.astNode), 0) : insNodeP;
+                      let diagStartP = srcLexPos;
+                      let diagEndP = rawTokEndP > diagStartP ? rawTokEndP : (diagStartP + 1);
+                      let newTailP = pushDiagnostic(head.errorTail, diagStartP, diagEndP);
+                      let subHeadP = allocParseHead(
+                        shiftTargetP,
+                        mergedNodeP,
+                        unwindCurr.prev,
+                        posAfterTokenS,
+                        0,
+                        subCostP,
+                        1,
+                        head.balanceHash,
+                        0,
+                        recPrec,
+                        0,
+                        newTailP
+                      );
+                      pushActiveHead(changetype<u32>(subHeadP));
+                      return true;
+                    }
+                  }
+                }
+              }
+            }
+
             let actOffsetS = action_offsets[recState];
             if (actOffsetS >= 0 && actOffsetS < action_data.length) {
               let numTerminalsS = action_data[actOffsetS];
