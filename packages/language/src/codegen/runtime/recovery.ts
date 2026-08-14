@@ -764,7 +764,6 @@ export function recoverUnwindAndMutate(
             
 
             let baseDelCost =
-              (unwindDepth == 0 ? getDeleteCost(token == TOKEN_EOF ? 0 : token) : 0) +
               unwindDepth * configPenaltyUnwindNode +
               droppedBytes;
             let hasNewline = false;
@@ -904,9 +903,9 @@ export function recoverUnwindAndMutate(
                   childCount++;
                   currChild = currChild.prev;
                 }
-                let parentHead: ParseHead | null = unwindDepth == 0 ? head : (unwindCurr != null ? unwindCurr.prev : null);
+                let parentHead: ParseHead | null = unwindCurr != null ? unwindCurr.prev : null;
                 let parentType = (unwindCurr != null && unwindCurr.astNode != 0) ? getNodeType(unwindCurr.astNode) : 0;
-                let mergedNode: u32 = (unwindDepth > 0 && unwindCurr != null && unwindCurr.astNode != 0) ? cloneNode(unwindCurr.astNode, true) : 0;
+                let mergedNode: u32 = (unwindCurr != null && unwindCurr.astNode != 0) ? cloneNode(unwindCurr.astNode, true) : 0;
 
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
