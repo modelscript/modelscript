@@ -996,19 +996,6 @@ export function recoverUnwindAndMutate(
 
 
                 let delParent = parentHead;
-                if (unwindDepth == 0 && parentHead != null && parentHead.astNode != 0) {
-
-
-                  let prev = parentHead.prev;
-                  let sym = findGotoSymbol(prev != null ? prev.state : 0, parentHead.state);
-                  let pType = sym != -1 ? (sym as u16) : getNodeType(parentHead.astNode);
-                  if (errNode != 0) {
-                    mergedNode = appendToList(parentHead.astNode, errNode, pType, 0);
-                  } else {
-                    mergedNode = parentHead.astNode;
-                  }
-                  delParent = parentHead.prev;
-                }
 
                 let delHead = allocParseHead(
                   recState,

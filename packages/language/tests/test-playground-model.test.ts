@@ -1034,4 +1034,119 @@ end ThermalSystem;`;
       expect(heatFlowWarning.range.end.character).toBe(15);
     }
   });
+
+  it("should isolate 'Real current = ;' on line 3 with clean 'name' field bounds and zero errors on line 6", async () => {
+    const dslWithLint = {
+      ...dsl,
+      lints: {
+        uninitializedComponent: {
+          nodes: ["Decl"],
+          severity: "warning",
+          message: "Component declaration uninitialized",
+          query: (db: any, node: any) => {
+            const valNode = db.ast.getChildByFieldId(node, "value");
+            if (valNode == 0) {
+              const nameNode = db.ast.getChildByFieldId(node, "name");
+              if (nameNode != 0) {
+                db.diagnostic(nameNode);
+              }
+            }
+          },
+        },
+      },
+    };
+    const result = buildParser(dslWithLint as any);
+    const tmpDirLocal = path.join(__dirname, "../build/scratch_build_current_test");
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+    fs.mkdirSync(tmpDirLocal, { recursive: true });
+
+    for (const file of result.assemblyScriptFiles) {
+      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+    }
+
+    const ascPath =
+      [
+        path.resolve(__dirname, "../../node_modules/.bin/asc"),
+        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
+        "npx asc",
+      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
+    const parserTs = path.join(tmpDirLocal, "parser.ts");
+    const outWasm = path.join(tmpDirLocal, "parser.wasm");
+
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    childProcess.execSync(ascCmd, { stdio: "inherit" });
+
+    const wasm = fs.readFileSync(outWasm);
+    const wasmModule = await WebAssembly.compile(wasm);
+
+    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const getFacade = new Function(wrapperSrc);
+    const { LspFacade: LspFacadeLocal } = getFacade();
+
+    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const importsLocal = {
+      env: {
+        memory: memory,
+        abort: () => {},
+        logNode: () => {},
+        debugLog: () => {},
+      },
+      JavaScript: {
+        debugLog: () => {},
+        logNode: () => {},
+      },
+      engine: {
+        debugLog: () => {},
+      },
+      parser: { logInt: () => {} },
+      recovery: {},
+      host: { runHostQuery: () => {} },
+    };
+
+    const instance = await WebAssembly.instantiate(wasmModule, importsLocal);
+    const facade = new LspFacadeLocal(instance.exports.memory, instance.exports);
+    facade.setParserConfig(true, true, true, true);
+    facade.lastAstRoot = 0;
+
+    const code = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = ;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;`;
+
+    const ast = facade.parse(code);
+    const diags = facade.getDiagnostics(ast);
+
+    // 1. Line 2 (0-indexed line 2 = editor line 3): '  Real current = ;'
+    // Warning on 'current' should strictly span chars 7..14 (NOT 7..17 or 7..16)
+    const currentWarning = diags.find((d: any) => d.range.start.line === 2 && d.severity === 2);
+    expect(currentWarning).toBeDefined();
+    expect(currentWarning.range.start.character).toBe(7);
+    expect(currentWarning.range.end.character).toBe(14);
+
+    // Syntax error on '=' should strictly span chars 15..16
+    const currentSyntaxError = diags.find((d: any) => d.range.start.line === 2 && d.severity === 1);
+    expect(currentSyntaxError).toBeDefined();
+    expect(currentSyntaxError.range.start.character).toBe(15);
+    expect(currentSyntaxError.range.end.character).toBe(16);
+
+    // 2. Line 5 (0-indexed line 5 = editor line 6): '  power = voltage * current;' should have ZERO syntax errors
+    const line5Errors = diags.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
+    expect(line5Errors.length).toBe(0);
+
+    // 3. AST verification: Equation on line 5 should be present and valid
+    const sexpr = facade.getAstSExpr(ast, true);
+    expect(sexpr).toContain("Equation [5, 2] - [5, 28]");
+
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+  }, 180000);
 });

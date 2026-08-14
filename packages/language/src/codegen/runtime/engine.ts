@@ -770,6 +770,12 @@ export class FieldCursor {
           }
           continue;
         }
+        if (child != 0 && (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+          let inner = getNodeFirstChild(child);
+          if (inner != 0 && getNodeType(inner) == getNodeType(child)) {
+            return inner;
+          }
+        }
         return child;
       }
       return 0;
