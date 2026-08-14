@@ -60,6 +60,7 @@ import {
   is_extra_token,
   invokeLexer,
   MAX_TERMINAL_ID,
+  MAX_FIELD_CURSOR_DEPTH,
   lexLen,
   lexPos,
   setCurrentScannerState,
@@ -604,20 +605,10 @@ export class FieldCursor {
   private hasCachedNext: boolean;
   isActive: boolean;
 
-  // 16 frames * 16 bytes = 256 bytes storage buffer
-  _f0: u64; _f1: u64; _f2: u64; _f3: u64;
-  _f4: u64; _f5: u64; _f6: u64; _f7: u64;
-  _f8: u64; _f9: u64; _f10: u64; _f11: u64;
-  _f12: u64; _f13: u64; _f14: u64; _f15: u64;
-  _f16: u64; _f17: u64; _f18: u64; _f19: u64;
-  _f20: u64; _f21: u64; _f22: u64; _f23: u64;
-  _f24: u64; _f25: u64; _f26: u64; _f27: u64;
-  _f28: u64; _f29: u64; _f30: u64; _f31: u64;
-
   @inline
   pushFrame(node: u32, offset: i32, count: i32, ptr: i32): void {
-    if (this.frameDepth < 16) {
-      let base = changetype<usize>(this) + offsetof<FieldCursor>("_f0") + ((this.frameDepth as usize) << 4);
+    if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
+      let base = changetype<usize>(this) + offsetof<FieldCursor>() + ((this.frameDepth as usize) << 4);
       store<u32>(base, node);
       store<i32>(base + 4, offset);
       store<i32>(base + 8, count);
@@ -630,7 +621,7 @@ export class FieldCursor {
   popFrame(): void {
     if (this.frameDepth > 0) {
       this.frameDepth--;
-      let base = changetype<usize>(this) + offsetof<FieldCursor>("_f0") + ((this.frameDepth as usize) << 4);
+      let base = changetype<usize>(this) + offsetof<FieldCursor>() + ((this.frameDepth as usize) << 4);
       this.node = load<u32>(base);
       this.offset = load<i32>(base + 4);
       this.indexCount = load<i32>(base + 8);
@@ -759,7 +750,7 @@ export class FieldCursor {
       }
 
       if (isSyntheticField) {
-        if (this.frameDepth < 16) {
+        if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
           this.pushFrame(this.node, this.offset, this.indexCount, this.currentIdxPtr);
 
           this.node = child;
@@ -802,22 +793,29 @@ export class FieldCursor {
   }
 }
 
+let cursorPoolInitialized: boolean = false;
 const cursorPool = new Array<FieldCursor>(16);
-for (let i = 0; i < 16; i++) {
-  let ptr = heap.alloc(offsetof<FieldCursor>());
-  let cursor = changetype<FieldCursor>(ptr);
-  cursor.isActive = false;
-  cursorPool[i] = cursor;
+let cursorPoolDepth: i32 = 0;
+
+function initCursorPool(): void {
+  for (let i = 0; i < 16; i++) {
+    let ptr = heap.alloc(offsetof<FieldCursor>() + ((MAX_FIELD_CURSOR_DEPTH as usize) << 4));
+    let cursor = changetype<FieldCursor>(ptr);
+    cursor.isActive = false;
+    cursorPool[i] = cursor;
+  }
+  cursorPoolDepth = 16;
+  cursorPoolInitialized = true;
 }
-let cursorPoolDepth: i32 = 16;
 
 export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
+  if (!cursorPoolInitialized) initCursorPool();
   let cursor: FieldCursor;
   if (cursorPoolDepth > 0) {
     cursorPoolDepth--;
     cursor = cursorPool[cursorPoolDepth];
   } else {
-    let ptr = heap.alloc(offsetof<FieldCursor>());
+    let ptr = heap.alloc(offsetof<FieldCursor>() + ((MAX_FIELD_CURSOR_DEPTH as usize) << 4));
     cursor = changetype<FieldCursor>(ptr);
   }
   cursor.init(node, fieldId);
@@ -825,6 +823,7 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
 }
 
 export function releaseFieldCursor(cursor: FieldCursor): void {
+  if (!cursorPoolInitialized) initCursorPool();
   if (cursorPoolDepth < 16) {
     cursorPool[cursorPoolDepth] = cursor;
     cursorPoolDepth++;

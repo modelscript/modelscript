@@ -628,10 +628,16 @@ export function generateParserTables(
   const typeFields: number[] = new Array(maxSymId + 1).fill(-1);
   const typeFieldData: number[] = [];
 
+  let maxSyntheticDepth = 0;
+
   function getFieldsForSymbol(
     symName: string,
     visited = new Set<string>(),
+    depth = 0,
   ): Map<number, { index: number; expectedType: number }[]> {
+    if (depth > maxSyntheticDepth) {
+      maxSyntheticDepth = depth;
+    }
     const map = new Map<number, { index: number; expectedType: number }[]>();
     if (visited.has(symName)) return map;
     visited.add(symName);
@@ -653,7 +659,7 @@ export function generateParserTables(
         for (let i = 0; i < p.right.length; i++) {
           const childSym = p.right[i];
           if (childSym.startsWith("_")) {
-            const childFields = getFieldsForSymbol(childSym, new Set(visited));
+            const childFields = getFieldsForSymbol(childSym, new Set(visited), depth + 1);
             const expectedType = symToInt.get(childSym) || 0;
             for (const fieldId of childFields.keys()) {
               if (!map.has(fieldId)) map.set(fieldId, []);
@@ -686,6 +692,8 @@ export function generateParserTables(
       }
     }
   }
+
+  const maxFieldCursorDepth = Math.max(16, maxSyntheticDepth + 8);
 
   const tokenTypesMap = new Map<string, number>();
   const tokenModifiersMap = new Map<string, number>();
@@ -787,7 +795,7 @@ export function generateParserTables(
 
   code += generateLexer(originalGrammar, grammar);
 
-  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${symToInt.size};\n`;
+  code += `\nexport const MAX_TERMINAL_ID = ${maxTerminalId};\nexport const MAX_SYMBOL_ID = ${symToInt.size};\nexport const MAX_FIELD_CURSOR_DEPTH: i32 = ${maxFieldCursorDepth};\n`;
   code += `\nexport function invokeLexer(pos: u32): i32 { return ${LEX_FN}(pos); }\n`;
 
   let lintSwitchStr = "";

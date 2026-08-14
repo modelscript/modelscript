@@ -1203,4 +1203,97 @@ end ElectricalCircuit;`;
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
   }, 180000);
+
+  it("should dynamically size MAX_FIELD_CURSOR_DEPTH and resolve fields through deep synthetic grammar chains (depth > 16)", async () => {
+    const rules: any = {
+      Root: ($: any) => seq("start", $._L0, "end"),
+    };
+    for (let i = 0; i < 20; i++) {
+      const currentName = `_L${i}`;
+      if (i === 19) {
+        rules[currentName] = ($: any) => seq("step", field("target", $.Identifier));
+      } else {
+        const nextName = `_L${i + 1}`;
+        rules[currentName] = ($: any) => seq("step", $[nextName]);
+      }
+    }
+    rules.Identifier = ($: any) => /[a-zA-Z_][a-zA-Z0-9_]*/;
+
+    const deepDsl = language({
+      name: "DeepSyntheticLanguage",
+      rules,
+      extras: ($: any) => [/\s/],
+      lints: {
+        flagDeepTarget: {
+          nodes: ["Root"],
+          severity: "warning",
+          message: "Deep target resolved",
+          query: (db: any, node: any) => {
+            const targetNode = db.ast.getChildByFieldId(node, "target");
+            if (targetNode != 0) {
+              db.diagnostic(targetNode);
+            }
+          },
+        },
+      },
+    });
+
+    const result = buildParser(deepDsl as any);
+    const parserFile = result.assemblyScriptFiles.find((f: any) => f.filename === "parser.ts");
+    expect(parserFile).toBeDefined();
+    // 20 synthetic levels + 8 headroom = 28 (> 16)
+    expect(parserFile?.content).toMatch(/export const MAX_FIELD_CURSOR_DEPTH: i32 = 28;/);
+
+    const tmpDirLocal = path.join(__dirname, "../build/scratch_build_deep_depth_test");
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+    fs.mkdirSync(tmpDirLocal, { recursive: true });
+
+    for (const file of result.assemblyScriptFiles) {
+      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+    }
+
+    const ascPath =
+      [
+        path.resolve(__dirname, "../../node_modules/.bin/asc"),
+        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
+        "npx asc",
+      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
+    const parserTs = path.join(tmpDirLocal, "parser.ts");
+    const outWasm = path.join(tmpDirLocal, "parser.wasm");
+
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    childProcess.execSync(ascCmd, { stdio: "inherit" });
+
+    const wasm = fs.readFileSync(outWasm);
+    const wasmModule = await WebAssembly.compile(wasm);
+
+    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const getFacade = new Function(wrapperSrc);
+    const { LspFacade } = getFacade();
+
+    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const imports = {
+      env: { memory: memory, abort: () => {}, logNode: () => {}, debugLog: () => {} },
+      JavaScript: { debugLog: () => {}, logNode: () => {} },
+      engine: { debugLog: () => {} },
+      parser: { logInt: () => {} },
+      recovery: {},
+      host: { runHostQuery: () => {} },
+    };
+
+    const instance = await WebAssembly.instantiate(wasmModule, imports);
+    const facade = new LspFacade(instance.exports.memory, instance.exports);
+
+    const code = "start " + "step ".repeat(20) + "myDeepIdentifier end";
+    const ast = facade.parse(code);
+    const diags = facade.getDiagnostics(ast);
+
+    // Verify the diagnostic on myDeepIdentifier was successfully emitted through all 20 frames
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toBe("Deep target resolved");
+    const targetSubstring = code.substring(diags[0].startCharOffset, diags[0].endCharOffset);
+    expect(targetSubstring).toBe("myDeepIdentifier");
+
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+  }, 180000);
 });
