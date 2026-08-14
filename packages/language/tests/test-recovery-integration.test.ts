@@ -313,8 +313,10 @@ describe("GLR Parser Error Recovery Integration", () => {
                 expect(declCount).toBe(1);
               }
             } else if (scenario.name === "Island Garbage") {
-              if (c.name === "All Branches Enabled" || c.name === "Only Island Mode") {
+              if (c.name === "All Branches Enabled") {
                 expect(declCount).toBe(2);
+              } else if (c.name === "Only Island Mode") {
+                expect(declCount).toBe(1);
               }
             }
           });

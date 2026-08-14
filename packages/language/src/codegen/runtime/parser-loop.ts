@@ -244,6 +244,8 @@ function parseLR(): u32 {
         transitionToGlr(pos, pendingPadding, currentScannerState);
         return 0;
       }
+
+
     } else {
       type = tempActions[0];
       target = tempActions[1] as i32;
@@ -1827,8 +1829,9 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
   let popCount = prod_lengths[reduceProd];
   let lhsSym = prod_lhs[reduceProd];
   
-
   let curr: ParseHead | null = head;
+
+
   let c_idx = 99999;
   let needed = popCount;
   let foundFirstGrammar = false;
@@ -2558,11 +2561,12 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
     }
 
     let newHead = allocParseHead(
-      nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + 50 + mrdCost,
+      nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + (missingCount > 0 ? 50 : 0) + mrdCost,
       head.successfulShifts, head.balanceHash, head.consecutiveInsertions + missingCount,
       head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
       head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueue3, head.virtualQueue4, head.virtualQueueCount
     );
+
     pushActiveHead(changetype<u32>(newHead));
     return true;
   }
@@ -2605,7 +2609,7 @@ function pruneGSS(pos: u32): void {
     activeHeadsTrimCount = activeHeadsCount;
     
 
-    if (bestCost > 0 && bestCost < INFINITE_COST) {
+    if (activeHeadsTrimCount > 1 && bestCost > 0 && bestCost < INFINITE_COST) {
       for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
         let ah = changetype<ParseHead>(t_activeHeads[i]);
         ah.errorCost = ah.errorCost > bestCost ? ah.errorCost - bestCost : 0;
@@ -2865,9 +2869,6 @@ export function advanceGLR(): void {
     // (Dead code loop for active heads trace removed)
 
     pos = head.pos;
-    logInt(1000000 + pos);
-    logInt(2000000 + (head.state as u32));
-    logInt(3000000 + (head.errorCost as u32));
 
     currentScannerState = head.scannerState;
     lexPos = pos;
@@ -3213,7 +3214,6 @@ export function advanceGLR(): void {
               anyAction = true;
             }
           } else if (type == ACTION_ACCEPT) {
-            logInt(990000 + type);
             processAcceptAction(head);
             anyAction = true;
           }
@@ -3337,9 +3337,11 @@ export function advanceGLR(): void {
       let initialHeads = activeHeadsCount;
       let recSuccess = recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
 
-      if (g_configIslandMode) {
+      if (configEnableIslandMode) {
         recoverIslandMode(head, inputLength, bestAcceptedCost, initialHeads);
       }
+
+
       
       // Restore expected_tokens after recovery — the recovery functions call
       // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
@@ -3457,9 +3459,7 @@ bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
   lastBestCost = 999999;
   lastIterCount = 0;
   globalLoopIterations = 0;
-  logInt(100000 + (oldTree != 0 ? 1 : 0));
   advanceGLR();
-  logInt(200000 + acceptedNode);
 
   if (acceptedNode != 0) {
     bestDyingHead = 0;
@@ -3475,7 +3475,6 @@ bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
       globalAstRoot = finalTree;
       return finalTree;
   }
-  logInt(300000 + bestDyingHead);
   if (bestDyingHead != 0) {
     // ----------------------------------------------------------------------
     // CATASTROPHIC FAILURE FALLBACK

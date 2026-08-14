@@ -67,7 +67,8 @@ export const PENALTY_DELETE_LINE_END_DANGLING: i32 = 100;
 /**
  * Penalty added when deleting tokens across line boundaries (`\n`).
  */
-export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 1000;
+export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
+
 
 /**
  * Heavy penalty added when discarding deeper subtrees across line boundaries during Branch A deletion,
@@ -144,7 +145,8 @@ export const COST_ISLAND_INITIAL_SYNC: i32 = 5;
 /**
  * Cost penalty per AST node unwound during recovery (aligned with Tree-sitter).
  */
-export let configPenaltyUnwindNode: i32 = 50;
+export let configPenaltyUnwindNode: i32 = 300;
+
 
 /**
  * Cost penalty per token symbol synchronized.

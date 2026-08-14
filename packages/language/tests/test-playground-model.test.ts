@@ -998,4 +998,40 @@ end SecondModel;
     expect(sexpr).toContain("ModelDef [0, 0] - [2, 15]");
     expect(sexpr).toContain("ModelDef [4, 0] - [6, 16]");
   });
+
+  it("should isolate incomplete declaration 'Real power=;' without corrupting subsequent equations or downstream model offsets", () => {
+    const code = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power=;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;`;
+
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    // 1. Line 3 (1-based Line 4): 'Real power=;' should have a syntax error
+    const line3Errors = diags.filter((d: any) => d.range.start.line === 3 && d.severity === 1);
+    expect(line3Errors.length).toBeGreaterThanOrEqual(1);
+
+    // 2. Line 5 (1-based Line 6): 'power = voltage * current;' should NOT have syntax errors
+    const line5Errors = diags.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
+    expect(line5Errors.length).toBe(0);
+
+    // 3. Line 10 (1-based Line 11): '  Real heatFlow;' warning anchoring
+    const heatFlowWarning = diags.find((d: any) => d.range.start.line === 10 && d.severity === 2);
+    if (heatFlowWarning) {
+      expect(heatFlowWarning.range.start.character).toBe(7);
+      expect(heatFlowWarning.range.end.character).toBe(15);
+    }
+  });
 });

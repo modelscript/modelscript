@@ -121,6 +121,8 @@ export function lsp_getBinaryLength(): u32 {
 export function lsp_allocDiagnostic(start: u32, end: u32, lintId: u32, arg0: u32 = 0, arg1: u32 = 0, arg2: u32 = 0, arg3: u32 = 0): void {
   if (t_lspBinaryBuffer.length >= 10000 * 7) return;
 
+
+
   let bufLen = t_lspBinaryBuffer.length;
   if (bufLen >= 7) {
     let lastStart = t_lspBinaryBuffer[bufLen - 7];
@@ -332,9 +334,12 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         chk = getNodeNextSibling(chk);
       }
     }
-    let isActualError = (isLeaf && isErrorNode) || (flags & FLAG_IS_INSERTED) != 0 || (isErrorNode && !hasChildError);
+    let isActualError = (isLeaf && isErrorNode) || (flags & FLAG_IS_INSERTED) != 0;
 
     if (isActualError) {
+
+
+
       let totalInputBytes: u32 = inputLength;
       if (nodeStart > totalInputBytes && nodeStart > 0) {
         continue;
@@ -385,20 +390,28 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
           if (scanPos >= step) {
             let cPrev = peekChar(scanPos - step);
-            if (cPrev != 10 && cPrev != 13 && cPrev != 32 && cPrev != 9 && cPrev != 0 && cPrev != 59 && cPrev != 125 && cPrev != 41) {
-              let wordEnd = scanPos;
-              let wordStart = scanPos - step;
-              while (wordStart >= step) {
-                let c = peekChar(wordStart - step);
-                if (c == 10 || c == 13 || c == 32 || c == 9 || c == 0) break;
-                wordStart -= step;
-              }
-              if (wordEnd > wordStart) {
-                dStart = wordStart;
-                dEnd = wordEnd;
+            if (cPrev != 10 && cPrev != 13 && cPrev != 32 && cPrev != 9 && cPrev != 0) {
+              let isWord = (cPrev >= 65 && cPrev <= 90) || (cPrev >= 97 && cPrev <= 122) || (cPrev >= 48 && cPrev <= 57) || cPrev == 95;
+              if (isWord) {
+                let wordEnd = scanPos;
+                let wordStart = scanPos - step;
+                while (wordStart >= step) {
+                  let c = peekChar(wordStart - step);
+                  let cIsWord = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95;
+                  if (!cIsWord) break;
+                  wordStart -= step;
+                }
+                if (wordEnd > wordStart) {
+                  dStart = wordStart;
+                  dEnd = wordEnd;
+                }
+              } else {
+                dStart = scanPos - step;
+                dEnd = scanPos;
               }
             }
           }
+
         }
       }
 
@@ -408,8 +421,9 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         else dStart = 0;
       }
       if (dEnd > dStart) {
-        lsp_allocDiagnostic(dStart, dEnd, type != 0 ? type : 0);
+        lsp_allocDiagnostic(dStart, dEnd, 0);
       }
+
     }
 
     if (!isErrorNode && !isTainted && (flags & FLAG_IS_INSERTED) == 0) {
