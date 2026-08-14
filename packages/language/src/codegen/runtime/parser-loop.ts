@@ -540,6 +540,8 @@ export function isEpsilonReachable(state: i32, tok: i32): boolean {
 
 export let g_stateCanAcceptMaxCost: i32 = MAX_LOOKAHEAD_DEPTH * 10;
 
+const t_virtualStates = new StaticArray<i32>(64);
+
 /**
  * Core reachability simulation. Simulates parsing forward on a cloned GSS head
  * to determine if `tok` is eventually accepted.
@@ -549,13 +551,17 @@ export let g_stateCanAcceptMaxCost: i32 = MAX_LOOKAHEAD_DEPTH * 10;
  * @param state The state to look ahead from.
  * @param tok The token ID that we want to successfully shift/accept.
  * @param depth The current lookahead recursion depth (capped to prevent infinite loops).
+ * @param virtualDepth The number of virtual frames on top of the physical head stack.
  * @returns 1 if reachable, 2 if infinitely reachable, 0 if not reachable.
  */
-export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0, extraShiftDepth: i32 = 0): i32 {
+export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0, virtualDepth: i32 = 0): i32 {
   if (depth > 50) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
-  if (head == null && !computingReachability && depth == 0 && extraShiftDepth == 0) {
+  if (head == null && !computingReachability && depth == 0 && virtualDepth == 0) {
     if (!isEpsilonReachable(state, tok)) return 0;
+  }
+  if (depth == 0 && virtualDepth > 0 && virtualDepth <= 64) {
+    t_virtualStates[0] = state;
   }
 
   let actionOffset = action_offsets[state];
@@ -578,11 +584,11 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
           let ruleLen = prod_lengths[target];
           let ruleLHS = prod_lhs[target];
           
+          let virtualPopped = ruleLen <= virtualDepth ? ruleLen : virtualDepth;
+          let remCounter = ruleLen - virtualPopped;
+          let newVirtualDepth = virtualDepth - virtualPopped;
+
           let pHead = head;
-          let remCounter = ruleLen;
-          if ((extraShiftDepth > 0 || depth > 0) && remCounter > 0) {
-            remCounter--;
-          }
           while (remCounter > 0 && pHead != null) {
             let pNode = pHead.astNode;
             let pIsInserted = pNode != 0 ? (getNodeFlags(pNode) & FLAG_IS_INSERTED) != 0 : false;
@@ -594,7 +600,13 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
             }
           }
           
-          let topState = pHead != null ? pHead.state : (remCounter == 0 ? 0 : (ruleLen == 0 ? state : -1));
+          let topState: i32 = -1;
+          if (newVirtualDepth > 0) {
+            topState = t_virtualStates[newVirtualDepth - 1];
+          } else {
+            topState = pHead != null ? pHead.state : (remCounter == 0 ? 0 : (ruleLen == 0 ? state : -1));
+          }
+
           let nextState = -1;
           if (topState != -1) {
             let gOffset = goto_offsets[topState];
@@ -611,7 +623,10 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
           }
           
           if (nextState != -1) {
-            let res = stateCanAccept(pHead, nextState, tok, depth + 1, 0);
+            if (newVirtualDepth < 64) {
+              t_virtualStates[newVirtualDepth] = nextState;
+            }
+            let res = stateCanAccept(pHead, nextState, tok, depth + 1, newVirtualDepth + 1);
             if (res > 0) return res;
           } else {
             if (computingReachability) return 2;

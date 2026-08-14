@@ -49,6 +49,7 @@ import {
   prod_right_symbols as _prod_right_symbols,
   token_insert_costs as _token_insert_costs,
   token_delete_costs as _token_delete_costs,
+  token_is_word as _token_is_word,
   sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
@@ -113,6 +114,7 @@ export let goto_data: StaticTable = changetype<StaticTable>(0);
 export let mrd_data: StaticTable = changetype<StaticTable>(0);
 export let token_insert_costs: StaticTable = changetype<StaticTable>(0);
 export let token_delete_costs: StaticTable = changetype<StaticTable>(0);
+export let token_is_word: StaticTable = changetype<StaticTable>(0);
 export let sorted_insertion_symbols: StaticTable = changetype<StaticTable>(0);
 
 export let prod_lengths: StaticTable = changetype<StaticTable>(0);
@@ -136,6 +138,7 @@ export function initStaticTables(): void {
   mrd_data = changetype<StaticTable>(_mrd_data);
   token_insert_costs = changetype<StaticTable>(_token_insert_costs);
   token_delete_costs = changetype<StaticTable>(_token_delete_costs);
+  token_is_word = changetype<StaticTable>(_token_is_word);
   sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
   prod_lengths = changetype<StaticTable>(_prod_lengths);
   prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);

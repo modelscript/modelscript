@@ -1,6 +1,6 @@
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead, t_activeHeads, activeHeadsCount, setActiveHeadsCount, pushCandidateHead, t_candidateHeadsBuffer, candidateHeadsCount } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
-  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs,
+  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs, token_is_word,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableBranchT, configEnableIslandMode, ACTION_REDUCE, configPenaltyUnwindNode, configPenaltySyncToken, configIslandBasePenalty, configIslandSyncMultiplier, configIslandPoppedMultiplier, prod_is_list
 } from "./engine";
 import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, appendToList, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState, fixNodeLength, findGotoSymbol } from "./parser-loop";
@@ -49,6 +49,7 @@ import {
   FLAG_IS_LIST,
   getNodeFlags,
   setNodeFlags,
+  cloneNode,
   S,
   resetGeneration,
   atomicChunkAlloc
@@ -615,7 +616,7 @@ export function recoverUnwindAndMutate(
               let precomputedRepair = load<u16>(precomputed_repairs + (((recState * (MAX_TERMINAL_ID + 1) + token) as u32) << 1)) as i32;
               if (precomputedRepair > 0 && precomputedRepair <= MAX_TERMINAL_ID) {
                 let isKwP = precomputedRepair <= MAX_TERMINAL_ID && load<u8>(is_extra_token + precomputedRepair) == 0;
-                let isTargetWordP = isKwP || token_insert_costs[precomputedRepair] >= 50;
+                let isTargetWordP = token_is_word[precomputedRepair] == 1;
                 if (isSourceWordS == isTargetWordP) {
                   let shiftTargetP = findShiftTarget(recState, precomputedRepair as u16);
                   if (shiftTargetP != -1) {
@@ -686,7 +687,7 @@ export function recoverUnwindAndMutate(
                 actIdxS += 2 + actCountS * 2;
                 
                 let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
-                let isTargetWordS = isKwS || token_insert_costs[expSym] >= 50;
+                let isTargetWordS = token_is_word[expSym] == 1;
                 if (isSourceWordS == isTargetWordS && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
                   let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                   if (simS > 0) {
@@ -905,12 +906,12 @@ export function recoverUnwindAndMutate(
                 }
                 let parentHead: ParseHead | null = unwindDepth == 0 ? head : (unwindCurr != null ? unwindCurr.prev : null);
                 let parentType = (unwindCurr != null && unwindCurr.astNode != 0) ? getNodeType(unwindCurr.astNode) : 0;
-                let mergedNode: u32 = (unwindDepth > 0 && unwindCurr != null && unwindCurr.astNode != 0) ? cloneNodeShallow(unwindCurr.astNode) : 0;
+                let mergedNode: u32 = (unwindDepth > 0 && unwindCurr != null && unwindCurr.astNode != 0) ? cloneNode(unwindCurr.astNode, true) : 0;
 
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
                   if (child == 0) continue;
-                  let clonedChild = cloneNodeShallow(child);
+                  let clonedChild = cloneNode(child, true);
                   markTreeError(clonedChild);
                   if (mergedNode != 0) {
                     mergedNode = concatLists(mergedNode, clonedChild, parentType != 0 ? parentType : getNodeType(clonedChild), 0);
@@ -1104,7 +1105,7 @@ export function recoverUnwindAndMutate(
               for (let k = 0; k < seqLen; k++) {
                 let sym = t_branchB_outTokens[k];
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
-                if (seqLen > 1 && token != TOKEN_EOF) {
+                if (token != TOKEN_EOF) {
                   let hasNewlineInGap = false;
                   let p_gap = head.pos;
                   while (p_gap < srcLexPos && p_gap < inputLength) {
@@ -1116,7 +1117,10 @@ export function recoverUnwindAndMutate(
                     p_gap += peekCharLen(p_gap);
                   }
                   if (hasNewlineInGap) {
-                    baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                    let isDelimiter = sym <= MAX_TERMINAL_ID && (token_insert_costs[sym] == 1);
+                    if (!isDelimiter || seqLen > 1) {
+                      baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                    }
                   }
                 }
 

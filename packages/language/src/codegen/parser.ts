@@ -254,6 +254,21 @@ export function generateParserTables(
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");
 
+  const tokenIsWord = new Array(symToInt.size + 1).fill(0);
+  for (const [sym, symId] of symToInt.entries()) {
+    if (sym.startsWith('"')) {
+      const cleanOp = sym.slice(1, -1);
+      if (/^[a-zA-Z_]/.test(cleanOp)) {
+        tokenIsWord[symId] = 1;
+      }
+    } else if (sym.startsWith("/")) {
+      if (sym.includes("a-z") || sym.includes("A-Z") || sym.includes("_")) {
+        tokenIsWord[symId] = 1;
+      }
+    }
+  }
+  code += generateStaticArray(tokenIsWord, "token_is_word");
+
   let maxTerminalId = 0;
   for (const term of grammar.terminals) {
     if (term !== "EOF" && term !== "ERROR") {
@@ -825,6 +840,7 @@ export function generateParserTables(
       "mrd_data",
       "token_insert_costs",
       "token_delete_costs",
+      "token_is_word",
       "sorted_insertion_symbols",
       "prod_lengths",
       "prod_right_offsets",

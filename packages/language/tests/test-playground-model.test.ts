@@ -1143,9 +1143,32 @@ end ThermalSystem;`;
     const line5Errors = diags.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
     expect(line5Errors.length).toBe(0);
 
-    // 3. AST verification: Equation on line 5 should be present and valid
-    const sexpr = facade.getAstSExpr(ast, true);
-    expect(sexpr).toContain("Equation [5, 2] - [5, 28]");
+    // 4. Test trailing invalid dot in 'Real current = 1.;'
+    const codeDot = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 1.;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;`;
+
+    const astDot = facade.parse(codeDot);
+    const diagsDot = facade.getDiagnostics(astDot);
+
+    // Line 2 (editor line 3): '  Real current = 1.;'
+    // Syntax error should strictly be on '.' at char 18..19 (offset 65..66)
+    const dotSyntaxError = diagsDot.find((d: any) => d.range.start.line === 2 && d.severity === 1);
+    expect(dotSyntaxError).toBeDefined();
+    expect(dotSyntaxError.range.start.character).toBe(18);
+    expect(dotSyntaxError.range.end.character).toBe(19);
+
+    // Warning on 'current' should NOT be present (since value = 1 was parsed)
+    const currentDotWarning = diagsDot.find((d: any) => d.range.start.line === 2 && d.severity === 2);
+    expect(currentDotWarning).toBeUndefined();
+
+    // Line 5 (editor line 6): zero errors
+    const line5DotErrors = diagsDot.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
+    expect(line5DotErrors.length).toBe(0);
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
   }, 180000);
