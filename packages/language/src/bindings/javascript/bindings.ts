@@ -917,6 +917,9 @@ export class LspFacade {
       let stackTop = 0;
 
       const getNodePad = (ptr: number): number => {
+        if (this.exports.lsp_getNodeLeadingPad) {
+          return this.exports.lsp_getNodeLeadingPad(ptr);
+        }
         const typeFlags = memory[ptr / 4];
         const envHashPadding = memory[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
@@ -936,7 +939,6 @@ export class LspFacade {
         stackTop--;
         const current = stackPtrs[stackTop];
         const tokenStart = stackOffsets[stackTop];
-
         if (requiredNodePtrs.has(current)) {
           offsetCache.set(current, tokenStart);
           requiredNodePtrs.delete(current);
@@ -953,17 +955,21 @@ export class LspFacade {
 
           let currOffset = tokenStart;
           let writeIdx = stackTop + childCount - 1;
+          let isFirstChild = true;
           c = child;
           while (c !== 0) {
             const cPad = getNodePad(c);
             const cLen = getNodeLen(c);
-            currOffset += cPad;
+            if (!isFirstChild) {
+              currOffset += cPad;
+            }
             if (writeIdx >= 0 && writeIdx < 50000) {
               stackPtrs[writeIdx] = c;
               stackOffsets[writeIdx] = currOffset;
               writeIdx--;
             }
             currOffset += cLen;
+            isFirstChild = false;
             c = memory[(c + 16) / 4];
           }
           stackTop += childCount;
@@ -1027,14 +1033,13 @@ export class LspFacade {
                 const typeId = typeFlags & 0x03ff;
                 const pad = typeFlags >>> 22;
                 const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
-                const encStep = this.getInputEncoding() === 1 ? 2 : 1;
-                let actualStart = startByte - pad * encStep;
+                let actualStart = startByte;
                 if (offsetCache.has(nodePtr)) {
-                  actualStart = offsetCache.get(nodePtr)! - pad * encStep;
+                  actualStart = offsetCache.get(nodePtr)!;
                 } else if (this.exports.lsp_findNodeOffset) {
                   const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
                   memory = new Uint32Array(this.wasmMemory.buffer);
-                  if (offset >= 0) actualStart = offset - pad * encStep;
+                  if (offset >= 0) actualStart = offset;
                 }
                 const dummyTree = {
                   sourceCode: {
@@ -1106,11 +1111,11 @@ export class LspFacade {
         // Range shifting and clamping removed to preserve WASM output
       }
 
-      // Ensure startByte and endByte cover full word tokens so squiggles never cut mid-word
+      // Ensure startByte and endByte cover full word tokens for syntax errors so squiggles never cut mid-word
       const inputEncoding = this.getInputEncoding();
       const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
       const inputBufPtr = getInputBuf ? getInputBuf() : 0;
-      if (inputBufPtr > 0 && inputEncoding === 1) {
+      if (inputBufPtr > 0 && inputEncoding === 1 && rawLintId === 0) {
         const lenBytes = this.exports.inputLength
           ? typeof this.exports.inputLength.value === "number"
             ? this.exports.inputLength.value
@@ -1153,6 +1158,10 @@ export class LspFacade {
           }
           endByte = endCharIdx * 2;
         }
+      }
+
+      if (endByte <= startByte) {
+        endByte = startByte + (inputEncoding === 1 ? 2 : 1);
       }
 
       let startPos = this.offsetToPos(startByte, lineStarts);
@@ -1222,23 +1231,37 @@ export class LspFacade {
     for (const d of uniqueDiags) {
       if (mergedDiags.length > 0) {
         const prev = mergedDiags[mergedDiags.length - 1];
-        // Merge if both are generic Syntax Errors and they are contiguous.
-        // This consolidates fragmented contiguous errors (e.g. from Island Mode)
-        // into a single cohesive squiggle.
-        if (
-          prev.message === "Syntax Error" &&
-          d.message === "Syntax Error" &&
-          prev.endCharOffset === d.startCharOffset &&
-          prev.range.start.line === d.range.start.line &&
-          prev.range.end.line === d.range.end.line &&
-          prev.code === undefined &&
-          d.code === undefined
-        ) {
-          prev.range.end = d.range.end;
-          if (prev.endCharOffset !== undefined && d.endCharOffset !== undefined) {
-            prev.endCharOffset = Math.max(prev.endCharOffset, d.endCharOffset);
+        const isStartSameLine = prev.range.start.line === d.range.start.line;
+        const isOverlapping =
+          (prev.endCharOffset !== undefined &&
+            d.startCharOffset !== undefined &&
+            d.startCharOffset <= prev.endCharOffset) ||
+          (isStartSameLine && prev.range.end.character >= d.range.start.character) ||
+          (prev.range.start.line <= d.range.start.line && prev.range.end.line >= d.range.start.line);
+
+        if (isOverlapping && prev.code === undefined && d.code === undefined) {
+          const prevIsExpected = prev.message.startsWith("Expected ");
+          const dIsExpected = d.message.startsWith("Expected ");
+          const prevIsGeneric = prev.message === "Syntax Error";
+          const dIsGeneric = d.message === "Syntax Error";
+
+          if (prevIsGeneric && dIsExpected) {
+            // Replace generic error with more specific "Expected <token>"
+            mergedDiags[mergedDiags.length - 1] = d;
+            continue;
+          } else if (prevIsExpected && dIsGeneric) {
+            // Keep specific "Expected <token>", skip generic
+            continue;
+          } else if (prevIsGeneric && dIsGeneric) {
+            // Merge two adjacent generic syntax errors
+            if (d.range.end.character > prev.range.end.character) {
+              prev.range.end = d.range.end;
+            }
+            if (prev.endCharOffset !== undefined && d.endCharOffset !== undefined) {
+              prev.endCharOffset = Math.max(prev.endCharOffset, d.endCharOffset);
+            }
+            continue;
           }
-          continue;
         }
       }
       mergedDiags.push(d);
@@ -1341,6 +1364,168 @@ export class LspFacade {
       });
     }
     return references;
+  }
+
+  /** Returns current allocated heap bytes in the WASM linear memory arena. */
+  getMemoryUsage(): number {
+    return this.exports.arena_getMemoryUsage ? this.exports.arena_getMemoryUsage() : 0;
+  }
+
+  /** Registers a document AST root for multi-file workspace LSP operations. */
+  registerDocument(fileId: number, astRoot: number): void {
+    if (this.exports.lsp_registerDocument) {
+      this.exports.lsp_registerDocument(fileId, astRoot);
+    }
+  }
+
+  /** Unregisters a document AST root. */
+  unregisterDocument(fileId: number): void {
+    if (this.exports.lsp_unregisterDocument) {
+      this.exports.lsp_unregisterDocument(fileId);
+    }
+  }
+
+  /** Clears all registered multi-file document AST roots. */
+  clearDocuments(): void {
+    if (this.exports.lsp_clearDocuments) {
+      this.exports.lsp_clearDocuments();
+    }
+  }
+
+  /** Retrieves the registered AST root for a given fileId. */
+  getDocumentRoot(fileId: number): number {
+    if (this.exports.lsp_getDocumentRoot) {
+      return this.exports.lsp_getDocumentRoot(fileId);
+    }
+    return 0;
+  }
+
+  /** Evicts a document's full AST from the Tier 2 arena while preserving Tier 1 stubs. */
+  evictDocumentAst(fileId: number): void {
+    if (this.exports.lsp_evictDocumentAst) {
+      this.exports.lsp_evictDocumentAst(fileId);
+    }
+  }
+
+  /** Hashes a string using FNV-1a algorithm matching WASM string hash. */
+  hashString(str: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; ) {
+      const cp = str.codePointAt(i)!;
+      h = Math.imul(h ^ cp, 16777619) >>> 0;
+      i += cp > 0xffff ? 2 : 1;
+    }
+    return h;
+  }
+
+  /** Registers a declaration stub into the persistent Tier 1 index. */
+  registerStub(
+    fileId: number,
+    symbolId: number,
+    parentSymbolId: number,
+    kind: number,
+    flags: number,
+    name: string,
+    startByte: number,
+    endByte: number,
+  ): number {
+    if (!this.exports.stub_registerSymbol) return 0;
+    const nameHash = this.hashString(name);
+    return this.exports.stub_registerSymbol(
+      fileId,
+      symbolId,
+      parentSymbolId,
+      kind,
+      flags,
+      nameHash,
+      0,
+      startByte,
+      endByte,
+    );
+  }
+
+  /** Clears all Tier 1 stubs for a specific fileId. */
+  clearFileStubs(fileId: number = 0): void {
+    if (this.exports.stub_clearFile) {
+      this.exports.stub_clearFile(fileId);
+    }
+  }
+
+  /** Alias for clearFileStubs. */
+  clearStubs(fileId: number = 0): void {
+    this.clearFileStubs(fileId);
+  }
+
+  /** Finds all stub symbols matching a name string across the workspace. */
+  findStubsByName(name: string): {
+    fileId: number;
+    symbolId: number;
+    parentSymbolId: number;
+    kind: number;
+    flags: number;
+    nameHash: number;
+    startByte: number;
+    endByte: number;
+  }[] {
+    if (!this.exports.stub_findByName || !this.exports.stub_getBinaryBuffer) return [];
+    const hash = this.hashString(name);
+    const numStubs = this.exports.stub_findByName(hash);
+    if (numStubs === 0) return [];
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.stub_getBinaryBuffer();
+    const results = [];
+    for (let i = 0; i < numStubs * 8; i += 8) {
+      const kf = mem32[(dirPtr >>> 2) + i + 3];
+      results.push({
+        fileId: mem32[(dirPtr >>> 2) + i + 0],
+        symbolId: mem32[(dirPtr >>> 2) + i + 1],
+        parentSymbolId: mem32[(dirPtr >>> 2) + i + 2],
+        kind: kf & 0xffff,
+        flags: (kf >>> 16) & 0xffff,
+        nameHash: mem32[(dirPtr >>> 2) + i + 4],
+        startByte: mem32[(dirPtr >>> 2) + i + 6],
+        endByte: mem32[(dirPtr >>> 2) + i + 7],
+      });
+    }
+    return results;
+  }
+
+  /** Queries child stub symbols for a parent symbol ID. */
+  getStubChildren(parentSymbolId: number): {
+    fileId: number;
+    symbolId: number;
+    parentSymbolId: number;
+    kind: number;
+    flags: number;
+    nameHash: number;
+    startByte: number;
+    endByte: number;
+  }[] {
+    if (!this.exports.stub_getChildren || !this.exports.stub_getBinaryBuffer) return [];
+    const numStubs = this.exports.stub_getChildren(parentSymbolId);
+    if (numStubs === 0) return [];
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.stub_getBinaryBuffer();
+    const results = [];
+    for (let i = 0; i < numStubs * 8; i += 8) {
+      const kf = mem32[(dirPtr >>> 2) + i + 3];
+      results.push({
+        fileId: mem32[(dirPtr >>> 2) + i + 0],
+        symbolId: mem32[(dirPtr >>> 2) + i + 1],
+        parentSymbolId: mem32[(dirPtr >>> 2) + i + 2],
+        kind: kf & 0xffff,
+        flags: (kf >>> 16) & 0xffff,
+        nameHash: mem32[(dirPtr >>> 2) + i + 4],
+        startByte: mem32[(dirPtr >>> 2) + i + 6],
+        endByte: mem32[(dirPtr >>> 2) + i + 7],
+      });
+    }
+    return results;
+  }
+
+  /** Returns total number of registered stub symbols. */
+  getStubCount(): number {
+    return this.exports.stub_count ? this.exports.stub_count() : 0;
   }
 
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
@@ -2376,3 +2561,156 @@ export class Tree {
 }
 
 export const WasmLanguageBinding = LspFacade;
+
+export interface LruAstCacheOptions {
+  /** Maximum number of full document ASTs to keep in memory simultaneously (default: 100). */
+  maxActiveAsts?: number;
+  /** Maximum memory threshold in bytes before LRU eviction triggers (default: 128 MB). */
+  maxAstMemoryBytes?: number;
+}
+
+/**
+ * Tier 2 On-Demand LRU Full AST Cache.
+ * Evicts inactive ASTs to prevent WASM heap exhaustion in large monorepos.
+ */
+export class LruAstCache {
+  private activeRoots = new Map<number, { astRoot: number; lastAccessed: number; isDirty: boolean }>();
+  public maxActiveAsts: number;
+  public maxAstMemoryBytes: number;
+
+  constructor(
+    public readonly facade: LspFacade,
+    options?: LruAstCacheOptions,
+  ) {
+    this.maxActiveAsts = options?.maxActiveAsts ?? 100;
+    this.maxAstMemoryBytes = options?.maxAstMemoryBytes ?? 128 * 1024 * 1024;
+  }
+
+  get activeCount(): number {
+    return this.activeRoots.size;
+  }
+
+  has(fileId: number): boolean {
+    return this.activeRoots.has(fileId);
+  }
+
+  get(fileId: number): number | undefined {
+    const entry = this.activeRoots.get(fileId);
+    if (entry) {
+      entry.lastAccessed = Date.now();
+      return entry.astRoot;
+    }
+    return undefined;
+  }
+
+  set(fileId: number, astRoot: number, isDirty: boolean = false): void {
+    this.activeRoots.set(fileId, { astRoot, lastAccessed: Date.now(), isDirty });
+    this.facade.registerDocument(fileId, astRoot);
+    this.evictIfNecessary();
+  }
+
+  markDirty(fileId: number, isDirty: boolean): void {
+    const entry = this.activeRoots.get(fileId);
+    if (entry) entry.isDirty = isDirty;
+  }
+
+  evict(fileId: number): boolean {
+    const entry = this.activeRoots.get(fileId);
+    if (!entry) return false;
+    if (entry.isDirty) return false;
+
+    this.facade.evictDocumentAst(fileId);
+    this.activeRoots.delete(fileId);
+    return true;
+  }
+
+  evictIfNecessary(): void {
+    const memUsage = this.facade.getMemoryUsage();
+    const exceedsCount = this.activeRoots.size > this.maxActiveAsts;
+    const exceedsMem = memUsage > this.maxAstMemoryBytes;
+
+    if (!exceedsCount && !exceedsMem) return;
+
+    const entries = Array.from(this.activeRoots.entries())
+      .filter(([_, v]) => !v.isDirty)
+      .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
+
+    for (const [fId] of entries) {
+      if (this.activeRoots.size <= this.maxActiveAsts && this.facade.getMemoryUsage() <= this.maxAstMemoryBytes) {
+        break;
+      }
+      this.evict(fId);
+    }
+  }
+
+  clear(): void {
+    for (const [fileId] of this.activeRoots) {
+      this.facade.evictDocumentAst(fileId);
+    }
+    this.activeRoots.clear();
+  }
+}
+
+/**
+ * Manages workspace-wide multi-file symbol indexing and Two-Tier storage.
+ */
+export class LspWorkspaceManager {
+  public readonly astCache: LruAstCache;
+  private uriToFileId = new Map<string, number>();
+  private fileIdToUri = new Map<number, string>();
+  private nextFileId = 1;
+
+  constructor(
+    public readonly facade: LspFacade,
+    options?: LruAstCacheOptions,
+  ) {
+    this.astCache = new LruAstCache(facade, options);
+  }
+
+  getFileId(uri: string): number {
+    let id = this.uriToFileId.get(uri);
+    if (id === undefined) {
+      id = this.nextFileId++;
+      this.uriToFileId.set(uri, id);
+      this.fileIdToUri.set(id, uri);
+    }
+    return id;
+  }
+
+  getUri(fileId: number): string | undefined {
+    return this.fileIdToUri.get(fileId);
+  }
+
+  indexFile(uri: string, content: string, keepAst: boolean = false): number {
+    const fileId = this.getFileId(uri);
+    this.facade.clearFileStubs(fileId);
+    const astRoot = this.facade.parse(content);
+
+    const symbols = this.facade.getDocumentSymbols(astRoot);
+    for (let i = 0; i < symbols.length; i++) {
+      const s = symbols[i];
+      this.facade.registerStub(fileId, i + 1, 0, s.typeId, 0, `symbol_${s.typeId}_${i}`, s.start.line, s.end.line);
+    }
+
+    if (keepAst) {
+      this.astCache.set(fileId, astRoot);
+    } else {
+      this.facade.evictDocumentAst(fileId);
+    }
+    return fileId;
+  }
+
+  getDefinition(uri: string, offset: number): { uri: string; start: number; end: number } | null {
+    const fileId = this.getFileId(uri);
+    let astRoot = this.astCache.get(fileId);
+    if (!astRoot) return null;
+    const def = this.facade.getDefinition(astRoot, offset);
+    if (!def) return null;
+    const targetUri = def.fileId === 0 ? uri : this.getUri(def.fileId) || uri;
+    return {
+      uri: targetUri,
+      start: def.start,
+      end: def.end,
+    };
+  }
+}

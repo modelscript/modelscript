@@ -412,6 +412,24 @@ export interface CompilationPipeline<
 }
 
 /**
+ * Declaration & Stub metadata configuration for Tier 1 Workspace Indexing.
+ */
+export interface SymbolConfig<FieldName extends string = string> {
+  /** Field name containing the identifier token */
+  name: FieldName;
+  /** Symbol kind (e.g. 'Class', 'Package', 'Function', 'Variable') or field name containing kind */
+  kind?: string | FieldName;
+  /** Whether this symbol introduces a new nested lexical scope (default: true) */
+  scope?: boolean;
+  /** Field name containing the declared type (if typed declaration) */
+  type?: FieldName;
+  /** Field name containing the base / super class for inheritance */
+  extends?: FieldName;
+  /** Field name containing the visibility modifier (e.g. 'public' / 'protected') */
+  visibility?: FieldName;
+}
+
+/**
  * Configuration options for defining a ModelScript language grammar.
  * Modeled after Tree-sitter's Grammar API.
  */
@@ -493,6 +511,9 @@ export interface LanguageOptions<
 
   /** Diagnostic Rules (imperative AssemblyScript methods) */
   lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>>;
+
+  /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
+  symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>>;
 
   /** Built-in Language Server Protocol features */
   lsp?: {

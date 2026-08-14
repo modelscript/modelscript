@@ -224,17 +224,12 @@ export const MC: CommandModule<{}, McArgs> = {
         }
 
         try {
-          const wasmResult = await runWasmSimulation(
-            compileResult.wasm.buffer as ArrayBuffer,
-            compileResult.jsGlue,
-            scalarVars,
-            {
-              startTime,
-              stopTime,
-              stepSize,
-              parameters: paramMap,
-            },
-          );
+          const wasmResult = await runWasmSimulation(compileResult.wasm, compileResult.jsGlue, scalarVars, {
+            startTime,
+            stopTime,
+            stepSize,
+            parameters: paramMap,
+          });
 
           if (!wasmResult.error) {
             // Convert to row-major format

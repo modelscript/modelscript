@@ -92,7 +92,7 @@ describe("SOTA Architecture Verification Suite", () => {
       engine: {
         debugLog: () => {},
       },
-      parser: { logInt: () => {} },
+      parser: { logInt: (val: number) => console.log("WASM LOG INT:", val) },
       recovery: {},
       host: { runHostQuery: () => {} },
     };
@@ -251,6 +251,7 @@ describe("SOTA Architecture Verification Suite", () => {
 
       const astV1 = activeFacade.parse(codeV1);
       const diagsV1 = activeFacade.getDiagnostics(astV1);
+      console.log("DIAGS V1:", JSON.stringify(diagsV1, null, 2));
       expect(diagsV1.length).toBeGreaterThan(0);
 
       // Incremental edit: insert whitespace on line 1 before reused block
@@ -261,6 +262,7 @@ describe("SOTA Architecture Verification Suite", () => {
 
       const astV2 = activeFacade.parseIncremental("     model M1", 0, 8, codeV2.length);
       const diagsV2 = activeFacade.getDiagnostics(astV2);
+      console.log("DIAGS V2:", JSON.stringify(diagsV2, null, 2));
       const diag1 = diagsV1.find((d: any) => d.range.start.line === 2);
       const diag2 = diagsV2.find((d: any) => d.range.start.line === 2);
       expect(diag1).toBeDefined();

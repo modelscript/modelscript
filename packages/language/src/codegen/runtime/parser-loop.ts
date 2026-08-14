@@ -207,32 +207,47 @@ function parseLR(): u32 {
   while (currentParserMode == MODE_LR) {
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     let actionCount = lookupActions(currentState, token);
-
-    if (actionCount == 1 && token != TOKEN_EOF) {
-      let isDeclTok = (token <= MAX_TERMINAL_ID && token_insert_costs[token] >= 50);
-      if (isDeclTok && lrStackDepth > 1) {
-        let topNode = t_lrNodeStack[lrStackDepth - 1];
-        let topType = getNodeType(topNode);
-        let hasNl = false;
-        let pNl = pos;
-        while (pNl < srcLexPos) {
-          let ch = peekChar(pNl);
-          if (ch == 10 || ch == 13) { hasNl = true; break; }
-          pNl += peekCharLen(pNl);
-        }
-        if (hasNl && topType > (MAX_TERMINAL_ID as u16)) {
-          actionCount = 0;
+    
+    let type: u32 = 0;
+    let target: i32 = 0;
+    if (actionCount == 0 || actionCount > 1) {
+      let defaultReduce = -1;
+      let hasConflictingReduce = false;
+      let actionOffset = action_offsets[currentState];
+      if (actionOffset >= 0 && actionOffset + 1 < action_data.length) {
+        let rIdx = actionOffset + 1;
+        let rCount = action_data[actionOffset];
+        for (let j = 0; j < rCount; j++) {
+          let sym = action_data[rIdx++];
+          let actCount = action_data[rIdx++];
+          for (let a = 0; a < actCount; a++) {
+            let aType = action_data[rIdx++];
+            let aTarget = action_data[rIdx++];
+            if (aType == ACTION_REDUCE) {
+              let pLen = prod_lengths[aTarget];
+              if (pLen > 0) {
+                if (defaultReduce == -1) {
+                  defaultReduce = aTarget;
+                } else if (defaultReduce != aTarget) {
+                  hasConflictingReduce = true;
+                }
+              }
+            }
+          }
         }
       }
+
+      if (actionCount == 0 && defaultReduce != -1 && !hasConflictingReduce) {
+        type = ACTION_REDUCE;
+        target = defaultReduce;
+      } else {
+        transitionToGlr(pos, pendingPadding, currentScannerState);
+        return 0;
+      }
+    } else {
+      type = tempActions[0];
+      target = tempActions[1] as i32;
     }
-    
-    if (actionCount == 0 || actionCount > 1) {
-      transitionToGlr(pos, pendingPadding, currentScannerState);
-      return 0;
-    }
-    
-    let type = tempActions[0];
-    let target = tempActions[1] as i32;
     
     if (type == ACTION_SHIFT) {
       let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + pendingPadding;
@@ -391,6 +406,22 @@ function parseLR(): u32 {
   
   return 0;
 }
+
+export function findGotoSymbol(fromState: i32, toState: i32): i32 {
+  if (fromState < 0 || fromState >= goto_offsets.length) return -1;
+  let gOffset = goto_offsets[fromState];
+  if (gOffset < 0 || gOffset >= goto_data.length) return -1;
+  let gCount = goto_data[gOffset];
+  let gIdx = gOffset + 1;
+  for (let k = 0; k < gCount; k++) {
+    let sym = goto_data[gIdx];
+    let nextSt = goto_data[gIdx + 1];
+    if (nextSt == toState) return sym;
+    gIdx += 2;
+  }
+  return -1;
+}
+
 /**
  * Updates the `expected_tokens` bitset based on the valid action transitions
  * from the active parsing heads (either the single LR head or all GLR heads).
@@ -518,10 +549,10 @@ export let g_stateCanAcceptMaxCost: i32 = MAX_LOOKAHEAD_DEPTH * 10;
  * @param depth The current lookahead recursion depth (capped to prevent infinite loops).
  * @returns 1 if reachable, 2 if infinitely reachable, 0 if not reachable.
  */
-export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0): i32 {
+export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0, extraShiftDepth: i32 = 0): i32 {
   if (depth > 50) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
-  if (head == null && !computingReachability) {
+  if (head == null && !computingReachability && depth == 0 && extraShiftDepth == 0) {
     if (!isEpsilonReachable(state, tok)) return 0;
   }
 
@@ -547,6 +578,9 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
           
           let pHead = head;
           let remCounter = ruleLen;
+          if ((extraShiftDepth > 0 || depth > 0) && remCounter > 0) {
+            remCounter--;
+          }
           while (remCounter > 0 && pHead != null) {
             let pNode = pHead.astNode;
             let pIsInserted = pNode != 0 ? (getNodeFlags(pNode) & FLAG_IS_INSERTED) != 0 : false;
@@ -558,7 +592,7 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
             }
           }
           
-          let topState = pHead != null ? pHead.state : (ruleLen == 0 ? state : -1);
+          let topState = pHead != null ? pHead.state : (remCounter == 0 ? 0 : (ruleLen == 0 ? state : -1));
           let nextState = -1;
           if (topState != -1) {
             let gOffset = goto_offsets[topState];
@@ -575,7 +609,7 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
           }
           
           if (nextState != -1) {
-            let res = stateCanAccept(pHead, nextState, tok, depth + 1);
+            let res = stateCanAccept(pHead, nextState, tok, depth + 1, 0);
             if (res > 0) return res;
           } else {
             if (computingReachability) return 2;
@@ -777,17 +811,18 @@ function injectStrandedNodes(acceptedNode: u32, headPtr: u32): u32 {
       if (!isShallowClone) break;
     }
 
+    let accStart = getNodePadding(acceptBase);
+    let accLen = getNodeByteLength(acceptBase);
+    if (accLen == 0 || acceptBase == acceptedNode) accLen = inputLength;
+
     while (curr) {
       if (curr.astNode != 0 && curr.astNode != acceptedNode && curr.astNode != acceptBase && getNodeType(curr.astNode) != TOKEN_EOF) {
-        let nPos = curr.pos;
-        let accStart = getNodePadding(acceptBase);
-        let accLen = getNodeByteLength(acceptBase);
-        if (accLen == 0 || acceptBase == acceptedNode) accLen = inputLength;
+        let nEnd = curr.pos;
         let nPad = getNodePadding(curr.astNode);
         let nLen = getNodeByteLength(curr.astNode);
-        let nEnd = nPos + nPad + nLen;
+        let nStart = nEnd >= (nPad + nLen) ? nEnd - (nPad + nLen) : 0;
         // If curr.astNode falls within the byte span of acceptedNode/acceptBase, it was already consumed in reductions!
-        if (accLen > 0 && nPos >= accStart && nEnd <= (accStart + accLen)) {
+        if (accLen > 0 && nStart >= accStart && nEnd <= (accStart + accLen)) {
           // Already inside acceptedNode! Skip!
         } else {
           if (c_idx < (MAX_CHILD_NODES as u32)) {
@@ -1019,7 +1054,7 @@ export function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
 
-  let totalLen = getNodePadding(gc) + getNodeByteLength(gc);
+  let totalLen = getNodeByteLength(gc);
   gc = getNodeNextSibling(gc);
 
   while (gc != 0) {
@@ -1434,6 +1469,8 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
       if (isMutable(leftNode)) {
         let curr = getNodeFirstChild(leftNode);
         if (curr == 0) {
+          setNodePadding(leftNode, getNodePadding(leftNode) + getNodePadding(leaf));
+          setNodePadding(leaf, 0);
           setFirstChild(leftNode, leaf);
         } else {
           while (getNodeNextSibling(curr) != 0) {
@@ -1450,8 +1487,13 @@ export function appendToList(leftNode: u32, leafOrig: u32, listSym: u16, envHash
         let p = allocNode(listSym, getNodePadding(leftNode), 0, envHash);
         setNodeFlags(p, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
         let lastChild = copyChildren(p, leftNode);
-        if (lastChild == 0) setFirstChild(p, leaf);
-        else setNextSibling(lastChild, leaf);
+        if (lastChild == 0) {
+          setNodePadding(p, getNodePadding(p) + getNodePadding(leaf));
+          setNodePadding(leaf, 0);
+          setFirstChild(p, leaf);
+        } else {
+          setNextSibling(lastChild, leaf);
+        }
         fixNodeLength(p);
         _listRecurDepth--;
         return p;
@@ -1709,7 +1751,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
   let vq4 = head.virtualQueue4;
   let vCount = head.virtualQueueCount;
 
-  if (isVirtual) {
+  if (isVirtual || cameFromVirtualQueue) {
     setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED);
   }
   if (cameFromVirtualQueue) {
@@ -1723,7 +1765,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
     }
   }
 
-  let nPos = isVirtual ? pos : srcLexPos + lexLen;
+  let nPos = (isVirtual || cameFromVirtualQueue) ? pos : srcLexPos + lexLen;
   currentScannerState = 0;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
@@ -1734,7 +1776,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
               target, leaf, head, nPos, currentScannerState, newCost, newShifts, head.balanceHash, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
               vq0, vq1, vq2, vq3, vq4, vCount
             );
-            if (newCost < bestAcceptedCost) {
+            if (newCost <= bestAcceptedCost) {
               bestAcceptedCost = newCost;
               bestAcceptingHead = changetype<u32>(finalHead);
             }
@@ -2033,7 +2075,7 @@ function processAcceptAction(head: ParseHead): void {
   let newTailLen = getTailLength(head.errorTail);
   let tailBetter = newTailLen < curTailLen && effectiveCost <= bestAcceptedCost;
 
-  if (g_simulatorMaxTokens == 0 && (
+  if (g_simulatorMaxTokens == 0 && head.pos >= inputLength && (
     acceptedNode == 0 ||
     effectiveCost < bestAcceptedCost ||
     errorBetter ||
@@ -2553,7 +2595,7 @@ function pruneGSS(pos: u32): void {
     let writeIdx = 0;
     for (let i: u32 = 0; i < activeHeadsTrimCount; i++) {
       let ah = changetype<ParseHead>(t_activeHeads[i]);
-      let margin: i32 = ah.pos > bestPos ? 3000 : 800;
+      let margin: i32 = ah.pos > bestPos ? 4000 : 2000;
 
       if (ah.errorCost <= bestCost + margin && ah.errorCost <= bestAcceptedCost) {
         t_activeHeads[writeIdx++] = changetype<u32>(ah);
@@ -2732,15 +2774,15 @@ export function advanceGLR(): void {
               if (left < heapLen) {
                 let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
                 let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costL: i32 = hL.errorCost - (hL.pos == maxPos ? 10000 : 0);
-                let costS: i32 = hS.errorCost - (hS.pos == maxPos ? 10000 : 0);
+                let costL: i32 = hL.errorCost;
+                let costS: i32 = hS.errorCost;
                 if (costL < costS || (costL == costS && hL.pos > hS.pos)) smallest = left;
               }
               if (right < heapLen) {
                 let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
                 let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costR: i32 = hR.errorCost - (hR.pos == maxPos ? 10000 : 0);
-                let costS: i32 = hS.errorCost - (hS.pos == maxPos ? 10000 : 0);
+                let costR: i32 = hR.errorCost;
+                let costS: i32 = hS.errorCost;
                 if (costR < costS || (costR == costS && hR.pos > hS.pos)) smallest = right;
               }
               if (smallest == ci) break;
@@ -2769,15 +2811,15 @@ export function advanceGLR(): void {
               if (left < heapLen) {
                 let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
                 let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costL: i32 = hL.errorCost - (hL.pos == maxPos ? 10000 : 0);
-                let costS: i32 = hS.errorCost - (hS.pos == maxPos ? 10000 : 0);
+                let costL: i32 = hL.errorCost;
+                let costS: i32 = hS.errorCost;
                 if (costL < costS || (costL == costS && hL.pos > hS.pos)) smallest = left;
               }
               if (right < heapLen) {
                 let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
                 let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costR: i32 = hR.errorCost - (hR.pos == maxPos ? 10000 : 0);
-                let costS: i32 = hS.errorCost - (hS.pos == maxPos ? 10000 : 0);
+                let costR: i32 = hR.errorCost;
+                let costS: i32 = hS.errorCost;
                 if (costR < costS || (costR == costS && hR.pos > hS.pos)) smallest = right;
               }
               if (smallest == ci) break;
@@ -2823,6 +2865,9 @@ export function advanceGLR(): void {
     // (Dead code loop for active heads trace removed)
 
     pos = head.pos;
+    logInt(1000000 + pos);
+    logInt(2000000 + (head.state as u32));
+    logInt(3000000 + (head.errorCost as u32));
 
     currentScannerState = head.scannerState;
     lexPos = pos;
@@ -2839,17 +2884,21 @@ export function advanceGLR(): void {
       token = head.virtualQueue0 & 0xFFFF;
       lexLen = head.virtualQueue0 >> 16;
       is_current_token_virtual = (lexLen == 0);
-      // Peek at the actual next token to anchor the diagnostic properly
-      let savedLexLen = lexLen;
-      let savedLexPos = lexPos;
-      let savedScanner = currentScannerState;
-      invokeLexer(pos);
-      let peekSrcLexPos = srcLexPos;
-      lexLen = savedLexLen;
-      lexPos = savedLexPos;
-      srcLexPos = peekSrcLexPos;
-      currentScannerState = savedScanner;
-      tokenBufferReadIdx = tokenBufferWriteIdx; // Flush token buffer so virtual token is not overwritten by peeked token
+      if (lexLen == 0) {
+        // Peek at the actual next token to anchor the diagnostic properly
+        let savedLexLen = lexLen;
+        let savedLexPos = lexPos;
+        let savedScanner = currentScannerState;
+        invokeLexer(pos);
+        let peekSrcLexPos = srcLexPos;
+        lexLen = savedLexLen;
+        lexPos = savedLexPos;
+        srcLexPos = peekSrcLexPos;
+        currentScannerState = savedScanner;
+        tokenBufferReadIdx = tokenBufferWriteIdx; // Flush token buffer so virtual token is not overwritten by peeked token
+      } else {
+        srcLexPos = pos >= lexLen ? pos - lexLen : 0;
+      }
     } else if (tokenBufferReadIdx < tokenBufferWriteIdx) {
       let rIdx = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
       token = t_tokenBufferArena[rIdx];
@@ -2991,7 +3040,7 @@ export function advanceGLR(): void {
           endPos += lexLen;
           nextTok = invokeLexer(endPos);
         }
-        let canAccept = stateCanAccept(head, nextState, nextTok);
+        let canAccept = stateCanAccept(head, nextState, nextTok, 0, 1);
         if (canAccept == 0) {
           nextState = -1;
         }
@@ -3050,15 +3099,9 @@ export function advanceGLR(): void {
         continue; // Yield to the next GSS iteration
       } else if (nextState != -1) {
         // Standard GOTO shift over the reused subtree
-        let clone = allocNode(
-          getNodeType(reusedNode) as u16,
-          expectedPadding + head.pendingPadding,
-          getNodeByteLength(reusedNode),
-          getNodeEnvHash(reusedNode),
-        );
+        let clone = reusedNode;
         setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-        setFirstChild(clone, getNodeFirstChild(reusedNode));
-        setNodePadding(clone, expectedPadding + head.pendingPadding);
+        propagateFirstChildPadding(clone, expectedPadding + head.pendingPadding);
 
         let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
 
@@ -3170,6 +3213,7 @@ export function advanceGLR(): void {
               anyAction = true;
             }
           } else if (type == ACTION_ACCEPT) {
+            logInt(990000 + type);
             processAcceptAction(head);
             anyAction = true;
           }
@@ -3185,6 +3229,39 @@ export function advanceGLR(): void {
     }
 
     if (!anyAction) {
+      let defaultReduce = -1;
+      let hasConflictingReduce = false;
+      let rIdx = actionOffset + 1;
+      let rCount = action_data[actionOffset];
+      for (let j = 0; j < rCount; j++) {
+        let sym = action_data[rIdx++];
+        let actCount = action_data[rIdx++];
+        for (let a = 0; a < actCount; a++) {
+          let aType = action_data[rIdx++];
+          let aTarget = action_data[rIdx++];
+          if (aType == ACTION_SHIFT) {
+            hasConflictingReduce = true;
+          } else if (aType == ACTION_REDUCE) {
+            let pLen = prod_lengths[aTarget];
+            if (pLen > 0) {
+              if (defaultReduce == -1) {
+                defaultReduce = aTarget;
+              } else if (defaultReduce != aTarget) {
+                hasConflictingReduce = true;
+              }
+            }
+          }
+        }
+
+      }
+
+      if (defaultReduce != -1 && !hasConflictingReduce) {
+        if (processReduceAction(head, defaultReduce, pos)) {
+          anyAction = true;
+          continue;
+        }
+      }
+
       if (g_simulatorMaxTokens > 0) {
         continue; // In simulation mode, do not spawn recursive recoveries
       }
@@ -3257,10 +3334,11 @@ export function advanceGLR(): void {
       // Clear expected tokens to allow the lexer to match any keyword or symbol
       // during the lookahead simulation in recovery functions.
       memory.fill(changetype<usize>(expected_tokens), 1, 2048);
+      let initialHeads = activeHeadsCount;
       let recSuccess = recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
 
-      if (g_configIslandMode && !recSuccess) {
-        recoverIslandMode(head, inputLength, bestAcceptedCost, activeHeadsCount);
+      if (g_configIslandMode) {
+        recoverIslandMode(head, inputLength, bestAcceptedCost, initialHeads);
       }
       
       // Restore expected_tokens after recovery — the recovery functions call
@@ -3563,6 +3641,13 @@ export function findReusableNode(
   let searching = true;
   while (searching) {
     let cPtr = cursorNodeStack[globalCursorDepth];
+    if (globalCursorDepth == 0 && getNodeFirstChild(cPtr) != 0) {
+      if (!globalCursorGotoFirstChild()) {
+        searching = false;
+        continue;
+      }
+      cPtr = cursorNodeStack[globalCursorDepth];
+    }
     let absStart = cursorOffsetStack[globalCursorDepth];
     let pad = getNodePadding(cPtr);
     let absContentStart = absStart + pad;
@@ -3571,9 +3656,7 @@ export function findReusableNode(
     let nodeType = getNodeType(cPtr);
 
     if (absContentEnd <= targetSrcOldPos) {
-      if (globalCursorDepth == 0 && getNodeFirstChild(cPtr) != 0) {
-        if (!globalCursorGotoFirstChild()) searching = false;
-      } else if (!globalCursorGotoNextSibling()) {
+      if (!globalCursorGotoNextSibling()) {
         if (!globalCursorGotoParent()) searching = false;
         else {
           while (!globalCursorGotoNextSibling()) {
@@ -3601,13 +3684,32 @@ export function findReusableNode(
         let isMissing = byteLen == 0 && getNodeFirstChild(cPtr) == 0 && pad == 0;
         let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
         let nodeStartState = getNodeStartState(cPtr);
-        if (!isError && !isMissing && nodeEnvHash == envHash && nodeStartState == (currentState as u32)) {
+        let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
+        if (canReuse) {
+          let validState = nodeStartState == (currentState as u32);
+          if (!validState && nodeType > (MAX_TERMINAL_ID as u16) && (currentState as i32) < goto_offsets.length) {
+            let gOffset = goto_offsets[currentState];
+            if (gOffset >= 0 && gOffset < goto_data.length) {
+              let gCount = goto_data[gOffset];
+              for (let gi = 0; gi < gCount; gi++) {
+                let gSym = goto_data[gOffset + 1 + gi * 2];
+                if (gSym == nodeType) {
+                  validState = true;
+                  break;
+                }
+              }
+            }
+          }
+          if (validState) {
             let typeFlags = getNodeFlags(cPtr);
             let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
             let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
             if (!hasErrorFlags && !isInvisible) {
-               return cPtr;
+              return cPtr;
             }
+          } else if (nodeType > (MAX_TERMINAL_ID as u16)) {
+            return 0;
+          }
         }
       }
     }

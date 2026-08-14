@@ -90,4 +90,33 @@ describe("AST Traversal & Field Resolution Suite", () => {
     expect(diag.range.start.character).toBe(7);
     expect(diag.range.end.character).toBe(12);
   });
+
+  it("should accurately position child field diagnostics across multi-line declarations with irregular indentation", () => {
+    const code = `  Real voltage;
+      Real current;
+
+    Real resistance;`;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    expect(diags.length).toBe(3);
+
+    // Line 0: "  Real voltage;" -> 'voltage' is at chars 7..14
+    const d0 = diags.find((d: any) => d.range.start.line === 0);
+    expect(d0).toBeDefined();
+    expect(d0.range.start.character).toBe(7);
+    expect(d0.range.end.character).toBe(14);
+
+    // Line 1: "      Real current;" -> 'current' is at chars 11..18
+    const d1 = diags.find((d: any) => d.range.start.line === 1);
+    expect(d1).toBeDefined();
+    expect(d1.range.start.character).toBe(11);
+    expect(d1.range.end.character).toBe(18);
+
+    // Line 3: "    Real resistance;" -> 'resistance' is at chars 9..19
+    const d3 = diags.find((d: any) => d.range.start.line === 3);
+    expect(d3).toBeDefined();
+    expect(d3.range.start.character).toBe(9);
+    expect(d3.range.end.character).toBe(19);
+  });
 });

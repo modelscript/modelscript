@@ -251,16 +251,11 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       profiler.end("wasm compilation");
 
       profiler.start("numeric simulation");
-      const wasmResult = await runWasmSimulation(
-        compileResult.wasm.buffer as ArrayBuffer,
-        compileResult.jsGlue,
-        scalarVars,
-        {
-          startTime,
-          stopTime,
-          stepSize: step,
-        },
-      );
+      const wasmResult = await runWasmSimulation(compileResult.wasm, compileResult.jsGlue, scalarVars, {
+        startTime,
+        stopTime,
+        stepSize: step,
+      });
 
       if (wasmResult.error) {
         console.error(`WASM simulation error: ${wasmResult.error}`);

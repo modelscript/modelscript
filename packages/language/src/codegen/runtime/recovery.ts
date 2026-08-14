@@ -3,7 +3,7 @@ import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNod
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableBranchT, configEnableIslandMode, ACTION_REDUCE, configPenaltyUnwindNode, configPenaltySyncToken, configIslandBasePenalty, configIslandSyncMultiplier, configIslandPoppedMultiplier, prod_is_list
 } from "./engine";
-import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, appendToList, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState, fixNodeLength } from "./parser-loop";
+import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, appendToList, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState, fixNodeLength, findGotoSymbol } from "./parser-loop";
 import {
   COST_SUBSTITUTION_KEYWORD,
   COST_SUBSTITUTION_STANDARD,
@@ -239,7 +239,7 @@ function searchBudgetedInsertions(
 
       if (dist > remainingDepth) continue;
       let insCost = getInsertCost(sym);
-      if (insCost >= 100 && laTok != TOKEN_EOF) continue;
+      if (insCost >= 1000 && laTok != TOKEN_EOF) continue;
       outStates[depth] = shiftTarget;
       let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
@@ -327,7 +327,7 @@ const CHAR_RPAREN: u8 = 41;
 @inline
 function getInsertCost(tok: i32): i32 {
   if (tok < 0 || tok >= token_insert_costs.length) return 250;
-  let baseCost = token_insert_costs[tok] * COST_DELETE_BASE_MULTIPLIER;
+  let baseCost = token_insert_costs[tok] * 5;
   if (token_insert_costs[tok] >= 10) {
     baseCost += PENALTY_INSERT_STRUCTURAL_BRACE; // Structural closing braces ("}", "]", ")")
   }
@@ -402,116 +402,7 @@ export function recoverUnwindAndMutate(
         // up to a depth of 5. For each popped state, we attempt:
         // Branch A (Deletion): Deleting the current token (skip)
         // Branch B (Insertion): Inserting a missing token (virtual shift)
-        // ------------------------------------------------------------
-        // Branch Summary (Active Stack Summary Recovery - Inspired by Tree-sitter):
-        // ------------------------------------------------------------
-        // Scan GSS ancestor history (head.prev, head.prev.prev, ...) to find
-        // the closest ancestor state S_A that can accept the lookahead token
-        // (or nextToken after skipping an invalid token). Unwind directly to S_A,
-        // wrapping intermediate subtrees in an isolated ERROR node.
-        if (head.prev != null && token != TOKEN_EOF) {
-          let ancCurr: ParseHead | null = head.prev;
-          let ancDepth = 1;
-          while (ancCurr != null && ancDepth <= 8) {
-            let ancState = ancCurr.state;
-            let scanTok = token;
-            let scanPos = srcLexPos;
-            let scanTokLen = lexLen;
 
-            // Test 1: Can ancState accept current token directly?
-            let canAcceptDirect = stateCanAccept(ancCurr, ancState, scanTok, 0);
-
-            // Test 2: If not, can ancState accept nextToken after skipping 1 token?
-            let canAcceptAfterSkip = false;
-            let nextScanPos = srcLexPos + lexLen;
-            let nextTok = TOKEN_EOF;
-            let nextTokLen = 0;
-            if (canAcceptDirect == 0 && nextScanPos < inputLength) {
-              let savedLP = lexPos;
-              let savedLL = lexLen;
-              let savedSLP = srcLexPos;
-              let savedSS = currentScannerState;
-
-              nextTok = invokeLexer(nextScanPos);
-              nextTokLen = lexLen;
-
-              setLexPos(savedLP);
-              setLexLen(savedLL);
-              setSrcLexPos(savedSLP);
-              setCurrentScannerState(savedSS);
-
-              if (nextTok != TOKEN_EOF && nextTok != -1) {
-                if (stateCanAccept(ancCurr, ancState, nextTok, 0) > 0) {
-                  canAcceptAfterSkip = true;
-                  scanTok = nextTok;
-                  scanPos = nextScanPos;
-                  scanTokLen = nextTokLen;
-                }
-              }
-            }
-
-            if (canAcceptDirect > 0 || canAcceptAfterSkip) {
-              let simRes = simulateLookahead(ancCurr, null, 0, scanTok, -1, -1, 999999, 2, scanPos + scanTokLen, 0);
-              if (simRes > 0) {
-                let summaryCost = head.errorCost + (ancDepth * configPenaltyUnwindNode) + (canAcceptAfterSkip ? PENALTY_DELETE_LINE_END_DANGLING : 0);
-                if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || summaryCost < bestAcceptedCost) {
-                  // Collect intermediate nodes between head and ancCurr
-                  let currNodePtr: ParseHead | null = head;
-                  let intermediateCount = 0;
-                  while (currNodePtr != null && currNodePtr != ancCurr) {
-                    if (intermediateCount < MAX_CHILD_NODES) {
-                      t_globalChildNodes[intermediateCount] = currNodePtr.astNode;
-                    }
-                    intermediateCount++;
-                    currNodePtr = currNodePtr.prev;
-                  }
-                  if (intermediateCount > MAX_CHILD_NODES) intermediateCount = MAX_CHILD_NODES;
-
-                  let errNodeSum = allocNode(NODE_TYPE_ERROR, 0, 0, ancCurr.balanceHash & 0xff, false);
-                  setNodeFlags(errNodeSum, FLAG_HAS_ERROR);
-                  let lastChildSum = 0;
-                  for (let k = intermediateCount - 1; k >= 0; k--) {
-                    let ch = t_globalChildNodes[k];
-                    if (ch == 0) continue;
-                    let clone = cloneNodeShallow(ch);
-                    setNodeFlags(clone, getNodeFlags(clone) | FLAG_HAS_ERROR);
-                    if (lastChildSum == 0) {
-                      setFirstChild(errNodeSum, clone);
-                    } else {
-                      setNextSibling(lastChildSum, clone);
-                    }
-                    lastChildSum = clone;
-                  }
-
-                  let mergedNodeSum = ancCurr.astNode != 0 ? concatLists(ancCurr.astNode, errNodeSum, getNodeType(ancCurr.astNode), 0) : errNodeSum;
-                  let diagStartSum = srcLexPos;
-                  let diagEndSum = srcLexPos + lexLen;
-                  if (diagEndSum <= diagStartSum) diagEndSum = diagStartSum + 1;
-                  let newTailSum = pushDiagnostic(head.errorTail, diagStartSum, diagEndSum);
-
-                  let summaryHead = allocParseHead(
-                    ancState,
-                    mergedNodeSum,
-                    ancCurr.prev,
-                    scanPos,
-                    initialScannerState,
-                    summaryCost,
-                    0,
-                    ancCurr.balanceHash,
-                    0,
-                    ancCurr.dynamicPrec,
-                    0,
-                    newTailSum
-                  );
-                  pushCandidateHead(changetype<u32>(summaryHead));
-                }
-              }
-            }
-
-            ancCurr = ancCurr.prev;
-            ancDepth++;
-          }
-        }
 
         let unwindCurr: ParseHead | null = head;
         let unwindDepth = 0;
@@ -540,10 +431,17 @@ export function recoverUnwindAndMutate(
               let c1 = getNodeFirstChild(topNode);
               if (c1 != 0) {
                 let c2 = getNodeNextSibling(c1);
-                if (c2 != 0) {
-                  let st1 = findShiftTarget(hp.state, getNodeType(c1));
-                  if (st1 != -1) {
-                    let st2 = findShiftTarget(st1, getNodeType(c2));
+                if (c2 != 0 && getNodeNextSibling(c2) == 0) {
+                  let c2Len = getNodeByteLength(c2);
+                  let isClosingBrace = false;
+                  if (c2Len > 0 && unwindCurr.pos >= c2Len) {
+                    let ch = peekChar(unwindCurr.pos - c2Len);
+                    if (ch == 125 || ch == 41 || ch == 93) isClosingBrace = true; // }, ), ]
+                  }
+                  if (isClosingBrace) {
+                    let st1 = findShiftTarget(hp.state, getNodeType(c1));
+                    if (st1 != -1) {
+                      let st2 = findShiftTarget(st1, getNodeType(c2));
                     if (st2 != -1) {
                       let openBlockNode = concatLists(c1, c2, getNodeType(topNode), 0);
                       let tempSt2Head = allocParseHead(
@@ -592,6 +490,7 @@ export function recoverUnwindAndMutate(
               }
             }
           }
+        }
 
           // ------------------------------------------------------------
           // Branch T (Transposition): Swapped Tokens
@@ -732,13 +631,16 @@ export function recoverUnwindAndMutate(
                 actIdxS += 2 + actCountS * 2;
                 
                 let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
-                if (expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (isKwS || token > MAX_TERMINAL_ID || token_insert_costs[token] < 20)) {
-                  let shiftTargetS = findShiftTarget(recState, expSym as u16);
-                  
-                  if (shiftTargetS != -1) {
-                    let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
-                    if (simS > 0) {
-                      let subCost = head.errorCost + (isKwS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
+                let chFirst = peekChar(srcLexPos);
+                let isPunctuation = (chFirst == 59 || chFirst == 44 || chFirst == 58 || chFirst == 123 || chFirst == 125 || chFirst == 40 || chFirst == 41 || chFirst == 91 || chFirst == 93);
+                if (!isPunctuation && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token && (isKwS || token > MAX_TERMINAL_ID || token_insert_costs[token] < 20)) {
+                  let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
+                  if (simS > 0) {
+
+
+                      let bDroppedS: u32 = head.pos > (unwindCurr != null ? unwindCurr.pos : 0) ? head.pos - (unwindCurr != null ? unwindCurr.pos : 0) : 0;
+                      let retroCostS = (unwindDepth as i32) * configPenaltyUnwindNode + (bDroppedS as i32);
+                      let subCost = head.errorCost + (isKwS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD) + retroCostS;
                       let hasNlS = false;
                       let p_nlS = srcLexPos;
                       let rawTokEndS = srcLexPos + lexLen;
@@ -752,55 +654,39 @@ export function recoverUnwindAndMutate(
                       }
                       if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCost < bestAcceptedCost) {
                           let tokLenS: u32 = rawTokEndS > srcLexPos ? (rawTokEndS - srcLexPos) : 0;
-                          let insNodeS = allocNode((expSym | 0x8000) as u16, 0, tokLenS, 0, false);
-                          setNodeFlags(insNodeS, getNodeFlags(insNodeS) | FLAG_IS_INSERTED);
-                          
-                          let mergedNodeS: u32 = 0;
-                          if (unwindCurr != null && unwindCurr.astNode != 0) {
-                            let pType = getNodeType(unwindCurr.astNode);
-                            mergedNodeS = concatLists(unwindCurr.astNode, insNodeS, pType, 0);
-                          } else {
-                            mergedNodeS = insNodeS;
-                          }
-                          
                           let diagStart = unwindCurr != null && unwindCurr.pos < srcLexPos ? unwindCurr.pos : srcLexPos;
                           let newTailS = pushDiagnostic(head.errorTail, diagStart, rawTokEndS);
-                          let baseHeadS = allocParseHead(
-                            recState,
+                          let v0 = (expSym & 0xFFFF) | ((tokLenS as u32) << 16);
+                          let prevHeadPos: u32 = unwindCurr != null ? unwindCurr.pos : head.pos;
+                          let padBeforeSub: u32 = srcLexPos > prevHeadPos ? (srcLexPos - prevHeadPos) : 0;
+                          let subHead = allocParseHead(
+                            unwindCurr != null ? unwindCurr.state : recState,
                             unwindCurr != null ? unwindCurr.astNode : 0,
                             unwindCurr != null ? unwindCurr.prev : null,
-                            srcLexPos,
-                            0,
-                            0,
-                            0,
-                            head.balanceHash,
-                            0,
-                            recPrec,
-                            0,
-                            head.errorTail
-                          );
-                          let subHead = allocParseHead(
-                            shiftTargetS,
-                            mergedNodeS,
-                            unwindCurr != null ? unwindCurr.prev : null,
                             posAfterTokenS,
-                            0,
+                            initialScannerState,
                             subCost,
                             1,
                             head.balanceHash,
                             0,
                             recPrec,
+                            padBeforeSub,
+                            newTailS,
+                            v0,
                             0,
-                            newTailS
+                            0,
+                            0,
+                            0,
+                            1
                           );
                           pushCandidateHead(changetype<u32>(subHead));
                         }
                       }
+
                     }
                   }
                 }
               }
-            }
 
           // ------------------------------------------------------------
           // Branch A (Deletion): Skip Token
@@ -824,7 +710,7 @@ export function recoverUnwindAndMutate(
             let baseDelCost =
               getDeleteCost(token == TOKEN_EOF ? 0 : token) + unwindDepth * configPenaltyUnwindNode + droppedBytes;
             let hasNewline = false;
-            let p_nl = head.pos;
+            let p_nl = uPos;
             while (p_nl < srcLexPos) {
               let ch = peekChar(p_nl);
               if (ch == 10 || ch == 13) {
@@ -861,7 +747,12 @@ export function recoverUnwindAndMutate(
               let pScan = srcLexPos + lexLen;
               while (pScan < inputLength) {
                 let peekT = invokeLexer(pScan);
-                if (peekT == token && lexLen > 0) {
+                while (peekT != -1 && load<u8>(is_extra_token + peekT) == 1) {
+                  if (lexLen == 0) break;
+                  pScan += lexLen;
+                  peekT = invokeLexer(pScan);
+                }
+                if ((peekT == token || (token == TOKEN_UNKNOWN && peekT == TOKEN_UNKNOWN)) && lexLen > 0) {
                   pScan += lexLen;
                   dupCount++;
                 } else {
@@ -938,40 +829,23 @@ export function recoverUnwindAndMutate(
                   childCount++;
                   currChild = currChild.prev;
                 }
-                if (childCount > MAX_CHILD_NODES) childCount = MAX_CHILD_NODES;
-
-                let mergedNode: u32 = 0;
-                let parentHead: ParseHead | null = unwindCurr;
-                if (unwindCurr != null && unwindCurr.astNode != 0) {
-                  let uType = getNodeType(unwindCurr.astNode);
-                  if (uType == NODE_TYPE_ERROR || isListNodeByPtr(unwindCurr.astNode)) {
-                    mergedNode = unwindCurr.astNode;
-                    parentHead = unwindCurr.prev;
-                  }
-                }
-                if (mergedNode != 0 && !isListNodeByPtr(mergedNode) && parentHead != null && parentHead.astNode != 0 && isListNodeByPtr(parentHead.astNode)) {
-                  mergedNode = concatLists(parentHead.astNode, mergedNode, getNodeType(parentHead.astNode), 0);
-                  recState = parentHead.state;
-                  unwindCurr = parentHead;
-                }
-                let parentType = mergedNode != 0 ? getNodeType(mergedNode) : 0;
-
-                let errNode = allocNode(NODE_TYPE_ERROR, 0, 0, newBalance & 0xff, false);
-                setNodeFlags(errNode, FLAG_HAS_ERROR);
-                let lastChild = 0;
+                let parentHead: ParseHead | null = unwindDepth == 0 ? head : (unwindCurr != null ? unwindCurr.prev : null);
+                let parentType = (unwindCurr != null && unwindCurr.astNode != 0) ? getNodeType(unwindCurr.astNode) : 0;
+                let mergedNode: u32 = (unwindDepth > 0 && unwindCurr != null && unwindCurr.astNode != 0) ? cloneNodeShallow(unwindCurr.astNode) : 0;
 
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
                   if (child == 0) continue;
-                  let clone = cloneNodeShallow(child);
-                  setNodeFlags(clone, getNodeFlags(clone) | FLAG_HAS_ERROR);
-                  if (lastChild == 0) {
-                    setFirstChild(errNode, clone);
+                  let clonedChild = cloneNodeShallow(child);
+                  if (mergedNode != 0) {
+                    mergedNode = concatLists(mergedNode, clonedChild, parentType != 0 ? parentType : getNodeType(clonedChild), 0);
                   } else {
-                    setNextSibling(lastChild, clone);
+                    mergedNode = clonedChild;
                   }
-                  lastChild = clone;
                 }
+
+                let errNode = allocNode(NODE_TYPE_ERROR, 0, 0, newBalance & 0xff, false);
+                setNodeFlags(errNode, FLAG_HAS_ERROR);
 
                 let gapStart: u32 = unwindCurr.pos;
                 for (let k = childCount - 1; k >= 0; k--) {
@@ -985,6 +859,7 @@ export function recoverUnwindAndMutate(
                 memory.fill(changetype<usize>(expected_tokens), 1, 2048);
                 let p = head.pos;
                 let newTail = head.errorTail;
+                let lastChild = 0;
                 let isFirstLoopToken = true;
                 while (p < searchPos) {
                   let tok = invokeLexer(p);
@@ -996,9 +871,9 @@ export function recoverUnwindAndMutate(
                     p += lexLen;
                     tok = invokeLexer(p);
                   }
-                  if (tok == -1 || srcLexPos >= searchPos) break;
-                  let tLen = lexLen;
-                  if (tLen == 0) break;
+                  if (srcLexPos >= searchPos) break;
+                  let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
+                  if (tLen == 0) tLen = 1;
                   let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
                   if (lastChild == 0) {
                     setNodePadding(errNode, pad);
@@ -1007,7 +882,7 @@ export function recoverUnwindAndMutate(
                   if (srcLexPos >= head.pos) {
                     newTail = pushDiagnostic(newTail, srcLexPos as u32, (srcLexPos + tLen) as u32);
                   }
-                  let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
+                  let tNode = allocNode(((tok == TOKEN_UNKNOWN || tok == -1 ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
                   setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
                   if (lastChild == 0) setFirstChild(errNode, tNode);
                   else setNextSibling(lastChild, tNode);
@@ -1030,20 +905,29 @@ export function recoverUnwindAndMutate(
                 if (lastChild != 0 || errByteLen > 0) {
                   if (mergedNode != 0) {
                     mergedNode = concatLists(mergedNode, errNode, parentType, 0);
-                  } else if (parentHead != null && parentHead.astNode != 0) {
-                    let pType = getNodeType(parentHead.astNode);
-                    mergedNode = concatLists(parentHead.astNode, errNode, pType, 0);
-                    parentHead = parentHead.prev;
                   } else {
                     mergedNode = errNode;
                   }
                 }
 
 
+                let delParent = parentHead;
+                if (unwindDepth == 0 && parentHead != null && parentHead.astNode != 0) {
+                  let prev = parentHead.prev;
+                  let sym = findGotoSymbol(prev != null ? prev.state : 0, parentHead.state);
+                  let pType = sym != -1 ? (sym as u16) : getNodeType(parentHead.astNode);
+                  if (errNode != 0) {
+                    mergedNode = appendToList(parentHead.astNode, errNode, pType, 0);
+                  } else {
+                    mergedNode = parentHead.astNode;
+                  }
+                  delParent = parentHead.prev;
+                }
+
                 let delHead = allocParseHead(
                   recState,
                   mergedNode,
-                  parentHead,
+                  delParent,
                   p,
                   initialScannerState,
                   delHeadCost,
@@ -1179,7 +1063,7 @@ export function recoverUnwindAndMutate(
               
               actualCost += retroCost;
 
-              if (actualCost < THRESHOLD_INSERT_MAX_COST && (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || (head.errorCost + actualCost) < bestAcceptedCost)) {
+              if (actualCost < THRESHOLD_INSERT_MAX_COST) {
                 let pCount = unwindDepth;
                 let uCurr: ParseHead | null = head;
                 let newBalance = head.balanceHash;
@@ -1237,9 +1121,126 @@ export function recoverUnwindAndMutate(
             }
           }
           } // end configEnableBranchB
-
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
+        }
+
+        // Branch Summary (Active Stack Summary Recovery - Inspired by Tree-sitter fallback):
+        if (configEnableIslandMode == 0 && candidateHeadsCount == 0 && head.prev != null && token != TOKEN_EOF) {
+          let ancCurr: ParseHead | null = head.prev;
+          let ancDepth = 1;
+          while (ancCurr != null && ancDepth <= 8) {
+            let ancState = ancCurr.state;
+            let scanTok = token;
+            let scanPos = srcLexPos;
+            let scanTokLen = lexLen;
+
+            // Test 1: Can ancState accept current token directly?
+            let canAcceptDirect = stateCanAccept(ancCurr, ancState, scanTok, 0);
+
+            // Test 2: If not, can ancState accept nextToken after skipping 1 token?
+            let canAcceptAfterSkip = false;
+            let nextScanPos = srcLexPos + lexLen;
+            let nextTok = TOKEN_EOF;
+            let nextTokLen = 0;
+            if (canAcceptDirect == 0 && nextScanPos < inputLength) {
+              let savedLP = lexPos;
+              let savedLL = lexLen;
+              let savedSLP = srcLexPos;
+              let savedSS = currentScannerState;
+
+              nextTok = invokeLexer(nextScanPos);
+              nextTokLen = lexLen;
+
+              setLexPos(savedLP);
+              setLexLen(savedLL);
+              setSrcLexPos(savedSLP);
+              setCurrentScannerState(savedSS);
+
+              if (nextTok != TOKEN_EOF && nextTok != -1) {
+                if (stateCanAccept(ancCurr, ancState, nextTok, 0) > 0) {
+                  canAcceptAfterSkip = true;
+                  scanTok = nextTok;
+                  scanPos = nextScanPos;
+                  scanTokLen = nextTokLen;
+                }
+              }
+            }
+
+            if (canAcceptDirect > 0 || canAcceptAfterSkip) {
+              let simRes = simulateLookahead(ancCurr, null, 0, scanTok, -1, -1, 999999, 2, scanPos + scanTokLen, 0);
+              if (simRes > 0) {
+                let summaryCost = head.errorCost + 500 + ((ancDepth as i32) * configPenaltyUnwindNode) + (canAcceptAfterSkip ? PENALTY_DELETE_LINE_END_DANGLING : 0);
+                if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || summaryCost < bestAcceptedCost) {
+                  // Collect intermediate nodes between head and ancCurr
+                  let currNodePtr: ParseHead | null = head;
+                  let intermediateCount = 0;
+                  while (currNodePtr != null && currNodePtr != ancCurr) {
+                    if (intermediateCount < MAX_CHILD_NODES) {
+                      t_globalChildNodes[intermediateCount] = currNodePtr.astNode;
+                    }
+                    intermediateCount++;
+                    currNodePtr = currNodePtr.prev;
+                  }
+                  if (intermediateCount > MAX_CHILD_NODES) intermediateCount = MAX_CHILD_NODES;
+
+                  let pSum = head.pos;
+                  let lastTokenEndSum = head.pos;
+                  let firstErrPadSum: u32 = 0;
+                  let isFirstLoopToken = true;
+                  while (pSum < (scanPos as u32)) {
+                    let tok = invokeLexer(pSum);
+                    let tempPad: u32 = 0;
+                    while (tok != -1 && load<u8>(is_extra_token + tok) == 1) {
+                      if (lexLen == 0) break;
+                      tempPad += lexLen;
+                      pSum += lexLen;
+                      tok = invokeLexer(pSum);
+                    }
+                    if (tok == -1 || srcLexPos >= (scanPos as u32)) break;
+                    let tLen = lexLen;
+                    if (tLen == 0) break;
+                    if (isFirstLoopToken) {
+                      firstErrPadSum = tempPad + (srcLexPos > pSum ? srcLexPos - pSum : 0);
+                      isFirstLoopToken = false;
+                    }
+                    pSum = srcLexPos + tLen;
+                    lastTokenEndSum = pSum;
+                  }
+
+                  let totalErrLenSum: u32 = lastTokenEndSum > (head.pos as u32) ? lastTokenEndSum - (head.pos as u32) : 0;
+                  let errByteLenSum: u32 = totalErrLenSum >= firstErrPadSum ? totalErrLenSum - firstErrPadSum : totalErrLenSum;
+                  let errNodeSum = allocNode(NODE_TYPE_ERROR, firstErrPadSum, errByteLenSum, ancCurr.balanceHash & 0xff, false);
+                  setNodeFlags(errNodeSum, FLAG_HAS_ERROR);
+
+                  let diagStartSum = srcLexPos;
+                  let diagEndSum = srcLexPos + lexLen;
+                  if (diagEndSum <= diagStartSum) diagEndSum = diagStartSum + 1;
+                  let newTailSum = pushDiagnostic(head.errorTail, diagStartSum, diagEndSum);
+
+                  let sumPendingPadding: u32 = (scanPos as u32) > lastTokenEndSum ? (scanPos as u32) - lastTokenEndSum : 0;
+                  let summaryHead = allocParseHead(
+                    ancState,
+                    errNodeSum,
+                    ancCurr,
+                    scanPos,
+                    initialScannerState,
+                    summaryCost,
+                    0,
+                    ancCurr.balanceHash,
+                    0,
+                    ancCurr.dynamicPrec,
+                    sumPendingPadding,
+                    newTailSum
+                  );
+                  pushCandidateHead(changetype<u32>(summaryHead));
+                }
+              }
+            }
+
+            ancCurr = ancCurr.prev;
+            ancDepth++;
+          }
         }
 
         // Candidate Pool Flush: Sort, Deduplicate, and Beam Select Top K (K=4)
@@ -1282,7 +1283,7 @@ export function recoverIslandMode(
         // Everything in between is wrapped in an ERROR node and discarded from the AST.
         if (configEnableIslandMode) {
           let hasCleanLocalHead = false;
-          for (let hIdx: u32 = 0; hIdx < activeHeadsCount; hIdx++) {
+          for (let hIdx: u32 = 0; hIdx < initialHeadsCount; hIdx++) {
             let hPtr = changetype<ParseHead>(t_activeHeads[hIdx]);
             if (hPtr != head && hPtr.errorCost <= head.errorCost + THRESHOLD_HEAD_PRUNING_DISTANCE) {
               hasCleanLocalHead = true;
@@ -1314,9 +1315,22 @@ export function recoverIslandMode(
 
             if (searchPos < inputLength) {
               tok = invokeLexer(searchPos);
-              if (tok == -1) break;
+              logInt(777000);
+              logInt(searchPos);
+              logInt(srcLexPos);
+              logInt(tok);
+              logInt(lexLen);
+              if (tok <= 0 || (tok != TOKEN_EOF && load<u8>(is_extra_token + tok) == 1)) {
+                let step = lexLen > 0 ? lexLen : peekCharLen(searchPos);
+                searchPos += (step > 0 ? step : 1);
+                continue;
+              }
               tokenLen = lexLen;
-              if (tokenLen == 0) break;
+              if (tokenLen == 0) {
+                let step = peekCharLen(searchPos);
+                searchPos += (step > 0 ? step : 1);
+                continue;
+              }
             }
 
             
@@ -1349,6 +1363,11 @@ export function recoverIslandMode(
               
             let canAcceptTok = stateCanAccept(currPop, currPop.state, tok, 0) ? 1 : 0;
             let canAcceptNext = stateCanAccept(currPop, currPop.state, nextTok, 0) ? 1 : 0;
+            logInt(888000 + gssDepth);
+            logInt(currPop.state);
+            logInt(tok);
+            logInt(canAcceptTok);
+            logInt(canAcceptNext);
 
 
 
@@ -1483,7 +1502,6 @@ export function recoverIslandMode(
                 p += lexLen;
                 tok = invokeLexer(p);
               }
-              if (tok == -1) break;
               if (srcLexPos >= (resumePos as u32)) break;
 
               // All tokens between the last valid parsed node and the recovery anchor
@@ -1491,15 +1509,15 @@ export function recoverIslandMode(
               // and emit them as ERROR leaves so they get accurately squiggled,
               // regardless of whether they cross a line boundary.
 
-              let tLen = lexLen;
-              if (tLen == 0) break; // prevent infinite loop
+              let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
+              if (tLen == 0) tLen = 1;
               
-              let insCost = tok == TOKEN_UNKNOWN ? 2 : token_insert_costs[tok];
+              let insCost = (tok == TOKEN_UNKNOWN || tok == -1) ? 2 : token_insert_costs[tok];
               islandCost += (insCost > 0 ? insCost : 3);
 
               let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
 
-              let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
+              let tNode = allocNode(((tok == TOKEN_UNKNOWN || tok == -1 ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
               setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
               // Do NOT set FLAG_IS_INSERTED here because this is shifting a real terminal, not inserting a missing one!
               if (lastChild == 0) {
@@ -1537,37 +1555,54 @@ export function recoverIslandMode(
               // Instead of pushing an extra head (which corrupts GSS depth), we REPLACE currPop
               // with a new head that has the same state and prev, but merges the ERROR node into its astNode.
               let nextConsecutive = ((resumePos as u32) == head.pos) ? head.consecutiveInsertions : 0;
-              let parentType = (currPop != null && currPop.astNode != 0) ? getNodeType(currPop.astNode) : NODE_TYPE_ERROR;
-              let mergedNode = (currPop != null && currPop.astNode != 0) ? cloneNodeShallow(currPop.astNode) : 0;
-              
-              // 1. Re-append the valid popped nodes as siblings!
-              for (let k = childCount - 1; k >= 0; k--) {
-                let child = t_globalChildNodes[k];
-                if (child == 0) continue;
+              let finalAstNode: u32 = islandLeaf;
+              let finalPrev: ParseHead | null = head;
+              if (childCount == 0 && currPop != null && currPop.astNode != 0) {
+                let prev = currPop.prev;
+                let prevState = prev != null ? prev.state : 0;
+                let sym = findGotoSymbol(prevState, currPop.state);
+                let parentType = sym != -1 ? (sym as u16) : getNodeType(currPop.astNode);
+                finalAstNode = appendToList(currPop.astNode, islandLeaf, parentType, 0);
+                finalPrev = currPop.prev;
+              } else if (childCount > 0) {
+                let prev = currPop != null ? currPop.prev : null;
+                let prevState = prev != null ? prev.state : 0;
+                let sym = currPop != null ? findGotoSymbol(prevState, currPop.state) : -1;
+                let parentType = sym != -1 ? (sym as u16) : ((currPop != null && currPop.astNode != 0) ? getNodeType(currPop.astNode) : (NODE_TYPE_ERROR as u16));
+                let mergedNode = (currPop != null && currPop.astNode != 0) ? cloneNodeShallow(currPop.astNode) : 0;
                 
-                let clonedChild = cloneNodeShallow(child);
-                
-                if (mergedNode != 0) {
-                  // appendToList handles its own cloning, but passing clonedChild is safer
-                  mergedNode = appendToList(mergedNode, clonedChild, parentType as u16, 0);
-                } else {
-                  mergedNode = clonedChild;
+                // 1. Re-append the valid popped nodes as siblings!
+                for (let k = childCount - 1; k >= 0; k--) {
+                  let child = t_globalChildNodes[k];
+                  if (child == 0) continue;
+                  
+                  let clonedChild = cloneNodeShallow(child);
+                  
+                  if (mergedNode != 0) {
+                    // appendToList handles its own cloning, but passing clonedChild is safer
+                    mergedNode = appendToList(mergedNode, clonedChild, parentType as u16, 0);
+                  } else {
+                    mergedNode = clonedChild;
+                  }
                 }
+
+                // 2. Append the garbage ERROR node as a sibling/child!
+                if (islandByteLen > 0 || getNodeFirstChild(islandLeaf) != 0) {
+                  if (mergedNode != 0) {
+                    mergedNode = appendToList(mergedNode, islandLeaf, parentType as u16, 0);
+                  } else {
+                    mergedNode = islandLeaf;
+                  }
+                }
+                finalAstNode = mergedNode;
+                finalPrev = currPop != null ? currPop.prev : null;
               }
 
-              // 2. Append the garbage ERROR node as a sibling/child!
-              if (islandByteLen > 0 || getNodeFirstChild(islandLeaf) != 0) {
-                if (mergedNode != 0) {
-                  mergedNode = appendToList(mergedNode, islandLeaf, parentType as u16, 0);
-                } else {
-                  mergedNode = islandLeaf;
-                }
-              }
-
+              let islandPendingPadding: u32 = (resumePos as u32) > p ? (resumePos as u32) - p : 0;
               let islandHead = allocParseHead(
                 currPop != null ? currPop.state : 0, 
-                mergedNode,
-                currPop != null ? currPop.prev : null, // Use currPop.prev to maintain correct GSS depth!
+                finalAstNode,
+                finalPrev,
                 resumePos as u32,
                 islandScannerState,
                 (currPop != null ? currPop.errorCost : 0) + islandCost,
@@ -1575,7 +1610,7 @@ export function recoverIslandMode(
                 foundBalance,
                 nextConsecutive,
                 head.dynamicPrec,
-                0, // pendingPadding
+                islandPendingPadding, // pendingPadding
                 newTail,
                 0, 0, 0, 0, 0, 0 // No virtual tokens in Island Mode
               );

@@ -78,7 +78,7 @@ export interface WasmSimulationResult {
  * @returns Simulation result with time series data
  */
 export async function runWasmSimulation(
-  wasmBytes: ArrayBuffer,
+  wasmBytes: ArrayBuffer | Uint8Array,
   jsGlueCode: string,
   scalarVariables: WasmScalarVariable[],
   options?: WasmSimulationOptions,
@@ -165,7 +165,7 @@ export async function runWasmSimulation(
 
 // ── Module loader ──
 
-async function loadWasmModule(wasmBytes: ArrayBuffer, jsGlueCode: string): Promise<WasmModelModule> {
+async function loadWasmModule(wasmBytes: ArrayBuffer | Uint8Array, jsGlueCode: string): Promise<WasmModelModule> {
   // Create the factory function from the JS glue code
   // The Emscripten-generated JS glue defines a module factory function
   const factoryFn = new Function(
@@ -176,7 +176,7 @@ async function loadWasmModule(wasmBytes: ArrayBuffer, jsGlueCode: string): Promi
     jsGlueCode + "\nreturn typeof createWasmModel !== 'undefined' ? createWasmModel : Module;",
   );
 
-  const wasmBinary = new Uint8Array(wasmBytes);
+  const wasmBinary = wasmBytes instanceof Uint8Array ? wasmBytes : new Uint8Array(wasmBytes);
 
   // Try to provide Node.js require if we are in Node
   let req: unknown = undefined;

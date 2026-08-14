@@ -1798,14 +1798,7 @@ self.onmessage = async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) { 
-                    if (cat === 888801) console.log("[SEM]", "offset=" + v1, "len=" + v2, "type=" + v3); 
-                    if (cat === 888800) console.log("[NODE_START]", "type=" + v1, "nodeOffset=" + v2, "pad=" + v3);
-                    if (cat === 888802) console.log("[NODE_INFO]", "len=" + v1, "ptr=" + v2, "inError=" + v3);
-                    if (cat === 888803) console.log("  [CHILD_CALC]", "childType=" + v1, "parentOffset=" + v2, "childPad=" + v3);
-                    if (cat === 888804) console.log("  [CHILD_CALC2]", "childLen=" + v1, "cLen(pad+len)=" + v2);
-                    if (cat >= 900) console.log("DEBUG [" + cat + "]", v1, v2, v3);
-                } },
+                engine: { debugLog: function(cat, v1, v2, v3) {} },
                 parser: { 
                     logInt: function(val) { console.log("logInt:", val); },
                     emitTextEdit: function(op, len, start, end) {},

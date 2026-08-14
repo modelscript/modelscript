@@ -73,7 +73,7 @@ export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 1000;
  * Heavy penalty added when discarding deeper subtrees across line boundaries during Branch A deletion,
  * preventing accidental multi-line structural destruction.
  */
-export const PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE: i32 = 4000;
+export const PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE: i32 = 15000;
 
 /**
  * Penalty per duplicate token dropped (e.g. redundant semicolons `;;`).
@@ -142,9 +142,9 @@ export const THRESHOLD_HEAD_PRUNING_DISTANCE: i32 = 2000;
 export const COST_ISLAND_INITIAL_SYNC: i32 = 5;
 
 /**
- * Cost penalty per AST node unwound during recovery.
+ * Cost penalty per AST node unwound during recovery (aligned with Tree-sitter).
  */
-export let configPenaltyUnwindNode: i32 = 500;
+export let configPenaltyUnwindNode: i32 = 50;
 
 /**
  * Cost penalty per token symbol synchronized.

@@ -73,10 +73,10 @@ export const Parse: CommandModule<{}, ParseArgs> = {
               const mem = new Uint32Array(exportedMemory.buffer);
               const len = mem[(msgPtr - 4) >>> 2] || 0;
               const utf16 = new Uint16Array(exportedMemory.buffer, msgPtr, len >>> 1);
-              msg = String.fromCharCode.apply(null, Array.from(utf16));
+              msg = new TextDecoder("utf-16le").decode(utf16);
               const fileLen = mem[(filePtr - 4) >>> 2] || 0;
               const fileUtf16 = new Uint16Array(exportedMemory.buffer, filePtr, fileLen >>> 1);
-              const fileName = String.fromCharCode.apply(null, Array.from(fileUtf16));
+              const fileName = new TextDecoder("utf-16le").decode(fileUtf16);
               msg += " at " + fileName + ":" + line + ":" + column;
             } catch (e) {}
           }
@@ -128,17 +128,17 @@ export const Parse: CommandModule<{}, ParseArgs> = {
         view16[i] = ((c & 0xff) << 8) | ((c >> 8) & 0xff);
       }
     } else if (encEnum === InputEncoding.UTF32LE || encEnum === InputEncoding.UTF32BE) {
-      // Simplified UTF-32 creation for tests
-      parseInput = new Uint8Array(text.length * 4);
-      const view32 = new Uint32Array(parseInput.buffer);
+      const view32 = new Uint32Array(text.length);
+      let cpCount = 0;
       for (let i = 0; i < text.length; i++) {
         let c = text.codePointAt(i) || 0;
-        if (c > 0xffff) i++; // skip surrogate pair half
         if (encEnum === InputEncoding.UTF32BE) {
           c = ((c & 0xff) << 24) | (((c >> 8) & 0xff) << 16) | (((c >> 16) & 0xff) << 8) | ((c >> 24) & 0xff);
         }
-        view32[i] = c;
+        view32[cpCount++] = c;
+        if ((text.codePointAt(i) || 0) > 0xffff) i++; // skip low surrogate
       }
+      parseInput = new Uint8Array(view32.buffer, 0, cpCount * 4);
     }
 
     const tree = parser.parse(parseInput);

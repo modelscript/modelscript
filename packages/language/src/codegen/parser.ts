@@ -22,6 +22,7 @@ import {
   parserLoopCode,
   recoveryCode,
   recoveryConfigCode,
+  stubCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
@@ -236,7 +237,9 @@ export function generateParserTables(
       } else {
         tokenInsertCosts[symId] = 4;
       }
-    } else if (sym.startsWith('"') || sym.startsWith("/")) {
+    } else if (sym.startsWith("/")) {
+      tokenInsertCosts[symId] = 50; // Data-bearing regex terminals (identifiers, numbers, strings) have restricted insertion cost
+    } else if (sym.startsWith('"')) {
       const freq = terminalFreq.get(sym) || 0;
       if (freq >= 5) {
         tokenInsertCosts[symId] = 1;
@@ -606,7 +609,8 @@ export function generateParserTables(
     }
   }
 
-  const typeFields: number[] = new Array(symToInt.size + 1).fill(-1);
+  const maxSymId = Math.max(0, ...Array.from(symToInt.values()));
+  const typeFields: number[] = new Array(maxSymId + 1).fill(-1);
   const typeFieldData: number[] = [];
 
   function getFieldsForSymbol(
@@ -651,9 +655,7 @@ export function generateParserTables(
     return map;
   }
 
-  for (let symId = 1; symId <= symToInt.size; symId++) {
-    const symName = Array.from(symToInt.entries()).find(([_, id]) => id === symId)?.[0];
-    if (!symName) continue;
+  for (const [symName, symId] of symToInt.entries()) {
     const fieldsMap = getFieldsForSymbol(symName);
 
     if (fieldsMap.size > 0) {
@@ -746,6 +748,27 @@ export function generateParserTables(
     }
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
+
+  const typeIsSymbol: number[] = new Array(symToInt.size + 1).fill(0);
+  const symbolNameField: number[] = new Array(symToInt.size + 1).fill(0);
+  const symbolIsScope: number[] = new Array(symToInt.size + 1).fill(0);
+
+  if (originalGrammar.symbols) {
+    for (const [ruleName, config] of Object.entries(originalGrammar.symbols)) {
+      const id = symToInt.get(ruleName) || symToInt.get(`"${ruleName}"`);
+      if (id !== undefined && config) {
+        typeIsSymbol[id] = 1;
+        if (config.name && grammar.fieldToInt) {
+          const fieldId = grammar.fieldToInt.get(config.name) || 0;
+          symbolNameField[id] = fieldId;
+        }
+        symbolIsScope[id] = config.scope !== false ? 1 : 0;
+      }
+    }
+  }
+  code += generateStaticArray(typeIsSymbol, "type_is_symbol");
+  code += generateStaticArray(symbolNameField, "symbol_name_field");
+  code += generateStaticArray(symbolIsScope, "symbol_is_scope");
 
   code += generateLexer(originalGrammar, grammar);
 
@@ -903,6 +926,7 @@ export function generateParserTables(
     { filename: "hashmap.ts", content: hashmapCode },
     { filename: "isolation.ts", content: isolationCode },
     { filename: "pantelides.ts", content: pantelidesCode },
+    { filename: "stub.ts", content: stubCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -920,6 +944,7 @@ export function generateParserTables(
   code += extractExports(eventsCode, "./events");
   code += extractExports(integratorsCode, "./integrators");
   code += extractExports(matrixCode, "./matrix");
+  code += extractExports(stubCode, "./stub");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

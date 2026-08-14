@@ -329,7 +329,7 @@ async function simulateWasm(
     causality: sv.causality,
   }));
 
-  const result = await runWasmSimulation(compileResult.wasm.buffer as ArrayBuffer, compileResult.jsGlue, scalarVars, {
+  const result = await runWasmSimulation(compileResult.wasm, compileResult.jsGlue, scalarVars, {
     startTime,
     stopTime,
     stepSize: step,

@@ -13,6 +13,7 @@ import { getChildByFieldId } from "./engine";
 export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
 
 
+
 /**
  * Arena Allocator for AST Nodes (Persistent / Structural Sharing)
  *
@@ -139,6 +140,7 @@ class SharedState {
   currentInputBufferSize: u32;
   activeRootCount: u32;
   activeRootsPtr: UnmanagedUint32Array;
+  activeRootsCapacity: u32;
   gcStackPtr: UnmanagedUint32Array;
   gcStackCapacity: u32;
   allocLock: u32; // Used for thread-safe spinlocking during chunk rollovers
@@ -209,7 +211,8 @@ export function S(): SharedState {
     state.gen2_chunks[0] = atomicChunkAlloc(AST_CHUNK_SIZE);
 
     state.activeGeneration = 1;
-    state.activeRootsPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(100 * 4)); // Up to 100 roots
+    state.activeRootsCapacity = 16384;
+    state.activeRootsPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(state.activeRootsCapacity * 4));
     return state;
   }
   return changetype<SharedState>(global_shared_ptr);
@@ -556,7 +559,6 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
   if (isTainted) {
     initialFlags |= (FLAG_IS_TAINED as u32) << 10;
-    debugLog(999, ptr, type, 0);
   }
 
   let node = changetype<ASTNode>(ptr);
@@ -676,9 +678,6 @@ export function getNodeFlags(ptr: u32): u16 {
 }
 
 export function setNodeFlags(ptr: u32, flags: u16): void {
-  if ((flags & FLAG_IS_TAINED) != 0) {
-    debugLog(998, ptr, flags, 0);
-  }
   changetype<ASTNode>(ptr).flags = flags;
 }
 
@@ -810,11 +809,8 @@ export function setNodePadding(ptr: u32, pad: u32): void {
 }
 
 export function propagateFirstChildPadding(ptr: u32, pad: u32): void {
-  let curr = ptr;
-  let guard = 0;
-  while (curr != 0 && guard++ < 250) {
-    setNodePadding(curr, pad);
-    curr = getNodeFirstChild(curr);
+  if (ptr != 0) {
+    setNodePadding(ptr, pad);
   }
 }
 
@@ -1106,11 +1102,11 @@ export function ast_getLiteralNodeRef(ptr: u32): u32 {
   return nodeOverrideRefs.get(ptr >> 4);
 }
 
-let stringArenaPtr: usize = 0;
-let stringArenaOffset: u32 = 0;
-let stringArenaCapacity: u32 = 1024 * 1024; // 1MB
+export let stringArenaPtr: usize = 0;
+export let stringArenaOffset: u32 = 0;
+export let stringArenaCapacity: u32 = 1024 * 1024; // 1MB
 
-function ensureStringArena(bytesNeeded: u32): void {
+export function ensureStringArena(bytesNeeded: u32): void {
   if (stringArenaPtr == 0) {
     stringArenaPtr = atomicChunkAlloc(stringArenaCapacity);
   }
@@ -1448,9 +1444,35 @@ export function getArenaEnd(): u32 {
  * @param rootPtr The pointer to the AST node to register.
  */
 export function registerRoot(rootPtr: u32): void {
-  if (S().activeRootCount < 100) {
-    S().activeRootsPtr[S().activeRootCount++] = rootPtr;
+  if (rootPtr == 0) return;
+  for (let i: u32 = 0; i < S().activeRootCount; i++) {
+    if (S().activeRootsPtr[i] == rootPtr) return;
   }
+
+  if (S().activeRootCount >= S().activeRootsCapacity) {
+    let newCap = S().activeRootsCapacity == 0 ? 1024 : S().activeRootsCapacity * 2;
+    let newPtr = atomicChunkAlloc(newCap * 4);
+    if (S().activeRootsCapacity > 0 && changetype<usize>(S().activeRootsPtr) != 0) {
+      memory.copy(newPtr, changetype<usize>(S().activeRootsPtr), S().activeRootsCapacity * 4);
+    }
+    S().activeRootsPtr = changetype<UnmanagedUint32Array>(newPtr);
+    S().activeRootsCapacity = newCap;
+  }
+  S().activeRootsPtr[S().activeRootCount++] = rootPtr;
+}
+
+/**
+ * Returns total allocated heap bytes across generations and text buffers.
+ */
+export function arena_getMemoryUsage(): u32 {
+  let total: u32 = 0;
+  let s = S();
+  total += s.gen0_chunk_count * AST_CHUNK_SIZE;
+  total += s.gen1_chunk_count * AST_CHUNK_SIZE;
+  total += s.gen2_chunk_count * AST_CHUNK_SIZE;
+  total += s.currentInputBufferSize;
+  total += stringArenaCapacity;
+  return total;
 }
 
 /**
