@@ -1170,10 +1170,10 @@ end ElectricalCircuit;`;
     const line5DotErrors = diagsDot.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
     expect(line5DotErrors.length).toBe(0);
 
-    // 5. Test trailing invalid identifier in 'Real current = 2.6 error;'
+    // 5. Test trailing invalid identifier in 'Real current = 2.5 error;'
     const codeTrailingIdent = `model ElectricalCircuit
   Real voltage = 12.0;
-  Real current = 2.6 error;
+  Real current = 2.5 error;
   Real power;
 
   power = voltage * current;
@@ -1182,16 +1182,20 @@ end ElectricalCircuit;`;
     const astTrailingIdent = facade.parse(codeTrailingIdent);
     const diagsTrailingIdent = facade.getDiagnostics(astTrailingIdent);
 
-    // Line 2 (editor line 3): '  Real current = 2.6 error;'
+    // Line 2 (editor line 3): '  Real current = 2.5 error;'
     // Syntax error should strictly be on 'error' at char 21..26
     const trailingSyntaxError = diagsTrailingIdent.find((d: any) => d.range.start.line === 2 && d.severity === 1);
     expect(trailingSyntaxError).toBeDefined();
     expect(trailingSyntaxError.range.start.character).toBe(21);
     expect(trailingSyntaxError.range.end.character).toBe(26);
 
-    // Warning on 'current' should NOT be present (since value = 2.6 was parsed and retained)
+    // Warning on 'current' should NOT be present (since value = 2.5 was parsed and resolved via getChildByFieldId)
     const currentTrailingWarning = diagsTrailingIdent.find((d: any) => d.range.start.line === 2 && d.severity === 2);
     expect(currentTrailingWarning).toBeUndefined();
+
+    // Warning on 'power' (line 3) SHOULD be present (since it has no initializer)
+    const powerTrailingWarning = diagsTrailingIdent.find((d: any) => d.range.start.line === 3 && d.severity === 2);
+    expect(powerTrailingWarning).toBeDefined();
 
     // Line 5 (editor line 6): zero errors
     const line5TrailingErrors = diagsTrailingIdent.filter((d: any) => d.range.start.line === 5 && d.severity === 1);

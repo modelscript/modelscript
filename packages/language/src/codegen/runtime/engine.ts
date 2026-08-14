@@ -600,14 +600,43 @@ export class FieldCursor {
   currentIdxPtr: i32;
 
   frameDepth: i32;
-  fNode0: u32; fOffset0: i32; fCount0: i32; fPtr0: i32;
-  fNode1: u32; fOffset1: i32; fCount1: i32; fPtr1: i32;
-  fNode2: u32; fOffset2: i32; fCount2: i32; fPtr2: i32;
-  fNode3: u32; fOffset3: i32; fCount3: i32; fPtr3: i32;
-  
   private cachedNext: u32;
   private hasCachedNext: boolean;
   isActive: boolean;
+
+  // 16 frames * 16 bytes = 256 bytes storage buffer
+  _f0: u64; _f1: u64; _f2: u64; _f3: u64;
+  _f4: u64; _f5: u64; _f6: u64; _f7: u64;
+  _f8: u64; _f9: u64; _f10: u64; _f11: u64;
+  _f12: u64; _f13: u64; _f14: u64; _f15: u64;
+  _f16: u64; _f17: u64; _f18: u64; _f19: u64;
+  _f20: u64; _f21: u64; _f22: u64; _f23: u64;
+  _f24: u64; _f25: u64; _f26: u64; _f27: u64;
+  _f28: u64; _f29: u64; _f30: u64; _f31: u64;
+
+  @inline
+  pushFrame(node: u32, offset: i32, count: i32, ptr: i32): void {
+    if (this.frameDepth < 16) {
+      let base = changetype<usize>(this) + offsetof<FieldCursor>("_f0") + ((this.frameDepth as usize) << 4);
+      store<u32>(base, node);
+      store<i32>(base + 4, offset);
+      store<i32>(base + 8, count);
+      store<i32>(base + 12, ptr);
+      this.frameDepth++;
+    }
+  }
+
+  @inline
+  popFrame(): void {
+    if (this.frameDepth > 0) {
+      this.frameDepth--;
+      let base = changetype<usize>(this) + offsetof<FieldCursor>("_f0") + ((this.frameDepth as usize) << 4);
+      this.node = load<u32>(base);
+      this.offset = load<i32>(base + 4);
+      this.indexCount = load<i32>(base + 8);
+      this.currentIdxPtr = load<i32>(base + 12);
+    }
+  }
 
   @inline
   init(node: u32, fieldId: i32): void {
@@ -619,10 +648,6 @@ export class FieldCursor {
     this.indexCount = 0;
     this.currentIdxPtr = 0;
     this.frameDepth = 0;
-    this.fNode0 = 0; this.fOffset0 = 0; this.fCount0 = 0; this.fPtr0 = 0;
-    this.fNode1 = 0; this.fOffset1 = 0; this.fCount1 = 0; this.fPtr1 = 0;
-    this.fNode2 = 0; this.fOffset2 = 0; this.fCount2 = 0; this.fPtr2 = 0;
-    this.fNode3 = 0; this.fOffset3 = 0; this.fCount3 = 0; this.fPtr3 = 0;
     this.isActive = true;
     
     if (node == 0) {
@@ -687,16 +712,7 @@ export class FieldCursor {
     while (true) {
       if (this.indexCount == 0) {
         if (this.frameDepth > 0) {
-          this.frameDepth--;
-          if (this.frameDepth == 0) {
-            this.node = this.fNode0; this.offset = this.fOffset0; this.indexCount = this.fCount0; this.currentIdxPtr = this.fPtr0;
-          } else if (this.frameDepth == 1) {
-            this.node = this.fNode1; this.offset = this.fOffset1; this.indexCount = this.fCount1; this.currentIdxPtr = this.fPtr1;
-          } else if (this.frameDepth == 2) {
-            this.node = this.fNode2; this.offset = this.fOffset2; this.indexCount = this.fCount2; this.currentIdxPtr = this.fPtr2;
-          } else if (this.frameDepth == 3) {
-            this.node = this.fNode3; this.offset = this.fOffset3; this.indexCount = this.fCount3; this.currentIdxPtr = this.fPtr3;
-          }
+          this.popFrame();
           continue;
         }
         this.offset = -1;
@@ -733,56 +749,50 @@ export class FieldCursor {
 
       if (child == 0) continue;
 
-      if (isSyntheticField) {
-        if (this.frameDepth < 4) {
-            if (this.frameDepth == 0) {
-              this.fNode0 = this.node; this.fOffset0 = this.offset; this.fCount0 = this.indexCount; this.fPtr0 = this.currentIdxPtr;
-            } else if (this.frameDepth == 1) {
-              this.fNode1 = this.node; this.fOffset1 = this.offset; this.fCount1 = this.indexCount; this.fPtr1 = this.currentIdxPtr;
-            } else if (this.frameDepth == 2) {
-              this.fNode2 = this.node; this.fOffset2 = this.offset; this.fCount2 = this.indexCount; this.fPtr2 = this.currentIdxPtr;
-            } else if (this.frameDepth == 3) {
-              this.fNode3 = this.node; this.fOffset3 = this.offset; this.fCount3 = this.indexCount; this.fPtr3 = this.currentIdxPtr;
-            }
-            this.frameDepth++;
+      while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0 || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0)) {
+        let first = getNodeFirstChild(child);
+        if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
+          child = first;
+        } else {
+          break;
+        }
+      }
 
-            this.node = child;
-            this.offset = -1;
-            this.indexCount = 0;
-            
-            let type = getNodeType(child);
-            if (type < (type_fields.length as u16)) {
-              let offset = type_fields[type];
-              if (offset != -1 && offset >= 0 && offset < type_field_data.length) {
-                let fieldCount = type_field_data[offset];
-                let currentOffset = offset + 1;
-                for (let i = 0; i < fieldCount; i++) {
-                  if (currentOffset + 1 >= type_field_data.length) break;
-                  let currentFieldId = type_field_data[currentOffset];
-                  let indexCount = type_field_data[currentOffset + 1];
-                  if (currentFieldId == this.fieldId && indexCount > 0) {
-                    this.offset = currentOffset;
-                    this.indexCount = indexCount;
-                    this.currentIdxPtr = currentOffset + 2;
-                    break;
-                  }
-                  currentOffset += 2 + (indexCount * 2);
+      if (isSyntheticField) {
+        if (this.frameDepth < 16) {
+          this.pushFrame(this.node, this.offset, this.indexCount, this.currentIdxPtr);
+
+          this.node = child;
+          this.offset = -1;
+          this.indexCount = 0;
+          
+          let type = getNodeType(child);
+          if (type < (type_fields.length as u16)) {
+            let offset = type_fields[type];
+            if (offset != -1 && offset >= 0 && offset < type_field_data.length) {
+              let fieldCount = type_field_data[offset];
+              let currentOffset = offset + 1;
+              for (let i = 0; i < fieldCount; i++) {
+                if (currentOffset + 1 >= type_field_data.length) break;
+                let currentFieldId = type_field_data[currentOffset];
+                let indexCount = type_field_data[currentOffset + 1];
+                if (currentFieldId == this.fieldId && indexCount > 0) {
+                  this.offset = currentOffset;
+                  this.indexCount = indexCount;
+                  this.currentIdxPtr = currentOffset + 2;
+                  break;
                 }
+                currentOffset += 2 + (indexCount * 2);
               }
             }
           }
-          continue;
         }
-        if (child != 0 && (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
-          let inner = getNodeFirstChild(child);
-          if (inner != 0 && getNodeType(inner) == getNodeType(child)) {
-            return inner;
-          }
-        }
-        return child;
+        continue;
       }
-      return 0;
+      return child;
     }
+    return 0;
+  }
 
   @inline
   release(): void {
