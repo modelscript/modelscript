@@ -39,7 +39,7 @@ export class ChunkedArray<T> {
   public init(initialElements: u32 = 0): void {
     if (this.directory != 0) return; // Prevent memory leak from re-initialization
     this.dirCapacity = 1024;
-    this.directory = heap.alloc(this.dirCapacity * sizeof<usize>()) as usize;
+    this.directory = atomicChunkAlloc(this.dirCapacity * sizeof<usize>()) as usize;
     this.allocatedChunks = 0;
     this.length = 0;
 
@@ -59,7 +59,7 @@ export class ChunkedArray<T> {
   private addChunk(): void {
     if (this.allocatedChunks >= this.dirCapacity) {
       let newDirCapacity = this.dirCapacity == 0 ? 1024 : this.dirCapacity * 2;
-      let newDirectory = heap.alloc(newDirCapacity * sizeof<usize>()) as usize;
+      let newDirectory = atomicChunkAlloc(newDirCapacity * sizeof<usize>()) as usize;
       if (this.directory != 0) {
         memory.copy(newDirectory, this.directory, this.dirCapacity * sizeof<usize>());
       }

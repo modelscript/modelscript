@@ -1,4 +1,4 @@
-import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead, t_activeHeads, activeHeadsCount, setActiveHeadsCount } from "./gss";
+import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead, t_activeHeads, activeHeadsCount, setActiveHeadsCount, pushCandidateHead, t_candidateHeadsBuffer, candidateHeadsCount } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
   action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableBranchT, configEnableIslandMode, ACTION_REDUCE, configPenaltyUnwindNode, configPenaltySyncToken, configIslandBasePenalty, configIslandSyncMultiplier, configIslandPoppedMultiplier, prod_is_list
@@ -24,7 +24,10 @@ import {
   THRESHOLD_INSERT_MAX_COST,
   THRESHOLD_PANIC_MODE_CUTOFF,
   THRESHOLD_HEAD_PRUNING_DISTANCE,
-  COST_ISLAND_INITIAL_SYNC
+  COST_ISLAND_INITIAL_SYNC,
+  MAX_RECOVERY_CANDIDATES,
+  RECOVERY_BEAM_WIDTH,
+  PENALTY_WEAK_LOOKAHEAD
 } from "./recovery-config";
 import { prod_lengths, prod_lhs, logInt } from "./parser";
 @inline function isListNodeByPtr(node: u32): boolean { return node != 0 && (getNodeFlags(node) & FLAG_IS_LIST) != 0; }
@@ -72,12 +75,15 @@ import {
   inputEncoding,
   reachability_matrix,
   precomputed_repairs,
-  state_scope_bounds
+  state_scope_bounds,
+  min_yield_offsets,
+  min_yield_data
 } from "./parser";
 
 const t_branchB_outTokens = new Int32Array(8);
 const t_branchB_outStates = new Int32Array(8);
 const t_branchA1_outStates = new Int32Array(1);
+const t_expanded_tokens = new Int32Array(16);
 const savedHeadsBuffer = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16384 * 4));
 
 export function simulateLookahead(
@@ -388,6 +394,7 @@ export function recoverUnwindAndMutate(
         let initialSrcLexPos = srcLexPos;
         let initialLexLen = lexLen;
         let initialHeadCount: u32 = activeHeadsCount;
+        candidateHeadsCount = 0;
         
         memory.fill(changetype<usize>(expected_tokens), 1, 2048);
         
@@ -496,8 +503,7 @@ export function recoverUnwindAndMutate(
                     0,
                     newTailSum
                   );
-                  pushActiveHead(changetype<u32>(summaryHead));
-                  return true;
+                  pushCandidateHead(changetype<u32>(summaryHead));
                 }
               }
             }
@@ -578,8 +584,7 @@ export function recoverUnwindAndMutate(
                           0,
                           newTailR
                         );
-                        pushActiveHead(changetype<u32>(reopenHead));
-                        return true;
+                        pushCandidateHead(changetype<u32>(reopenHead));
                       }
                     }
                   }
@@ -634,7 +639,7 @@ export function recoverUnwindAndMutate(
                           0,
                           newTailT
                         );
-                        pushActiveHead(changetype<u32>(transHead));
+                        pushCandidateHead(changetype<u32>(transHead));
                       }
                     }
                   }
@@ -696,8 +701,7 @@ export function recoverUnwindAndMutate(
                         0,
                         newTailP
                       );
-                      pushActiveHead(changetype<u32>(subHeadP));
-                      return true;
+                      pushCandidateHead(changetype<u32>(subHeadP));
                     }
                   }
                 }
@@ -789,8 +793,7 @@ export function recoverUnwindAndMutate(
                             0,
                             newTailS
                           );
-                          pushActiveHead(changetype<u32>(subHead));
-                          return true;
+                          pushCandidateHead(changetype<u32>(subHead));
                         }
                       }
                     }
@@ -1053,7 +1056,7 @@ export function recoverUnwindAndMutate(
                 );
                 
                 if (shouldPushDelHead) {
-                  pushActiveHead(changetype<u32>(delHead));
+                  pushCandidateHead(changetype<u32>(delHead));
                 }
                 break;
               }
@@ -1188,11 +1191,31 @@ export function recoverUnwindAndMutate(
                 }
                 let uPadding: u32 = uCurr ? uCurr.pendingPadding : 0;
 
-                let v0 = seqLen > 0 ? t_branchB_outTokens[0] : 0;
-                let v1 = seqLen > 1 ? t_branchB_outTokens[1] : 0;
-                let v2 = seqLen > 2 ? t_branchB_outTokens[2] : 0;
-                let v3 = seqLen > 3 ? t_branchB_outTokens[3] : 0;
-                let v4 = seqLen > 4 ? t_branchB_outTokens[4] : 0;
+                // Phase 3: Expand minimal yield terminals for non-terminals
+                let expandedLen = 0;
+                for (let i = 0; i < seqLen; i++) {
+                  let tok = t_branchB_outTokens[i];
+                  if (tok > MAX_TERMINAL_ID) {
+                    let yieldOffset = load<u32>(min_yield_offsets + (tok << 2));
+                    let yieldLen = load<u32>(min_yield_data + (yieldOffset << 2));
+                    for (let j: u32 = 0; j < yieldLen; j++) {
+                      if (expandedLen < 16) {
+                        t_expanded_tokens[expandedLen++] = load<u32>(min_yield_data + ((yieldOffset + 1 + j) << 2));
+                      }
+                    }
+                  } else {
+                    if (expandedLen < 16) {
+                      t_expanded_tokens[expandedLen++] = tok;
+                    }
+                  }
+                }
+
+                let v0 = expandedLen > 0 ? t_expanded_tokens[0] : 0;
+                let v1 = expandedLen > 1 ? t_expanded_tokens[1] : 0;
+                let v2 = expandedLen > 2 ? t_expanded_tokens[2] : 0;
+                let v3 = expandedLen > 3 ? t_expanded_tokens[3] : 0;
+                let v4 = expandedLen > 4 ? t_expanded_tokens[4] : 0;
+                let finalLen = expandedLen > 5 ? 5 : expandedLen;
                 
                 let currentHead = allocParseHead(
                   unwindCurr.state,
@@ -1203,14 +1226,13 @@ export function recoverUnwindAndMutate(
                   head.errorCost + actualCost,
                   0,
                   unwindCurr.balanceHash,
-                  head.consecutiveInsertions + seqLen,
+                  head.consecutiveInsertions + finalLen,
                   unwindCurr.dynamicPrec,
                   unwindCurr.pendingPadding,
                   head.errorTail,
-                  v0, v1, v2, v3, v4, seqLen
+                  v0, v1, v2, v3, v4, finalLen
                 );
-                pushActiveHead(changetype<u32>(currentHead));
-                return true;
+                pushCandidateHead(changetype<u32>(currentHead));
               }
             }
           }
@@ -1218,6 +1240,30 @@ export function recoverUnwindAndMutate(
 
           unwindCurr = unwindCurr.prev;
           unwindDepth++;
+        }
+
+        // Candidate Pool Flush: Sort, Deduplicate, and Beam Select Top K (K=4)
+        if (candidateHeadsCount > 0) {
+          // Zero-Alloc In-Place Insertion Sort by composite score (errorCost)
+          for (let i: u32 = 1; i < candidateHeadsCount; i++) {
+            let keyPtr = t_candidateHeadsBuffer[i];
+            let keyCost = changetype<ParseHead>(keyPtr).errorCost;
+            let j: i32 = (i as i32) - 1;
+            while (j >= 0 && changetype<ParseHead>(t_candidateHeadsBuffer[j]).errorCost > keyCost) {
+              t_candidateHeadsBuffer[j + 1] = t_candidateHeadsBuffer[j];
+              j--;
+            }
+            t_candidateHeadsBuffer[j + 1] = keyPtr;
+          }
+
+          let pushedCount: u32 = 0;
+          for (let i: u32 = 0; i < candidateHeadsCount && pushedCount < RECOVERY_BEAM_WIDTH; i++) {
+            let hPtr = t_candidateHeadsBuffer[i];
+            if (pushActiveHead(hPtr)) {
+              pushedCount++;
+            }
+          }
+          if (pushedCount > 0) return true;
         }
         return false;
 }

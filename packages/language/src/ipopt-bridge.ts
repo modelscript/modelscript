@@ -109,7 +109,7 @@ export class KinematicIpoptSolver {
       compiler.ffi_ipopt_eval_f(nVars, c_xPtr, 0, c_objValPtr, 0);
       M.HEAPF64[objOut >> 3] = cMemF64[c_objValPtr >> 3];
       return 1;
-    }, "iiiiii");
+    }, "iiiii");
 
     const evalGradFPtr = M.addFunction((_n: number, xW: number, _nx: number, gradOut: number) => {
       const cMemF64 = new Float64Array(compiler.memory.buffer);
@@ -118,7 +118,7 @@ export class KinematicIpoptSolver {
       compiler.ffi_ipopt_eval_grad_f(nVars, c_xPtr, 0, c_gradPtr, 0);
       for (let i = 0; i < nVars; i++) M.HEAPF64[(gradOut >> 3) + i] = cMemF64[(c_gradPtr >> 3) + i];
       return 1;
-    }, "iiiiii");
+    }, "iiiii");
 
     const evalGPtr = M.addFunction((_n: number, xW: number, _nx: number, _m: number, gOut: number) => {
       const cMemF64 = new Float64Array(compiler.memory.buffer);
@@ -127,7 +127,7 @@ export class KinematicIpoptSolver {
       compiler.ffi_ipopt_eval_g(nVars, c_xPtr, 0, nCons, c_gPtr, 0);
       for (let i = 0; i < nCons; i++) M.HEAPF64[(gOut >> 3) + i] = cMemF64[(c_gPtr >> 3) + i];
       return 1;
-    }, "iiiiiii");
+    }, "iiiiii");
 
     const evalJacGPtr = M.addFunction(
       (_n: number, xW: number, _nx: number, _m: number, _ne: number, iR: number, jC: number, vPtr: number) => {
@@ -150,7 +150,7 @@ export class KinematicIpoptSolver {
         for (let i = 0; i < nnzJacobian; i++) M.HEAPF64[(vPtr >> 3) + i] = cMemF64[(c_jacValuesPtr >> 3) + i];
         return 1;
       },
-      "iiiiiiiiiii",
+      "iiiiiiiii",
     );
 
     try {
@@ -206,7 +206,7 @@ export class KinematicIpoptSolver {
       for (let i = 0; i < nVars; i++) {
         solution.push(M.HEAPF64[(resultPtr >> 3) + i]);
       }
-      console.log(`[IpoptBridge] Optimization converged. Status: ${M.HEAPF64[statusPtr >> 3]}`);
+      console.log(`[IpoptBridge] Optimization converged. Status: ${M.HEAP32[statusPtr >> 2]}`);
       return solution;
     } finally {
       M.removeFunction(evalFPtr);

@@ -23,7 +23,9 @@ const MAX_CURSOR_DEPTH: i32 = 999999;
 
 export let t_activeHeads: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let t_extractedHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+export let t_candidateHeadsBuffer: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 export let activeHeadsCount: u32 = 0;
+export let candidateHeadsCount: u32 = 0;
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active heads buffer memory.
@@ -35,7 +37,30 @@ export function initGSS(): void {
   if (changetype<usize>(t_extractedHeadsBuffer) == 0) {
     t_extractedHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
   }
+  if (changetype<usize>(t_candidateHeadsBuffer) == 0) {
+    t_candidateHeadsBuffer = changetype<UnmanagedUint32Array>(heap.alloc(64 * 4));
+  }
   activeHeadsCount = 0;
+  candidateHeadsCount = 0;
+}
+
+/**
+ * Pushes a parse head candidate into the static zero-alloc candidate pool buffer.
+ */
+export function pushCandidateHead(headPtr: u32): boolean {
+  if (candidateHeadsCount >= 64) return false;
+  let newHead = changetype<ParseHead>(headPtr);
+  for (let i: u32 = 0; i < candidateHeadsCount; i++) {
+    let existingHead = changetype<ParseHead>(t_candidateHeadsBuffer[i]);
+    if (existingHead.state == newHead.state && existingHead.pos == newHead.pos && existingHead.balanceHash == newHead.balanceHash) {
+      if (newHead.errorCost < existingHead.errorCost) {
+        t_candidateHeadsBuffer[i] = headPtr;
+      }
+      return true;
+    }
+  }
+  t_candidateHeadsBuffer[candidateHeadsCount++] = headPtr;
+  return true;
 }
 
 /**

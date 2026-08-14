@@ -2902,9 +2902,7 @@ export function advanceGLR(): void {
       }
       tokenBufferLastPos = pos;
     }
-    if (pos >= 110 && pos <= 140) {
-      debugLog(4444, head.state, token, pos);
-    }
+
 
     if (token == TOKEN_SUSPEND) {
       // Push the head back and yield execution

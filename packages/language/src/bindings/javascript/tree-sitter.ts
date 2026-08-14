@@ -89,7 +89,7 @@ export class SyntaxNode {
   get children(): SyntaxNode[] {
     const mem32 = this.tree.mem32;
     const kids: SyntaxNode[] = [];
-    let childOffset = this._startOffset;
+    let childOffset = this._startOffset + this._cachedPad;
     if (this.ptr === 0) return kids; // Synthetic nodes have no children
     let childPtr = mem32[(this.ptr + 12) / 4];
     while (childPtr !== 0) {

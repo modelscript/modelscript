@@ -26,7 +26,7 @@ import {
   ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
 } from "./arena";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
-import { globalAstRoot, lsp_findNodeOffset } from "./lsp";
+import { globalAstRoot, lsp_findNodeOffset, getEncodingStep } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";

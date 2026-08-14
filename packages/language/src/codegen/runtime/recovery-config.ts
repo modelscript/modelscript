@@ -179,3 +179,13 @@ export const HEURISTIC_LOOKAHEAD_WEIGHT: i32 = 5;
 /** Flag indicating an AST node acts as a parent scope boundary (e.g. ModelDef, IfStmt) */
 export const FLAG_SCOPE_BOUNDARY: u16 = 0x2000;
 
+/** Maximum candidates collected in zero-alloc candidate pool per recovery pass */
+export const MAX_RECOVERY_CANDIDATES: u32 = 64;
+
+/** Maximum number of top-scoring recovery candidates pushed to GLR active heads (Beam Width K) */
+export const RECOVERY_BEAM_WIDTH: u32 = 4;
+
+/** Penalty added to composite score when lookahead simulation fails after 1 shift */
+export const PENALTY_WEAK_LOOKAHEAD: i32 = 150;
+
+

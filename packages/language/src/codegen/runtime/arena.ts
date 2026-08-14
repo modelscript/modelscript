@@ -367,7 +367,7 @@ function ensureFatPaddingArena(): void {
  * @returns The physical memory pointer to the 8-byte padding/literal slot.
  */
 export function getFatPaddingPtr(idx: u32): usize {
-  return changetype<usize>(S().fatPaddingArenaPtr) + (idx << 3); // 8 bytes per f64 literal slot
+  return changetype<usize>(S().fatPaddingArenaPtr) + (idx << 2); // 4 bytes per u32 padding slot
 }
 
 /**

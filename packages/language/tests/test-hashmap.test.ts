@@ -101,7 +101,7 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
     });
 
     wasmExports = instance.exports;
-  });
+  }, 120000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) {

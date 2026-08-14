@@ -187,14 +187,16 @@ function getUtf8ByteLength(str: string): number {
 function syncWasmInputBuffer(doc: vscode.TextDocument) {
     if (currentWasmBufferUri === doc.uri.toString() && uriToLastText.get(doc.uri.toString()) === doc.getText()) return;
     const text = doc.getText();
-    const textPtr = wasmExports.getInputBuffer();
+    const lenBytes = text.length * 2;
+    const textPtr = wasmExports.ensureInputBuffer ? wasmExports.ensureInputBuffer(lenBytes) : wasmExports.getInputBuffer();
     const memArray = new Uint16Array(wasmMemory.buffer);
     for (let i = 0; i < text.length; i++) {
         memArray[(textPtr >> 1) + i] = text.charCodeAt(i);
     }
     if (wasmExports.lsp_setInputEncoding) wasmExports.lsp_setInputEncoding(1);
     else if (wasmExports.setInputEncoding) wasmExports.setInputEncoding(1);
-    wasmExports.setInputLength(text.length * 2);
+    if (wasmExports.lsp_setInputLength) wasmExports.lsp_setInputLength(lenBytes);
+    else if (wasmExports.setInputLength) wasmExports.setInputLength(lenBytes);
     
     currentWasmBufferUri = doc.uri.toString();
     uriToLastText.set(doc.uri.toString(), text);
@@ -316,11 +318,15 @@ export async function activate(context: vscode.ExtensionContext) {
             if (newSourcePtr === 0) return;
             const memory = new Uint32Array(wasmMemory.buffer);
             // AssemblyScript strings: length in bytes is at ptr - 4
-            const strLenBytes = memory[(newSourcePtr - 4) >> 2];
+            const strLenBytes = memory[(newSourcePtr - 4) >> 2] || 0;
             const strLen16 = strLenBytes >> 1;
             const strBuffer = new Uint16Array(wasmMemory.buffer, newSourcePtr, strLen16);
             let newText = "";
-            for(let i=0; i<strLen16; i++) newText += String.fromCharCode(strBuffer[i]);
+            if (typeof TextDecoder !== "undefined") {
+                newText = new TextDecoder("utf-16le").decode(strBuffer);
+            } else {
+                for(let i=0; i<strLen16; i++) newText += String.fromCharCode(strBuffer[i]);
+            }
             
             if (endByte === 0xFFFFFFFF) {
                 // Replace entire document
@@ -336,13 +342,10 @@ export async function activate(context: vscode.ExtensionContext) {
             } else {
                 const editor = vscode.window.activeTextEditor;
                 if (editor) {
-                    const docText = editor.document.getText();
-                    const buf = Buffer.from(docText, 'utf8');
-                    const startSlice = buf.slice(0, startByte).toString('utf8');
-                    const endSlice = buf.slice(0, endByte).toString('utf8');
-                    
-                    const startPos = editor.document.positionAt(startSlice.length);
-                    const endPos = editor.document.positionAt(endSlice.length);
+                    const startChar = startByte >> 1;
+                    const endChar = endByte >> 1;
+                    const startPos = editor.document.positionAt(startChar);
+                    const endPos = editor.document.positionAt(endChar);
                     
                     pendingEdits.push(vscode.TextEdit.replace(
                         new vscode.Range(startPos, endPos),
@@ -611,7 +614,8 @@ function updateDocumentState(doc: vscode.TextDocument, changes?: any[]) {
             return;
         }
 
-        const textPtr = wasmExports.getInputBuffer();
+        const lenBytes = text.length * 2;
+        const textPtr = wasmExports.ensureInputBuffer ? wasmExports.ensureInputBuffer(lenBytes) : wasmExports.getInputBuffer();
         const memArray = new Uint16Array(wasmMemory.buffer);
         
         for (let i = 0; i < text.length; i++) {
@@ -619,7 +623,8 @@ function updateDocumentState(doc: vscode.TextDocument, changes?: any[]) {
         }
         if (wasmExports.lsp_setInputEncoding) wasmExports.lsp_setInputEncoding(1);
         else if (wasmExports.setInputEncoding) wasmExports.setInputEncoding(1);
-        wasmExports.setInputLength(text.length * 2);
+        if (wasmExports.lsp_setInputLength) wasmExports.lsp_setInputLength(lenBytes);
+        else if (wasmExports.setInputLength) wasmExports.setInputLength(lenBytes);
         currentWasmBufferUri = doc.uri.toString();
 
         wasmExports.clearDiagnostics();

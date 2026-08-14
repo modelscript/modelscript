@@ -187,7 +187,11 @@ export function transpileQuery(
 
           if (methodName === "diagnostic") {
             const targetArg = args.length > 0 ? args[0] : undefined;
-            const arg0 = args.length > 1 ? (visitNode(args[1]) as ts.Expression) : ts.factory.createNumericLiteral(0);
+            const targetNodeExpr = targetArg ? (visitNode(targetArg) as ts.Expression) : undefined;
+            const arg0 =
+              args.length > 1
+                ? (visitNode(args[1]) as ts.Expression)
+                : targetNodeExpr || ts.factory.createNumericLiteral(0);
             const arg1 = args.length > 2 ? (visitNode(args[2]) as ts.Expression) : ts.factory.createNumericLiteral(0);
             const arg2 = args.length > 3 ? (visitNode(args[3]) as ts.Expression) : ts.factory.createNumericLiteral(0);
             const arg3 = args.length > 4 ? (visitNode(args[4]) as ts.Expression) : ts.factory.createNumericLiteral(0);
@@ -195,22 +199,22 @@ export function transpileQuery(
             let startExpr: ts.Expression = ts.factory.createIdentifier("nodeStart");
             let endExpr: ts.Expression = ts.factory.createIdentifier("nodeEnd");
 
-            if (targetArg) {
-              const targetNodeExpr = visitNode(targetArg) as ts.Expression;
+            if (targetArg && targetNodeExpr) {
               if (!ts.isIdentifier(targetNodeExpr) || targetNodeExpr.text !== "node") {
-                const foundOffset = ts.factory.createCallExpression(
-                  ts.factory.createIdentifier("lsp_findNodeOffset"),
-                  undefined,
-                  [ts.factory.createIdentifier("node"), targetNodeExpr, ts.factory.createIdentifier("nodeStart")],
-                );
+                const createOffsetCall = () =>
+                  ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_findNodeOffset"), undefined, [
+                    ts.factory.createIdentifier("node"),
+                    targetNodeExpr,
+                    ts.factory.createIdentifier("nodeStart"),
+                  ]);
                 const startNodeOffset = ts.factory.createConditionalExpression(
                   ts.factory.createBinaryExpression(
-                    foundOffset,
+                    createOffsetCall(),
                     ts.factory.createToken(ts.SyntaxKind.GreaterThanEqualsToken),
                     ts.factory.createNumericLiteral("0"),
                   ),
                   ts.factory.createToken(ts.SyntaxKind.QuestionToken),
-                  ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [foundOffset]),
+                  ts.factory.createCallExpression(ts.factory.createIdentifier("u32"), undefined, [createOffsetCall()]),
                   ts.factory.createToken(ts.SyntaxKind.ColonToken),
                   ts.factory.createIdentifier("nodeStart"),
                 );

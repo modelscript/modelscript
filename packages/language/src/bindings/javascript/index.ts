@@ -97,6 +97,20 @@ export function generateJavaScriptWrapper(
   lintSeveritiesStr += "}";
   lintCodesStr += "}";
 
+  const extrasPatterns: string[] = [];
+  if (normalized.extras && normalized.extras.length > 0) {
+    for (const rule of normalized.extras) {
+      if (rule.type === "PATTERN") {
+        const pattern = rule.value instanceof RegExp ? rule.value.source : String(rule.value);
+        extrasPatterns.push(pattern);
+      } else if (rule.type === "STRING") {
+        const escaped = String(rule.value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        extrasPatterns.push(escaped);
+      }
+    }
+  }
+  const extrasPatternStr = extrasPatterns.length > 0 ? extrasPatterns.join("|") : "\\s";
+
   // Replace the placeholders in the bundled JavaScript
   const js = bindingsTemplateJsCode
     .replace(/__LANG_NAME__/g, langName)
@@ -109,7 +123,8 @@ export function generateJavaScriptWrapper(
     .replace(/"__LINT_CODES_LITERAL__"/g, lintCodesStr)
     .replace(/__LINT_CODES_LITERAL__/g, lintCodesStr)
     .replace(/"__FIELD_NAMES_LITERAL__"/g, fieldNamesStr)
-    .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr);
+    .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr)
+    .replace(/"__EXTRAS_PATTERN_LITERAL__"/g, JSON.stringify(extrasPatternStr));
 
   // Replace the placeholders in the bundled TypeScript Declarations
   const dts = bindingsTemplateDtsCode
@@ -121,7 +136,8 @@ export function generateJavaScriptWrapper(
     .replace(/"__LINT_SEVERITIES_LITERAL__"/g, lintSeveritiesStr)
     .replace(/__LINT_SEVERITIES_LITERAL__/g, lintSeveritiesStr)
     .replace(/"__FIELD_NAMES_LITERAL__"/g, fieldNamesStr)
-    .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr);
+    .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr)
+    .replace(/"__EXTRAS_PATTERN_LITERAL__"/g, JSON.stringify(extrasPatternStr));
 
   const tokenTypesMap = new Map<string, number>();
   const tokenModifiersMap = new Map<string, number>();

@@ -1669,8 +1669,12 @@ async function runDiagnosticsNow() {
                     const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
                     const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
                     
-                    const startByte = (lineStarts && startLine < lineStarts.length ? lineStarts[startLine] : 0) + (startCol * charMult);
-                    const endByte = (lineStarts && endLine < lineStarts.length ? lineStarts[endLine] : 0) + (endCol * charMult);
+                    const maxLineIdx = lineStarts && lineStarts.length > 0 ? lineStarts.length - 1 : 0;
+                    const validStartLine = Math.min(Math.max(0, startLine), maxLineIdx);
+                    const validEndLine = Math.min(Math.max(0, endLine), maxLineIdx);
+
+                    const startByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validStartLine] : 0) + (startCol * charMult);
+                    const endByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validEndLine] : 0) + (endCol * charMult);
                     
                     rangeOffset = Math.floor(startByte / charMult);
                     rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));

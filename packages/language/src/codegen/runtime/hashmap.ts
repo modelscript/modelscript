@@ -124,7 +124,7 @@ export class UnmanagedSet64 {
             let k = load<u64>(oldKeys + (i * 8));
             if (k != 0) this.add(k);
         }
-
+        if (oldKeys != 0) heap.free(oldKeys);
     }
 
     /**
@@ -248,6 +248,8 @@ export class UnmanagedMap64 {
                 this.set(k, load<u32>(oldValues + (i * 4)));
             }
         }
+        if (oldKeys != 0) heap.free(oldKeys);
+        if (oldValues != 0) heap.free(oldValues);
     }
 
     /**
@@ -299,12 +301,16 @@ export function createSet64(): u32 {
  */
 export function releaseSet64(s: UnmanagedSet64): void {
     if (s.capacity > 1024) {
+        if (s.keys != 0) heap.free(s.keys);
         s.keys = 0;
         s.capacity = 0;
     }
     if (setPoolDepth < 16) {
         setPool[setPoolDepth] = s;
         setPoolDepth++;
+    } else {
+        if (s.keys != 0) heap.free(s.keys);
+        heap.free(changetype<usize>(s));
     }
 }
 
@@ -343,6 +349,8 @@ export function createMap64(): u32 {
  */
 export function releaseMap64(m: UnmanagedMap64): void {
     if (m.capacity > 1024) {
+        if (m.keys != 0) heap.free(m.keys);
+        if (m.values != 0) heap.free(m.values);
         m.keys = 0;
         m.values = 0;
         m.capacity = 0;
@@ -350,6 +358,10 @@ export function releaseMap64(m: UnmanagedMap64): void {
     if (mapPoolDepth < 16) {
         mapPool[mapPoolDepth] = m;
         mapPoolDepth++;
+    } else {
+        if (m.keys != 0) heap.free(m.keys);
+        if (m.values != 0) heap.free(m.values);
+        heap.free(changetype<usize>(m));
     }
 }
 
@@ -461,6 +473,8 @@ export class UnmanagedMap64To64 {
                 this.set(k, load<u64>(oldValues + (i * 8)));
             }
         }
+        if (oldKeys != 0) heap.free(oldKeys);
+        if (oldValues != 0) heap.free(oldValues);
     }
 
     /**
@@ -508,6 +522,8 @@ export function createMap64To64(): u32 {
  */
 export function releaseMap64To64(m: UnmanagedMap64To64): void {
     if (m.capacity > 1024) {
+        if (m.keys != 0) heap.free(m.keys);
+        if (m.values != 0) heap.free(m.values);
         m.keys = 0;
         m.values = 0;
         m.capacity = 0;
@@ -515,5 +531,9 @@ export function releaseMap64To64(m: UnmanagedMap64To64): void {
     if (map64PoolDepth < 16) {
         map64Pool[map64PoolDepth] = m;
         map64PoolDepth++;
+    } else {
+        if (m.keys != 0) heap.free(m.keys);
+        if (m.values != 0) heap.free(m.values);
+        heap.free(changetype<usize>(m));
     }
 }

@@ -721,7 +721,7 @@ export class FieldCursor {
       while (child != 0 && idx < logicalIndex) {
         let childFlags = getNodeFlags(child);
         let childType = getNodeType(child);
-        if ((childFlags & FLAG_IS_INSERTED) != 0 || childType == NODE_TYPE_ERROR || (childType & 0x8000) != 0) {
+        if ((childFlags & FLAG_IS_INSERTED) != 0 || childType == NODE_TYPE_ERROR) {
           child = getNodeNextSibling(child);
           continue;
         }
