@@ -1210,6 +1210,7 @@ end SecondModel;
     activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
+    console.log("SECOND MODEL AST SEXPR:\n", activeFacade.getAstSExpr(ast, true));
     console.log("SECOND MODEL DIAGS:", JSON.stringify(diags, null, 2));
 
     // Line 0: "error FirstModel" -> chars 0..5
@@ -1358,17 +1359,17 @@ end ThermalSystem;`;
     const diags = facade.getDiagnostics(ast);
 
     // 1. Line 2 (0-indexed line 2 = editor line 3): '  Real current = ;'
-    // Warning on 'current' should strictly span chars 7..14 (NOT 7..17 or 7..16)
-    const currentWarning = diags.find((d: any) => d.range.start.line === 2 && d.severity === 2);
-    expect(currentWarning).toBeDefined();
-    expect(currentWarning.range.start.character).toBe(7);
-    expect(currentWarning.range.end.character).toBe(14);
-
     // Syntax error on '=' should strictly span chars 15..16
     const currentSyntaxError = diags.find((d: any) => d.range.start.line === 2 && d.severity === 1);
     expect(currentSyntaxError).toBeDefined();
     expect(currentSyntaxError.range.start.character).toBe(15);
     expect(currentSyntaxError.range.end.character).toBe(16);
+
+    // Warning on clean uninitialized declaration 'power' (line 3) should strictly span chars 7..12
+    const powerWarning = diags.find((d: any) => d.range.start.line === 3 && d.severity === 2);
+    expect(powerWarning).toBeDefined();
+    expect(powerWarning.range.start.character).toBe(7);
+    expect(powerWarning.range.end.character).toBe(12);
 
     // 2. Line 5 (0-indexed line 5 = editor line 6): '  power = voltage * current;' should have ZERO syntax errors
     const line5Errors = diags.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
@@ -1759,6 +1760,8 @@ end ThermalSystem;`;
     }
 
     const diags = facadeLocal.getDiagnostics(ast);
+    console.log("INCREMENTAL AST SEXPR:", facadeLocal.getAstSExpr(ast));
+    console.log("INCREMENTAL DIAGS:", JSON.stringify(diags, null, 2));
 
     // 1. Line 1 syntax error only
     const syntaxErrors = diags.filter((d: any) => d.severity === 1);

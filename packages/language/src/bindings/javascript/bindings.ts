@@ -920,11 +920,22 @@ export class LspFacade {
         if (this.exports.lsp_getNodeLeadingPad) {
           return this.exports.lsp_getNodeLeadingPad(ptr);
         }
-        const typeFlags = memory[ptr / 4];
-        const envHashPadding = memory[(ptr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
-        const isFat = ((envHashPadding >>> 23) & 1) === 1;
-        return isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+        if (this.exports.getNodeLeadingPad) {
+          return this.exports.getNodeLeadingPad(ptr);
+        }
+        let curr = ptr;
+        while (curr !== 0) {
+          const typeFlags = memory[curr / 4];
+          const envHashPadding = memory[(curr + 4) / 4];
+          const firstChild = memory[(curr + 12) / 4];
+          const rawPad = typeFlags >>> 22;
+          const isFat = ((envHashPadding >>> 23) & 1) === 1;
+          const pad =
+            isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
+          if (pad > 0) return pad;
+          curr = firstChild;
+        }
+        return 0;
       };
 
       const getNodeLen = (ptr: number): number => {
@@ -954,8 +965,8 @@ export class LspFacade {
           }
 
           let currOffset = tokenStart;
-          let writeIdx = stackTop + childCount - 1;
           let isFirstChild = true;
+          let idx = 0;
           c = child;
           while (c !== 0) {
             const cPad = getNodePad(c);
@@ -963,13 +974,14 @@ export class LspFacade {
             if (!isFirstChild) {
               currOffset += cPad;
             }
-            if (writeIdx >= 0 && writeIdx < 50000) {
-              stackPtrs[writeIdx] = c;
-              stackOffsets[writeIdx] = currOffset;
-              writeIdx--;
+            const slot = stackTop + (childCount - 1 - idx);
+            if (slot >= 0 && slot < 50000) {
+              stackPtrs[slot] = c;
+              stackOffsets[slot] = currOffset;
             }
             currOffset += cLen;
             isFirstChild = false;
+            idx++;
             c = memory[(c + 16) / 4];
           }
           stackTop += childCount;
@@ -1122,57 +1134,8 @@ export class LspFacade {
         // Range shifting and clamping removed to preserve WASM output
       }
 
-      // Ensure startByte and endByte cover full word tokens for syntax errors so squiggles never cut mid-word
-      const inputEncoding = this.getInputEncoding();
-      const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
-      const inputBufPtr = getInputBuf ? getInputBuf() : 0;
-      if (inputBufPtr > 0 && inputEncoding === 1 && rawLintId === 0) {
-        const lenBytes = this.exports.inputLength
-          ? typeof this.exports.inputLength.value === "number"
-            ? this.exports.inputLength.value
-            : Number(this.exports.inputLength) || 0
-          : 0;
-        const lenChars = lenBytes / 2;
-        const u16View = new Uint16Array(this.wasmMemory.buffer, inputBufPtr, lenChars);
-
-        const initialStartCharIdx = Math.floor(startByte / 2);
-        let startCharIdx = initialStartCharIdx;
-        while (startCharIdx < lenChars) {
-          const ch = String.fromCharCode(u16View[startCharIdx]);
-          if (/\s/.test(ch) || this.isExtraChar(ch)) {
-            startCharIdx++;
-          } else {
-            break;
-          }
-        }
-        if (
-          startCharIdx === initialStartCharIdx &&
-          startCharIdx < lenChars &&
-          /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[startCharIdx]))
-        ) {
-          while (startCharIdx > 0 && /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[startCharIdx - 1]))) {
-            startCharIdx--;
-          }
-          startByte = startCharIdx * 2;
-        } else if (startCharIdx > initialStartCharIdx && startCharIdx < lenChars) {
-          startByte = startCharIdx * 2;
-        }
-
-        let endCharIdx = Math.floor(endByte / 2);
-        if (
-          endCharIdx > 0 &&
-          endCharIdx <= lenChars &&
-          /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[endCharIdx - 1]))
-        ) {
-          while (endCharIdx < lenChars && /[a-zA-Z0-9_]/.test(String.fromCharCode(u16View[endCharIdx]))) {
-            endCharIdx++;
-          }
-          endByte = endCharIdx * 2;
-        }
-      }
-
       if (endByte <= startByte) {
-        endByte = startByte + (inputEncoding === 1 ? 2 : 1);
+        endByte = startByte + (this.getInputEncoding() === 1 ? 2 : 1);
       }
 
       let startPos = this.offsetToPos(startByte, lineStarts);

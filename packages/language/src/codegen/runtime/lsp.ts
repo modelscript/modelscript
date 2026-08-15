@@ -28,7 +28,7 @@ import {
   S,
 } from "./arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
-import { inputLength } from "./parser";
+import { inputLength, inputEncoding } from "./parser";
 import { UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { stub_getDefinition, stub_getBinaryBuffer } from "./stub";
 
@@ -366,6 +366,25 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
       let dStart = nodeStart;
       let dEnd = nodeEnd > nodeStart ? nodeEnd : dStart + step;
 
+      if ((flags & FLAG_IS_INSERTED) == 0 && dEnd > dStart) {
+        while (dStart < dEnd) {
+          let ch = peekChar(dStart);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+            dStart += step;
+          } else {
+            break;
+          }
+        }
+        while (dEnd > dStart + step) {
+          let chPrev = peekChar(dEnd - step);
+          if (chPrev == 32 || chPrev == 9 || chPrev == 10 || chPrev == 13) {
+            dEnd -= step;
+          } else {
+            break;
+          }
+        }
+      }
+
       if ((flags & FLAG_IS_INSERTED) != 0 && nodeEnd == nodeStart) {
         if (nodeStart == 0 && totalInputBytes > 0) {
           let cCur = peekChar(0);
@@ -434,7 +453,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     }
 
-    if (!isErrorNode && !isTainted && (flags & FLAG_IS_INSERTED) == 0) {
+    if (!isErrorNode && !isTainted && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 
@@ -469,7 +488,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         
         let isPureErrorGroup = (type == 0);
         let childInError = inError || isPureErrorGroup;
-        let childInTainted = inTainted || isTainted;
+        let childInTainted = inTainted || isTainted || hasChildError;
 
           let isFirstChild = true;
           while (child != 0) {
@@ -1063,8 +1082,8 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
          ensureFindTraverseStack(stackTop + childCount);
          
          let currOffset = tokenStart;
-         let writeIdx: i32 = stackTop + childCount - 1;
          let isFirstChild = true;
+         let idx: i32 = 0;
          c = child;
          while (c != 0) {
             let cPad = getNodeLeadingPad(c);
@@ -1072,13 +1091,12 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
             if (!isFirstChild) {
                currOffset += cPad;
             }
-            if (writeIdx >= 0) {
-               t_lspFindTraverseStack[writeIdx] = c;
-               t_lspFindOffsetStack[writeIdx] = currOffset;
-               writeIdx--;
-            }
+            let slot = stackTop + (childCount - 1 - idx);
+            t_lspFindTraverseStack[slot] = c;
+            t_lspFindOffsetStack[slot] = currOffset;
             currOffset += cLen;
             isFirstChild = false;
+            idx++;
             c = getNodeNextSibling(c);
          }
          stackTop += childCount;

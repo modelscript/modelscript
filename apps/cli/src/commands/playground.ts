@@ -383,7 +383,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
     ),
     Real: $ => semanticToken('type', 'Real'),
     Integer: $ => semanticToken('type', 'Integer'),
-    Type: $ => choice($.Real, $.Integer, $.Number),
+    Type: $ => choice($.Real, $.Integer, 'Number'),
     Equation: $ => seq(
       field('lhs', $.Expr), 
       '=', 

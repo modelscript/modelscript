@@ -170,7 +170,7 @@ export function generateLexer(grammar: LanguageOptions<any>, normalized: Normali
   }
   lexerCode += `}\n`;
 
-  lexerCode += `export let inputEncoding: u8 = 0;
+  lexerCode += `export let inputEncoding: u8 = 1;
 `;
   lexerCode += `export function setInputEncoding(enc: u8): void { inputEncoding = enc; }
 

@@ -1163,6 +1163,9 @@ export function lsp_setInputEncoding(encoding: u8): void {
 export function lsp_getInputEncoding(): u8 {
   return inputEncoding;
 }
+export function lsp_getNodeLeadingPad(ptr: u32): u32 {
+  return getNodeLeadingPad(ptr);
+}
 
 
 

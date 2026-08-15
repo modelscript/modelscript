@@ -305,7 +305,7 @@ describe("GLR Parser Error Recovery Integration", () => {
             const declCount = (tree.match(/\(Decl(?:\s+\([A-Z]+\))?\s+\[/g) || []).length;
 
             if (scenario.name === "Missing Semicolon") {
-              if (c.name === "All Branches Enabled" || c.name === "Only Forced Reduction") {
+              if (c.name === "All Branches Enabled" || c.name === "Only Insertion") {
                 expect(declCount).toBe(2);
               }
             } else if (scenario.name === "Extra Token") {

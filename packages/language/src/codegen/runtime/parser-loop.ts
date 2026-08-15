@@ -1086,6 +1086,16 @@ export function fixNodeLength(node: u32): void {
   
   setNodeByteLength(node, totalLen);
 }
+
+export function fixNodeLengthRecursive(node: u32): void {
+  if (node == 0) return;
+  let child = getNodeFirstChild(node);
+  while (child != 0) {
+    fixNodeLengthRecursive(child);
+    child = getNodeNextSibling(child);
+  }
+  fixNodeLength(node);
+}
 /**
  * Measures the nested list depth of a node for a specific list symbol.
  * E.g., `StatementList -> StatementList Statement` is a left-recursive list.
@@ -2302,13 +2312,18 @@ function isDerivableUnit(expected: i32, actual: i32, depth: i32): boolean {
 function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32, currentToken: i32 = -1): boolean {
 
 
-  // 1. Score and select the best candidate reduction directly from all productions in the grammar
+  // 1. Score and select the best candidate reduction from actions valid in the current state
   let bestProd = -1;
   let bestNeeded = -1;
   let bestMissingCount = 999999;
 
-  let totalProds = prod_lengths.length;
-  for (let reduceProd = 0; reduceProd < totalProds; reduceProd++) {
+  let aIdx = actionOffset + 1;
+  for (let aAction = 0; aAction < count2; aAction++) {
+    let aTok = action_data[aIdx++];
+    let aTarget = action_data[aIdx++];
+    let isRed = (aTok & 0x8000) != 0;
+    if (!isRed) continue;
+    let reduceProd = aTarget;
     let popCount = prod_lengths[reduceProd];
     let rOffset = prod_right_offsets[reduceProd];
     let lhsSym = prod_lhs[reduceProd];
@@ -2339,10 +2354,8 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32,
 
     let missingCount = popCount - needed;
 
-    // Filter: Error Cost Budget / Missing Token Cap (Strategy #2)
-    // Prevent the parser from hallucinating too many consecutive virtual tokens 
-    // across multiple chained forced reductions without consuming a real token.
-    if (head.consecutiveInsertions + missingCount > 3) {
+    // Filter: Forced Default Reduction is STRICTLY for completely parsed rules (0 missing tokens)
+    if (missingCount > 0) {
       continue;
     }
 
@@ -2880,10 +2893,6 @@ export function advanceGLR(): void {
       minIdx = 0;
       for (let i: u32 = 0; i < activeHeadsCount; i++) {
         let h = changetype<ParseHead>(t_activeHeads[i]);
-        if (h.pos >= inputLength) {
-          minIdx = i;
-          break;
-        }
         if (i == 0 || h.pos < minPos) {
           minPos = h.pos;
           minIdx = i;
@@ -3373,6 +3382,16 @@ export function advanceGLR(): void {
       }
 
       // --------------------------------------------------------------------
+      // ERROR RECOVERY: Forced Default Reduction
+      if (configEnableBranchC) {
+        reduced = processForcedReduction(head, actionOffset, count2, token);
+        if (reduced) {
+          pruneGSS(pos);
+          continue;
+        }
+      }
+
+      // --------------------------------------------------------------------
       // ERROR RECOVERY: Token Deletion / Insertion (via Unwind & Mutate)
       // --------------------------------------------------------------------
       // Clear expected tokens to allow the lexer to match any keyword or symbol
@@ -3385,18 +3404,10 @@ export function advanceGLR(): void {
         recoverIslandMode(head, inputLength, bestAcceptedCost, initialHeads);
       }
 
-
-      
       // Restore expected_tokens after recovery — the recovery functions call
       // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
       // the main parse loop needs the correct filtered set.
       updateExpectedTokens();
-
-      // --------------------------------------------------------------------
-      // ERROR RECOVERY: Forced Default Reduction
-      if (configEnableBranchC) {
-        reduced = processForcedReduction(head, actionOffset, count2, token);
-      }
 
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
       pruneGSS(pos);
@@ -3511,6 +3522,7 @@ bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
       sanitizeTree(acceptedNode);
       let acceptedPos: u32 = bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).pos : 0;
       let finalTree = wrapWithTrailingErrors(acceptedNode, acceptedPos);
+      fixNodeLengthRecursive(finalTree);
       clearAstMarks(finalTree);
       globalAstRoot = finalTree;
       return finalTree;
