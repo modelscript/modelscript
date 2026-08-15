@@ -655,6 +655,12 @@ export interface LanguageOptions<
     /** Rule names classified as structural scope boundaries for unwind penalties */
     structuralRules?: NoInfer<RuleName>[];
   };
+
+  /**
+   * Polyglot Cross-Language Transformation Configuration.
+   * Declares Triple Graph Grammar (TGG) rules for bidirectional model projection.
+   */
+  polyglot?: PolyglotConfig<RuleName, FieldName, QueryName, ModelAttrs>;
 }
 
 /**
@@ -1271,3 +1277,107 @@ export type InferConfigCategory<C extends ConfigSchemaCategory> = {
 export type InferConfigSchema<S extends ConfigSchema> = {
   [K in keyof S]: InferConfigCategory<S[K]>;
 };
+
+// ---------------------------------------------------------------------------
+// Triple Graph Grammar (TGG) Polyglot DSL
+// ---------------------------------------------------------------------------
+
+export interface TGGPattern {
+  /** The syntax node type or fact predicate to match/create */
+  nodeType: string;
+  /** Named variable bindings or literal values */
+  bindings: Record<string, any>;
+  /** Optional inner/nested patterns for child elements or body */
+  children?: TGGPattern[];
+}
+
+export type TGGConstraintKind = "eq" | "typeMap" | "defaultVal" | "formatUri" | "mapList" | "compute";
+
+export interface TGGConstraint {
+  kind: TGGConstraintKind;
+  args: any[];
+}
+
+export interface TGGRuleOptions<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  name: string;
+  /** Existing structural prerequisites in source, target, and correspondence */
+  context?: (
+    $: any,
+    v: (name: string) => any,
+  ) => {
+    source?: TGGPattern | any;
+    target?: TGGPattern | any;
+    corr?: TGGPattern | any;
+  };
+  /** Source language pattern (matched in forward, created in backward) */
+  source: ($: any, v: (name: string) => any) => TGGPattern | any;
+  /** Target language pattern (created in forward, matched in backward) */
+  target: ($: any, v: (name: string) => any) => TGGPattern | any;
+  /** Bidirectional attribute constraints and value mapping equations */
+  where?: (v: (name: string) => any) => TGGConstraint[];
+  /** Priority override (default: 0, higher wins in dispatch) */
+  priority?: number;
+}
+
+export interface PolyglotConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  /** Target language identifiers this language can project to/from */
+  languages?: string[];
+  /** Declarative TGG rules */
+  rules?: TGGRuleOptions<RuleName, FieldName, QueryName, ModelAttrs>[];
+  /** Type mapping tables between source and target primitive types */
+  typeMaps?: Record<string, Record<string, string>>;
+  /** Reasoner predicates that supply inferred facts for TGG matching (e.g. ['subClassOf', 'hasFeature']) */
+  reasonerBindings?: string[];
+}
+
+/**
+ * Declares a Triple Graph Grammar (TGG) transformation rule.
+ */
+export function tggRule<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+>(
+  options: TGGRuleOptions<RuleName, FieldName, QueryName, ModelAttrs>,
+): TGGRuleOptions<RuleName, FieldName, QueryName, ModelAttrs> {
+  return options;
+}
+
+export function tggEq(a: any, b: any): TGGConstraint {
+  return { kind: "eq", args: [a, b] };
+}
+
+export function tggTypeMap(
+  sourceVar: any,
+  targetVar: any,
+  mapOrLangName: string | Record<string, string>,
+): TGGConstraint {
+  return { kind: "typeMap", args: [sourceVar, targetVar, mapOrLangName] };
+}
+
+export function tggDefaultVal(targetVar: any, value: any): TGGConstraint {
+  return { kind: "defaultVal", args: [targetVar, value] };
+}
+
+export function tggFormatUri(idVar: any, prefix: string, targetVar: any): TGGConstraint {
+  return { kind: "formatUri", args: [idVar, prefix, targetVar] };
+}
+
+export function tggMapList(sourceListVar: any, targetListVar: any, mapper: (item: any) => any): TGGConstraint {
+  return { kind: "mapList", args: [sourceListVar, targetListVar, mapper] };
+}
+
+export function tggCompute(targetVar: any, queryName: string, sourceVar: any): TGGConstraint {
+  return { kind: "compute", args: [targetVar, queryName, sourceVar] };
+}

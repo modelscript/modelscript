@@ -7,6 +7,7 @@ import {
   arenaCode,
   arrayCode,
   bltCode,
+  correspondenceCode,
   cursorCode,
   daeCode,
   engineCode,
@@ -20,12 +21,14 @@ import {
   matrixCode,
   pantelidesCode,
   parserLoopCode,
+  polyglot_arenaCode,
   recoveryCode,
   recoveryConfigCode,
   stubCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
+import { compileTGGRules } from "./compile_tgg.js";
 import { generateDataflow } from "./dataflow.js";
 import { generateEGraphEngine } from "./egraph.js";
 import { generateCodeGraphBridge } from "./graph.js";
@@ -96,7 +99,7 @@ export function generateParserTables(
   preprocessorHook = "",
 ): GeneratedFile[] {
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
-  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nexport { getInputBuffer } from "./arena";\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
+  let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
   let raw = atomicChunkAlloc((numElements + 1) * 4);
   let ptr = (raw + 3) & ~3;
   store<i32>(ptr, numElements);
@@ -941,6 +944,8 @@ export function generateParserTables(
   code += extractExports(gssCode, "./gss");
   code += extractExports(recoveryCode, "./recovery");
   code += extractExports(bltCode, "./blt");
+  code += extractExports(correspondenceCode, "./correspondence");
+  code += extractExports(polyglot_arenaCode, "./polyglot_arena");
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -949,6 +954,13 @@ export function generateParserTables(
   if (originalGrammar.semantics) {
     const rsCode = generateReasoner(originalGrammar, grammar);
     code += "\n" + extractExports(rsCode, "./reasoner");
+  }
+
+  if (originalGrammar.polyglot) {
+    const tggOutput = compileTGGRules(originalGrammar.polyglot);
+    code += "\n" + extractExports(tggOutput.sourceCode, "./tgg");
+  } else {
+    code += `\nexport function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_propagate_all_stale(corr: CorrespondenceIndex): u32 { return 0; }\n`;
   }
 
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
@@ -1008,6 +1020,8 @@ export function generateParserTables(
     { filename: "isolation.ts", content: isolationCode },
     { filename: "pantelides.ts", content: pantelidesCode },
     { filename: "stub.ts", content: stubCode },
+    { filename: "correspondence.ts", content: correspondenceCode },
+    { filename: "polyglot_arena.ts", content: polyglot_arenaCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1018,6 +1032,9 @@ export function generateParserTables(
   }
   if (originalGrammar.semantics) {
     outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
+  }
+  if (originalGrammar.polyglot) {
+    outFiles.push({ filename: "tgg.ts", content: compileTGGRules(originalGrammar.polyglot).sourceCode });
   }
 
   code += extractExports(daeCode, "./dae");

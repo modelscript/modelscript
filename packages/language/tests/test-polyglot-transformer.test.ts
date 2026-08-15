@@ -1,5 +1,6 @@
 import {
   modelicaToSysML2,
+  PolyglotTransformer,
   sysml2ToModelica,
   type ModelicaModel,
   type SysML2PartDef,
@@ -40,5 +41,27 @@ describe("Polyglot Transformer (SysML v2 <-> Modelica)", () => {
     expect(modelicaCode).toContain("Real heatFlow;");
     expect(modelicaCode).toContain("connect(tempSensor.port, heatSink.port);");
     expect(modelicaCode).toContain("end ThermalSystem;");
+  });
+
+  it("should seamlessly include synthetic/inferred features from reasoner fact store", () => {
+    const transformer = new PolyglotTransformer();
+
+    // Register reasoner facts for inherited features from base classes
+    transformer.addReasonerFact("hasFeature", "ElectricVehicle", "motorTorque:Real");
+    transformer.addReasonerFact("hasFeature", "ElectricVehicle", "batteryCapacity:Real");
+
+    const sysml: SysML2PartDef = {
+      name: "ElectricVehicle",
+      superclasses: ["VehicleBase"],
+      attributes: [{ name: "speed", type: "Real", value: "100.0" }],
+      ports: [],
+      connections: [],
+    };
+
+    const modelicaCode = transformer.transformSysML2ToModelica(sysml);
+    expect(modelicaCode).toContain("extends VehicleBase;");
+    expect(modelicaCode).toContain("parameter Real speed = 100.0;");
+    expect(modelicaCode).toContain("parameter Real motorTorque; // inferred");
+    expect(modelicaCode).toContain("parameter Real batteryCapacity; // inferred");
   });
 });
