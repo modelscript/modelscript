@@ -830,6 +830,21 @@ export function getNodeFirstChild(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).firstChild;
 }
 
+export function getNodeLeadingPad(ptr: u32): u32 {
+  if (ptr == 0) return 0;
+  let pad = getNodePadding(ptr);
+  if (pad > 0) return pad;
+  let curr = ptr;
+  while (curr != 0) {
+    let first = getNodeFirstChild(curr);
+    if (first == 0) return getNodePadding(curr);
+    let p = getNodePadding(first);
+    if (p > 0) return p;
+    curr = first;
+  }
+  return 0;
+}
+
 export function getNodeNextSibling(ptr: u32): u32 {
   return changetype<ASTNode>(ptr).nextSibling;
 }

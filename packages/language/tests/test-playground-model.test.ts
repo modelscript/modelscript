@@ -705,8 +705,37 @@ end ElectricalCircuit;
   });
 
   it("should target child node 'name' precisely in diagnostic without including type ('Real')", async () => {
-    const dslWithLint = {
-      ...dsl,
+    const dslWithLint = language({
+      name: "SysModel",
+      word: ($) => $.Identifier,
+      primitives: {
+        nestedComment: { open: "/*", close: "*/" },
+        lineComment: "//",
+      },
+      rules: {
+        Program: ($) => repeat($.ModelDef),
+        ModelDef: ($) =>
+          seq(
+            semanticToken("keyword", "model"),
+            field("name", $.Identifier),
+            repeat(choice($.Decl, $.Equation)),
+            semanticToken("keyword", "end"),
+            field("endName", $.Identifier),
+            ";",
+          ),
+        Decl: ($) =>
+          seq(field("type", $.Type), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
+        Real: ($) => semanticToken("type", "Real"),
+        Integer: ($) => semanticToken("type", "Integer"),
+        Type: ($) => choice($.Real, $.Integer, $.Number),
+        Equation: ($) => seq(field("lhs", $.Expr), "=", field("rhs", $.Expr), ";"),
+        Expr: ($) => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
+        MulExpr: ($) => prec.left(2, seq(field("left", $.Expr), field("op", "*"), field("right", $.Expr))),
+        AddExpr: ($) => prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-")), field("right", $.Expr))),
+        Identifier: ($) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
+        Number: ($) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
+      },
+      extras: ($) => [/\s/],
       lints: {
         uninitializedComponent: {
           nodes: ["Decl"],
@@ -723,7 +752,7 @@ end ElectricalCircuit;
           },
         },
       },
-    };
+    });
     const result = buildParser(dslWithLint as any);
     const tmpDirLocal = path.join(__dirname, "../build/scratch_build_lint_test");
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
@@ -775,15 +804,217 @@ end ElectricalCircuit;
     const instance = await WebAssembly.instantiate(wasmModule, importsLocal);
     const facade = new LspFacadeLocal(instance.exports.memory, instance.exports);
 
-    const code = `model Circuit\n  Real power;\nend Circuit;\n`;
-    const ast = facade.parse(code);
-    const diags = facade.getDiagnostics(ast);
+    const baseCode = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
 
-    const powerDiag = diags.find((d: any) => d.startCharOffset >= 15 && d.endCharOffset <= 30);
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+    facade.lastAstRoot = 0;
+    const initialAst = facade.parseIncremental(baseCode, 0, 0, baseCode.length);
+    const diags0 = facade.getDiagnostics(initialAst);
+    expect(diags0).toHaveLength(2);
+
+    // Simulate typing " errr" character by character:
+    let curLen = baseCode.length;
+    facade.parseIncremental(" ", 23, 0, ++curLen);
+    facade.parseIncremental("e", 24, 0, ++curLen);
+    facade.parseIncremental("r", 25, 0, ++curLen);
+    facade.parseIncremental("r", 26, 0, ++curLen);
+    const ast = facade.parseIncremental("r", 27, 0, curLen + 1);
+    const diags1 = facade.getDiagnostics(ast);
+    console.log("SEQUENTIAL KEYSTROKES DIAGS:\n", JSON.stringify(diags1, null, 2));
+
+    expect(diags1).toHaveLength(3);
+
+    const syntaxError = diags1.find((d: any) => d.severity === 1);
+    expect(syntaxError).toBeDefined();
+    expect(syntaxError.range.start.line).toBe(0);
+    expect(syntaxError.range.start.character).toBe(24);
+    expect(syntaxError.range.end.character).toBe(28);
+
+    const powerDiag = diags1.find((d: any) => d.code === 2000 && d.range.start.line === 3);
     expect(powerDiag).toBeDefined();
+    expect(powerDiag.range.start.character).toBe(7);
+    expect(powerDiag.range.end.character).toBe(12);
+
+    const heatFlowDiag = diags1.find((d: any) => d.code === 2000 && d.range.start.line === 10);
+    expect(heatFlowDiag).toBeDefined();
+    expect(heatFlowDiag.range.start.character).toBe(7);
+    expect(heatFlowDiag.range.end.character).toBe(15);
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
   }, 30000);
+
+  it("should NOT shift downstream diagnostics or produce trailing error on line 14 when typing 'model ElectricalCircuit e e'", async () => {
+    const dslLocal = language({
+      name: "SysModelEETest",
+      word: ($: any) => $.Identifier,
+      primitives: {
+        nestedComment: { open: "/*", close: "*/" },
+        lineComment: "//",
+        multiWordKeywords: ["end if", "end while"],
+      },
+      rules: {
+        Program: ($: any) => repeat($.ModelDef),
+        ModelDef: ($: any) =>
+          seq(
+            semanticToken("keyword", "model"),
+            field("name", $.Identifier),
+            repeat(choice($.Decl, $.Equation, $.IfStmt, $.WhileStmt)),
+            semanticToken("keyword", "end"),
+            field("endName", $.Identifier),
+            ";",
+          ),
+        Decl: ($: any) =>
+          seq(field("type", $.Type), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
+        Real: ($: any) => semanticToken("type", "Real"),
+        Integer: ($: any) => semanticToken("type", "Integer"),
+        Type: ($: any) => choice($.Real, $.Integer, "Number"),
+        Equation: ($: any) => seq(field("lhs", $.Expr), "=", field("rhs", $.Expr), ";"),
+        IfStmt: ($: any) =>
+          seq(
+            "if",
+            field("condition", $.Expr),
+            "then",
+            field("thenBody", $.Expr),
+            optional(seq("else", field("elseBody", $.Expr))),
+            "end if",
+            ";",
+          ),
+        WhileStmt: ($: any) => seq("while", field("condition", $.Expr), "do", field("body", $.Expr), "end while", ";"),
+        Expr: ($: any) => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
+        MulExpr: ($: any) => prec.left(2, seq(field("left", $.Expr), field("op", "*"), field("right", $.Expr))),
+        AddExpr: ($: any) =>
+          prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-")), field("right", $.Expr))),
+        Identifier: ($: any) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
+        Number: ($: any) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
+      },
+      extras: ($: any) => [/\s/],
+      lints: {
+        uninitializedComponent: {
+          nodes: ["Decl"],
+          severity: "warning",
+          message: "Component declaration uninitialized",
+          query: (db: any, node: any, $: any) => {
+            const valNode = db.ast.getChildByFieldId(node, "value");
+            if (valNode == 0) {
+              const nameNode = db.ast.getChildByFieldId(node, "name");
+              if (nameNode != 0) {
+                db.diagnostic(nameNode);
+              }
+            }
+          },
+        },
+      },
+    });
+
+    const result = buildParser(dslLocal as any);
+    const tmpDirLocal = path.join(__dirname, "../build/scratch_build_ee_test");
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+    fs.mkdirSync(tmpDirLocal, { recursive: true });
+
+    for (const file of result.assemblyScriptFiles) {
+      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+    }
+
+    const ascPath =
+      [
+        path.resolve(__dirname, "../../node_modules/.bin/asc"),
+        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
+        "npx asc",
+      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
+    const parserTs = path.join(tmpDirLocal, "parser.ts");
+    const outWasm = path.join(tmpDirLocal, "parser.wasm");
+
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    childProcess.execSync(ascCmd, { stdio: "inherit" });
+
+    const wasm = fs.readFileSync(outWasm);
+    const wasmModule = await WebAssembly.compile(wasm);
+
+    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const getFacade = new Function(wrapperSrc);
+    const { LspFacade: LspFacadeLocal } = getFacade();
+
+    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const importsLocal = {
+      env: {
+        memory: memory,
+        abort: () => {},
+        logNode: () => {},
+        debugLog: () => {},
+      },
+      JavaScript: {
+        debugLog: () => {},
+        logNode: () => {},
+      },
+      engine: {
+        debugLog: () => {},
+      },
+      parser: { logInt: () => {} },
+      recovery: {},
+      host: { runHostQuery: () => {} },
+    };
+
+    const instance = await WebAssembly.instantiate(wasmModule, importsLocal);
+    const facade = new LspFacadeLocal(instance.exports.memory, instance.exports);
+
+    const baseCode = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+    facade.lastAstRoot = 0;
+    facade.parseIncremental(baseCode, 0, 0, baseCode.length);
+
+    // Simulate typing " e e" character by character:
+    let curLen = baseCode.length;
+    facade.parseIncremental(" ", 23, 0, ++curLen);
+    facade.parseIncremental("e", 24, 0, ++curLen);
+    facade.parseIncremental(" ", 25, 0, ++curLen);
+    const ast = facade.parseIncremental("e", 26, 0, curLen + 1);
+    const diags = facade.getDiagnostics(ast);
+
+    expect(diags).toHaveLength(3);
+
+    const syntaxError = diags.find((d: any) => d.severity === 1);
+    expect(syntaxError).toBeDefined();
+    expect(syntaxError.range.start.line).toBe(0);
+    expect(syntaxError.range.start.character).toBe(24);
+    expect(syntaxError.range.end.character).toBe(27);
+
+    const powerDiag = diags.find((d: any) => d.code === 2000 && d.range.start.line === 3);
+    expect(powerDiag).toBeDefined();
+    expect(powerDiag.range.start.character).toBe(7);
+    expect(powerDiag.range.end.character).toBe(12);
+
+    const heatFlowDiag = diags.find((d: any) => d.code === 2000 && d.range.start.line === 10);
+    expect(heatFlowDiag).toBeDefined();
+    expect(heatFlowDiag.range.start.character).toBe(7);
+    expect(heatFlowDiag.range.end.character).toBe(15);
+
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+  }, 45000);
 
   it("should NOT produce spurious squiggles on downstream lines or false uninitialized warnings when 'mokdel' is typed on line 1", () => {
     const code = `mokdel ElectricalCircuit
@@ -1313,7 +1544,7 @@ end ThermalSystem;
     expect(sExpr).toContain("MulExpr");
   });
 
-  it("should explain why model ElectricalCircuit errror error highlights ElectricalCircuit", async () => {
+  it("should isolate stray token errror error without highlighting ElectricalCircuit", async () => {
     const code = `model ElectricalCircuit errror error
   Real voltage = 12.0;
   Real current = 2.5;
@@ -1334,10 +1565,18 @@ end ThermalSystem;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
 
-    // Verify syntax error is isolated to line 0 (Model 1 header) and lines 2-14 remain clean
+    // Verify syntax error is isolated strictly to stray tokens 'errror error' (character 24 to 36)
+    // and does NOT highlight 'ElectricalCircuit' (character 6 to 23)
     const errorDiags = diags.filter((d) => d.severity === 1);
     expect(errorDiags).toHaveLength(1);
     expect(errorDiags[0].range.start.line).toBe(0);
+    expect(errorDiags[0].range.start.character).toBe(24);
+    expect(errorDiags[0].range.end.character).toBe(36);
+
+    const sExpr = activeFacade.getAstSExpr(ast);
+    expect(sExpr).toContain("ModelDef");
+    expect(sExpr).toContain("Decl");
+    expect(sExpr).toContain("Equation");
   });
 
   it("should isolate stray token during incremental parsing without corrupting downstream equations", async () => {
@@ -1379,4 +1618,171 @@ end ThermalSystem;
     expect(sExpr).toContain("Equation");
     expect(sExpr).toContain("MulExpr");
   });
+
+  it("should accurately advance lexer position when reusing nodes with leading whitespace (model ElectricalCircuit  r  r  r)", async () => {
+    const dslLocal = language({
+      name: "SysModelKeystrokesTest",
+      word: ($: any) => $.Identifier,
+      primitives: {
+        nestedComment: { open: "/*", close: "*/" },
+        lineComment: "//",
+        multiWordKeywords: ["end if", "end while"],
+      },
+      rules: {
+        Program: ($: any) => repeat($.ModelDef),
+        ModelDef: ($: any) =>
+          seq(
+            semanticToken("keyword", "model"),
+            field("name", $.Identifier),
+            repeat(choice($.Decl, $.Equation, $.IfStmt, $.WhileStmt)),
+            semanticToken("keyword", "end"),
+            field("endName", $.Identifier),
+            ";",
+          ),
+        Decl: ($: any) =>
+          seq(field("type", $.Type), field("name", $.Identifier), optional(seq("=", field("value", $.Expr))), ";"),
+        Real: ($: any) => semanticToken("type", "Real"),
+        Integer: ($: any) => semanticToken("type", "Integer"),
+        Type: ($: any) => choice($.Real, $.Integer, "Number"),
+        Equation: ($: any) => seq(field("lhs", $.Expr), "=", field("rhs", $.Expr), ";"),
+        IfStmt: ($: any) =>
+          seq(
+            "if",
+            field("condition", $.Expr),
+            "then",
+            field("thenBody", $.Expr),
+            optional(seq("else", field("elseBody", $.Expr))),
+            "end if",
+            ";",
+          ),
+        WhileStmt: ($: any) => seq("while", field("condition", $.Expr), "do", field("body", $.Expr), "end while", ";"),
+        Expr: ($: any) => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
+        MulExpr: ($: any) => prec.left(2, seq(field("left", $.Expr), field("op", "*"), field("right", $.Expr))),
+        AddExpr: ($: any) =>
+          prec.left(1, seq(field("left", $.Expr), field("op", choice("+", "-")), field("right", $.Expr))),
+        Identifier: ($: any) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
+        Number: ($: any) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
+      },
+      extras: ($: any) => [/\s/],
+      lints: {
+        uninitializedComponent: {
+          nodes: ["Decl"],
+          severity: "warning",
+          message: "Component declaration uninitialized",
+          query: (db: any, node: any, $: any) => {
+            const valNode = db.ast.getChildByFieldId(node, "value");
+            if (valNode == 0) {
+              const nameNode = db.ast.getChildByFieldId(node, "name");
+              if (nameNode != 0) {
+                db.diagnostic(nameNode);
+              }
+            }
+          },
+        },
+      },
+    });
+
+    const result = buildParser(dslLocal as any);
+    const tmpDirLocal = path.join(__dirname, "../build/scratch_build_keystrokes_test");
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+    fs.mkdirSync(tmpDirLocal, { recursive: true });
+
+    for (const file of result.assemblyScriptFiles) {
+      fs.writeFileSync(path.join(tmpDirLocal, file.filename), file.content);
+    }
+
+    const ascPath =
+      [
+        path.resolve(__dirname, "../../node_modules/.bin/asc"),
+        path.resolve(__dirname, "../../../node_modules/.bin/asc"),
+        "npx asc",
+      ].find((p) => p.startsWith("npx") || fs.existsSync(p)) || "npx asc";
+    const parserTs = path.join(tmpDirLocal, "parser.ts");
+    const outWasm = path.join(tmpDirLocal, "parser.wasm");
+
+    const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    childProcess.execSync(ascCmd, { stdio: "inherit" });
+
+    const wasm = fs.readFileSync(outWasm);
+    const wasmModule = await WebAssembly.compile(wasm);
+
+    const wrapperSrc = result.javascriptWrapper.js.replace(/export /g, "") + `\nreturn { LspFacade };`;
+    const getFacade = new Function(wrapperSrc);
+    const { LspFacade: LspFacadeLocal } = getFacade();
+
+    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const importsLocal = {
+      env: {
+        memory: memory,
+        abort: () => {},
+        logNode: () => {},
+        debugLog: () => {},
+      },
+      JavaScript: {
+        debugLog: () => {},
+        logNode: () => {},
+      },
+      engine: {
+        debugLog: () => {},
+      },
+      parser: { logInt: () => {} },
+      recovery: {},
+      host: { runHostQuery: () => {} },
+    };
+
+    const instance = await WebAssembly.instantiate(wasmModule, importsLocal);
+    const facadeLocal = new LspFacadeLocal(instance.exports.memory, instance.exports);
+
+    const baseCode = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;`;
+
+    facadeLocal.lastAstRoot = 0;
+    let ast = facadeLocal.parseIncremental(baseCode, 0, 0, baseCode.length);
+
+    // Incrementally type "  r  r  r" character-by-character at offset 23
+    const keystrokes = "  r  r  r";
+    let curLen = baseCode.length;
+    for (let i = 0; i < keystrokes.length; i++) {
+      ast = facadeLocal.parseIncremental(keystrokes[i], 23 + i, 0, ++curLen);
+    }
+
+    const diags = facadeLocal.getDiagnostics(ast);
+
+    // 1. Line 1 syntax error only
+    const syntaxErrors = diags.filter((d: any) => d.severity === 1);
+    expect(syntaxErrors).toHaveLength(1);
+    expect(syntaxErrors[0].range.start.line).toBe(0);
+
+    // 2. Zero errors on Line 2 (Real voltage = 12.0;)
+    const line2Errors = syntaxErrors.filter((d: any) => d.range.start.line === 1);
+    expect(line2Errors).toHaveLength(0);
+
+    // 3. Uninitialized warnings on Line 4 (power) and Line 11 (heatFlow)
+    const warnings = diags.filter((d: any) => d.severity === 2 && d.code === 2000);
+    expect(warnings).toHaveLength(2);
+
+    // Line 4 (0-indexed line 3) power should be exactly at character 7..12 (1-indexed col 8..13)
+    expect(warnings[0].range.start.line).toBe(3);
+    expect(warnings[0].range.start.character).toBe(7);
+    expect(warnings[0].range.end.character).toBe(12);
+
+    // Line 11 (0-indexed line 10) heatFlow should be exactly at character 7..15 (1-indexed col 8..16)
+    expect(warnings[1].range.start.line).toBe(10);
+    expect(warnings[1].range.start.character).toBe(7);
+    expect(warnings[1].range.end.character).toBe(15);
+
+    if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
+  }, 45000);
 });

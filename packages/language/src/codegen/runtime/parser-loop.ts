@@ -17,7 +17,7 @@ import {
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
-    allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
+    allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeLeadingPad, getNodeByteLength, getNodeFirstChild,
     getNodeNextSibling, setFirstChild, setNextSibling, setNodeFlags, setNodePadding, propagateFirstChildPadding,
     setNodeByteLength, FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_GC_MARK, FLAG_LSP_VISITED, FLAG_LIST_BOUNDARY, FLAG_HAS_ERROR, FLAG_IS_TAINED, FLAG_IS_INSERTED, FLAG_EXTRACTED, FLAG_IS_SHARED,
     getNodeEnvHash, getNodeStartState, getInputBuffer,
@@ -281,10 +281,10 @@ function parseLR(): u32 {
       let totalByteLength: u32 = 0;
       let firstChildPadding: u32 = 0;
       if (popCount > 0) {
-        firstChildPadding = getNodePadding(t_lrNodeStack[childStartIdx]);
+        firstChildPadding = getNodeLeadingPad(t_lrNodeStack[childStartIdx]);
         for (let k = 0; k < popCount; k++) {
           let child = t_lrNodeStack[(childStartIdx + k)];
-          let cPadding = getNodePadding(child);
+          let cPadding = getNodeLeadingPad(child);
           let cLen = getNodeByteLength(child);
           if (k == 0) totalByteLength += cLen;
           else totalByteLength += cPadding + cLen;
@@ -1071,11 +1071,16 @@ export function fixNodeLength(node: u32): void {
   let gc = getNodeFirstChild(node);
   if (gc == 0) return;
 
+  let firstPad = getNodeLeadingPad(gc);
+  if (getNodePadding(node) == 0 && firstPad > 0) {
+    setNodePadding(node, firstPad);
+  }
+
   let totalLen = getNodeByteLength(gc);
   gc = getNodeNextSibling(gc);
 
   while (gc != 0) {
-    totalLen += getNodePadding(gc) + getNodeByteLength(gc);
+    totalLen += getNodeLeadingPad(gc) + getNodeByteLength(gc);
     gc = getNodeNextSibling(gc);
   }
   
@@ -1880,9 +1885,9 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
     let totalByteLength: u32 = 0;
     let firstChildPadding: u32 = 0;
     if (actualCount > 0) {
-      firstChildPadding = getNodePadding(t_globalChildNodes[0]);
+      firstChildPadding = getNodeLeadingPad(t_globalChildNodes[0]);
       for (let k = 0; k < actualCount; k++) {
-        let cPadding = getNodePadding(t_globalChildNodes[k]);
+        let cPadding = getNodeLeadingPad(t_globalChildNodes[k]);
         let cLen = getNodeByteLength(t_globalChildNodes[k]);
         if (k == 0) totalByteLength += cLen;
         else totalByteLength += cPadding + cLen;
@@ -2294,7 +2299,7 @@ function isDerivableUnit(expected: i32, actual: i32, depth: i32): boolean {
  * @param count2 The number of actions in the state.
  * @returns True if a forced reduction successfully branched a new head.
  */
-function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32): boolean {
+function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32, currentToken: i32 = -1): boolean {
 
 
   // 1. Score and select the best candidate reduction directly from all productions in the grammar
@@ -2344,6 +2349,16 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32)
     // Filter: we require at least one matched symbol (or it's an epsilon production)
     if (needed == 0 && popCount > 0) {
       continue;
+    }
+
+    // Filter: Do not hallucinate missing terminal if the active lookahead token already matches it
+    if (missingCount > 0 && currentToken != -1) {
+      let firstMissingSym = prod_right_symbols[rOffset + needed];
+      if (firstMissingSym >= 0 && firstMissingSym <= (MAX_TERMINAL_ID as i32)) {
+        if (currentToken == firstMissingSym || symbolMatchesUnit(currentToken, firstMissingSym)) {
+          continue;
+        }
+      }
     }
 
     // Filter: Do not force-reduce across newline boundaries when tokens are missing
@@ -3026,13 +3041,14 @@ export function advanceGLR(): void {
       if (reusedNode != 0) {
         let freshReuse = deepCloneSubtree(reusedNode, 0);
         if (freshReuse != 0) reusedNode = freshReuse;
-        setNodePadding(reusedNode, expectedPadding + head.pendingPadding);
+        let totalPadding = expectedPadding + head.pendingPadding;
+        setNodePadding(reusedNode, totalPadding);
       }
     }
 
     if (reusedNode != 0) {
       let nodeSym = getNodeType(reusedNode) as i32;
-      
+      let totalPadding = expectedPadding + head.pendingPadding;
 
       // Query the GOTO table to determine if this non-terminal can transition from the current state
       let nextState = -1;
@@ -3055,7 +3071,7 @@ export function advanceGLR(): void {
       // If it cannot, shifting this massive reused node would trap the parser immediately before a garbage token,
       // leading to catastrophic error recovery that swallows the node.
       if (nextState != -1) {
-        let endPos = pos + getNodeByteLength(reusedNode);
+        let endPos = pos + totalPadding + getNodeByteLength(reusedNode);
         let nextTok = invokeLexer(endPos);
         while (load<u8>(is_extra_token + nextTok) == 1) {
           if (lexLen == 0) break;
@@ -3089,17 +3105,17 @@ export function advanceGLR(): void {
         // Shallow clone the reused node so we can mutate its links without affecting the old tree
         let cloneReused = allocNode(
           nodeSym as u16,
-          expectedPadding + head.pendingPadding,
+          totalPadding,
           getNodeByteLength(reusedNode),
           getNodeEnvHash(reusedNode),
         );
         setNodeFlags(cloneReused, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         setFirstChild(cloneReused, getNodeFirstChild(reusedNode)); // Inherit old children
-        setNodePadding(cloneReused, expectedPadding + head.pendingPadding);
+        setNodePadding(cloneReused, totalPadding);
 
         // Splice it into the GSS head
         let merged = concatLists(head.astNode, cloneReused, nodeSym as u16, currentScannerState);
-        let newPos = pos + getNodeByteLength(reusedNode);
+        let newPos = pos + totalPadding + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           head.state,
@@ -3130,9 +3146,9 @@ export function advanceGLR(): void {
         // Standard GOTO shift over the reused subtree
         let clone = reusedNode;
         setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-        propagateFirstChildPadding(clone, expectedPadding + head.pendingPadding);
+        propagateFirstChildPadding(clone, totalPadding);
 
-        let newPos = pos + getNodeByteLength(reusedNode);
+        let newPos = pos + totalPadding + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           nextState,
@@ -3379,7 +3395,7 @@ export function advanceGLR(): void {
       // --------------------------------------------------------------------
       // ERROR RECOVERY: Forced Default Reduction
       if (configEnableBranchC) {
-        reduced = processForcedReduction(head, actionOffset, count2);
+        reduced = processForcedReduction(head, actionOffset, count2, token);
       }
 
       // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION

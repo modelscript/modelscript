@@ -318,7 +318,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
-    let isErrorNode = type == 0 || (isLeaf && ((flags & FLAG_HAS_ERROR) != 0));
+    let isErrorNode = type == 0 || inError || (isLeaf && ((flags & FLAG_HAS_ERROR) != 0));
 
     let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 

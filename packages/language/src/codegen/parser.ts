@@ -802,6 +802,12 @@ export function generateParserTables(
   code += generateStaticArray(typeSemantics, "type_semantics");
   code += generateStaticArray(typeSemanticData.length > 0 ? typeSemanticData : [0], "type_semantic_data");
 
+  const typeIsList: number[] = new Array(symToInt.size + 1).fill(0);
+  for (let p = 0; p < prodLhs.length; p++) {
+    if (prodIsList[p] === 1) typeIsList[prodLhs[p]] = 1;
+  }
+  code += generateStaticArray(typeIsList, "type_is_list");
+
   const typeIsFolding: number[] = new Array(symToInt.size + 1).fill(0);
   if (originalGrammar.lsp && originalGrammar.lsp.folding) {
     for (const f of originalGrammar.lsp.folding) {
@@ -912,6 +918,7 @@ export function generateParserTables(
       "alias_data",
       "type_fields",
       "type_field_data",
+      "type_is_list",
       "expected_tokens",
     ]);
     while ((match = regex.exec(codeStr)) !== null) {

@@ -19,6 +19,7 @@ import {
   getNodeFlags,
   getNodeNextSibling,
   getNodePadding,
+  getNodeLeadingPad,
   getNodeType,
   initArena,
   resetGeneration,
@@ -55,6 +56,7 @@ import {
   sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
+  type_is_list as _type_is_list,
   expected_tokens as _expected_tokens,
   currentScannerState,
   initExtras,
@@ -134,6 +136,7 @@ export let prod_aliases: StaticTable = changetype<StaticTable>(0);
 export let alias_data: StaticTable = changetype<StaticTable>(0);
 export let type_fields: StaticTable = changetype<StaticTable>(0);
 export let type_field_data: StaticTable = changetype<StaticTable>(0);
+export let type_is_list: StaticTable = changetype<StaticTable>(0);
 
 export function initStaticTables(): void {
   action_offsets = changetype<StaticTable>(_action_offsets);
@@ -159,6 +162,7 @@ export function initStaticTables(): void {
   alias_data = changetype<StaticTable>(_alias_data);
   type_fields = changetype<StaticTable>(_type_fields);
   type_field_data = changetype<StaticTable>(_type_field_data);
+  type_is_list = changetype<StaticTable>(_type_is_list);
   expected_tokens = _expected_tokens;
 }
 
@@ -1148,7 +1152,7 @@ export function getPathTokens(node: u32): DescendantCursor {
 
 
 import { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, logInt } from "./parser";
-export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID };
+export { inputLength, setInputLength, inputEncoding, setInputEncoding, MAX_TERMINAL_ID, getNodeLeadingPad };
 
 export function lsp_setInputLength(len: u32): void {
   setInputLength(len);
