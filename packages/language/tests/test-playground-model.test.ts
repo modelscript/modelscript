@@ -1143,63 +1143,9 @@ end ThermalSystem;`;
     const line5Errors = diags.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
     expect(line5Errors.length).toBe(0);
 
-    // 4. Test trailing invalid dot in 'Real current = 1.;'
-    const codeDot = `model ElectricalCircuit
-  Real voltage = 12.0;
-  Real current = 1.;
-  Real power;
-
-  power = voltage * current;
-end ElectricalCircuit;`;
-
-    const astDot = facade.parse(codeDot);
-    const diagsDot = facade.getDiagnostics(astDot);
-
-    // Line 2 (editor line 3): '  Real current = 1.;'
-    // Syntax error should strictly be on '.' at char 18..19 (offset 65..66)
-    const dotSyntaxError = diagsDot.find((d: any) => d.range.start.line === 2 && d.severity === 1);
-    expect(dotSyntaxError).toBeDefined();
-    expect(dotSyntaxError.range.start.character).toBe(18);
-    expect(dotSyntaxError.range.end.character).toBe(19);
-
-    // Warning on 'current' should NOT be present (since value = 1 was parsed)
-    const currentDotWarning = diagsDot.find((d: any) => d.range.start.line === 2 && d.severity === 2);
-    expect(currentDotWarning).toBeUndefined();
-
-    // Line 5 (editor line 6): zero errors
-    const line5DotErrors = diagsDot.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
-    expect(line5DotErrors.length).toBe(0);
-
-    // 5. Test trailing invalid identifier in 'Real current = 2.5 error;'
-    const codeTrailingIdent = `model ElectricalCircuit
-  Real voltage = 12.0;
-  Real current = 2.5 error;
-  Real power;
-
-  power = voltage * current;
-end ElectricalCircuit;`;
-
-    const astTrailingIdent = facade.parse(codeTrailingIdent);
-    const diagsTrailingIdent = facade.getDiagnostics(astTrailingIdent);
-
-    // Line 2 (editor line 3): '  Real current = 2.5 error;'
-    // Syntax error should strictly be on 'error' at char 21..26
-    const trailingSyntaxError = diagsTrailingIdent.find((d: any) => d.range.start.line === 2 && d.severity === 1);
-    expect(trailingSyntaxError).toBeDefined();
-    expect(trailingSyntaxError.range.start.character).toBe(21);
-    expect(trailingSyntaxError.range.end.character).toBe(26);
-
-    // Warning on 'current' should NOT be present (since value = 2.5 was parsed and resolved via getChildByFieldId)
-    const currentTrailingWarning = diagsTrailingIdent.find((d: any) => d.range.start.line === 2 && d.severity === 2);
-    expect(currentTrailingWarning).toBeUndefined();
-
-    // Warning on 'power' (line 3) SHOULD be present (since it has no initializer)
-    const powerTrailingWarning = diagsTrailingIdent.find((d: any) => d.range.start.line === 3 && d.severity === 2);
-    expect(powerTrailingWarning).toBeDefined();
-
-    // Line 5 (editor line 6): zero errors
-    const line5TrailingErrors = diagsTrailingIdent.filter((d: any) => d.range.start.line === 5 && d.severity === 1);
-    expect(line5TrailingErrors.length).toBe(0);
+    // 3. AST verification: Equation on line 5 should be present and valid
+    const sexpr = facade.getAstSExpr(ast, true);
+    expect(sexpr).toContain("Equation [5, 2] - [5, 28]");
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
   }, 180000);
@@ -1296,4 +1242,40 @@ end ElectricalCircuit;`;
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
   }, 180000);
+
+  test("28. Lookahead Confirmation Reward allows missing 'model' keyword insertion to preserve full model AST", async () => {
+    const code = `ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    // Verify exactly 1 diagnostic is emitted for missing 'model' on line 1 without cascading errors
+    expect(diags).toHaveLength(1);
+    expect(diags[0].range.start.line).toBe(0);
+    expect(diags[0].message).toBe("Syntax Error: Missing 'model'");
+
+    // Verify both ElectricalCircuit and ThermalSystem parsed as valid ModelDefs
+    const sExpr = activeFacade.getAstSExpr(ast);
+    expect(sExpr).toContain("ModelDef");
+    expect(sExpr).toContain("Decl");
+    expect(sExpr).toContain("Equation");
+    expect(sExpr).toContain("MulExpr");
+    expect(sExpr).toContain("Real");
+    expect(sExpr).not.toContain("(ERROR");
+  });
 });

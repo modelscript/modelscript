@@ -991,6 +991,17 @@ export class LspFacade {
       let severity = lintId > 0 && lintId < 0x8000 ? 2 : 1; // 1 = Error (Syntax), 2 = Warning (Linter)
       let codeStr: number | string | undefined = lintId > 0 && lintId < 0x8000 ? lintId : undefined;
 
+      if (rawLintId === 0) {
+        if (arg0 === 1 && arg1 > 0) {
+          let symName = this.syntaxNames[arg1] || `token_${arg1}`;
+          if (symName.startsWith("T_")) symName = symName.substring(2);
+          if (symName.startsWith('"') && symName.endsWith('"')) {
+            symName = symName.substring(1, symName.length - 1);
+          }
+          msg = `Syntax Error: Missing '${symName}'`;
+        }
+      }
+
       if (rawLintId > 0) {
         const key = LINT_MESSAGES[lintId.toString()]
           ? lintId.toString()
@@ -1240,17 +1251,18 @@ export class LspFacade {
           (prev.range.start.line <= d.range.start.line && prev.range.end.line >= d.range.start.line);
 
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
-          const prevIsExpected = prev.message.startsWith("Expected ");
-          const dIsExpected = d.message.startsWith("Expected ");
+          const prevIsSpecific =
+            prev.message.startsWith("Expected ") || prev.message.startsWith("Syntax Error: Missing ");
+          const dIsSpecific = d.message.startsWith("Expected ") || d.message.startsWith("Syntax Error: Missing ");
           const prevIsGeneric = prev.message === "Syntax Error";
           const dIsGeneric = d.message === "Syntax Error";
 
-          if (prevIsGeneric && dIsExpected) {
-            // Replace generic error with more specific "Expected <token>"
+          if (prevIsGeneric && dIsSpecific) {
+            // Replace generic error with more specific error
             mergedDiags[mergedDiags.length - 1] = d;
             continue;
-          } else if (prevIsExpected && dIsGeneric) {
-            // Keep specific "Expected <token>", skip generic
+          } else if (prevIsSpecific && dIsGeneric) {
+            // Keep specific error, skip generic
             continue;
           } else if (prevIsGeneric && dIsGeneric) {
             // Merge two adjacent generic syntax errors

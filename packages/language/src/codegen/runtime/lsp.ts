@@ -421,7 +421,11 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         else dStart = 0;
       }
       if (dEnd > dStart) {
-        lsp_allocDiagnostic(dStart, dEnd, 0);
+        if ((flags & FLAG_IS_INSERTED) != 0) {
+          lsp_allocDiagnostic(dStart, dEnd, 0, 1, type as u32);
+        } else {
+          lsp_allocDiagnostic(dStart, dEnd, 0, 0, 0);
+        }
       }
 
     }

@@ -83,6 +83,7 @@ import {
 
 const t_branchB_outTokens = new Int32Array(8);
 const t_branchB_outStates = new Int32Array(8);
+const t_branchB_confirmedShifts = new Int32Array(8);
 const t_branchA1_outStates = new Int32Array(1);
 const t_expanded_tokens = new Int32Array(16);
 const savedHeadsBuffer = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16384 * 4));
@@ -155,15 +156,24 @@ export function simulateLookahead(
     simSteps++;
   }
   
-  let hasShifted = false;
+  let maxShifts: i32 = 0;
   for (let i: u32 = 0; i < activeHeadsCount; i++) {
     let h = changetype<ParseHead>(t_activeHeads[i]);
-    if (h.pos > startPos || h.successfulShifts >= 1) {
-      hasShifted = true;
-      break;
+    if (h.successfulShifts > maxShifts) {
+      maxShifts = h.successfulShifts;
+    } else if (h.pos > startPos && maxShifts == 0) {
+      maxShifts = 1;
     }
   }
-  let result = (getBestAcceptingHead() != 0 || (activeHeadsCount > 0 && hasShifted)) ? 1 : 0;
+  let bestH = changetype<ParseHead>(getBestAcceptingHead());
+  if (bestH != null) {
+    if (bestH.successfulShifts > maxShifts) {
+      maxShifts = bestH.successfulShifts;
+    } else if (maxShifts == 0) {
+      maxShifts = 1;
+    }
+  }
+  let result = (getBestAcceptingHead() != 0 || (activeHeadsCount > 0 && maxShifts > 0)) ? maxShifts : 0;
   
   restoreSimulationState();
   resetGeneration(2);
@@ -247,9 +257,7 @@ function searchBudgetedInsertions(
       let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
       if (simRes > 0) {
-
-
-
+        if (depth < 8) t_branchB_confirmedShifts[depth] = simRes;
         outTokens[depth] = sym;
         return depth + 1;
       }
@@ -296,7 +304,9 @@ function searchBudgetedInsertions(
         outTokens[depth] = ruleLHS;
         outStates[depth] = nextState;
         
-        if (simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + (COST_SUBSTITUTION_STANDARD * 10), 3, laTokPos, laTokLen) > 0) {
+        let simRes2 = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + (COST_SUBSTITUTION_STANDARD * 10), 3, laTokPos, laTokLen);
+        if (simRes2 > 0) {
+          if (depth < 8) t_branchB_confirmedShifts[depth] = simRes2;
           return depth + 1;
         }
         
@@ -616,7 +626,7 @@ export function recoverUnwindAndMutate(
               let precomputedRepair = load<u16>(precomputed_repairs + (((recState * (MAX_TERMINAL_ID + 1) + token) as u32) << 1)) as i32;
               if (precomputedRepair > 0 && precomputedRepair <= MAX_TERMINAL_ID) {
                 let isKwP = precomputedRepair <= MAX_TERMINAL_ID && load<u8>(is_extra_token + precomputedRepair) == 0;
-                let isTargetWordP = token_is_word[precomputedRepair] == 1;
+                let isTargetWordP = isKwP || token_insert_costs[precomputedRepair] >= 50;
                 if (isSourceWordS == isTargetWordP) {
                   let shiftTargetP = findShiftTarget(recState, precomputedRepair as u16);
                   if (shiftTargetP != -1) {
@@ -687,7 +697,7 @@ export function recoverUnwindAndMutate(
                 actIdxS += 2 + actCountS * 2;
                 
                 let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
-                let isTargetWordS = token_is_word[expSym] == 1;
+                let isTargetWordS = isKwS || token_insert_costs[expSym] >= 50;
                 if (isSourceWordS == isTargetWordS && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
                   let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                   if (simS > 0) {
@@ -764,6 +774,7 @@ export function recoverUnwindAndMutate(
             
 
             let baseDelCost =
+              (unwindDepth == 0 ? getDeleteCost(token == TOKEN_EOF ? 0 : token) : 0) +
               unwindDepth * configPenaltyUnwindNode +
               droppedBytes;
             let hasNewline = false;
@@ -903,14 +914,14 @@ export function recoverUnwindAndMutate(
                   childCount++;
                   currChild = currChild.prev;
                 }
-                let parentHead: ParseHead | null = unwindCurr != null ? unwindCurr.prev : null;
+                let parentHead: ParseHead | null = unwindDepth == 0 ? head : (unwindCurr != null ? unwindCurr.prev : null);
                 let parentType = (unwindCurr != null && unwindCurr.astNode != 0) ? getNodeType(unwindCurr.astNode) : 0;
-                let mergedNode: u32 = (unwindCurr != null && unwindCurr.astNode != 0) ? cloneNode(unwindCurr.astNode, true) : 0;
+                let mergedNode: u32 = (unwindDepth > 0 && unwindCurr != null && unwindCurr.astNode != 0) ? cloneNodeShallow(unwindCurr.astNode) : 0;
 
                 for (let k = childCount - 1; k >= 0; k--) {
                   let child = t_globalChildNodes[k];
                   if (child == 0) continue;
-                  let clonedChild = cloneNode(child, true);
+                  let clonedChild = cloneNodeShallow(child);
                   markTreeError(clonedChild);
                   if (mergedNode != 0) {
                     mergedNode = concatLists(mergedNode, clonedChild, parentType != 0 ? parentType : getNodeType(clonedChild), 0);
@@ -1104,7 +1115,13 @@ export function recoverUnwindAndMutate(
               for (let k = 0; k < seqLen; k++) {
                 let sym = t_branchB_outTokens[k];
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
-                if (token != TOKEN_EOF) {
+                let confirmedShifts = (k < 8) ? t_branchB_confirmedShifts[k] : 0;
+                let isKeyword = (sym <= MAX_TERMINAL_ID && token_is_word[sym] == 1 && load<u8>(is_extra_token + sym) == 0);
+                if (isKeyword && baseCost >= 100 && confirmedShifts >= 3) {
+                  // Lookahead confirmation reward: empirical verification unlocked 3+ valid downstream tokens
+                  baseCost = 25;
+                }
+                if (seqLen > 1 && token != TOKEN_EOF) {
                   let hasNewlineInGap = false;
                   let p_gap = head.pos;
                   while (p_gap < srcLexPos && p_gap < inputLength) {
@@ -1116,10 +1133,7 @@ export function recoverUnwindAndMutate(
                     p_gap += peekCharLen(p_gap);
                   }
                   if (hasNewlineInGap) {
-                    let isDelimiter = sym <= MAX_TERMINAL_ID && (token_insert_costs[sym] == 1);
-                    if (!isDelimiter || seqLen > 1) {
-                      baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
-                    }
+                    baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
                   }
                 }
 

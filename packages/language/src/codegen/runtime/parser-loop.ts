@@ -1786,19 +1786,19 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
   currentScannerState = 0;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
-          if (g_simulatorMaxTokens > 0 && newShifts >= g_simulatorMaxTokens) {
-            // we will allocate newHead just for saving it.
-            let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
-            let finalHead = allocParseHead(
-              target, leaf, head, nPos, currentScannerState, newCost, newShifts, head.balanceHash, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
-              vq0, vq1, vq2, vq3, vq4, vCount
-            );
-            if (newCost <= bestAcceptedCost) {
-              bestAcceptedCost = newCost;
-              bestAcceptingHead = changetype<u32>(finalHead);
-            }
-            return; // Stop advancing this head
-          }
+  if (g_simulatorMaxTokens > 0 && newShifts >= g_simulatorMaxTokens) {
+    // we will allocate newHead just for saving it.
+    let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
+    let finalHead = allocParseHead(
+      target, leaf, head, nPos, currentScannerState, newCost, newShifts, head.balanceHash, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
+      vq0, vq1, vq2, vq3, vq4, vCount
+    );
+    if (newCost <= bestAcceptedCost) {
+      bestAcceptedCost = newCost;
+      bestAcceptingHead = changetype<u32>(finalHead);
+    }
+    return; // Stop advancing this head
+  }
 
   let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
 

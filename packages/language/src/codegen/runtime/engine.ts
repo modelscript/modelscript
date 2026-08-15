@@ -740,7 +740,7 @@ export class FieldCursor {
 
       if (child == 0) continue;
 
-      while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0 || (getNodeFlags(child) & FLAG_HAS_ERROR) != 0)) {
+      while (child != 0 && ((getNodeFlags(child) & FLAG_IS_LIST) != 0 || getNodeType(child) == 0)) {
         let first = getNodeFirstChild(child);
         if (first != 0 && getNodeType(first) != NODE_TYPE_ERROR) {
           child = first;
@@ -779,6 +779,15 @@ export class FieldCursor {
           }
         }
         continue;
+      }
+      if (child != 0 && (getNodeFlags(child) & FLAG_HAS_ERROR) != 0) {
+        let inner = getNodeFirstChild(child);
+        if (inner != 0 && getNodeType(inner) == getNodeType(child)) {
+          return inner;
+        }
+      }
+      if (child != 0 && ((getNodeFlags(child) & FLAG_IS_INSERTED) != 0 || getNodeType(child) == 0 || getNodeByteLength(child) == 0)) {
+        return 0;
       }
       return child;
     }
