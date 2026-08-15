@@ -14,7 +14,7 @@
 import {
     initGSS,
     ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead, t_extractedHeadsBuffer,
-    globalCursorDepth, cursorNodeStack, cursorOffsetStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
+    globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
     allocNode, getNodeType, getNodeFlags, getNodePadding, getNodeByteLength, getNodeFirstChild,
@@ -52,7 +52,7 @@ import {
     globalLoopIterations, globalLoopGuard,
     globalSearchIterations, mergeGeneration,
     tempActions, mergeTableInit, initGlobalCursor, errorCount,
-    MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID,
+    MAX_LR_STACK_DEPTH, FieldCursor, MAX_TERMINAL_ID, reachability_matrix,
     configEnableBranchA1, configEnableBranchB, configEnableBranchC, configEnableIslandMode, configEnableMultiFile
 } from "./engine";
 import { globalAstRoot } from "./lsp";
@@ -2737,6 +2737,9 @@ export function advanceGLR(): void {
     }
     globalLoopIterations++;
     globalLoopGuard++;
+    if (globalLoopGuard > 200000) {
+      break;
+    }
 
     let headPtr: u32 = 0;
 
@@ -3032,16 +3035,19 @@ export function advanceGLR(): void {
       
 
       // Query the GOTO table to determine if this non-terminal can transition from the current state
-      let gOffset = goto_offsets[currentState];
-      let gCount = goto_data[gOffset];
-      let gIdx = gOffset + 1;
       let nextState = -1;
-      for (let i = 0; i < gCount; i++) {
-        if (goto_data[gIdx++] == nodeSym) {
-          nextState = goto_data[gIdx++];
-          break;
-        } else {
-          gIdx++;
+      let nodeType = getNodeType(reusedNode);
+      if ((currentState as i32) < goto_offsets.length) {
+        let gOffset = goto_offsets[currentState];
+        if (gOffset >= 0 && gOffset < goto_data.length) {
+          let gCount = goto_data[gOffset];
+          for (let gi = 0; gi < gCount; gi++) {
+            let gSym = goto_data[gOffset + 1 + gi * 2];
+            if (gSym == nodeType) {
+              nextState = goto_data[gOffset + 1 + gi * 2 + 1];
+              break;
+            }
+          }
         }
       }
 
@@ -3049,7 +3055,7 @@ export function advanceGLR(): void {
       // If it cannot, shifting this massive reused node would trap the parser immediately before a garbage token,
       // leading to catastrophic error recovery that swallows the node.
       if (nextState != -1) {
-        let endPos = pos + getNodePadding(reusedNode) + getNodeByteLength(reusedNode);
+        let endPos = pos + getNodeByteLength(reusedNode);
         let nextTok = invokeLexer(endPos);
         while (load<u8>(is_extra_token + nextTok) == 1) {
           if (lexLen == 0) break;
@@ -3057,6 +3063,13 @@ export function advanceGLR(): void {
           nextTok = invokeLexer(endPos);
         }
         let canAccept = stateCanAccept(head, nextState, nextTok, 0, 1);
+        if (canAccept == 0 && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
+          let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
+          let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
+          if (dist < 250) {
+            canAccept = 1;
+          }
+        }
         if (canAccept == 0) {
           nextState = -1;
         }
@@ -3086,7 +3099,7 @@ export function advanceGLR(): void {
 
         // Splice it into the GSS head
         let merged = concatLists(head.astNode, cloneReused, nodeSym as u16, currentScannerState);
-        let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
+        let newPos = pos + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           head.state,
@@ -3119,7 +3132,7 @@ export function advanceGLR(): void {
         setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
         propagateFirstChildPadding(clone, expectedPadding + head.pendingPadding);
 
-        let newPos = pos + expectedPadding + head.pendingPadding + getNodeByteLength(reusedNode);
+        let newPos = pos + getNodeByteLength(reusedNode);
 
         head = allocParseHead(
           nextState,
@@ -3415,23 +3428,19 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
   // Only perform complete reset if we are not resuming from an async suspend
   if (!isSuspended) {
-    logInt(configEnableMultiFile ? 1 : 0);
     if (oldTree == 0) {
       if (configEnableMultiFile) {
         resetGeneration(0);
       } else {
         resetGeneration(0);
         resetGeneration(1);
+        S().freeNodeHead = 0;
       }
     } else {
       // Clear the free list: free-list nodes are from the old tree's Gen1 space
       S().freeNodeHead = 0;
     }
     
-    // Clear the free list anyway if we are resetting generation 1, or multi-file is ON but we want a fresh state
-    if (oldTree == 0) {
-      S().freeNodeHead = 0;
-    }
     globalLoopGuard = 0;
     resetGeneration(0);
     resetQueryArena();
@@ -3620,6 +3629,8 @@ function clearSubtreeErrorFlags(nodePtr: u32): void {
     child = getNodeNextSibling(child);
   }
 }
+
+
 /**
  * Searches the old incremental tree for a sub-tree that matches the current parsing
  * state and hasn't been modified by the user's edits.
@@ -3644,10 +3655,15 @@ export function findReusableNode(
   headSym: u32,
   expectedPadding: u32
 ): u32 {
-  if (globalCursorDepth < 0) return 0;
+  if (globalCursorDepth < 0) {
+    return 0;
+  }
+
+  let savedDepth = globalCursorDepth;
+  let savedOffset = cursorContentStartStack[globalCursorDepth];
 
   let startNode = cursorNodeStack[globalCursorDepth];
-  let startSrc = cursorOffsetStack[globalCursorDepth] + getNodePadding(startNode);
+  let startSrc = cursorContentStartStack[globalCursorDepth];
   if (startSrc > targetSrcOldPos) {
     return 0;
   }
@@ -3662,9 +3678,9 @@ export function findReusableNode(
       }
       cPtr = cursorNodeStack[globalCursorDepth];
     }
-    let absStart = cursorOffsetStack[globalCursorDepth];
+    let absContentStart = cursorContentStartStack[globalCursorDepth];
     let pad = getNodePadding(cPtr);
-    let absContentStart = absStart + pad;
+    let typeFlags = getNodeFlags(cPtr);
     let byteLen = getNodeByteLength(cPtr);
     let absContentEnd = absContentStart + byteLen;
     let nodeType = getNodeType(cPtr);
@@ -3699,9 +3715,9 @@ export function findReusableNode(
         let nodeEnvHash = getNodeEnvHash(cPtr) & 0xff;
         let nodeStartState = getNodeStartState(cPtr);
         let canReuse = (!isError && !isMissing && nodeEnvHash == envHash);
-        if (canReuse) {
+        if (canReuse && nodeType > (MAX_TERMINAL_ID as u16)) {
           let validState = nodeStartState == (currentState as u32);
-          if (!validState && nodeType > (MAX_TERMINAL_ID as u16) && (currentState as i32) < goto_offsets.length) {
+          if (!validState && (currentState as i32) < goto_offsets.length) {
             let gOffset = goto_offsets[currentState];
             if (gOffset >= 0 && gOffset < goto_data.length) {
               let gCount = goto_data[gOffset];
@@ -3715,14 +3731,10 @@ export function findReusableNode(
             }
           }
           if (validState) {
-            let typeFlags = getNodeFlags(cPtr);
             let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
-            let isInvisible = (typeFlags & FLAG_INVISIBLE) != 0;
-            if (!hasErrorFlags && !isInvisible) {
+            if (!hasErrorFlags) {
               return cPtr;
             }
-          } else if (nodeType > (MAX_TERMINAL_ID as u16)) {
-            return 0;
           }
         }
       }
@@ -3743,5 +3755,9 @@ export function findReusableNode(
     }
   }
   
+  globalCursorDepth = savedDepth;
+  if (savedDepth >= 0) {
+    cursorContentStartStack[savedDepth] = savedOffset;
+  }
   return 0;
 }

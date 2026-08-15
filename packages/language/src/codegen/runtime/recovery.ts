@@ -1,6 +1,6 @@
 import { ParseHead, ErrorBranch, allocErrorBranch, pushActiveHead, allocParseHead, t_activeHeads, activeHeadsCount, setActiveHeadsCount, pushCandidateHead, t_candidateHeadsBuffer, candidateHeadsCount } from "./gss";
 import { debugLog, pushDiagnostic, MAX_ERRORS, MAX_CHILD_NODES, t_globalChildNodes, MAX_TERMINAL_ID,
-  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs, token_is_word,
+  action_offsets, action_data, ACTION_SHIFT, MAX_PANIC_SCAN_TOKENS, token_insert_costs, token_delete_costs, token_is_word, token_is_operator,
   NODE_TYPE_ERROR, goto_offsets, goto_data, configEnableBranchA1, configEnableBranchB, configEnableBranchT, configEnableIslandMode, ACTION_REDUCE, configPenaltyUnwindNode, configPenaltySyncToken, configIslandBasePenalty, configIslandSyncMultiplier, configIslandPoppedMultiplier, prod_is_list
 } from "./engine";
 import { advanceGLR, stateCanAccept, cloneNodeShallow, concatLists, appendToList, isPureErrorNode, g_stateCanAcceptMaxCost, isEpsilonReachable, resetSimulator, getBestAcceptingHead, saveSimulationState, restoreSimulationState, fixNodeLength, findGotoSymbol } from "./parser-loop";
@@ -618,21 +618,19 @@ export function recoverUnwindAndMutate(
 
 
 
-            let chFirstS = peekChar(srcLexPos);
-            let isSourceWordS = (chFirstS >= 65 && chFirstS <= 90) || (chFirstS >= 97 && chFirstS <= 122) || (chFirstS >= 48 && chFirstS <= 57) || chFirstS == 95;
+            let isSourceWordS = token <= MAX_TERMINAL_ID && token_is_word[token] == 1;
 
             // O(1) Precomputed 1-Token Repair Table Fast-Path (Phase 2)
             if (token > 0 && token <= MAX_TERMINAL_ID) {
               let precomputedRepair = load<u16>(precomputed_repairs + (((recState * (MAX_TERMINAL_ID + 1) + token) as u32) << 1)) as i32;
               if (precomputedRepair > 0 && precomputedRepair <= MAX_TERMINAL_ID) {
-                let isKwP = precomputedRepair <= MAX_TERMINAL_ID && load<u8>(is_extra_token + precomputedRepair) == 0;
-                let isTargetWordP = isKwP || token_insert_costs[precomputedRepair] >= 50;
+                let isTargetWordP = precomputedRepair <= MAX_TERMINAL_ID && token_is_word[precomputedRepair] == 1;
                 if (isSourceWordS == isTargetWordP) {
                   let shiftTargetP = findShiftTarget(recState, precomputedRepair as u16);
                   if (shiftTargetP != -1) {
                     let simP = simulateLookahead(unwindCurr, null, 0, precomputedRepair, -1, -1, 999999, 3, posAfterTokenS, 0);
                     if (simP > 0) {
-                      let subCostP = head.errorCost + (isKwP ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
+                      let subCostP = head.errorCost + (isTargetWordP ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD);
                       let p_nlP = srcLexPos;
                       while (p_nlP < posAfterTokenS && p_nlP < inputLength) {
                         let ch = peekChar(p_nlP);
@@ -696,17 +694,13 @@ export function recoverUnwindAndMutate(
                 let aIdxS = actIdxS + 2;
                 actIdxS += 2 + actCountS * 2;
                 
-                let isKwS = expSym <= MAX_TERMINAL_ID && expSym != 13 && expSym != 14 && load<u8>(is_extra_token + expSym) == 0;
-                let isTargetWordS = isKwS || token_insert_costs[expSym] >= 50;
+                let isTargetWordS = expSym <= MAX_TERMINAL_ID && token_is_word[expSym] == 1;
                 if (isSourceWordS == isTargetWordS && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
                   let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                   if (simS > 0) {
-
-
-
                       let bDroppedS: u32 = head.pos > (unwindCurr != null ? unwindCurr.pos : 0) ? head.pos - (unwindCurr != null ? unwindCurr.pos : 0) : 0;
                       let retroCostS = (unwindDepth as i32) * configPenaltyUnwindNode + (bDroppedS as i32);
-                      let subCost = head.errorCost + (isKwS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD) + retroCostS;
+                      let subCost = head.errorCost + (isTargetWordS ? COST_SUBSTITUTION_KEYWORD : COST_SUBSTITUTION_STANDARD) + retroCostS;
                       let p_nlS = srcLexPos;
                       while (p_nlS < posAfterTokenS && p_nlS < inputLength) {
                         let ch = peekChar(p_nlS);
@@ -719,7 +713,7 @@ export function recoverUnwindAndMutate(
                       if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || subCost < bestAcceptedCost) {
                         let rawTokEndS = srcLexPos + lexLen;
                         let tokLenS: u32 = rawTokEndS > srcLexPos ? (rawTokEndS - srcLexPos) : 0;
-                        let diagStart = unwindCurr != null && unwindCurr.pos < srcLexPos ? unwindCurr.pos : srcLexPos;
+                        let diagStart = srcLexPos;
                         let newTailS = pushDiagnostic(head.errorTail, diagStart, rawTokEndS);
 
                           let v0 = (expSym & 0xFFFF) | ((tokLenS as u32) << 16);
@@ -748,7 +742,6 @@ export function recoverUnwindAndMutate(
                           pushCandidateHead(changetype<u32>(subHead));
                         }
                       }
-
                     }
                   }
                 }
@@ -1121,9 +1114,9 @@ export function recoverUnwindAndMutate(
                   // Lookahead confirmation reward: empirical verification unlocked 3+ valid downstream tokens
                   baseCost = 25;
                 }
-                if (seqLen > 1 && token != TOKEN_EOF) {
+                if (token != TOKEN_EOF) {
                   let hasNewlineInGap = false;
-                  let p_gap = head.pos;
+                  let p_gap = unwindCurr.pos;
                   while (p_gap < srcLexPos && p_gap < inputLength) {
                     let ch = peekChar(p_gap);
                     if (ch == 10 || ch == 13) {
@@ -1133,7 +1126,11 @@ export function recoverUnwindAndMutate(
                     p_gap += peekCharLen(p_gap);
                   }
                   if (hasNewlineInGap) {
-                    baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                    let isOp = (sym <= MAX_TERMINAL_ID && token_is_operator[sym] == 1);
+                    let isNonTerm = (sym > MAX_TERMINAL_ID);
+                    if (isOp || isNonTerm || seqLen > 1) {
+                      baseCost += PENALTY_INSERT_MULTI_TOKEN_CROSS_LINE;
+                    }
                   }
                 }
 

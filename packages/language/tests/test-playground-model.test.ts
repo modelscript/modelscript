@@ -1278,4 +1278,105 @@ end ThermalSystem;
     expect(sExpr).toContain("Real");
     expect(sExpr).not.toContain("(ERROR");
   });
+
+  it("should isolate stray token at end of line without cross-line operator hallucination", async () => {
+    const code = `model ElectricalCircuit E
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    // Verify stray 'E' on line 1 is cleanly isolated as a syntax error without cascading across lines
+    const errorDiags = diags.filter((d) => d.severity === 1);
+    expect(errorDiags).toHaveLength(1);
+    expect(errorDiags[0].range.start.line).toBe(0);
+
+    // Verify declarations and equations in both models parsed cleanly
+    const sExpr = activeFacade.getAstSExpr(ast);
+    expect(sExpr).toContain("ModelDef");
+    expect(sExpr).toContain("Decl");
+    expect(sExpr).toContain("Equation");
+    expect(sExpr).toContain("MulExpr");
+  });
+
+  it("should explain why model ElectricalCircuit errror error highlights ElectricalCircuit", async () => {
+    const code = `model ElectricalCircuit errror error
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+
+    // Verify syntax error is isolated to line 0 (Model 1 header) and lines 2-14 remain clean
+    const errorDiags = diags.filter((d) => d.severity === 1);
+    expect(errorDiags).toHaveLength(1);
+    expect(errorDiags[0].range.start.line).toBe(0);
+  });
+
+  it("should isolate stray token during incremental parsing without corrupting downstream equations", async () => {
+    const baseCode = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;
+`;
+
+    activeFacade.lastAstRoot = 0;
+    let ast = activeFacade.parseIncremental(baseCode, 0, 0, baseCode.length);
+    let diags = activeFacade.getDiagnostics(ast);
+    expect(diags.filter((d) => d.severity === 1)).toHaveLength(0);
+
+    // Incremental edit: insert " t" at offset 23 (after "model ElectricalCircuit")
+    const editOffset = 23;
+    const insertedText = " t";
+    const newTotalLen = baseCode.length + insertedText.length;
+    ast = activeFacade.parseIncremental(insertedText, editOffset, 0, newTotalLen);
+    diags = activeFacade.getDiagnostics(ast);
+
+    // Should only have 1 error on line 0 for stray 't', and NO error on line 5 (power = voltage * current;)
+    const errorDiags = diags.filter((d) => d.severity === 1);
+    expect(errorDiags).toHaveLength(1);
+    expect(errorDiags[0].range.start.line).toBe(0);
+
+    const sExpr = activeFacade.getAstSExpr(ast);
+    expect(sExpr).toContain("Decl");
+    expect(sExpr).toContain("Equation");
+    expect(sExpr).toContain("MulExpr");
+  });
 });

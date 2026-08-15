@@ -14,7 +14,7 @@ const edgeCaseGrammar = {
     Program: ($: any) => repeat($.Decl),
     Decl: ($: any) => seq(field("type", $.Type), field("name", $.Identifier), ";"),
     Type: ($: any) => "Real",
-    Identifier: ($: any) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
+    Identifier: ($: any) => semanticToken("variable", /[a-zA-Z_\u0080-\uFFFF][a-zA-Z0-9_\u0080-\uFFFF]*/),
   },
   extras: ($: any) => [/\s/],
   lints: {
@@ -86,7 +86,7 @@ describe("AST Traversal & Edge Cases Verification Suite", () => {
 
     expect(diag).toBeDefined();
     expect(diag.range.start.line).toBe(0);
-    expect(diag.range.start.character).toBe(6);
+    expect(diag.range.start.character).toBe(5);
     expect(diag.range.end.character).toBe(12);
   });
 

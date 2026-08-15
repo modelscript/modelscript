@@ -952,7 +952,8 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
         pos++;
       }
       const ranges: [number, number][] = [];
-      while (pos < pattern.length && pattern[pos] !== "]") {
+
+      function parseClassItem(): { isClass: boolean; ranges?: [number, number][]; char?: number } {
         if (pattern[pos] === "\\") {
           pos++;
           const esc = pattern[pos++];
@@ -960,41 +961,68 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
             if (pattern[pos] === "{") {
               pos++;
               const endPos = pattern.indexOf("}", pos);
-              ranges.push([parseInt(pattern.slice(pos, endPos), 16), parseInt(pattern.slice(pos, endPos), 16)]);
+              const cp = parseInt(pattern.slice(pos, endPos), 16);
               pos = endPos + 1;
+              return { isClass: false, char: cp };
             } else {
-              ranges.push([parseInt(pattern.slice(pos, pos + 4), 16), parseInt(pattern.slice(pos, pos + 4), 16)]);
+              const cp = parseInt(pattern.slice(pos, pos + 4), 16);
               pos += 4;
+              return { isClass: false, char: cp };
             }
           } else if (esc === "x") {
-            ranges.push([parseInt(pattern.slice(pos, pos + 2), 16), parseInt(pattern.slice(pos, pos + 2), 16)]);
+            const cp = parseInt(pattern.slice(pos, pos + 2), 16);
             pos += 2;
-          } else if (esc === "d") ranges.push([48, 57]);
-          else if (esc === "w") {
-            ranges.push([65, 90]);
-            ranges.push([97, 122]);
-            ranges.push([48, 57]);
-            ranges.push([95, 95]);
+            return { isClass: false, char: cp };
+          } else if (esc === "d") {
+            return { isClass: true, ranges: [[48, 57]] };
+          } else if (esc === "w") {
+            return {
+              isClass: true,
+              ranges: [
+                [65, 90],
+                [97, 122],
+                [48, 57],
+                [95, 95],
+              ],
+            };
           } else if (esc === "s") {
-            ranges.push([32, 32]);
-            ranges.push([9, 9]);
-            ranges.push([10, 10]);
-            ranges.push([13, 13]);
-          } else if (esc === "n") ranges.push([10, 10]);
-          else if (esc === "r") ranges.push([13, 13]);
-          else if (esc === "t") ranges.push([9, 9]);
-          else if (esc === "f") ranges.push([12, 12]);
-          else if (esc === "v") ranges.push([11, 11]);
-          else if (esc === "b") ranges.push([8, 8]);
-          else ranges.push([esc.charCodeAt(0), esc.charCodeAt(0)]);
+            return {
+              isClass: true,
+              ranges: [
+                [32, 32],
+                [9, 9],
+                [10, 10],
+                [13, 13],
+              ],
+            };
+          } else if (esc === "n") return { isClass: false, char: 10 };
+          else if (esc === "r") return { isClass: false, char: 13 };
+          else if (esc === "t") return { isClass: false, char: 9 };
+          else if (esc === "f") return { isClass: false, char: 12 };
+          else if (esc === "v") return { isClass: false, char: 11 };
+          else if (esc === "b") return { isClass: false, char: 8 };
+          else return { isClass: false, char: esc.charCodeAt(0) };
         } else {
-          const start = pattern.charCodeAt(pos++);
-          if (pattern[pos] === "-" && pattern[pos + 1] !== "]") {
-            pos++;
-            const end = pattern.charCodeAt(pos++);
-            ranges.push([start, end]);
+          return { isClass: false, char: pattern.charCodeAt(pos++) };
+        }
+      }
+
+      while (pos < pattern.length && pattern[pos] !== "]") {
+        const item1 = parseClassItem();
+        if (item1.isClass) {
+          for (const r of item1.ranges!) ranges.push(r);
+        } else {
+          if (pattern[pos] === "-" && pattern[pos + 1] !== "]" && pos + 1 < pattern.length) {
+            pos++; // consume '-'
+            const item2 = parseClassItem();
+            if (item2.isClass) {
+              ranges.push([item1.char!, item1.char!]);
+              for (const r of item2.ranges!) ranges.push(r);
+            } else {
+              ranges.push([item1.char!, item2.char!]);
+            }
           } else {
-            ranges.push([start, start]);
+            ranges.push([item1.char!, item1.char!]);
           }
         }
       }

@@ -24,6 +24,8 @@ import {
   debugLog,
   registerRoot,
   dropRoot,
+  cloneNode,
+  S,
 } from "./arena";
 import { NODE_TYPE_ERROR, errorCount, t_errorStarts, t_errorEnds } from "./engine";
 import { inputLength } from "./parser";
@@ -341,22 +343,24 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
 
       let totalInputBytes: u32 = inputLength;
-      if (nodeStart > totalInputBytes && nodeStart > 0) {
+      if (fileId == 0 && nodeStart > totalInputBytes && nodeStart > 0) {
         continue;
       }
       
-      let isTrailingWhitespace = true;
-      let checkPos = nodeStart;
-      while (checkPos < totalInputBytes) {
-        let ch = peekChar(checkPos);
-        if (ch != 10 && ch != 13 && ch != 32 && ch != 9 && ch != 0) {
-          isTrailingWhitespace = false;
-          break;
+      if (fileId == 0) {
+        let isTrailingWhitespace = true;
+        let checkPos = nodeStart;
+        while (checkPos < totalInputBytes) {
+          let ch = peekChar(checkPos);
+          if (ch != 10 && ch != 13 && ch != 32 && ch != 9 && ch != 0) {
+            isTrailingWhitespace = false;
+            break;
+          }
+          checkPos += step;
         }
-        checkPos += step;
-      }
-      if (isTrailingWhitespace && (isErrorNode || (flags & FLAG_IS_INSERTED) != 0) && nodeStart > 0) {
-        continue;
+        if (isTrailingWhitespace && (isErrorNode || (flags & FLAG_IS_INSERTED) != 0) && nodeStart > 0) {
+          continue;
+        }
       }
 
       let dStart = nodeStart;

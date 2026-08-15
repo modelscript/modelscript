@@ -226,8 +226,28 @@ export function generateParserTables(
     }
   }
 
+  const grammarOperators = new Set<string>();
+  for (const p of grammar.productions) {
+    const rhs = p.right;
+    if (p.prec !== undefined || p.assoc !== undefined) {
+      for (const sym of rhs) {
+        if (grammar.terminals.has(sym)) {
+          grammarOperators.add(sym);
+        }
+      }
+    } else if (rhs.length === 3) {
+      const [left, op, right] = rhs;
+      if (grammar.nonTerminals.has(left) && grammar.terminals.has(op) && grammar.nonTerminals.has(right)) {
+        grammarOperators.add(op);
+      }
+    }
+  }
+
   const customDelims = originalGrammar.recovery?.delimiters || [];
   const customOps = originalGrammar.recovery?.operators || [];
+  for (const op of customOps) {
+    grammarOperators.add(op);
+  }
 
   for (let i = 0; i < termList.length; i++) {
     const sym = termList[i];
@@ -235,12 +255,8 @@ export function generateParserTables(
     const cleanSym = sym.replace(/^"|"$/g, "");
 
     const isCustomDelim = customDelims.includes(sym) || customDelims.includes(cleanSym);
-    const isCustomOp = customOps.includes(sym) || customOps.includes(cleanSym);
-
+    const isOperator = grammarOperators.has(sym) || grammarOperators.has(cleanSym);
     const isWord = /^[a-zA-Z_]/.test(cleanSym);
-    const isOperator =
-      isCustomOp ||
-      ["*", "/", "+", "-", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "&", "|", "^"].includes(cleanSym);
 
     const isStructuralDelimiter =
       isCustomDelim ||
@@ -291,6 +307,15 @@ export function generateParserTables(
     }
   }
   code += generateStaticArray(tokenIsWord, "token_is_word");
+
+  const tokenIsOperator = new Array(symToInt.size + 1).fill(0);
+  for (const [sym, symId] of symToInt.entries()) {
+    const cleanSym = sym.replace(/^"|"$/g, "");
+    if (grammarOperators.has(sym) || grammarOperators.has(cleanSym)) {
+      tokenIsOperator[symId] = 1;
+    }
+  }
+  code += generateStaticArray(tokenIsOperator, "token_is_operator");
 
   let maxTerminalId = 0;
   for (const term of grammar.terminals) {
@@ -872,6 +897,8 @@ export function generateParserTables(
       "token_insert_costs",
       "token_delete_costs",
       "token_is_word",
+      "token_is_operator",
+      "reachability_matrix",
       "sorted_insertion_symbols",
       "prod_lengths",
       "prod_right_offsets",

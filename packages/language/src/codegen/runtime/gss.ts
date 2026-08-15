@@ -256,7 +256,7 @@ export function allocErrorBranch(
 // ----------------------------------------------------------------------------
 
 export const cursorNodeStack = createChunkedUint32Array();
-export const cursorOffsetStack = createChunkedUint32Array();
+export const cursorContentStartStack = createChunkedUint32Array();
 
 export let globalCursorDepth: i32 = -1;
 
@@ -268,7 +268,7 @@ export function initGlobalCursor(rootPtr: u32): void {
   if (rootPtr != 0) {
     globalCursorDepth = 0;
     cursorNodeStack[0] = rootPtr;
-    cursorOffsetStack[0] = 0;
+    cursorContentStartStack[0] = getNodePadding(rootPtr);
   } else {
     globalCursorDepth = -1;
   }
@@ -292,11 +292,12 @@ export function globalCursorGotoFirstChild(): boolean {
   let child = getNodeFirstChild(cPtr);
   if (child == 0) return false;
 
-  let absStart = cursorOffsetStack[globalCursorDepth];
+  // Rule 2: First child starts at the parent's exact content start
+  let parentContentStart = cursorContentStartStack[globalCursorDepth];
 
   globalCursorDepth++;
   cursorNodeStack[globalCursorDepth] = child;
-  cursorOffsetStack[globalCursorDepth] = absStart;
+  cursorContentStartStack[globalCursorDepth] = parentContentStart;
   return true;
 }
 
@@ -310,10 +311,12 @@ export function globalCursorGotoNextSibling(): boolean {
   let sibling = getNodeNextSibling(cPtr);
   if (sibling == 0) return false;
 
-  let nextOffset = cursorOffsetStack[globalCursorDepth] + getNodePadding(cPtr) + getNodeByteLength(cPtr);
+  // Rule 3: Sibling starts after previous child's content end + sibling's padding
+  let prevContentEnd = cursorContentStartStack[globalCursorDepth] + getNodeByteLength(cPtr);
+  let siblingContentStart = prevContentEnd + getNodePadding(sibling);
 
   cursorNodeStack[globalCursorDepth] = sibling;
-  cursorOffsetStack[globalCursorDepth] = nextOffset;
+  cursorContentStartStack[globalCursorDepth] = siblingContentStart;
   return true;
 }
 

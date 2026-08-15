@@ -983,7 +983,11 @@ export function ast_removeNode(parentPtr: u32, childPtr: u32): void {
  * @returns The pointer to the new cloned node.
  */
 export function cloneNode(nodeId: u32, deep: boolean): u32 {
-  if (nodeId == 0) return 0;
+  return cloneNodeInner(nodeId, deep, 0);
+}
+
+function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
+  if (nodeId == 0 || depth > 256) return 0;
   
   let type = getNodeType(nodeId);
   let padding = getNodePadding(nodeId);
@@ -1017,8 +1021,9 @@ export function cloneNode(nodeId: u32, deep: boolean): u32 {
   if (deep) {
     let child = getNodeFirstChild(nodeId);
     let prevNewChild: u32 = 0;
-    while (child != 0) {
-      let newChild = cloneNode(child, true);
+    let siblingCount = 0;
+    while (child != 0 && siblingCount++ < 10000) {
+      let newChild = cloneNodeInner(child, true, depth + 1);
       if (prevNewChild == 0) {
         setFirstChild(newPtr, newChild);
       } else {
