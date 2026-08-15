@@ -237,7 +237,7 @@ function parseLR(): u32 {
         }
       }
 
-      if (actionCount == 0 && defaultReduce != -1 && !hasConflictingReduce) {
+      if (actionCount == 0 && defaultReduce != -1 && !hasConflictingReduce && token == TOKEN_EOF) {
         type = ACTION_REDUCE;
         target = defaultReduce;
       } else {

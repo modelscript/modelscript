@@ -182,4 +182,32 @@ end ThermalSystem;`;
     expect(heatDiag.range.start.character).toBe(7);
     expect(heatDiag.range.end.character).toBe(15);
   });
+
+  it("should isolate stray token on its own line between models without cascading errors to preceding model", () => {
+    const code = `model ElectricalCircuit
+  Real voltage = 12.0;
+  Real current = 2.5;
+  Real power;
+
+  power = voltage * current;
+end ElectricalCircuit;
+error
+model ThermalSystem
+  Real temp = 293.15;
+  Real heatFlow;
+
+  heatFlow = temp * 1 + 0;
+end ThermalSystem;`;
+    const ast = activeFacade.parse(code);
+    const diags = activeFacade.getDiagnostics(ast);
+    console.log("STANDALONE ERROR AST:\n", activeFacade.getAstSExpr(ast, true));
+    console.log("STANDALONE ERROR DIAGS:\n", JSON.stringify(diags, null, 2));
+
+    const syntaxErrors = diags.filter((d: any) => d.severity === 1);
+    // Should ONLY have 1 syntax error on line 7 (0-indexed line 7 = editor line 8: 'error')
+    expect(syntaxErrors).toHaveLength(1);
+    expect(syntaxErrors[0].range.start.line).toBe(7);
+    expect(syntaxErrors[0].range.start.character).toBe(0);
+    expect(syntaxErrors[0].range.end.character).toBe(5);
+  });
 });

@@ -4,7 +4,6 @@ import { DaeBuilder, ExprKind, BinOp, UnaryOp, EXPR_STRIDE, EXPR_KIND, EXPR_DATA
  * Evaluates an expression tree in the DaeBuilder given a buffer of variable values.
  * Returns f64 result.
  */
-@inline
 export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
   if (exprId == 0xffffffff || exprId >= dae.exprCount) return 0.0;
 

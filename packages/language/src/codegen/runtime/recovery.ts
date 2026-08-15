@@ -55,7 +55,8 @@ import {
   cloneNode,
   S,
   resetGeneration,
-  atomicChunkAlloc
+  atomicChunkAlloc,
+  getNodeEnvHash
 } from "./arena";
 import { UnmanagedUint16Array, UnmanagedUint8Array, UnmanagedUint32Array } from "./array";
 import {
@@ -971,7 +972,7 @@ export function recoverUnwindAndMutate(
                   childCount++;
                   currChild = currChild.prev;
                 }
-                let parentHead: ParseHead | null = unwindDepth == 0 ? head.prev : unwindCurr;
+                let parentHead: ParseHead | null = unwindCurr;
 
                 let errFirstChild: u32 = 0;
                 let errLastChild: u32 = 0;
@@ -1057,7 +1058,16 @@ export function recoverUnwindAndMutate(
                 
                 let mergedNode: u32 = errNode;
                 let delState: i32 = recState;
-                if (unwindCurr != null && errNode != 0) {
+                let delParent = parentHead;
+
+                if (unwindDepth == 0 && head.astNode != 0 && isListNodeByPtr(head.astNode) && errNode != 0) {
+                  let listSym = getNodeType(head.astNode);
+                  let envHash = getNodeEnvHash(head.astNode);
+                  let updatedList = appendToList(head.astNode, errNode, listSym, envHash);
+                  mergedNode = updatedList;
+                  if (head.prev != null) delParent = head.prev!;
+                  delState = head.state;
+                } else if (unwindCurr != null && errNode != 0) {
                   let gOffset = goto_offsets[recState];
                   if (gOffset >= 0 && gOffset < goto_data.length) {
                     let gCount = goto_data[gOffset];
@@ -1083,8 +1093,6 @@ export function recoverUnwindAndMutate(
                     }
                   }
                 }
-
-                let delParent = parentHead;
 
                 let delHead = allocParseHead(
                   delState,
@@ -1315,9 +1323,9 @@ export function recoverUnwindAndMutate(
 
 
         // Branch Summary (Active Stack Summary Recovery - Inspired by Tree-sitter fallback):
-        if (configEnableIslandMode == 0 && candidateHeadsCount == 0 && head.prev != null && token != TOKEN_EOF) {
-          let ancCurr: ParseHead | null = head.prev;
-          let ancDepth = 1;
+        if (configEnableIslandMode == 0 && candidateHeadsCount == 0 && token != TOKEN_EOF) {
+          let ancCurr: ParseHead | null = head;
+          let ancDepth = 0;
           while (ancCurr != null && ancDepth <= 8) {
             let ancState = ancCurr.state;
             let scanTok = token;
@@ -1373,8 +1381,8 @@ export function recoverUnwindAndMutate(
                   }
                   if (intermediateCount > MAX_CHILD_NODES) intermediateCount = MAX_CHILD_NODES;
 
-                  let pSum = ancCurr.pos;
-                  let lastTokenEndSum = ancCurr.pos;
+                  let pSum = head.pos;
+                  let lastTokenEndSum = head.pos;
                   let firstErrPadSum: u32 = 0;
                   let isFirstLoopToken = true;
                   while (pSum < (scanPos as u32)) {
@@ -1397,12 +1405,12 @@ export function recoverUnwindAndMutate(
                     lastTokenEndSum = pSum;
                   }
 
-                  let totalErrLenSum: u32 = (scanPos as u32) > (ancCurr.pos as u32) ? (scanPos as u32) - (ancCurr.pos as u32) : 0;
+                  let totalErrLenSum: u32 = (scanPos as u32) > (head.pos as u32) ? (scanPos as u32) - (head.pos as u32) : 0;
                   let errByteLenSum: u32 = totalErrLenSum >= firstErrPadSum ? totalErrLenSum - firstErrPadSum : totalErrLenSum;
                   let errNodeSum = allocNode(NODE_TYPE_ERROR, firstErrPadSum, errByteLenSum, ancCurr.balanceHash & 0xff, false);
                   setNodeFlags(errNodeSum, FLAG_HAS_ERROR);
 
-                  let diagStartSum = (ancCurr.pos as u32) + firstErrPadSum;
+                  let diagStartSum = (head.pos as u32) + firstErrPadSum;
                   let diagEndSum = scanPos as u32;
                   if (diagEndSum <= diagStartSum) diagEndSum = diagStartSum + 1;
                   let newTailSum = pushDiagnostic(head.errorTail, diagStartSum, diagEndSum);
