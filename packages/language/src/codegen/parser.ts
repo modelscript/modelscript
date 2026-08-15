@@ -196,6 +196,36 @@ export function generateParserTables(
   const termList = Array.from(grammar.terminals);
   const tokenInsertCosts: number[] = new Array(termList.length + 5).fill(1);
 
+  // 1. Analyze grammar productions for structural roles (Tree-sitter style)
+  const structuralOpeners = new Set<string>();
+  const structuralClosers = new Set<string>();
+  const structuralSeparators = new Set<string>();
+
+  for (const p of grammar.productions) {
+    const rhs = p.right;
+    if (rhs.length === 0) continue;
+
+    const firstSym = rhs[0];
+    const lastSym = rhs[rhs.length - 1];
+
+    if (grammar.terminals.has(firstSym)) {
+      structuralOpeners.add(firstSym);
+    }
+    if (grammar.terminals.has(lastSym)) {
+      structuralClosers.add(lastSym);
+    }
+
+    // Infix separators: terminals flanked by non-terminals in sequences/repetitions
+    for (let i = 1; i < rhs.length - 1; i++) {
+      const sym = rhs[i];
+      if (grammar.terminals.has(sym) && grammar.nonTerminals.has(rhs[i - 1]) && grammar.nonTerminals.has(rhs[i + 1])) {
+        if (p.prec === undefined && !p.assoc) {
+          structuralSeparators.add(sym);
+        }
+      }
+    }
+  }
+
   const customDelims = originalGrammar.recovery?.delimiters || [];
   const customOps = originalGrammar.recovery?.operators || [];
 
@@ -204,36 +234,29 @@ export function generateParserTables(
     const symId = symToInt.get(sym) ?? i;
     const cleanSym = sym.replace(/^"|"$/g, "");
 
-    const isDelimiter =
-      customDelims.includes(sym) ||
-      customDelims.includes(cleanSym) ||
-      sym.includes("{") ||
-      sym.includes("}") ||
-      sym.includes("[") ||
-      sym.includes("]") ||
-      sym.includes("(") ||
-      sym.includes(")") ||
-      sym.includes("LBRACE") ||
-      sym.includes("RBRACE") ||
-      sym.includes("LPAREN") ||
-      sym.includes("RPAREN") ||
-      sym.includes("LBRACKET") ||
-      sym.includes("RBRACKET") ||
-      sym.toLowerCase().includes("end");
+    const isCustomDelim = customDelims.includes(sym) || customDelims.includes(cleanSym);
+    const isCustomOp = customOps.includes(sym) || customOps.includes(cleanSym);
 
-    if (isDelimiter) {
-      tokenInsertCosts[symId] = 50; // Structural block delimiters are expensive to insert to prevent premature block escape/insertion
+    const isWord = /^[a-zA-Z_]/.test(cleanSym);
+    const isOperator =
+      isCustomOp ||
+      ["*", "/", "+", "-", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "&", "|", "^"].includes(cleanSym);
+
+    const isStructuralDelimiter =
+      isCustomDelim ||
+      ((structuralClosers.has(sym) || structuralOpeners.has(sym)) &&
+        !isWord &&
+        cleanSym !== ";" &&
+        cleanSym !== "," &&
+        cleanSym !== ":");
+
+    if (isStructuralDelimiter) {
+      tokenInsertCosts[symId] = 50; // Structural block delimiters ({, }, (, ), [, ]) are expensive to insert to prevent premature block escape/closure
     } else if (sym.startsWith('"')) {
-      const cleanOp = cleanSym;
-      const isOperatorOrKeyword =
-        customOps.includes(cleanOp) ||
-        ["*", "/", "+", "-", "=", "==", "!=", "<", ">", "<=", ">=", "&&", "||", "&", "|", "^"].includes(cleanOp) ||
-        /^[a-zA-Z_]/.test(cleanOp);
-
-      if (isOperatorOrKeyword) {
-        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50+) for operators, keywords, and types
-      } else if (cleanOp === ";" || cleanOp === "," || cleanOp === ":") {
-        tokenInsertCosts[symId] = 1; // Low cost for structural punctuation ; , :
+      if (isOperator || isWord) {
+        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators, keywords, and types
+      } else if (structuralSeparators.has(sym) || cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
+        tokenInsertCosts[symId] = 1; // Low cost for structural punctuation and list separators ; , :
       } else {
         tokenInsertCosts[symId] = 4;
       }
