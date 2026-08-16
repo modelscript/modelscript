@@ -30,7 +30,7 @@ export declare function debugLog(id: i32, p1: i32, p2: i32, p3: i32): void;
  * offset + 20: pad (u32, 8-byte alignment padding)
  */
 
-const NODE_SIZE: u32 = 24;
+const NODE_SIZE: u32 = 32;
 const GLOBAL_BUMP_PTR: usize = 0;
 
 @unmanaged
@@ -40,6 +40,8 @@ export class ASTNode {
   startState: u32;
   firstChild: u32;
   nextSibling: u32;
+  merkleLow: u32;
+  merkleHigh: u32;
   pad: u32;
 
   // --- Core Bitfield Accessors ---
@@ -434,16 +436,14 @@ export function initArena(sizeBytes: u32): void {
 }
 
 /**
- * Allocates a new AST node directly in linear memory.
- * Implements structural sharing by attempting to pop a reclaimed node from the free-list first.
- * If the free-list is empty, it uses the fast bump-allocator for the active generation.
+ * Allocates an AST node in the arena using atomic bump allocation and recycling.
  *
  * @param type The grammar production type ID.
  * @param typeId The grammar production type ID.
  * @param padding The byte offset/padding prior to this node in the source.
  * @param len The total length of the source text spanning this node.
  * @param envHash A structural hash used for rapid comparison and deduplication.
- * @returns A physical memory pointer (u32) to the newly allocated 16-byte node.
+ * @returns A physical memory pointer (u32) to the newly allocated 32-byte node.
  */
 export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
   let s = S();
@@ -459,7 +459,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     // 2. Perform atomic bump allocation in the currently active generation
     let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
-    // Atomically claim a 24-byte slot (8-byte aligned)
+    // Atomically claim a 32-byte slot (8-byte aligned)
     ptr = s.atomicAddOffset(NODE_SIZE);
 
     // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
@@ -556,9 +556,9 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   // 6. Assemble using the unmanaged wrapper
   let initialFlags: u32 = 0;
   let isMutated = (type & 0x8000) != 0;
-  type = type & 0x7FFF;
+  let typ = type & 0x7FFF;
   
-  if (type == 0 || isMutated) { // 0 is NODE_TYPE_ERROR, isMutated is 0x8000 recovered error
+  if (typ == 0 || isMutated) { // 0 is NODE_TYPE_ERROR, isMutated is 0x8000 recovered error
     initialFlags |= (FLAG_HAS_ERROR as u32) << 10;
   }
   if (isTainted) {
@@ -566,14 +566,98 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   }
 
   let node = changetype<ASTNode>(ptr);
-  node.word0 = (type as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
+  node.word0 = (typ as u32 & 0x03ff) | initialFlags | (paddingLength << 22);
   node.word1 = byteLength | (fatFlag << 23) | (envHash << 24);
   node.startState = startState;
   node.firstChild = 0;
   node.nextSibling = 0;
+  node.merkleLow = 0;
+  node.merkleHigh = 0;
   node.pad = 0;
 
   return ptr;
+}
+
+export function allocAstNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32): u32 {
+  return allocNode(type, paddingLength, byteLength, envHash, false, 0);
+}
+
+/**
+ * Computes and caches the 64-bit Merkle hash of an AST node (Blueprint 1).
+ * Bottom-up computation:
+ * - Leaf node: FNV-1a 64-bit hash over (type, flags, text span).
+ * - Interior node: FNV-1a 64-bit hash over (type, flags, children Merkle hashes).
+ */
+export function computeNodeMerkleHash(nodeId: u32): u64 {
+  if (nodeId == 0) return 0;
+  let node = changetype<ASTNode>(nodeId);
+  let h: u64 = 0xcbf29ce484222325; // FNV-1a 64-bit offset basis
+
+  let t: u64 = (node.type as u64) | ((node.flags as u64) << 16);
+  h ^= t;
+  h = h * 0x100000001b3;
+
+  let child = node.firstChild;
+  if (child == 0) {
+    let span = ast_getTextSpan(nodeId, node.paddingLength);
+    let ptr = (span & 0xffffffff) as usize;
+    let len = (span >> 32) as u32;
+    if (ptr != 0 && len > 0) {
+      for (let i: u32 = 0; i < len; i++) {
+        h ^= load<u8>(ptr + i) as u64;
+        h = h * 0x100000001b3;
+      }
+    }
+  } else {
+    while (child != 0) {
+      let cNode = changetype<ASTNode>(child);
+      let cHash: u64 = (cNode.merkleLow as u64) | ((cNode.merkleHigh as u64) << 32);
+      if (cHash == 0) {
+        cHash = computeNodeMerkleHash(child);
+      }
+      h ^= cHash;
+      h = h * 0x100000001b3;
+      child = cNode.nextSibling;
+    }
+  }
+
+  node.merkleLow = (h & 0xffffffff) as u32;
+  node.merkleHigh = (h >> 32) as u32;
+  return h;
+}
+
+export function getNodeMerkleLow(nodeId: u32): u32 {
+  if (nodeId == 0) return 0;
+  let node = changetype<ASTNode>(nodeId);
+  if (node.merkleLow == 0 && node.merkleHigh == 0) {
+    computeNodeMerkleHash(nodeId);
+  }
+  return node.merkleLow;
+}
+
+export function getNodeMerkleHigh(nodeId: u32): u32 {
+  if (nodeId == 0) return 0;
+  let node = changetype<ASTNode>(nodeId);
+  if (node.merkleLow == 0 && node.merkleHigh == 0) {
+    computeNodeMerkleHash(nodeId);
+  }
+  return node.merkleHigh;
+}
+
+export function getNodeMerkleHash(nodeId: u32): u64 {
+  if (nodeId == 0) return 0;
+  let node = changetype<ASTNode>(nodeId);
+  if (node.merkleLow == 0 && node.merkleHigh == 0) {
+    return computeNodeMerkleHash(nodeId);
+  }
+  return (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+}
+
+export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
+  if (nodeId == 0) return;
+  let node = changetype<ASTNode>(nodeId);
+  node.merkleLow = low;
+  node.merkleHigh = high;
 }
 
 export function getNodeStartState(ptr: u32): u32 {
@@ -583,6 +667,7 @@ export function getNodeStartState(ptr: u32): u32 {
 export function setNodeStartState(ptr: u32, state: u32): void {
   changetype<ASTNode>(ptr).startState = state;
 }
+
 
 /**
  * Allocates a raw buffer in the transient Generation 0 memory space.

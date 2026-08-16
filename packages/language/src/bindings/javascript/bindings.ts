@@ -1568,10 +1568,14 @@ export class LspFacade {
     name: string,
     startByte: number,
     endByte: number,
+    merkleLow: number = 0,
+    merkleHigh: number = 0,
+    parentFqn: string = "",
   ): number {
     if (!this.exports.stub_registerSymbol) return 0;
     const nameHash = this.hashString(name);
     const nameHandle = this.allocStringInArena(name);
+    const parentFqnHash = parentFqn ? this.hashString(parentFqn) : 0;
     return this.exports.stub_registerSymbol(
       fileId,
       symbolId,
@@ -1582,7 +1586,31 @@ export class LspFacade {
       nameHandle,
       startByte,
       endByte,
+      merkleLow,
+      merkleHigh,
+      parentFqnHash,
     );
+  }
+
+  /** Registers an enclosing parent FQN for a given fileId. */
+  registerFileParentFQN(fileId: number, parentFQN: string): void {
+    if (!this.exports.stub_registerFileWithParentFQN) return;
+    const parentFqnHash = this.hashString(parentFQN);
+    this.exports.stub_registerFileWithParentFQN(fileId, parentFqnHash);
+  }
+
+  /** Binds an FQN string to a specific stub ID. */
+  bindFqnStub(fqn: string, stubId: number): void {
+    if (!this.exports.stub_bindFqnStub) return;
+    const fqnHash = this.hashString(fqn);
+    this.exports.stub_bindFqnStub(fqnHash, stubId);
+  }
+
+  /** Stitches a child stub to its parent package using the parent FQN string. */
+  stitchParentFQN(childStubId: number, parentFQN: string): number {
+    if (!this.exports.stub_stitchParentFQN) return 0;
+    const parentFqnHash = this.hashString(parentFQN);
+    return this.exports.stub_stitchParentFQN(childStubId, parentFqnHash);
   }
 
   /** Clears all Tier 1 stubs for a specific fileId or all files if fileId === 0. */
@@ -1609,6 +1637,8 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    merkleLow?: number;
+    merkleHigh?: number;
   }[] {
     if (!this.exports.stub_findByName || !this.exports.stub_getBinaryBuffer) return [];
     const hash = this.hashString(name);
@@ -1616,8 +1646,9 @@ export class LspFacade {
     if (numStubs === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.stub_getBinaryBuffer();
+    const stride = 12;
     const results = [];
-    for (let i = 0; i < numStubs * 8; i += 8) {
+    for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
@@ -1628,9 +1659,91 @@ export class LspFacade {
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
         startByte: mem32[(dirPtr >>> 2) + i + 6],
         endByte: mem32[(dirPtr >>> 2) + i + 7],
+        merkleLow: mem32[(dirPtr >>> 2) + i + 8],
+        merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
     }
     return results;
+  }
+
+  /** Finds all stub symbols matching a name string using WASM SIMD 128-bit vector search. */
+  findStubsByNameSIMD(
+    name: string,
+    preferredFileId: number = 0,
+  ): {
+    fileId: number;
+    symbolId: number;
+    parentSymbolId: number;
+    kind: number;
+    flags: number;
+    nameHash: number;
+    startByte: number;
+    endByte: number;
+    merkleLow?: number;
+    merkleHigh?: number;
+  }[] {
+    if (!this.exports.stub_findByNameHashSIMD || !this.exports.stub_getBinaryBuffer) return [];
+    const hash = this.hashString(name);
+    const numStubs = this.exports.stub_findByNameHashSIMD(hash, preferredFileId);
+    if (numStubs === 0) return [];
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.stub_getBinaryBuffer();
+    const stride = 12;
+    const results = [];
+    for (let i = 0; i < numStubs * stride; i += stride) {
+      const kf = mem32[(dirPtr >>> 2) + i + 3];
+      results.push({
+        fileId: mem32[(dirPtr >>> 2) + i + 0],
+        symbolId: mem32[(dirPtr >>> 2) + i + 1],
+        parentSymbolId: mem32[(dirPtr >>> 2) + i + 2],
+        kind: kf & 0xffff,
+        flags: (kf >>> 16) & 0xffff,
+        nameHash: mem32[(dirPtr >>> 2) + i + 4],
+        startByte: mem32[(dirPtr >>> 2) + i + 6],
+        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        merkleLow: mem32[(dirPtr >>> 2) + i + 8],
+        merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
+      });
+    }
+    return results;
+  }
+
+  /** Queries all symbols for a given fileId (fast LSP document symbol outline). */
+  getFileSymbols(fileId: number): {
+    fileId: number;
+    symbolId: number;
+    parentSymbolId: number;
+    kind: number;
+    flags: number;
+    nameHash: number;
+    startByte: number;
+    endByte: number;
+    merkleLow?: number;
+    merkleHigh?: number;
+  }[] {
+    if (!this.exports.stub_getFileSymbols || !this.exports.stub_getBinaryBuffer) return [];
+    const numStubs = this.exports.stub_getFileSymbols(fileId);
+    if (numStubs === 0) return [];
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.stub_getBinaryBuffer();
+    const stride = 12;
+    const results = [];
+    for (let i = 0; i < numStubs * stride; i += stride) {
+      const kf = mem32[(dirPtr >>> 2) + i + 3];
+      results.push({
+        fileId: mem32[(dirPtr >>> 2) + i + 0],
+        symbolId: mem32[(dirPtr >>> 2) + i + 1],
+        parentSymbolId: mem32[(dirPtr >>> 2) + i + 2],
+        kind: kf & 0xffff,
+        flags: (kf >>> 16) & 0xffff,
+        nameHash: mem32[(dirPtr >>> 2) + i + 4],
+        startByte: mem32[(dirPtr >>> 2) + i + 6],
+        endByte: mem32[(dirPtr >>> 2) + i + 7],
+        merkleLow: mem32[(dirPtr >>> 2) + i + 8],
+        merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
+      });
+    }
+    return results.reverse();
   }
 
   /** Queries child stub symbols for a parent symbol ID. */
@@ -1643,14 +1756,17 @@ export class LspFacade {
     nameHash: number;
     startByte: number;
     endByte: number;
+    merkleLow?: number;
+    merkleHigh?: number;
   }[] {
     if (!this.exports.stub_getChildren || !this.exports.stub_getBinaryBuffer) return [];
     const numStubs = this.exports.stub_getChildren(parentSymbolId);
     if (numStubs === 0) return [];
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.stub_getBinaryBuffer();
+    const stride = 12;
     const results = [];
-    for (let i = 0; i < numStubs * 8; i += 8) {
+    for (let i = 0; i < numStubs * stride; i += stride) {
       const kf = mem32[(dirPtr >>> 2) + i + 3];
       results.push({
         fileId: mem32[(dirPtr >>> 2) + i + 0],
@@ -1661,6 +1777,8 @@ export class LspFacade {
         nameHash: mem32[(dirPtr >>> 2) + i + 4],
         startByte: mem32[(dirPtr >>> 2) + i + 6],
         endByte: mem32[(dirPtr >>> 2) + i + 7],
+        merkleLow: mem32[(dirPtr >>> 2) + i + 8],
+        merkleHigh: mem32[(dirPtr >>> 2) + i + 9],
       });
     }
     return results;
