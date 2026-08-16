@@ -21,12 +21,16 @@ export class PolyglotArena {
   languageRoots: ChunkedUint32Array;
   languageCount: u32;
 
+  // Per-Language Version Vectors (Concept 3)
+  langVersions: ChunkedUint32Array;
+
   // Cross-language inheritance table (Child extends Parent)
   extendsData: ChunkedUint32Array;
   extendsCount: u32;
 
   init(maxLanguages: u32 = 16, initialExtends: u32 = 512): void {
     this.languageRoots = createChunkedUint32Array(maxLanguages);
+    this.langVersions = createChunkedUint32Array(maxLanguages);
     this.languageCount = 0;
     this.extendsData = createChunkedUint32Array(initialExtends * EXTENDS_STRIDE);
     this.extendsCount = 0;
@@ -89,9 +93,32 @@ export class PolyglotArena {
   }
 
   @inline
+  getLangVersion(langId: u16): u32 {
+    if (langId >= 16) return 0;
+    return this.langVersions.get(langId as u32);
+  }
+
+  @inline
+  incrementLangVersion(langId: u16): u32 {
+    if (langId >= 16) return 0;
+    let curr = this.langVersions.get(langId as u32);
+    let next = curr + 1;
+    this.langVersions.set(langId as u32, next);
+    return next;
+  }
+
+  @inline
+  hasLangChanged(langId: u16, snapshotVersion: u32): boolean {
+    return this.getLangVersion(langId) != snapshotVersion;
+  }
+
+  @inline
   reset(): void {
     this.languageCount = 0;
     this.extendsCount = 0;
+    for (let i: u32 = 0; i < 16; i++) {
+      this.langVersions.set(i, 0);
+    }
   }
 }
 
@@ -103,4 +130,19 @@ export function createPolyglotArena(): usize {
   let arena = changetype<PolyglotArena>(ptr);
   arena.init();
   return ptr;
+}
+
+export function polyglot_getLangVersion(arenaPtr: usize, langId: u16): u32 {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).getLangVersion(langId);
+}
+
+export function polyglot_incrementLangVersion(arenaPtr: usize, langId: u16): u32 {
+  if (arenaPtr == 0) return 0;
+  return changetype<PolyglotArena>(arenaPtr).incrementLangVersion(langId);
+}
+
+export function polyglot_hasLangChanged(arenaPtr: usize, langId: u16, snapshotVersion: u32): boolean {
+  if (arenaPtr == 0) return true;
+  return changetype<PolyglotArena>(arenaPtr).hasLangChanged(langId, snapshotVersion);
 }

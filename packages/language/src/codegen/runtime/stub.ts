@@ -3,6 +3,7 @@
 import { atomicChunkAlloc, ensureStringArena, stringArenaOffset, stringArenaPtr } from "./arena";
 import { ChunkedUint32Array, createChunkedUint32Array } from "./array";
 import { UnmanagedMap64, createMap64 } from "./hashmap";
+import { salsa_invalidateNegativeDependencies } from "./graph";
 
 /**
  * ----------------------------------------------------------------------------
@@ -156,6 +157,9 @@ export function stub_registerSymbol(
   } else {
     t_stubNextInFile.set(id, 0);
   }
+
+  // Invalidate any negative query dependencies waiting for this symbol
+  salsa_invalidateNegativeDependencies(nameHash);
 
   return id;
 }
@@ -511,6 +515,47 @@ export function stub_getFileSymbols(fileId: u32): u32 {
   }
 
   flushStubBuffer();
+  return count;
+}
+
+/**
+ * Zero-Reparse In-Place Delta Shifting (Blueprint 3).
+ * When an edit occurs strictly within an expression or equation body, shifts subsequent
+ * stub byte offsets in O(K) time without re-indexing or re-parsing the file.
+ * @param fileId Target file ID
+ * @param fromByte Absolute byte offset of the edit
+ * @param deltaBytes Signed byte length delta (+ for insertion, - for deletion)
+ * @returns Total stubs shifted
+ */
+export function stub_shiftByteOffsets(fileId: u32, fromByte: u32, deltaBytes: i32): u32 {
+  if (fileId == 0 || deltaBytes == 0 || changetype<usize>(t_stubsByFile) == 0) return 0;
+
+  let count: u32 = 0;
+  let stubId = t_stubsByFile.get(fileId as u64);
+
+  while (stubId != 0) {
+    let baseIdx = stubId * STUB_STRIDE;
+    let fId = t_stubTable.get(baseIdx + 0);
+
+    if (fId == fileId) {
+      let startByte = t_stubTable.get(baseIdx + 6);
+      let endByte = t_stubTable.get(baseIdx + 7);
+
+      if (startByte >= fromByte) {
+        let newStart = (startByte as i32 + deltaBytes) >= 0 ? (startByte as i32 + deltaBytes) as u32 : 0;
+        let newEnd = (endByte as i32 + deltaBytes) >= 0 ? (endByte as i32 + deltaBytes) as u32 : 0;
+        t_stubTable.set(baseIdx + 6, newStart);
+        t_stubTable.set(baseIdx + 7, newEnd);
+        count++;
+      } else if (endByte > fromByte) {
+        let newEnd = (endByte as i32 + deltaBytes) >= 0 ? (endByte as i32 + deltaBytes) as u32 : 0;
+        t_stubTable.set(baseIdx + 7, newEnd);
+        count++;
+      }
+    }
+    stubId = t_stubNextInFile.get(stubId);
+  }
+
   return count;
 }
 

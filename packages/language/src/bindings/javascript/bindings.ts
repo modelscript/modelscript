@@ -1871,6 +1871,129 @@ export class LspFacade {
     return results;
   }
 
+  /** Shifts byte offsets in-place across all stubs in a file after an interior edit. */
+  shiftStubByteOffsets(fileId: number, fromByte: number, deltaBytes: number): number {
+    if (!this.exports.stub_shiftByteOffsets) return 0;
+    return this.exports.stub_shiftByteOffsets(fileId, fromByte, deltaBytes);
+  }
+
+  /** Gets or looks up an incremental Salsa 3.0 query node. */
+  queryGetNode(queryType: number, arg1: number, arg2: number = 0, arg3: number = 0, arg4: number = 0): number {
+    if (!this.exports.query_getNode) return 0;
+    return this.exports.query_getNode(queryType, arg1, arg2, arg3, arg4);
+  }
+
+  /** Allocates a new incremental Salsa 3.0 query node. */
+  queryAllocNode(queryType: number, arg1: number, arg2: number = 0, arg3: number = 0, arg4: number = 0): number {
+    if (!this.exports.query_allocNode) return 0;
+    return this.exports.query_allocNode(queryType, arg1, arg2, arg3, arg4);
+  }
+
+  /** Invalidates a query node and cascades dirtying to all subscribers. */
+  queryInvalidate(queryNodePtr: number): void {
+    if (this.exports.query_invalidate) {
+      this.exports.query_invalidate(queryNodePtr);
+    }
+  }
+
+  /** Gets the cached result value of a query node. */
+  queryGetValue(queryNodePtr: number): number {
+    return this.exports.query_getValue ? this.exports.query_getValue(queryNodePtr) : 0;
+  }
+
+  /** Sets the cached result value of a query node. */
+  querySetValue(queryNodePtr: number, val: number): void {
+    if (this.exports.query_setValue) {
+      this.exports.query_setValue(queryNodePtr, val);
+    }
+  }
+
+  /** Gets the cached revision of a query node. */
+  queryGetRevision(queryNodePtr: number): number {
+    return this.exports.query_getRevision ? this.exports.query_getRevision(queryNodePtr) : 0;
+  }
+
+  /** Sets the cached revision of a query node. */
+  querySetRevision(queryNodePtr: number, rev: number): void {
+    if (this.exports.query_setRevision) {
+      this.exports.query_setRevision(queryNodePtr, rev);
+    }
+  }
+
+  /** Gets the cached result Merkle low 32-bits. */
+  queryGetMerkleLow(queryNodePtr: number): number {
+    return this.exports.query_getMerkleLow ? this.exports.query_getMerkleLow(queryNodePtr) >>> 0 : 0;
+  }
+
+  /** Gets the cached result Merkle high 32-bits. */
+  queryGetMerkleHigh(queryNodePtr: number): number {
+    return this.exports.query_getMerkleHigh ? this.exports.query_getMerkleHigh(queryNodePtr) >>> 0 : 0;
+  }
+
+  /** Sets the cached result Merkle 64-bit hash. */
+  querySetMerkle(queryNodePtr: number, low: number, high: number): void {
+    if (this.exports.query_setMerkle) {
+      this.exports.query_setMerkle(queryNodePtr, low, high);
+    }
+  }
+
+  /** Establishes a directed dependency edge from parent to target query. */
+  queryAddDependency(parentPtr: number, targetPtr: number): void {
+    if (this.exports.query_addDependency) {
+      this.exports.query_addDependency(parentPtr, targetPtr);
+    }
+  }
+
+  /** Gets the global database revision counter. */
+  queryGetGlobalRevision(): number {
+    return this.exports.query_getGlobalRevision ? this.exports.query_getGlobalRevision() : 0;
+  }
+
+  /** Increments the global database revision counter. */
+  queryIncrementRevision(): void {
+    if (this.exports.query_incrementRevision) {
+      this.exports.query_incrementRevision();
+    }
+  }
+
+  /** Registers a negative dependency: records that a query failed because a symbol name was missing. */
+  salsaRegisterNegativeDependency(queryPtr: number, name: string): void {
+    if (!this.exports.salsa_registerNegativeDependency) return;
+    const nameHash = this.hashString(name);
+    this.exports.salsa_registerNegativeDependency(queryPtr, nameHash);
+  }
+
+  /** Invalidates queries waiting for a symbol name when that symbol is introduced. */
+  salsaInvalidateNegativeDependencies(name: string): number {
+    if (!this.exports.salsa_invalidateNegativeDependencies) return 0;
+    const nameHash = this.hashString(name);
+    return this.exports.salsa_invalidateNegativeDependencies(nameHash);
+  }
+
+  /** Performs O(1) Merkle backdating on a query result. Returns true if semantically identical. */
+  salsaBackdateQuery(nodePtr: number, newMerkleLow: number, newMerkleHigh: number): boolean {
+    if (!this.exports.salsa_backdateQuery) return false;
+    return this.exports.salsa_backdateQuery(nodePtr, newMerkleLow, newMerkleHigh) === 1;
+  }
+
+  /** Gets the version counter for a language in the polyglot arena. */
+  polyglotGetLangVersion(arenaPtr: number, langId: number): number {
+    return this.exports.polyglot_getLangVersion ? this.exports.polyglot_getLangVersion(arenaPtr, langId) : 0;
+  }
+
+  /** Increments the version counter for a language in the polyglot arena. */
+  polyglotIncrementLangVersion(arenaPtr: number, langId: number): number {
+    return this.exports.polyglot_incrementLangVersion
+      ? this.exports.polyglot_incrementLangVersion(arenaPtr, langId)
+      : 0;
+  }
+
+  /** Checks if a language version has changed since snapshotVersion. */
+  polyglotHasLangChanged(arenaPtr: number, langId: number, snapshotVersion: number): boolean {
+    if (!this.exports.polyglot_hasLangChanged) return true;
+    return this.exports.polyglot_hasLangChanged(arenaPtr, langId, snapshotVersion) === 1;
+  }
+
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
   formatDocument(astRoot: number, preserveFormatting: boolean = false): string {
     if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";

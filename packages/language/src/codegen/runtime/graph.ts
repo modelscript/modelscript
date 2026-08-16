@@ -50,6 +50,9 @@ export class QueryNode {
   firstDependencyEdge: u32;   // +28
   firstSubscriberEdge: u32;   // +32
   nextHashBucketPtr: u32;     // +36
+  valueMerkleLow: u32;        // +40 (Blueprint 1 + 4)
+  valueMerkleHigh: u32;       // +44
+  verifiedRevision: u32;      // +48
 }
 
 @unmanaged
@@ -147,6 +150,9 @@ export function resetQueryArena(): void {
   }
   if (t_modelProperties != 0) {
       changetype<UnmanagedMap64To64>(t_modelProperties).init();
+  }
+  if (changetype<usize>(t_negativeDeps) != 0) {
+      t_negativeDeps.init();
   }
   scopedImportHead = 0;
 }
@@ -324,12 +330,12 @@ export function getQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, a
 }
 
 /**
- * Allocates a new 40-byte query node from linear memory and inserts it into the
- * open-addressing hash table. This node will track its execution state, cached value,
- * and dependency edges for future incremental runs.
+ * Allocates a new 56-byte query node from linear memory and inserts it into the
+ * open-addressing hash table. This node tracks execution state, cached value,
+ * 64-bit Merkle result hashes, and dependency edges for Salsa 3.0.
  */
-export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32 = 0): u32 {
-  let ptr = allocGraph(40);
+export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  let ptr = allocGraph(56);
   let node = changetype<QueryNode>(ptr);
   node.queryType = queryType;
   node.arg1 = arg1;
@@ -340,6 +346,9 @@ export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32,
   node.value = 0;
   node.firstDependencyEdge = 0;
   node.firstSubscriberEdge = 0;
+  node.valueMerkleLow = 0;
+  node.valueMerkleHigh = 0;
+  node.verifiedRevision = 0;
   
   let idx = combineQueryKey(queryType, arg1, arg2, arg3, arg4);
   node.nextHashBucketPtr = queryHashTableOffset[idx];
@@ -349,6 +358,82 @@ export function allocQueryNode2(queryType: u32, arg1: u32, arg2: u32, arg3: u32,
 }
 
 export let globalRevision: u32 = 1;
+
+export let t_negativeDeps: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+
+export function ensureNegativeDeps(): void {
+  if (changetype<usize>(t_negativeDeps) == 0) {
+    t_negativeDeps = changetype<UnmanagedMap64>(createMap64());
+  }
+}
+
+/**
+ * Registers a negative dependency: records that a query failed because `nameHash` was missing.
+ * @param queryPtr The query node pointer that depended on nameHash.
+ * @param nameHash The missing symbol's name hash.
+ */
+export function salsa_registerNegativeDependency(queryPtr: u32, nameHash: u32): void {
+  if (queryPtr == 0 || nameHash == 0) return;
+  ensureNegativeDeps();
+  let headEdge = t_negativeDeps.get(nameHash as u64) as u32;
+  let newEdge = allocEdge(queryPtr, headEdge);
+  t_negativeDeps.set(nameHash as u64, newEdge);
+}
+
+/**
+ * Automatically invalidates all queries waiting for `nameHash` when that symbol is registered.
+ * @param nameHash The newly introduced symbol name hash.
+ * @returns Total queries invalidated.
+ */
+export function salsa_invalidateNegativeDependencies(nameHash: u32): u32 {
+  if (nameHash == 0 || changetype<usize>(t_negativeDeps) == 0) return 0;
+  let headEdge = t_negativeDeps.get(nameHash as u64) as u32;
+  if (headEdge == 0) return 0;
+
+  let count: u32 = 0;
+  let curr = headEdge;
+  while (curr != 0) {
+    let edge = changetype<EdgeNode>(curr);
+    if (edge.targetPtr != 0) {
+      invalidateNode(edge.targetPtr);
+      count++;
+    }
+    curr = edge.nextEdgePtr;
+  }
+  // Clear the negative dependency bucket
+  t_negativeDeps.set(nameHash as u64, 0);
+  return count;
+}
+
+/**
+ * Merkle-Based O(1) Value Backdating (Blueprint 4).
+ * Checks if the newly computed query result matches the previous 64-bit Merkle hash.
+ * If matched, backdates the query revision without triggering downstream subscriber invalidation!
+ * @param nodePtr The query node pointer.
+ * @param newMerkleLow Lower 32-bits of result Merkle hash.
+ * @param newMerkleHigh Upper 32-bits of result Merkle hash.
+ * @returns True if value was identical (backdated), False if value changed.
+ */
+export function salsa_backdateQuery(nodePtr: u32, newMerkleLow: u32, newMerkleHigh: u32): boolean {
+  if (nodePtr == 0) return false;
+  let node = changetype<QueryNode>(nodePtr);
+
+  if ((newMerkleLow != 0 || newMerkleHigh != 0) &&
+      node.valueMerkleLow == newMerkleLow &&
+      node.valueMerkleHigh == newMerkleHigh) {
+    // Merkle match: value is semantically unchanged!
+    node.revision = globalRevision;
+    node.verifiedRevision = globalRevision;
+    return true; // Successfully backdated!
+  }
+
+  // Value changed: update Merkle hash
+  node.valueMerkleLow = newMerkleLow;
+  node.valueMerkleHigh = newMerkleHigh;
+  node.revision = globalRevision;
+  node.verifiedRevision = globalRevision;
+  return false;
+}
 
 /**
  * Invalidates a query node by resetting its revision to 0 (dirty state).
@@ -766,4 +851,71 @@ export class ArenaTopologyGraph {
     }
     return clusterCount;
   }
+}
+
+// ----------------------------------------------------------------------------
+// Exported Salsa 3.0 Bridge API
+// ----------------------------------------------------------------------------
+
+export function query_getNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  return getQueryNode2(queryType, arg1, arg2, arg3, arg4);
+}
+
+export function query_allocNode(queryType: u32, arg1: u32, arg2: u32, arg3: u32, arg4: u32): u32 {
+  return allocQueryNode2(queryType, arg1, arg2, arg3, arg4);
+}
+
+export function query_invalidate(queryNodePtr: u32): void {
+  invalidateNode(queryNodePtr);
+}
+
+export function query_getValue(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).value;
+}
+
+export function query_setValue(queryNodePtr: u32, val: u32): void {
+  if (queryNodePtr == 0) return;
+  changetype<QueryNode>(queryNodePtr).value = val;
+}
+
+export function query_getRevision(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).revision;
+}
+
+export function query_setRevision(queryNodePtr: u32, rev: u32): void {
+  if (queryNodePtr == 0) return;
+  changetype<QueryNode>(queryNodePtr).revision = rev;
+}
+
+export function query_getMerkleLow(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).valueMerkleLow;
+}
+
+export function query_getMerkleHigh(queryNodePtr: u32): u32 {
+  if (queryNodePtr == 0) return 0;
+  return changetype<QueryNode>(queryNodePtr).valueMerkleHigh;
+}
+
+export function query_setMerkle(queryNodePtr: u32, low: u32, high: u32): void {
+  if (queryNodePtr == 0) return;
+  let q = changetype<QueryNode>(queryNodePtr);
+  q.valueMerkleLow = low;
+  q.valueMerkleHigh = high;
+}
+
+export function query_addDependency(parentPtr: u32, targetPtr: u32): void {
+  if (parentPtr == 0 || targetPtr == 0) return;
+  addDependencyEdgeIfMissing(parentPtr, targetPtr);
+  addSubscriberEdgeIfMissing(targetPtr, parentPtr);
+}
+
+export function query_getGlobalRevision(): u32 {
+  return globalRevision;
+}
+
+export function query_incrementRevision(): void {
+  incrementGlobalRevision();
 }
