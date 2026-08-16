@@ -539,6 +539,9 @@ export interface LanguageOptions<
     rules?: Record<string, (node: any, out: any) => void>;
   };
 
+  /** Declarative 2D Diagram & Visual Modeling Configuration */
+  diagram?: DiagramConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+
   /** Declarative Control Flow Graph Nodes Configuration */
   cfgNodes?: Record<
     string,
@@ -679,6 +682,9 @@ export function language<
 ): LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> {
   return options;
 }
+
+/** Alias for `language` grammar definition */
+export const grammar = language;
 
 type ExtractF<T> = T extends (infer U)[] ? (U extends Rule<infer F> ? F : any) : T extends Rule<infer F> ? F : any;
 
@@ -1381,3 +1387,389 @@ export function tggMapList(sourceListVar: any, targetListVar: any, mapper: (item
 export function tggCompute(targetVar: any, queryName: string, sourceVar: any): TGGConstraint {
   return { kind: "compute", args: [targetVar, queryName, sourceVar] };
 }
+
+// ---------------------------------------------------------------------------
+// General-Purpose 2D Diagram & Visual Modeling DSL (First-Principles Engine)
+// ---------------------------------------------------------------------------
+
+/** Visual styling attributes for graphical entities and connections */
+export interface VisualStyle {
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+  textColor?: string;
+  headerFill?: string;
+  opacity?: number;
+  rx?: number;
+  ry?: number;
+  icon?: string;
+  router?: "manhattan" | "orth" | "metro" | "normal" | "bezier" | string;
+  connector?: "rounded" | "smooth" | "jumpover" | "normal" | string;
+  arrowHead?: "classic" | "block" | "diamond" | "cross" | "none" | string;
+}
+
+/** Spatial mapping & coordinate system configuration */
+export interface SpatialPlacementConfig<FieldName extends string = string> {
+  /** In-syntax annotation field or decorator where layout coordinates are stored */
+  annotationField?: FieldName;
+  /** Schema: 'explicit' (custom fields), 'modelica' (origin + extent + rotation), 'point' (x, y), 'box' (x, y, w, h) */
+  schema?: "explicit" | "modelica" | "point" | "box" | "custom";
+  originField?: FieldName;
+  extentField?: FieldName;
+  rotationField?: FieldName;
+  xField?: FieldName;
+  yField?: FieldName;
+  widthField?: FieldName;
+  heightField?: FieldName;
+  /** Invert Y-axis for mathematical coordinate systems (Y-up) vs screen coordinate systems (Y-down) */
+  invertY?: boolean;
+  /** Default automatic layout algorithm when placement is not explicit in the code */
+  autoLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular";
+}
+
+/** Port / Anchor configuration for connecting edges to nodes */
+export interface VisualPortConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  /** Query or rule to retrieve child port nodes */
+  query?:
+    | QueryName
+    | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>
+    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
+  /** Field or callback for port identifier / label */
+  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, port: u32) => string);
+  /** Anchor placement group */
+  group?: "in" | "out" | "left" | "right" | "top" | "bottom" | "auto" | "radial";
+  style?: VisualStyle;
+}
+
+/** Structured internal compartment configuration (e.g. attributes, operations, parameters) */
+export interface VisualCompartmentConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  header: string;
+  query:
+    | QueryName
+    | ASTQueryFunction<RuleName, FieldName, QueryName, ModelAttrs>
+    | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
+  itemLabel?: (db: CodeGraph<ModelAttrs, RuleName, FieldName>, item: u32) => string;
+}
+
+/** Reactive / Live Simulation Animation Binding Channel */
+export interface ReactiveAnimationChannel {
+  /** Target visual attribute (e.g., 'rotation', 'extent', 'fill', 'stroke', 'origin', 'visible', 'text', 'scale') */
+  attribute: "rotation" | "extent" | "fill" | "stroke" | "origin" | "visible" | "text" | "scale" | string;
+  /** Signal / variable name in the simulation state vector (e.g., 'phi', 'temperature', 'active') */
+  signal?: string;
+  /** Value transformation callback (converts simulation numeric state to visual attribute value) */
+  transform?: (db: CodeGraph, node: u32, signalValue: f64) => any;
+}
+
+/** Configuration for simulation-time reactive animations & dynamic selection */
+export interface ReactiveDynamicsConfig {
+  /** Function name used in AST for in-code dynamic value selection (e.g., 'DynamicSelect', 'animate') */
+  selectFunction?: string;
+  /** Extract static design-time AST argument vs dynamic simulation AST expression */
+  extractDynamicSelect?: (db: CodeGraph, callNode: u32) => { staticExpr: u32; dynamicExpr: u32 };
+  /** Evaluates dynamic AST expression against live state lookup */
+  evaluateDynamic?: (db: CodeGraph, dynamicExprNode: u32, getState: (varName: string) => f64) => any;
+  /** Static animation channel bindings */
+  channels?: ReactiveAnimationChannel[];
+}
+
+/**
+ * Visual Element / Vector Glyph Primitive & DOM-Free SVG Hierarchy
+ * Fully isomorphic with X6Markup: supports high-level geometric primitives,
+ * SVG element tag names, and nested container trees (<svg>, <defs>, <g>, <linearGradient>, <pattern>).
+ */
+export interface VisualElement {
+  /** Primitive type or SVG tag name (e.g. 'rect', 'circle', 'path', 'g', 'svg', 'defs') */
+  type?:
+    | "rect"
+    | "circle"
+    | "ellipse"
+    | "line"
+    | "polygon"
+    | "path"
+    | "text"
+    | "image"
+    | "group"
+    | "svg"
+    | "defs"
+    | "g"
+    | string;
+  tagName?: string;
+  selector?: string;
+  groupSelector?: string;
+  attrs?: Record<string, string | number | boolean | undefined>;
+  textContent?: string;
+
+  // Spatial & visual coordinates
+  x?: number;
+  y?: number;
+  width?: number | string;
+  height?: number | string;
+  cx?: number;
+  cy?: number;
+  r?: number;
+  rx?: number;
+  ry?: number;
+  d?: string;
+  points?: [number, number][] | { x: number; y: number }[] | string;
+  text?: string;
+  src?: string;
+  style?: VisualStyle;
+
+  /** Nested children / sub-elements / SVG container hierarchy */
+  children?: VisualElement[];
+}
+
+export type X6Markup = VisualElement;
+
+/** Visual Node & Group configuration */
+export interface VisualNodeConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  role?: "node" | "group" | "compartment";
+  label?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string);
+  stereotype?: string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => string);
+  shape?: "rect" | "circle" | "diamond" | "cylinder" | "package" | "subsystem" | "pill" | "custom" | string;
+  style?: VisualStyle;
+  size?: { width: number; height: number };
+  spatial?: SpatialPlacementConfig<FieldName>;
+  placement?: SpatialPlacementConfig<FieldName>; // Alias for backward-compat
+  ports?: VisualPortConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+  compartments?: VisualCompartmentConfig<RuleName, FieldName, QueryName, ModelAttrs>[];
+
+  /**
+   * Dynamic visual representation function / query.
+   * Inspects AST nodes, symbols, or types and returns visual elements or vector markup.
+   */
+  render?: (
+    db: CodeGraph<ModelAttrs, RuleName, FieldName>,
+    node: u32,
+    env: EvaluationEnvironment,
+  ) => VisualElement[] | any;
+
+  /**
+   * Declarative AST graphics extractor: extracts child graphical shape AST nodes from any field/query
+   */
+  graphics?: {
+    query?: FieldName | QueryName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => Cursor);
+    primitives?: Record<string, Record<string, string>>;
+  };
+
+  /** Dynamic template expansions & property bindings (e.g. %name, %R, %class) */
+  propertyBindings?: Record<
+    string,
+    FieldName | string | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, node: u32) => any)
+  >;
+
+  /** Reactive simulation animation & dynamic expression evaluation */
+  dynamics?: ReactiveDynamicsConfig;
+  animation?: ReactiveDynamicsConfig; // Alias for backward-compat
+}
+
+/** Visual Edge & Connection configuration */
+export interface VisualEdgeConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  source: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
+  target: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
+  sourcePort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
+  targetPort?: FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
+  label?: string | FieldName | ((db: CodeGraph<ModelAttrs, RuleName, FieldName>, edge: u32) => string);
+  waypointsField?: FieldName;
+  style?: VisualStyle;
+
+  /** Live simulation animation for edge states (e.g. flow velocity, current, active transitions) */
+  dynamics?: ReactiveDynamicsConfig;
+  animation?: ReactiveDynamicsConfig; // Alias for backward-compat
+}
+
+/** General Diagram Projection (View / Slice / Perspective) */
+export interface DiagramProjectionConfig<RuleName extends string = string, FieldName extends string = string> {
+  label: string;
+  description?: string;
+  /** Perspective / Viewpoint identifier */
+  perspective?: string;
+  viewpoint?: string; // Alias for backward-compat
+  /** Scope query: which AST nodes are candidate entities */
+  scope?: (db: CodeGraph, root: u32) => Cursor;
+  expose?: string[] | ((db: CodeGraph, root: u32) => Cursor);
+  /** Node filter predicate */
+  filter?: (db: CodeGraph, node: u32) => boolean;
+  /** Layout strategy */
+  defaultLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | "manual";
+}
+
+/** Dynamic In-Model Projection Discovery (e.g. SysML2 views, SQL views, Mermaid subgraphs) */
+export interface InModelProjectionDiscoveryConfig<RuleName extends string = string, FieldName extends string = string> {
+  /** The grammar rule defining views/projections in user code (e.g. 'ViewUsage', 'ViewDefinition') */
+  rule?: NoInfer<RuleName>;
+  viewRule?: NoInfer<RuleName>; // Alias for backward-compat
+  /** Perspective / viewpoint definition rule */
+  perspectiveRule?: NoInfer<RuleName>;
+  viewpointRule?: NoInfer<RuleName>; // Alias for backward-compat
+  /** Field extracting the projection name */
+  nameField?: FieldName;
+  /** Field extracting the viewpoint / perspective target reference */
+  perspectiveField?: FieldName;
+  viewpointField?: FieldName; // Alias for backward-compat
+  /** Field extracting the expose / scope query expression */
+  exposeField?: FieldName;
+  /** Field extracting the filter predicate expression */
+  filterField?: FieldName;
+  /** Evaluates user's in-model filter expression against candidate AST nodes */
+  evaluateFilter?: (db: CodeGraph, filterNode: u32, candidateNode: u32) => boolean;
+  /** Evaluates user's in-model expose expression to return an AST cursor */
+  evaluateExpose?: (db: CodeGraph, exposeNode: u32) => Cursor;
+}
+
+/** Dynamic Graphic Annotation Parser (e.g. Modelica Icon/Diagram, CAD 2D primitives) */
+export interface GraphicAnnotationsConfig<RuleName extends string = string, FieldName extends string = string> {
+  /** Annotation clause field in AST (e.g. 'annotationClause') */
+  annotationField?: FieldName;
+  /** Graphic primitive AST constructor mappings */
+  primitives?: Record<string, Record<string, string>>;
+  iconSection?: string;
+  diagramSection?: string;
+  /** Resolves string template macros (%name, %<param>) against active instance scope */
+  resolveTemplate?: (db: CodeGraph, templateString: string, componentNode: u32) => string;
+}
+
+/** Bidirectional Visual Mutations (Canvas Action -> AST Synthesis via Unparser) */
+export interface VisualMutationConfig {
+  createEdge?: (source: string, target: string, sourcePort?: string, targetPort?: string) => string;
+  createNode?: (ruleName: string, name: string, x: number, y: number) => string;
+  updatePlacement?: (db: CodeGraph, node: u32, x: number, y: number, w: number, h: number, rot: number) => void;
+  deleteEntity?: (db: CodeGraph, node: u32) => void;
+  renameEntity?: (db: CodeGraph, node: u32, newName: string) => void;
+}
+
+/**
+ * Generic Runtime Environment / State Store Lookup
+ * Resolves identifiers to values from either static parameter bindings (design-time)
+ * or live simulation / telemetry state vectors (runtime playback).
+ */
+export interface EvaluationEnvironment {
+  /** Retrieves variable or parameter value by identifier */
+  get(identifier: string): any;
+  /** Numerical value lookup */
+  getNumber(identifier: string): f64;
+  /** String value lookup */
+  getString(identifier: string): string;
+  /** Boolean condition lookup */
+  getBoolean(identifier: string): boolean;
+  /** Current simulation / execution time */
+  time?: f64;
+}
+
+/**
+ * Universal In-Language Expression Evaluator Protocol
+ */
+export interface ExpressionEvaluatorConfig {
+  /**
+   * Evaluates ANY in-language AST expression node using an evaluation environment.
+   * Works identically for design-time parameter resolution and 60 FPS simulation playback.
+   */
+  evaluate?: (db: CodeGraph, exprNode: u32, env: EvaluationEnvironment) => any;
+
+  /**
+   * Optional recognizer for languages with explicit static/dynamic wrapper syntax (e.g. Modelica DynamicSelect)
+   */
+  splitStaticDynamic?: (db: CodeGraph, exprNode: u32) => { staticNode: u32; dynamicNode: u32 };
+}
+
+/**
+ * Universal 2D Visual Modeling & Diagram DSL Configuration
+ */
+export interface DiagramConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  /** Static / built-in diagram projections */
+  projections?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>;
+  views?: Record<string, DiagramProjectionConfig<RuleName, FieldName>>; // Alias for backward-compat
+
+  /** Dynamic in-model projection / view discovery from user AST (e.g. SysML2 views) */
+  inModelProjections?: InModelProjectionDiscoveryConfig<RuleName, FieldName>;
+  inModelViews?: InModelProjectionDiscoveryConfig<RuleName, FieldName>; // Alias for backward-compat
+
+  /** In-model graphic annotations & vector shape extraction (optional fallback) */
+  annotations?: GraphicAnnotationsConfig<RuleName, FieldName>;
+
+  /** General in-language expression evaluation engine (evaluates in-code expressions at design-time and live simulation) */
+  evaluator?: ExpressionEvaluatorConfig;
+
+  /** Universal reactive dynamics & simulation animation protocol (e.g. DynamicSelect) */
+  dynamics?: ReactiveDynamicsConfig;
+  dynamicSelect?: ReactiveDynamicsConfig; // Alias for backward-compat
+
+  /** Visual entity / node configurations */
+  entities?: Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>;
+  nodes?: Partial<Record<NoInfer<RuleName>, VisualNodeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>; // Alias for backward-compat
+
+  /** Visual relationship / edge configurations */
+  connections?: Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>;
+  edges?: Partial<Record<NoInfer<RuleName>, VisualEdgeConfig<RuleName, FieldName, QueryName, ModelAttrs>>>; // Alias for backward-compat
+
+  /** Visual mutations (Unparser-backed AST transformations) */
+  mutations?: VisualMutationConfig;
+}
+
+// Backward-compatible type aliases
+export type DiagramStyle = VisualStyle;
+export type DiagramPlacementConfig<FieldName extends string = string> = SpatialPlacementConfig<FieldName>;
+export type DiagramPortConfig<
+  R extends string = string,
+  F extends string = string,
+  Q extends string = string,
+  M extends Record<string, Record<string, any>> = any,
+> = VisualPortConfig<R, F, Q, M>;
+export type DiagramCompartmentConfig<
+  R extends string = string,
+  F extends string = string,
+  Q extends string = string,
+  M extends Record<string, Record<string, any>> = any,
+> = VisualCompartmentConfig<R, F, Q, M>;
+export type DiagramAnimationBinding = ReactiveAnimationChannel;
+export type DiagramAnimationConfig = ReactiveDynamicsConfig;
+export type DiagramNodeConfig<
+  R extends string = string,
+  F extends string = string,
+  Q extends string = string,
+  M extends Record<string, Record<string, any>> = any,
+> = VisualNodeConfig<R, F, Q, M>;
+export type DiagramEdgeConfig<
+  R extends string = string,
+  F extends string = string,
+  Q extends string = string,
+  M extends Record<string, Record<string, any>> = any,
+> = VisualEdgeConfig<R, F, Q, M>;
+export type DiagramViewConfig = DiagramProjectionConfig;
+export type DiagramMutationConfig = VisualMutationConfig;
+export type InModelViewDiscoveryConfig<
+  R extends string = string,
+  F extends string = string,
+> = InModelProjectionDiscoveryConfig<R, F>;
+export type InModelGraphicAnnotationsConfig<
+  R extends string = string,
+  F extends string = string,
+> = GraphicAnnotationsConfig<R, F>;
+export type InModelDynamicSelectConfig = ReactiveDynamicsConfig;
