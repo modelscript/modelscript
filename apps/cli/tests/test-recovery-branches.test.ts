@@ -157,7 +157,7 @@ describe("GLR Parser Error Recovery Branches", () => {
   }
   describe("Regression Tests", () => {
     it("should anchor the missing semicolon diagnostic to the previous token instead of the next line", () => {
-      facade.setParserConfig(false, false, true, false); // Only Branch C
+      facade.setParserConfig(false, true, false, false); // Only Branch B
       const code = "scope {\n  let velocity = 100;\n  let mass = 50;\n  let x = 1\n  print velocity;\n}";
       const astRoot = facade.parse(code);
       const diags = facade.getDiagnostics(astRoot);

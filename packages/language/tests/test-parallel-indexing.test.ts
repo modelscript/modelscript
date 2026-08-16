@@ -2,7 +2,6 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { buildParser } from "../src/api.js";
 import { field, language, repeat, semanticToken, seq } from "../src/dsl.js";
 import { IndexFileTask, LspWorkerPool } from "../src/workers/worker-pool.js";

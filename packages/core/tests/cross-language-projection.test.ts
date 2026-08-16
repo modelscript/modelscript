@@ -1,5 +1,3 @@
-import { describe, expect, it } from "vitest";
-
 import { ProjectionResult, UnifiedWorkspace } from "@modelscript/compiler";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaConfig from "@modelscript/modelica/language";

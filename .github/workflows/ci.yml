@@ -80,8 +80,8 @@ jobs:
         id: cache-fmusim
         uses: actions/cache@v4
         with:
-          path: packages/fmi/bin
-          key: ${{ runner.os }}-fmusim-2.0.4
+          path: packages/fmi/validation/reference_fmus
+          key: ${{ runner.os }}-fmusim-v0.0.39
       - name: Fetch FMI Simulator
         if: steps.cache-fmusim.outputs.cache-hit != 'true'
         run: npm run fetch:fmusim --workspace=@modelscript/fmi
