@@ -8,6 +8,7 @@ import {
   arrayCode,
   bltCode,
   builtins_mathCode,
+  casCode,
   correspondenceCode,
   cursorCode,
   daeCode,
@@ -29,6 +30,7 @@ import {
   recoveryCode,
   recoveryConfigCode,
   stubCode,
+  tapeCode,
   trigramCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
@@ -1032,6 +1034,8 @@ export function generateParserTables(
     { filename: "ontology_projection.ts", content: ontology_projectionCode },
     { filename: "builtins_math.ts", content: builtins_mathCode },
     { filename: "flattener.ts", content: flattenerCode },
+    { filename: "cas.ts", content: casCode },
+    { filename: "tape.ts", content: tapeCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1059,6 +1063,8 @@ export function generateParserTables(
   code += extractExports(ontology_projectionCode, "./ontology_projection");
   code += extractExports(builtins_mathCode, "./builtins_math");
   code += extractExports(flattenerCode, "./flattener");
+  code += extractExports(casCode, "./cas");
+  code += extractExports(tapeCode, "./tape");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

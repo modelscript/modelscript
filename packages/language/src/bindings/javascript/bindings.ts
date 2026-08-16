@@ -2163,6 +2163,47 @@ export class LspFacade {
     return this.exports.csg_op_difference ? this.exports.csg_op_difference(d1, d2) : Math.max(d1, -d2);
   }
 
+  /** Simplifies an algebraic expression using CAS rewrite rules and constant folding in WASM. */
+  casSimplify(daePtr: number, exprId: number): number {
+    return this.exports.cas_export_simplify ? this.exports.cas_export_simplify(daePtr, exprId) : exprId;
+  }
+
+  /** Computes the exact symbolic derivative d(expr) / d(varId) in WASM. */
+  casDifferentiate(daePtr: number, exprId: number, targetVarId: number): number {
+    return this.exports.cas_export_differentiate
+      ? this.exports.cas_export_differentiate(daePtr, exprId, targetVarId)
+      : 0;
+  }
+
+  /** Creates an Automatic Differentiation Tape instance in WASM. */
+  createAdTape(): number {
+    return this.exports.tape_create ? this.exports.tape_create() : 0;
+  }
+
+  /** Pushes an elementary operation node to the AD tape. */
+  tapePushOp(tapePtr: number, op: number, left: number, right: number, val: number): number {
+    return this.exports.tape_pushOp ? this.exports.tape_pushOp(tapePtr, op, left, right, val) : 0;
+  }
+
+  /** Runs the reverse-mode AD pass backwards from rootNode. */
+  tapeBackward(tapePtr: number, rootNode: number): void {
+    if (this.exports.tape_backward) {
+      this.exports.tape_backward(tapePtr, rootNode);
+    }
+  }
+
+  /** Retrieves the accumulated gradient for a node on the AD tape. */
+  tapeGetGrad(tapePtr: number, nodeIdx: number): number {
+    return this.exports.tape_getGrad ? this.exports.tape_getGrad(tapePtr, nodeIdx) : 0;
+  }
+
+  /** Resets the AD tape for the next evaluation pass. */
+  tapeReset(tapePtr: number): void {
+    if (this.exports.tape_reset) {
+      this.exports.tape_reset(tapePtr);
+    }
+  }
+
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
   formatDocument(astRoot: number, preserveFormatting: boolean = false): string {
     if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";
