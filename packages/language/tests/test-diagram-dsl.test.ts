@@ -459,4 +459,111 @@ describe("Declarative 2D Diagram DSL Schema", () => {
     expect(group?.children?.[0].tagName).toBe("rect");
     expect(group?.children?.[3].textContent).toBe("%name");
   });
+
+  it("should validate SysModel demo DSL diagram configuration with views, nodes, edges, ports, and mutations", () => {
+    const sysModelGrammar = grammar({
+      name: "SysModel",
+      rules: {
+        Program: ($) => $.ModelDef,
+        ModelDef: ($) => "model",
+        Decl: ($) => "decl",
+        Equation: ($) => "equation",
+      },
+      diagram: {
+        views: {
+          Schematic: {
+            label: "Schematic Diagram",
+            defaultLayout: "manual",
+          },
+          InternalBlockDiagram: {
+            label: "Internal Block Diagram (IBD)",
+            defaultLayout: "dagre",
+          },
+        },
+        nodes: {
+          ModelDef: {
+            label: "name",
+            shape: "subsystem",
+            style: {
+              fill: "rgba(30, 41, 59, 0.7)",
+              stroke: "#38bdf8",
+              strokeWidth: 2,
+              rx: 8,
+              ry: 8,
+            },
+            spatial: { autoLayout: "dagre" },
+          },
+          Decl: {
+            label: "name",
+            stereotype: "«component»",
+            shape: "rect",
+            style: {
+              fill: "#1e293b",
+              stroke: "#3b82f6",
+              strokeWidth: 2,
+              rx: 6,
+              ry: 6,
+            },
+            ports: {
+              group: "auto",
+              style: { fill: "#38bdf8", stroke: "#ffffff", size: 6 },
+            },
+            propertyBindings: {
+              label: "%name: %type",
+              tooltip: "Component: %name (%type)",
+            },
+            animation: {
+              selectFunction: "DynamicSelect",
+              channels: [
+                {
+                  attribute: "fill",
+                  signal: "active",
+                  transform: (_db, _node, active) => (active > 0.5 ? "#22c55e" : "#1e293b"),
+                },
+              ],
+            },
+          },
+          Equation: {
+            shape: "pill",
+            style: {
+              fill: "rgba(59, 130, 246, 0.1)",
+              stroke: "#60a5fa",
+              strokeWidth: 1,
+            },
+          },
+        },
+        edges: {
+          Equation: {
+            source: "lhs",
+            target: "rhs",
+            style: {
+              router: "manhattan",
+              connector: "jumpover",
+              stroke: "#60a5fa",
+              strokeWidth: 2,
+            },
+          },
+        },
+        mutations: {
+          createNode: (type, name, _x, _y) => `  ${type} ${name};\n`,
+          createEdge: (src, tgt) => `  ${src} = ${tgt};\n`,
+        },
+      },
+    });
+
+    const d = sysModelGrammar.diagram;
+    expect(d).toBeDefined();
+    expect(d?.views?.Schematic.label).toBe("Schematic Diagram");
+    expect(d?.views?.InternalBlockDiagram.defaultLayout).toBe("dagre");
+    expect(d?.nodes?.ModelDef?.shape).toBe("subsystem");
+    expect(d?.nodes?.Decl?.stereotype).toBe("«component»");
+    expect(d?.nodes?.Decl?.ports?.group).toBe("auto");
+    expect(d?.nodes?.Decl?.propertyBindings?.label).toBe("%name: %type");
+    expect(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 1.0)).toBe("#22c55e");
+    expect(d?.nodes?.Decl?.animation?.channels?.[0].transform?.({} as any, 1, 0.0)).toBe("#1e293b");
+    expect(d?.edges?.Equation?.style?.router).toBe("manhattan");
+    expect(d?.edges?.Equation?.style?.connector).toBe("jumpover");
+    expect(d?.mutations?.createNode?.("Real", "voltage", 10, 20)).toBe("  Real voltage;\n");
+    expect(d?.mutations?.createEdge?.("power", "voltage * current")).toBe("  power = voltage * current;\n");
+  });
 });

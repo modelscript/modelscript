@@ -56,6 +56,11 @@ export const Playground: CommandModule = {
         res.writeHead(200, headers);
         const tsJsPath = join(__dirname, "../../../../packages/language/dist/typescript.mjs");
         res.end(existsSync(tsJsPath) ? readFileSync(tsJsPath) : "");
+      } else if (urlPath === "/diagram.browser.js") {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
+        const diagramJsPath = join(__dirname, "../../../../packages/diagram/dist/browser.js");
+        res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
       } else if (urlPath?.startsWith("/node_modules/")) {
         const rootNodeModules = join(__dirname, "../../../../node_modules");
         const cliNodeModules = join(__dirname, "../../node_modules");
@@ -300,6 +305,12 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
     <script crossorigin src="/node_modules/react/umd/react.development.js"></script>
     <script crossorigin src="/node_modules/react-dom/umd/react-dom.development.js"></script>
     <script src="/node_modules/@babel/standalone/babel.min.js"></script>
+    <!-- Load Diagram Module (X6) -->
+    <script type="module">
+        import * as Diagram from '/diagram.browser.js';
+        window.DiagramModule = Diagram;
+        window.dispatchEvent(new Event('diagramModuleLoaded'));
+    </script>
     <!-- Load Monaco Editor Locally -->
     <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
     <script type="module">
@@ -487,7 +498,89 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
     }
   },
 
-  // 10. AssemblyScript Query Engine
+  // 10. Declarative 2D Visual Diagram & Interactive Modeling
+  diagram: {
+    views: {
+      Schematic: {
+        label: 'Schematic Diagram',
+        defaultLayout: 'manual'
+      },
+      InternalBlockDiagram: {
+        label: 'Internal Block Diagram (IBD)',
+        defaultLayout: 'dagre'
+      }
+    },
+    nodes: {
+      ModelDef: {
+        label: 'name',
+        shape: 'subsystem',
+        style: {
+          fill: 'rgba(30, 41, 59, 0.7)',
+          stroke: '#38bdf8',
+          strokeWidth: 2,
+          rx: 8,
+          ry: 8
+        },
+        spatial: { autoLayout: 'dagre' }
+      },
+      Decl: {
+        label: 'name',
+        stereotype: '«component»',
+        shape: 'rect',
+        style: {
+          fill: '#1e293b',
+          stroke: '#3b82f6',
+          strokeWidth: 2,
+          rx: 6,
+          ry: 6
+        },
+        ports: {
+          group: 'auto',
+          style: { fill: '#38bdf8', stroke: '#ffffff', size: 6 }
+        },
+        propertyBindings: {
+          label: '%name: %type',
+          tooltip: 'Component: %name (%type)'
+        },
+        animation: {
+          selectFunction: 'DynamicSelect',
+          channels: [
+            {
+              attribute: 'fill',
+              signal: 'active',
+              transform: (db, node, active) => active > 0.5 ? '#22c55e' : '#1e293b'
+            }
+          ]
+        }
+      },
+      Equation: {
+        shape: 'pill',
+        style: {
+          fill: 'rgba(59, 130, 246, 0.1)',
+          stroke: '#60a5fa',
+          strokeWidth: 1
+        }
+      }
+    },
+    edges: {
+      Equation: {
+        source: 'lhs',
+        target: 'rhs',
+        style: {
+          router: 'manhattan',
+          connector: 'jumpover',
+          stroke: '#60a5fa',
+          strokeWidth: 2
+        }
+      }
+    },
+    mutations: {
+      createNode: (type, name, x, y) => '  ' + type + ' ' + name + ';\\\\n',
+      createEdge: (src, tgt) => '  ' + src + ' = ' + tgt + ';\\\\n'
+    }
+  },
+
+  // 11. AssemblyScript Query Engine
   queries: {
     resolveVar: (db, node, $) => {
       let root = db.ast.getRootNode();
@@ -580,10 +673,11 @@ end ThermalSystem;\`;
                     window['__latestDiagramData'] = msg.result;
                     window.dispatchEvent(new CustomEvent('diagramDataUpdated', { detail: msg.result }));
                 }
-                if (msg && msg.result && typeof msg.result.text === 'string') {
-                    if (window.codeEditor && window.codeEditor.getValue() !== msg.result.text) {
+                if (msg && msg.result && typeof msg.result.text === 'string' && msg.result.text.length > 0) {
+                    const cleanText = msg.result.text.replace(/\0/g, '');
+                    if (cleanText.length > 0 && window.codeEditor && window.codeEditor.getValue() !== cleanText) {
                         const pos = window.codeEditor.getPosition();
-                        window.codeEditor.setValue(msg.result.text);
+                        window.codeEditor.setValue(cleanText);
                         if (pos) window.codeEditor.setPosition(pos);
                     }
                 }
@@ -625,8 +719,10 @@ end ThermalSystem;\`;
                     document.getElementById('status').innerText = "Compiled successfully! LSP is active. (WASM: " + kb + " KB)";
                     window.syntaxNames = e.data.syntaxNames;
                     window.fieldNames = e.data.fieldNames;
+                    window.diagramConfig = e.data.diagram;
                     window.pipelines = e.data.pipelines || [];
                     window.dispatchEvent(new Event('pipelinesUpdated'));
+                    window.dispatchEvent(new Event('diagramDataUpdated'));
                     
                     const langId = e.data.langName ? e.data.langName.toLowerCase() : 'exampledsl';
                     if (!monaco.languages.getLanguages().some(l => l.id === langId)) {
@@ -1323,66 +1419,122 @@ end ThermalSystem;\`;
             );
         }
 
-        function DiagramViewer() {
-            const [diagram, setDiagram] = useState(window['__latestDiagramData'] || { nodes: [], edges: [] });
-            const [zoom, setZoom] = useState(1);
-            const [pan, setPan] = useState({ x: 0, y: 0 });
-            const [isPanning, setIsPanning] = useState(false);
-            const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-            const [draggingNode, setDraggingNode] = useState(null);
-            const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+        function DiagramViewer({ isActive }) {
+            const containerRef = useRef(null);
+            const graphRef = useRef(null);
+            const [views, setViews] = useState(['All']);
+            const [activeView, setActiveView] = useState('All');
+
+            const updateDiagramGraph = () => {
+                if (!containerRef.current) return;
+                const Diagram = window.DiagramModule;
+                if (!Diagram || !Diagram.initGraph) return;
+
+                const dslConfig = window.diagramConfig;
+                if (dslConfig && dslConfig.views) {
+                    const vKeys = Object.keys(dslConfig.views);
+                    if (vKeys.length > 0) {
+                        setViews(['All', ...vKeys]);
+                    }
+                }
+
+                if (!graphRef.current) {
+                    Diagram.setDiagramOptions({
+                        container: containerRef.current,
+                        isDark: true,
+                        onAction: (action) => {
+                            if (action && action.type === 'move' && action.items) {
+                                const edits = action.items.map(item => ({
+                                    type: 'move',
+                                    nodePtr: parseInt(item.name.replace('node_', '')) || 0,
+                                    x: Math.round(item.x),
+                                    y: Math.round(item.y)
+                                }));
+                                if (window.diagramConfig?.mutations?.moveNode && window['__applyDiagramEdits']) {
+                                    window['__applyDiagramEdits'](edits);
+                                }
+                            } else if (action && action.type === 'resize' && action.item) {
+                                if (window.diagramConfig?.mutations?.resizeNode && window['__applyDiagramEdits']) {
+                                    window['__applyDiagramEdits']([{
+                                        type: 'resize',
+                                        nodePtr: parseInt(action.item.name.replace('node_', '')) || 0,
+                                        x: Math.round(action.item.x),
+                                        y: Math.round(action.item.y),
+                                        width: Math.round(action.item.width),
+                                        height: Math.round(action.item.height)
+                                    }]);
+                                }
+                            }
+                        }
+                    });
+
+                    const g = Diagram.initGraph(true);
+                    graphRef.current = g;
+                }
+
+                const rawData = window['__latestDiagramData'] || { nodes: [], edges: [] };
+                const sourceText = window.codeEditor ? window.codeEditor.getValue() : "";
+                const diagramData = (Diagram.buildDiagramFromDSL && (dslConfig || rawData.nodes?.length > 0))
+                    ? Diagram.buildDiagramFromDSL(rawData, dslConfig, window.syntaxNames, activeView, sourceText)
+                    : rawData;
+
+                Diagram.renderDiagram(diagramData, true);
+
+                setTimeout(() => {
+                    if (graphRef.current && containerRef.current) {
+                        const rect = containerRef.current.getBoundingClientRect();
+                        if (rect.width > 50 && rect.height > 50) {
+                            graphRef.current.resize(rect.width, rect.height);
+                            try {
+                                graphRef.current.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+                                graphRef.current.centerContent();
+                            } catch (e) {}
+                        }
+                    }
+                }, 60);
+            };
 
             useEffect(() => {
-                const handler = (e) => {
-                    if (e && e.detail) {
-                        setDiagram(e.detail);
-                    } else if (window['__latestDiagramData']) {
-                        setDiagram(window['__latestDiagramData']);
-                    }
+                let isMounted = true;
+
+                if (window.DiagramModule) {
+                    if (isActive) updateDiagramGraph();
+                } else {
+                    const modHandler = () => { if (isMounted && isActive) updateDiagramGraph(); };
+                    window.addEventListener('diagramModuleLoaded', modHandler, { once: true });
+                }
+
+                const dataHandler = () => {
+                    if (isMounted) updateDiagramGraph();
                 };
-                window.addEventListener('diagramDataUpdated', handler);
-                return () => window.removeEventListener('diagramDataUpdated', handler);
-            }, []);
 
-            const handleMouseDownPan = (e) => {
-                if (e.target.closest('.diagram-interactive-node')) return;
-                setIsPanning(true);
-                setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-            };
+                window.addEventListener('diagramDataUpdated', dataHandler);
+                return () => {
+                    isMounted = false;
+                    window.removeEventListener('diagramDataUpdated', dataHandler);
+                };
+            }, [isActive, activeView]);
 
-            const handleMouseMove = (e) => {
-                if (isPanning) {
-                    setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
-                } else if (draggingNode) {
-                    const newX = Math.round((e.clientX - pan.x) / zoom - dragOffset.x);
-                    const newY = Math.round((e.clientY - pan.y) / zoom - dragOffset.y);
-                    setDiagram(prev => ({
-                        ...prev,
-                        nodes: prev.nodes.map(n => n.id === draggingNode.id ? { ...n, x: newX, y: newY } : n)
-                    }));
-                }
-            };
-
-            const handleMouseUp = () => {
-                if (isPanning) {
-                    setIsPanning(false);
-                }
-                if (draggingNode) {
-                    const node = diagram.nodes.find(n => n.id === draggingNode.id);
-                    if (node && window['__applyDiagramEdits']) {
-                        window['__applyDiagramEdits']([{ type: 'move', nodePtr: node.nodePtr, x: node.x, y: node.y }]);
+            useEffect(() => {
+                if (!containerRef.current) return;
+                const ro = new ResizeObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.contentRect.width > 50 && entry.contentRect.height > 50) {
+                            if (graphRef.current) {
+                                graphRef.current.resize(entry.contentRect.width, entry.contentRect.height);
+                                try {
+                                    graphRef.current.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+                                    graphRef.current.centerContent();
+                                } catch (e) {}
+                            } else {
+                                updateDiagramGraph();
+                            }
+                        }
                     }
-                    setDraggingNode(null);
-                }
-            };
-
-            const handleNodeDragStart = (node, e) => {
-                e.stopPropagation();
-                setDraggingNode(node);
-                const mouseX = (e.clientX - pan.x) / zoom;
-                const mouseY = (e.clientY - pan.y) / zoom;
-                setDragOffset({ x: mouseX - node.x, y: mouseY - node.y });
-            };
+                });
+                ro.observe(containerRef.current);
+                return () => ro.disconnect();
+            }, []);
 
             return (
                 <div 
@@ -1393,118 +1545,51 @@ end ThermalSystem;\`;
                         position: 'relative', 
                         overflow: 'hidden', 
                         background: '#0d1117',
-                        backgroundImage: 'radial-gradient(#21262d 1px, transparent 1px)',
-                        backgroundSize: '20px 20px',
-                        cursor: isPanning ? 'grabbing' : 'grab'
+                        display: 'flex',
+                        flexDirection: 'column'
                     }}
-                    onMouseDown={handleMouseDownPan}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
                 >
-                    <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 100, display: 'flex', gap: 6, background: 'rgba(22,27,34,0.85)', padding: '4px 8px', borderRadius: 6, border: '1px solid #30363d' }}>
-                        <button className="tab-btn" onClick={() => setZoom(z => Math.min(2.5, z + 0.15))}>🔍 +</button>
-                        <button className="tab-btn" onClick={() => setZoom(z => Math.max(0.4, z - 0.15))}>🔍 -</button>
-                        <button className="tab-btn" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>↺ Reset</button>
-                    </div>
-
-                    <div style={{ 
-                        transform: "translate(" + pan.x + "px, " + pan.y + "px) scale(" + zoom + ")",
-                        transformOrigin: '0 0',
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        width: 0,
-                        height: 0
-                    }}>
-                        {/* Render Edges */}
-                        <svg style={{ position: 'absolute', top: -5000, left: -5000, width: 10000, height: 10000, pointerEvents: 'none' }}>
-                            {(diagram.edges || []).map(edge => {
-                                const srcNode = diagram.nodes.find(n => n.id === edge.source);
-                                const tgtNode = diagram.nodes.find(n => n.id === edge.target);
-                                if (!srcNode || !tgtNode) return null;
-                                const x1 = 5000 + srcNode.x + (srcNode.width || 100) / 2;
-                                const y1 = 5000 + srcNode.y + (srcNode.height || 60) / 2;
-                                const x2 = 5000 + tgtNode.x + (tgtNode.width || 100) / 2;
-                                const y2 = 5000 + tgtNode.y + (tgtNode.height || 60) / 2;
-                                return (
-                                    <g key={edge.id}>
-                                        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#58a6ff" strokeWidth="2" strokeDasharray="4,4" />
-                                    </g>
-                                );
-                            })}
-                        </svg>
-
-                        {/* Render Nodes */}
-                        {(diagram.nodes || []).map(node => (
-                            <div
-                                key={node.id}
-                                className="diagram-interactive-node"
-                                style={{
-                                    position: 'absolute',
-                                    left: node.x,
-                                    top: node.y,
-                                    width: node.width || 100,
-                                    height: node.height || 60,
-                                    borderRadius: 6,
-                                    background: 'rgba(56, 139, 253, 0.12)',
-                                    border: '2px solid #58a6ff',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#f0f6fc',
-                                    cursor: 'move',
-                                    userSelect: 'none',
-                                    transition: (draggingNode && draggingNode.id === node.id) ? 'none' : 'box-shadow 0.2s',
-                                    zIndex: (draggingNode && draggingNode.id === node.id) ? 50 : 10
-                                }}
-                                onMouseDown={(e) => handleNodeDragStart(node, e)}
+                    <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 100, display: 'flex', gap: 6, background: 'rgba(22,27,34,0.85)', padding: '4px 8px', borderRadius: 6, border: '1px solid #30363d', alignItems: 'center' }}>
+                        {views.length > 1 && (
+                            <select 
+                                value={activeView} 
+                                onChange={(e) => setActiveView(e.target.value)}
+                                style={{ background: '#21262d', color: '#c9d1d9', border: '1px solid #30363d', borderRadius: 4, padding: '3px 8px', fontSize: 12 }}
                             >
-                                <div style={{ fontSize: '11px', color: '#8b949e', fontWeight: 500 }}>
-                                    {window.syntaxNames && window.syntaxNames[node.typeId] ? window.syntaxNames[node.typeId] : 'Node'}
-                                </div>
-                                <div style={{ fontSize: '13px', fontWeight: 'bold' }}>
-                                    {node.id.replace('node_', '')}
-                                </div>
-                                <div style={{ fontSize: '10px', color: '#58a6ff', opacity: 0.8, marginTop: 2 }}>
-                                    ({node.x}, {node.y})
-                                </div>
-                                {/* Left & Right Port Pins */}
-                                <div style={{ position: 'absolute', left: -5, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', border: '1px solid #fff' }} />
-                                <div style={{ position: 'absolute', right: -5, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', border: '1px solid #fff' }} />
-                            </div>
-                        ))}
+                                {views.map(v => <option key={v} value={v}>{v === 'All' ? 'Default View' : v}</option>)}
+                            </select>
+                        )}
+                        <button className="tab-btn" onClick={() => graphRef.current?.zoom(0.15)}>🔍 +</button>
+                        <button className="tab-btn" onClick={() => graphRef.current?.zoom(-0.15)}>🔍 -</button>
+                        <button className="tab-btn" onClick={() => { graphRef.current?.zoomTo(1); graphRef.current?.centerContent(); }}>↺ Fit</button>
                     </div>
+
+                    <div 
+                        id="diagram-x6-container"
+                        ref={containerRef} 
+                        style={{ flex: 1, width: '100%', height: '100%', minHeight: '100%' }} 
+                    />
                 </div>
             );
         }
 
-        const defaultPipelines = [
-            { id: 'flatten', label: 'Flatten DAE System', target: 'dae' },
-            { id: 'blt', label: 'BLT Matrix Decomposition', target: 'blt' }
-        ];
-
         function PlaygroundPanels() {
             const [activeTab, setActiveTab] = useState('ast');
-            const [pipelines, setPipelines] = useState(defaultPipelines);
+            const [pipelines, setPipelines] = useState([]);
 
             useEffect(() => {
-                const updatePipelines = () => {
-                    if (window.pipelines && window.pipelines.length > 0) {
-                        setPipelines(window.pipelines);
-                    }
+                const handler = () => {
+                    setPipelines(window.pipelines || []);
                 };
-                updatePipelines();
-                window.addEventListener('pipelinesUpdated', updatePipelines);
-                return () => window.removeEventListener('pipelinesUpdated', updatePipelines);
+                window.addEventListener('pipelinesUpdated', handler);
+                return () => window.removeEventListener('pipelinesUpdated', handler);
             }, []);
 
             const activePipeline = pipelines.find(p => p.id === activeTab);
 
             return (
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%' }}>
-                    <div className="tab-bar">
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+                    <div id="panel-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                         <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => setActiveTab('ast')}>
                             🌳 AST Tree
                         </button>
@@ -1524,7 +1609,7 @@ end ThermalSystem;\`;
                         <AstViewer />
                     </div>
                     <div style={{ display: activeTab === 'diagram' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                        <DiagramViewer />
+                        <DiagramViewer isActive={activeTab === 'diagram'} />
                     </div>
                     {activePipeline && <PipelinePassViewer pipeline={activePipeline} />}
                     {activeTab === 'diagnostics' && <DiagnosticsViewer />}
@@ -1733,6 +1818,22 @@ self.onmessage = async (e) => {
                                 target: p.target || id
                             })) : [];
 
+                            const sanitizeForClone = (obj) => {
+                                if (!obj || typeof obj !== 'object') return obj;
+                                if (Array.isArray(obj)) return obj.map(sanitizeForClone);
+                                const out = {};
+                                for (const [k, v] of Object.entries(obj)) {
+                                    if (typeof v === 'function') {
+                                        out[k] = v.toString();
+                                    } else if (v && typeof v === 'object') {
+                                        out[k] = sanitizeForClone(v);
+                                    } else {
+                                        out[k] = v;
+                                    }
+                                }
+                                return out;
+                            };
+
                             self.postMessage({ 
                                 type: 'success', 
                                 wasm: vfs['parser.wasm'], 
@@ -1741,6 +1842,7 @@ self.onmessage = async (e) => {
                                 fieldNames: result.javascriptWrapper.fieldNames,
                                 semanticLegend: result.javascriptWrapper.semanticLegend,
                                 pipelines: pipelineDefs,
+                                diagram: sanitizeForClone(grammarDef.diagram),
                                 langName: grammarDef.name
                             });
                         } catch (err) {

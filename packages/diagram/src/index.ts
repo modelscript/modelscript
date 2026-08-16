@@ -95,15 +95,24 @@ export function initGraph(isDark: boolean): Graph {
   const gridColor = isDark ? "#2f2f2f" : "#ccc";
 
   if (graph) {
-    graph.drawBackground({ color: bgColor });
-    graph.drawGrid({
-      type: "doubleMesh",
-      args: [
-        { color: "transparent", thickness: 0 },
-        { color: gridColor, thickness: 1, factor: 10 },
-      ],
-    });
-    return graph;
+    if (graph.container === container) {
+      graph.drawBackground({ color: bgColor });
+      graph.drawGrid({
+        type: "doubleMesh",
+        args: [
+          { color: "transparent", thickness: 0 },
+          { color: gridColor, thickness: 1, factor: 10 },
+        ],
+      });
+      return graph;
+    } else {
+      try {
+        graph.dispose();
+      } catch {
+        // ignore dispose errors
+      }
+      graph = null;
+    }
   }
 
   const g: Graph = new Graph({
@@ -545,7 +554,13 @@ export function initGraph(isDark: boolean): Graph {
       }
       g.removeCells(cells);
     } else {
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const nav = navigator as unknown as {
+        platform?: string;
+        userAgent?: string;
+        userAgentData?: { platform?: string };
+      };
+      const platform = (nav.platform || nav.userAgentData?.platform || nav.userAgent || "").toUpperCase();
+      const isMac = platform.indexOf("MAC") >= 0;
       const mod = isMac ? e.metaKey : e.ctrlKey;
 
       if (mod && e.key.toLowerCase() === "z") {
@@ -833,8 +848,8 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
       if (!parentNode) continue;
 
       // Dynamically compute padding to ensure children don't overlap with the parent's
-      // header or compartments (whose size is encoded in the initial parentNode.height).
-      const PAD = { top: Math.max(60, parentNode.height || 60), left: 40, right: 40, bottom: 40 };
+      // header or compartments.
+      const PAD = { top: 44, left: 24, right: 24, bottom: 24 };
 
       const childIds = new Set(childNodes.map((c) => c.id));
 
@@ -1127,14 +1142,23 @@ export function renderDiagram(data: /* eslint-disable-line @typescript-eslint/no
   }
 
   // Only fit view on first render — preserve zoom/pan on subsequent updates
-  if (cs && isFirstRender) {
-    const expandedRect = {
-      x: cs.x - cs.width * 0.125,
-      y: cs.y - cs.height * 0.125,
-      width: cs.width * 1.25,
-      height: cs.height * 1.25,
-    };
-    g.zoomToRect(expandedRect);
+  if (isFirstRender) {
+    if (cs) {
+      const expandedRect = {
+        x: cs.x - cs.width * 0.125,
+        y: cs.y - cs.height * 0.125,
+        width: cs.width * 1.25,
+        height: cs.height * 1.25,
+      };
+      g.zoomToRect(expandedRect);
+    } else {
+      try {
+        g.zoomToFit({ padding: 30, maxScale: 1.0, minScale: 0.8 });
+        g.centerContent();
+      } catch {
+        // ignore
+      }
+    }
   }
 
   // Clear property cache on re-render (model state may have changed)
@@ -1573,3 +1597,21 @@ export function dropComponentGhost(
     });
   }
 }
+
+export function getGraph(): Graph | null {
+  return graph;
+}
+
+export function disposeGraph(): void {
+  if (graph) {
+    try {
+      graph.dispose();
+    } catch {
+      // ignore
+    }
+    graph = null;
+  }
+}
+
+export * from "./polyglot-diagram-builder.js";
+export { buildDiagramFromDSL, buildPolyglotDiagram } from "./polyglot-diagram-builder.js";

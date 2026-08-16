@@ -178,8 +178,8 @@ export interface PolyglotDiagramEdge {
 export interface PolyglotDiagramData {
   nodes: PolyglotDiagramNode[];
   edges: PolyglotDiagramEdge[];
-  coordinateSystem: { x: number; y: number; width: number; height: number };
-  diagramBackground: null;
+  coordinateSystem?: { x: number; y: number; width: number; height: number } | null;
+  diagramBackground?: any;
   /** Optional: the type of diagram, used by the renderer to select layout algorithms */
   diagramType?: string;
 }
@@ -2088,4 +2088,426 @@ function resolveTypeName(symbolId: SymbolId, index: SymbolIndex, resolver?: Scop
   }
 
   return undefined;
+}
+
+/**
+ * Adapts raw AST diagram records and DSL DiagramConfig into full X6-compatible PolyglotDiagramData.
+ */
+export function buildDiagramFromDSL(
+  data: { nodes: any[]; edges: any[] },
+  diagramConfig?: any,
+  syntaxNames?: Record<number, string> | string[],
+  activeView?: string,
+  sourceText?: string,
+): PolyglotDiagramData {
+  const nodes: PolyglotDiagramNode[] = [];
+  const edges: PolyglotDiagramEdge[] = [];
+
+  const rawNodes = data.nodes || [];
+  const rawEdges = data.edges || [];
+
+  const getNodeText = (rawNode: any): string => {
+    if (rawNode.text) return rawNode.text;
+    if (
+      sourceText &&
+      typeof rawNode.startByte === "number" &&
+      typeof rawNode.endByte === "number" &&
+      rawNode.endByte > rawNode.startByte
+    ) {
+      if (rawNode.endByte <= sourceText.length) {
+        return sourceText.slice(rawNode.startByte, rawNode.endByte);
+      }
+      return sourceText.slice(rawNode.startByte >>> 1, rawNode.endByte >>> 1);
+    }
+    return "";
+  };
+
+  const configuredNodeRules = new Set(Object.keys(diagramConfig?.nodes || diagramConfig?.entities || {}));
+  const configuredEdgeRules = new Set(Object.keys(diagramConfig?.edges || diagramConfig?.connections || {}));
+
+  // Identify container rules (subsystem, group)
+  const containerRules = new Set<string>();
+  for (const [rName, nCfg] of Object.entries(diagramConfig?.nodes || {})) {
+    if ((nCfg as any)?.shape === "subsystem" || (nCfg as any)?.role === "group") {
+      containerRules.add(rName);
+    }
+  }
+
+  // 1. Separate containers and component nodes
+  const containerNodes: any[] = [];
+  const componentNodes: any[] = [];
+  const componentNameToNodeId = new Map<string, string>();
+
+  for (const rawNode of rawNodes) {
+    const ruleName =
+      syntaxNames && (syntaxNames as any)[rawNode.typeId] ? (syntaxNames as any)[rawNode.typeId] : "Node";
+
+    // If nodes are explicitly configured in DSL, ignore non-configured wrapper nodes (e.g. Program)
+    if (configuredNodeRules.size > 0 && !configuredNodeRules.has(ruleName)) {
+      continue;
+    }
+    // If this rule is configured as an edge (e.g. Equation), handle it in edge pass
+    if (configuredEdgeRules.has(ruleName)) {
+      continue;
+    }
+
+    if (containerRules.has(ruleName)) {
+      containerNodes.push({ rawNode, ruleName });
+    } else {
+      componentNodes.push({ rawNode, ruleName });
+    }
+  }
+
+  // 2. Build Container Nodes (e.g. ModelDef)
+  for (const { rawNode, ruleName } of containerNodes) {
+    const nodeConfig = diagramConfig?.nodes?.[ruleName] || diagramConfig?.entities?.[ruleName];
+    const style = nodeConfig?.style || {};
+    const text = getNodeText(rawNode);
+
+    const match = text.match(/\b(?:model|package|block|subsystem|class)\s+([a-zA-Z_][a-zA-Z0-9_]*)/i);
+    const containerName = match
+      ? match[1]
+      : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+
+    const fill = style.fill || "rgba(30, 41, 59, 0.7)";
+    const stroke = style.stroke || "#38bdf8";
+    const strokeWidth = style.strokeWidth || 2;
+    const rx = style.rx || 8;
+    const ry = style.ry || 8;
+
+    const x6Node: PolyglotDiagramNode = {
+      id: rawNode.id,
+      x: rawNode.x || 0,
+      y: rawNode.y || 0,
+      width: rawNode.width || 340,
+      height: rawNode.height || 200,
+      angle: rawNode.rotation || 0,
+      opacity: style.opacity !== undefined ? style.opacity : 1,
+      zIndex: -1,
+      shape: "rect",
+      autoLayout: true,
+      attrs: {
+        body: { fill, stroke, strokeWidth, rx, ry },
+        label: {
+          text: containerName,
+          fill: style.textColor || "#38bdf8",
+          fontSize: 13,
+          fontWeight: "bold",
+          textAnchor: "start",
+          textVerticalAnchor: "top",
+          refX: 16,
+          refY: 16,
+        },
+      },
+      markup: [
+        {
+          tagName: "rect",
+          selector: "body",
+          attrs: { fill, stroke, strokeWidth, rx, ry },
+        },
+        {
+          tagName: "text",
+          selector: "label",
+          textContent: containerName,
+          attrs: {
+            fill: style.textColor || "#38bdf8",
+            fontSize: 13,
+            fontWeight: "bold",
+            textAnchor: "start",
+            textVerticalAnchor: "top",
+            refX: 16,
+            refY: 16,
+          },
+        },
+      ],
+      properties: {
+        className: ruleName,
+        description: containerName,
+        parameters: [],
+        ruleName,
+      },
+    };
+
+    nodes.push(x6Node);
+  }
+
+  // 3. Build Component Nodes (e.g. Decl)
+  for (const { rawNode, ruleName } of componentNodes) {
+    const nodeConfig = diagramConfig?.nodes?.[ruleName] || diagramConfig?.entities?.[ruleName];
+    const shape = nodeConfig?.shape || "rect";
+    const stereotype =
+      typeof nodeConfig?.stereotype === "string"
+        ? nodeConfig.stereotype
+        : ruleName
+          ? `«${ruleName.toLowerCase()}»`
+          : "";
+    const style = nodeConfig?.style || {};
+    const text = getNodeText(rawNode);
+
+    let compType = "";
+    let compName: string;
+    const declMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+    if (declMatch) {
+      compType = declMatch[1];
+      compName = declMatch[2];
+    } else {
+      const singleMatch = text.match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+      compName = singleMatch
+        ? singleMatch[1]
+        : rawNode.label || `${ruleName} #${rawNode.nodePtr || rawNode.id.replace("node_", "")}`;
+    }
+
+    componentNameToNodeId.set(compName, rawNode.id);
+
+    let label = `${compName}${compType ? `: ${compType}` : ""}`;
+    if (nodeConfig?.propertyBindings?.label && typeof nodeConfig.propertyBindings.label === "string") {
+      label = nodeConfig.propertyBindings.label.replace("%name", compName).replace("%type", compType || ruleName);
+    }
+
+    // Determine parent container by byte range
+    let parentId: string | undefined = undefined;
+    for (const { rawNode: parentRaw } of containerNodes) {
+      if (rawNode.startByte >= parentRaw.startByte && rawNode.endByte <= parentRaw.endByte) {
+        parentId = parentRaw.id;
+        break;
+      }
+    }
+
+    const portItems: any[] = [];
+    if (nodeConfig?.ports) {
+      const portStyle = nodeConfig.ports.style || {};
+      const portFill = portStyle.fill || style.stroke || "#38bdf8";
+      const portStroke = portStyle.stroke || "#ffffff";
+      const portSize = portStyle.size || 8;
+
+      portItems.push({
+        id: "port_in",
+        group: "left",
+        attrs: {
+          circle: { r: portSize / 2, magnet: true, stroke: portStroke, strokeWidth: 1.5, fill: portFill },
+        },
+      });
+      portItems.push({
+        id: "port_out",
+        group: "right",
+        attrs: {
+          circle: { r: portSize / 2, magnet: true, stroke: portStroke, strokeWidth: 1.5, fill: portFill },
+        },
+      });
+    }
+
+    const portGroups: Record<string, any> = {
+      left: { position: "left", attrs: { circle: { magnet: true } } },
+      right: { position: "right", attrs: { circle: { magnet: true } } },
+    };
+
+    const fill = style.fill || "#1e293b";
+    const stroke = style.stroke || "#3b82f6";
+    const strokeWidth = style.strokeWidth || 2;
+    const rx = style.rx || (shape === "pill" ? 18 : 6);
+    const ry = style.ry || (shape === "pill" ? 18 : 6);
+
+    const x6Node: PolyglotDiagramNode = {
+      id: rawNode.id,
+      parent: parentId,
+      x: rawNode.x || 0,
+      y: rawNode.y || 0,
+      width: style.width || 150,
+      height: style.height || 42,
+      angle: rawNode.rotation || 0,
+      opacity: style.opacity !== undefined ? style.opacity : 1,
+      zIndex: 10,
+      shape: "rect",
+      autoLayout: true,
+      attrs: {
+        body: { fill, stroke, strokeWidth, rx, ry },
+        ...(stereotype
+          ? {
+              stereotype: {
+                text: stereotype,
+                fill: "#94a3b8",
+                fontSize: 9,
+                textAnchor: "middle",
+                textVerticalAnchor: "top",
+                refX: 0.5,
+                refY: 8,
+              },
+            }
+          : {}),
+        label: {
+          text: label,
+          fill: style.textColor || "#f8fafc",
+          fontSize: 11,
+          fontWeight: 600,
+          textAnchor: "middle",
+          textVerticalAnchor: "middle",
+          refX: 0.5,
+          refY: stereotype ? 26 : 0.5,
+        },
+      },
+      markup: [
+        {
+          tagName: "rect",
+          selector: "body",
+          attrs: { fill, stroke, strokeWidth, rx, ry },
+        },
+        ...(stereotype
+          ? [
+              {
+                tagName: "text",
+                selector: "stereotype",
+                textContent: stereotype,
+                attrs: {
+                  fill: "#94a3b8",
+                  fontSize: 9,
+                  textAnchor: "middle",
+                  textVerticalAnchor: "top",
+                  refX: 0.5,
+                  refY: 8,
+                },
+              },
+            ]
+          : []),
+        {
+          tagName: "text",
+          selector: "label",
+          textContent: label,
+          attrs: {
+            fill: style.textColor || "#f8fafc",
+            fontSize: 11,
+            fontWeight: 600,
+            textAnchor: "middle",
+            textVerticalAnchor: "middle",
+            refX: 0.5,
+            refY: stereotype ? 26 : 0.5,
+          },
+        },
+      ],
+      ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
+      properties: {
+        className: ruleName,
+        description: label,
+        parameters: [],
+        ruleName,
+      },
+    };
+
+    nodes.push(x6Node);
+  }
+
+  // 4. Build Equations as Directed Edges
+  let edgeIdCounter = 0;
+  for (const rawNode of rawNodes) {
+    const ruleName =
+      syntaxNames && (syntaxNames as any)[rawNode.typeId] ? (syntaxNames as any)[rawNode.typeId] : "Node";
+    if (!configuredEdgeRules.has(ruleName)) continue;
+
+    const edgeConfig = diagramConfig?.edges?.[ruleName] || diagramConfig?.connections?.[ruleName];
+    const edgeStyle = edgeConfig?.style || {};
+    const routerName = edgeStyle.router || "manhattan";
+    const connectorName = edgeStyle.connector || "jumpover";
+    const stroke = edgeStyle.stroke || "#60a5fa";
+    const strokeWidth = edgeStyle.strokeWidth || 2;
+
+    const text = getNodeText(rawNode);
+    const eqParts = text.split("=");
+    if (eqParts.length >= 2) {
+      const lhsMatch = eqParts[0].match(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/);
+      const lhsText = lhsMatch ? lhsMatch[1] : eqParts[0].trim();
+      const rhsText = eqParts.slice(1).join("=").replace(/;$/, "").trim();
+
+      const targetNodeId = componentNameToNodeId.get(lhsText);
+      if (targetNodeId) {
+        const rhsIdentifiers = Array.from(new Set(rhsText.match(/\b[a-zA-Z_][a-zA-Z0-9_]*\b/g) || [])) as string[];
+        for (const rhsId of rhsIdentifiers) {
+          const sourceNodeId = componentNameToNodeId.get(rhsId);
+          if (sourceNodeId && sourceNodeId !== targetNodeId) {
+            edgeIdCounter++;
+            const x6Edge: PolyglotDiagramEdge = {
+              id: `edge_${rawNode.id}_${sourceNodeId}_${targetNodeId}_${edgeIdCounter}`,
+              shape: "edge",
+              zIndex: 50,
+              source: { cell: sourceNodeId, port: "port_out" },
+              target: { cell: targetNodeId, port: "port_in" },
+              router: { name: routerName },
+              connector: { name: connectorName },
+              attrs: {
+                line: {
+                  stroke,
+                  strokeWidth,
+                  targetMarker: {
+                    name: "classic",
+                    size: 6,
+                  },
+                },
+              },
+              labels: [
+                {
+                  attrs: {
+                    text: {
+                      text: `  ${rhsText}  `,
+                      fill: "#cbd5e1",
+                      fontSize: 10,
+                    },
+                    rect: {
+                      fill: "#1e293b",
+                      stroke: "#334155",
+                      strokeWidth: 1,
+                      rx: 3,
+                      ry: 3,
+                    },
+                  },
+                  position: 0.5,
+                },
+              ],
+            };
+            edges.push(x6Edge);
+          }
+        }
+      }
+    }
+  }
+
+  // 5. Forward any explicit edges if present
+  for (const rawEdge of rawEdges) {
+    const edgeRuleName =
+      syntaxNames && (syntaxNames as any)[rawEdge.typeId] ? (syntaxNames as any)[rawEdge.typeId] : "Edge";
+    const edgeConfig = diagramConfig?.edges?.[edgeRuleName] || diagramConfig?.connections?.[edgeRuleName];
+
+    const edgeStyle = edgeConfig?.style || {};
+    const routerName = edgeStyle.router || "manhattan";
+    const connectorName = edgeStyle.connector || "jumpover";
+    const stroke = edgeStyle.stroke || "#60a5fa";
+    const strokeWidth = edgeStyle.strokeWidth || 2;
+
+    const x6Edge: PolyglotDiagramEdge = {
+      id: rawEdge.id,
+      shape: "edge",
+      zIndex: 50,
+      source: typeof rawEdge.source === "string" ? rawEdge.source : rawEdge.source?.cell,
+      target: typeof rawEdge.target === "string" ? rawEdge.target : rawEdge.target?.cell,
+      router: { name: routerName },
+      connector: { name: connectorName },
+      attrs: {
+        line: {
+          stroke,
+          strokeWidth,
+          targetMarker: {
+            name: "classic",
+            size: 6,
+          },
+        },
+      },
+    };
+
+    edges.push(x6Edge);
+  }
+
+  return {
+    nodes,
+    edges,
+    coordinateSystem: null,
+    diagramBackground: null,
+    diagramType: activeView || "All",
+  };
 }

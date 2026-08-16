@@ -1403,6 +1403,10 @@ export interface VisualStyle {
   opacity?: number;
   rx?: number;
   ry?: number;
+  r?: number;
+  size?: number;
+  fontSize?: number;
+  fontStyle?: string;
   icon?: string;
   router?: "manhattan" | "orth" | "metro" | "normal" | "bezier" | string;
   connector?: "rounded" | "smooth" | "jumpover" | "normal" | string;

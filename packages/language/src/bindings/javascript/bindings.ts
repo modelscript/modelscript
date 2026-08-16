@@ -1039,7 +1039,7 @@ export class LspFacade {
             const textBuffer = new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes);
             let chars = "";
             if (startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
-              const slice = textBuffer.subarray(startByte, endByte);
+              const slice = new Uint8Array(textBuffer.subarray(startByte, endByte));
               const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
@@ -1356,6 +1356,21 @@ export class LspFacade {
     const dirPtr = this.exports.lsp_getBinaryBuffer();
     const lineStarts = this.getLineStarts();
 
+    const inputBufPtr = this.exports.getInputBuffer
+      ? this.exports.getInputBuffer()
+      : this.exports.lsp_getInputBuffer
+        ? this.exports.lsp_getInputBuffer()
+        : 0;
+    const lenBytes = this.exports.inputLength
+      ? typeof this.exports.inputLength.value === "number"
+        ? this.exports.inputLength.value
+        : Number(this.exports.inputLength) || 0
+      : 0;
+    const textBuffer =
+      inputBufPtr > 0 && lenBytes > 0 ? new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes) : null;
+    const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
+    const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
+
     let offset = dirPtr >>> 2;
     for (let i = 0; i < numRecords; i++) {
       const kind = mem32[offset];
@@ -1372,10 +1387,20 @@ export class LspFacade {
         const rotation = mem32[offset + 9] | 0;
         const flags = mem32[offset + 12];
 
+        let nodeText = "";
+        if (textBuffer && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+          try {
+            const slice = new Uint8Array(textBuffer.subarray(startByte, endByte));
+            nodeText = decoder.decode(slice);
+          } catch (e) {}
+        }
+
         nodes.push({
           id: `node_${nodePtr}`,
           nodePtr,
           typeId,
+          startByte,
+          endByte,
           start: this.offsetToPos(startByte, lineStarts),
           end: this.offsetToPos(endByte, lineStarts),
           x,
@@ -1384,6 +1409,7 @@ export class LspFacade {
           height,
           rotation,
           flags,
+          text: nodeText,
         });
         offset += 13;
       } else if (kind === 2) {
@@ -1448,7 +1474,9 @@ export class LspFacade {
     if (updatedLen > 0 && this.exports.lsp_getBinaryBuffer) {
       const dirPtr = this.exports.lsp_getBinaryBuffer();
       const mem8 = new Uint8Array(this.wasmMemory.buffer, dirPtr, updatedLen);
-      updatedText = new TextDecoder().decode(mem8);
+      const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
+      const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
+      updatedText = decoder.decode(new Uint8Array(mem8));
     }
 
     return { text: updatedText, edits: [] };
@@ -1736,9 +1764,9 @@ export class LspFacade {
     const bytes = mem8.subarray(dirPtr, dirPtr + numBytes);
     const encoding = this.getInputEncoding();
     if (encoding === 1) {
-      return new TextDecoder("utf-16le").decode(bytes);
+      return new TextDecoder("utf-16le").decode(new Uint8Array(bytes));
     }
-    return new TextDecoder("utf-8").decode(bytes);
+    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
   }
 
   /** Reads a WASM-allocated length-prefixed UTF-16 string into a JavaScript string. */

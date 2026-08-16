@@ -829,7 +829,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
       
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start;
+      let currOffset = nodeStart;
       let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
@@ -915,7 +915,7 @@ export function lsp_getDocumentSymbols(astRoot: u32): u32 {
       
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start;
+      let currOffset = nodeStart;
       let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
@@ -1343,9 +1343,13 @@ export function lsp_formatDocument(astRoot: u32, preserveFormatting: u32 = 0): u
   let root = astRoot != 0 ? astRoot : globalAstRoot;
   if (root == 0) return 0;
 
-  let span = ast_getTextSpan(root);
+  let span = ast_getTextSpan(root, 0);
   let start = (span >> 32) as u32;
   let len = (span & 0xffffffff) as u32;
+  if (len == 0 && inputLength > 0) {
+    len = inputLength;
+    start = 0;
+  }
 
   let inBuf = getInputBuffer();
   let word: u32 = 0;
@@ -1408,10 +1412,10 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
 
     let flags = getNodeFlags(node);
     if ((flags & FLAG_LSP_TRAVERSED) != 0) continue;
-    if ((flags & FLAG_INVISIBLE) != 0) continue;
     setNodeFlags(node, flags | FLAG_LSP_TRAVERSED);
     pushVisitedNode(node);
 
+    let isVisible = (flags & FLAG_INVISIBLE) == 0;
     let pad = getNodePadding(node);
     let type = getNodeType(node);
     let isErrorNode = type == 0;
@@ -1421,7 +1425,7 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
 
     // Emits Node Record: [kind=1, nodePtr, typeId, startByte, endByte, x, y, width, height, rotation, labelOffset, labelLength, flags] (13 u32s)
     // @ts-ignore
-    if (!isErrorNode && !inError && (type as i32) <= MAX_SYMBOL_ID) {
+    if (isVisible && !isErrorNode && !inError && (type as i32) <= MAX_SYMBOL_ID) {
       t_lspBinaryBuffer.push(RECORD_KIND_NODE);
       t_lspBinaryBuffer.push(node);
       t_lspBinaryBuffer.push(type);
@@ -1448,7 +1452,7 @@ export function lsp_getDiagramData(astRoot: u32): u32 {
       }
 
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start;
+      let currOffset = nodeStart;
       let writeIdx = stackTop + childCount - 1;
       while (child != 0) {
         let padVal = getNodePadding(child);
