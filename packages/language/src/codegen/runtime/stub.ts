@@ -219,6 +219,57 @@ export function stub_stitchParentFQN(childStubId: u32, parentFqnHash: u32): u32 
 }
 
 /**
+ * Synthetic Symbol Projection with Conflict Deduplication (Concept 4).
+ * Checks if a real (non-synthetic) symbol with `nameHash` already exists in the workspace.
+ * - If found: returns the existing real stub ID (deduplicating and linking facts).
+ * - If not found: registers a virtual synthetic stub marked with FLAG_IS_SYNTHETIC.
+ * @returns The resolved or newly registered stub ID.
+ */
+export function stub_projectSyntheticSymbol(
+  fileId: u32,
+  symbolId: u32,
+  parentSymbolId: u32,
+  kind: u16,
+  nameHash: u32,
+  nameHandle: u32,
+  parentFqnHash: u32,
+): u32 {
+  ensureStubStore();
+
+  // 1. Search for existing non-synthetic stub with this nameHash
+  let existingStubId = t_stubsByNameHash.get(nameHash as u64);
+  while (existingStubId != 0) {
+    let baseIdx = existingStubId * STUB_STRIDE;
+    let fId = t_stubTable.get(baseIdx + 0);
+    if (fId != 0) {
+      let kf = t_stubTable.get(baseIdx + 3);
+      let flags = ((kf >>> 16) & 0xffff) as u16;
+      if ((flags & FLAG_IS_SYNTHETIC) == 0) {
+        // Found real symbol: deduplicate and return existing ID!
+        return existingStubId;
+      }
+    }
+    existingStubId = t_stubNextByName.get(existingStubId);
+  }
+
+  // 2. No real symbol found: register synthetic stub
+  return stub_registerSymbol(
+    fileId,
+    symbolId,
+    parentSymbolId,
+    kind,
+    FLAG_IS_SYNTHETIC,
+    nameHash,
+    nameHandle,
+    0, // startByte (virtual)
+    0, // endByte (virtual)
+    0, // merkleLow
+    0, // merkleHigh
+    parentFqnHash,
+  );
+}
+
+/**
  * Clears all stubs associated with a specific fileId.
  * Unlinks them from hash lookup chains and recycles slot IDs onto t_stubFreeListHead (Concept 2).
  */

@@ -19,6 +19,8 @@ import {
   isolationCode,
   lspCode,
   matrixCode,
+  ontologyCode,
+  ontology_projectionCode,
   pantelidesCode,
   parserLoopCode,
   polyglot_arenaCode,
@@ -1024,6 +1026,8 @@ export function generateParserTables(
     { filename: "trigram.ts", content: trigramCode },
     { filename: "correspondence.ts", content: correspondenceCode },
     { filename: "polyglot_arena.ts", content: polyglot_arenaCode },
+    { filename: "ontology.ts", content: ontologyCode },
+    { filename: "ontology_projection.ts", content: ontology_projectionCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1047,6 +1051,8 @@ export function generateParserTables(
   code += extractExports(matrixCode, "./matrix");
   code += extractExports(stubCode, "./stub");
   code += extractExports(trigramCode, "./trigram");
+  code += extractExports(ontologyCode, "./ontology");
+  code += extractExports(ontology_projectionCode, "./ontology_projection");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

@@ -1994,6 +1994,112 @@ export class LspFacade {
     return this.exports.polyglot_hasLangChanged(arenaPtr, langId, snapshotVersion) === 1;
   }
 
+  /** Adds an OWL 2 axiom to the indexed WASM ontology store. */
+  addOntologyAxiom(
+    axiomType: number,
+    sourceLangId: number,
+    subject: string,
+    predicate: string = "",
+    object: string = "",
+    flags: number = 0,
+  ): number {
+    if (!this.exports.ontology_addAxiom) return 0;
+    const sHash = subject ? this.hashString(subject) : 0;
+    const pHash = predicate ? this.hashString(predicate) : 0;
+    const oHash = object ? this.hashString(object) : 0;
+    return this.exports.ontology_addAxiom(axiomType, sourceLangId, sHash, pHash, oHash, flags);
+  }
+
+  /** Evaluates transitive SubClassOf subsumption directly in WASM memory. */
+  isSubClassOf(subClass: string, superClass: string): boolean {
+    if (!this.exports.ontology_isSubClassOf) return false;
+    const subHash = this.hashString(subClass);
+    const superHash = this.hashString(superClass);
+    return this.exports.ontology_isSubClassOf(subHash, superHash) === 1;
+  }
+
+  /** Queries indexed triples via SPO / POS / OSP pattern matching in WASM memory. */
+  queryOntologyTriples(
+    subjectPattern: string = "",
+    predicatePattern: string = "",
+    objectPattern: string = "",
+  ): {
+    axiomType: number;
+    sourceLangId: number;
+    subjectHash: number;
+    predicateHash: number;
+    objectHash: number;
+    flags: number;
+  }[] {
+    if (!this.exports.ontology_queryTriples || !this.exports.ontology_getQueryBuffer) return [];
+    const sPat = subjectPattern ? this.hashString(subjectPattern) : 0xffffffff;
+    const pPat = predicatePattern ? this.hashString(predicatePattern) : 0xffffffff;
+    const oPat = objectPattern ? this.hashString(objectPattern) : 0xffffffff;
+
+    const count = this.exports.ontology_queryTriples(sPat, pPat, oPat);
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const stride = 6;
+    const results = [];
+
+    for (let i = 0; i < count * stride; i += stride) {
+      const typeAndLang = mem32[(dirPtr >>> 2) + i + 0];
+      results.push({
+        axiomType: typeAndLang & 0xffff,
+        sourceLangId: (typeAndLang >>> 16) & 0xffff,
+        subjectHash: mem32[(dirPtr >>> 2) + i + 1],
+        predicateHash: mem32[(dirPtr >>> 2) + i + 2],
+        objectHash: mem32[(dirPtr >>> 2) + i + 3],
+        flags: mem32[(dirPtr >>> 2) + i + 4],
+      });
+    }
+
+    return results;
+  }
+
+  /** Returns total asserted OWL 2 axioms in the store. */
+  getOntologyAxiomCount(): number {
+    return this.exports.ontology_getAxiomCount ? this.exports.ontology_getAxiomCount() : 0;
+  }
+
+  /** Clears the WASM ontology store and inverted indices. */
+  clearOntology(): void {
+    if (this.exports.ontology_clear) {
+      this.exports.ontology_clear();
+    }
+  }
+
+  /** Projects all indexed declaration stubs into OWL 2 axioms. */
+  projectStubsToOntology(sourceLangId: number): number {
+    return this.exports.projection_projectAllStubs ? this.exports.projection_projectAllStubs(sourceLangId) : 0;
+  }
+
+  /** Projects synthetic symbol with conflict deduplication against real declarations. */
+  projectSyntheticSymbol(
+    fileId: number,
+    symbolId: number,
+    parentSymbolId: number,
+    kind: number,
+    name: string,
+    parentFqn: string = "",
+  ): number {
+    if (!this.exports.stub_projectSyntheticSymbol) return 0;
+    const nameHash = this.hashString(name);
+    const nameHandle = this.allocStringInArena(name);
+    const parentFqnHash = parentFqn ? this.hashString(parentFqn) : 0;
+    return this.exports.stub_projectSyntheticSymbol(
+      fileId,
+      symbolId,
+      parentSymbolId,
+      kind,
+      nameHash,
+      nameHandle,
+      parentFqnHash,
+    );
+  }
+
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
   formatDocument(astRoot: number, preserveFormatting: boolean = false): string {
     if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";
