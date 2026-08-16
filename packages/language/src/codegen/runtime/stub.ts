@@ -45,16 +45,18 @@ let t_stubBinaryCapacity: u32 = 0;
 
 export function ensureStubStore(): void {
   if (changetype<usize>(t_stubTable) == 0) {
-    t_stubTable = createChunkedUint32Array(500000 * STUB_STRIDE);
-    t_stubNextByName = createChunkedUint32Array(500000);
-    t_stubNextSibling = createChunkedUint32Array(500000);
-    t_stubNextInFile = createChunkedUint32Array(500000);
+    t_stubTable = createChunkedUint32Array(2000 * STUB_STRIDE);
+    t_stubNextByName = createChunkedUint32Array(2000);
+    t_stubNextSibling = createChunkedUint32Array(2000);
+    t_stubNextInFile = createChunkedUint32Array(2000);
 
     t_stubsByNameHash = changetype<UnmanagedMap64>(createMap64());
     t_stubsByParent = changetype<UnmanagedMap64>(createMap64());
     t_stubsByFile = changetype<UnmanagedMap64>(createMap64());
 
-    t_stubBinaryBuffer = createChunkedUint32Array(20000);
+    t_stubBinaryBuffer = createChunkedUint32Array(2000);
+    t_stubBinaryCapacity = 2000;
+    t_stubBinaryFlatPtr = atomicChunkAlloc(2000 * 4);
     t_stubCount = 1;
   }
 }
@@ -126,6 +128,22 @@ export function stub_clearFile(fileId: u32): void {
     stubId = t_stubNextInFile.get(stubId);
   }
   t_stubsByFile.set(fileId as u64, 0);
+}
+
+/**
+ * Clears all indexed stubs in the entire Tier 1 stub store.
+ */
+export function stub_clearAll(): void {
+  if (changetype<usize>(t_stubTable) != 0) {
+    t_stubTable.clear();
+    t_stubNextByName.clear();
+    t_stubNextSibling.clear();
+    t_stubNextInFile.clear();
+    t_stubsByNameHash.init();
+    t_stubsByParent.init();
+    t_stubsByFile.init();
+    t_stubCount = 1;
+  }
 }
 
 /**
@@ -238,6 +256,141 @@ export function stub_getBinaryBuffer(): u32 {
   return t_stubBinaryFlatPtr;
 }
 
+/**
+ * Bulk registers multiple declaration stubs from a flat u32 array payload.
+ * Payload layout per stub (8 u32 words): [fileId, symbolId, parentSymbolId, (kind | (flags << 16)), nameHash, nameHandle, startByte, endByte]
+ * @param chunkPtr Flat memory address of u32 payload
+ * @param wordCount Total u32 words in payload (must be multiple of 8)
+ * @returns Total symbols registered in this call
+ */
+export function stub_bulkRegister(chunkPtr: u32, wordCount: u32): u32 {
+  ensureStubStore();
+  let numStubs = wordCount / STUB_STRIDE;
+  for (let i: u32 = 0; i < numStubs; i++) {
+    let offset = chunkPtr + (i * STUB_STRIDE * 4);
+    let fileId = load<u32>(offset + 0);
+    let symbolId = load<u32>(offset + 4);
+    let parentSymbolId = load<u32>(offset + 8);
+    let kf = load<u32>(offset + 12);
+    let kind = (kf & 0xffff) as u16;
+    let flags = ((kf >>> 16) & 0xffff) as u16;
+    let nameHash = load<u32>(offset + 16);
+    let nameHandle = load<u32>(offset + 20);
+    let startByte = load<u32>(offset + 24);
+    let endByte = load<u32>(offset + 28);
+
+    stub_registerSymbol(fileId, symbolId, parentSymbolId, kind, flags, nameHash, nameHandle, startByte, endByte);
+  }
+  return numStubs;
+}
+
+/**
+ * Serializes the entire Tier 1 stub store and string arena into a single flat binary buffer.
+ * Header (32 bytes = 8 u32 words): [0x4D535442, version(1), stubCount, stringArenaOffset, STUB_STRIDE(8), 0, 0, 0]
+ * If outPtr == 0 or maxBytes is smaller than required, returns the required byte size.
+ */
+export function stub_exportBinary(outPtr: u32, maxBytes: u32): u32 {
+  ensureStubStore();
+  let stubBytes: u32 = (t_stubCount as u32) * STUB_STRIDE * 4;
+  let strBytes: u32 = stringArenaOffset;
+  let totalSize: u32 = 32 + stubBytes + strBytes;
+
+  if (outPtr == 0 || maxBytes < totalSize) {
+    return totalSize;
+  }
+
+  // Header
+  store<u32>(outPtr + 0, 0x4d535442); // Magic "MSTB"
+  store<u32>(outPtr + 4, 1);          // Version 1
+  store<u32>(outPtr + 8, t_stubCount);
+  store<u32>(outPtr + 12, stringArenaOffset);
+  store<u32>(outPtr + 16, STUB_STRIDE);
+  store<u32>(outPtr + 20, 0);
+  store<u32>(outPtr + 24, 0);
+  store<u32>(outPtr + 28, 0);
+
+  // Stub Table Payload
+  t_stubTable.copyToFlat(outPtr + 32);
+
+  // String Arena Payload
+  if (stringArenaOffset > 0 && stringArenaPtr != 0) {
+    memory.copy(outPtr + 32 + stubBytes, stringArenaPtr, stringArenaOffset);
+  }
+
+  return totalSize;
+}
+
+/**
+ * Deserializes and restores the Tier 1 stub store and string arena from a binary buffer.
+ * Re-links all O(1) hash maps and side-tables.
+ * Returns 1 on success, 0 on failure.
+ */
+export function stub_importBinary(inPtr: u32, byteLength: u32): u32 {
+  if (inPtr == 0 || byteLength < 32) return 0;
+
+  let magic = load<u32>(inPtr + 0);
+  if (magic != 0x4d535442) return 0; // Invalid magic
+
+  let version = load<u32>(inPtr + 4);
+  if (version != 1) return 0; // Unsupported version
+
+  let stubCount = load<u32>(inPtr + 8);
+  let strArenaLen = load<u32>(inPtr + 12);
+  let stride = load<u32>(inPtr + 16);
+
+  let expectedSize: u32 = 32 + (stubCount * stride * 4) + strArenaLen;
+  if (byteLength < expectedSize) return 0;
+
+  ensureStubStore();
+
+  // Clear current maps
+  t_stubsByNameHash = changetype<UnmanagedMap64>(createMap64());
+  t_stubsByParent = changetype<UnmanagedMap64>(createMap64());
+  t_stubsByFile = changetype<UnmanagedMap64>(createMap64());
+
+  t_stubCount = stubCount;
+  let stubBytes = stubCount * stride * 4;
+
+  // Copy stub table payload
+  for (let i: u32 = 0; i < stubCount * stride; i++) {
+    let val = load<u32>(inPtr + 32 + (i * 4));
+    t_stubTable.set(i, val);
+  }
+
+  // Restore string arena
+  if (strArenaLen > 0) {
+    ensureStringArena(strArenaLen);
+    memory.copy(stringArenaPtr, inPtr + 32 + stubBytes, strArenaLen);
+    stringArenaOffset = strArenaLen;
+  }
+
+  // Re-link lookup chains
+  for (let id: u32 = 1; id < stubCount; id++) {
+    let baseIdx = id * STUB_STRIDE;
+    let fId = t_stubTable.get(baseIdx + 0);
+    let parentSymbolId = t_stubTable.get(baseIdx + 2);
+    let nameHash = t_stubTable.get(baseIdx + 4);
+
+    if (fId != 0) {
+      let prevNameHead = t_stubsByNameHash.get(nameHash as u64);
+      t_stubNextByName.set(id, prevNameHead);
+      t_stubsByNameHash.set(nameHash as u64, id);
+
+      if (parentSymbolId != 0) {
+        let prevParentHead = t_stubsByParent.get(parentSymbolId as u64);
+        t_stubNextSibling.set(id, prevParentHead);
+        t_stubsByParent.set(parentSymbolId as u64, id);
+      }
+
+      let prevFileHead = t_stubsByFile.get(fId as u64);
+      t_stubNextInFile.set(id, prevFileHead);
+      t_stubsByFile.set(fId as u64, id);
+    }
+  }
+
+  return 1;
+}
+
 function ensureStubBuffer(): void {
   if (changetype<usize>(t_stubBinaryBuffer) == 0) {
     t_stubBinaryBuffer = createChunkedUint32Array(20000);
@@ -246,8 +399,12 @@ function ensureStubBuffer(): void {
   }
 }
 
-function flushStubBuffer(): void {
+export function flushStubBuffer(): void {
   let len: u32 = t_stubBinaryBuffer.length as u32;
+  if (t_stubBinaryFlatPtr == 0) {
+    t_stubBinaryCapacity = 20000;
+    t_stubBinaryFlatPtr = atomicChunkAlloc(t_stubBinaryCapacity * 4);
+  }
   if (len > t_stubBinaryCapacity) {
     let newCap: u32 = t_stubBinaryCapacity == 0 ? 20000 : t_stubBinaryCapacity * 2;
     while (newCap < len) newCap *= 2;
@@ -255,5 +412,8 @@ function flushStubBuffer(): void {
     t_stubBinaryFlatPtr = newPtr as u32;
     t_stubBinaryCapacity = newCap;
   }
-  t_stubBinaryBuffer.copyToFlat(t_stubBinaryFlatPtr as usize);
+  if (t_stubBinaryFlatPtr != 0 && len > 0) {
+    t_stubBinaryBuffer.copyToFlat(t_stubBinaryFlatPtr as usize);
+  }
 }
+

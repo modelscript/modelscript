@@ -228,15 +228,19 @@ export function S(): SharedState {
  */
 
 export function atomicChunkAlloc(size: u32): u32 {
-  // Use the unmanaged heap allocator for zero-GC memory allocation
-  // Allocate an extra 16 bytes to guarantee we can 16-byte align the pointer
-  let ptr = heap.alloc(size + 16);
+  if (size == 0) return 0;
+  let ptr = heap.alloc(size + 32);
+  if (ptr == 0) return 0;
 
   // Ensure 16-byte alignment
   let rem = ptr % 16;
   if (rem != 0) ptr += 16 - rem;
 
   return ptr as u32;
+}
+
+export function arena_alloc(size: u32): u32 {
+  return atomicChunkAlloc(size);
 }
 
 /**
@@ -1124,11 +1128,12 @@ export function ast_getLiteralNodeRef(ptr: u32): u32 {
 
 export let stringArenaPtr: usize = 0;
 export let stringArenaOffset: u32 = 0;
-export let stringArenaCapacity: u32 = 1024 * 1024; // 1MB
+export let stringArenaCapacity: u32 = 64 * 1024; // 64KB initial
 
-export function ensureStringArena(bytesNeeded: u32): void {
+export function ensureStringArena(bytesNeeded: u32 = 4096): void {
   if (stringArenaPtr == 0) {
     stringArenaPtr = atomicChunkAlloc(stringArenaCapacity);
+    stringArenaOffset = 4;
   }
   if (stringArenaOffset + bytesNeeded > stringArenaCapacity) {
     let newCapacity = stringArenaCapacity * 2;
@@ -1180,6 +1185,21 @@ export function ast_setLiteralString(ptr: u32, val: string): void {
     nodeOverrideType.set(ptr >> 4, OVERRIDE_STRING);
     ast_markDirty(ptr);
   }
+}
+
+/**
+ * Allocates string bytes from WASM linear memory into the persistent string arena.
+ */
+export function arena_allocStringBytes(srcPtr: usize, lenBytes: u32): u32 {
+  if (srcPtr == 0 || lenBytes == 0) return 0;
+  let byteSize = 4 + lenBytes;
+  ensureStringArena(byteSize);
+
+  let handle = stringArenaOffset;
+  store<u32>(stringArenaPtr + handle, lenBytes);
+  memory.copy(stringArenaPtr + handle + 4, srcPtr, lenBytes);
+  stringArenaOffset += byteSize;
+  return handle;
 }
 
 export function ast_setLiteralFloat(ptr: u32, val: f64): void {
@@ -2041,4 +2061,16 @@ export function ast_resolveChildByHash(parentId: u32, hash: u32): u32 {
 /** Convenience wrapper to resolve by a node's text span */
 export function ast_resolveChildNode(parentId: u32, nameNodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u32 {
   return ast_resolveChildByHash(parentId, ast_hashSpan(ast_getTextSpan(nameNodeId, absoluteStart)));
+}
+
+/** Recursively marks an AST node and all its descendants as tainted for unparsing */
+export function ast_markSubtreeTainted(nodeId: u32): void {
+  if (nodeId == 0) return;
+  let flags = getNodeFlags(nodeId);
+  setNodeFlags(nodeId, flags | FLAG_IS_TAINED);
+  let child = getNodeFirstChild(nodeId);
+  while (child != 0) {
+    ast_markSubtreeTainted(child);
+    child = getNodeNextSibling(child);
+  }
 }

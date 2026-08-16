@@ -1341,6 +1341,119 @@ export class LspFacade {
     return references;
   }
 
+  /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
+  getDiagramData(astRoot: number, projectionId: number = 0): { nodes: any[]; edges: any[] } {
+    const nodes: any[] = [];
+    const edges: any[] = [];
+    if (!this.exports.lsp_getDiagramData || !this.exports.lsp_getBinaryBuffer) {
+      return { nodes, edges };
+    }
+
+    const numRecords = this.exports.lsp_getDiagramData(astRoot, projectionId);
+    if (numRecords === 0) return { nodes, edges };
+
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const lineStarts = this.getLineStarts();
+
+    let offset = dirPtr >>> 2;
+    for (let i = 0; i < numRecords; i++) {
+      const kind = mem32[offset];
+      if (kind === 1) {
+        // RECORD_NODE
+        const nodePtr = mem32[offset + 1];
+        const typeId = mem32[offset + 2];
+        const startByte = mem32[offset + 3];
+        const endByte = mem32[offset + 4];
+        const x = mem32[offset + 5] | 0;
+        const y = mem32[offset + 6] | 0;
+        const width = mem32[offset + 7];
+        const height = mem32[offset + 8];
+        const rotation = mem32[offset + 9] | 0;
+        const flags = mem32[offset + 12];
+
+        nodes.push({
+          id: `node_${nodePtr}`,
+          nodePtr,
+          typeId,
+          start: this.offsetToPos(startByte, lineStarts),
+          end: this.offsetToPos(endByte, lineStarts),
+          x,
+          y,
+          width,
+          height,
+          rotation,
+          flags,
+        });
+        offset += 13;
+      } else if (kind === 2) {
+        // RECORD_EDGE
+        const edgePtr = mem32[offset + 1];
+        const typeId = mem32[offset + 2];
+        const srcNodePtr = mem32[offset + 3];
+        const tgtNodePtr = mem32[offset + 4];
+        edges.push({
+          id: `edge_${edgePtr}`,
+          edgePtr,
+          typeId,
+          source: `node_${srcNodePtr}`,
+          target: `node_${tgtNodePtr}`,
+        });
+        offset += 10;
+      } else {
+        offset += 4;
+      }
+    }
+
+    return { nodes, edges };
+  }
+
+  /** Applies visual diagram actions directly to the Arena AST and returns updated document text. */
+  applyDiagramEdits(actions: any[]): { text: string; edits: any[] } {
+    if (!this.exports.lsp_applyDiagramEdits || actions.length === 0) {
+      return { text: "", edits: [] };
+    }
+
+    const actionBufferBytes = actions.length * 32;
+    const actionPtr = this.allocMem(actionBufferBytes);
+    if (actionPtr === 0) return { text: "", edits: [] };
+
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let offset = actionPtr >>> 2;
+
+    for (const action of actions) {
+      if (action.type === "move" || action.type === "resize") {
+        mem32[offset + 0] = action.type === "move" ? 1 : 2;
+        mem32[offset + 1] = action.nodePtr || 0;
+        mem32[offset + 2] = (action.x || 0) | 0;
+        mem32[offset + 3] = (action.y || 0) | 0;
+        mem32[offset + 4] = (action.width || 100) >>> 0;
+        mem32[offset + 5] = (action.height || 60) >>> 0;
+        mem32[offset + 6] = (action.rotation || 0) | 0;
+        offset += 7;
+      } else if (action.type === "delete") {
+        mem32[offset + 0] = 3;
+        mem32[offset + 1] = action.nodePtr || 0;
+        offset += 2;
+      } else if (action.type === "connect") {
+        mem32[offset + 0] = 4;
+        mem32[offset + 1] = action.srcNodePtr || 0;
+        mem32[offset + 2] = action.tgtNodePtr || 0;
+        offset += 7;
+      }
+    }
+
+    const updatedLen = this.exports.lsp_applyDiagramEdits(actionPtr, actions.length);
+    let updatedText = "";
+    if (updatedLen > 0 && this.exports.lsp_getBinaryBuffer) {
+      const dirPtr = this.exports.lsp_getBinaryBuffer();
+      const mem8 = new Uint8Array(this.wasmMemory.buffer, dirPtr, updatedLen);
+      updatedText = new TextDecoder().decode(mem8);
+    }
+
+    return { text: updatedText, edits: [] };
+  }
+
   /** Returns current allocated heap bytes in the WASM linear memory arena. */
   getMemoryUsage(): number {
     return this.exports.arena_getMemoryUsage ? this.exports.arena_getMemoryUsage() : 0;
@@ -1393,6 +1506,30 @@ export class LspFacade {
     return h;
   }
 
+  allocMem(bytes: number): number {
+    const fn = this.exports.arena_alloc || this.exports.atomicChunkAlloc;
+    return fn ? fn(bytes) : 0;
+  }
+
+  allocStringInArena(str: string): number {
+    if (!str || !this.exports.arena_allocStringBytes) return 0;
+    const lenBytes = str.length * 2;
+    const ptr = this.allocMem(lenBytes);
+    if (ptr === 0) return 0;
+    const memBuffer = this.wasmMemory
+      ? this.wasmMemory.buffer
+      : this.exports.memory
+        ? this.exports.memory.buffer
+        : null;
+    if (!memBuffer) return 0;
+    const mem16 = new Uint16Array(memBuffer);
+    const startIdx = ptr >>> 1;
+    for (let i = 0; i < str.length; i++) {
+      mem16[startIdx + i] = str.charCodeAt(i);
+    }
+    return this.exports.arena_allocStringBytes(ptr, lenBytes);
+  }
+
   /** Registers a declaration stub into the persistent Tier 1 index. */
   registerStub(
     fileId: number,
@@ -1406,6 +1543,7 @@ export class LspFacade {
   ): number {
     if (!this.exports.stub_registerSymbol) return 0;
     const nameHash = this.hashString(name);
+    const nameHandle = this.allocStringInArena(name);
     return this.exports.stub_registerSymbol(
       fileId,
       symbolId,
@@ -1413,15 +1551,17 @@ export class LspFacade {
       kind,
       flags,
       nameHash,
-      0,
+      nameHandle,
       startByte,
       endByte,
     );
   }
 
-  /** Clears all Tier 1 stubs for a specific fileId. */
+  /** Clears all Tier 1 stubs for a specific fileId or all files if fileId === 0. */
   clearFileStubs(fileId: number = 0): void {
-    if (this.exports.stub_clearFile) {
+    if (fileId === 0 && this.exports.stub_clearAll) {
+      this.exports.stub_clearAll();
+    } else if (this.exports.stub_clearFile) {
       this.exports.stub_clearFile(fileId);
     }
   }
@@ -1501,6 +1641,88 @@ export class LspFacade {
   /** Returns total number of registered stub symbols. */
   getStubCount(): number {
     return this.exports.stub_count ? this.exports.stub_count() : 0;
+  }
+
+  /** Exports Tier 1 stub store and string arena to a Uint8Array binary snapshot. */
+  exportStubBinary(): Uint8Array {
+    if (!this.exports.stub_exportBinary) return new Uint8Array(0);
+    const requiredSize = this.exports.stub_exportBinary(0, 0);
+    if (requiredSize === 0) return new Uint8Array(0);
+    const ptr = this.allocMem(requiredSize);
+    if (ptr === 0) return new Uint8Array(0);
+    this.exports.stub_exportBinary(ptr, requiredSize);
+    const mem8 = new Uint8Array(this.wasmMemory.buffer);
+    return new Uint8Array(mem8.subarray(ptr, ptr + requiredSize));
+  }
+
+  /** Imports Tier 1 stub store and string arena from a binary snapshot. */
+  importStubBinary(buffer: Uint8Array): boolean {
+    if (!this.exports.stub_importBinary || buffer.byteLength === 0) return false;
+    const ptr = this.allocMem(buffer.byteLength);
+    if (ptr === 0) return false;
+    const mem8 = new Uint8Array(this.wasmMemory.buffer);
+    mem8.set(buffer, ptr);
+    const ok = this.exports.stub_importBinary(ptr, buffer.byteLength);
+    return ok === 1;
+  }
+
+  /** Bulk registers raw uint32 stub records from worker threads. */
+  bulkRegisterStubs(payload: Uint32Array): number {
+    if (!this.exports.stub_bulkRegister || payload.byteLength === 0) return 0;
+    const ptr = this.allocMem(payload.byteLength);
+    if (ptr === 0) return 0;
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    mem32.set(payload, ptr >>> 2);
+    return this.exports.stub_bulkRegister(ptr, payload.length);
+  }
+
+  /** Indexes all stubs into the Dex-style trigram inverted search map. */
+  indexTrigrams(): number {
+    return this.exports.trigram_indexAllStubs ? this.exports.trigram_indexAllStubs() : 0;
+  }
+
+  /** Dex-style Sub-Millisecond Fuzzy Symbol Search across all indexed stubs in the workspace. */
+  fuzzyFindSymbols(
+    query: string,
+    maxResults: number = 50,
+  ): {
+    stubId: number;
+    fileId: number;
+    kind: number;
+    flags: number;
+    nameHash: number;
+    startByte: number;
+    endByte: number;
+    score: number;
+  }[] {
+    if (!this.exports.trigram_fuzzyFind || !this.exports.stub_getBinaryBuffer) {
+      return [];
+    }
+    const queryHandle = this.allocStringInArena(query);
+    const count = this.exports.trigram_fuzzyFind(queryHandle, maxResults);
+    const dirPtr = this.exports.stub_getBinaryBuffer ? this.exports.stub_getBinaryBuffer() : 0;
+    const memBuffer = this.wasmMemory
+      ? this.wasmMemory.buffer
+      : this.exports.memory
+        ? this.exports.memory.buffer
+        : null;
+    if (!memBuffer) return [];
+    const mem32 = new Uint32Array(memBuffer);
+    const results = [];
+    for (let i = 0; i < count * 7; i += 7) {
+      const kf = mem32[(dirPtr >>> 2) + i + 2];
+      results.push({
+        stubId: mem32[(dirPtr >>> 2) + i + 0],
+        fileId: mem32[(dirPtr >>> 2) + i + 1],
+        kind: kf & 0xffff,
+        flags: (kf >>> 16) & 0xffff,
+        nameHash: mem32[(dirPtr >>> 2) + i + 3],
+        startByte: mem32[(dirPtr >>> 2) + i + 4],
+        endByte: mem32[(dirPtr >>> 2) + i + 5],
+        score: mem32[(dirPtr >>> 2) + i + 6],
+      });
+    }
+    return results;
   }
 
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
@@ -2687,5 +2909,27 @@ export class LspWorkspaceManager {
       start: def.start,
       end: def.end,
     };
+  }
+
+  findSymbolsFuzzy(
+    query: string,
+    maxResults: number = 50,
+  ): {
+    uri: string;
+    stubId: number;
+    kind: number;
+    startByte: number;
+    endByte: number;
+    score: number;
+  }[] {
+    const results = this.facade.fuzzyFindSymbols(query, maxResults);
+    return results.map((r) => ({
+      uri: this.getUri(r.fileId) || "",
+      stubId: r.stubId,
+      kind: r.kind,
+      startByte: r.startByte,
+      endByte: r.endByte,
+      score: r.score,
+    }));
   }
 }

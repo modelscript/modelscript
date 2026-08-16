@@ -2009,6 +2009,26 @@ self.onmessage = async (e) => {
             }
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'workspace/symbol') {
+        if (!lspFacade) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
+        const query = e.data.params ? (e.data.params.query || "") : "";
+        const symbols = lspFacade.fuzzyFindSymbols(query, 50);
+        const lineStarts = lspFacade.getLineStarts();
+        const result = (symbols || []).map(s => {
+            const typeName = self.syntaxNames && self.syntaxNames[s.kind] ? self.syntaxNames[s.kind] : "Symbol";
+            return {
+                name: typeName,
+                kind: s.kind || 5,
+                location: {
+                    uri: latestUri,
+                    range: {
+                        start: lspFacade.offsetToPos(s.startByte, lineStarts),
+                        end: lspFacade.offsetToPos(s.endByte, lineStarts)
+                    }
+                }
+            };
+        });
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
     } else if (e.data.method === 'textDocument/semanticTokens/full' || e.data.method === 'textDocument/semanticTokens/range') {
         try {
             if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });

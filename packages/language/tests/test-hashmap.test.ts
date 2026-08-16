@@ -2,9 +2,22 @@ import * as childProcess from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { buildParser } from "../src/api.js";
+import { language, repeat, seq } from "../src/dsl.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const dsl = language({
+  name: "HashmapTestLang",
+  rules: {
+    Program: ($: any) => repeat($.ModelDef),
+    ModelDef: ($: any) => seq("model", $.Identifier, ";", "end", ";"),
+    Identifier: ($: any) => /[a-zA-Z_][a-zA-Z0-9_]*/,
+  },
+  extras: ($: any) => [/\s+/],
+});
 
 describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () => {
   let wasmExports: any;
@@ -13,6 +26,11 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
   beforeAll(async () => {
     tmpDir = path.join(__dirname, "scratch_hashmap_build");
     fs.mkdirSync(tmpDir, { recursive: true });
+
+    const result = buildParser(dsl as any);
+    for (const file of result.assemblyScriptFiles) {
+      fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+    }
 
     // Create entrypoint file that exports all wrapper functions for WebAssembly
     const harnessTs = path.join(tmpDir, "hashmap_harness.ts");
@@ -29,7 +47,7 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
       releaseMap64,
       createMap64To64,
       releaseMap64To64
-    } from "../../src/codegen/runtime/hashmap";
+    } from "./hashmap";
 
     export function testSetOps(key: u64): boolean {
       let ptr = createSet64();
