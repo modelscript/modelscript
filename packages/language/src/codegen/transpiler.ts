@@ -115,6 +115,127 @@ export function transpileQuery(
         return ts.factory.createBlock([cursorDecl, whileLoop, releaseCall], true);
       }
 
+      // Syntactic Sugar: graph.unroll and graph.scope.enter at statement level
+      if (ts.isExpressionStatement(node) && ts.isCallExpression(node.expression)) {
+        const call = node.expression;
+        if (ts.isPropertyAccessExpression(call.expression)) {
+          const propAccess = call.expression;
+          // 1. graph.unroll("i", 1, 3, (i) => { ... })
+          if (
+            (propAccess.expression.getText() === dbName || propAccess.expression.getText() === "graph") &&
+            propAccess.name.getText() === "unroll" &&
+            call.arguments.length >= 4
+          ) {
+            const iterVarArg = call.arguments[0];
+            const startArg = call.arguments[1];
+            const endArg = call.arguments[2];
+            const fnArg = call.arguments[3];
+
+            let iterName = "i";
+            if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
+              if (fnArg.parameters.length > 0) {
+                iterName = fnArg.parameters[0].name.getText();
+              }
+            } else if (ts.isStringLiteral(iterVarArg)) {
+              iterName = iterVarArg.text;
+            }
+
+            let bodyStmts: ts.Statement[] = [];
+            if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
+              if (ts.isBlock(fnArg.body)) {
+                bodyStmts = fnArg.body.statements.map((s) => visitNode(s) as ts.Statement);
+              } else {
+                bodyStmts = [ts.factory.createExpressionStatement(visitNode(fnArg.body) as ts.Expression)];
+              }
+            }
+
+            const loopInit = ts.factory.createVariableDeclarationList(
+              [
+                ts.factory.createVariableDeclaration(
+                  ts.factory.createIdentifier(iterName),
+                  undefined,
+                  ts.factory.createTypeReferenceNode("i32"),
+                  visitNode(startArg) as ts.Expression,
+                ),
+              ],
+              ts.NodeFlags.Let,
+            );
+
+            const loopCond = ts.factory.createBinaryExpression(
+              ts.factory.createIdentifier(iterName),
+              ts.factory.createToken(ts.SyntaxKind.LessThanEqualsToken),
+              visitNode(endArg) as ts.Expression,
+            );
+
+            const loopIncr = ts.factory.createPostfixUnaryExpression(
+              ts.factory.createIdentifier(iterName),
+              ts.SyntaxKind.PlusPlusToken,
+            );
+
+            return ts.factory.createForStatement(loopInit, loopCond, loopIncr, ts.factory.createBlock(bodyStmts, true));
+          }
+
+          // 2. graph.scope.enter(prefix, () => { ... })
+          if (
+            ts.isPropertyAccessExpression(propAccess.expression) &&
+            (propAccess.expression.expression.getText() === dbName ||
+              propAccess.expression.expression.getText() === "graph") &&
+            propAccess.expression.name.text === "scope" &&
+            propAccess.name.text === "enter" &&
+            call.arguments.length >= 2
+          ) {
+            const prefixArg = call.arguments[0];
+            const fnArg = call.arguments[1];
+
+            let bodyStmts: ts.Statement[] = [];
+            if (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg)) {
+              if (ts.isBlock(fnArg.body)) {
+                bodyStmts = fnArg.body.statements.map((s) => visitNode(s) as ts.Statement);
+              } else {
+                bodyStmts = [ts.factory.createExpressionStatement(visitNode(fnArg.body) as ts.Expression)];
+              }
+            }
+
+            let prefixExpr: ts.Expression;
+            if (ts.isStringLiteral(prefixArg)) {
+              prefixExpr = ts.factory.createNumericLiteral(getDJB2Hash(prefixArg.text));
+            } else {
+              prefixExpr = visitNode(prefixArg) as ts.Expression;
+            }
+
+            const pushStmt = ts.factory.createExpressionStatement(
+              ts.factory.createCallExpression(
+                ts.factory.createPropertyAccessExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier("scope"),
+                  ),
+                  ts.factory.createIdentifier("push"),
+                ),
+                undefined,
+                [prefixExpr],
+              ),
+            );
+
+            const popStmt = ts.factory.createExpressionStatement(
+              ts.factory.createCallExpression(
+                ts.factory.createPropertyAccessExpression(
+                  ts.factory.createPropertyAccessExpression(
+                    ts.factory.createIdentifier("graph"),
+                    ts.factory.createIdentifier("scope"),
+                  ),
+                  ts.factory.createIdentifier("pop"),
+                ),
+                undefined,
+                [],
+              ),
+            );
+
+            return ts.factory.createBlock([pushStmt, ...bodyStmts, popStmt], true);
+          }
+        }
+      }
+
       // 1. $.RuleName -> <u16>SyntaxType.RULENAME or getDJB2Hash(RuleName)
       if (ts.isPropertyAccessExpression(node) && node.expression.getText() === "$") {
         const rawName = node.name.getText();

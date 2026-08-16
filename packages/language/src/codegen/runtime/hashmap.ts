@@ -23,6 +23,9 @@ import { atomicChunkAlloc } from "./arena";
  */
 @unmanaged
 export class UnmanagedSet64 {
+    static poolBuf: usize = 0;
+    static poolDepth: i32 = 0;
+
     /** Pointer to the contiguous 64-bit keys memory block in WebAssembly linear memory (`u64[]`). */
     keys: usize;
     /** Total number of allocated key slots. Must always be a power of two. */
@@ -139,7 +142,35 @@ export class UnmanagedSet64 {
     @inline release(): void {
         if (!this.isActive) return; // Prevent double release
         this.isActive = false;
-        releaseSet64(this);
+        if (this.capacity > 1024) {
+            this.keys = 0;
+            this.capacity = 0;
+        }
+        if (UnmanagedSet64.poolBuf == 0) {
+            UnmanagedSet64.poolBuf = atomicChunkAlloc(16 * sizeof<usize>());
+        }
+        if (UnmanagedSet64.poolDepth < 16) {
+            store<usize>(UnmanagedSet64.poolBuf + (UnmanagedSet64.poolDepth * sizeof<usize>()), changetype<usize>(this));
+            UnmanagedSet64.poolDepth++;
+        }
+    }
+
+    /**
+     * Creates or recycles a 64-bit hash set from the object pool.
+     */
+    static create(): u32 {
+        let s: UnmanagedSet64;
+        if (UnmanagedSet64.poolBuf != 0 && UnmanagedSet64.poolDepth > 0) {
+            UnmanagedSet64.poolDepth--;
+            let ptr = load<usize>(UnmanagedSet64.poolBuf + (UnmanagedSet64.poolDepth * sizeof<usize>()));
+            s = changetype<UnmanagedSet64>(ptr);
+        } else {
+            let ptr = atomicChunkAlloc(sizeof<UnmanagedSet64>());
+            memory.fill(ptr, 0, sizeof<UnmanagedSet64>());
+            s = changetype<UnmanagedSet64>(ptr);
+        }
+        s.init();
+        return changetype<u32>(s);
     }
 }
 
@@ -149,6 +180,8 @@ export class UnmanagedSet64 {
  */
 @unmanaged
 export class UnmanagedMap64 {
+    static poolBuf: usize = 0;
+    static poolDepth: i32 = 0;
     /** Pointer to contiguous 64-bit keys array (`u64[]`). */
     keys: usize;
     /** Pointer to contiguous 32-bit values array (`u32[]`). */
@@ -278,100 +311,36 @@ export class UnmanagedMap64 {
     @inline release(): void {
         if (!this.isActive) return;
         this.isActive = false;
-        releaseMap64(this);
+        if (this.capacity > 1024) {
+            this.keys = 0;
+            this.values = 0;
+            this.capacity = 0;
+        }
+        if (UnmanagedMap64.poolBuf == 0) {
+            UnmanagedMap64.poolBuf = atomicChunkAlloc(16 * sizeof<usize>());
+        }
+        if (UnmanagedMap64.poolDepth < 16) {
+            store<usize>(UnmanagedMap64.poolBuf + (UnmanagedMap64.poolDepth * sizeof<usize>()), changetype<usize>(this));
+            UnmanagedMap64.poolDepth++;
+        }
     }
-}
 
-// ----------------------------------------------------------------------------
-// Pooling Logic for UnmanagedSet64 & UnmanagedMap64
-// ----------------------------------------------------------------------------
-
-/** Fixed-size LIFO stack pool for recycling UnmanagedSet64 instances. */
-const setPool = new Array<UnmanagedSet64>(16);
-let setPoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-    let ptr = atomicChunkAlloc(offsetof<UnmanagedSet64>());
-    memory.fill(ptr, 0, offsetof<UnmanagedSet64>());
-    let s = changetype<UnmanagedSet64>(ptr);
-    s.isActive = false;
-    setPool[i] = s;
-}
-
-/**
- * Creates or recycles a 64-bit hash set from the object pool.
- * @returns Pointer (u32) to initialized UnmanagedSet64 instance.
- */
-export function createSet64(): u32 {
-    let s: UnmanagedSet64;
-    if (setPoolDepth > 0) {
-        setPoolDepth--;
-        s = setPool[setPoolDepth];
-    } else {
-        let ptr = atomicChunkAlloc(offsetof<UnmanagedSet64>());
-        memory.fill(ptr, 0, offsetof<UnmanagedSet64>());
-        s = changetype<UnmanagedSet64>(ptr);
-    }
-    s.init();
-    return changetype<u32>(s);
-}
-
-/**
- * Recycles an UnmanagedSet64 instance back to the pool.
- * @param s UnmanagedSet64 instance to recycle.
- */
-export function releaseSet64(s: UnmanagedSet64): void {
-    if (s.capacity > 1024) {
-        s.keys = 0;
-        s.capacity = 0;
-    }
-    if (setPoolDepth < 16) {
-        setPool[setPoolDepth] = s;
-        setPoolDepth++;
-    }
-}
-
-/** Fixed-size LIFO stack pool for recycling UnmanagedMap64 instances. */
-const mapPool = new Array<UnmanagedMap64>(16);
-let mapPoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-    let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64>());
-    memory.fill(ptr, 0, offsetof<UnmanagedMap64>());
-    let m = changetype<UnmanagedMap64>(ptr);
-    m.isActive = false;
-    mapPool[i] = m;
-}
-
-/**
- * Creates or recycles a 64-bit to 32-bit hash map from the object pool.
- * @returns Pointer (u32) to initialized UnmanagedMap64 instance.
- */
-export function createMap64(): u32 {
-    let m: UnmanagedMap64;
-    if (mapPoolDepth > 0) {
-        mapPoolDepth--;
-        m = mapPool[mapPoolDepth];
-    } else {
-        let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64>());
-        memory.fill(ptr, 0, offsetof<UnmanagedMap64>());
-        m = changetype<UnmanagedMap64>(ptr);
-    }
-    m.init();
-    return changetype<u32>(m);
-}
-
-/**
- * Recycles an UnmanagedMap64 instance back to the pool or frees its memory if pool is full.
- * @param m UnmanagedMap64 instance to recycle.
- */
-export function releaseMap64(m: UnmanagedMap64): void {
-    if (m.capacity > 1024) {
-        m.keys = 0;
-        m.values = 0;
-        m.capacity = 0;
-    }
-    if (mapPoolDepth < 16) {
-        mapPool[mapPoolDepth] = m;
-        mapPoolDepth++;
+    /**
+     * Creates or recycles a 64-bit to 32-bit hash map from the object pool.
+     */
+    static create(): u32 {
+        let m: UnmanagedMap64;
+        if (UnmanagedMap64.poolBuf != 0 && UnmanagedMap64.poolDepth > 0) {
+            UnmanagedMap64.poolDepth--;
+            let ptr = load<usize>(UnmanagedMap64.poolBuf + (UnmanagedMap64.poolDepth * sizeof<usize>()));
+            m = changetype<UnmanagedMap64>(ptr);
+        } else {
+            let ptr = atomicChunkAlloc(sizeof<UnmanagedMap64>());
+            memory.fill(ptr, 0, sizeof<UnmanagedMap64>());
+            m = changetype<UnmanagedMap64>(ptr);
+        }
+        m.init();
+        return changetype<u32>(m);
     }
 }
 
@@ -385,20 +354,25 @@ export function releaseMap64(m: UnmanagedMap64): void {
  */
 @unmanaged
 export class UnmanagedMap64To64 {
+    static poolBuf: usize = 0;
+    static poolDepth: i32 = 0;
+
     /** Pointer to 64-bit keys array (`u64[]`). */
     keys: usize;
     /** Pointer to 64-bit values array (`u64[]`). */
     values: usize;
-    /** Power-of-two capacity. */
+    /** Capacity. */
     capacity: u32;
-    /** Number of active entries. */
+    /** Stored size. */
     size: u32;
-    /** Pool state flag. */
+    /** Active recycling status flag. */
     isActive: boolean;
 
     /**
-     * Initializes or re-initializes the 64-to-64 hash map.
-     * @param initialCapacity Requested capacity (rounded to power of 2, min 16).
+     * Initializes or re-initializes the hash map.
+     * Reuses existing key/value buffers if capacity matches.
+     * 
+     * @param initialCapacity Requested initial capacity (min 16).
      */
     @inline init(initialCapacity: u32 = 16): void {
         if (initialCapacity < 16) initialCapacity = 16;
@@ -407,18 +381,20 @@ export class UnmanagedMap64To64 {
         initialCapacity = cap;
 
         if (this.keys == 0 || this.capacity != initialCapacity) {
-            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize;   // 8 bytes per u64 key
+            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize; // 8 bytes per u64 key
             this.values = atomicChunkAlloc(initialCapacity * 8) as usize; // 8 bytes per u64 value
             this.capacity = initialCapacity;
         }
-        this.size = 0;
-        this.isActive = true;
+
         memory.fill(this.keys, 0, this.capacity * 8);
         memory.fill(this.values, 0, this.capacity * 8);
+        this.size = 0;
+        this.isActive = true;
     }
 
     /**
-     * Sets or updates a 64-bit key to 64-bit value entry.
+     * Sets or updates a key-value pair in the map.
+     * 
      * @param hash 64-bit key.
      * @param value 64-bit value.
      */
@@ -447,24 +423,29 @@ export class UnmanagedMap64To64 {
 
     /**
      * Gets a 64-bit value associated with a 64-bit key.
+     * 
      * @param hash 64-bit key.
-     * @returns 64-bit value if found, 0 otherwise.
+     * @returns 64-bit value if found, 0 if key does not exist.
      */
     @inline get(hash: u64): u64 {
+        if (this.keys == 0 || this.capacity == 0) return 0;
         if (hash == 0) hash = 1;
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
         
-        while (true) {
+        let probes: u32 = 0;
+        while (probes < this.capacity) {
             let k = load<u64>(this.keys + (idx * 8));
             if (k == 0) return 0;
             if (k == hash) return load<u64>(this.values + (idx * 8));
             idx = (idx + 1) & mask;
+            probes++;
         }
+        return 0;
     }
 
     /**
-     * Internal helper to double capacity and re-hash 64-to-64 entries.
+     * Internal helper to double capacity and re-hash map entries.
      */
     _resize(): void {
         let oldCap = this.capacity;
@@ -502,51 +483,63 @@ export class UnmanagedMap64To64 {
     @inline release(): void {
         if (!this.isActive) return;
         this.isActive = false;
-        releaseMap64To64(this);
+        if (this.capacity > 1024) {
+            this.keys = 0;
+            this.values = 0;
+            this.capacity = 0;
+        }
+        if (UnmanagedMap64To64.poolBuf == 0) {
+            UnmanagedMap64To64.poolBuf = atomicChunkAlloc(16 * sizeof<usize>());
+        }
+        if (UnmanagedMap64To64.poolDepth < 16) {
+            store<usize>(UnmanagedMap64To64.poolBuf + (UnmanagedMap64To64.poolDepth * sizeof<usize>()), changetype<usize>(this));
+            UnmanagedMap64To64.poolDepth++;
+        }
+    }
+
+    /**
+     * Creates or recycles a 64-bit key to 64-bit value hash map from the object pool.
+     */
+    static create(): u32 {
+        let m: UnmanagedMap64To64;
+        if (UnmanagedMap64To64.poolBuf != 0 && UnmanagedMap64To64.poolDepth > 0) {
+            UnmanagedMap64To64.poolDepth--;
+            let ptr = load<usize>(UnmanagedMap64To64.poolBuf + (UnmanagedMap64To64.poolDepth * sizeof<usize>()));
+            m = changetype<UnmanagedMap64To64>(ptr);
+        } else {
+            let ptr = atomicChunkAlloc(sizeof<UnmanagedMap64To64>());
+            memory.fill(ptr, 0, sizeof<UnmanagedMap64To64>());
+            m = changetype<UnmanagedMap64To64>(ptr);
+        }
+        m.init();
+        return changetype<u32>(m);
     }
 }
 
-/** Fixed-size LIFO stack pool for recycling UnmanagedMap64To64 instances. */
-const map64Pool = new Array<UnmanagedMap64To64>(16);
-let map64PoolDepth: i32 = 16;
-for (let i = 0; i < 16; i++) {
-    let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64To64>());
-    memory.fill(ptr, 0, offsetof<UnmanagedMap64To64>());
-    let m = changetype<UnmanagedMap64To64>(ptr);
-    m.isActive = false;
-    map64Pool[i] = m;
+// ----------------------------------------------------------------------------
+// Exported C-ABI Pool Functions
+// ----------------------------------------------------------------------------
+
+export function createSet64(): u32 {
+    return UnmanagedSet64.create();
 }
 
-/**
- * Creates or recycles a 64-bit key to 64-bit value hash map from the object pool.
- * @returns Pointer (u32) to initialized UnmanagedMap64To64 instance.
- */
+export function releaseSet64(s: UnmanagedSet64): void {
+    s.release();
+}
+
+export function createMap64(): u32 {
+    return UnmanagedMap64.create();
+}
+
+export function releaseMap64(m: UnmanagedMap64): void {
+    m.release();
+}
+
 export function createMap64To64(): u32 {
-    let m: UnmanagedMap64To64;
-    if (map64PoolDepth > 0) {
-        map64PoolDepth--;
-        m = map64Pool[map64PoolDepth];
-    } else {
-        let ptr = atomicChunkAlloc(offsetof<UnmanagedMap64To64>());
-        memory.fill(ptr, 0, offsetof<UnmanagedMap64To64>());
-        m = changetype<UnmanagedMap64To64>(ptr);
-    }
-    m.init();
-    return changetype<u32>(m);
+    return UnmanagedMap64To64.create();
 }
 
-/**
- * Recycles an UnmanagedMap64To64 instance back to the pool or frees its memory if pool is full.
- * @param m UnmanagedMap64To64 instance to recycle.
- */
 export function releaseMap64To64(m: UnmanagedMap64To64): void {
-    if (m.capacity > 1024) {
-        m.keys = 0;
-        m.values = 0;
-        m.capacity = 0;
-    }
-    if (map64PoolDepth < 16) {
-        map64Pool[map64PoolDepth] = m;
-        map64PoolDepth++;
-    }
+    m.release();
 }

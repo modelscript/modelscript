@@ -57,6 +57,32 @@ export class ArenaStringPool {
     return id;
   }
 
+  concatIds(prefixId: u32, suffixId: u32): u32 {
+    if (prefixId == 0) return suffixId;
+    if (suffixId == 0) return prefixId;
+    let prefLen = prefixId < this.stringCount ? this.stringLengths.get(prefixId) : 0;
+    let prefStart = prefixId < this.stringCount ? this.stringOffsets.get(prefixId) : 0;
+    let suffLen = suffixId < this.stringCount ? this.stringLengths.get(suffixId) : 0;
+    let suffStart = suffixId < this.stringCount ? this.stringOffsets.get(suffixId) : 0;
+    let totalLen = prefLen + 1 + suffLen; // prefix + "." + suffix
+
+    let id = this.stringCount++;
+    let start = this.charOffset;
+    this.stringOffsets.set(id, start);
+    this.stringLengths.set(id, totalLen);
+
+    for (let i: u32 = 0; i < prefLen; i++) {
+      this.charBuffer.set(start + i, this.charBuffer.get(prefStart + i));
+    }
+    this.charBuffer.set(start + prefLen, 46); // '.' ASCII 46
+
+    for (let i: u32 = 0; i < suffLen; i++) {
+      this.charBuffer.set(start + prefLen + 1 + i, this.charBuffer.get(suffStart + i));
+    }
+    this.charOffset += totalLen;
+    return id;
+  }
+
   getLength(id: u32): u32 {
     return id < this.stringCount ? this.stringLengths.get(id) : 0;
   }

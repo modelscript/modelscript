@@ -29,6 +29,8 @@ import {
   polyglot_arenaCode,
   recoveryCode,
   recoveryConfigCode,
+  scope_stackCode,
+  string_poolCode,
   stubCode,
   tapeCode,
   trigramCode,
@@ -902,7 +904,8 @@ export function generateParserTables(
 
   const extractExports = (codeStr: string, moduleName: string) => {
     const exports: string[] = [];
-    const regex = /^export\s+(function|const|let|var)\s+([a-zA-Z0-9_]+)/gm;
+    const regex =
+      /^export\s+(?:@(?:unmanaged|inline)\s+)?(?:abstract\s+)?(function|const|let|var|class|enum|type|interface)\s+([a-zA-Z0-9_]+)/gm;
     let match;
     const ignoreList = new Set([
       "action_offsets",
@@ -1034,6 +1037,8 @@ export function generateParserTables(
     { filename: "ontology_projection.ts", content: ontology_projectionCode },
     { filename: "builtins_math.ts", content: builtins_mathCode },
     { filename: "flattener.ts", content: flattenerCode },
+    { filename: "scope_stack.ts", content: scope_stackCode },
+    { filename: "string_pool.ts", content: string_poolCode },
     { filename: "cas.ts", content: casCode },
     { filename: "tape.ts", content: tapeCode },
   ];
@@ -1063,6 +1068,9 @@ export function generateParserTables(
   code += extractExports(ontology_projectionCode, "./ontology_projection");
   code += extractExports(builtins_mathCode, "./builtins_math");
   code += extractExports(flattenerCode, "./flattener");
+  code += extractExports(scope_stackCode, "./scope_stack");
+  code += extractExports(string_poolCode, "./string_pool");
+  code += extractExports(hashmapCode, "./hashmap");
   code += extractExports(casCode, "./cas");
   code += extractExports(tapeCode, "./tape");
 

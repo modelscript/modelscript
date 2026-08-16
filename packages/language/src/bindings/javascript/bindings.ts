@@ -2117,15 +2117,53 @@ export class LspFacade {
   }
 
   /** Adds a connector connection equation to the flattener. */
-  flattenerAddConnection(flattenerPtr: number, p1VarId: number, p2VarId: number, isFlow: boolean): number {
+  flattenerAddConnection(
+    flattenerPtr: number,
+    p1VarId: number,
+    p2VarId: number,
+    isFlow: boolean,
+    isBoundary: boolean = false,
+  ): number {
     return this.exports.flattener_addConnection
-      ? this.exports.flattener_addConnection(flattenerPtr, p1VarId, p2VarId, isFlow ? 1 : 0)
+      ? this.exports.flattener_addConnection(flattenerPtr, p1VarId, p2VarId, isFlow ? 1 : 0, isBoundary ? 1 : 0)
       : 0;
   }
 
   /** Finalizes connection graphs and synthesizes zero-sum flow equations. */
   flattenerFinalizeConnections(flattenerPtr: number): number {
     return this.exports.flattener_finalizeConnections ? this.exports.flattener_finalizeConnections(flattenerPtr) : 0;
+  }
+
+  /** Creates a modification environment in WASM linear memory. */
+  flattenerCreateEnv(parentPtr: number = 0): number {
+    return this.exports.flattener_createEnv ? this.exports.flattener_createEnv(parentPtr) : 0;
+  }
+
+  /** Binds a parameter override into the modification environment. */
+  flattenerEnvBind(
+    envPtr: number,
+    keyHash: number,
+    valExprId: number,
+    isFinal: boolean = false,
+    isEach: boolean = false,
+  ): void {
+    if (this.exports.flattener_envBind) {
+      this.exports.flattener_envBind(envPtr, keyHash, valExprId, isFinal ? 1 : 0, isEach ? 1 : 0);
+    }
+  }
+
+  /** Looks up a parameter override in the modification environment. */
+  flattenerEnvLookup(envPtr: number, keyHash: number): number {
+    return this.exports.flattener_envLookup ? this.exports.flattener_envLookup(envPtr, keyHash) >>> 0 : 0xffffffff;
+  }
+
+  /** Executes a named in-DSL compilation pipeline (e.g. 'flatten') in WebAssembly. */
+  runPipeline(pipelineName: string, rootNode: number = 0): number {
+    const fnName = `runPipeline_${pipelineName}`;
+    if (this.exports[fnName]) {
+      return this.exports[fnName](rootNode);
+    }
+    return 0;
   }
 
   /** Evaluates built-in trigonometric and elementary functions in WASM. */

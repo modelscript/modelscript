@@ -175,7 +175,6 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
           asQueryStr = `return ${grammar.lsp.definition}(node);`;
         }
       }
-    } else {
       let queryInfo = transpileQuery(grammar.lsp.definition, "lsp");
       asQueryStr = queryInfo.body;
       if (!asQueryStr.startsWith("export function") && !asQueryStr.startsWith("function")) {
@@ -188,6 +187,28 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     customQueries += `export function lsp_invokeDefinition(node: u32): u32 {\n${asQueryStr}\n}\n`;
   } else {
     customQueries += `export function lsp_invokeDefinition(node: u32): u32 { return 0; }\n`;
+  }
+
+  if (grammar.pipelines) {
+    for (const [pipelineName, pipeline] of Object.entries(grammar.pipelines)) {
+      let pipelinePassCode = "";
+      let passIdx = 0;
+      for (const passFn of (pipeline as any).passes) {
+        const passInfo = transpileQuery(passFn);
+        const passFuncName = `pipeline_${pipelineName}_pass_${passIdx}`;
+        let body = passInfo.body;
+        const nonDollar = passInfo.params.filter((p) => p !== "$" && p !== "graph" && p !== "db");
+        const firstParam = nonDollar.length > 0 ? nonDollar[0] : "rootNode";
+        if (!body.startsWith("export function") && !body.startsWith("function")) {
+          body = `function ${passFuncName}(${firstParam}: u32): void {\n${body}\n}\n`;
+        }
+        customQueries += body + "\n\n";
+        pipelinePassCode += `  ${passFuncName}(rootNode);\n`;
+        passIdx++;
+      }
+
+      customQueries += `export function runPipeline_${pipelineName}(rootNode: u32 = 0): u32 {\n${pipelinePassCode}  return graph.dae.varCount;\n}\n\n`;
+    }
   }
 
   let code = graphCode;

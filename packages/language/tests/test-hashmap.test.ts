@@ -46,7 +46,7 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
       releaseMap64,
       createMap64To64,
       releaseMap64To64
-    } from "./hashmap";
+    } from "./parser";
 
     export function testSetOps(key: u64): boolean {
       let ptr = createSet64();
@@ -97,15 +97,21 @@ describe("AssemblyScript Unmanaged Hashmap WASM Tests (Jest Integration)", () =>
       let staleVal = map2.get(12345);
       map2.release();
 
-      return ptr1 === ptr2 && staleVal === 0;
+      return ptr1 == ptr2 && staleVal == 0;
     }
     `;
 
     fs.writeFileSync(harnessTs, code);
 
     const ascPath = path.resolve(__dirname, "../../../node_modules/.bin/asc");
-    const ascCmd = `${ascPath} ${harnessTs} -o ${outWasm} --exportRuntime --optimize --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "inherit" });
+    const ascCmd = `${ascPath} ${harnessTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
+    try {
+      childProcess.execSync(ascCmd, { stdio: "pipe" });
+    } catch (e: any) {
+      console.error("ASC ERROR STDERR:", e.stderr?.toString());
+      console.error("ASC ERROR STDOUT:", e.stdout?.toString());
+      throw e;
+    }
 
     const wasmBuffer = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasmBuffer);

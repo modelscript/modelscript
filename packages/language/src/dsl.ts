@@ -119,11 +119,63 @@ export interface CodeGraph<
   set: SetAPI;
   dae: DaeAPI;
   blt: BltAPI;
+  scope: ScopeAPI;
+  env: EnvAPI;
+  connectors: ConnectorAPI;
+  ssa: SsaAPI;
 
+  unroll(iterVar: string, start: i32, end: i32, fn: (idx: i32) => void): void;
   error(message: string): void;
   runQuery(queryId: QueryName | (string & {}) | u32, queryArg?: u32, queryArg2?: u32): u32;
   runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
   diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
+}
+
+/**
+ * Hierarchical Scope and FQN Stack API for zero-GC prefix management.
+ */
+export interface ScopeAPI {
+  enter(prefix: string | u32, fn: () => void): void;
+  push(prefix: string | u32): void;
+  pop(): void;
+  currentFqn(): u32;
+  currentPrefix(): u32;
+  resolve(localName: string | u32): u32;
+}
+
+/**
+ * Cascading Parameter and Modification Environment API.
+ */
+export interface EnvAPI {
+  create(): u32;
+  bind(envId: u32, keyHash: u32, valExprId: u32): void;
+  lookup(envId: u32, keyHash: u32): u32;
+  enterMod(envId: u32, modNodeId: u32): u32;
+}
+
+/**
+ * Acausal Connection Graph and Zero-Sum Flow/Stream Partitioning API.
+ */
+export interface ConnectorAPI {
+  add(p1VarId: u32, p2VarId: u32, isFlow?: boolean, isBoundary?: boolean): u32;
+  finalize(): u32;
+  connect(lhsConnectorId: u32, rhsConnectorId: u32): u32;
+}
+
+/**
+ * Single Static Assignment (SSA) Lowering API.
+ */
+export interface SsaAPI {
+  lowerToDAE(blockNodeId: u32, assignmentOp?: string): u32;
+}
+
+/**
+ * Declarative physical connector schema definition.
+ */
+export interface ConnectorDefinition {
+  potential?: string[];
+  flow?: string[];
+  stream?: string[];
 }
 
 /**
@@ -446,6 +498,11 @@ export interface LanguageOptions<
    * Declarative Compilation & Lowering Pipelines (e.g. DAE Flattening, BLT Decomposition)
    */
   pipelines?: Record<string, CompilationPipeline<RuleName, FieldName, QueryName, ModelAttrs>>;
+
+  /**
+   * Declarative Physical Connector Port Definitions
+   */
+  connectors?: Record<string, ConnectorDefinition>;
 
   /**
    * A rule name or token representing the language's typical keyword structure.

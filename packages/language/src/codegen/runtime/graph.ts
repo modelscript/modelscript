@@ -34,6 +34,10 @@ import { lsp_allocDiagnostic } from "./lsp";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { DaeBuilder, dae_createBuilder } from "./dae";
 import { BltEngine, blt_createEngine } from "./blt";
+import { ArenaQueryFlattener, flattener_create, flattener_createEnv, flattener_envBind, flattener_envLookup } from "./flattener";
+import { GenericScopeStack } from "./scope_stack";
+import { ArenaStringPool } from "./string_pool";
+import { atomicChunkAlloc } from "./arena";
 
 @external("host", "runHostQuery")
 export declare function host_runHostQuery(queryId: u32, arg1: u32, arg2: u32, arg3: u32): u32;
@@ -742,6 +746,83 @@ export class MapAPI {
   @inline release(mapId: u32): void { changetype<UnmanagedMap64>(mapId).release(); }
 }
 
+class ScopeAPI {
+  stack: GenericScopeStack;
+  pool: ArenaStringPool;
+
+  constructor() {
+    let poolPtr = atomicChunkAlloc(sizeof<ArenaStringPool>());
+    let stackPtr = atomicChunkAlloc(sizeof<GenericScopeStack>());
+    this.pool = changetype<ArenaStringPool>(poolPtr);
+    this.stack = changetype<GenericScopeStack>(stackPtr);
+    this.pool.init();
+    this.stack.init(this.pool);
+  }
+
+  @inline push(prefixId: u32, scopeNode: u32 = 0): u32 {
+    return this.stack.pushFrame(scopeNode, prefixId);
+  }
+
+  @inline pop(): void {
+    this.stack.popFrame();
+  }
+
+  @inline currentFqn(): u32 {
+    return this.stack.currentFqnStringId();
+  }
+
+  @inline currentPrefix(): u32 {
+    return this.stack.currentPrefixStringId();
+  }
+
+  @inline resolve(localId: u32): u32 {
+    return this.stack.resolveLocal(localId);
+  }
+}
+
+class EnvAPI {
+  @inline create(parentPtr: u32 = 0): u32 {
+    return flattener_createEnv(parentPtr);
+  }
+
+  @inline bind(envId: u32, keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
+    flattener_envBind(envId, keyHash, valExprId, isFinal ? 1 : 0, isEach ? 1 : 0);
+  }
+
+  @inline lookup(envId: u32, keyHash: u32): u32 {
+    return flattener_envLookup(envId, keyHash);
+  }
+}
+
+class ConnectorAPI {
+  flattener: ArenaQueryFlattener;
+
+  constructor(dae: DaeBuilder) {
+    let ptr = flattener_create(changetype<u32>(dae));
+    this.flattener = changetype<ArenaQueryFlattener>(ptr);
+  }
+
+  @inline add(p1VarId: u32, p2VarId: u32, isFlow: boolean = false, isBoundary: boolean = false): u32 {
+    return this.flattener.addConnection(p1VarId, p2VarId, isFlow, isBoundary);
+  }
+
+  @inline finalize(): u32 {
+    return this.flattener.finalizeConnections();
+  }
+}
+
+class SsaAPI {
+  dae: DaeBuilder;
+
+  constructor(dae: DaeBuilder) {
+    this.dae = dae;
+  }
+
+  @inline lowerToDAE(blockNodeId: u32, stmtCount: u32 = 1): u32 {
+    return stmtCount;
+  }
+}
+
 // --- Typed DB Wrapper for TypeScript IDE Completion ---
 class CodeGraph {
     tensor: TensorAPI;
@@ -751,17 +832,26 @@ class CodeGraph {
     set: SetAPI;
     map: MapAPI;
     dae: DaeBuilder;
-    blt: BltEngine = changetype<BltEngine>(0);
+    blt: BltEngine;
+    scope: ScopeAPI;
+    env: EnvAPI;
+    connectors: ConnectorAPI;
+    ssa: SsaAPI;
 
     constructor() {
+      let daeBuilder = changetype<DaeBuilder>(dae_createBuilder());
+      this.dae = daeBuilder;
+      this.blt = changetype<BltEngine>(blt_createEngine(changetype<u32>(daeBuilder)));
       this.tensor = new TensorAPI();
       this.hash = new HashAPI();
       this.ast = new AstAPI();
       this.model = new ModelAPI();
       this.set = new SetAPI();
       this.map = new MapAPI();
-      this.dae = changetype<DaeBuilder>(dae_createBuilder());
-      this.blt = changetype<BltEngine>(blt_createEngine(changetype<u32>(this.dae)));
+      this.scope = new ScopeAPI();
+      this.env = new EnvAPI();
+      this.connectors = new ConnectorAPI(daeBuilder);
+      this.ssa = new SsaAPI(daeBuilder);
     }
 
     @inline runQuery(queryType: u32, queryArg: u32): u32 {
