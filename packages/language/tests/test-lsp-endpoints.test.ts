@@ -162,4 +162,38 @@ describe("LSP Endpoints Integration Tests", () => {
       typeof exports.globalAstRoot === "object" ? exports.globalAstRoot.value : exports.globalAstRoot;
     expect(exports.lsp_getDocumentRoot(fileId1)).toBe(expectedFallback);
   });
+
+  it("should extract 2D diagram data and apply diagram edits via WASM LSP endpoints", () => {
+    const code = `scope {
+  let velocity = 100;
+  let mass = 50;
+  print velocity;
+}`;
+    activeFacade.lastAstRoot = 0;
+    const ast = activeFacade.parse(code);
+    expect(ast).toBeGreaterThan(0);
+
+    expect(exports.lsp_getDiagramData(0)).toBe(0);
+
+    const numRecords = exports.lsp_getDiagramData(ast);
+    expect(numRecords).toBeGreaterThan(0);
+
+    const diagram = activeFacade.getDiagramData(ast);
+    expect(diagram).toBeDefined();
+    expect(Array.isArray(diagram.nodes)).toBe(true);
+    expect(diagram.nodes.length).toBeGreaterThan(0);
+
+    // Verify first node structure
+    const firstNode = diagram.nodes[0];
+    expect(firstNode.id).toMatch(/^node_\d+$/);
+    expect(firstNode.width).toBe(100);
+    expect(firstNode.height).toBe(60);
+
+    // Test applying visual edits
+    const editResult = activeFacade.applyDiagramEdits([
+      { type: "move", nodePtr: firstNode.nodePtr, x: 150, y: 200, width: 120, height: 80, rotation: 0 },
+    ]);
+    expect(editResult).toBeDefined();
+    expect(typeof editResult.text).toBe("string");
+  });
 });

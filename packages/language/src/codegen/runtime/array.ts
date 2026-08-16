@@ -251,7 +251,16 @@ export class ChunkedArray<T> {
 }
 
 @unmanaged
-export class ChunkedUint32Array extends ChunkedArray<u32> {}
+export class ChunkedUint32Array extends ChunkedArray<u32> {
+  @inline @operator("[]") __get(index: i32): u32 {
+    if (index < 0) return 0;
+    return this.get(index as u32);
+  }
+  @inline @operator("[]=") __set(index: i32, value: u32): void {
+    if (index < 0) return;
+    this.set(index as u32, value);
+  }
+}
 
 @unmanaged
 export class ChunkedInt32Array extends ChunkedArray<i32> {}
@@ -268,7 +277,7 @@ export class ChunkedUint8Array extends ChunkedArray<u8> {}
  * @param initialElements The number of elements to pre-allocate chunks for.
  */
 export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint32Array {
-  let ptr = atomicChunkAlloc(offsetof<ChunkedUint32Array>());
+  let ptr = atomicChunkAlloc(sizeof<usize>() * 4);
   let arr = changetype<ChunkedUint32Array>(ptr);
   arr.init(initialElements);
   return arr;
@@ -280,7 +289,7 @@ export function createChunkedUint32Array(initialElements: u32 = 0): ChunkedUint3
  * @param initialElements The number of elements to pre-allocate chunks for.
  */
 export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32Array {
-  let ptr = atomicChunkAlloc(offsetof<ChunkedInt32Array>());
+  let ptr = atomicChunkAlloc(sizeof<usize>() * 4);
   let arr = changetype<ChunkedInt32Array>(ptr);
   arr.init(initialElements);
   return arr;
@@ -292,7 +301,7 @@ export function createChunkedInt32Array(initialElements: u32 = 0): ChunkedInt32A
  * @param initialElements The number of elements to pre-allocate chunks for.
  */
 export function createChunkedFloat64Array(initialElements: u32 = 0): ChunkedFloat64Array {
-  let ptr = atomicChunkAlloc(offsetof<ChunkedFloat64Array>());
+  let ptr = atomicChunkAlloc(sizeof<usize>() * 4);
   let arr = changetype<ChunkedFloat64Array>(ptr);
   arr.init(initialElements);
   return arr;
@@ -304,7 +313,7 @@ export function createChunkedFloat64Array(initialElements: u32 = 0): ChunkedFloa
  * @param initialElements The number of elements to pre-allocate chunks for.
  */
 export function createChunkedUint8Array(initialElements: u32 = 0): ChunkedUint8Array {
-  let ptr = atomicChunkAlloc(offsetof<ChunkedUint8Array>());
+  let ptr = atomicChunkAlloc(sizeof<usize>() * 4);
   let arr = changetype<ChunkedUint8Array>(ptr);
   arr.init(initialElements);
   return arr;

@@ -1349,7 +1349,7 @@ export class LspFacade {
       return { nodes, edges };
     }
 
-    const numRecords = this.exports.lsp_getDiagramData(astRoot, projectionId);
+    const numRecords = this.exports.lsp_getDiagramData(astRoot);
     if (numRecords === 0) return { nodes, edges };
 
     const mem32 = new Uint32Array(this.wasmMemory.buffer);

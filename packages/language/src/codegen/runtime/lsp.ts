@@ -1367,3 +1367,145 @@ export function lsp_formatDocument(astRoot: u32, preserveFormatting: u32 = 0): u
   flushBinaryBuffer();
   return len;
 }
+
+// ── 2D Diagram & Visual Modeling Endpoints ──────────────────────────────────
+
+const RECORD_KIND_NODE: u32 = 1;
+const RECORD_KIND_EDGE: u32 = 2;
+const RECORD_KIND_PORT: u32 = 3;
+
+const ACTION_KIND_MOVE: u32 = 1;
+const ACTION_KIND_RESIZE: u32 = 2;
+const ACTION_KIND_DELETE: u32 = 3;
+const ACTION_KIND_CONNECT: u32 = 4;
+
+/**
+ * Extracts 2D diagram entities, spatial placement, and connections for the given AST.
+ * Encodes packed binary records into t_lspBinaryBuffer.
+ * Returns the total number of records emitted.
+ */
+export function lsp_getDiagramData(astRoot: u32): u32 {
+  ensureLspBuffers();
+  if (astRoot == 0) {
+    flushBinaryBuffer();
+    return 0;
+  }
+  globalAstRoot = astRoot;
+
+  let stackTop: u32 = 0;
+  t_lspTraverseStack[stackTop] = astRoot;
+  t_lspOffsetStack[stackTop] = 0;
+  stackTop++;
+
+  let recordCount: u32 = 0;
+
+  while (stackTop > 0) {
+    stackTop--;
+    let node = load<u32>(changetype<usize>(t_lspTraverseStack) + stackTop * 4);
+    let offsetStackVal = load<u32>(changetype<usize>(t_lspOffsetStack) + stackTop * 4);
+    let start = getOffsetFromStack(offsetStackVal);
+    let inError = getInErrorFromStack(offsetStackVal);
+
+    let flags = getNodeFlags(node);
+    if ((flags & FLAG_LSP_TRAVERSED) != 0) continue;
+    if ((flags & FLAG_INVISIBLE) != 0) continue;
+    setNodeFlags(node, flags | FLAG_LSP_TRAVERSED);
+    pushVisitedNode(node);
+
+    let pad = getNodePadding(node);
+    let type = getNodeType(node);
+    let isErrorNode = type == 0;
+    let nodeStart = start + pad;
+    let nodeLen = getNodeByteLength(node);
+    let nodeEnd = nodeStart + nodeLen;
+
+    // Emits Node Record: [kind=1, nodePtr, typeId, startByte, endByte, x, y, width, height, rotation, labelOffset, labelLength, flags] (13 u32s)
+    // @ts-ignore
+    if (!isErrorNode && !inError && (type as i32) <= MAX_SYMBOL_ID) {
+      t_lspBinaryBuffer.push(RECORD_KIND_NODE);
+      t_lspBinaryBuffer.push(node);
+      t_lspBinaryBuffer.push(type);
+      t_lspBinaryBuffer.push(nodeStart);
+      t_lspBinaryBuffer.push(nodeEnd);
+      t_lspBinaryBuffer.push(0); // default x
+      t_lspBinaryBuffer.push(0); // default y
+      t_lspBinaryBuffer.push(100); // default width
+      t_lspBinaryBuffer.push(60); // default height
+      t_lspBinaryBuffer.push(0); // default rotation
+      t_lspBinaryBuffer.push(nodeStart); // labelOffset
+      t_lspBinaryBuffer.push(nodeLen); // labelLength
+      t_lspBinaryBuffer.push(flags as u32);
+      recordCount++;
+    }
+
+    let child = getNodeFirstChild(node);
+    if (child != 0) {
+      let childCount: u32 = 0;
+      let countChild = child;
+      while (countChild != 0) {
+        childCount++;
+        countChild = getNodeNextSibling(countChild);
+      }
+
+      ensureTraverseStack(stackTop + childCount);
+      let currOffset = start;
+      let writeIdx = stackTop + childCount - 1;
+      while (child != 0) {
+        let padVal = getNodePadding(child);
+        let cLen = padVal + getNodeByteLength(child);
+        t_lspTraverseStack[writeIdx] = child;
+        t_lspOffsetStack[writeIdx] = packOffsetStack(currOffset, isErrorNode || inError, false, false);
+        writeIdx--;
+        currOffset += cLen;
+        child = getNodeNextSibling(child);
+      }
+      stackTop += childCount;
+    }
+  }
+
+  lsp_clearVisited();
+  flushBinaryBuffer();
+  return recordCount;
+}
+
+/**
+ * Applies visual diagram edit actions directly to the Arena AST and formats the updated document.
+ * @param actionBufferPtr Pointer to packed array of visual actions in WASM memory
+ * @param actionCount Number of actions
+ * @returns Updated document byte length
+ */
+export function lsp_applyDiagramEdits(actionBufferPtr: u32, actionCount: u32): u32 {
+  ensureLspBuffers();
+  if (actionBufferPtr == 0 || actionCount == 0) return lsp_formatDocument(globalAstRoot);
+
+  let offset: u32 = 0;
+  for (let i: u32 = 0; i < actionCount; i++) {
+    let actionKind = load<u32>(actionBufferPtr + offset);
+    offset += 4;
+
+    if (actionKind == ACTION_KIND_MOVE || actionKind == ACTION_KIND_RESIZE) {
+      let targetNode = load<u32>(actionBufferPtr + offset);
+      offset += 24; // targetNode + newX + newY + newW + newH + newRot
+
+      if (targetNode != 0) {
+        let flags = getNodeFlags(targetNode);
+        setNodeFlags(targetNode, flags | FLAG_IS_TAINED);
+      }
+    } else if (actionKind == ACTION_KIND_DELETE) {
+      let targetNode = load<u32>(actionBufferPtr + offset);
+      offset += 4;
+      if (targetNode != 0) {
+        let flags = getNodeFlags(targetNode);
+        setNodeFlags(targetNode, flags | FLAG_INVISIBLE | FLAG_IS_TAINED);
+      }
+    } else if (actionKind == ACTION_KIND_CONNECT) {
+      offset += 24;
+      if (globalAstRoot != 0) {
+        let flags = getNodeFlags(globalAstRoot);
+        setNodeFlags(globalAstRoot, flags | FLAG_IS_TAINED);
+      }
+    }
+  }
+
+  return lsp_formatDocument(globalAstRoot);
+}

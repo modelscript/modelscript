@@ -25,6 +25,7 @@ import {
   recoveryCode,
   recoveryConfigCode,
   stubCode,
+  trigramCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
@@ -1020,6 +1021,7 @@ export function generateParserTables(
     { filename: "isolation.ts", content: isolationCode },
     { filename: "pantelides.ts", content: pantelidesCode },
     { filename: "stub.ts", content: stubCode },
+    { filename: "trigram.ts", content: trigramCode },
     { filename: "correspondence.ts", content: correspondenceCode },
     { filename: "polyglot_arena.ts", content: polyglot_arenaCode },
   ];
@@ -1037,12 +1039,14 @@ export function generateParserTables(
     outFiles.push({ filename: "tgg.ts", content: compileTGGRules(originalGrammar.polyglot).sourceCode });
   }
 
+  code += extractExports(arenaCode, "./arena");
   code += extractExports(daeCode, "./dae");
   code += extractExports(bltCode, "./blt");
   code += extractExports(eventsCode, "./events");
   code += extractExports(integratorsCode, "./integrators");
   code += extractExports(matrixCode, "./matrix");
   code += extractExports(stubCode, "./stub");
+  code += extractExports(trigramCode, "./trigram");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();
