@@ -7,12 +7,14 @@ import {
   arenaCode,
   arrayCode,
   bltCode,
+  builtins_mathCode,
   correspondenceCode,
   cursorCode,
   daeCode,
   engineCode,
   evalCode,
   eventsCode,
+  flattenerCode,
   gssCode,
   hashmapCode,
   integratorsCode,
@@ -1028,6 +1030,8 @@ export function generateParserTables(
     { filename: "polyglot_arena.ts", content: polyglot_arenaCode },
     { filename: "ontology.ts", content: ontologyCode },
     { filename: "ontology_projection.ts", content: ontology_projectionCode },
+    { filename: "builtins_math.ts", content: builtins_mathCode },
+    { filename: "flattener.ts", content: flattenerCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1053,6 +1057,8 @@ export function generateParserTables(
   code += extractExports(trigramCode, "./trigram");
   code += extractExports(ontologyCode, "./ontology");
   code += extractExports(ontology_projectionCode, "./ontology_projection");
+  code += extractExports(builtins_mathCode, "./builtins_math");
+  code += extractExports(flattenerCode, "./flattener");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

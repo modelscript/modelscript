@@ -2100,6 +2100,69 @@ export class LspFacade {
     );
   }
 
+  /** Creates an arena-native flattener attached to a DaeBuilder. */
+  createFlattener(daePtr: number): number {
+    return this.exports.flattener_create ? this.exports.flattener_create(daePtr) : 0;
+  }
+
+  /** Flattens an AST class definition into DAE variables and equations. */
+  flattenerFlattenClass(flattenerPtr: number, classNodePtr: number): number {
+    return this.exports.flattener_flattenClass ? this.exports.flattener_flattenClass(flattenerPtr, classNodePtr) : 0;
+  }
+
+  /** Adds a connector connection equation to the flattener. */
+  flattenerAddConnection(flattenerPtr: number, p1VarId: number, p2VarId: number, isFlow: boolean): number {
+    return this.exports.flattener_addConnection
+      ? this.exports.flattener_addConnection(flattenerPtr, p1VarId, p2VarId, isFlow ? 1 : 0)
+      : 0;
+  }
+
+  /** Finalizes connection graphs and synthesizes zero-sum flow equations. */
+  flattenerFinalizeConnections(flattenerPtr: number): number {
+    return this.exports.flattener_finalizeConnections ? this.exports.flattener_finalizeConnections(flattenerPtr) : 0;
+  }
+
+  /** Evaluates built-in trigonometric and elementary functions in WASM. */
+  mathSin(x: number): number {
+    return this.exports.math_sin ? this.exports.math_sin(x) : Math.sin(x);
+  }
+  mathCos(x: number): number {
+    return this.exports.math_cos ? this.exports.math_cos(x) : Math.cos(x);
+  }
+  mathTan(x: number): number {
+    return this.exports.math_tan ? this.exports.math_tan(x) : Math.tan(x);
+  }
+  mathSqrt(x: number): number {
+    return this.exports.math_sqrt ? this.exports.math_sqrt(x) : Math.sqrt(x);
+  }
+  mathExp(x: number): number {
+    return this.exports.math_exp ? this.exports.math_exp(x) : Math.exp(x);
+  }
+  mathLog(x: number): number {
+    return this.exports.math_log ? this.exports.math_log(x) : Math.log(x);
+  }
+
+  /** Evaluates CSG sphere Signed Distance Function in WASM. */
+  csgSdfSphere(px: number, py: number, pz: number, r: number): number {
+    return this.exports.csg_sdf_sphere ? this.exports.csg_sdf_sphere(px, py, pz, r) : 0;
+  }
+
+  /** Evaluates CSG box Signed Distance Function in WASM. */
+  csgSdfBox(px: number, py: number, pz: number, hx: number, hy: number, hz: number): number {
+    return this.exports.csg_sdf_box ? this.exports.csg_sdf_box(px, py, pz, hx, hy, hz) : 0;
+  }
+
+  /** CSG Boolean Operations. */
+  csgOpUnion(d1: number, d2: number): number {
+    return this.exports.csg_op_union ? this.exports.csg_op_union(d1, d2) : Math.min(d1, d2);
+  }
+  csgOpIntersect(d1: number, d2: number): number {
+    return this.exports.csg_op_intersect ? this.exports.csg_op_intersect(d1, d2) : Math.max(d1, d2);
+  }
+  csgOpDifference(d1: number, d2: number): number {
+    return this.exports.csg_op_difference ? this.exports.csg_op_difference(d1, d2) : Math.max(d1, -d2);
+  }
+
   /** Formats/unparses the document AST using zero-GC AssemblyScript formatting rules. */
   formatDocument(astRoot: number, preserveFormatting: boolean = false): string {
     if (!this.exports.lsp_formatDocument || !this.exports.lsp_getBinaryBuffer) return "";
