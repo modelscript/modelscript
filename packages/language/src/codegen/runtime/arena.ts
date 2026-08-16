@@ -245,6 +245,58 @@ export function arena_alloc(size: u32): u32 {
   return atomicChunkAlloc(size);
 }
 
+@unmanaged
+export class ArenaSnapshot {
+  activeGeneration: u8;
+  gen0_offset: u32;
+  gen0_currentChunk: u32;
+  gen1_offset: u32;
+  gen1_currentChunk: u32;
+  gen2_offset: u32;
+  gen2_currentChunk: u32;
+}
+
+/**
+ * Creates a fast snapshot checkpoint of the arena allocation state.
+ * Enables zero-cost backtracking and Branch-on-Write speculative compilation.
+ */
+export function arena_createSnapshot(): u32 {
+  let s = S();
+  let ptr = atomicChunkAlloc(sizeof<ArenaSnapshot>());
+  let snap = changetype<ArenaSnapshot>(ptr);
+  snap.activeGeneration = s.activeGeneration;
+  snap.gen0_offset = s.gen0_offset;
+  snap.gen0_currentChunk = s.gen0_active_chunk;
+  snap.gen1_offset = s.gen1_offset;
+  snap.gen1_currentChunk = s.gen1_active_chunk;
+  snap.gen2_offset = s.gen2_offset;
+  snap.gen2_currentChunk = s.gen2_active_chunk;
+  return ptr as u32;
+}
+
+/**
+ * Restores the arena allocation state back to a previous snapshot checkpoint.
+ */
+export function arena_restoreSnapshot(snapshotPtr: u32): void {
+  if (snapshotPtr == 0) return;
+  let snap = changetype<ArenaSnapshot>(snapshotPtr);
+  let s = S();
+  s.activeGeneration = snap.activeGeneration;
+  s.gen0_offset = snap.gen0_offset;
+  s.gen0_active_chunk = snap.gen0_currentChunk;
+  s.gen1_offset = snap.gen1_offset;
+  s.gen1_active_chunk = snap.gen1_currentChunk;
+  s.gen2_offset = snap.gen2_offset;
+  s.gen2_active_chunk = snap.gen2_currentChunk;
+
+  let offsetVal = snap.activeGeneration == 0 ? snap.gen0_offset : (snap.activeGeneration == 1 ? snap.gen1_offset : snap.gen2_offset);
+  s.atomicStoreOffset(offsetVal);
+}
+
+export function arena_allocNode(type: u16): u32 {
+  return allocNode(type, 0, 0, 0);
+}
+
 /**
  * Sets the active generation for subsequent allocations.
  * Generation 1 is persistent, generation 0 is transient.

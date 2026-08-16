@@ -1812,6 +1812,12 @@ export class LspFacade {
     return ok === 1;
   }
 
+  /** Restores Tier 1 stub store from a binary snapshot and returns the restored stub count. */
+  restoreStubBinary(buffer: Uint8Array): number {
+    const ok = this.importStubBinary(buffer);
+    return ok ? this.getStubCount() : 0;
+  }
+
   /** Bulk registers raw uint32 stub records from worker threads. */
   bulkRegisterStubs(payload: Uint32Array): number {
     if (!this.exports.stub_bulkRegister || payload.byteLength === 0) return 0;
@@ -2201,6 +2207,18 @@ export class LspFacade {
   tapeReset(tapePtr: number): void {
     if (this.exports.tape_reset) {
       this.exports.tape_reset(tapePtr);
+    }
+  }
+
+  /** Creates a fast snapshot checkpoint of the arena allocation state. */
+  createArenaSnapshot(): number {
+    return this.exports.arena_createSnapshot ? this.exports.arena_createSnapshot() : 0;
+  }
+
+  /** Restores the arena allocation state to a previous snapshot checkpoint. */
+  restoreArenaSnapshot(snapshotPtr: number): void {
+    if (this.exports.arena_restoreSnapshot) {
+      this.exports.arena_restoreSnapshot(snapshotPtr);
     }
   }
 
