@@ -124,6 +124,18 @@ export async function startVscodeExtension(outDir: string, grammarName: string, 
           path: "./syntaxes/tmLanguage.json",
         },
       ],
+      customEditors: [
+        {
+          viewType: `${langId}.diagramEditor`,
+          displayName: `${grammarName} 2D Diagram`,
+          selector: [
+            {
+              filenamePattern: `*${fileExt}`,
+            },
+          ],
+          priority: "option",
+        },
+      ],
     },
   };
 
@@ -167,6 +179,7 @@ export async function startVscodeExtension(outDir: string, grammarName: string, 
   const extensionCode = `
 import * as vscode from 'vscode';
 import { LspFacade, semanticLegend } from './lsp_api';
+import { DiagramEditorProvider } from './diagramEditorProvider';
 
 let wasmExports: any;
 let wasmMemory: WebAssembly.Memory;
@@ -598,6 +611,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 
+    if (typeof (facade as any).getDiagramData === 'function') {
+        try {
+            DiagramEditorProvider.register(context, facade, wasmExports);
+        } catch (err) {
+            console.error('Failed to register DiagramEditorProvider:', err);
+        }
+    }
+
     console.log('${grammarName} Language Extension Activated!');
 }
 
@@ -716,6 +737,176 @@ export function deactivate() {}
 `;
 
   fs.writeFileSync(path.join(srcDir, "extension.ts"), extensionCode, "utf-8");
+
+  const diagramProviderCode = `
+import * as vscode from 'vscode';
+
+export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
+  public static register(context: vscode.ExtensionContext, facade: any, wasmExports: any): vscode.Disposable {
+    const provider = new DiagramEditorProvider(context, facade, wasmExports);
+    const providerRegistration = vscode.window.registerCustomEditorProvider(
+      '${langId}.diagramEditor',
+      provider
+    );
+    context.subscriptions.push(providerRegistration);
+    return providerRegistration;
+  }
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly facade: any,
+    private readonly wasmExports: any
+  ) {}
+
+  public async resolveCustomTextEditor(
+    document: vscode.TextDocument,
+    webviewPanel: vscode.WebviewPanel,
+    _token: vscode.CancellationToken
+  ): Promise<void> {
+    webviewPanel.webview.options = {
+      enableScripts: true,
+    };
+
+    const updateWebview = () => {
+      const text = document.getText();
+      const ast = this.facade && typeof this.facade.parse === 'function' ? this.facade.parse(text) : 0;
+      const diagramData = this.facade && typeof this.facade.getDiagramData === 'function' 
+        ? this.facade.getDiagramData(ast) 
+        : { nodes: [], edges: [] };
+      webviewPanel.webview.postMessage({
+        type: 'update',
+        text: text,
+        diagramData: diagramData
+      });
+    };
+
+    const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
+      if (e.document.uri.toString() === document.uri.toString()) {
+        updateWebview();
+      }
+    });
+
+    webviewPanel.onDidDispose(() => {
+      changeDocumentSubscription.dispose();
+    });
+
+    webviewPanel.webview.onDidReceiveMessage(e => {
+      if (e.type === 'edit') {
+        if (this.facade && typeof this.facade.applyDiagramEdits === 'function') {
+          const res = this.facade.applyDiagramEdits(e.actions);
+          if (res && res.text) {
+            const edit = new vscode.WorkspaceEdit();
+            const fullRange = new vscode.Range(
+              document.positionAt(0),
+              document.positionAt(document.getText().length)
+            );
+            edit.replace(document.uri, fullRange, res.text);
+            vscode.workspace.applyEdit(edit);
+          }
+        }
+      }
+    });
+
+    webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, document);
+    updateWebview();
+  }
+
+  private getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
+    return \`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${grammarName} Diagram</title>
+    <style>
+        body { margin: 0; padding: 0; background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        #canvas-container { flex: 1; position: relative; background: #0d1117; background-image: radial-gradient(#21262d 1px, transparent 1px); background-size: 20px 20px; overflow: hidden; }
+        .diagram-node { position: absolute; border: 2px solid #58a6ff; background: rgba(56, 139, 253, 0.15); border-radius: 6px; cursor: move; user-select: none; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #f0f6fc; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        .diagram-node:hover { border-color: #79c0ff; background: rgba(56, 139, 253, 0.25); }
+        .port-pin { position: absolute; width: 8px; height: 8px; background: #3fb950; border: 1px solid #ffffff; border-radius: 50%; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        const container = document.getElementById('canvas-container');
+        let currentDiagram = { nodes: [], edges: [] };
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'update' && message.diagramData) {
+                currentDiagram = message.diagramData;
+                renderDiagram();
+            }
+        });
+
+        function renderDiagram() {
+            container.innerHTML = '';
+            (currentDiagram.nodes || []).forEach(node => {
+                const el = document.createElement('div');
+                el.className = 'diagram-node';
+                el.style.left = (node.x + 250) + 'px';
+                el.style.top = (node.y + 200) + 'px';
+                el.style.width = (node.width || 120) + 'px';
+                el.style.height = (node.height || 60) + 'px';
+                el.innerHTML = '<span style="font-size: 11px; opacity: 0.7;">' + (node.typeId || 'Node') + '</span><span>' + (node.label || node.id || 'Node') + '</span>';
+
+                // Port Pins
+                const leftPort = document.createElement('div');
+                leftPort.className = 'port-pin';
+                leftPort.style.left = '-5px';
+                leftPort.style.top = 'calc(50% - 4px)';
+                el.appendChild(leftPort);
+
+                const rightPort = document.createElement('div');
+                rightPort.className = 'port-pin';
+                rightPort.style.right = '-5px';
+                rightPort.style.top = 'calc(50% - 4px)';
+                el.appendChild(rightPort);
+
+                let isDragging = false;
+                let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
+
+                el.addEventListener('mousedown', (e) => {
+                    isDragging = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    initialLeft = parseInt(el.style.left, 10);
+                    initialTop = parseInt(el.style.top, 10);
+                    e.stopPropagation();
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    el.style.left = (initialLeft + dx) + 'px';
+                    el.style.top = (initialTop + dy) + 'px';
+                });
+
+                window.addEventListener('mouseup', (e) => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    const newX = parseInt(el.style.left, 10) - 250;
+                    const newY = parseInt(el.style.top, 10) - 200;
+                    vscode.postMessage({
+                        type: 'edit',
+                        actions: [{ type: 'move', nodePtr: node.nodePtr, x: newX, y: newY }]
+                    });
+                });
+
+                container.appendChild(el);
+            });
+        }
+    </script>
+</body>
+</html>\`;
+  }
+}
+`;
+
+  fs.writeFileSync(path.join(srcDir, "diagramEditorProvider.ts"), diagramProviderCode, "utf-8");
 
   const packageJsonPath = path.join(process.cwd(), "package.json");
   let langName = grammarName.split("/").pop() || "parser";

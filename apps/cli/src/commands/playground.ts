@@ -567,8 +567,36 @@ end ThermalSystem;\`;
                     window['__latestAstPatch'] = msg;
                     window['__astPatchQueue'].push(msg);
                     window.postMessage(msg, '*');
+
+                    // Request updated diagram data on AST update
+                    lspWorker.postMessage({
+                        jsonrpc: '2.0',
+                        id: Date.now(),
+                        method: 'modelscript/diagram/getData',
+                        params: {}
+                    });
+                }
+                if (msg && msg.result && (msg.result.nodes || msg.result.edges)) {
+                    window['__latestDiagramData'] = msg.result;
+                    window.dispatchEvent(new CustomEvent('diagramDataUpdated', { detail: msg.result }));
+                }
+                if (msg && msg.result && typeof msg.result.text === 'string') {
+                    if (window.codeEditor && window.codeEditor.getValue() !== msg.result.text) {
+                        const pos = window.codeEditor.getPosition();
+                        window.codeEditor.setValue(msg.result.text);
+                        if (pos) window.codeEditor.setPosition(pos);
+                    }
                 }
             });
+
+            window['__applyDiagramEdits'] = (actions) => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/diagram/applyEdits',
+                    params: { actions }
+                });
+            };
 
             document.getElementById('compile-btn').onclick = () => {
                 document.getElementById('status').innerText = "Compiling DSL in browser...";
@@ -1295,6 +1323,163 @@ end ThermalSystem;\`;
             );
         }
 
+        function DiagramViewer() {
+            const [diagram, setDiagram] = useState(window['__latestDiagramData'] || { nodes: [], edges: [] });
+            const [zoom, setZoom] = useState(1);
+            const [pan, setPan] = useState({ x: 0, y: 0 });
+            const [isPanning, setIsPanning] = useState(false);
+            const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+            const [draggingNode, setDraggingNode] = useState(null);
+            const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (e && e.detail) {
+                        setDiagram(e.detail);
+                    } else if (window['__latestDiagramData']) {
+                        setDiagram(window['__latestDiagramData']);
+                    }
+                };
+                window.addEventListener('diagramDataUpdated', handler);
+                return () => window.removeEventListener('diagramDataUpdated', handler);
+            }, []);
+
+            const handleMouseDownPan = (e) => {
+                if (e.target.closest('.diagram-interactive-node')) return;
+                setIsPanning(true);
+                setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+            };
+
+            const handleMouseMove = (e) => {
+                if (isPanning) {
+                    setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
+                } else if (draggingNode) {
+                    const newX = Math.round((e.clientX - pan.x) / zoom - dragOffset.x);
+                    const newY = Math.round((e.clientY - pan.y) / zoom - dragOffset.y);
+                    setDiagram(prev => ({
+                        ...prev,
+                        nodes: prev.nodes.map(n => n.id === draggingNode.id ? { ...n, x: newX, y: newY } : n)
+                    }));
+                }
+            };
+
+            const handleMouseUp = () => {
+                if (isPanning) {
+                    setIsPanning(false);
+                }
+                if (draggingNode) {
+                    const node = diagram.nodes.find(n => n.id === draggingNode.id);
+                    if (node && window['__applyDiagramEdits']) {
+                        window['__applyDiagramEdits']([{ type: 'move', nodePtr: node.nodePtr, x: node.x, y: node.y }]);
+                    }
+                    setDraggingNode(null);
+                }
+            };
+
+            const handleNodeDragStart = (node, e) => {
+                e.stopPropagation();
+                setDraggingNode(node);
+                const mouseX = (e.clientX - pan.x) / zoom;
+                const mouseY = (e.clientY - pan.y) / zoom;
+                setDragOffset({ x: mouseX - node.x, y: mouseY - node.y });
+            };
+
+            return (
+                <div 
+                    className="panel-content" 
+                    style={{ 
+                        padding: 0, 
+                        flex: 1, 
+                        position: 'relative', 
+                        overflow: 'hidden', 
+                        background: '#0d1117',
+                        backgroundImage: 'radial-gradient(#21262d 1px, transparent 1px)',
+                        backgroundSize: '20px 20px',
+                        cursor: isPanning ? 'grabbing' : 'grab'
+                    }}
+                    onMouseDown={handleMouseDownPan}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                >
+                    <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 100, display: 'flex', gap: 6, background: 'rgba(22,27,34,0.85)', padding: '4px 8px', borderRadius: 6, border: '1px solid #30363d' }}>
+                        <button className="tab-btn" onClick={() => setZoom(z => Math.min(2.5, z + 0.15))}>🔍 +</button>
+                        <button className="tab-btn" onClick={() => setZoom(z => Math.max(0.4, z - 0.15))}>🔍 -</button>
+                        <button className="tab-btn" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}>↺ Reset</button>
+                    </div>
+
+                    <div style={{ 
+                        transform: "translate(" + pan.x + "px, " + pan.y + "px) scale(" + zoom + ")",
+                        transformOrigin: '0 0',
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        width: 0,
+                        height: 0
+                    }}>
+                        {/* Render Edges */}
+                        <svg style={{ position: 'absolute', top: -5000, left: -5000, width: 10000, height: 10000, pointerEvents: 'none' }}>
+                            {(diagram.edges || []).map(edge => {
+                                const srcNode = diagram.nodes.find(n => n.id === edge.source);
+                                const tgtNode = diagram.nodes.find(n => n.id === edge.target);
+                                if (!srcNode || !tgtNode) return null;
+                                const x1 = 5000 + srcNode.x + (srcNode.width || 100) / 2;
+                                const y1 = 5000 + srcNode.y + (srcNode.height || 60) / 2;
+                                const x2 = 5000 + tgtNode.x + (tgtNode.width || 100) / 2;
+                                const y2 = 5000 + tgtNode.y + (tgtNode.height || 60) / 2;
+                                return (
+                                    <g key={edge.id}>
+                                        <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#58a6ff" strokeWidth="2" strokeDasharray="4,4" />
+                                    </g>
+                                );
+                            })}
+                        </svg>
+
+                        {/* Render Nodes */}
+                        {(diagram.nodes || []).map(node => (
+                            <div
+                                key={node.id}
+                                className="diagram-interactive-node"
+                                style={{
+                                    position: 'absolute',
+                                    left: node.x,
+                                    top: node.y,
+                                    width: node.width || 100,
+                                    height: node.height || 60,
+                                    borderRadius: 6,
+                                    background: 'rgba(56, 139, 253, 0.12)',
+                                    border: '2px solid #58a6ff',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: '#f0f6fc',
+                                    cursor: 'move',
+                                    userSelect: 'none',
+                                    transition: (draggingNode && draggingNode.id === node.id) ? 'none' : 'box-shadow 0.2s',
+                                    zIndex: (draggingNode && draggingNode.id === node.id) ? 50 : 10
+                                }}
+                                onMouseDown={(e) => handleNodeDragStart(node, e)}
+                            >
+                                <div style={{ fontSize: '11px', color: '#8b949e', fontWeight: 500 }}>
+                                    {window.syntaxNames && window.syntaxNames[node.typeId] ? window.syntaxNames[node.typeId] : 'Node'}
+                                </div>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold' }}>
+                                    {node.id.replace('node_', '')}
+                                </div>
+                                <div style={{ fontSize: '10px', color: '#58a6ff', opacity: 0.8, marginTop: 2 }}>
+                                    ({node.x}, {node.y})
+                                </div>
+                                {/* Left & Right Port Pins */}
+                                <div style={{ position: 'absolute', left: -5, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', border: '1px solid #fff' }} />
+                                <div style={{ position: 'absolute', right: -5, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', border: '1px solid #fff' }} />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
         const defaultPipelines = [
             { id: 'flatten', label: 'Flatten DAE System', target: 'dae' },
             { id: 'blt', label: 'BLT Matrix Decomposition', target: 'blt' }
@@ -1323,6 +1508,9 @@ end ThermalSystem;\`;
                         <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => setActiveTab('ast')}>
                             🌳 AST Tree
                         </button>
+                        <button className={"tab-btn " + (activeTab === 'diagram' ? 'active' : '')} onClick={() => setActiveTab('diagram')}>
+                            📊 2D Diagram
+                        </button>
                         {pipelines.map(p => (
                             <button key={p.id} className={"tab-btn " + (activeTab === p.id ? 'active' : '')} onClick={() => setActiveTab(p.id)}>
                                 ⚙️ {p.label}
@@ -1334,6 +1522,9 @@ end ThermalSystem;\`;
                     </div>
                     <div style={{ display: activeTab === 'ast' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                         <AstViewer />
+                    </div>
+                    <div style={{ display: activeTab === 'diagram' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        <DiagramViewer />
                     </div>
                     {activePipeline && <PipelinePassViewer pipeline={activePipeline} />}
                     {activeTab === 'diagnostics' && <DiagnosticsViewer />}
@@ -2142,6 +2333,15 @@ self.onmessage = async (e) => {
             console.error("Semantic Tokens Worker Error:", err);
             self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
         }
+    } else if (e.data.method === 'modelscript/diagram/getData') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { nodes: [], edges: [] } });
+        const data = lspFacade.getDiagramData(globalAstRoot);
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: data });
+    } else if (e.data.method === 'modelscript/diagram/applyEdits') {
+        if (!lspFacade) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const actions = e.data.params ? e.data.params.actions : [];
+        const res = lspFacade.applyDiagramEdits(actions);
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: res });
     }
 };
 `;
