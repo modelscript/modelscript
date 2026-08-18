@@ -64,7 +64,8 @@ export function generateJavaScriptWrapper(
     let nextLintId = 2000;
     let first = true;
     for (const [lintName, lint] of Object.entries(grammarDef.lints)) {
-      const lintId = nextLintId++;
+      const lintId =
+        typeof lint === "object" && lint !== null && (lint as any).code ? (lint as any).code : nextLintId++;
       if (!first) {
         lintMessagesStr += ",";
         lintSeveritiesStr += ",";

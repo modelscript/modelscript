@@ -733,13 +733,13 @@ export function recoverUnwindAndMutate(
             if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || head.errorCost < bestAcceptedCost) {
               let actOffsetS = action_offsets[recState];
               if (actOffsetS >= 0 && actOffsetS < action_data.length) {
-                let actCountS = action_data[actOffsetS];
-                let actIdxS = actOffsetS + 1;
-                for (let a = 0; a < actCountS; a++) {
-                  let expSym = action_data[actIdxS++];
-                  let aCountS = action_data[actIdxS++];
-                  let aIdxS = actIdxS + 2;
-                  actIdxS += 2 + actCountS * 2;
+                  let actCountS = action_data[actOffsetS];
+                  let actIdxS = actOffsetS + 1;
+                  for (let a = 0; a < actCountS; a++) {
+                    let expSym = action_data[actIdxS++];
+                    let aCountS = action_data[actIdxS++];
+                    // Removed unused aIdxS variable
+                    actIdxS += 2 + aCountS * 2;
                   
                   let isTargetWordS = expSym <= MAX_TERMINAL_ID && token_is_word[expSym] == 1;
                   if (isSourceWordS == isTargetWordS && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
@@ -1023,7 +1023,8 @@ export function recoverUnwindAndMutate(
                   if (srcLexPos >= searchPos) break;
                   let tLen = lexLen > 0 ? lexLen : peekCharLen(srcLexPos);
                   if (tLen == 0) tLen = 1;
-                  let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
+                  let leadingExtra = srcLexPos > p ? srcLexPos - p : 0;
+                  let pad = tempPad + leadingExtra;
                   let tNode = allocNode(((tok == TOKEN_UNKNOWN || tok == -1 ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad as u32, tLen, 0, false);
                   setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
                   if (lastChild == 0) {
@@ -1719,7 +1720,8 @@ export function recoverIslandMode(
               let insCost = (tok == TOKEN_UNKNOWN || tok == -1) ? 2 : token_insert_costs[tok];
               islandCost += (insCost > 0 ? insCost : 3);
 
-              let pad = tempPad + (srcLexPos > p ? srcLexPos - p : 0);
+              let leadingExtra = srcLexPos > p ? srcLexPos - p : 0;
+              let pad = tempPad + leadingExtra;
 
               let tNode = allocNode(((tok == TOKEN_UNKNOWN || tok == -1 ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, pad, tLen, 0, false);
               setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);

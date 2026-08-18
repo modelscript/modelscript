@@ -48,6 +48,7 @@ import { generateOctagonDomain } from "./octagon.js";
 import { generatePantelidesDomain } from "./pantelides.js";
 import { generateReasoner } from "./reasoner.js";
 import { generateSSA } from "./ssa.js";
+import { transpileClass, transpileHelperFunction } from "./transpiler.js";
 import { generateTypes } from "./types.js";
 import { generateTypeSystem } from "./typesys.js";
 
@@ -877,7 +878,8 @@ export function generateParserTables(
             ? lint
             : null;
       if (!queryFn) continue;
-      const lintId = nextLintId++;
+      const lintId =
+        typeof lint === "object" && lint !== null && (lint as any).code ? (lint as any).code : nextLintId++;
       const fnName = `lint_${lintName}`;
       validLintFns.push(fnName);
       for (const nodeName of (lint as any).nodes || []) {
@@ -890,7 +892,12 @@ export function generateParserTables(
     }
     lintSwitchStr += `\nexport function executeLints(type: u16, node: u32, nodeStart: u32, nodeEnd: u32): void {\n  switch (type) {\n`;
     for (const [nodeName, fnCalls] of nodeLints.entries()) {
-      lintSwitchStr += `    case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
+      const symId = symToInt.get(nodeName);
+      if (symId !== undefined) {
+        lintSwitchStr += `    case ${symId}: /* ${nodeName} */\n`;
+      } else {
+        lintSwitchStr += `    case <u16>SyntaxType.${nodeName.toUpperCase()}:\n`;
+      }
       for (const call of fnCalls) {
         lintSwitchStr += `      ${call}\n`;
       }
@@ -1101,6 +1108,41 @@ export function generateParserTables(
     let dfContent = generateDataflow(originalGrammar);
     code += "\n" + extractExports(dfContent, "./dataflow");
     outFiles.push({ filename: "dataflow.ts", content: dfContent });
+  }
+
+  if (originalGrammar.classes || originalGrammar.functions) {
+    let customRuntimeCode = `import { ChunkedUint32Array, ChunkedInt32Array, createChunkedUint32Array, createChunkedInt32Array } from "./array";
+import { DaeBuilder, VarType, Variability, Causality, EqKind, ExprKind, BinOp, UnaryOp, FLAG_VAR_FLOW, FLAG_VAR_STREAM, FLAG_EQ_STREAM_CONNECT } from "./dae";
+import { getNodeFirstChild, getNodeNextSibling, getNodeType, atomicChunkAlloc } from "./arena";
+import { CorrespondenceIndex } from "./correspondence";
+import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64 } from "./hashmap";
+import { ArenaStringPool } from "./string_pool";
+import { GenericScopeStack } from "./scope_stack";
+import { BltEngine } from "./blt";
+import { AdTape } from "./tape";
+
+`;
+
+    if (originalGrammar.classes) {
+      const classList = Array.isArray(originalGrammar.classes)
+        ? originalGrammar.classes
+        : Object.values(originalGrammar.classes);
+      for (const cls of classList) {
+        customRuntimeCode += transpileClass(cls) + "\n\n";
+      }
+    }
+
+    if (originalGrammar.functions) {
+      const fnList = Array.isArray(originalGrammar.functions)
+        ? originalGrammar.functions
+        : Object.values(originalGrammar.functions);
+      for (const fn of fnList) {
+        customRuntimeCode += transpileHelperFunction(fn) + "\n\n";
+      }
+    }
+
+    code += "\n" + extractExports(customRuntimeCode, "./custom_runtime");
+    outFiles.push({ filename: "custom_runtime.ts", content: customRuntimeCode });
   }
 
   outFiles.find((f) => f.filename === "parser.ts")!.content = code;

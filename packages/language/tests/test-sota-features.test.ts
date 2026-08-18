@@ -249,6 +249,7 @@ describe("SOTA Architecture Verification Suite", () => {
         ??? !!! %%%
       end M1;`;
 
+      activeFacade.lastAstRoot = 0;
       const astV1 = activeFacade.parse(codeV1);
       const diagsV1 = activeFacade.getDiagnostics(astV1);
       console.log("DIAGS V1:", JSON.stringify(diagsV1, null, 2));

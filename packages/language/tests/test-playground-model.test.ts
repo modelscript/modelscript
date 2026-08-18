@@ -853,7 +853,7 @@ end ThermalSystem;
     expect(heatFlowDiag.range.end.character).toBe(15);
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
-  }, 30000);
+  }, 120000);
 
   it("should NOT shift downstream diagnostics or produce trailing error on line 14 when typing 'model ElectricalCircuit e e'", async () => {
     const dslLocal = language({

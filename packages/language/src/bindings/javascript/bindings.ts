@@ -541,13 +541,18 @@ export class LspFacade {
       );
     }
 
-    this.lastAstRoot = newAstRoot;
+    const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
+    if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
+      this.lastAstRoot = 0;
+    } else {
+      this.lastAstRoot = newAstRoot;
+    }
 
-    if (this.exports.clearAstMarks) {
+    if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
       this.exports.clearAstMarks(this.lastAstRoot);
     }
 
-    return this.lastAstRoot;
+    return newAstRoot;
   }
 
   private _hasTopLevelErrors(astRoot: number): boolean {
@@ -586,23 +591,22 @@ export class LspFacade {
     // First, compute the bounding box of all edits in original coordinates
     let minOrigStart = Infinity;
     let maxOrigEnd = 0;
-    let currentDelta = 0;
+    let netDelta = 0;
 
     for (const edit of edits) {
       if (edit.rangeOffset === undefined) {
         // Full replacement fallback
         return this.parseIncremental(edit.text, 0, this.currentInputLength, newTotalLength);
       }
-      let origStart = edit.rangeOffset - currentDelta;
-      let origEnd = origStart + edit.rangeLength;
+      if (edit.rangeOffset < minOrigStart) minOrigStart = edit.rangeOffset;
+      const editEnd = edit.rangeOffset + edit.rangeLength;
+      if (editEnd > maxOrigEnd) maxOrigEnd = editEnd;
 
-      if (origStart < minOrigStart) minOrigStart = origStart;
-      if (origEnd > maxOrigEnd) maxOrigEnd = origEnd;
-
-      currentDelta += edit.text.length - edit.rangeLength;
+      netDelta += edit.text.length - edit.rangeLength;
     }
+    if (minOrigStart === Infinity) minOrigStart = 0;
 
-    const oldTotalLength = newTotalLength - currentDelta;
+    const oldTotalLength = this.currentInputLength > 0 ? this.currentInputLength : newTotalLength - netDelta;
 
     if (newTotalLength <= 0) {
       if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
@@ -636,8 +640,10 @@ export class LspFacade {
       memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
     }
 
+    // Sort edits in descending order of rangeOffset so that applying each edit does not invalidate the offsets of subsequent edits
+    const sortedEdits = [...edits].sort((a, b) => b.rangeOffset - a.rangeOffset);
     let runningTotalLength = oldTotalLength;
-    for (const edit of edits) {
+    for (const edit of sortedEdits) {
       if (edit.text.length !== edit.rangeLength) {
         const sourceIndex = edit.rangeOffset + edit.rangeLength;
         const targetIndex = edit.rangeOffset + edit.text.length;
@@ -660,7 +666,7 @@ export class LspFacade {
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
-    const maxNewEnd = maxOrigEnd + currentDelta;
+    const maxNewEnd = maxOrigEnd + netDelta;
 
     let editStartByte = minOrigStart * 2;
     let editOldEndByte = maxOrigEnd * 2;
@@ -690,16 +696,24 @@ export class LspFacade {
     }
     const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
-    console.log(
-      `[parseIncrementalBatch] Batched ${edits.length} edits. WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
-    );
+    if (_t2 - _t0 > 50) {
+      console.log(
+        `[parseIncrementalBatch] Batched ${edits.length} edits. WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
+      );
+    }
 
-    this.lastAstRoot = newAstRoot;
-    if (this.exports.clearAstMarks) {
+    const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
+    if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
+      this.lastAstRoot = 0;
+    } else {
+      this.lastAstRoot = newAstRoot;
+    }
+
+    if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
       this.exports.clearAstMarks(this.lastAstRoot);
     }
 
-    return this.lastAstRoot;
+    return newAstRoot;
   }
 
   /**
@@ -927,13 +941,29 @@ export class LspFacade {
         while (curr !== 0) {
           const typeFlags = memory[curr / 4];
           const envHashPadding = memory[(curr + 4) / 4];
-          const firstChild = memory[(curr + 12) / 4];
           const rawPad = typeFlags >>> 22;
           const isFat = ((envHashPadding >>> 23) & 1) === 1;
           const pad =
             isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
           if (pad > 0) return pad;
-          curr = firstChild;
+          let child = memory[(curr + 12) / 4];
+          if (child === 0) return pad;
+          let foundChild = 0;
+          let chk = child;
+          while (chk !== 0) {
+            const chkFlags = memory[chk / 4];
+            const chkRawPad = chkFlags >>> 22;
+            if (chkRawPad > 0) return chkRawPad;
+            const chkLen = memory[(chk + 4) / 4] & 0x007fffff;
+            const chkFirst = memory[(chk + 12) / 4];
+            if (chkLen > 0 || chkFirst !== 0) {
+              foundChild = chk;
+              break;
+            }
+            chk = memory[(chk + 16) / 4];
+          }
+          if (foundChild === 0) return 0;
+          curr = foundChild;
         }
         return 0;
       };
@@ -949,9 +979,9 @@ export class LspFacade {
       while (stackTop > 0) {
         stackTop--;
         const current = stackPtrs[stackTop];
-        const tokenStart = stackOffsets[stackTop];
+        const nodeStart = stackOffsets[stackTop];
         if (requiredNodePtrs.has(current)) {
-          offsetCache.set(current, tokenStart);
+          offsetCache.set(current, nodeStart);
           requiredNodePtrs.delete(current);
         }
 
@@ -964,23 +994,24 @@ export class LspFacade {
             c = memory[(c + 16) / 4];
           }
 
-          let currOffset = tokenStart;
-          let isFirstChild = true;
+          let currOffset = nodeStart;
+          let consumedInParent = 0;
           let idx = 0;
           c = child;
           while (c !== 0) {
             const cPad = getNodePad(c);
             const cLen = getNodeLen(c);
-            if (!isFirstChild) {
+            if (consumedInParent > 0) {
               currOffset += cPad;
             }
+            const childStart = currOffset;
             const slot = stackTop + (childCount - 1 - idx);
             if (slot >= 0 && slot < 50000) {
               stackPtrs[slot] = c;
-              stackOffsets[slot] = currOffset;
+              stackOffsets[slot] = childStart;
             }
-            currOffset += cLen;
-            isFirstChild = false;
+            currOffset = childStart + cLen;
+            consumedInParent += cLen;
             idx++;
             c = memory[(c + 16) / 4];
           }
@@ -997,6 +1028,12 @@ export class LspFacade {
       const arg1 = memory[(dirPtr >> 2) + i + 4];
       const arg2 = memory[(dirPtr >> 2) + i + 5];
       const arg3 = memory[(dirPtr >> 2) + i + 6];
+
+      if (arg0 > 0 && offsetCache.has(arg0)) {
+        startByte = offsetCache.get(arg0)!;
+        const nodeLen = memory[(arg0 + 4) / 4] & 0x007fffff;
+        endByte = startByte + (nodeLen > 0 ? nodeLen : this.getInputEncoding() === 1 ? 2 : 1);
+      }
 
       const rawLintId = lintId & 0x7fff;
       let msg = lintId > 0 && lintId < 0x8000 ? `Linter Rule ${lintId}` : "Syntax Error";

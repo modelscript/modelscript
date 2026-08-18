@@ -61,6 +61,10 @@ export class GenericScopeStack {
     return this.depth > 0 ? this.modMapPtrs.get(this.depth - 1) : 0;
   }
 
+  reset(): void {
+    this.depth = 0;
+  }
+
   resolveLocal(localNameStringId: u32): u32 {
     if (this.depth == 0 || this.pool == null) return localNameStringId;
     let currFqn = this.currentFqnStringId();
@@ -68,3 +72,4 @@ export class GenericScopeStack {
     return this.pool!.concatIds(currFqn, localNameStringId);
   }
 }
+

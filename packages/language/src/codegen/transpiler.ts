@@ -324,9 +324,8 @@ export function transpileQuery(
               if (!ts.isIdentifier(targetNodeExpr) || targetNodeExpr.text !== "node") {
                 const createOffsetCall = () =>
                   ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_findNodeOffset"), undefined, [
-                    ts.factory.createIdentifier("node"),
+                    ts.factory.createIdentifier("globalAstRoot"),
                     targetNodeExpr,
-                    ts.factory.createIdentifier("nodeStart"),
                   ]);
                 const startNodeOffset = ts.factory.createConditionalExpression(
                   ts.factory.createBinaryExpression(
@@ -347,7 +346,7 @@ export function transpileQuery(
 
                 startExpr = startNodeOffset;
                 endExpr = ts.factory.createBinaryExpression(
-                  startNodeOffset,
+                  startExpr,
                   ts.factory.createToken(ts.SyntaxKind.PlusToken),
                   nodeLen,
                 );
@@ -670,38 +669,234 @@ export function transpileQuery(
   const transformedSource = ts.createSourceFile("temp.ts", printed, ts.ScriptTarget.Latest, true);
   let bodyStr = "";
   let params: string[] = [];
+  let foundFunc = false;
 
-  ts.forEachChild(transformedSource, (node) => {
-    if (ts.isExpressionStatement(node)) {
-      if (ts.isArrowFunction(node.expression)) {
-        params = node.expression.parameters.map((p) => p.name.getText());
-        const body = node.expression.body;
-        if (ts.isBlock(body)) {
-          bodyStr = body.statements.map((s) => s.getText()).join("\n");
+  function extractFunc(node: ts.Node): void {
+    if (foundFunc) return;
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+      foundFunc = true;
+      params = node.parameters.map((p) => p.name.getText(transformedSource));
+      const body = node.body;
+      if (ts.isBlock(body)) {
+        bodyStr = body.statements.map((s) => s.getText(transformedSource)).join("\n");
+      } else {
+        if (
+          context === "lint" &&
+          ts.isCallExpression(body) &&
+          ts.isIdentifier(body.expression) &&
+          body.expression.getText(transformedSource) === "lsp_allocDiagnostic"
+        ) {
+          bodyStr = body.getText(transformedSource) + ";";
         } else {
-          if (
-            context === "lint" &&
-            ts.isCallExpression(body) &&
-            ts.isIdentifier(body.expression) &&
-            body.expression.getText() === "lsp_allocDiagnostic"
-          ) {
-            bodyStr = body.getText() + ";";
-          } else {
-            bodyStr = "return " + body.getText() + ";";
-          }
+          bodyStr = "return " + body.getText(transformedSource) + ";";
         }
       }
+      return;
     } else if (ts.isFunctionDeclaration(node)) {
-      params = node.parameters.map((p) => p.name.getText());
+      foundFunc = true;
+      params = node.parameters.map((p) => p.name.getText(transformedSource));
       if (node.body) {
-        bodyStr = node.body.statements.map((s) => s.getText()).join("\n");
+        bodyStr = node.body.statements.map((s) => s.getText(transformedSource)).join("\n");
       }
+      return;
     }
-  });
+    ts.forEachChild(node, extractFunc);
+  }
 
-  if (bodyStr === "") {
+  ts.forEachChild(transformedSource, extractFunc);
+
+  if (!foundFunc && bodyStr === "") {
     bodyStr = printed;
   }
 
   return { body: bodyStr, params };
+}
+
+/**
+ * Transpiles a TypeScript class definition into an AssemblyScript `@unmanaged export class`.
+ */
+export function transpileClass(
+  classDef: (new (...args: any[]) => any) | ((...args: any[]) => any) | string,
+  options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
+): string {
+  const classStr = typeof classDef === "function" ? classDef.toString() : classDef;
+
+  const sourceFile = ts.createSourceFile("temp_class.ts", classStr, ts.ScriptTarget.Latest, true);
+
+  const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
+    const visit: ts.Visitor = (node) => {
+      // 0. Filter out static blocks injected by bundlers / tsx (e.g., static { __name(...) })
+      if (ts.isClassStaticBlockDeclaration(node)) {
+        return undefined;
+      }
+
+      // 1. Property declaration type defaulting
+      if (ts.isPropertyDeclaration(node)) {
+        let typeNode = node.type;
+        if (!typeNode) {
+          typeNode = ts.factory.createTypeReferenceNode("u32");
+        }
+        return ts.factory.updatePropertyDeclaration(
+          node,
+          node.modifiers,
+          node.name,
+          node.questionToken,
+          typeNode,
+          node.initializer,
+        );
+      }
+
+      // 2. Method declaration parameter and return type defaulting
+      if (ts.isMethodDeclaration(node)) {
+        const methodName = node.name.getText(sourceFile);
+        const updatedParams = node.parameters.map((p) => {
+          let paramType = p.type;
+          if (!paramType) {
+            paramType = ts.factory.createTypeReferenceNode("u32");
+          }
+          return ts.factory.updateParameterDeclaration(
+            p,
+            p.modifiers,
+            p.dotDotDotToken,
+            p.name,
+            p.questionToken,
+            paramType,
+            p.initializer,
+          );
+        });
+
+        let returnType = node.type;
+        if (!returnType) {
+          if (methodName === "init" || methodName === "constructor") {
+            returnType = ts.factory.createTypeReferenceNode("void");
+          } else {
+            returnType = ts.factory.createTypeReferenceNode("u32");
+          }
+        }
+
+        const visitedBody = node.body ? (visitNode(node.body) as ts.Block) : undefined;
+
+        return ts.factory.updateMethodDeclaration(
+          node,
+          node.modifiers,
+          node.asteriskToken,
+          node.name,
+          node.questionToken,
+          node.typeParameters,
+          updatedParams,
+          returnType,
+          visitedBody,
+        );
+      }
+
+      // 3. x.is(y) -> x == y
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "is" &&
+        node.arguments.length === 1
+      ) {
+        const targetObj = visitNode(node.expression.expression) as ts.Expression;
+        const arg = visitNode(node.arguments[0]) as ts.Expression;
+        return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
+      }
+
+      return ts.visitEachChild(node, visit, transformerContext);
+    };
+
+    function visitNode(node: ts.Node): ts.Node {
+      return ts.visitNode(node, visit) as ts.Node;
+    }
+
+    return (node) => ts.visitNode(node, visit) as ts.SourceFile;
+  };
+
+  const result = ts.transform(sourceFile, [transformer]);
+  let printed = ts.createPrinter().printFile(result.transformed[0]).trim();
+
+  let formatted = printed.replace(/@unmanaged\s*/g, "");
+  if (formatted.startsWith("export default class ")) {
+    formatted = "@unmanaged\nexport class " + formatted.substring("export default class ".length);
+  } else if (formatted.startsWith("export class ")) {
+    formatted = "@unmanaged\nexport class " + formatted.substring("export class ".length);
+  } else if (formatted.startsWith("class ")) {
+    formatted = "@unmanaged\nexport class " + formatted.substring("class ".length);
+  } else {
+    formatted = "@unmanaged\nexport " + formatted;
+  }
+
+  return formatted;
+}
+
+/**
+ * Transpiles a standalone TypeScript helper function into an exported AssemblyScript function.
+ */
+export function transpileHelperFunction(
+  fn: ((...args: any[]) => any) | string,
+  options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
+): string {
+  const opts: TranspileOptions = typeof options === "string" ? { context: options } : options;
+  const fnStr = typeof fn === "function" ? fn.toString() : fn;
+
+  const sourceFile = ts.createSourceFile("temp_fn.ts", fnStr, ts.ScriptTarget.Latest, true);
+
+  const transformer: ts.TransformerFactory<ts.SourceFile> = (transformerContext) => {
+    const visit: ts.Visitor = (node) => {
+      if (ts.isFunctionDeclaration(node)) {
+        const updatedParams = node.parameters.map((p) => {
+          let paramType = p.type;
+          if (!paramType) {
+            paramType = ts.factory.createTypeReferenceNode("u32");
+          }
+          return ts.factory.updateParameterDeclaration(
+            p,
+            p.modifiers,
+            p.dotDotDotToken,
+            p.name,
+            p.questionToken,
+            paramType,
+            p.initializer,
+          );
+        });
+
+        let returnType = node.type;
+        if (!returnType) {
+          returnType = ts.factory.createTypeReferenceNode("u32");
+        }
+
+        const visitedBody = node.body ? (visitNode(node.body) as ts.Block) : undefined;
+
+        return ts.factory.updateFunctionDeclaration(
+          node,
+          node.modifiers,
+          node.asteriskToken,
+          node.name,
+          node.typeParameters,
+          updatedParams,
+          returnType,
+          visitedBody,
+        );
+      }
+
+      return ts.visitEachChild(node, visit, transformerContext);
+    };
+
+    function visitNode(node: ts.Node): ts.Node {
+      return ts.visitNode(node, visit) as ts.Node;
+    }
+
+    return (node) => ts.visitNode(node, visit) as ts.SourceFile;
+  };
+
+  const result = ts.transform(sourceFile, [transformer]);
+  let printed = ts.createPrinter().printFile(result.transformed[0]).trim();
+
+  if (!printed.startsWith("export function") && !printed.startsWith("function")) {
+    const queryInfo = transpileQuery(fn, opts);
+    return `export function helperFunction(${queryInfo.params.map((p) => p + ": u32").join(", ")}): u32 {\n${queryInfo.body}\n}`;
+  }
+  if (!printed.startsWith("export ")) {
+    printed = "export " + printed;
+  }
+  return printed;
 }

@@ -138,6 +138,7 @@ export interface ScopeAPI {
   enter(prefix: string | u32, fn: () => void): void;
   push(prefix: string | u32): void;
   pop(): void;
+  reset(): void;
   currentFqn(): u32;
   currentPrefix(): u32;
   resolve(localName: string | u32): u32;
@@ -341,6 +342,126 @@ export enum StmtKind {
   Block = 9,
 }
 
+export const FLAG_TEARING_VAR: number = 1 << 0;
+export const FLAG_VAR_FLOW: number = 1 << 1;
+export const FLAG_VAR_STREAM: number = 1 << 2;
+export const FLAG_VAR_STATE: number = 1 << 3;
+export const FLAG_VAR_STATE_DER: number = 1 << 4;
+export const FLAG_VAR_FIXED: number = 1 << 5;
+
+export const FLAG_EQ_INITIAL: number = 1 << 0;
+export const FLAG_EQ_OVERCONSTRAINED: number = 1 << 1;
+export const FLAG_EQ_STREAM_CONNECT: number = 1 << 2;
+
+export interface ChunkedUint32Array {
+  get(idx: number): number;
+  set(idx: number, val: number): void;
+}
+
+export interface ChunkedInt32Array {
+  get(idx: number): number;
+  set(idx: number, val: number): void;
+}
+
+export function createChunkedUint32Array(capacity: number): ChunkedUint32Array {
+  const buf = new Uint32Array(capacity);
+  return {
+    get: (idx: number) => buf[idx] || 0,
+    set: (idx: number, val: number) => {
+      buf[idx] = val;
+    },
+  };
+}
+
+export function createChunkedInt32Array(capacity: number): ChunkedInt32Array {
+  const buf = new Int32Array(capacity);
+  return {
+    get: (idx: number) => buf[idx] || 0,
+    set: (idx: number, val: number) => {
+      buf[idx] = val;
+    },
+  };
+}
+
+export interface UnmanagedMap64 {
+  get(key: bigint | number): bigint | number;
+  set(key: bigint | number, val: bigint | number): void;
+  has(key: bigint | number): boolean;
+}
+
+export interface UnmanagedSet64 {
+  has(val: bigint | number): boolean;
+  add(val: bigint | number): void;
+}
+
+export function createMap64(): UnmanagedMap64 {
+  const map = new Map<bigint | number, bigint | number>();
+  return {
+    get: (k) => map.get(k) || 0,
+    set: (k, v) => {
+      map.set(k, v);
+    },
+    has: (k) => map.has(k),
+  };
+}
+
+export function createSet64(): UnmanagedSet64 {
+  const set = new Set<bigint | number>();
+  return {
+    has: (v) => set.has(v),
+    add: (v) => {
+      set.add(v);
+    },
+  };
+}
+
+export function getNodeFirstChild(nodePtr: number): number {
+  return 0;
+}
+export function getNodeNextSibling(nodePtr: number): number {
+  return 0;
+}
+export function getNodeType(nodePtr: number): number {
+  return 0;
+}
+export function atomicChunkAlloc(bytes: number): number {
+  return 0;
+}
+
+export interface DaeBuilder {
+  varCount: number;
+  eqCount: number;
+  exprCount: number;
+  stmtCount: number;
+  addVariable(
+    nameId: number,
+    type: number,
+    variability: number,
+    causality: number,
+    startVal: number,
+    flags?: number,
+  ): number;
+  addExpression(kind: number, data1: number, left?: number, right?: number): number;
+  addEquation(kind: number, lhs: number, rhs: number, flags?: number): number;
+  addRealLiteral(val: number): number;
+  addIntLiteral(val: number): number;
+}
+
+export interface ArenaStringPool {
+  intern(str: string): number;
+  resolve(id: number): string;
+  concatIds(id1: number, id2: number): number;
+}
+
+export interface GenericScopeStack {
+  enter(prefix: number | string): void;
+  push(prefix: number | string): void;
+  pop(): void;
+  reset(): void;
+  currentFqn(): number;
+  currentPrefix(): number;
+}
+
 /**
  * Open-addressing Hash Map API.
  */
@@ -505,6 +626,16 @@ export interface LanguageOptions<
   connectors?: Record<string, ConnectorDefinition>;
 
   /**
+   * Domain-Specific Abstract Interpretation & Solver Domains (DAE, Simulation, Reasoner, Octagon)
+   */
+  domains?: Record<string, any>;
+
+  /**
+   * Declarative Dataflow & Control Flow Analysis Configuration
+   */
+  dataflow?: any;
+
+  /**
    * A rule name or token representing the language's typical keyword structure.
    * Tree-sitter uses this for keyword extraction optimization.
    */
@@ -568,6 +699,20 @@ export interface LanguageOptions<
 
   /** Diagnostic Rules (imperative AssemblyScript methods) */
   lints?: Record<string, CompilerLint<RuleName, FieldName, QueryName, ModelAttrs>>;
+
+  /**
+   * First-Class AssemblyScript / TypeScript Custom Classes
+   * Injected as zero-GC `@unmanaged export class` definitions into WebAssembly linear memory.
+   */
+  classes?:
+    | ((new (...args: any[]) => any) | ((...args: any[]) => any))[]
+    | Record<string, (new (...args: any[]) => any) | ((...args: any[]) => any)>;
+
+  /**
+   * First-Class AssemblyScript / TypeScript Custom Helper Functions
+   * Injected as exported functions into WebAssembly linear memory.
+   */
+  functions?: ((...args: any[]) => any)[] | Record<string, (...args: any[]) => any>;
 
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>>;

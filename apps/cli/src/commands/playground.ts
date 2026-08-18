@@ -26,7 +26,39 @@ export const Playground: CommandModule = {
           dslLibModuleStr = readFileSync(dslPath, "utf-8");
           dslLibStr = dslLibModuleStr.replace(/^export\s+/gm, "");
         }
-        res.end(getIndexHtml(dslLibStr, dslLibModuleStr));
+
+        const modelicaPath = join(__dirname, "../../../../languages/modelica/src/language.ts");
+        let initialDsl = "";
+        if (existsSync(modelicaPath)) {
+          initialDsl = readFileSync(modelicaPath, "utf-8");
+        }
+
+        const initialCode = `model ElectricalCircuit
+  Pin p, n;
+  parameter Real R = 100.0;
+  parameter Real L = 0.001;
+  Real v, i;
+equation
+  v = p.v - n.v;
+  0 = p.i + n.i;
+  i = p.i;
+  v = R * i;
+end ElectricalCircuit;
+
+model ChuaCircuit
+  Pin p, n;
+  Real vC1, vC2, iL;
+  parameter Real C1 = 10.0;
+  parameter Real C2 = 100.0;
+  parameter Real L = 18.0;
+  parameter Real G = 0.7;
+equation
+  C1 * der(vC1) = G * (vC2 - vC1);
+  C2 * der(vC2) = G * (vC1 - vC2) + iL;
+  L * der(iL) = -vC2;
+end ChuaCircuit;`;
+
+        res.end(getIndexHtml(dslLibStr, dslLibModuleStr, initialDsl, initialCode));
       } else if (urlPath === "/worker-compiler.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
@@ -175,13 +207,12 @@ export const Playground: CommandModule = {
   },
 };
 
-function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
+function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", initialCode = "") {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>ModelScript Playground</title>
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>
         :root {
             --bg-color: #f6f8fa;
@@ -203,13 +234,13 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
                 --toolbar-bg: #161b22;
             }
         }
-        body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"; background: var(--bg-color); color: var(--text-color); }
-        #toolbar { padding: 12px 16px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 16px; }
-        #editors { display: flex; flex: 1; height: 100%; min-height: 0; min-width: 0; }
-        #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); min-width: 0; min-height: 0; }
-        #right-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; }
-        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+        html, body { margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; width: 100vw; overflow: hidden; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif,"Apple Color Emoji","Segoe UI Emoji"; background: var(--bg-color); color: var(--text-color); }
+        #toolbar { height: 48px; min-height: 48px; box-sizing: border-box; padding: 8px 16px; background: var(--toolbar-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; }
+        #editors { display: flex; flex: 1; height: calc(100vh - 48px); min-height: 0; min-width: 0; }
+        #dsl-editor { flex: 1; border-right: 1px solid var(--border-color); min-width: 0; height: 100%; min-height: 0; }
+        #right-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; height: 100%; min-height: 0; }
+        #code-editor { flex: 1; border-bottom: 1px solid var(--border-color); min-width: 0; min-height: 0; height: 50%; }
+        #react-ast-root { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 50%; background: var(--toolbar-bg); }
         #ast-viewer { flex: 1; overflow: auto; padding: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre; font-size: 12px; min-height: 0; }
         
         .ghost-node { opacity: 0.6; color: #d73a49; font-style: italic; }
@@ -218,142 +249,175 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
         .primer-btn {
             background-color: var(--btn-bg);
             color: var(--btn-text);
-            border: 1px solid rgba(240,246,252,0.1);
+            border: 1px solid rgba(27, 31, 36, 0.15);
             border-radius: 6px;
-            padding: 5px 16px;
-            font-size: 14px;
-            font-weight: 500;
-            line-height: 20px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 600;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            transition: 80ms cubic-bezier(0.33, 1, 0.68, 1);
-            transition-property: color,background-color,box-shadow,border-color;
+            gap: 6px;
+            box-shadow: 0 1px 0 rgba(27, 31, 36, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+            transition: 0.2s cubic-bezier(0.3, 0, 0.5, 1);
         }
-        .primer-btn:hover { background-color: var(--btn-hover); }
-        
-        .brand-container {
+        .primer-btn:hover {
+            background-color: var(--btn-hover);
+        }
+        .primer-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status-badge {
+            font-size: 12px;
+            color: #57606a;
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            font-size: 16px;
-            margin-right: auto;
+            gap: 8px;
+            margin-left: auto;
         }
-        .brand-icon {
-            width: 24px;
-            height: 24px;
-            background-image: url('/logo.png');
-            background-size: contain;
-            background-repeat: no-repeat;
-            background-position: center;
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #2da44e;
+            display: inline-block;
         }
-        @media (prefers-color-scheme: dark) {
-            .brand-icon {
-                background-image: url('/logo-light.png');
-            }
+        .status-dot.building {
+            background-color: #bf8700;
+            animation: pulse 1.5s infinite;
         }
-        .tab-bar {
-            display: flex;
-            background: var(--toolbar-bg);
-            border-bottom: 1px solid var(--border-color);
-            padding: 0 8px;
-            gap: 4px;
+        .status-dot.error {
+            background-color: #cf222e;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.5; }
         }
         .tab-btn {
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 500;
-            background: transparent;
-            color: var(--text-color);
+            background: none;
             border: none;
             border-bottom: 2px solid transparent;
+            padding: 8px 16px;
             cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-color);
             opacity: 0.7;
-            transition: all 0.15s ease;
-        }
-        .tab-btn:hover {
-            opacity: 1;
         }
         .tab-btn.active {
             opacity: 1;
-            font-weight: 600;
-            border-bottom: 2px solid var(--btn-bg);
+            border-bottom-color: #fd8c73;
         }
-        .panel-content {
-            flex: 1;
-            overflow: auto;
-            padding: 12px;
-            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+        #right-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--toolbar-bg);
+        }
+        #ast-viewer-controls {
+            display: flex;
+            gap: 8px;
+            padding-right: 12px;
             font-size: 12px;
         }
-        .equation-card, .blt-block {
-            background: rgba(140, 149, 159, 0.1);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin-bottom: 8px;
-        }
-        .equation-card .title, .blt-block .title {
-            font-weight: 600;
-            color: #0550ae;
-            margin-bottom: 4px;
-        }
     </style>
-    <!-- React and Babel -->
-    <script crossorigin src="/node_modules/react/umd/react.development.js"></script>
-    <script crossorigin src="/node_modules/react-dom/umd/react-dom.development.js"></script>
-    <script src="/node_modules/@babel/standalone/babel.min.js"></script>
-    <!-- Load Diagram Module (X6) -->
+    <!-- Scripts: React, Babel, LZString before Monaco AMD loader to avoid define() conflicts -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
     <script type="module">
-        import * as Diagram from '/diagram.browser.js';
+        import * as Diagram from "/diagram.browser.js";
         window.DiagramModule = Diagram;
         window.dispatchEvent(new Event('diagramModuleLoaded'));
     </script>
-    <!-- Load Monaco Editor Locally -->
-    <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
-    <script type="module">
-        window.highlightNode = function(startLine, startCol, endLine, endCol) {
-            if (window.codeEditor) {
-                const range = new monaco.Range(startLine + 1, startCol + 1, endLine + 1, endCol + 1);
-                window.codeEditor.setSelection(range);
-                window.codeEditor.revealRangeInCenter(range);
-                window.codeEditor.focus();
-            }
-        };
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
+</head>
+<body>
+    <div id="toolbar">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <img src="/logo.png" alt="Logo" style="height: 24px; width: auto;" class="dark-only" onerror="this.style.display='none'">
+            <img src="/logo-light.png" alt="Logo" style="height: 24px; width: auto;" class="light-only" onerror="this.style.display='none'">
+            <h1 style="margin: 0; font-size: 14px; font-weight: 600;">ModelScript Playground</h1>
+        </div>
+        <button id="btn-compile" class="primer-btn">
+            <svg aria-hidden="true" height="14" viewBox="0 0 16 16" version="1.1" width="14" style="fill: currentColor;">
+                <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.442a.25.25 0 0 1 .379-.215Z"></path>
+            </svg>
+            Build Grammar (Ctrl+Enter)
+        </button>
+        <button id="btn-format" class="primer-btn" style="background-color: var(--border-color); color: var(--text-color);" title="Format DSL (Alt+Shift+F)">
+            Format DSL
+        </button>
+        <button id="btn-share" class="primer-btn" style="background-color: var(--border-color); color: var(--text-color);" title="Copy Shareable Link">
+            Share
+        </button>
+        <div style="display: flex; gap: 12px; font-size: 12px; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-a1" checked> Deletion Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-b" checked> Insertion Recovery
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-branch-c" checked> Forced Reduction
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-island-mode" checked> Island Mode
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                <input type="checkbox" id="toggle-verbose-log"> Verbose Log
+            </label>
+        </div>
+        <div class="status-badge">
+            <span id="status-indicator" class="status-dot"></span>
+            <span id="status">Ready</span>
+        </div>
+    </div>
+    <div id="editors">
+        <div id="dsl-editor"></div>
+        <div id="right-pane">
+            <div id="code-editor"></div>
+            <div id="react-ast-root"></div>
+        </div>
+    </div>
 
-        window.MonacoEnvironment = {
-            getWorkerUrl: function(workerId, label) {
-                return \`data:text/javascript;charset=utf-8,\${encodeURIComponent("self.MonacoEnvironment = { baseUrl: '/node_modules/monaco-editor/min/' }; importScripts('/node_modules/monaco-editor/min/vs/base/worker/workerMain.js');")}\`;
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+
+        // Initialize Share functionality (hash encoding/decoding)
+        function getShareState() {
+            try {
+                if (window.location.hash && window.location.hash.length > 1) {
+                    const compressed = window.location.hash.substring(1);
+                    const jsonStr = LZString.decompressFromEncodedURIComponent(compressed);
+                    if (jsonStr) {
+                        return JSON.parse(jsonStr);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to restore state from URL hash:", e);
             }
-        };
-        
-        require.config({ paths: { 'vs': '/node_modules/monaco-editor/min/vs' }});
+            return null;
+        }
+
+        function updateShareUrl(dsl, code) {
+            try {
+                const state = { dsl, code };
+                const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(state));
+                window.history.replaceState(null, '', '#' + compressed);
+            } catch (e) {
+                console.error("Failed to update URL hash:", e);
+            }
+        }
+
         require(['vs/editor/editor.main'], function() {
-            const dslLibStrRaw = \`${dslLibStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-            const dslLib = [
-                "export {};",
-                "declare global {",
-                dslLibStrRaw,
-                "}"
-            ].join("\\n");
-            
-            const dslLibModuleStrRaw = \`${dslLibModuleStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-            const dslLibModule = [
-                "declare module '@modelscript/language' {",
-                dslLibModuleStrRaw,
-                "}"
-            ].join("\\n");
-            
-            monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                target: monaco.languages.typescript.ScriptTarget.ESNext,
-                allowNonTsExtensions: true,
-                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                module: monaco.languages.typescript.ModuleKind.CommonJS,
-                strict: true,
-                noEmit: true
-            });
+            // Setup DSL environment types for monaco
+            const dslLib = \`${dslLibStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
+            const dslLibModule = \`${dslLibModuleStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLibModule, 'ts:filename/dsl-module.d.ts');
 
@@ -364,261 +428,8 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "") {
                 monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
             });
 
-            const exampleDSL = \`export default language({
-  name: 'SysModel',
-
-  word: $ => $.Identifier,
-
-  // 1. Scanner Primitives (Context-sensitive comments & multi-word keywords)
-  primitives: {
-    nestedComment: { open: '/*', close: '*/' },
-    lineComment: '//'
-  },
-
-  // 2. Grammar Rules & AST Combinators
-  rules: {
-    Program: $ => repeat($.ModelDef),
-    ModelDef: $ => seq(
-      semanticToken('keyword', 'model'), 
-      field('name', $.Identifier), 
-      repeat(choice($.Decl, $.Equation)), 
-      semanticToken('keyword', 'end'), 
-      field('endName', $.Identifier), 
-      ';'
-    ),
-    Decl: $ => seq(
-      field('type', $.Type), 
-      field('name', $.Identifier), 
-      optional(seq('=', field('value', $.Expr))), 
-      ';'
-    ),
-    Real: $ => semanticToken('type', 'Real'),
-    Integer: $ => semanticToken('type', 'Integer'),
-    Type: $ => choice($.Real, $.Integer, 'Number'),
-    Equation: $ => seq(
-      field('lhs', $.Expr), 
-      '=', 
-      field('rhs', $.Expr), 
-      ';'
-    ),
-    Expr: $ => choice($.MulExpr, $.AddExpr, $.Identifier, $.Number),
-    MulExpr: $ => prec.left(2, seq(
-      field('left', $.Expr), 
-      field('op', '*'), 
-      field('right', $.Expr)
-    )),
-    AddExpr: $ => prec.left(1, seq(
-      field('left', $.Expr), 
-      field('op', choice('+', '-')), 
-      field('right', $.Expr)
-    )),
-    Identifier: $ => semanticToken('variable', /[a-zA-Z_][a-zA-Z0-9_]*/),
-    Number: $ => semanticToken('number', /[0-9]+(?:\\.[0-9]+)?/)
-  },
-  extras: $ => [/\\s/],
-
-  // 3. Model Attributes (WASM Linear Memory Blackboard)
-  model: {
-    Decl: { isComponent: { type: 'bool', default: true } },
-    ModelDef: { isScope: { type: 'bool', default: true } }
-  },
-
-  // 4. Zero-GC Subtyping Predicates
-  typeSystem: {
-    subtypingPredicates: [
-      subtype($.Integer, $.Real),
-      subtype($.Real, $.Number),
-      (s, t) => s.is($.Integer) && t.is($.Real)
-    ]
-  },
-
-  // 5. Algebraic E-Graph Rewriting & Simplifications
-  simplification: {
-    rules: [
-      { add_zero: (x) => [x + 0, x] },
-      { mul_one:  (x) => [x * 1, x] }
-    ]
-  },
-
-  // 6. Datalog Semantic Entailment Axioms
-  semantics: {
-    rules: [
-      (x, y, z) => Subtype(x, z).if(Subtype(x, y), Subtype(y, z))
-    ]
-  },
-
-  // 7. Imperative Diagnostic Lints
-  lints: {
-    uninitializedComponent: {
-      nodes: ['Decl'],
-      severity: 'warning',
-      message: 'Component declaration uninitialized',
-      query: (db, node, $) => {
-        let valNode = db.ast.getChildByFieldId(node, 'value');
-        if (valNode == 0) {
-          let nameNode = db.ast.getChildByFieldId(node, 'name');
-          if (nameNode != 0) {
-            db.diagnostic(nameNode);
-          }
-        }
-      }
-    }
-  },
-
-  // 8. Declarative Compilation & Lowering Pipelines
-  pipelines: {
-    flatten: {
-      label: 'Flatten DAE System',
-      target: 'dae',
-      passes: [
-        (graph, root) => graph.dae.extractEquations(root)
-      ]
-    },
-    blt: {
-      label: 'BLT Matrix Decomposition',
-      target: 'blt',
-      passes: [
-        (graph, root) => graph.blt.buildDependencies(),
-        (graph, root) => graph.blt.computeMatching()
-      ]
-    }
-  },
-
-  // 9. Language Server Protocol (LSP) Integrations
-  lsp: {
-    fileExtension: '.mo',
-    folding: ['ModelDef'],
-    outline: ['ModelDef', 'Decl'],
-    definition: (db, node, $) => {
-      let type = db.ast.getType(node);
-      if (type == $.Identifier) {
-        return db.runQuery('resolveVar', node);
-      }
-      return 0;
-    }
-  },
-
-  // 10. Declarative 2D Visual Diagram & Interactive Modeling
-  diagram: {
-    views: {
-      Schematic: {
-        label: 'Schematic Diagram',
-        defaultLayout: 'manual'
-      },
-      InternalBlockDiagram: {
-        label: 'Internal Block Diagram (IBD)',
-        defaultLayout: 'dagre'
-      }
-    },
-    nodes: {
-      ModelDef: {
-        label: 'name',
-        shape: 'subsystem',
-        style: {
-          fill: 'rgba(30, 41, 59, 0.7)',
-          stroke: '#38bdf8',
-          strokeWidth: 2,
-          rx: 8,
-          ry: 8
-        },
-        spatial: { autoLayout: 'dagre' }
-      },
-      Decl: {
-        label: 'name',
-        stereotype: '«component»',
-        shape: 'rect',
-        style: {
-          fill: '#1e293b',
-          stroke: '#3b82f6',
-          strokeWidth: 2,
-          rx: 6,
-          ry: 6
-        },
-        ports: {
-          group: 'auto',
-          style: { fill: '#38bdf8', stroke: '#ffffff', size: 6 }
-        },
-        propertyBindings: {
-          label: '%name: %type',
-          tooltip: 'Component: %name (%type)'
-        },
-        animation: {
-          selectFunction: 'DynamicSelect',
-          channels: [
-            {
-              attribute: 'fill',
-              signal: 'active',
-              transform: (db, node, active) => active > 0.5 ? '#22c55e' : '#1e293b'
-            }
-          ]
-        }
-      },
-      Equation: {
-        shape: 'pill',
-        style: {
-          fill: 'rgba(59, 130, 246, 0.1)',
-          stroke: '#60a5fa',
-          strokeWidth: 1
-        }
-      }
-    },
-    edges: {
-      Equation: {
-        source: 'lhs',
-        target: 'rhs',
-        style: {
-          router: 'manhattan',
-          connector: 'jumpover',
-          stroke: '#60a5fa',
-          strokeWidth: 2
-        }
-      }
-    },
-    mutations: {
-      createNode: (type, name, x, y) => '  ' + type + ' ' + name + ';\\\\n',
-      createEdge: (src, tgt) => '  ' + src + ' = ' + tgt + ';\\\\n'
-    }
-  },
-
-  // 11. AssemblyScript Query Engine
-  queries: {
-    resolveVar: (db, node, $) => {
-      let root = db.ast.getRootNode();
-      let targetHash = db.ast.hashSpan(db.ast.getTextSpan(node));
-      return db.runQuery('searchHash', root, targetHash);
-    },
-    searchHash: (db, node, targetHash, $) => {
-      if (db.ast.getType(node) == $.Decl) {
-        let nameNode = db.ast.getChildByFieldId(node, 'name');
-        if (db.ast.hashSpan(db.ast.getTextSpan(nameNode)) == targetHash) {
-          return nameNode;
-        }
-      }
-      let child = db.ast.getFirstChild(node);
-      while (child != 0) {
-        let result = db.runQuery('searchHash', child, targetHash);
-        if (result != 0) return result;
-        child = db.ast.getNextSibling(child);
-      }
-      return 0;
-    }
-  }
-});\`;
-
-            const exampleCode = \`model ElectricalCircuit
-  Real voltage = 12.0;
-  Real current = 2.5;
-  Real power;
-
-  power = voltage * current;
-end ElectricalCircuit;
-
-model ThermalSystem
-  Real temp = 293.15;
-  Real heatFlow;
-
-  heatFlow = temp * 1 + 0;
-end ThermalSystem;\`;
+            const exampleDSL = ${JSON.stringify(initialDsl)};
+            const exampleCode = ${JSON.stringify(initialCode)};
 
             let latestUri = 'inmemory://example.mo';
             window.dslEditor = monaco.editor.create(document.getElementById('dsl-editor'), {
@@ -692,19 +503,39 @@ end ThermalSystem;\`;
                 });
             };
 
-            document.getElementById('compile-btn').onclick = () => {
-                document.getElementById('status').innerText = "Compiling DSL in browser...";
-                const dsl = window.dslEditor.getValue();
-                compilerWorker.postMessage({ type: 'compile', dsl });
-            };
+            const compileBtn = document.getElementById('btn-compile') || document.getElementById('compile-btn');
+            if (compileBtn) {
+                compileBtn.onclick = () => {
+                    document.getElementById('status').innerText = "Compiling DSL in browser...";
+                    const dsl = window.dslEditor.getValue();
+                    compilerWorker.postMessage({ type: 'compile', dsl });
+                };
+            }
 
-            document.getElementById('format-btn').onclick = () => {
-                if (window.codeEditor) {
-                    window.codeEditor.getAction('editor.action.formatDocument')?.run();
-                } else if (window.dslEditor) {
-                    window.dslEditor.getAction('editor.action.formatDocument')?.run();
-                }
-            };
+            const formatBtn = document.getElementById('btn-format') || document.getElementById('format-btn');
+            if (formatBtn) {
+                formatBtn.onclick = () => {
+                    if (window.codeEditor && window.codeEditor.hasTextFocus()) {
+                        window.codeEditor.getAction('editor.action.formatDocument')?.run();
+                    } else if (window.dslEditor) {
+                        window.dslEditor.getAction('editor.action.formatDocument')?.run();
+                    }
+                };
+            }
+
+            const shareBtn = document.getElementById('btn-share') || document.getElementById('share-btn');
+            if (shareBtn) {
+                shareBtn.onclick = () => {
+                    updateShareUrl(window.dslEditor.getValue(), window.codeEditor.getValue());
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(window.location.href).then(() => {
+                            const originalText = shareBtn.innerText;
+                            shareBtn.innerText = "Copied!";
+                            setTimeout(() => { shareBtn.innerText = originalText; }, 2000);
+                        });
+                    }
+                };
+            }
             
             compilerWorker.onmessage = (e) => {
                 if (e.data.type === 'ready') {
@@ -1621,51 +1452,6 @@ end ThermalSystem;\`;
         const root = ReactDOM.createRoot(document.getElementById('react-ast-root'));
         root.render(<PlaygroundPanels />);
     </script>
-</head>
-<body>
-    <div id="toolbar">
-        <div class="brand-container">
-            <div class="brand-icon"></div>
-            ModelScript Playground
-        </div>
-        <div style="display: flex; gap: 15px; font-size: 13px; align-items: center; margin-left: auto; margin-right: 15px;">
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-a1" checked> Enable Deletion Recovery
-            </label>
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-b" checked> Enable Insertion Recovery
-            </label>
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-branch-c" checked> Enable Forced Reduction Recovery
-            </label>
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-island-mode" checked> Enable Island Mode
-            </label>
-            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggle-verbose-log"> Verbose Logging
-            </label>
-        </div>
-        <span id="status" style="font-size: 12px; opacity: 0.8; margin-right: 15px;">Ready</span>
-        <button id="format-btn" class="primer-btn" style="background-color: #0969da;">
-            <svg height="16" viewBox="0 0 16 16" width="16" fill="currentColor">
-                <path d="M1.75 2.5h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Zm0 4h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1 0-1.5Zm0 4h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"></path>
-            </svg>
-            Format
-        </button>
-        <button id="compile-btn" class="primer-btn">
-            <svg aria-hidden="true" height="16" viewBox="0 0 16 16" version="1.1" width="16" fill="currentColor">
-                <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm4.879-2.773 4.264 2.559a.25.25 0 0 1 0 .428l-4.264 2.559A.25.25 0 0 1 6 10.559V5.44a.25.25 0 0 1 .379-.216Z"></path>
-            </svg>
-            Compile & Load DSL
-        </button>
-    </div>
-    <div id="editors">
-        <div id="dsl-editor"></div>
-        <div id="right-pane">
-            <div id="code-editor"></div>
-            <div id="react-ast-root"></div>
-        </div>
-    </div>
 </body>
 </html>`;
 }
@@ -1674,12 +1460,18 @@ export function getCompilerWorkerJs() {
   return `
 let Language = null;
 let asc = null;
+let ts = null;
 
 async function init() {
     try {
         console.log("[Worker] Loading /browser.js...");
         Language = await import('/browser.js?v=' + Date.now());
         console.log("[Worker] /browser.js loaded:", Language);
+
+        console.log("[Worker] Loading /typescript.mjs...");
+        const tsModule = await import('/typescript.mjs');
+        ts = tsModule.default || tsModule;
+        console.log("[Worker] /typescript.mjs loaded:", !!ts);
 
         console.log("[Worker] Loading /node_modules/binaryen/index.js...");
         const binModule = await import('/node_modules/binaryen/index.js');
@@ -1706,6 +1498,22 @@ self.onmessage = async (e) => {
             self.postMessage({ type: 'progress', message: 'Evaluating DSL definition...' });
             
             let dslCode = e.data.dsl;
+
+            // 1. Transpile TypeScript syntax (types, interfaces, classes) to pure JS
+            if (ts && ts.transpileModule) {
+                try {
+                    const trans = ts.transpileModule(dslCode, {
+                        compilerOptions: {
+                            target: ts.ScriptTarget.ES2022,
+                            module: ts.ModuleKind.ESNext,
+                            removeComments: false,
+                        }
+                    });
+                    dslCode = trans.outputText;
+                } catch (tsErr) {
+                    console.warn("TypeScript transpilation warning:", tsErr);
+                }
+            }
             
             // Remove imports
             dslCode = dslCode.replace(/import\\s+[\\s\\S]*?from\\s+['"][^'"]+['"];?/g, '');
@@ -1720,7 +1528,7 @@ self.onmessage = async (e) => {
             dslCode = dslCode.replace(/export\\s+/g, '');
             
             if (!dslCode.includes('return ')) {
-                dslCode += '\\nreturn typeof __grammar !== "undefined" ? __grammar : null;';
+                dslCode += '\\nreturn typeof __grammar !== "undefined" ? __grammar : (typeof modelicaLanguage !== "undefined" ? modelicaLanguage : null);';
             }
             if (!Number.prototype.is) {
                 Object.defineProperty(Number.prototype, 'is', {

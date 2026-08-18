@@ -23,14 +23,14 @@ import {
   ast_setTensorBool, ast_getTensorBool,
   ast_bindChildNode, ast_resolveChildNode,
   ast_bindChildHash, ast_resolveChildByHash,
-  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag
+  ast_setNodeFlag, ast_clearNodeFlag, ast_hasNodeFlag,
+  getInputBuffer
 } from "./arena";
 import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array } from "./array";
-import { globalAstRoot, lsp_findNodeOffset, getEncodingStep } from "./lsp";
-import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren } from "./engine";
+import { globalAstRoot, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
+import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType } from "./parser";
-import { lsp_allocDiagnostic } from "./lsp";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { DaeBuilder, dae_createBuilder } from "./dae";
 import { BltEngine, blt_createEngine } from "./blt";
@@ -695,6 +695,7 @@ export class AstAPI {
       if (lenA != lenB) return false;
       let offsetA = lsp_findNodeOffset(globalAstRoot, nodeA);
       let offsetB = lsp_findNodeOffset(globalAstRoot, nodeB);
+      if (offsetA < 0 || offsetB < 0) return false;
       let buffer = getInputBuffer();
       for (let i: u32 = 0; i < lenA; i++) {
           if (load<u8>(buffer + offsetA + i) != load<u8>(buffer + offsetB + i)) {
@@ -714,6 +715,7 @@ export class AstAPI {
   @inline getFirstChild(nodeId: u32): u32 { return getNodeFirstChild(nodeId); }
   @inline getNextSibling(nodeId: u32): u32 { return getNodeNextSibling(nodeId); }
   @inline getChildCount(nodeId: u32): u32 { return ast_getChildCount(nodeId); }
+  @inline getByteLength(nodeId: u32): u32 { return getNodeByteLength(nodeId); }
 
   @inline getRootNode(): u32 { return globalAstRoot; }
   @inline getTextSpan(nodeId: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 { 
@@ -775,10 +777,15 @@ class ScopeAPI {
     return this.stack.currentPrefixStringId();
   }
 
+  @inline reset(): void {
+    this.stack.reset();
+  }
+
   @inline resolve(localId: u32): u32 {
     return this.stack.resolveLocal(localId);
   }
 }
+
 
 class EnvAPI {
   @inline create(parentPtr: u32 = 0): u32 {

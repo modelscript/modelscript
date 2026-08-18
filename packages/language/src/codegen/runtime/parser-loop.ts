@@ -3050,14 +3050,14 @@ export function advanceGLR(): void {
       if (reusedNode != 0) {
         let freshReuse = deepCloneSubtree(reusedNode, 0);
         if (freshReuse != 0) reusedNode = freshReuse;
-        let totalPadding = expectedPadding + head.pendingPadding;
+        let totalPadding = expectedPadding;
         setNodePadding(reusedNode, totalPadding);
       }
     }
 
     if (reusedNode != 0) {
       let nodeSym = getNodeType(reusedNode) as i32;
-      let totalPadding = expectedPadding + head.pendingPadding;
+      let totalPadding = expectedPadding;
 
       // Query the GOTO table to determine if this non-terminal can transition from the current state
       let nextState = -1;
@@ -3692,11 +3692,16 @@ export function findReusableNode(
 
   let startNode = cursorNodeStack[globalCursorDepth];
   let startSrc = cursorContentStartStack[globalCursorDepth];
-  if (startSrc > targetSrcOldPos) {
-    return 0;
-  }
+    if (startSrc > targetSrcOldPos) {
+      // Restore cursor state before early exit
+      globalCursorDepth = savedDepth;
+      if (savedDepth >= 0) {
+        cursorContentStartStack[savedDepth] = savedOffset;
+      }
+      return 0;
+    }
 
-  let searching = true;
+    let searching = true;
   while (searching) {
     let cPtr = cursorNodeStack[globalCursorDepth];
     if (globalCursorDepth == 0 && getNodeFirstChild(cPtr) != 0) {
