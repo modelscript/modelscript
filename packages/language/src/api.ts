@@ -1,8 +1,11 @@
+import type { GrammarConflictDiagnostic } from "./automata.js";
 import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
 import type { GeneratedFile } from "./codegen/parser.js";
 import { generateParser, generateParserTables } from "./codegen/parser.js";
 import { generateTextMate } from "./codegen/textmate.js";
 import type { LanguageOptions } from "./dsl.js";
+
+export type { GrammarConflictDiagnostic } from "./automata.js";
 
 /**
  * Metadata about the generated grammar parser.
@@ -37,6 +40,8 @@ export interface BuildResult {
     semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] };
   };
   table?: any;
+  /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
+  conflicts?: GrammarConflictDiagnostic[];
 }
 
 /**
@@ -70,5 +75,11 @@ export function buildParser(languageDef: LanguageOptions): BuildResult {
   assemblyScriptFiles.push({ filename: "tmLanguage.json", content: textMateContent.tm });
   assemblyScriptFiles.push({ filename: "monarch.json", content: textMateContent.monarch });
 
-  return { parserInfo, assemblyScriptFiles, javascriptWrapper, table: result.table };
+  return {
+    parserInfo,
+    assemblyScriptFiles,
+    javascriptWrapper,
+    table: result.table,
+    conflicts: result.table.diagnostics || [],
+  };
 }

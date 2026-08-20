@@ -112,7 +112,7 @@ describe("Playground Model Test", () => {
         logNode: () => {},
       },
       engine: {
-        debugLog: () => {},
+        debugLog: (code: any, val: any) => console.log("ENGINE_LOG:", code, val),
       },
       parser: { logInt: () => {} },
       recovery: {},
@@ -675,10 +675,17 @@ end ElectricalCircuit;
 
     for (const targetNode of multiChildNodes) {
       const type = activeFacade.exports.getNodeType(targetNode);
-      // Get the exact field ID associated with child 1 (index 1 = 'name') for this node type
-      const fieldIdForName = activeFacade.exports.getFieldIdForChild
-        ? activeFacade.exports.getFieldIdForChild(type, 1)
-        : -1;
+      let fieldIdForName = -1;
+      if (activeFacade.exports.getFieldIdForChild) {
+        try {
+          fieldIdForName = activeFacade.exports.getFieldIdForChild(type, 1, 0);
+        } catch {
+          fieldIdForName = -1;
+        }
+      }
+      if (fieldIdForName <= 0 && activeFacade.FIELD_NAMES?.name) {
+        fieldIdForName = activeFacade.FIELD_NAMES.name;
+      }
       if (fieldIdForName > 0) {
         const child0 = activeFacade.exports.getNodeFirstChild(targetNode);
         const child1 = activeFacade.exports.getNodeNextSibling(child0);

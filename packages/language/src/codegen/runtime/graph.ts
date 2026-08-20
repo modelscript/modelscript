@@ -688,6 +688,26 @@ export class HashAPI {
  * AST navigation and node span query API.
  */
 export class AstAPI {
+  @inline textEquals(nodeId: u32, text: string): boolean {
+      if (nodeId == 0) return false;
+      let nodeLen = getNodeByteLength(nodeId);
+      let step = getEncodingStep();
+      let charLen = nodeLen / step;
+      if (charLen != (text.length as u32)) return false;
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      if (offset < 0) return false;
+      let buffer = getInputBuffer();
+      for (let i = 0; i < text.length; i++) {
+          let code = text.charCodeAt(i);
+          if (step == 2) {
+              if (load<u16>(buffer + offset + (i << 1)) != (code as u16)) return false;
+          } else {
+              if (load<u8>(buffer + offset + i) != (code as u8)) return false;
+          }
+      }
+      return true;
+  }
+
   @inline textEqualsNode(nodeA: u32, nodeB: u32): boolean {
       if (nodeA == nodeB) return true;
       let lenA = getNodeByteLength(nodeA);

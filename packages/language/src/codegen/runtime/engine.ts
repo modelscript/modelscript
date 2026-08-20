@@ -97,7 +97,7 @@ class StaticTable {
   /** Reads a 32-bit integer at the given logical index. */
   @inline @operator("[]") get(index: i32): i32 {
     let ptr = changetype<usize>(this);
-    if (ptr == 0) return 0;
+    if (ptr < 4) return 0;
     let len = load<i32>(ptr - 4);
     if (index < 0 || index >= len) {
       return 0;
@@ -107,7 +107,7 @@ class StaticTable {
   /** Retrieves the encoded array length from the preceding 4-byte header. */
   @inline get length(): i32 {
     let ptr = changetype<usize>(this);
-    if (ptr == 0) return 0;
+    if (ptr < 4) return 0;
     return load<i32>(ptr - 4);
   }
 }
@@ -611,6 +611,7 @@ export class FieldCursor {
   currentIdxPtr: i32;
 
   frameDepth: i32;
+  stackPtr: usize;
   private cachedNext: u32;
   private hasCachedNext: boolean;
   isActive: boolean;
@@ -618,7 +619,7 @@ export class FieldCursor {
   @inline
   pushFrame(node: u32, offset: i32, count: i32, ptr: i32): void {
     if (this.frameDepth < MAX_FIELD_CURSOR_DEPTH) {
-      let base = changetype<usize>(this) + offsetof<FieldCursor>() + ((this.frameDepth as usize) << 4);
+      let base = this.stackPtr + ((this.frameDepth as usize) << 4);
       store<u32>(base, node);
       store<i32>(base + 4, offset);
       store<i32>(base + 8, count);
@@ -631,7 +632,7 @@ export class FieldCursor {
   popFrame(): void {
     if (this.frameDepth > 0) {
       this.frameDepth--;
-      let base = changetype<usize>(this) + offsetof<FieldCursor>() + ((this.frameDepth as usize) << 4);
+      let base = this.stackPtr + ((this.frameDepth as usize) << 4);
       this.node = load<u32>(base);
       this.offset = load<i32>(base + 4);
       this.indexCount = load<i32>(base + 8);
@@ -641,6 +642,9 @@ export class FieldCursor {
 
   @inline
   init(node: u32, fieldId: i32): void {
+    if (this.stackPtr == 0) {
+      this.stackPtr = atomicChunkAlloc(64 << 4) as usize;
+    }
     this.node = node;
     this.fieldId = fieldId;
     this.hasCachedNext = false;
@@ -796,8 +800,18 @@ export class FieldCursor {
           return inner;
         }
       }
-      if (child != 0 && ((getNodeFlags(child) & FLAG_IS_INSERTED) != 0 || getNodeType(child) == 0 || getNodeByteLength(child) == 0)) {
+      // If child is an empty epsilon node (0 length, no children, not inserted by recovery), it is absent
+      if (child != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0 && getNodeByteLength(child) == 0 && getNodeFirstChild(child) == 0) {
         return 0;
+      }
+      // Unwrap any invisible synthetic wrapper node down to the real child
+      while (child != 0 && (getNodeFlags(child) & FLAG_INVISIBLE) != 0 && (getNodeFlags(child) & FLAG_IS_INSERTED) == 0) {
+        let first = getNodeFirstChild(child);
+        if (first != 0) {
+          child = first;
+        } else {
+          break;
+        }
       }
       return child;
     }
@@ -813,15 +827,17 @@ export class FieldCursor {
 }
 
 let cursorPoolInitialized: boolean = false;
-const cursorPool = new Array<FieldCursor>(16);
+let cursorPool: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 let cursorPoolDepth: i32 = 0;
 
 function initCursorPool(): void {
+  cursorPool = changetype<UnmanagedUint32Array>(atomicChunkAlloc(16 * 4));
   for (let i = 0; i < 16; i++) {
-    let ptr = heap.alloc(offsetof<FieldCursor>() + ((MAX_FIELD_CURSOR_DEPTH as usize) << 4));
+    let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
     let cursor = changetype<FieldCursor>(ptr);
     cursor.isActive = false;
-    cursorPool[i] = cursor;
+    cursor.stackPtr = atomicChunkAlloc(64 << 4) as usize;
+    cursorPool[i] = ptr as u32;
   }
   cursorPoolDepth = 16;
   cursorPoolInitialized = true;
@@ -832,10 +848,11 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
   let cursor: FieldCursor;
   if (cursorPoolDepth > 0) {
     cursorPoolDepth--;
-    cursor = cursorPool[cursorPoolDepth];
+    cursor = changetype<FieldCursor>(cursorPool[cursorPoolDepth]);
   } else {
-    let ptr = heap.alloc(offsetof<FieldCursor>() + ((MAX_FIELD_CURSOR_DEPTH as usize) << 4));
+    let ptr = atomicChunkAlloc(sizeof<FieldCursor>());
     cursor = changetype<FieldCursor>(ptr);
+    cursor.stackPtr = atomicChunkAlloc(64 << 4) as usize;
   }
   cursor.init(node, fieldId);
   return cursor;
@@ -844,7 +861,7 @@ export function getChildrenByFieldId(node: u32, fieldId: i32): FieldCursor {
 export function releaseFieldCursor(cursor: FieldCursor): void {
   if (!cursorPoolInitialized) initCursorPool();
   if (cursorPoolDepth < 16) {
-    cursorPool[cursorPoolDepth] = cursor;
+    cursorPool[cursorPoolDepth] = changetype<u32>(cursor);
     cursorPoolDepth++;
   }
 }
@@ -856,20 +873,33 @@ export function getChildByFieldId(ptr: u32, fieldId: i32): u32 {
   return child;
 }
 
-export function getFieldIdForChild(type: u16, childIndex: u16): i32 {
-  if (type >= (type_fields.length as u16)) return -1;
-  let offset = type_fields[type];
-  if (offset == -1 || offset < 0 || offset >= type_field_data.length) return -1;
+export function getFieldIdForChild(type: u16, childIndex: u16, childType: u16 = 0): i32 {
+  let tablePtr = changetype<usize>(type_fields);
+  if (tablePtr < 4) return -1;
+  let len = type_fields.length;
+  if ((type as i32) < 0 || (type as i32) >= len) return -1;
+  let offset = type_fields[type as i32];
+  let dataTablePtr = changetype<usize>(type_field_data);
+  let dataLen = type_field_data.length;
+  if (dataTablePtr < 4 || offset == -1 || offset < 0 || offset >= dataLen) return -1;
   let fieldCount = type_field_data[offset];
+  if (fieldCount <= 0 || fieldCount > 1000) return -1;
   let currentOffset = offset + 1;
   for (let i = 0; i < fieldCount; i++) {
-    if (currentOffset + 1 >= type_field_data.length) break;
+    if (currentOffset + 1 >= dataLen) break;
     let currentFieldId = type_field_data[currentOffset];
     let indexCount = type_field_data[currentOffset + 1];
+    if (indexCount <= 0 || indexCount > 1000) break;
     let idxPtr = currentOffset + 2;
     for (let j = 0; j < indexCount; j++) {
-      if (idxPtr >= type_field_data.length) break;
-      if (type_field_data[idxPtr] == (childIndex as i32)) return currentFieldId;
+      if (idxPtr + 1 >= dataLen) break;
+      let rawIdx = type_field_data[idxPtr];
+      let expectedType = type_field_data[idxPtr + 1] as u16;
+      if (rawIdx == (childIndex as i32) || (rawIdx & 0x7FFF) == (childIndex as i32)) {
+        if (childType == 0 || expectedType == 0 || expectedType == childType) {
+          return currentFieldId;
+        }
+      }
       idxPtr += 2;
     }
     currentOffset += 2 + (indexCount * 2);

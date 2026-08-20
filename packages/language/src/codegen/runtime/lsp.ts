@@ -219,6 +219,13 @@ function ensureFindTraverseStack(required: u32): void {
         t_lspFindTraverseStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspFindStackCapacity * 4));
         t_lspFindOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(t_lspFindStackCapacity * 4));
     }
+    if (required > t_lspFindStackCapacity) {
+        let newCap = t_lspFindStackCapacity * 2;
+        while (newCap < required) newCap *= 2;
+        t_lspFindTraverseStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
+        t_lspFindOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
+        t_lspFindStackCapacity = newCap;
+    }
 }
 
 let t_lspRefFileIds: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
@@ -318,7 +325,8 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     let firstChild = getNodeFirstChild(node);
     let isLeaf = firstChild == 0;
-    let isErrorNode = type == 0 || inError || (isLeaf && ((flags & FLAG_HAS_ERROR) != 0));
+    let isMutated = (type & 0x8000) != 0;
+    let isErrorNode = type == 0 || inError || (isLeaf && (((flags & FLAG_HAS_ERROR) != 0) || isMutated));
 
     let hasInsertedSibling = getHasInsertedSiblingFromStack(offsetStackVal);
 
@@ -329,14 +337,15 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
       while (chk != 0) {
         let chkFlags = getNodeFlags(chk);
         let chkType = getNodeType(chk);
-        if (chkType == 0 || ((chkFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0)) {
+        if (chkType == 0 || ((chkFlags & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) != 0) || ((chkType & 0x8000) != 0)) {
           hasChildError = true;
           break;
         }
         chk = getNodeNextSibling(chk);
       }
     }
-    let isActualError = (type == 0 && !inError) || ((flags & FLAG_IS_INSERTED) != 0) || (isLeaf && isErrorNode && !inError);
+    let isActualError = (type == 0 && !inError) || ((flags & FLAG_IS_INSERTED) != 0) || (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0)) && !inError);
+    let allocatedDiag = false;
 
     if (isActualError) {
 
@@ -421,8 +430,17 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
       if (dEnd > dStart) {
         if ((flags & FLAG_IS_INSERTED) != 0) {
           lsp_allocDiagnostic(dStart, dEnd, 0, 1, type as u32);
+          allocatedDiag = true;
         } else {
           lsp_allocDiagnostic(dStart, dEnd, 0, 0, 0);
+          allocatedDiag = true;
+        }
+      } else if (isLeaf && (type == 0 || isMutated || ((flags & FLAG_HAS_ERROR) != 0))) {
+        let fallbackStart = nodeStart < totalInputBytes ? nodeStart : (totalInputBytes >= step ? totalInputBytes - step : 0);
+        let fallbackEnd = fallbackStart + step <= totalInputBytes ? fallbackStart + step : totalInputBytes;
+        if (fallbackEnd > fallbackStart) {
+          lsp_allocDiagnostic(fallbackStart, fallbackEnd, 0, 0, 0);
+          allocatedDiag = true;
         }
       }
 
@@ -457,18 +475,18 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
           let chkFlags = getNodeFlags(chk);
           let chkType = getNodeType(chk);
           if ((chkFlags & FLAG_IS_INSERTED) != 0) hasAnyInserted = true;
-          if (chkType == 0 || ((chkFlags & FLAG_HAS_ERROR) != 0)) hasAnyError = true;
+          if (chkType == 0 || ((chkFlags & FLAG_HAS_ERROR) != 0) || ((chkType & 0x8000) != 0)) hasAnyError = true;
           chk = getNodeNextSibling(chk);
         }
         
-        let isPureErrorGroup = (type == 0);
+        let isPureErrorGroup = (type == 0) && allocatedDiag;
         let childInError = inError || isPureErrorGroup;
         let childInTainted = inTainted || isTainted || hasChildError;
 
         while (child != 0) {
           let padVal = getNodeLeadingPad(child);
           let lenVal = getNodeByteLength(child);
-          if (consumedInParent > 0) {
+          if (currChildIdx > 0) {
             currOffset += padVal;
           }
           let childStart = currOffset;
@@ -510,8 +528,13 @@ export function lsp_getDiagnostics(astRoot: u32): u32 {
     lsp_extractDiagnosticsForRoot(astRoot, 0);
   }
   if (astRoot == globalAstRoot) {
-    // AST traversal (lsp_extractDiagnosticsForRoot) extracts all valid tree diagnostics.
-    // Speculative recovery markers in t_errorStarts are omitted to prevent spurious downstream squiggles.
+    for (let i = 0; i < errorCount; i++) {
+      let s = t_errorStarts[i];
+      let e = t_errorEnds[i];
+      if (e > s) {
+        lsp_allocDiagnostic(s, e, 0, 0, 0);
+      }
+    }
   }
   lsp_clearVisited();
   flushBinaryBuffer();
@@ -1010,33 +1033,14 @@ export function lsp_getNodeLeadingPad(node: u32): u32 {
 }
 
 @inline function getNodeLeadingPad(node: u32): u32 {
-  let pad = getNodePadding(node);
-  if (pad > 0) return pad;
-  let curr = node;
-  while (curr != 0) {
-    let child = getNodeFirstChild(curr);
-    if (child == 0) return getNodePadding(curr);
-    let foundChild: u32 = 0;
-    let chk = child;
-    while (chk != 0) {
-      let p = getNodePadding(chk);
-      if (p > 0) return p;
-      if (getNodeByteLength(chk) > 0 || getNodeFirstChild(chk) != 0) {
-        foundChild = chk;
-        break;
-      }
-      chk = getNodeNextSibling(chk);
-    }
-    if (foundChild == 0) return 0;
-    curr = foundChild;
-  }
-  return 0;
+  return getNodePadding(node);
 }
 
 export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u32 = 0): i32 {
    if (rootNode == 0 || targetNode == 0) return -1;
    ensureFindTraverseStack(1);
-   let rootStart = (rootOffset == 0 && rootNode == globalAstRoot) ? getNodeLeadingPad(rootNode) : rootOffset;
+   if (globalAstRoot == 0) globalAstRoot = rootNode;
+   let rootStart = (rootOffset == 0) ? getNodeLeadingPad(rootNode) : rootOffset;
    if (rootNode == targetNode) return rootStart as i32;
 
    let stackTop: i32 = 0;
@@ -1062,13 +1066,12 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
          ensureFindTraverseStack(stackTop + childCount);
          
          let currOffset = nodeStart;
-         let consumedInParent: u32 = 0;
          let idx: i32 = 0;
          c = child;
          while (c != 0) {
             let cPad = getNodeLeadingPad(c);
             let cLen = getNodeByteLength(c);
-            if (consumedInParent > 0) {
+            if (idx > 0) {
                currOffset += cPad;
             }
             let childStart = currOffset;
@@ -1076,7 +1079,6 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
             t_lspFindTraverseStack[slot] = c;
             t_lspFindOffsetStack[slot] = childStart;
             currOffset = childStart + cLen;
-            consumedInParent += cLen;
             idx++;
             c = getNodeNextSibling(c);
          }

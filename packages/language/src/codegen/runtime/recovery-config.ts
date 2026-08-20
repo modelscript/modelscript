@@ -143,6 +143,11 @@ export const THRESHOLD_HEAD_PRUNING_DISTANCE: i32 = 2000;
 export const COST_ISLAND_INITIAL_SYNC: i32 = 5;
 
 /**
+ * Maximum GSS stack depth traversed when searching for a synchronization anchor in Island Mode.
+ */
+export const MAX_ISLAND_GSS_DEPTH: i32 = 32;
+
+/**
  * Cost penalty per AST node unwound during recovery (aligned with Tree-sitter).
  */
 export let configPenaltyUnwindNode: i32 = 300;

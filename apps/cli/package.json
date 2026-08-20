@@ -30,7 +30,7 @@
     "dist/**/*.d.ts.map"
   ],
   "scripts": {
-    "build": "npm run clean && tsc && chmod +x dist/main.js",
+    "build": "npm run clean && tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
@@ -46,6 +46,7 @@
     "adm-zip": "^0.5.16",
     "assemblyscript": "^0.28.19",
     "jiti": "^2.6.1",
+    "lz-string": "^1.5.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "svgdom": "^0.1.22",

@@ -511,6 +511,13 @@ export interface ConflictReport {
  * Unlike strict LR parsers, GLR tables permit multiple actions per cell
  * to support forking parser execution on ambiguous inputs.
  */
+export interface GrammarConflictDiagnostic {
+  type: "shift/reduce" | "reduce/reduce";
+  output: string;
+  rules: string[];
+  symbolSequence?: string;
+}
+
 export class GLRTable {
   /**
    * The Action table mapping State ID -> Terminal Symbol -> Array of Actions.
@@ -523,6 +530,9 @@ export class GLRTable {
 
   /** Unresolvable conflicts discovered during table generation. */
   conflicts: ConflictReport[] = [];
+
+  /** Structured diagnostics for grammar conflicts. */
+  diagnostics: GrammarConflictDiagnostic[] = [];
 
   constructor(
     public grammar: NormalizedGrammar,
@@ -646,7 +656,7 @@ export class GLRTable {
 
     if (this.conflicts.length > 0) {
       const seenOutputs = new Set<string>();
-      const diagnostics: { type: string; output: string }[] = [];
+      const diagnostics: GrammarConflictDiagnostic[] = [];
 
       const groupedConflicts = new Map<
         string,
@@ -747,9 +757,16 @@ export class GLRTable {
 
         if (!seenOutputs.has(output)) {
           seenOutputs.add(output);
-          diagnostics.push({ type: group.conflictType, output });
+          diagnostics.push({
+            type: group.conflictType as "shift/reduce" | "reduce/reduce",
+            output,
+            rules: rulesArray,
+            symbolSequence: seq,
+          });
         }
       }
+
+      this.diagnostics = diagnostics;
 
       console.warn(`Warning: Conflicts when generating parser\n`);
 
@@ -768,6 +785,8 @@ export class GLRTable {
         `Found ${diagnostics.length} unresolved conflict${diagnostics.length === 1 ? "" : "s"} (${numReduceReduce} reduce/reduce, ${numShiftReduce} shift/reduce).\n`,
       );
       // process.exit(1);
+    } else {
+      this.diagnostics = [];
     }
   }
 

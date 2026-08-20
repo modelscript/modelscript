@@ -555,7 +555,7 @@ export interface CompilerLint<
   ModelAttrs extends Record<string, Record<string, any>> = any,
 > {
   nodes?: NoInfer<RuleName>[];
-  query: ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
+  query: string | ASTLintFunction<RuleName, FieldName, QueryName, ModelAttrs>;
   code?: string | number;
   message:
     | string

@@ -93,6 +93,14 @@ end ChuaCircuit;`;
         res.writeHead(200, headers);
         const diagramJsPath = join(__dirname, "../../../../packages/diagram/dist/browser.js");
         res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
+      } else if (urlPath?.startsWith("/vendor/")) {
+        headers["Content-Type"] = "application/javascript";
+        res.writeHead(200, headers);
+        const fileName = urlPath.slice(8);
+        const vendorDist = join(__dirname, "../vendor", fileName);
+        const vendorSrc = join(__dirname, "../../src/vendor", fileName);
+        const vendorPath = existsSync(vendorDist) ? vendorDist : vendorSrc;
+        res.end(existsSync(vendorPath) ? readFileSync(vendorPath) : "");
       } else if (urlPath?.startsWith("/node_modules/")) {
         const rootNodeModules = join(__dirname, "../../../../node_modules");
         const cliNodeModules = join(__dirname, "../../node_modules");
@@ -325,16 +333,16 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
         }
     </style>
     <!-- Scripts: React, Babel, LZString before Monaco AMD loader to avoid define() conflicts -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+    <script src="/vendor/react.production.min.js"></script>
+    <script src="/vendor/react-dom.production.min.js"></script>
+    <script src="/node_modules/@babel/standalone/babel.min.js"></script>
+    <script src="/node_modules/lz-string/libs/lz-string.min.js"></script>
     <script type="module">
         import * as Diagram from "/diagram.browser.js";
         window.DiagramModule = Diagram;
         window.dispatchEvent(new Event('diagramModuleLoaded'));
     </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.js"></script>
+    <script src="/node_modules/monaco-editor/min/vs/loader.js"></script>
 </head>
 <body>
     <div id="toolbar">
@@ -386,7 +394,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
     </div>
 
     <script>
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+        require.config({ paths: { 'vs': '/node_modules/monaco-editor/min/vs' }});
 
         // Initialize Share functionality (hash encoding/decoding)
         function getShareState() {
@@ -416,10 +424,22 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
 
         require(['vs/editor/editor.main'], function() {
             // Setup DSL environment types for monaco
-            const dslLib = \`${dslLibStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-            const dslLibModule = \`${dslLibModuleStr.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
+            monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                target: monaco.languages.typescript.ScriptTarget.ES2022,
+                module: monaco.languages.typescript.ModuleKind.ESNext,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                allowNonTsExtensions: true,
+                noEmit: true,
+                esModuleInterop: true,
+            });
+
+            const dslLib = ${JSON.stringify(dslLibStr)};
+            const dslLibModule = ${JSON.stringify(dslLibModuleStr)};
+            const dslModuleDecl = ${JSON.stringify('declare module "@modelscript/language" {\n' + dslLibModuleStr + "\n}")};
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLib, 'ts:filename/dsl.d.ts');
-            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslLibModule, 'ts:filename/dsl-module.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'file:///node_modules/@modelscript/language/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'node_modules/@modelscript/language/index.d.ts');
+            monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'ts:filename/dsl-module.d.ts');
 
             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
             const editorTheme = prefersDark ? 'vs-dark' : 'vs';
@@ -463,22 +483,22 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
             lspWorker.onerror = (e) => {
                 console.error("LSP Worker Error:", e.message || e, "at", e.filename, "line", e.lineno, "col", e.colno, e.error);
             };
-            window['__astPatchQueue'] = window['__astPatchQueue'] || [];
             lspWorker.addEventListener('message', (e) => {
                 const msg = e.data;
                 if (msg && (msg.type === 'astPatch' || msg.type === 'astPatchBinary')) {
-                    console.log('[MAIN] lspWorker sent astPatch. rootId:', msg.rootId, 'bufferBytes:', msg.buffer ? msg.buffer.byteLength : 0, 'isFullReset:', msg.isFullReset);
                     window['__latestAstPatch'] = msg;
-                    window['__astPatchQueue'].push(msg);
-                    window.postMessage(msg, '*');
+                    window.dispatchEvent(new CustomEvent('astPatch', { detail: msg }));
 
-                    // Request updated diagram data on AST update
-                    lspWorker.postMessage({
-                        jsonrpc: '2.0',
-                        id: Date.now(),
-                        method: 'modelscript/diagram/getData',
-                        params: {}
-                    });
+                    // Debounce diagram data request on AST update
+                    if (window['__diagramDebounceTimer']) clearTimeout(window['__diagramDebounceTimer']);
+                    window['__diagramDebounceTimer'] = setTimeout(() => {
+                        lspWorker.postMessage({
+                            jsonrpc: '2.0',
+                            id: Date.now(),
+                            method: 'modelscript/diagram/getData',
+                            params: {}
+                        });
+                    }, 200);
                 }
                 if (msg && msg.result && (msg.result.nodes || msg.result.edges)) {
                     window['__latestDiagramData'] = msg.result;
@@ -537,12 +557,55 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                 };
             }
             
+            const updateDslGrammarMarkers = (conflicts) => {
+                if (!window.dslEditor || !window.dslEditor.getModel()) return;
+                const model = window.dslEditor.getModel();
+                const markers = [];
+
+                for (const conflict of (conflicts || [])) {
+                    const rules = conflict.rules || [];
+                    for (const rule of rules) {
+                        const cleanRule = rule.replace(/^["']|["']$/g, '');
+                        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cleanRule)) continue;
+
+                        const regexStr = '\\b' + cleanRule + '\\s*:';
+                        const matches = model.findMatches(regexStr, false, true, false, null, true);
+                        if (matches && matches.length > 0) {
+                            for (const match of matches) {
+                                markers.push({
+                                    severity: monaco.MarkerSeverity.Warning,
+                                    startLineNumber: match.range.startLineNumber,
+                                    startColumn: match.range.startColumn,
+                                    endLineNumber: match.range.endLineNumber,
+                                    endColumn: match.range.startColumn + cleanRule.length,
+                                    message: 'Grammar Conflict (' + conflict.type + '):\\n' + conflict.output.trim(),
+                                    source: 'Grammar Analysis'
+                                });
+                            }
+                        }
+                    }
+                }
+
+                monaco.editor.setModelMarkers(model, 'grammar-conflicts', markers);
+            };
+
+            if (window.dslEditor) {
+                window.dslEditor.onDidChangeModelContent(() => {
+                    if (window.grammarConflicts && window.grammarConflicts.length > 0) {
+                        updateDslGrammarMarkers(window.grammarConflicts);
+                    }
+                });
+            }
+
             compilerWorker.onmessage = (e) => {
                 if (e.data.type === 'ready') {
                     document.getElementById('status').innerText = "Compiler Worker ready. Compiling DSL...";
                     compilerWorker.postMessage({ type: 'compile', dsl: window.dslEditor.getValue() });
                 } else if (e.data.type === 'error') {
                     document.getElementById('status').innerText = "Compiler Worker Error: " + e.data.error;
+                    window.grammarConflicts = [];
+                    window.dispatchEvent(new CustomEvent('grammarConflictsUpdated', { detail: [] }));
+                    updateDslGrammarMarkers([]);
                 } else if (e.data.type === 'progress') {
                     document.getElementById('status').innerText = e.data.message;
                 } else if (e.data.type === 'success') {
@@ -552,8 +615,11 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                     window.fieldNames = e.data.fieldNames;
                     window.diagramConfig = e.data.diagram;
                     window.pipelines = e.data.pipelines || [];
+                    window.grammarConflicts = e.data.conflicts || [];
                     window.dispatchEvent(new Event('pipelinesUpdated'));
                     window.dispatchEvent(new Event('diagramDataUpdated'));
+                    window.dispatchEvent(new CustomEvent('grammarConflictsUpdated', { detail: window.grammarConflicts }));
+                    updateDslGrammarMarkers(window.grammarConflicts);
                     
                     const langId = e.data.langName ? e.data.langName.toLowerCase() : 'exampledsl';
                     if (!monaco.languages.getLanguages().some(l => l.id === langId)) {
@@ -612,13 +678,8 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                         const providerObj = {
                             getLegend,
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
-                                console.log('[SEMANTIC-DEBUG] provideDocumentSemanticTokens called for model:', model.uri.toString(), 'lang:', model.getLanguageId());
                                 if (token.isCancellationRequested) return null;
-                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch((err) => {
-                                    console.error('[SEMANTIC-DEBUG] sendRequest error:', err);
-                                    return null;
-                                });
-                                console.log('[SEMANTIC-DEBUG] provideDocumentSemanticTokens result:', JSON.stringify(result));
+                                const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch(() => null);
                                 if (result && result.data) {
                                     const raw = result.data;
                                     const uint32Data = raw instanceof Uint32Array ? raw
@@ -634,7 +695,6 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                         const rangeProviderObj = {
                             getLegend,
                             provideDocumentRangeSemanticTokens: async (model, range, token) => {
-                                console.log('[SEMANTIC-DEBUG] provideDocumentRangeSemanticTokens called for range:', JSON.stringify(range));
                                 if (token.isCancellationRequested) return null;
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/range', {
                                     textDocument: { uri: model.uri.toString() },
@@ -642,11 +702,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                                         start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
                                         end: { line: range.endLineNumber - 1, character: range.endColumn - 1 }
                                     }
-                                }).catch((err) => {
-                                    console.error('[SEMANTIC-DEBUG] sendRequest error:', err);
-                                    return null;
-                                });
-                                console.log('[SEMANTIC-DEBUG] provideDocumentRangeSemanticTokens result:', JSON.stringify(result));
+                                }).catch(() => null);
                                 if (result && result.data) {
                                     const raw = result.data;
                                     const uint32Data = raw instanceof Uint32Array ? raw
@@ -745,7 +801,6 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                         if (msg.error) reject(msg.error);
                         else resolve(msg.result);
                     } else if (msg.method === 'textDocument/publishDiagnostics') {
-                        console.log("[DIAG-DEBUG] Raw diagnostics from worker:", JSON.stringify(msg.params.diagnostics));
                         const markers = msg.params.diagnostics.map(d => {
                             let startLine = d.range ? d.range.start.line + 1 : 1;
                             let startCol = d.range ? d.range.start.character + 1 : 1;
@@ -770,16 +825,13 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                             };
                         });
                         const currentModel = this.editor.getModel() || this.model;
-                        console.log("[DIAG-DEBUG] Setting markers on model:", currentModel.uri.toString(), "lang:", currentModel.getLanguageId(), "markers:", JSON.stringify(markers));
                         monaco.editor.setModelMarkers(currentModel, 'dsl-lsp', markers);
-                        console.log("[DIAG-DEBUG] After setModelMarkers, getModelMarkers:", JSON.stringify(monaco.editor.getModelMarkers({ resource: currentModel.uri })));
+                        window['__latestDiagnostics'] = msg.params.diagnostics || [];
+                        window.dispatchEvent(new Event('diagnosticsUpdated'));
                     } else if (msg.type === 'statusUpdate') {
                         document.getElementById('status').innerText = msg.message;
                     } else if (msg.type === 'worker_log') {
                         console.log(...msg.args);
-                    } else if (msg.type === 'astPatch' || msg.type === 'astPatchBinary') {
-                        window['__latestAstPatch'] = msg;
-                        window.postMessage(msg, '*');
                     }
                 }
                 
@@ -951,15 +1003,14 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
             const [lineStarts, setLineStarts] = useState(new Uint32Array([0]));
 
             useEffect(() => {
+                let updateRaf = null;
                 const processMsg = (msg) => {
                     if (!msg) return;
                     if (msg.type === 'astPatchBinary') {
-                        console.log("[PLAYGROUND-UI] AstViewer received astPatchBinary. rootId:", msg.rootId, "isFullReset:", msg.isFullReset, "buffer bytes:", msg.buffer ? msg.buffer.byteLength : 0);
                         if (msg.isFullReset) {
                             nodeMap.current.clear();
                         }
 
-                        let hasUpdates = false;
                         if (msg.buffer && msg.buffer.byteLength > 0) {
                             const ints = new Int32Array(msg.buffer);
                             let i = 0;
@@ -982,32 +1033,21 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                                 
                                 if (op === 1) { // INSERT
                                     nodeMap.current.set(ptr, { id: ptr, typeId, typeName, pad, len, flags, children });
-                                    hasUpdates = true;
                                 } else if (op === 3) { // DELETE
                                     nodeMap.current.delete(ptr);
-                                    hasUpdates = true;
                                 } else if (op === 2) { // UPDATE
                                     const oldNode = nodeMap.current.get(oldPtr);
                                     nodeMap.current.set(ptr, { ...oldNode, id: ptr, typeId, typeName, pad, len, flags, children });
                                     if (ptr !== oldPtr) {
                                         nodeMap.current.delete(oldPtr);
                                     }
-                                    hasUpdates = true;
                                 } else if (op === 4) { // RETAINED_FLAG_UPDATE
                                     const existingNode = nodeMap.current.get(ptr);
                                     if (existingNode && existingNode.flags !== flags) {
                                         nodeMap.current.set(ptr, { ...existingNode, flags });
-                                        hasUpdates = true;
                                     }
                                 }
                             }
-                        }
-                        
-                        console.log("[PLAYGROUND-UI] AstViewer decoded nodes. nodeMap size:", nodeMap.current.size, "hasUpdates:", hasUpdates, "rootId:", msg.rootId, "bufferBytes:", msg.buffer ? msg.buffer.byteLength : 0);
-                        if (nodeMap.current.size > 0) {
-                            const firstKey = nodeMap.current.keys().next().value;
-                            const firstNode = nodeMap.current.get(firstKey);
-                            console.log("[PLAYGROUND-UI] First node in map:", firstKey, firstNode ? firstNode.typeName : 'null', 'children:', firstNode && firstNode.children ? firstNode.children.length : 0);
                         }
 
                         if (msg.lineStartsBuffer) {
@@ -1025,26 +1065,30 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
 
                         setStatus("Parsed AST (Root #" + msg.rootId + ")");
 
-                        if (hasUpdates || msg.rootId !== 0 || msg.isFullReset) {
-                            setRootId(msg.rootId);
-                            setUpdateTick(t => t + 1);
+                        if (msg.rootId === 0) {
+                            nodeMap.current.clear();
+                        }
+                        setRootId(msg.rootId);
+                        if (!updateRaf) {
+                            updateRaf = requestAnimationFrame(() => {
+                                updateRaf = null;
+                                setUpdateTick(t => t + 1);
+                            });
                         }
                     } else if (msg.type === 'statusUpdate') {
-                        console.log("[PLAYGROUND-UI] statusUpdate received:", msg.message);
                         setStatus(msg.message);
                     }
                 };
 
-                const handleMessage = (e) => processMsg(e.data);
-                window.addEventListener('message', handleMessage);
-                if (window['__astPatchQueue'] && window['__astPatchQueue'].length > 0) {
-                    while (window['__astPatchQueue'].length > 0) {
-                        processMsg(window['__astPatchQueue'].shift());
-                    }
-                } else if (window['__latestAstPatch']) {
+                const handleAstPatch = (e) => processMsg(e.detail);
+                window.addEventListener('astPatch', handleAstPatch);
+                if (window['__latestAstPatch']) {
                     processMsg(window['__latestAstPatch']);
                 }
-                return () => window.removeEventListener('message', handleMessage);
+                return () => {
+                    window.removeEventListener('astPatch', handleAstPatch);
+                    if (updateRaf) cancelAnimationFrame(updateRaf);
+                };
             }, []);
 
             const handleScroll = (e) => {
@@ -1077,7 +1121,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                     const isTainted = (node.flags & 0x0010) !== 0; // FLAG_IS_TAINED
                     const isInserted = (node.flags & 0x0100) !== 0; // FLAG_IS_INSERTED
                     const isError = node.typeName === "ERROR" || isTainted;
-                    const isGhost = (node.len === 0 && !isError) || isInserted;
+                    const isGhost = isInserted;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
                     
@@ -1090,10 +1134,8 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                     return currentOffset + (node.len || 0);
                 };
                 
-                const effectiveRoot = nodeMap.current.has(rootId) ? rootId : (nodeMap.current.size > 0 ? Array.from(nodeMap.current.keys())[0] : 0);
-                console.log('[PLAYGROUND-UI] flatNodes: rootId=', rootId, 'effectiveRoot=', effectiveRoot, 'mapSize=', nodeMap.current.size, 'hasRoot=', nodeMap.current.has(rootId));
+                const effectiveRoot = (rootId !== 0 && nodeMap.current.has(rootId)) ? rootId : 0;
                 if (effectiveRoot) flatten(effectiveRoot, 0, 0, null);
-                console.log('[PLAYGROUND-UI] flatNodes produced:', nodes.length, 'nodes');
                 return nodes;
             }, [updateTick, rootId]);
 
@@ -1210,7 +1252,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                 <div className="panel-content" style={{ padding: '15px' }}>
                     <div className="equation-card">
                         <div className="title" style={{ marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' }}>
-                            🔍 Active Diagnostics & Lints (\${diagnostics.length})
+                            🔍 Active Diagnostics & Lints ({diagnostics.length})
                         </div>
                         {diagnostics.length === 0 ? (
                             <div style={{ color: '#2da44e', fontSize: '13px' }}>✔ No syntax or linter errors detected.</div>
@@ -1404,16 +1446,185 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
             );
         }
 
+        function GrammarConflictsViewer() {
+            const [conflicts, setConflicts] = useState(window.grammarConflicts || []);
+
+            useEffect(() => {
+                const handler = (e) => {
+                    setConflicts(e.detail || window.grammarConflicts || []);
+                };
+                window.addEventListener('grammarConflictsUpdated', handler);
+                return () => window.removeEventListener('grammarConflictsUpdated', handler);
+            }, []);
+
+            const numReduceReduce = conflicts.filter(c => c.type === 'reduce/reduce').length;
+            const numShiftReduce = conflicts.filter(c => c.type === 'shift/reduce').length;
+
+            const jumpToRule = (ruleName) => {
+                if (!window.dslEditor || !window.dslEditor.getModel()) return;
+                const clean = ruleName.replace(/^["']|["']$/g, '');
+                const model = window.dslEditor.getModel();
+                const matches = model.findMatches('\\b' + clean + '\\s*:', false, true, false, null, true);
+                if (matches && matches.length > 0) {
+                    const line = matches[0].range.startLineNumber;
+                    window.dslEditor.revealLineInCenter(line);
+                    window.dslEditor.setPosition({ lineNumber: line, column: matches[0].range.startColumn });
+                    window.dslEditor.focus();
+                }
+            };
+
+            const copyConflictGroup = (rules) => {
+                const cleanRules = (rules || []).map(r => r.replace(/^["']|["']$/g, '')).filter(r => /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(r));
+                if (cleanRules.length === 0) return;
+                const snippet = 'conflicts: ($) => [\\n    [' + cleanRules.map(r => '$.' + r).join(', ') + '],\\n],';
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(snippet);
+                }
+            };
+
+            return (
+                <div className="panel-content" style={{ padding: '15px' }}>
+                    <div className="equation-card" style={{ marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div className="title" style={{ fontSize: '15px', fontWeight: 'bold' }}>
+                                ⚠️ Grammar Analysis & Conflicts ({conflicts.length})
+                            </div>
+                            {conflicts.length > 0 && (
+                                <div style={{ display: 'flex', gap: '6px', fontSize: '12px' }}>
+                                    {numShiftReduce > 0 && (
+                                        <span style={{ background: 'rgba(217,119,6,0.2)', color: '#d97706', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(217,119,6,0.4)', fontWeight: 600 }}>
+                                            {numShiftReduce} Shift/Reduce
+                                        </span>
+                                    )}
+                                    {numReduceReduce > 0 && (
+                                        <span style={{ background: 'rgba(207,34,46,0.2)', color: '#cf222e', padding: '2px 8px', borderRadius: '12px', border: '1px solid rgba(207,34,46,0.4)', fontWeight: 600 }}>
+                                            {numReduceReduce} Reduce/Reduce
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {conflicts.length === 0 ? (
+                            <div style={{ padding: '16px', background: 'rgba(46,160,67,0.1)', border: '1px solid rgba(46,160,67,0.3)', borderRadius: '6px', color: '#3fb950', fontSize: '13px' }}>
+                                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>✔ No Grammar Conflicts Detected</div>
+                                <div style={{ opacity: 0.85, fontSize: '12px' }}>Your grammar is deterministic and unambiguous under LALR(1) / GLR analysis.</div>
+                            </div>
+                        ) : (
+                            <div style={{ fontSize: '12px', color: '#8b949e', lineHeight: '1.4', marginBottom: '8px' }}>
+                                Conflicts indicate parser lookahead ambiguities where multiple shift or reduce actions exist. In ModelScript GLR, unresolved conflicts are forked dynamically, but defining operator precedence (<code style={{ background: '#21262d', padding: '1px 4px', borderRadius: '3px' }}>prec.left / prec.right</code>) or whitelisting in <code style={{ background: '#21262d', padding: '1px 4px', borderRadius: '3px' }}>conflicts: ($) =&gt; [...]</code> resolves ambiguity and enhances performance.
+                            </div>
+                        )}
+                    </div>
+
+                    {conflicts.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {conflicts.map((c, idx) => {
+                                const isReduceReduce = c.type === 'reduce/reduce';
+                                return (
+                                    <div key={idx} style={{
+                                        padding: '12px 14px',
+                                        borderRadius: '8px',
+                                        background: isReduceReduce ? 'rgba(207,34,46,0.06)' : 'rgba(217,119,6,0.06)',
+                                        border: '1px solid ' + (isReduceReduce ? 'rgba(207,34,46,0.3)' : 'rgba(217,119,6,0.3)'),
+                                        borderLeft: '5px solid ' + (isReduceReduce ? '#cf222e' : '#d97706'),
+                                        fontSize: '13px',
+                                        lineHeight: '1.45'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{
+                                                    fontWeight: 'bold',
+                                                    color: isReduceReduce ? '#cf222e' : '#d97706',
+                                                    textTransform: 'uppercase',
+                                                    fontSize: '12px',
+                                                    background: isReduceReduce ? 'rgba(207,34,46,0.15)' : 'rgba(217,119,6,0.15)',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px'
+                                                }}>
+                                                    {c.type}
+                                                </span>
+                                                <span style={{ fontWeight: 'bold', fontSize: '13px' }}>Conflict #{idx + 1}</span>
+                                            </div>
+                                            {c.rules && c.rules.length > 0 && (
+                                                <button 
+                                                    className="tab-btn" 
+                                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                                    onClick={() => copyConflictGroup(c.rules)}
+                                                    title="Copy conflicts array snippet to clipboard"
+                                                >
+                                                    📋 Copy Suppressor
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {c.rules && c.rules.length > 0 && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '12px', opacity: 0.75 }}>Involved rules:</span>
+                                                {c.rules.map(r => (
+                                                    <span 
+                                                        key={r} 
+                                                        onClick={() => jumpToRule(r)}
+                                                        style={{ 
+                                                            cursor: 'pointer', 
+                                                            background: '#21262d', 
+                                                            color: '#58a6ff', 
+                                                            padding: '1px 6px', 
+                                                            borderRadius: '4px', 
+                                                            fontSize: '11px', 
+                                                            fontFamily: 'monospace',
+                                                            border: '1px solid #30363d'
+                                                        }}
+                                                        title="Click to jump to rule definition in DSL editor"
+                                                    >
+                                                        {r} ↗
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <pre style={{
+                                            margin: '6px 0 0 0',
+                                            padding: '10px 12px',
+                                            background: '#0d1117',
+                                            border: '1px solid #30363d',
+                                            borderRadius: '6px',
+                                            color: '#c9d1d9',
+                                            fontSize: '12px',
+                                            fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                            overflowX: 'auto',
+                                            whiteSpace: 'pre-wrap',
+                                            lineHeight: '1.4'
+                                        }}>
+                                            {c.output.trim()}
+                                        </pre>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         function PlaygroundPanels() {
             const [activeTab, setActiveTab] = useState('ast');
             const [pipelines, setPipelines] = useState([]);
+            const [grammarConflicts, setGrammarConflicts] = useState(window.grammarConflicts || []);
 
             useEffect(() => {
                 const handler = () => {
                     setPipelines(window.pipelines || []);
                 };
+                const conflictHandler = (e) => {
+                    setGrammarConflicts(e.detail || window.grammarConflicts || []);
+                };
                 window.addEventListener('pipelinesUpdated', handler);
-                return () => window.removeEventListener('pipelinesUpdated', handler);
+                window.addEventListener('grammarConflictsUpdated', conflictHandler);
+                return () => {
+                    window.removeEventListener('pipelinesUpdated', handler);
+                    window.removeEventListener('grammarConflictsUpdated', conflictHandler);
+                };
             }, []);
 
             const activePipeline = pipelines.find(p => p.id === activeTab);
@@ -1433,7 +1644,14 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                             </button>
                         ))}
                         <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => setActiveTab('diagnostics')}>
-                            🔍 Diagnostics
+                            🔍 Code Diagnostics
+                        </button>
+                        <button 
+                            className={"tab-btn " + (activeTab === 'grammar-conflicts' ? 'active' : '')} 
+                            onClick={() => setActiveTab('grammar-conflicts')}
+                            style={grammarConflicts.length > 0 ? { borderBottom: '2px solid #d97706', color: '#d97706' } : {}}
+                        >
+                            ⚠️ Grammar {grammarConflicts.length > 0 ? '(' + grammarConflicts.length + ')' : ''}
                         </button>
                     </div>
                     <div style={{ display: activeTab === 'ast' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
@@ -1444,6 +1662,7 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                     </div>
                     {activePipeline && <PipelinePassViewer pipeline={activePipeline} />}
                     {activeTab === 'diagnostics' && <DiagnosticsViewer />}
+                    {activeTab === 'grammar-conflicts' && <GrammarConflictsViewer />}
                 </div>
             );
         }
@@ -1651,7 +1870,8 @@ self.onmessage = async (e) => {
                                 semanticLegend: result.javascriptWrapper.semanticLegend,
                                 pipelines: pipelineDefs,
                                 diagram: sanitizeForClone(grammarDef.diagram),
-                                langName: grammarDef.name
+                                langName: grammarDef.name,
+                                conflicts: result.conflicts || (result.table && result.table.diagnostics) || []
                             });
                         } catch (err) {
                             self.postMessage({ type: 'error', error: err.message });
@@ -1687,6 +1907,7 @@ let currentGenerationId = Date.now();
 let pendingFullText = null;
 let currentLangName = "ModelScript DSL";
 let globalAstRoot = 0;
+let isFullResetNeeded = false;
 
 let patchBufferA = new ArrayBuffer(1024 * 1024 * 2);
 let patchBufferB = new ArrayBuffer(1024 * 1024 * 2);
@@ -1732,6 +1953,7 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
 
 let pendingChanges = [];
 let isParsing = false;
+let parseDebounceTimer = null;
 
 function triggerDiagnostics(changes = null) {
     if (changes && changes.length > 0) {
@@ -1739,7 +1961,12 @@ function triggerDiagnostics(changes = null) {
     }
     
     if (isParsing) return;
-    runDiagnosticsNow();
+    if (parseDebounceTimer) clearTimeout(parseDebounceTimer);
+    parseDebounceTimer = setTimeout(() => {
+        if (!isParsing && pendingChanges.length > 0) {
+            runDiagnosticsNow();
+        }
+    }, 40);
 }
 
 async function runDiagnosticsNow() {
@@ -1754,11 +1981,13 @@ async function runDiagnosticsNow() {
         
         let editsToApply = [];
         let isFullReplacement = false;
+        isFullResetNeeded = false;
         let fullText = null;
 
         for (const change of batch) {
             if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
                 isFullReplacement = true;
+                isFullResetNeeded = true;
                 fullText = change.text;
                 editsToApply = [];
             } else if (!isFullReplacement) {
@@ -1832,7 +2061,12 @@ async function runDiagnosticsNow() {
         patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
         patchInt32 = new Int32Array(patchBuffer);
         
-        let lineStartsBuf = updatedLineStarts ? updatedLineStarts.buffer.slice(updatedLineStarts.byteOffset, updatedLineStarts.byteOffset + updatedLineStarts.byteLength) : null;
+        let lineStartsBuf = null;
+        if (updatedLineStarts && updatedLineStarts.length > 0) {
+            const copy = new Uint32Array(updatedLineStarts.length);
+            copy.set(updatedLineStarts);
+            lineStartsBuf = copy.buffer;
+        }
         
         const patchMsg = {
             type: 'astPatchBinary',
@@ -1840,11 +2074,12 @@ async function runDiagnosticsNow() {
             buffer: patchBufToTransfer,
             lineStartsBuffer: lineStartsBuf,
             diagnostics: diags,
-            isFullReset: isFullReplacement,
+            isFullReset: isFullResetNeeded || isFullReplacement,
             charMult: charMult
         };
         
-        self.postMessage(patchMsg, [patchBufToTransfer]);
+        const transferables = lineStartsBuf ? [patchBufToTransfer, lineStartsBuf] : [patchBufToTransfer];
+        self.postMessage(patchMsg, transferables);
         self.postMessage({
             jsonrpc: '2.0',
             method: 'textDocument/publishDiagnostics',
@@ -1855,7 +2090,12 @@ async function runDiagnosticsNow() {
     } finally {
         isParsing = false;
         if (pendingChanges.length > 0) {
-            setTimeout(runDiagnosticsNow, 10);
+            if (parseDebounceTimer) clearTimeout(parseDebounceTimer);
+            parseDebounceTimer = setTimeout(() => {
+                if (!isParsing && pendingChanges.length > 0) {
+                    runDiagnosticsNow();
+                }
+            }, 20);
         }
     }
 }
@@ -1962,6 +2202,10 @@ self.onmessage = async (e) => {
             if (syntaxNames) lspFacade.syntaxNames = syntaxNames;
             
             lspFacade.addAstChangeListener({
+                onFullReset: (newRoot) => {
+                    isFullResetNeeded = true;
+                    patchOffset = 0;
+                },
                 onNodeInserted: (ptr, typeId, typeName, pad, len, flags, children) => pushPatch(1, ptr, typeId, 0, pad, len, flags, children),
                 onNodeDeleted: (ptr) => pushPatch(3, ptr, 0, 0, 0, 0, 0, null),
                 onNodeRetained: (ptr, flags) => {
@@ -2236,7 +2480,6 @@ self.onmessage = async (e) => {
                 prevEndOffset = offset + length;
             }
             
-            console.log("Semantic Tokens computed:", (dataIdx / 5), "valid tokens (", validCount, "total) in range", startOffset, "to", endOffset);
             const tokensList = Array.from(data.subarray(0, dataIdx));
             self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { data: tokensList } });
         } catch (err) {

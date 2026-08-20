@@ -26,6 +26,7 @@ import {
   THRESHOLD_PANIC_MODE_CUTOFF,
   THRESHOLD_HEAD_PRUNING_DISTANCE,
   COST_ISLAND_INITIAL_SYNC,
+  MAX_ISLAND_GSS_DEPTH,
   MAX_RECOVERY_CANDIDATES,
   RECOVERY_BEAM_WIDTH,
   PENALTY_WEAK_LOOKAHEAD
@@ -1041,6 +1042,34 @@ export function recoverUnwindAndMutate(
                   p = srcLexPos + tLen;
                 }
                 
+                let diagStart: u32 = head.pos;
+                if (childCount > 0) {
+                  let firstPoppedChild = t_globalChildNodes[childCount - 1];
+                  if (firstPoppedChild != 0) {
+                    let childPad = getNodePadding(firstPoppedChild);
+                    let childPos = unwindCurr.pos + childPad;
+                    diagStart = childPos;
+                  }
+                } else if (searchPos > head.pos) {
+                  let savedLP = lexPos;
+                  let savedSLP = srcLexPos;
+                  let savedLL = lexLen;
+                  let savedSS = currentScannerState;
+                  let peekTok = invokeLexer(head.pos);
+                  if (peekTok != -1 && srcLexPos > head.pos) {
+                    diagStart = srcLexPos;
+                  }
+                  setLexLen(savedLL);
+                  setLexPos(savedLP);
+                  setSrcLexPos(savedSLP);
+                  setCurrentScannerState(savedSS);
+                }
+
+                let diagEnd: u32 = p > diagStart ? p : searchPos;
+                if (diagEnd > diagStart && errFirstChild != 0) {
+                  newTail = pushDiagnostic(newTail, diagStart, diagEnd);
+                }
+
                 let errNode: u32 = 0;
                 if (errFirstChild != 0) {
                   let firstPad = getNodeLeadingPad(errFirstChild);
@@ -1299,6 +1328,11 @@ export function recoverUnwindAndMutate(
                 let v4 = expandedLen > 4 ? t_expanded_tokens[4] : 0;
                 let finalLen = expandedLen > 5 ? 5 : expandedLen;
                 
+                let diagStartB = unwindCurr.pos;
+                let diagEndB = head.pos > unwindCurr.pos ? head.pos : (srcLexPos + (lexLen > 0 ? lexLen : 1));
+                if (diagEndB <= diagStartB) diagEndB = diagStartB + 1;
+                let newTailB = pushDiagnostic(head.errorTail, diagStartB, diagEndB);
+
                 let currentHead = allocParseHead(
                   unwindCurr.state,
                   unwindCurr.astNode,
@@ -1311,7 +1345,7 @@ export function recoverUnwindAndMutate(
                   head.consecutiveInsertions + finalLen,
                   unwindCurr.dynamicPrec,
                   unwindCurr.pendingPadding,
-                  head.errorTail,
+                  newTailB,
                   v0, v1, v2, v3, v4, finalLen
                 );
                 pushCandidateHead(changetype<u32>(currentHead));
@@ -1557,7 +1591,7 @@ export function recoverIslandMode(
 
             currPop = head;
             let gssDepth: i32 = 0;
-            while (currPop != null && gssDepth < 3) {
+            while (currPop != null && gssDepth < MAX_ISLAND_GSS_DEPTH) {
               // Check if this popped state can eventually consume the sync token
               // stateCanAccept is reduction-aware!
               

@@ -305,6 +305,7 @@ export const FIELD_NAMES: Record<string, number> =
   typeof __FIELD_NAMES_LITERAL__ !== "undefined" ? __FIELD_NAMES_LITERAL__ : {};
 
 export interface AstChangeListener {
+  onFullReset?(newRoot: number): void;
   onNodeRetained(ptr: number, flags?: number): void;
   onNodeDeleted(ptr: number): void;
   onNodeInserted(
@@ -450,6 +451,7 @@ export class LspFacade {
     if (this.exports.abortSuspend) this.exports.abortSuspend();
 
     const lenBytes = newTotalLength * 2;
+    const prevAstRoot = this.lastAstRoot;
 
     // Fast path for empty input (e.g., clearing the editor)
     if (newTotalLength <= 0) {
@@ -457,7 +459,14 @@ export class LspFacade {
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
-      if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
+      if (this.astListeners && this.astListeners.length > 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(prevAstRoot, newAstRoot, listener);
+        }
+      }
+      if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
+        this.exports.clearAstMarks(this.lastAstRoot);
+      }
       this._cachedLineStarts = new Uint32Array([0]);
       return this.lastAstRoot;
     }
@@ -523,15 +532,8 @@ export class LspFacade {
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (this.astListeners && this.astListeners.length > 0) {
-      if (this.lastAstRoot !== 0) {
-        for (const listener of this.astListeners) {
-          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
-        }
-      } else if (newAstRoot !== 0) {
-        // First parse: no old tree to diff against, so emit full insertion
-        for (const listener of this.astListeners) {
-          this.walkAstDiff(0, newAstRoot, listener);
-        }
+      for (const listener of this.astListeners) {
+        this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
     const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -608,12 +610,21 @@ export class LspFacade {
 
     const oldTotalLength = this.currentInputLength > 0 ? this.currentInputLength : newTotalLength - netDelta;
 
+    const prevAstRoot = this.lastAstRoot;
+
     if (newTotalLength <= 0) {
       if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
-      if (this.exports.clearAstMarks) this.exports.clearAstMarks(this.lastAstRoot);
+      if (this.astListeners && this.astListeners.length > 0) {
+        for (const listener of this.astListeners) {
+          this.walkAstDiff(prevAstRoot, newAstRoot, listener);
+        }
+      }
+      if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
+        this.exports.clearAstMarks(this.lastAstRoot);
+      }
       this._cachedLineStarts = new Uint32Array([0]);
       this.currentInputLength = 0;
       return this.lastAstRoot;
@@ -684,14 +695,8 @@ export class LspFacade {
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (this.astListeners && this.astListeners.length > 0) {
-      if (this.lastAstRoot !== 0) {
-        for (const listener of this.astListeners) {
-          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
-        }
-      } else if (newAstRoot !== 0) {
-        for (const listener of this.astListeners) {
-          this.walkAstDiff(0, newAstRoot, listener);
-        }
+      for (const listener of this.astListeners) {
+        this.walkAstDiff(prevAstRoot, newAstRoot, listener);
       }
     }
     const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -937,35 +942,11 @@ export class LspFacade {
         if (this.exports.getNodeLeadingPad) {
           return this.exports.getNodeLeadingPad(ptr);
         }
-        let curr = ptr;
-        while (curr !== 0) {
-          const typeFlags = memory[curr / 4];
-          const envHashPadding = memory[(curr + 4) / 4];
-          const rawPad = typeFlags >>> 22;
-          const isFat = ((envHashPadding >>> 23) & 1) === 1;
-          const pad =
-            isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
-          if (pad > 0) return pad;
-          let child = memory[(curr + 12) / 4];
-          if (child === 0) return pad;
-          let foundChild = 0;
-          let chk = child;
-          while (chk !== 0) {
-            const chkFlags = memory[chk / 4];
-            const chkRawPad = chkFlags >>> 22;
-            if (chkRawPad > 0) return chkRawPad;
-            const chkLen = memory[(chk + 4) / 4] & 0x007fffff;
-            const chkFirst = memory[(chk + 12) / 4];
-            if (chkLen > 0 || chkFirst !== 0) {
-              foundChild = chk;
-              break;
-            }
-            chk = memory[(chk + 16) / 4];
-          }
-          if (foundChild === 0) return 0;
-          curr = foundChild;
-        }
-        return 0;
+        const typeFlags = memory[ptr / 4];
+        const envHashPadding = memory[(ptr + 4) / 4];
+        const rawPad = typeFlags >>> 22;
+        const isFat = ((envHashPadding >>> 23) & 1) === 1;
+        return isFat && this.exports.getFatPaddingPtr ? memory[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       };
 
       const getNodeLen = (ptr: number): number => {
@@ -1001,7 +982,7 @@ export class LspFacade {
           while (c !== 0) {
             const cPad = getNodePad(c);
             const cLen = getNodeLen(c);
-            if (consumedInParent > 0) {
+            if (idx > 0) {
               currOffset += cPad;
             }
             const childStart = currOffset;
@@ -2670,7 +2651,13 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
-    const getMem32 = () => new Uint32Array(this.wasmMemory.buffer);
+    let mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const getMem32 = () => {
+      if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
+        mem32 = new Uint32Array(this.wasmMemory.buffer);
+      }
+      return mem32;
+    };
     let opsCount = 0;
     const MAX_DIFF_OPS = 50000;
 
@@ -2693,7 +2680,12 @@ export class LspFacade {
         opsCount++;
         let fieldId = -1;
         if (this.exports.getFieldIdForChild) {
-          fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex);
+          try {
+            const currType = mem32[curr / 4] & 0x03ff;
+            fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex, currType);
+          } catch {
+            fieldId = -1;
+          }
         }
         const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
         children.push({ ptr: curr, field });
@@ -2740,9 +2732,13 @@ export class LspFacade {
           const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
           let fieldId = -1;
           if (this.exports.getFieldIdForChild) {
-            fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex);
+            try {
+              fieldId = this.exports.getFieldIdForChild(parentTypeId, childIndex, typeId);
+            } catch {
+              fieldId = -1;
+            }
           }
-          const field = fieldId >= 0 ? fieldIdToName[fieldId] : parentField;
+          const field = fieldId >= 0 ? fieldIdToName[fieldId] : isInvisible ? parentField : null;
 
           const childEnvHashPadding = mem32[(childPtr + 4) / 4];
           const childRawPad = cTypeFlags >>> 22;
@@ -2936,15 +2932,21 @@ export class LspFacade {
       }
 
       const maxMiddle = Math.max(oldEnd - start + 1, newEnd - start + 1);
-      for (let i = 0; i < maxMiddle; i++) {
-        const oPtr = start + i <= oldEnd ? oldCh[start + i].ptr : 0;
-        const nPtr = start + i <= newEnd ? newCh[start + i].ptr : 0;
-        const oPad = start + i <= oldEnd ? oldCh[start + i].invisiblePad : 0;
-        const nPad = start + i <= newEnd ? newCh[start + i].invisiblePad : 0;
-
+      if (maxMiddle === 1 && oldEnd - start + 1 === 1 && newEnd - start + 1 === 1) {
+        const oPtr = oldCh[start].ptr;
+        const nPtr = newCh[start].ptr;
+        const oPad = oldCh[start].invisiblePad;
+        const nPad = newCh[start].invisiblePad;
         if (oPtr && nPtr) diffNodes(oPtr, nPtr, oPad, nPad);
         else if (nPtr) buildInsertions(nPtr, nPad);
         else if (oPtr) buildDeletions(oPtr);
+      } else {
+        for (let i = start; i <= oldEnd; i++) {
+          if (oldCh[i].ptr) buildDeletions(oldCh[i].ptr);
+        }
+        for (let i = start; i <= newEnd; i++) {
+          if (newCh[i].ptr) buildInsertions(newCh[i].ptr, newCh[i].invisiblePad);
+        }
       }
 
       for (let i = newEnd + 1; i < newCh.length; i++) {
@@ -2954,12 +2956,24 @@ export class LspFacade {
       }
     };
 
+    if (!oldRoot && listener.onFullReset) {
+      listener.onFullReset(newRoot);
+    }
+
     try {
-      diffNodes(oldRoot, newRoot);
+      if (oldRoot) {
+        diffNodes(oldRoot, newRoot);
+      } else {
+        buildInsertions(newRoot);
+      }
     } catch (e: any) {
       if (e.message === "MAX_DIFF_OPS") {
         console.warn("AST diff aborted due to complexity limit. Falling back to full re-insertion.");
-        if (oldRoot) listener.onNodeDeleted(oldRoot);
+        if (listener.onFullReset) {
+          listener.onFullReset(newRoot);
+        } else if (oldRoot) {
+          listener.onNodeDeleted(oldRoot);
+        }
         if (newRoot) {
           opsCount = 0;
           try {
@@ -2986,10 +3000,8 @@ export interface Point {
 
 /**
  * A Tree-sitter compatible facade for a ModelScript AST Node.
- * This version operates on UTF-16 character offsets instead of byte offsets.
- *
- * WARNING: This code is bundled into the standalone JS wrapper. Keep it in sync
- * with `packages/language/src/bindings/javascript/tree-sitter.ts` if used externally.
+ * Supports zero-copy traversal, field queries, positional lookups,
+ * and standard Tree-sitter inspection methods.
  */
 export class SyntaxNode {
   constructor(
@@ -3002,12 +3014,32 @@ export class SyntaxNode {
     public readonly _cachedTypeId: number,
   ) {}
 
+  /** Unique integer ID for this node (pointer address). */
+  get id(): number {
+    return this.ptr;
+  }
+
   /** Gets the semantic type name of this node (e.g., 'ModelicaClassDefinition'). */
   get type(): string {
     if (this._cachedTypeId === 0) return "ERROR";
     let name = this.tree.facade.syntaxNames[this._cachedTypeId] || `node_${this._cachedTypeId}`;
     if (name.startsWith("T_")) name = name.substring(2);
     return name;
+  }
+
+  /** Numeric type identifier for this node. */
+  get typeId(): number {
+    return this._cachedTypeId;
+  }
+
+  /** Grammar type identifier matching typeId. */
+  get grammarId(): number {
+    return this._cachedTypeId;
+  }
+
+  /** Semantic grammar type name. */
+  get grammarType(): string {
+    return this.type;
   }
 
   /** Extracts the substring from the original source code corresponding to this node. */
@@ -3026,13 +3058,34 @@ export class SyntaxNode {
     return (this._startOffset + this._cachedPad + this._cachedLen) / 2;
   }
 
+  /** The start byte index of the node in UTF-16 memory. */
+  get startByte(): number {
+    return this._startOffset + this._cachedPad;
+  }
+
+  /** The end byte index of the node in UTF-16 memory. */
+  get endByte(): number {
+    return this._startOffset + this._cachedPad + this._cachedLen;
+  }
+
   /**
    * Returns true if this node was inserted by the parser to recover from a syntax error.
    */
   isMissing(): boolean {
     if (this.ptr === 0) return false;
     const typeFlags = this.tree.mem32[this.ptr / 4];
-    return (typeFlags & 256) !== 0;
+    const flags = (typeFlags >>> 10) & 0x0fff;
+    return (flags & 256) !== 0;
+  }
+
+  /** Returns true if this node is an extra token (comment/whitespace). */
+  isExtra(): boolean {
+    return false;
+  }
+
+  /** Returns true if this node has been edited. */
+  hasChanges(): boolean {
+    return false;
   }
 
   /** The line and column where this node starts. */
@@ -3096,6 +3149,21 @@ export class SyntaxNode {
     return kids;
   }
 
+  /** Gets all named children (excluding anonymous tokens and punctuation). */
+  get namedChildren(): SyntaxNode[] {
+    return this.children.filter((k) => k.isNamed());
+  }
+
+  /** Gets the number of children the node has. */
+  get childCount(): number {
+    return this.children.length;
+  }
+
+  /** Gets the number of named children the node has. */
+  get namedChildCount(): number {
+    return this.namedChildren.length;
+  }
+
   /** Gets the first child of the node. */
   get firstChild(): SyntaxNode | null {
     const kids = this.children;
@@ -3108,11 +3176,23 @@ export class SyntaxNode {
     return kids.length > 0 ? kids[kids.length - 1] : null;
   }
 
+  /** Gets the first named child of the node. */
+  get firstNamedChild(): SyntaxNode | null {
+    const named = this.namedChildren;
+    return named.length > 0 ? named[0] : null;
+  }
+
+  /** Gets the last named child of the node. */
+  get lastNamedChild(): SyntaxNode | null {
+    const named = this.namedChildren;
+    return named.length > 0 ? named[named.length - 1] : null;
+  }
+
   /** Gets the next sibling of the node. */
   get nextSibling(): SyntaxNode | null {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr);
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
     if (idx >= 0 && idx < siblings.length - 1) {
       return siblings[idx + 1];
     }
@@ -3123,16 +3203,33 @@ export class SyntaxNode {
   get previousSibling(): SyntaxNode | null {
     if (!this.parent) return null;
     const siblings = this.parent.children;
-    const idx = siblings.findIndex((s) => s.ptr === this.ptr);
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
     if (idx > 0) {
       return siblings[idx - 1];
     }
     return null;
   }
 
-  /** Gets the number of children the node has. */
-  get childCount(): number {
-    return this.children.length;
+  /** Gets the next named sibling of the node. */
+  get nextNamedSibling(): SyntaxNode | null {
+    if (!this.parent) return null;
+    const siblings = this.parent.namedChildren;
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    if (idx >= 0 && idx < siblings.length - 1) {
+      return siblings[idx + 1];
+    }
+    return null;
+  }
+
+  /** Gets the previous named sibling of the node. */
+  get previousNamedSibling(): SyntaxNode | null {
+    if (!this.parent) return null;
+    const siblings = this.parent.namedChildren;
+    const idx = siblings.findIndex((s) => s.ptr === this.ptr && s.startIndex === this.startIndex);
+    if (idx > 0) {
+      return siblings[idx - 1];
+    }
+    return null;
   }
 
   /** Gets the child at the specified index. */
@@ -3142,27 +3239,105 @@ export class SyntaxNode {
     return null;
   }
 
+  /** Gets the named child at the specified index. */
+  namedChild(index: number): SyntaxNode | null {
+    const named = this.namedChildren;
+    if (index >= 0 && index < named.length) return named[index];
+    return null;
+  }
+
+  /**
+   * Helper that tests if this node or its WASM subtree contains targetPtr.
+   */
+  containsPtr(targetPtr: number): boolean {
+    if (this.ptr === targetPtr) return true;
+    if (this.ptr === 0 || targetPtr === 0) return false;
+    const mem32 = this.tree.mem32;
+    const stack: number[] = [mem32[(this.ptr + 12) / 4]];
+    while (stack.length > 0) {
+      const p = stack.pop()!;
+      if (p === 0) continue;
+      if (p === targetPtr) return true;
+      const sib = mem32[(p + 16) / 4];
+      if (sib !== 0) stack.push(sib);
+      const ch = mem32[(p + 12) / 4];
+      if (ch !== 0) stack.push(ch);
+    }
+    return false;
+  }
+
+  /**
+   * Looks up a child node by numeric field ID.
+   */
+  childForFieldId(fieldId: number): SyntaxNode | null {
+    if (!this.tree.facade.exports.getChildByFieldId || !this.ptr) return null;
+    const childPtr = this.tree.facade.exports.getChildByFieldId(this.ptr, fieldId);
+    if (!childPtr) return null;
+
+    const kids = this.children;
+    for (const kid of kids) {
+      if (kid.ptr === childPtr || kid.containsPtr(childPtr)) return kid;
+    }
+    return null;
+  }
+
   /**
    * Looks up a named field on this node and returns the corresponding child syntax node.
-   * This bridges to WASM for efficient field extraction using the compiled field tables.
    */
   childForFieldName(name: string): SyntaxNode | null {
     const fieldId = FIELD_NAMES[name];
     if (fieldId === undefined) {
       return null;
     }
-    if (!this.tree.facade.exports.getChildByFieldId) {
+    return this.childForFieldId(fieldId);
+  }
+
+  /**
+   * Returns all child nodes matching the given numeric field ID (e.g. for repeated fields).
+   */
+  childrenForFieldId(fieldId: number): SyntaxNode[] {
+    const single = this.childForFieldId(fieldId);
+    if (!single) return [];
+    return [single];
+  }
+
+  /**
+   * Returns all child nodes matching the given field name.
+   */
+  childrenForFieldName(name: string): SyntaxNode[] {
+    const fieldId = FIELD_NAMES[name];
+    if (fieldId === undefined) return [];
+    return this.childrenForFieldId(fieldId);
+  }
+
+  /**
+   * Returns the field name associated with a child at childIndex.
+   */
+  fieldNameForChild(childIndex: number): string | null {
+    if (childIndex < 0 || childIndex >= this.children.length) return null;
+    const typeId = this._cachedTypeId;
+    if (!typeId || typeId <= 0) return null;
+    if (!this.tree.facade.exports.getFieldIdForChild) return null;
+    try {
+      const fieldId = this.tree.facade.exports.getFieldIdForChild(typeId, childIndex);
+      if (fieldId <= 0) return null;
+      for (const [name, id] of Object.entries(FIELD_NAMES)) {
+        if (id === fieldId) return name;
+      }
+    } catch {
       return null;
-    }
-    const childPtr = this.tree.facade.exports.getChildByFieldId(this.ptr, fieldId);
-    if (!childPtr) {
-      return null;
-    }
-    const kids = this.children;
-    for (const kid of kids) {
-      if (kid.ptr === childPtr) return kid;
     }
     return null;
+  }
+
+  /**
+   * Returns the field name associated with a named child at namedChildIndex.
+   */
+  fieldNameForNamedChild(namedChildIndex: number): string | null {
+    if (namedChildIndex < 0 || namedChildIndex >= this.namedChildren.length) return null;
+    const target = this.namedChildren[namedChildIndex];
+    const rawIndex = this.children.indexOf(target);
+    return rawIndex >= 0 ? this.fieldNameForChild(rawIndex) : null;
   }
 
   /** Extracts the source code text for a specific child field. */
@@ -3173,17 +3348,125 @@ export class SyntaxNode {
 
   /** Returns true if the node is a named (non-anonymous) node. */
   isNamed(): boolean {
+    if (this._cachedTypeId === 0) return true; // ERROR nodes are named in Tree-sitter
     const t = this.type;
-    return !t.startsWith('"') && !t.startsWith("_");
+    return !t.startsWith('"') && !t.startsWith("/") && !t.startsWith("_");
   }
 
   /** Returns true if the node or any of its descendants represents a syntax error. */
   hasError(): boolean {
     if (this._cachedTypeId === 0) return true;
+    if (this.ptr !== 0) {
+      const typeFlags = this.tree.mem32[this.ptr / 4];
+      const flags = (typeFlags >>> 10) & 0x0fff;
+      if ((flags & 128) !== 0) return true; // FLAG_HAS_ERROR
+    }
     for (const kid of this.children) {
       if (kid.hasError()) return true;
     }
     return false;
+  }
+
+  /** Finds the smallest syntax node covering the character range [start, end]. */
+  descendantForIndex(start: number, end: number = start): SyntaxNode | null {
+    if (start < this.startIndex || end > this.endIndex) return null;
+    for (const kid of this.children) {
+      if (start >= kid.startIndex && end <= kid.endIndex) {
+        return kid.descendantForIndex(start, end);
+      }
+    }
+    return this;
+  }
+
+  /** Finds the smallest named syntax node covering the character range [start, end]. */
+  namedDescendantForIndex(start: number, end: number = start): SyntaxNode | null {
+    const node = this.descendantForIndex(start, end);
+    let curr: SyntaxNode | null = node;
+    while (curr && !curr.isNamed()) {
+      curr = curr.parent;
+    }
+    return curr;
+  }
+
+  /** Finds the smallest syntax node covering the given Point range. */
+  descendantForPosition(start: Point, end: Point = start): SyntaxNode | null {
+    const startOffset = this.tree.pointToOffset(start);
+    const endOffset = this.tree.pointToOffset(end);
+    return this.descendantForIndex(startOffset, endOffset);
+  }
+
+  /** Finds the smallest named syntax node covering the given Point range. */
+  namedDescendantForPosition(start: Point, end: Point = start): SyntaxNode | null {
+    const node = this.descendantForPosition(start, end);
+    let curr: SyntaxNode | null = node;
+    while (curr && !curr.isNamed()) {
+      curr = curr.parent;
+    }
+    return curr;
+  }
+
+  /** Finds all descendants of the given type name(s). */
+  descendantsOfType(types: string | string[], start?: Point, end?: Point): SyntaxNode[] {
+    const typeSet = new Set(Array.isArray(types) ? types : [types]);
+    const results: SyntaxNode[] = [];
+    const visit = (node: SyntaxNode) => {
+      if (
+        start &&
+        (node.endPosition.row < start.row ||
+          (node.endPosition.row === start.row && node.endPosition.column < start.column))
+      ) {
+        return;
+      }
+      if (
+        end &&
+        (node.startPosition.row > end.row ||
+          (node.startPosition.row === end.row && node.startPosition.column > end.column))
+      ) {
+        return;
+      }
+      if (typeSet.has(node.type)) {
+        results.push(node);
+      }
+      for (const kid of node.children) {
+        visit(kid);
+      }
+    };
+    visit(this);
+    return results;
+  }
+
+  /** Finds the closest ancestor node (or self) matching the given type(s). */
+  closest(types: string | string[]): SyntaxNode | null {
+    const typeSet = new Set(Array.isArray(types) ? types : [types]);
+    if (typeSet.has(this.type)) return this;
+    return this.parent ? this.parent.closest(types) : null;
+  }
+
+  /** Generates the canonical S-expression string representation for this node. */
+  toString(): string {
+    if (this.isMissing()) {
+      return `(MISSING ${this.type})`;
+    }
+    if (!this.isNamed() && this.children.length === 0) {
+      return `"${this.text}"`;
+    }
+    if (this.children.length === 0) {
+      return `(${this.type})`;
+    }
+    const childStrs: string[] = [];
+    for (let i = 0; i < this.children.length; i++) {
+      const c = this.children[i];
+      const field = this.fieldNameForChild(i);
+      const str = c.toString();
+      childStrs.push(field ? `${field}: ${str}` : str);
+    }
+    return `(${this.type} ${childStrs.join(" ")})`;
+  }
+
+  /** Returns true if this node is equal to other. */
+  equals(other: SyntaxNode | null | undefined): boolean {
+    if (!other) return false;
+    return this.ptr === other.ptr && this.startIndex === other.startIndex && this.endIndex === other.endIndex;
   }
 
   /** Creates a stateful TreeCursor for traversing the tree starting at this node. */
@@ -3207,6 +3490,18 @@ export class TreeCursor {
     return this.current.type;
   }
 
+  get nodeTypeId(): number {
+    return this.current.typeId;
+  }
+
+  get nodeIsNamed(): boolean {
+    return this.current.isNamed();
+  }
+
+  get nodeIsMissing(): boolean {
+    return this.current.isMissing();
+  }
+
   get nodeText(): string {
     return this.current.text;
   }
@@ -3223,16 +3518,31 @@ export class TreeCursor {
     return this.current.endIndex;
   }
 
-  isMissing(): boolean {
-    return this.current.isMissing();
-  }
-
   get startPosition(): Point {
     return this.current.startPosition;
   }
 
   get endPosition(): Point {
     return this.current.endPosition;
+  }
+
+  get currentFieldName(): string | null {
+    if (this.stack.length === 0) return null;
+    const parentFrame = this.stack[this.stack.length - 1];
+    return parentFrame.node.fieldNameForChild(parentFrame.childIndex);
+  }
+
+  get currentFieldId(): number {
+    const name = this.currentFieldName;
+    return name && FIELD_NAMES[name] !== undefined ? FIELD_NAMES[name] : 0;
+  }
+
+  get currentDepth(): number {
+    return this.stack.length;
+  }
+
+  isMissing(): boolean {
+    return this.current.isMissing();
   }
 
   gotoFirstChild(): boolean {
@@ -3242,6 +3552,23 @@ export class TreeCursor {
     this.stack.push({ node: this.current, childIndex: 0 });
     this.current = kids[0];
     return true;
+  }
+
+  gotoFirstChildForIndex(index: number): boolean {
+    const kids = this.current.children;
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i].startIndex <= index && index < kids[i].endIndex) {
+        this.stack.push({ node: this.current, childIndex: i });
+        this.current = kids[i];
+        return true;
+      }
+    }
+    return false;
+  }
+
+  gotoFirstChildForPosition(position: Point): boolean {
+    const offset = this.current.tree.pointToOffset(position);
+    return this.gotoFirstChildForIndex(offset);
   }
 
   gotoNextSibling(): boolean {
@@ -3257,11 +3584,29 @@ export class TreeCursor {
     return false;
   }
 
+  gotoPreviousSibling(): boolean {
+    if (this.stack.length === 0) return false;
+    const parentFrame = this.stack[this.stack.length - 1];
+    const siblings = parentFrame.node.children;
+
+    if (parentFrame.childIndex > 0) {
+      parentFrame.childIndex--;
+      this.current = siblings[parentFrame.childIndex];
+      return true;
+    }
+    return false;
+  }
+
   gotoParent(): boolean {
     if (this.stack.length === 0) return false;
     const parentFrame = this.stack.pop()!;
     this.current = parentFrame.node;
     return true;
+  }
+
+  reset(node: SyntaxNode): void {
+    this.current = node;
+    this.stack = [];
   }
 }
 
@@ -3278,7 +3623,6 @@ export class Tree {
     public readonly sourceCode: string,
   ) {
     // Build lineStarts in byte offsets (UTF-16: 2 bytes per character)
-    // to match the WASM arena's byte-offset convention for node positions
     this.lineStarts = [0];
     for (let i = 0; i < sourceCode.length; i++) {
       if (sourceCode[i] === "\n") this.lineStarts.push((i + 1) * 2);
@@ -3317,7 +3661,6 @@ export class Tree {
       const mid = (low + high) >> 1;
       if (this.lineStarts[mid] <= offset) {
         if (mid === this.lineStarts.length - 1 || this.lineStarts[mid + 1] > offset) {
-          // Convert byte-based column to character column (UTF-16: 2 bytes per char)
           return { row: mid, column: (offset - this.lineStarts[mid]) / 2 };
         }
         low = mid + 1;
@@ -3327,6 +3670,51 @@ export class Tree {
     }
     return { row: 0, column: offset / 2 };
   }
+
+  /** Converts a row and column Point into a linear character offset. */
+  pointToOffset(point: Point): number {
+    if (point.row < 0) return 0;
+    if (point.row >= this.lineStarts.length) return this.sourceCode.length;
+    const lineStart = this.lineStarts[point.row] / 2;
+    return Math.min(this.sourceCode.length, lineStart + point.column);
+  }
+}
+
+/**
+ * Tree-sitter standard Parser class interface.
+ */
+export class TreeSitterParser {
+  private languageBinding: any = null;
+
+  setLanguage(language: any): void {
+    this.languageBinding = language;
+  }
+
+  getLanguage(): any {
+    return this.languageBinding;
+  }
+
+  parse(source: string | Uint8Array, oldTree: Tree | null = null): Tree | null {
+    if (!this.languageBinding) {
+      throw new Error("Language not set on Parser. Call setLanguage() first.");
+    }
+    let facade: any;
+    if (typeof this.languageBinding === "function") {
+      try {
+        facade = new this.languageBinding();
+      } catch {
+        facade = this.languageBinding();
+      }
+    } else {
+      facade = this.languageBinding;
+    }
+    const code = typeof source === "string" ? source : new TextDecoder().decode(source);
+    const astRoot = facade.parse(code);
+    if (!astRoot) return null;
+    return new Tree(facade, astRoot, code);
+  }
+
+  reset(): void {}
 }
 
 export const WasmLanguageBinding = LspFacade;
