@@ -1,8 +1,66 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandModule } from "yargs";
+
+function bundleDsl(entryPath: string): string {
+  if (!existsSync(entryPath)) return "";
+
+  const visited = new Set<string>();
+  const importedChunks: string[] = [];
+
+  function processFile(filePath: string, isEntry: boolean): string {
+    const resolvedPath = resolve(filePath);
+    if (visited.has(resolvedPath)) return "";
+    visited.add(resolvedPath);
+
+    let content = readFileSync(resolvedPath, "utf-8");
+    const dir = dirname(resolvedPath);
+
+    // Find relative imports and exports: import ... from "./xyz.js", export * from "./xyz.js", etc.
+    const importRegex =
+      /(?:import|export)\s+(?:type\s+)?(?:(\{[^}]+\})|(\*\s+as\s+[a-zA-Z0-9_$]+)|\*|([a-zA-Z0-9_$]+))?\s*(?:from\s+)?['"](\.[^'"]+)['"];?/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = importRegex.exec(content)) !== null) {
+      const relPath = match[4];
+      if (!relPath) continue;
+      const candidates = [
+        join(dir, relPath),
+        join(dir, relPath.replace(/\.js$/, ".ts")),
+        join(dir, relPath + ".ts"),
+        join(dir, relPath + ".js"),
+        join(dir, relPath, "index.ts"),
+        join(dir, relPath, "index.js"),
+      ];
+      const target = candidates.find((c) => existsSync(c));
+      if (target) {
+        processFile(target, false);
+      }
+    }
+
+    // Strip relative imports and re-exports from this file
+    content = content.replace(
+      /(?:import|export)\s+(?:type\s+)?(?:(\{[^}]+\})|(\*\s+as\s+[a-zA-Z0-9_$]+)|\*|([a-zA-Z0-9_$]+))?\s*(?:from\s+)?['"]\.[^'"]+['"];?\n?/g,
+      "",
+    );
+    content = content.replace(/export\s*\*\s*from\s+['"][^'"]+['"];?\n?/g, "");
+    content = content.replace(/export\s*\{[\s\S]*?\}(?:\s*from\s+['"][^'"]+['"])?;?\n?/g, "");
+
+    if (!isEntry) {
+      // In helper files, also strip external @modelscript/language imports
+      content = content.replace(/import\s+[\s\S]*?from\s+['"]@modelscript\/language['"];?\n?/g, "");
+      importedChunks.push(content.trim());
+      return "";
+    }
+
+    return content;
+  }
+
+  const mainContent = processFile(entryPath, true);
+  return (importedChunks.length > 0 ? importedChunks.join("\n\n") + "\n\n" : "") + mainContent;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +88,7 @@ export const Playground: CommandModule = {
         const modelicaPath = join(__dirname, "../../../../languages/modelica/src/language.ts");
         let initialDsl = "";
         if (existsSync(modelicaPath)) {
-          initialDsl = readFileSync(modelicaPath, "utf-8");
+          initialDsl = bundleDsl(modelicaPath);
         }
 
         const initialCode = `model ElectricalCircuit
@@ -425,10 +483,12 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
         require(['vs/editor/editor.main'], function() {
             // Setup DSL environment types for monaco
             monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                target: monaco.languages.typescript.ScriptTarget.ES2022,
-                module: monaco.languages.typescript.ModuleKind.ESNext,
-                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                target: monaco.languages.typescript.ScriptTarget.ES2020 || monaco.languages.typescript.ScriptTarget.ESNext || 99,
+                module: monaco.languages.typescript.ModuleKind.ESNext || 99,
+                moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs || 2,
                 allowNonTsExtensions: true,
+                downlevelIteration: true,
+                lib: ["es2020", "esnext", "dom"],
                 noEmit: true,
                 esModuleInterop: true,
             });
@@ -1723,8 +1783,9 @@ self.onmessage = async (e) => {
                 try {
                     const trans = ts.transpileModule(dslCode, {
                         compilerOptions: {
-                            target: ts.ScriptTarget.ES2022,
-                            module: ts.ModuleKind.ESNext,
+                            target: ts.ScriptTarget?.ES2022 || ts.ScriptTarget?.ESNext || 99,
+                            module: ts.ModuleKind?.ESNext || 99,
+                            downlevelIteration: true,
                             removeComments: false,
                         }
                     });
@@ -1734,8 +1795,14 @@ self.onmessage = async (e) => {
                 }
             }
             
+            // Strip 'export * from ...;' and 'export { ... } from ...;'
+            dslCode = dslCode.replace(/export\\s*\\*\\s*(?:as\\s+\\w+\\s+)?from\\s+['"][^'"]+['"];?/g, '');
+            dslCode = dslCode.replace(/export\\s*\\{[\\s\\S]*?\\}(?:\\s*from\\s+['"][^'"]+['"])?;?/g, '');
+            dslCode = dslCode.replace(/export\\s*\\{[\\s\\S]*?\\};?/g, '');
+            
             // Remove imports
             dslCode = dslCode.replace(/import\\s+[\\s\\S]*?from\\s+['"][^'"]+['"];?/g, '');
+            dslCode = dslCode.replace(/import\\s+['"][^'"]+['"];?/g, '');
             
             // Transform 'export default' into 'return'
             dslCode = dslCode.replace(/export\\s+default\\s+/, 'return ');
@@ -1785,7 +1852,8 @@ self.onmessage = async (e) => {
                 try {
                     console.log("grammarDef.extras:", grammarDef.extras);
                     // 2. Generate AssemblyScript files
-                    const result = Language.buildParser(grammarDef);
+                    grammarDef.sourceText = e.data.dsl;
+                    const result = Language.buildParser(grammarDef, { sourceText: e.data.dsl });
                     const parserFile = result.assemblyScriptFiles.find(f => f.filename === 'parser.ts');
                     console.log("Generated parser.ts has whitespace skip?:", parserFile && parserFile.content.includes('c == 32'));
                     

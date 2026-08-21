@@ -1502,6 +1502,9 @@ end ThermalSystem;
     activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
+    const sExpr = activeFacade.getAstSExpr(ast);
+    console.log("TEST 28 DIAGS:", JSON.stringify(diags, null, 2));
+    console.log("TEST 28 S-EXPR:", sExpr);
 
     // Verify exactly 1 diagnostic is emitted for missing 'model' on line 1 without cascading errors
     expect(diags).toHaveLength(1);
@@ -1509,7 +1512,6 @@ end ThermalSystem;
     expect(diags[0].message).toBe("Syntax Error: Missing 'model'");
 
     // Verify both ElectricalCircuit and ThermalSystem parsed as valid ModelDefs
-    const sExpr = activeFacade.getAstSExpr(ast);
     expect(sExpr).toContain("ModelDef");
     expect(sExpr).toContain("Decl");
     expect(sExpr).toContain("Equation");

@@ -23,6 +23,10 @@
     "./constraint-extractor": {
       "types": "./dist/constraint-extractor.d.ts",
       "default": "./dist/constraint-extractor.js"
+    },
+    "./transformers/modelica": {
+      "types": "./dist/transformers/modelica-transformer.d.ts",
+      "default": "./dist/transformers/modelica-transformer.js"
     }
   },
   "scripts": {

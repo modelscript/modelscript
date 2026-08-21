@@ -1,10 +1,8 @@
 import { compileTGGRules } from "../src/codegen/compile_tgg.js";
 import { tggCompute, tggDefaultVal, tggEq, tggRule, tggTypeMap, type PolyglotConfig } from "../src/dsl.js";
-import {
-  PolyglotTransformer,
-  type ModelicaModel,
-  type SysML2PartDef,
-} from "../src/transformers/polyglot-transformer.js";
+import { PolyglotTransformer } from "../src/transformers/polyglot-transformer.js";
+import { emitModelica, type SysML2PartDef } from "./fixtures/modelica-transformer.js";
+import { emitSysML2, type ModelicaModel } from "./fixtures/sysml2-transformer.js";
 
 describe("TGG Polyglot End-to-End Workflow", () => {
   it("should process declarative polyglot config through compilation and transformation", () => {
@@ -85,6 +83,9 @@ describe("TGG Polyglot End-to-End Workflow", () => {
 
     // 2. Transformation Stage with Reasoner Inferences
     const transformer = new PolyglotTransformer(polyglotConfig);
+    transformer.registerEmitter("modelica", (node, t) => emitModelica(node as any, t));
+    transformer.registerEmitter("sysml2", (node, t) => emitSysML2(node as any, t));
+
     transformer.addReasonerFact("hasFeature", "Chassis", "stiffness:Real");
 
     const sysml: SysML2PartDef = {
@@ -96,7 +97,7 @@ describe("TGG Polyglot End-to-End Workflow", () => {
       connections: [],
     };
 
-    const modelicaCode = transformer.transformSysML2ToModelica(sysml);
+    const modelicaCode = transformer.transform(sysml as any, "modelica");
     expect(modelicaCode).toContain("partial model Chassis");
     expect(modelicaCode).toContain("extends BaseFrame;");
     expect(modelicaCode).toContain("parameter Real weight = 250.0;");
@@ -111,7 +112,7 @@ describe("TGG Polyglot End-to-End Workflow", () => {
       connections: [],
     };
 
-    const sysmlCode = transformer.transformModelicaToSysML2(modelicaModel);
+    const sysmlCode = transformer.transform(modelicaModel as any, "sysml2");
     expect(sysmlCode).toContain("abstract part def Chassis extends BaseFrame {");
     expect(sysmlCode).toContain("attribute weight: Real = 250.0;");
     expect(sysmlCode).toContain("attribute stiffness: Real; // inferred from base");

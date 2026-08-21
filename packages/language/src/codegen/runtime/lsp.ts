@@ -422,6 +422,28 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         }
       }
 
+      if ((flags & FLAG_IS_INSERTED) != 0) {
+        if (dStart < totalInputBytes) {
+          let ch = peekChar(dStart);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13 || ch == 0) {
+            let prevNonWs = dStart;
+            while (prevNonWs > 0 && (peekChar(prevNonWs - step) == 32 || peekChar(prevNonWs - step) == 9)) {
+              prevNonWs -= step;
+            }
+            if (prevNonWs > 0 && peekChar(prevNonWs - step) != 10 && peekChar(prevNonWs - step) != 13) {
+              let tokStart = prevNonWs - step;
+              while (tokStart > 0) {
+                let c = peekChar(tokStart - step);
+                if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0) break;
+                tokStart -= step;
+              }
+              dStart = tokStart;
+              dEnd = prevNonWs;
+            }
+          }
+        }
+      }
+
       if (totalInputBytes > 0 && dEnd > totalInputBytes) {
         dEnd = totalInputBytes;
         if (dEnd > step) dStart = dEnd - step;

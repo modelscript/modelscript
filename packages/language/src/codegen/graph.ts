@@ -1,5 +1,7 @@
+import * as ts from "typescript";
 import { graphCode } from "../../build/src-gen/runtime-templates.js";
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl.js";
+import { extractLanguageAST } from "./ast-loader.js";
 import { transpileQuery as transpileQueryExternal } from "./transpiler.js";
 
 /**
@@ -10,6 +12,10 @@ import { transpileQuery as transpileQueryExternal } from "./transpiler.js";
  * @returns AssemblyScript source code string for the graph query bridge.
  */
 export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
+  const sourcePath = (grammar as any).sourcePath || (grammar as any)[SOURCE_PATH_SYMBOL];
+  const sourceText = (grammar as any).sourceText || (grammar as any)[SOURCE_TEXT_SYMBOL];
+  const ast = sourceText ? extractLanguageAST(sourceText) : sourcePath ? extractLanguageAST(sourcePath) : null;
+
   let switchCode = "";
   let customQueries = "";
   let outlineQueryWrapper = "";
@@ -52,11 +58,55 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       queryIdMap,
       hostQueryIdMap,
       attrIdMap,
+      rules: grammar.rules,
     });
   }
 
+  // 1. Emit Top-Level Constants (e.g. VARIABILITY_CONTINUOUS, TYPE_REAL, etc.)
+  if (ast && ast.constants) {
+    for (const [constName, decl] of ast.constants.entries()) {
+      const typeStr = decl.type ? ": " + decl.type.getText(ast.sourceFile) : "";
+      const initStr = decl.initializer ? decl.initializer.getText(ast.sourceFile) : "0";
+      customQueries += `export const ${constName}${typeStr} = ${initStr};\n`;
+    }
+    if (ast.constants.size > 0) {
+      customQueries += "\n";
+    }
+  }
+
+  // 2. Emit Top-Level Helper Functions (e.g. inferExprType, isTypeCompatible, etc.)
+  if (ast && ast.functions) {
+    for (const [fnName, fnDecl] of ast.functions.entries()) {
+      const fnInfo = transpileQuery(fnDecl);
+      let fnStr = fnInfo.body;
+      if (!fnStr.startsWith("export function") && !fnStr.startsWith("function")) {
+        const nonDollar = fnInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const paramsStr = nonDollar
+          .map((p) => {
+            if (ts.isFunctionDeclaration(fnDecl)) {
+              const originalP = fnDecl.parameters.find((orig) => orig.name.getText(ast.sourceFile) === p);
+              if (originalP && originalP.type) {
+                const pType = originalP.type.getText(ast.sourceFile);
+                if (pType === "bool" || pType === "boolean") return `${p}: bool`;
+                return `${p}: ${pType}`;
+              }
+            }
+            return `${p}: u32`;
+          })
+          .join(", ");
+        const returnTypeStr =
+          ts.isFunctionDeclaration(fnDecl) && fnDecl.type
+            ? ": " + (fnDecl.type.getText(ast.sourceFile) === "boolean" ? "bool" : fnDecl.type.getText(ast.sourceFile))
+            : ": u32";
+        fnStr = `export function ${fnName}(${paramsStr})${returnTypeStr} {\n${fnStr}\n}`;
+      }
+      customQueries += fnStr + "\n\n";
+    }
+  }
+
   if (grammar.queries) {
-    for (const [queryName, queryFn] of Object.entries(grammar.queries)) {
+    for (const [queryName, rawQueryFn] of Object.entries(grammar.queries)) {
+      const queryFn = ast?.queries?.get(queryName) || rawQueryFn;
       let queryInfo = transpileQuery(queryFn);
       let asQueryStr = queryInfo.body;
       const nonDollarParams = queryInfo.params.filter((p) => p !== "$");
@@ -143,17 +193,20 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
 
   if (grammar.lints) {
     for (const [lintName, lint] of Object.entries(grammar.lints)) {
+      const astNode = ast?.lints?.get(lintName);
       const queryFn =
-        typeof lint === "object" && lint !== null && (lint as any).query
+        astNode ||
+        (typeof lint === "object" && lint !== null && (lint as any).query
           ? (lint as any).query
           : typeof lint === "string"
             ? lint
-            : null;
+            : null);
       if (!queryFn) continue;
       let queryInfo = transpileQuery(queryFn, "lint");
       let asQueryStr = queryInfo.body;
       if (!asQueryStr.startsWith("export function") && !asQueryStr.startsWith("function")) {
-        const firstParam = queryInfo.params.filter((p) => p !== "$")[0];
+        const nonDollar = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const firstParam = nonDollar[0];
         if (firstParam && firstParam !== "node") {
           asQueryStr = `let ${firstParam} = node;\n` + asQueryStr;
         }
@@ -175,10 +228,11 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
           asQueryStr = `return ${grammar.lsp.definition}(node);`;
         }
       }
-      let queryInfo = transpileQuery(grammar.lsp.definition, "lsp");
+      let queryInfo = transpileQuery(ast?.definition || grammar.lsp.definition, "lsp");
       asQueryStr = queryInfo.body;
       if (!asQueryStr.startsWith("export function") && !asQueryStr.startsWith("function")) {
-        const firstParam = queryInfo.params.filter((p) => p !== "$")[0];
+        const nonDollar = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
+        const firstParam = nonDollar[0];
         if (firstParam && firstParam !== "node") {
           asQueryStr = `let ${firstParam} = node;\n` + asQueryStr;
         }
@@ -193,7 +247,10 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     for (const [pipelineName, pipeline] of Object.entries(grammar.pipelines)) {
       let pipelinePassCode = "";
       let passIdx = 0;
-      for (const passFn of (pipeline as any).passes) {
+      const astPasses = ast?.pipelines?.get(pipelineName);
+      const passes = (pipeline as any).passes || [];
+      for (let i = 0; i < passes.length; i++) {
+        const passFn = astPasses && astPasses[i] ? astPasses[i] : passes[i];
         const passInfo = transpileQuery(passFn);
         const passFuncName = `pipeline_${pipelineName}_pass_${passIdx}`;
         let body = passInfo.body;

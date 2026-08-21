@@ -29,7 +29,9 @@ import {
   MAX_ISLAND_GSS_DEPTH,
   MAX_RECOVERY_CANDIDATES,
   RECOVERY_BEAM_WIDTH,
-  PENALTY_WEAK_LOOKAHEAD
+  PENALTY_WEAK_LOOKAHEAD,
+  COST_COMPOSITE_ENCAPSULATION,
+  MAX_ENCAPSULATION_SKIP_TOKENS
 } from "./recovery-config";
 import { prod_lengths, prod_lhs, logInt } from "./parser";
 @inline function isListNodeByPtr(node: u32): boolean { return node != 0 && (getNodeFlags(node) & FLAG_IS_LIST) != 0; }
@@ -197,7 +199,7 @@ export function simulateLookahead(
   return result;
 }
 
-function searchBudgetedInsertions(
+export function searchBudgetedInsertions(
   unwindCurr: ParseHead,
   currentState: i32,
   laTok: i32,
@@ -210,7 +212,18 @@ function searchBudgetedInsertions(
   laTokPos: i32 = -1
 ): i32 {
   if (depth >= maxDepth) return -1;
+  if (currentState < 0 || currentState >= action_offsets.length) return -1;
 
+  let currentDist: u32 = 255;
+  if (laTok <= MAX_TERMINAL_ID) {
+    currentDist = load<u32>(reachability_matrix + (((currentState * (MAX_TERMINAL_ID + 1) + laTok) as usize) << 2));
+    if (currentDist >= 250) return -1;
+    if (currentDist > ((maxDepth - depth) as u32)) return -1;
+  } else {
+    // Regex/dynamic terminals (Identifier, Number, etc.) are not in the reachability matrix.
+    // Don't prune — let the search try insertions and rely on simulateLookahead to validate.
+    currentDist = 249;
+  }
   
   let actOffset = action_offsets[currentState];
   if (actOffset < 0 || actOffset >= action_data.length) return -1;
@@ -246,52 +259,31 @@ function searchBudgetedInsertions(
     // Branch 1: Try shifting terminal
     if (shiftTarget != -1 && sym <= MAX_TERMINAL_ID) {
       let remainingDepth = maxDepth - depth - 1;
-      let dist = 255;
+      let dist: u32 = 255;
       if (laTok <= MAX_TERMINAL_ID) {
-        dist = load<u32>(reachability_matrix + ((shiftTarget * (MAX_TERMINAL_ID + 1) + laTok) << 2));
+        dist = load<u32>(reachability_matrix + (((shiftTarget * (MAX_TERMINAL_ID + 1) + laTok) as usize) << 2));
       } else {
         dist = 0; // Don't prune EOF or special tokens
       }
 
-      if (dist > remainingDepth) continue;
-
-      let isKeywordSym = (sym <= MAX_TERMINAL_ID && token_is_word[sym] == 1 && load<u8>(is_extra_token + sym) == 0);
-      if (isKeywordSym) {
-        let appearsDownstream = false;
-        let savedScanPosS = srcLexPos;
-        let savedLexLenS = lexLen;
-        let savedStateS = currentScannerState;
-        let lookPos = (laTokPos >= 0 ? (laTokPos as u32) : (unwindCurr.pos as u32));
-        let maxLook = lookPos + 60;
-        if (maxLook > inputLength) maxLook = inputLength;
-        while (lookPos < maxLook) {
-          let peekT = invokeLexer(lookPos);
-          if (peekT == -1 || peekT == TOKEN_EOF) break;
-          if (peekT == sym) {
-            appearsDownstream = true;
-            break;
-          }
-          lookPos = srcLexPos + (lexLen > 0 ? lexLen : 1);
-        }
-        setSrcLexPos(savedScanPosS);
-        setLexLen(savedLexLenS);
-        setCurrentScannerState(savedStateS);
-        if (appearsDownstream) {
-          continue;
-        }
-      }
+      if (dist > (remainingDepth as u32)) continue;
+      if (currentDist > 0 && dist >= currentDist && currentDist < 250) continue;
+      if (currentDist == 0 && dist > 0) continue;
 
       let insCost = getInsertCost(sym);
       if (insCost >= 1000) {
         insCost = 200; // Standard minimal-yield synthetic placeholder insertion cost
       }
       outStates[depth] = shiftTarget;
-      let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
+      
+      if (dist == 0) {
+        let simRes = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + insCost, 3, laTokPos, laTokLen);
 
-      if (simRes > 0) {
-        if (depth < 8) t_branchB_confirmedShifts[depth] = simRes;
-        outTokens[depth] = sym;
-        return depth + 1;
+        if (simRes > 0) {
+          if (depth < 8) t_branchB_confirmedShifts[depth] = simRes;
+          outTokens[depth] = sym;
+          return depth + 1;
+        }
       }
       
       let res = searchBudgetedInsertions(
@@ -326,20 +318,24 @@ function searchBudgetedInsertions(
       
       if (nextState != -1) {
         let remainingDepth = maxDepth - depth - 1;
-        let dist = 255;
+        let dist: u32 = 255;
         if (laTok <= MAX_TERMINAL_ID) {
-          dist = load<u32>(reachability_matrix + ((nextState * (MAX_TERMINAL_ID + 1) + laTok) << 2));
+          dist = load<u32>(reachability_matrix + (((nextState * (MAX_TERMINAL_ID + 1) + laTok) as usize) << 2));
         } else {
           dist = 0;
         }
-        if (dist > remainingDepth) continue;
+        if (dist > (remainingDepth as u32)) continue;
+        if (currentDist > 0 && dist > currentDist && currentDist < 250) continue;
+        if (currentDist == 0 && dist > 0) continue;
         outTokens[depth] = ruleLHS;
         outStates[depth] = nextState;
         
-        let simRes2 = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + (COST_SUBSTITUTION_STANDARD * 10), 3, laTokPos, laTokLen);
-        if (simRes2 > 0) {
-          if (depth < 8) t_branchB_confirmedShifts[depth] = simRes2;
-          return depth + 1;
+        if (dist == 0) {
+          let simRes2 = simulateLookahead(unwindCurr, outStates, depth, laTok, -1, -1, unwindCurr.errorCost + (COST_SUBSTITUTION_STANDARD * 10), 3, laTokPos, laTokLen);
+          if (simRes2 > 0) {
+            if (depth < 8) t_branchB_confirmedShifts[depth] = simRes2;
+            return depth + 1;
+          }
         }
         
         let res = searchBudgetedInsertions(
@@ -384,7 +380,7 @@ function markTreeError(n: u32): void {
 
 @inline
 function getInsertCost(tok: i32): i32 {
-  if (tok < 0 || tok >= token_insert_costs.length) return 250;
+  if (tok < 0 || tok > MAX_TERMINAL_ID || tok >= token_insert_costs.length) return 250;
   let baseCost = token_insert_costs[tok] * 5;
   if (token_insert_costs[tok] >= 10) {
     baseCost += PENALTY_INSERT_STRUCTURAL_BRACE; // Structural closing braces ("}", "]", ")")
@@ -661,6 +657,25 @@ export function recoverUnwindAndMutate(
               if (precomputedRepair > 0 && precomputedRepair <= MAX_TERMINAL_ID) {
                 let isTargetWordP = precomputedRepair <= MAX_TERMINAL_ID && token_is_word[precomputedRepair] == 1;
                 if (isSourceWordS == isTargetWordP) {
+                  if (token_insert_costs[precomputedRepair] >= 40) {
+                    let isStartOfLineOrFileP = (srcLexPos == 0);
+                    if (!isStartOfLineOrFileP) {
+                      let step: u32 = inputEncoding == 1 || inputEncoding == 2 ? 2 : 1;
+                      let p_prevP = srcLexPos;
+                      while (p_prevP >= step) {
+                        let ch = peekChar(p_prevP - step);
+                        if (ch == 10 || ch == 13) {
+                          isStartOfLineOrFileP = true;
+                          break;
+                        }
+                        if (ch != 32 && ch != 9) {
+                          break;
+                        }
+                        p_prevP -= step;
+                      }
+                    }
+                    if (!isStartOfLineOrFileP) continue;
+                  }
                   let shiftTargetP = findShiftTarget(recState, precomputedRepair as u16);
                   if (shiftTargetP != -1) {
                     let simP = simulateLookahead(unwindCurr, null, 0, precomputedRepair, -1, -1, 999999, 3, posAfterTokenS, 0);
@@ -739,11 +754,29 @@ export function recoverUnwindAndMutate(
                   for (let a = 0; a < actCountS; a++) {
                     let expSym = action_data[actIdxS++];
                     let aCountS = action_data[actIdxS++];
-                    // Removed unused aIdxS variable
-                    actIdxS += 2 + aCountS * 2;
+                    actIdxS += aCountS * 2;
                   
                   let isTargetWordS = expSym <= MAX_TERMINAL_ID && token_is_word[expSym] == 1;
                   if (isSourceWordS == isTargetWordS && expSym != 0 && expSym <= MAX_TERMINAL_ID && expSym != token) {
+                    if (token_insert_costs[expSym] >= 40) {
+                      let isStartOfLineOrFileS = (srcLexPos == 0);
+                      if (!isStartOfLineOrFileS) {
+                        let step: u32 = inputEncoding == 1 || inputEncoding == 2 ? 2 : 1;
+                        let p_prevS = srcLexPos;
+                        while (p_prevS >= step) {
+                          let ch = peekChar(p_prevS - step);
+                          if (ch == 10 || ch == 13) {
+                            isStartOfLineOrFileS = true;
+                            break;
+                          }
+                          if (ch != 32 && ch != 9) {
+                            break;
+                          }
+                          p_prevS -= step;
+                        }
+                      }
+                      if (!isStartOfLineOrFileS) continue;
+                    }
                     let simS = simulateLookahead(unwindCurr, null, 0, expSym, -1, -1, 999999, 3, posAfterTokenS, 0);
                     if (simS > 0 && isTargetWordS) {
                       let savedScanPosS2 = srcLexPos;
@@ -751,19 +784,26 @@ export function recoverUnwindAndMutate(
                       let savedStateS2 = currentScannerState;
                       memory.fill(changetype<usize>(expected_tokens), 1, 2048);
                       let lookPos = posAfterTokenS;
-                      while (lookPos < inputLength && lookPos < (posAfterTokenS + 60)) {
-                        let peekT = invokeLexer(lookPos);
-                        if (peekT == -1 || peekT == TOKEN_EOF) break;
-                        if (peekT == expSym) {
-                          simS = 0;
-                          break;
+                      let tokCount = 0;
+                      let nextTok = invokeLexer(lookPos);
+                      let nextTokLen = lexLen;
+                      let nextTokPos = srcLexPos;
+                      while (nextTok != -1 && nextTok != TOKEN_EOF && tokCount < 3) {
+                        if (load<u8>(is_extra_token + nextTok) == 0) {
+                          if (nextTok < 2048) store<u8>(expected_tokens + nextTok, 1);
+                          tokCount++;
                         }
-                        lookPos = srcLexPos + (lexLen > 0 ? lexLen : 1);
+                        if (nextTokLen == 0) break;
+                        lookPos = nextTokPos + nextTokLen;
+                        nextTok = invokeLexer(lookPos);
+                        nextTokLen = lexLen;
+                        nextTokPos = srcLexPos;
                       }
                       setSrcLexPos(savedScanPosS2);
                       setLexLen(savedLexLenS2);
                       setCurrentScannerState(savedStateS2);
                     }
+
                     if (simS > 0) {
                       let bDroppedS: u32 = head.pos > (unwindCurr != null ? unwindCurr.pos : 0) ? head.pos - (unwindCurr != null ? unwindCurr.pos : 0) : 0;
                       let retroCostS = (unwindDepth as i32) * configPenaltyUnwindNode + (bDroppedS as i32);
@@ -813,6 +853,85 @@ export function recoverUnwindAndMutate(
                 }
               }
             }
+          } // end configEnableBranchS
+
+          // ------------------------------------------------------------
+          // Branch E (Local Error Encapsulation): Skip K unexpected tokens & virtually shift expected symbol
+          // ------------------------------------------------------------
+          if (token != TOKEN_EOF && unwindDepth == 0 && head.consecutiveInsertions == 0 && stateCanAccept(unwindCurr, recState, token, 0) == 0) {
+            let actOffsetE = action_offsets[recState];
+            if (actOffsetE >= 0 && actOffsetE < action_data.length) {
+              let actCountE = action_data[actOffsetE];
+              let actIdxE = actOffsetE + 1;
+              for (let a = 0; a < actCountE; a++) {
+                let expSymE = action_data[actIdxE++];
+                let aCountE = action_data[actIdxE++];
+                actIdxE += aCountE * 2;
+
+                if (expSymE != 0 && expSymE <= MAX_TERMINAL_ID && expSymE != token && token_is_word[expSymE] == 1) {
+                  let scanPosE = srcLexPos;
+                  for (let skipK: u32 = 1; skipK <= MAX_ENCAPSULATION_SKIP_TOKENS; skipK++) {
+                    let tokLenE = lexLen > 0 ? lexLen : 1;
+                    scanPosE = srcLexPos + tokLenE;
+                    if (scanPosE >= inputLength) break;
+
+                    let savedSPE = srcLexPos;
+                    let savedLLE = lexLen;
+                    let savedSSE = currentScannerState;
+
+                    let peekNextTokE = invokeLexer(scanPosE);
+                    while (peekNextTokE != -1 && peekNextTokE != TOKEN_EOF && load<u8>(is_extra_token + peekNextTokE) == 1) {
+                      if (lexLen == 0) break;
+                      scanPosE += lexLen;
+                      peekNextTokE = invokeLexer(scanPosE);
+                    }
+                    let afterSkipPosE = scanPosE;
+
+                    setSrcLexPos(savedSPE);
+                    setLexLen(savedLLE);
+                    setCurrentScannerState(savedSSE);
+
+                    if (peekNextTokE != -1 && peekNextTokE != TOKEN_EOF && peekNextTokE != expSymE) {
+                      let simE = simulateLookahead(unwindCurr, null, 0, expSymE, -1, -1, 999999, 3, afterSkipPosE, 0);
+                      if (simE > 0) {
+                        let encCost = head.errorCost + COST_COMPOSITE_ENCAPSULATION + (skipK as i32) * 5;
+                        if (bestAcceptedCost >= THRESHOLD_PANIC_MODE_CUTOFF || encCost < bestAcceptedCost) {
+                          let diagStartE = srcLexPos;
+                          let diagEndE = afterSkipPosE;
+                          let newTailE = pushDiagnostic(head.errorTail, diagStartE, diagEndE);
+
+                          let v0E = (expSymE & 0xFFFF) | (0 << 16);
+                          let prevHeadPosE: u32 = unwindCurr != null ? unwindCurr.pos : head.pos;
+                          let padBeforeE: u32 = afterSkipPosE > prevHeadPosE ? (afterSkipPosE - prevHeadPosE) : 0;
+
+                          let encHead = allocParseHead(
+                            unwindCurr != null ? unwindCurr.state : recState,
+                            unwindCurr != null ? unwindCurr.astNode : 0,
+                            unwindCurr != null ? unwindCurr.prev : null,
+                            afterSkipPosE,
+                            initialScannerState,
+                            encCost,
+                            1,
+                            head.balanceHash,
+                            0,
+                            recPrec,
+                            padBeforeE,
+                            newTailE,
+                            v0E,
+                            0,
+                            0,
+                            0,
+                            0,
+                            1
+                          );
+                          pushCandidateHead(changetype<u32>(encHead));
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
 
           // ------------------------------------------------------------
@@ -849,12 +968,32 @@ export function recoverUnwindAndMutate(
               p_nl += peekCharLen(p_nl);
             }
              if (hasNewline) {
-               if (unwindDepth <= 1) {
-                 baseDelCost += PENALTY_DELETE_LINE_END_DANGLING; // Low penalty for discarding dangling token at line end
-               } else {
-                 baseDelCost += PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE; // Heavily penalize merging lines via deletion across deeper unwinds
-               }
-             }
+                if (unwindDepth <= 1) {
+                  baseDelCost += PENALTY_DELETE_LINE_END_DANGLING; // Low penalty for discarding dangling token at line end
+                } else {
+                  baseDelCost += PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE; // Heavily penalize merging lines via deletion across deeper unwinds
+                }
+              }
+
+              if (unwindDepth > 0) {
+                let isCloser = false;
+                let uTemp: ParseHead | null = head;
+                for (let u = 0; u < unwindDepth; u++) {
+                  if (uTemp != null && uTemp.astNode != 0) {
+                    let nodeType = getNodeType(uTemp.astNode);
+                    if (nodeType <= (MAX_TERMINAL_ID as u16)) {
+                      if (token_is_word[nodeType] == 1 && token_insert_costs[nodeType] >= 50) {
+                        isCloser = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (uTemp != null) uTemp = uTemp.prev;
+                }
+                if (isCloser) {
+                  baseDelCost += PENALTY_DELETE_DEEP_UNWIND_LINE_MERGE;
+                }
+              }
 
 
             if (lexLen == 1 && lexPos < inputLength) {
@@ -1184,12 +1323,12 @@ export function recoverUnwindAndMutate(
             let seqLen = 0;
             let skipCost = 0;
 
-            for (let skip = 0; skip <= 200; skip++) {
+            for (let skip = 0; skip <= 3; skip++) {
               if (laScanPos >= inputLength) {
                 if (skip == 0 && token == TOKEN_EOF) {
-                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 5000, 0, 7, t_branchB_outTokens, t_branchB_outStates, 0, inputLength);
+                  seqLen = searchBudgetedInsertions(unwindCurr, recState, TOKEN_EOF, 500, 0, 3, t_branchB_outTokens, t_branchB_outStates, 0, inputLength);
 
-                  if (seqLen > 0 && seqLen <= 7) candidateViable = true;
+                  if (seqLen > 0 && seqLen <= 3) candidateViable = true;
                 }
                 break;
               }
@@ -1198,9 +1337,9 @@ export function recoverUnwindAndMutate(
               let laTok = invokeLexer(laScanPos);
               let laEnd = srcLexPos + lexLen;
 
-              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 5000, 0, 7, t_branchB_outTokens, t_branchB_outStates, lexLen, laScanPos);
+              seqLen = searchBudgetedInsertions(unwindCurr, recState, laTok, 500, 0, 3, t_branchB_outTokens, t_branchB_outStates, lexLen, laScanPos);
 
-              if (seqLen > 0 && seqLen <= 7) {
+              if (seqLen > 0 && seqLen <= 3) {
                 candidateViable = true;
                 break;
               }
@@ -1232,31 +1371,32 @@ export function recoverUnwindAndMutate(
                 let sym = t_branchB_outTokens[k];
                 let baseCost = getInsertCost(sym == TOKEN_EOF ? 0 : sym);
                 let confirmedShifts = (k < 8) ? t_branchB_confirmedShifts[k] : 0;
-                let isKeyword = (sym <= MAX_TERMINAL_ID && token_is_word[sym] == 1 && load<u8>(is_extra_token + sym) == 0);
-                if (isKeyword && baseCost >= 100 && confirmedShifts >= 3) {
-                  let appearsDownstream = false;
-                  let savedScanPosD = srcLexPos;
-                  let savedLexLenD = lexLen;
-                  let savedStateD = currentScannerState;
-                  memory.fill(changetype<usize>(expected_tokens), 1, 2048);
-                  let lookPos = laScanPos;
-                  while (lookPos < inputLength && lookPos < (laScanPos + 60)) {
-                    let peekT = invokeLexer(lookPos);
-                    if (peekT == -1 || peekT == TOKEN_EOF) break;
-                    if (peekT == sym) {
-                      appearsDownstream = true;
-                      break;
+                let isStructuralOrKeyword = sym > MAX_TERMINAL_ID || (sym <= MAX_TERMINAL_ID && token_is_word[sym] == 1 && load<u8>(is_extra_token + sym) == 0);
+                if (isStructuralOrKeyword && baseCost >= 40) {
+                  let insertPos: u32 = srcLexPos;
+                  let isStartOfLineOrFile = (insertPos == 0);
+                  if (!isStartOfLineOrFile) {
+                    let step: u32 = inputEncoding == 1 || inputEncoding == 2 ? 2 : 1;
+                    let p_prev = insertPos;
+                    while (p_prev >= step) {
+                      let ch = peekChar(p_prev - step);
+                      if (ch == 10 || ch == 13) {
+                        isStartOfLineOrFile = true;
+                        break;
+                      }
+                      if (ch != 32 && ch != 9) {
+                        break;
+                      }
+                      p_prev -= step;
                     }
-                    lookPos = srcLexPos + (lexLen > 0 ? lexLen : 1);
                   }
-                  setSrcLexPos(savedScanPosD);
-                  setLexLen(savedLexLenD);
-                  setCurrentScannerState(savedStateD);
-
-                  if (!appearsDownstream) {
-                    // Lookahead confirmation reward: empirical verification unlocked 3+ valid downstream tokens
-                    baseCost = 25;
+                  if (isStartOfLineOrFile) {
+                    if (confirmedShifts >= 3) {
+                      // Lookahead confirmation reward: empirical verification unlocked 3+ valid downstream tokens
+                      baseCost = 25;
+                    }
                   } else {
+                    // Do not allow inserting top-level/structural keywords mid-line after a previous statement
                     candidateViable = false;
                     break;
                   }
@@ -1328,10 +1468,7 @@ export function recoverUnwindAndMutate(
                 let v4 = expandedLen > 4 ? t_expanded_tokens[4] : 0;
                 let finalLen = expandedLen > 5 ? 5 : expandedLen;
                 
-                let diagStartB = unwindCurr.pos;
-                let diagEndB = head.pos > unwindCurr.pos ? head.pos : (srcLexPos + (lexLen > 0 ? lexLen : 1));
-                if (diagEndB <= diagStartB) diagEndB = diagStartB + 1;
-                let newTailB = pushDiagnostic(head.errorTail, diagStartB, diagEndB);
+                let newTailB = head.errorTail;
 
                 let currentHead = allocParseHead(
                   unwindCurr.state,

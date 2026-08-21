@@ -22,26 +22,50 @@ export function transpileQuery(
   const hostQueryIdMap = opts.hostQueryIdMap || new Map();
   const attrIdMap = opts.attrIdMap || new Map();
 
-  const queryStr = typeof queryFn === "function" ? queryFn.toString() : queryFn;
+  let queryStr: string;
+  if (typeof queryFn === "object" && queryFn !== null && "kind" in queryFn && typeof queryFn.getText === "function") {
+    const sf = typeof queryFn.getSourceFile === "function" ? queryFn.getSourceFile() : undefined;
+    queryStr = queryFn.getText(sf);
+  } else if (typeof queryFn === "function") {
+    queryStr = queryFn.toString();
+  } else {
+    queryStr = String(queryFn);
+  }
 
   // If it's already a string without arrow/function, just return it
   if (typeof queryFn === "string" && !queryStr.includes("=>") && !queryStr.startsWith("function")) {
     return { body: queryStr, params: ["queryArg"] };
   }
 
-  const sourceFile = ts.createSourceFile("temp.ts", queryStr, ts.ScriptTarget.Latest, true);
+  let parseStr = queryStr.trim();
+  if (parseStr.startsWith("(") && parseStr.includes("=>") && !parseStr.startsWith("((")) {
+    parseStr = `(${parseStr})`;
+  }
+
+  const sourceFile = ts.createSourceFile("temp.ts", parseStr, ts.ScriptTarget.Latest, true);
 
   let dbName = "graph";
   let originalParams: string[] = [];
   ts.forEachChild(sourceFile, (node) => {
-    if (ts.isExpressionStatement(node) && ts.isArrowFunction(node.expression)) {
-      originalParams = node.expression.parameters.map((p) => p.name.getText());
+    if (ts.isExpressionStatement(node)) {
+      let expr: ts.Expression = node.expression;
+      if (ts.isParenthesizedExpression(expr)) {
+        expr = expr.expression;
+      }
+      if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+        originalParams = expr.parameters.map((p) => p.name.getText(sourceFile));
+      }
     } else if (ts.isFunctionDeclaration(node)) {
-      originalParams = node.parameters.map((p) => p.name.getText());
+      originalParams = node.parameters.map((p) => p.name.getText(sourceFile));
     }
   });
+  let hasDbParam = false;
   if (originalParams.length > 0) {
-    dbName = originalParams[0];
+    const firstP = originalParams[0];
+    if (firstP === "db" || firstP === "graph" || firstP === "cg") {
+      dbName = firstP;
+      hasDbParam = true;
+    }
   }
 
   let cursorCounter = 0;
@@ -243,7 +267,10 @@ export function transpileQuery(
         const rules = opts.rules;
         const existsInRules = rules ? Boolean(rules[rawName] || rules[upper]) : true;
         if (rules && !existsInRules) {
-          return ts.factory.createNumericLiteral(getDJB2Hash(rawName));
+          return ts.factory.createTypeAssertion(
+            ts.factory.createTypeReferenceNode("u16"),
+            ts.factory.createNumericLiteral((getDJB2Hash(rawName) & 0xffff).toString()),
+          );
         }
         if (existsInRules) {
           return ts.factory.createTypeAssertion(
@@ -254,7 +281,10 @@ export function transpileQuery(
             ),
           );
         }
-        return ts.factory.createNumericLiteral(getDJB2Hash(rawName));
+        return ts.factory.createTypeAssertion(
+          ts.factory.createTypeReferenceNode("u16"),
+          ts.factory.createNumericLiteral((getDJB2Hash(rawName) & 0xffff).toString()),
+        );
       }
 
       // 2. Call expressions: graph.modelAttribute, graph.getChildByFieldId, graph.runQuery, graph.diagnostic
@@ -432,6 +462,10 @@ export function transpileQuery(
                 ];
                 if (args.length > 2) callArgs.push(visitNode(args[2]) as ts.Expression);
 
+                const typeArgs = node.typeArguments
+                  ? node.typeArguments.map((t) => visitNode(t) as ts.TypeNode)
+                  : [ts.factory.createTypeReferenceNode("u32")];
+
                 return ts.factory.createCallExpression(
                   ts.factory.createPropertyAccessExpression(
                     ts.factory.createPropertyAccessExpression(
@@ -440,7 +474,7 @@ export function transpileQuery(
                     ),
                     ts.factory.createIdentifier(methodName),
                   ),
-                  undefined,
+                  typeArgs,
                   callArgs,
                 );
               }
@@ -477,6 +511,18 @@ export function transpileQuery(
                 );
               }
             }
+          } else if (namespace === "scope") {
+            return ts.factory.createCallExpression(
+              ts.factory.createPropertyAccessExpression(
+                ts.factory.createPropertyAccessExpression(
+                  ts.factory.createIdentifier("graph"),
+                  ts.factory.createIdentifier("scope"),
+                ),
+                ts.factory.createIdentifier(methodName),
+              ),
+              undefined,
+              args.map((a) => visitNode(a) as ts.Expression),
+            );
           } else if (namespace === "ast") {
             if ((methodName === "getChildByFieldId" || methodName === "getChildrenByFieldId") && args.length >= 2) {
               const nodeArg = args[0];
@@ -622,6 +668,44 @@ export function transpileQuery(
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
+      // 5. === -> == and !== -> != (AssemblyScript compatibility)
+      if (context !== "subtyping" && ts.isBinaryExpression(node)) {
+        if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {
+          return ts.factory.createBinaryExpression(
+            visitNode(node.left) as ts.Expression,
+            ts.SyntaxKind.EqualsEqualsToken,
+            visitNode(node.right) as ts.Expression,
+          );
+        }
+        if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) {
+          return ts.factory.createBinaryExpression(
+            visitNode(node.left) as ts.Expression,
+            ts.SyntaxKind.ExclamationEqualsToken,
+            visitNode(node.right) as ts.Expression,
+          );
+        }
+      }
+
+      // 6. Identifier db / dbName -> graph (only when dbName was a valid db parameter)
+      if (ts.isIdentifier(node) && (node.text === "db" || (hasDbParam && node.text === dbName))) {
+        return ts.factory.createIdentifier("graph");
+      }
+
+      // 7. Generic call expressions: drop dummy `$` and `db` arguments
+      if (ts.isCallExpression(node)) {
+        const filteredArgs = node.arguments
+          .filter((arg) => {
+            if (ts.isIdentifier(arg)) {
+              if (arg.text === "$") return false;
+              if (arg.text === "db") return false;
+            }
+            return true;
+          })
+          .map((arg) => visitNode(arg) as ts.Expression);
+        const expr = visitNode(node.expression) as ts.Expression;
+        return ts.factory.createCallExpression(expr, node.typeArguments, filteredArgs);
+      }
+
       return ts.visitEachChild(node, visit, transformerContext);
     };
 
@@ -686,10 +770,23 @@ export function transpileQuery(
  * Transpiles a TypeScript class definition into an AssemblyScript `@unmanaged export class`.
  */
 export function transpileClass(
-  classDef: (new (...args: any[]) => any) | ((...args: any[]) => any) | string,
+  classDef: (new (...args: any[]) => any) | ((...args: any[]) => any) | string | ts.Node,
   options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): string {
-  const classStr = typeof classDef === "function" ? classDef.toString() : classDef;
+  let classStr: string;
+  if (
+    typeof classDef === "object" &&
+    classDef !== null &&
+    "kind" in classDef &&
+    typeof (classDef as any).getText === "function"
+  ) {
+    const sf = typeof (classDef as any).getSourceFile === "function" ? (classDef as any).getSourceFile() : undefined;
+    classStr = (classDef as any).getText(sf);
+  } else if (typeof classDef === "function") {
+    classStr = classDef.toString();
+  } else {
+    classStr = String(classDef);
+  }
 
   const sourceFile = ts.createSourceFile("temp_class.ts", classStr, ts.ScriptTarget.Latest, true);
 
@@ -802,11 +899,19 @@ export function transpileClass(
  * Transpiles a standalone TypeScript helper function into an exported AssemblyScript function.
  */
 export function transpileHelperFunction(
-  fn: ((...args: any[]) => any) | string,
+  fn: ((...args: any[]) => any) | string | ts.Node,
   options: TranspileOptions | "query" | "lint" | "lsp" | "subtyping" | "dataflow" = "query",
 ): string {
   const opts: TranspileOptions = typeof options === "string" ? { context: options } : options;
-  const fnStr = typeof fn === "function" ? fn.toString() : fn;
+  let fnStr: string;
+  if (typeof fn === "object" && fn !== null && "kind" in fn && typeof (fn as any).getText === "function") {
+    const sf = typeof (fn as any).getSourceFile === "function" ? (fn as any).getSourceFile() : undefined;
+    fnStr = (fn as any).getText(sf);
+  } else if (typeof fn === "function") {
+    fnStr = fn.toString();
+  } else {
+    fnStr = String(fn);
+  }
 
   const sourceFile = ts.createSourceFile("temp_fn.ts", fnStr, ts.ScriptTarget.Latest, true);
 

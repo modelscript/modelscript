@@ -9,6 +9,7 @@ export default defineConfig([
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",
+      "**/vendor/**",
       "**/as-pect.config.js",
       "packages/language/bin/**",
       "packages/language/scripts/**",

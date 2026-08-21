@@ -238,6 +238,8 @@ export function atomicChunkAlloc(size: u32): u32 {
   let rem = ptr % 16;
   if (rem != 0) ptr += 16 - rem;
 
+  memory.fill(ptr, 0, size);
+
   return ptr as u32;
 }
 

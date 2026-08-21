@@ -59,6 +59,10 @@
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
     },
+    "./transformers/sysml2": {
+      "types": "./dist/transformers/sysml2-transformer.d.ts",
+      "default": "./dist/transformers/sysml2-transformer.js"
+    },
     "./flattener-query": {
       "types": "./dist/flattener-query.d.ts",
       "default": "./dist/flattener-query.js"

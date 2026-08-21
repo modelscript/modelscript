@@ -30,7 +30,7 @@ import { UnmanagedUint32Array, ChunkedUint32Array, createChunkedUint32Array, Chu
 import { globalAstRoot, lsp_findNodeOffset, getEncodingStep, lsp_getNodeLeadingPad, lsp_allocDiagnostic } from "./lsp";
 import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, getPathTokens, getSemanticChildren, debugLog } from "./engine";
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
-import { FieldId, SyntaxType } from "./parser";
+import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
 import { DaeBuilder, dae_createBuilder } from "./dae";
 import { BltEngine, blt_createEngine } from "./blt";

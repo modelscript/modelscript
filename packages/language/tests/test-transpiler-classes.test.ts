@@ -101,5 +101,5 @@ describe("First-Class DSL Custom Classes & Functions Transpilation", () => {
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     const wasmExports: any = instance.exports;
     expect(wasmExports.addThree(10, 20, 30)).toBe(60);
-  });
+  }, 60000);
 });

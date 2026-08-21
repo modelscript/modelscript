@@ -1,7 +1,7 @@
-/* eslint-disable */
 import { GLRTable, LRAutomaton } from "../automata.js";
-import { LanguageOptions } from "../dsl.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl.js";
 import { NormalizedGrammar } from "../grammar.js";
+import { extractLanguageAST } from "./ast-loader.js";
 
 import {
   arenaCode,
@@ -170,8 +170,8 @@ export function generateParserTables(
   const generateStaticArray = (arr: number[], name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
     let hex = "";
-    for (let i = 0; i < arr.length; i++) {
-      const val = arr[i] === undefined ? 1 : arr[i];
+    for (const item of arr) {
+      const val = item === undefined ? 1 : item;
       hex += (val >>> 0).toString(16).padStart(8, "0");
     }
     return `export const ${name}: usize = decodeHexIntArray("${hex}", ${arr.length});\n`;
@@ -291,15 +291,6 @@ export function generateParserTables(
       }
     } else if (sym.startsWith("/")) {
       tokenInsertCosts[symId] = 50; // Data-bearing regex terminals (identifiers, numbers, strings) have restricted insertion cost
-    } else if (sym.startsWith('"')) {
-      const freq = terminalFreq.get(sym) || 0;
-      if (freq >= 5) {
-        tokenInsertCosts[symId] = 1;
-      } else if (freq >= 2) {
-        tokenInsertCosts[symId] = 2;
-      } else {
-        tokenInsertCosts[symId] = 4;
-      }
     } else {
       tokenInsertCosts[symId] = 4;
     }
@@ -1013,7 +1004,7 @@ export function generateParserTables(
     lspImports += `import { lsp_invokeDefinition } from "./graph";\n`;
   }
 
-  lspCodeTemplate = lspCodeTemplate.replace(/import\s*\{[^}]*\}\s*from\s*"[^\"]*parser";/, lspImports);
+  lspCodeTemplate = lspCodeTemplate.replace(/import\s*\{[^}]*\}\s*from\s*"[^"]*parser";/, lspImports);
 
   const outFiles: GeneratedFile[] = [
     { filename: "parser.ts", content: code },
@@ -1123,21 +1114,47 @@ import { AdTape } from "./tape";
 
 `;
 
+    const sourcePath = (originalGrammar as any).sourcePath || (originalGrammar as any)[SOURCE_PATH_SYMBOL];
+    const sourceText = (originalGrammar as any).sourceText || (originalGrammar as any)[SOURCE_TEXT_SYMBOL];
+    const ast = sourceText ? extractLanguageAST(sourceText) : sourcePath ? extractLanguageAST(sourcePath) : null;
+
     if (originalGrammar.classes) {
       const classList = Array.isArray(originalGrammar.classes)
         ? originalGrammar.classes
-        : Object.values(originalGrammar.classes);
+        : Object.entries(originalGrammar.classes);
       for (const cls of classList) {
-        customRuntimeCode += transpileClass(cls) + "\n\n";
+        let clsTarget: any = cls;
+        if (ast && ast.classes) {
+          const clsName =
+            typeof cls === "function" ? cls.name : typeof cls === "string" ? cls : Array.isArray(cls) ? cls[0] : "";
+          if (clsName && ast.classes.has(clsName)) {
+            clsTarget = ast.classes.get(clsName)!;
+          }
+        }
+        if (Array.isArray(cls) && clsTarget === cls) {
+          clsTarget = cls[1];
+        }
+        customRuntimeCode += transpileClass(clsTarget) + "\n\n";
       }
     }
 
     if (originalGrammar.functions) {
       const fnList = Array.isArray(originalGrammar.functions)
         ? originalGrammar.functions
-        : Object.values(originalGrammar.functions);
+        : Object.entries(originalGrammar.functions);
       for (const fn of fnList) {
-        customRuntimeCode += transpileHelperFunction(fn) + "\n\n";
+        let fnTarget: any = fn;
+        if (ast && ast.functions) {
+          const fnName =
+            typeof fn === "function" ? fn.name : typeof fn === "string" ? fn : Array.isArray(fn) ? fn[0] : "";
+          if (fnName && ast.functions.has(fnName)) {
+            fnTarget = ast.functions.get(fnName)!;
+          }
+        }
+        if (Array.isArray(fn) && fnTarget === fn) {
+          fnTarget = fn[1];
+        }
+        customRuntimeCode += transpileHelperFunction(fnTarget) + "\n\n";
       }
     }
 

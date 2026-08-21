@@ -17,6 +17,6 @@
     "moduleResolution": "nodenext",
     "types": ["node"]
   },
-  "include": ["*.ts", "src-gen/**/*.ts"],
+  "include": ["*.ts", "src/**/*.ts", "src-gen/**/*.ts", "transformers/**/*.ts"],
   "exclude": ["diag_test.ts", "resolver_test.ts"]
 }

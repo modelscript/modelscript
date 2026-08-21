@@ -58,9 +58,13 @@ export type f32 = number;
 export type f64 = number;
 export type i64 = bigint;
 export type u64 = bigint;
+export type bool = boolean;
 export type FieldId = u16;
 export type SyntaxId = u16;
 export type TensorHandle = u32;
+
+export const SOURCE_PATH_SYMBOL: unique symbol = Symbol.for("modelscript.sourcePath");
+export const SOURCE_TEXT_SYMBOL: unique symbol = Symbol.for("modelscript.sourceText");
 
 export const enum TensorType {
   Float64 = 0,
@@ -72,10 +76,11 @@ export const enum TensorType {
   Int16 = 6,
 }
 
-export interface Cursor {
+export interface Cursor extends Iterable<u32> {
   hasNext(): boolean;
   next(): u32;
   release(): void;
+  [Symbol.iterator](): Iterator<u32>;
 }
 
 export interface TensorAPI {
@@ -198,6 +203,7 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
   getFirstChild(nodeId: u32): u32;
   getNextSibling(nodeId: u32): u32;
   getChildCount(nodeId: u32): u32;
+  getByteLength(nodeId: u32): u32;
 
   getTextSpan(nodeId: u32, absoluteStart?: u32): u64;
   getRootNode(): u32;
@@ -615,6 +621,17 @@ export interface LanguageOptions<
   /** The name of the language (e.g., 'modelica', 'javascript'). */
   name: string;
 
+  /** Optional file path of the language source file for Direct Source AST extraction. */
+  sourcePath?: string;
+
+  /** Optional source code text of the language file for in-memory AST extraction. */
+  sourceText?: string;
+
+  /** Internal symbol property for source path */
+  [SOURCE_PATH_SYMBOL]?: string;
+  /** Internal symbol property for source text */
+  [SOURCE_TEXT_SYMBOL]?: string;
+
   /**
    * Declarative Compilation & Lowering Pipelines (e.g. DAE Flattening, BLT Decomposition)
    */
@@ -882,6 +899,41 @@ export function language<
 >(
   options: LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs>,
 ): LanguageOptions<RuleName, FieldName, QueryName, ModelAttrs> {
+  if (options.sourcePath) {
+    (options as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+  }
+  if (options.sourceText) {
+    (options as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
+  }
+
+  // Auto-detect caller source file path via stack trace if not explicitly provided
+  if (!(options as any)[SOURCE_PATH_SYMBOL] && !(options as any)[SOURCE_TEXT_SYMBOL]) {
+    try {
+      const err = new Error();
+      if (err.stack) {
+        const lines = err.stack.split("\n");
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i];
+          if (
+            line.includes("/dsl.") ||
+            line.includes("\\dsl.") ||
+            line.includes("node_modules") ||
+            line.includes("internal/")
+          ) {
+            continue;
+          }
+          const match = line.match(/(?:file:\/\/)?(\/[^:\s)]+):(?:\d+):(?:\d+)/);
+          if (match && match[1]) {
+            (options as any)[SOURCE_PATH_SYMBOL] = match[1];
+            break;
+          }
+        }
+      }
+    } catch {
+      // Ignore stack inspection failures in restricted runtimes
+    }
+  }
+
   return options;
 }
 

@@ -1,45 +1,57 @@
 import * as esbuild from "esbuild";
+import * as path from "path";
+import { fileURLToPath } from "url";
 
-// We want to bundle `@modelscript/language` into a single file for the browser.
-// We must externalize 'typescript' because it's too large to bundle easily and we might not need it in the browser if we only generate ASTs/WASM,
-// OR if the user wants full generation in the browser, they might have to load TS via a CDN.
-// For the playground, we only need `generateParser` and `generateParserTables`. `generateJavaScriptWrapper` uses `typescript`, so we should probably mock or stub it if it's imported.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const pkgDir = path.resolve(__dirname, "..");
 
 esbuild
   .build({
-    entryPoints: ["src/index.ts"],
+    entryPoints: [path.join(pkgDir, "src/index.ts")],
     bundle: true,
-    outfile: "dist/browser.js",
+    outfile: path.join(pkgDir, "dist/browser.js"),
     format: "esm",
     platform: "browser",
-    external: ["typescript", "fs", "path", "url"], // Externalize node modules just in case
-    define: {
-      // any node globals we need to mock
+    alias: {
+      os: path.join(__dirname, "os-polyfill.js"),
+      fs: path.join(__dirname, "fs-polyfill.js"),
+      path: path.join(__dirname, "path-polyfill.js"),
+      url: path.join(__dirname, "path-polyfill.js"),
     },
+    external: ["typescript"],
+    define: {
+      __filename: '"/"',
+      __dirname: '"/"',
+    },
+    inject: [path.join(__dirname, "process-polyfill.js")],
   })
   .then(() => {
     console.log("Browser bundle created at dist/browser.js");
 
     // Also create a standalone, self-hosted ESM bundle of typescript for the playground
     return esbuild.build({
-      entryPoints: ["../../node_modules/typescript/lib/typescript.js"],
+      entryPoints: [path.resolve(pkgDir, "../../node_modules/typescript/lib/typescript.js")],
       bundle: true,
       minify: true,
-      outfile: "dist/typescript.mjs",
+      outfile: path.join(pkgDir, "dist/typescript.mjs"),
       format: "esm",
       platform: "browser",
       alias: {
-        os: "./scripts/os-polyfill.js",
-        fs: "./scripts/fs-polyfill.js",
+        os: path.join(__dirname, "os-polyfill.js"),
+        fs: path.join(__dirname, "fs-polyfill.js"),
       },
       define: {
         __filename: '"/"',
         __dirname: '"/"',
       },
-      inject: ["./scripts/process-polyfill.js"],
+      inject: [path.join(__dirname, "process-polyfill.js")],
     });
   })
   .then(() => {
     console.log("Self-hosted typescript bundle created at dist/typescript.mjs");
   })
-  .catch(() => process.exit(1));
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

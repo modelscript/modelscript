@@ -555,7 +555,7 @@ const t_virtualStates = new StaticArray<i32>(64);
  * @returns 1 if reachable, 2 if infinitely reachable, 0 if not reachable.
  */
 export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, depth: i32 = 0, virtualDepth: i32 = 0): i32 {
-  if (depth > 50) return 0;
+  if (depth > 8) return 0;
   if (state < 0 || state >= action_offsets.length) return 0;
   if (head == null && !computingReachability && depth == 0 && virtualDepth == 0) {
     if (!isEpsilonReachable(state, tok)) return 0;
@@ -785,11 +785,13 @@ function sanitizeTree(root: u32): void {
  */
 function nodeHasAnyErrors(node: u32): boolean {
   if (node == 0) return false;
+  let flags = getNodeFlags(node);
+  if ((flags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0) return true;
   let type = getNodeType(node);
-  if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0 || (getNodeFlags(node) & FLAG_HAS_ERROR) != 0) return true;
+  if (type == NODE_TYPE_ERROR || (type & 0x8000) != 0) return true;
   let child = getNodeFirstChild(node);
   let depth = 0;
-  while (child != 0 && depth < 20) {
+  while (child != 0 && depth < 50) {
     if (nodeHasAnyErrors(child)) return true;
     child = getNodeNextSibling(child);
     depth++;
@@ -2885,9 +2887,7 @@ export function advanceGLR(): void {
             t_activeHeads[heapStart + ei] = t_extractedHeadsBuffer[ei];
           }
         }
-        activeHeadsCount =
-          protectedEnd + keepCount > MAX_PARALLEL_HEADS ? protectedEnd + keepCount : MAX_PARALLEL_HEADS;
-        if (activeHeadsCount > MAX_PARALLEL_HEADS + 16) activeHeadsCount = MAX_PARALLEL_HEADS + 16; // Safety cap
+        activeHeadsCount = protectedEnd + keepCount;
       }
       minPos = 0;
       minIdx = 0;
@@ -3010,6 +3010,9 @@ export function advanceGLR(): void {
 
     let currentState = head.state;
     if (currentState < 0 || currentState >= action_offsets.length) {
+      logInt(currentState);
+      logInt(action_offsets.length);
+      logInt(headPtr);
       throw new Error("BAD currentState: " + currentState.toString() + " (max " + action_offsets.length.toString() + ")");
     }
 
@@ -3504,7 +3507,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   bestAcceptingHead = 0;
   acceptedNode = 0;
   bestAcceptedCost = 999999;
-bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
+  bestAcceptedRealBytes = 0; // Track amount of input consumed (more is better)
   bestAcceptedCount = 0xffffffff; // Track GSS fragmentation (fewer is better)
   bestAcceptedPad = 0xffffffff; // Track leftmost match padding (smaller is better)
   lastBestCost = 999999;
@@ -3765,7 +3768,7 @@ export function findReusableNode(
           }
           if (validState) {
             let hasErrorFlags = (typeFlags & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED)) != 0;
-            if (!hasErrorFlags) {
+            if (!hasErrorFlags && !nodeHasAnyErrors(cPtr)) {
               return cPtr;
             }
           }

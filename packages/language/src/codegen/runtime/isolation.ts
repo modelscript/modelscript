@@ -65,12 +65,14 @@ export function inverseSinh(v: f64): f64 {
 }
 
 export function inverseCosh(v: f64): f64 {
-    // cosh⁻¹(v) = log(v + sqrt(v² - 1))
+    // cosh⁻¹(v) = log(v + sqrt(v² - 1)) for v >= 1.0
+    if (v < 1.0) return 0.0;
     return Math.log(v + Math.sqrt(v * v - 1.0));
 }
 
 export function inverseTanh(v: f64): f64 {
-    // tanh⁻¹(v) = 0.5 * log((1 + v) / (1 - v))
+    // tanh⁻¹(v) = 0.5 * log((1 + v) / (1 - v)) for -1.0 < v < 1.0
+    if (v <= -1.0 || v >= 1.0) return 0.0;
     return 0.5 * Math.log((1.0 + v) / (1.0 - v));
 }
 

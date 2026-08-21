@@ -376,14 +376,17 @@ export class LspFacade {
 
   constructor(wasmMemoryOrInstance: any, exports?: any) {
     if (wasmMemoryOrInstance && wasmMemoryOrInstance.exports) {
-      this.wasmMemory = wasmMemoryOrInstance.exports.memory;
+      this.wasmMemory = wasmMemoryOrInstance.exports.memory || wasmMemoryOrInstance.memory;
       this.exports = wasmMemoryOrInstance.exports;
     } else {
       this.wasmMemory = wasmMemoryOrInstance;
       this.exports = exports;
     }
+    if (this.exports && this.exports.memory) {
+      this.wasmMemory = this.exports.memory;
+    }
 
-    if (this.exports.initCompiler) {
+    if (this.exports && this.exports.initCompiler) {
       this.exports.initCompiler();
     }
   }
@@ -508,6 +511,9 @@ export class LspFacade {
     for (let i = 0; i < changeText.length; i++) {
       memArray16[rangeOffset + i] = changeText.charCodeAt(i);
     }
+    if (newTotalLength < maxLen) {
+      memArray16.fill(0, newTotalLength, maxLen);
+    }
 
     this._inputEncoding = 1;
     if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
@@ -560,6 +566,10 @@ export class LspFacade {
   private _hasTopLevelErrors(astRoot: number): boolean {
     if (astRoot === 0) return false;
     const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const rootW0 = mem32[astRoot >>> 2];
+    const rootFlags = (rootW0 >>> 10) & 0x0fff;
+    if ((rootFlags & (128 | 256)) !== 0) return true;
+
     let childPtr = mem32[(astRoot + 12) >>> 2];
     while (childPtr !== 0) {
       const w0 = mem32[childPtr >>> 2];
@@ -569,6 +579,7 @@ export class LspFacade {
       const byteLen = w1 & 0x007fffff;
 
       if (nodeType === 0) return true;
+      if ((flags & (128 | 256)) !== 0) return true;
       if (byteLen === 0 && (flags & 0x100) !== 0) return true;
 
       childPtr = mem32[(childPtr + 16) >>> 2];
@@ -1023,7 +1034,7 @@ export class LspFacade {
 
       if (rawLintId === 0) {
         if (arg0 === 1 && arg1 > 0) {
-          let symName = this.syntaxNames[arg1] || `token_${arg1}`;
+          let symName = (this.syntaxNames && this.syntaxNames[arg1]) || `token_${arg1}`;
           if (symName.startsWith("T_")) symName = symName.substring(2);
           if (symName.startsWith('"') && symName.endsWith('"')) {
             symName = symName.substring(1, symName.length - 1);
@@ -1137,7 +1148,7 @@ export class LspFacade {
           if (LINT_CODES[lintId.toString()] !== undefined) {
             codeStr = LINT_CODES[lintId.toString()];
           }
-        } else if (rawLintId < 1000 && rawLintId < this.syntaxNames.length) {
+        } else if (rawLintId < 1000 && this.syntaxNames && rawLintId < this.syntaxNames.length) {
           let name = this.syntaxNames[rawLintId];
           if (name && name.startsWith('"') && name.endsWith('"')) {
             name = name.slice(1, -1);
@@ -1892,6 +1903,7 @@ export class LspFacade {
         score: mem32[(dirPtr >>> 2) + i + 6],
       });
     }
+    results.sort((a, b) => b.score - a.score);
     return results;
   }
 
@@ -2384,7 +2396,7 @@ export class LspFacade {
 
       const typeFlags = mem32[ptr / 4];
       const typeId = typeFlags & 0x03ff;
-      let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+      let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
@@ -2493,7 +2505,7 @@ export class LspFacade {
 
       const typeFlags = mem32[ptr / 4];
       const typeId = typeFlags & 0x03ff;
-      let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+      let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
 
       const envHashPadding = mem32[(ptr + 4) / 4];
@@ -2726,7 +2738,7 @@ export class LspFacade {
           const mem32 = getMem32();
           const cTypeFlags = mem32[childPtr / 4];
           const typeId = cTypeFlags & 0x03ff;
-          let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+          let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
           const isInvisible = (cTypeFlags & (1 << 14)) !== 0 || typeName.startsWith("_");
 
           const parentTypeId = mem32[nodePtr / 4] & 0x03ff;
@@ -2809,7 +2821,7 @@ export class LspFacade {
         const mem32 = getMem32();
         const typeFlags = mem32[ptr / 4];
         const typeId = typeFlags & 0x03ff;
-        let typeName = this.syntaxNames[typeId] || `node_${typeId}`;
+        let typeName = (this.syntaxNames && this.syntaxNames[typeId]) || `node_${typeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(ptr + 4) / 4];
         const rawPad = typeFlags >>> 22;
@@ -2861,16 +2873,16 @@ export class LspFacade {
       }
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
         const mem32 = getMem32();
-        const typeFlags = mem32[newPtr / 4];
-        const newTypeId = typeFlags & 0x03ff;
-        let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
+        const newTypeFlags = mem32[newPtr / 4];
+        const newTypeId = newTypeFlags & 0x03ff;
+        let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
         if (typeName.startsWith("T_")) typeName = typeName.substring(2);
         const envHashPadding = mem32[(newPtr + 4) / 4];
-        const rawPad = typeFlags >>> 22;
+        const rawPad = newTypeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;
         let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
         const len = envHashPadding & 0x007fffff;
-        const flags = (typeFlags >> 10) & 0x0fff;
+        const flags = (newTypeFlags >> 10) & 0x0fff;
         const newCh = getFlattenedChildren(newPtr);
         pad += newInvisiblePad;
 
@@ -2897,11 +2909,11 @@ export class LspFacade {
         return;
       }
 
-      const typeFlags = mem32[newPtr / 4];
-      let typeName = this.syntaxNames[newTypeId] || `node_${newTypeId}`;
+      const newTypeFlags = mem32[newPtr / 4];
+      let typeName = (this.syntaxNames && this.syntaxNames[newTypeId]) || `node_${newTypeId}`;
       if (typeName.startsWith("T_")) typeName = typeName.substring(2);
       const envHashPadding = mem32[(newPtr + 4) / 4];
-      const rawPad = typeFlags >>> 22;
+      const rawPad = newTypeFlags >>> 22;
       const isFat = (envHashPadding >>> 23) & 1;
       let pad = isFat && this.exports.getFatPaddingPtr ? mem32[this.exports.getFatPaddingPtr(rawPad) / 4] : rawPad;
       const len = envHashPadding & 0x007fffff;
@@ -2910,7 +2922,7 @@ export class LspFacade {
       const newCh = getFlattenedChildren(newPtr);
 
       pad += newInvisiblePad;
-      const flags = (typeFlags >> 10) & 0x0fff;
+      const flags = (newTypeFlags >> 10) & 0x0fff;
       listener.onNodeUpdated(newPtr, oldPtr, newTypeId, typeName, pad, len, flags, newCh);
       opsCount++;
 

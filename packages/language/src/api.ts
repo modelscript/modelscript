@@ -3,9 +3,19 @@ import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
 import type { GeneratedFile } from "./codegen/parser.js";
 import { generateParser, generateParserTables } from "./codegen/parser.js";
 import { generateTextMate } from "./codegen/textmate.js";
-import type { LanguageOptions } from "./dsl.js";
+import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./dsl.js";
 
 export type { GrammarConflictDiagnostic } from "./automata.js";
+
+/**
+ * Options for configuring language parser build and source AST extraction.
+ */
+export interface BuildOptions {
+  /** Source file path for Direct Source AST extraction */
+  sourcePath?: string;
+  /** Source code text for in-memory Direct Source AST extraction */
+  sourceText?: string;
+}
 
 /**
  * Metadata about the generated grammar parser.
@@ -51,7 +61,14 @@ export interface BuildResult {
  * @param languageDef The grammar definition created using the DSL functions
  * @returns The final build result containing code strings and parser metadata
  */
-export function buildParser(languageDef: LanguageOptions): BuildResult {
+export function buildParser(languageDef: LanguageOptions, options?: BuildOptions): BuildResult {
+  if (options?.sourcePath) {
+    (languageDef as any)[SOURCE_PATH_SYMBOL] = options.sourcePath;
+  }
+  if (options?.sourceText) {
+    (languageDef as any)[SOURCE_TEXT_SYMBOL] = options.sourceText;
+  }
+
   const result = generateParser(languageDef);
 
   const parserInfo = {

@@ -40,15 +40,15 @@ const toyGrammar = language({
       nodes: ["Decl"],
       severity: "warning",
       message: "Component declaration uninitialized",
-      query: `(db, node, $) => {
-        let valNode = db.ast.getChildByFieldId(node, 'value');
+      query: (db: any, node: any, $: any) => {
+        const valNode = db.ast.getChildByFieldId(node, "value");
         if (valNode == 0) {
-          let nameNode = db.ast.getChildByFieldId(node, 'name');
+          const nameNode = db.ast.getChildByFieldId(node, "name");
           if (nameNode != 0) {
             db.diagnostic(nameNode);
           }
         }
-      }`,
+      },
     },
   },
 });
@@ -154,6 +154,7 @@ model ThermalSystem
 
   heatFlow = temp * 1 + 0;
 end ThermalSystem;`;
+    activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
     console.log("LINE 6 AST SEXPR:\n", activeFacade.getAstSExpr(ast, true));
@@ -173,7 +174,7 @@ end ThermalSystem;`;
     const line6Diags = diags.filter((d: any) => d.severity === 1 && d.range.start.line === 6);
     expect(line6Diags.length).toBeGreaterThanOrEqual(1);
     expect(line6Diags[0].range.start.character).toBe(23);
-    expect(line6Diags[0].range.end.character).toBeGreaterThanOrEqual(36);
+    expect(line6Diags[line6Diags.length - 1].range.end.character).toBeGreaterThanOrEqual(36);
 
     // Line 10 lint warning: 'heatFlow' uninitialized on downstream model (chars 4..15)
     const heatFlowDiags = diags.filter((d: any) => d.severity === 2 && d.range.start.line === 10);

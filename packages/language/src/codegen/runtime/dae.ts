@@ -198,12 +198,12 @@ export class DaeBuilder {
     let idx = this.varCount++;
     let offset = idx * VAR_STRIDE;
     
-    // Use f64.reinterpret_i64 for native bit conversion
-    let startBits = reinterpret<u64>(startValue);
-    let startHi = (startBits >>> 32) as i32;
+    // Use i64.reinterpret_f64 for native bit conversion
+    let startBits = i64.reinterpret_f64(startValue) as u64;
+    let startHi = (startBits >> 32) as i32;
     let startLo = (startBits & 0xffffffff) as i32;
 
-    this.varData.set(offset + VAR_NAME, nameId);
+    this.varData.set(offset + VAR_NAME, nameId as i32);
     this.varData.set(offset + VAR_TYPE, type);
     this.varData.set(offset + VAR_VARIABILITY, variability);
     this.varData.set(offset + VAR_CAUSALITY, causality);
@@ -244,9 +244,9 @@ export class DaeBuilder {
    */
   @inline
   addRealLiteral(value: f64): u32 {
-    let bits = reinterpret<u64>(value);
+    let bits = i64.reinterpret_f64(value) as u64;
     let lo = (bits & 0xffffffff) as u32;
-    let hi = (bits >>> 32) as u32;
+    let hi = (bits >> 32) as u32;
     return this.addExpression(ExprKind.RealLiteral, lo, hi);
   }
 
@@ -372,8 +372,8 @@ export function dae_rollback(ptr: u32): void {
 /**
  * Helper export to register a variable on a DaeBuilder pointer.
  */
-export function dae_addVariable(ptr: u32, nameId: u32, type: i32, variability: i32, causality: i32, startValue: f64): u32 {
-  return changetype<DaeBuilder>(ptr).addVariable(nameId, type, variability, causality, startValue);
+export function dae_addVariable(ptr: u32, nameId: u32, type: i32, variability: i32, causality: i32, startValue: f64, flags: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addVariable(nameId, type, variability, causality, startValue, flags);
 }
 
 /**
@@ -382,3 +382,46 @@ export function dae_addVariable(ptr: u32, nameId: u32, type: i32, variability: i
 export function dae_addExpression(ptr: u32, kind: i32, data1: u32, left: u32, right: u32): u32 {
   return changetype<DaeBuilder>(ptr).addExpression(kind, data1, left, right);
 }
+
+/**
+ * Helper export to add a real literal on a DaeBuilder pointer.
+ */
+export function dae_addRealLiteral(ptr: u32, value: f64): u32 {
+  return changetype<DaeBuilder>(ptr).addRealLiteral(value);
+}
+
+/**
+ * Helper export to add an int literal on a DaeBuilder pointer.
+ */
+export function dae_addIntLiteral(ptr: u32, value: i32): u32 {
+  return changetype<DaeBuilder>(ptr).addIntLiteral(value);
+}
+
+/**
+ * Helper export to add an equation on a DaeBuilder pointer.
+ */
+export function dae_addEquation(ptr: u32, kind: i32, lhsId: u32, rhsId: u32, auxId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).addEquation(kind, lhsId, rhsId, auxId);
+}
+
+/**
+ * Helper export to set a variable flag.
+ */
+export function dae_setVarFlag(ptr: u32, varId: u32, flag: i32): void {
+  changetype<DaeBuilder>(ptr).setVarFlag(varId, flag);
+}
+
+/**
+ * Helper export to get total equations in DaeBuilder.
+ */
+export function dae_getEqCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).eqCount;
+}
+
+/**
+ * Helper export to get total variables in DaeBuilder.
+ */
+export function dae_getVarCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).varCount;
+}
+

@@ -3,9 +3,12 @@
 
 import { LanguageOptions } from "../dsl.js";
 
-export function generateIsolationDomain(grammarDef?: LanguageOptions<any>): string {
+/**
+ * Generates the AssemblyScript isolation domain module containing all 8 symbolic isolation
+ * algorithms, domain guards, and re-exports for non-linear iterative solvers.
+ */
+export function generateIsolationDomain(_grammarDef?: LanguageOptions<any>): string {
   return `
-import { allocGen0 } from "./arena";
 import {
     Dual, createDual, dualConst, dualVar, dualAdd, dualSub, dualMul, dualDiv, dualSin, dualCos, dualExp, dualLog,
     inverseSinh, inverseCosh, inverseTanh, lambertW0,
@@ -34,12 +37,37 @@ export function isolateLinear(coeffA: f64, coeffB: f64): f64 {
     return -coeffB / coeffA;
 }
 
+/**
+ * Solves quadratic equation a*x^2 + b*x + c = 0 for the primary root branch with Citardauq stability.
+ */
 export function isolateQuadratic(a: f64, b: f64, c: f64): f64 {
+    return isolateQuadraticBranch(a, b, c, 1.0);
+}
+
+/**
+ * Solves quadratic equation a*x^2 + b*x + c = 0 with Citardauq numerical stability
+ * and dual-branch support (branch >= 0.0 for primary root, branch < 0.0 for secondary root).
+ */
+export function isolateQuadraticBranch(a: f64, b: f64, c: f64, branch: f64): f64 {
     if (a == 0.0) return isolateLinear(b, c);
     let disc = b * b - 4.0 * a * c;
     if (disc < 0.0) return 0.0;
     let sqrtDisc = Math.sqrt(disc);
-    return (-b + sqrtDisc) / (2.0 * a);
+    let sgn: f64 = b >= 0.0 ? 1.0 : -1.0;
+    let q = -0.5 * (b + sgn * sqrtDisc);
+    if (branch >= 0.0) {
+        if (b >= 0.0) {
+            return q != 0.0 ? c / q : 0.0;
+        } else {
+            return a != 0.0 ? q / a : 0.0;
+        }
+    } else {
+        if (b >= 0.0) {
+            return a != 0.0 ? q / a : 0.0;
+        } else {
+            return q != 0.0 ? c / q : 0.0;
+        }
+    }
 }
 
 export function isolateHarmonic(a: f64, b: f64, c: f64): f64 {
@@ -60,13 +88,28 @@ export function isolateLambertW(a: f64, b: f64, c: f64): f64 {
 
 export function isolateTreePeelTrig(funcOp: u32, val: f64): f64 {
     // 1: sin, 2: cos, 3: tan, 4: sinh, 5: cosh, 6: tanh, 7: exp, 8: log, 9: sqrt
-    if (funcOp == 1) return Math.asin(val);
-    if (funcOp == 2) return Math.acos(val);
+    if (funcOp == 1) {
+        if (val < -1.0 || val > 1.0) return 0.0;
+        return Math.asin(val);
+    }
+    if (funcOp == 2) {
+        if (val < -1.0 || val > 1.0) return 0.0;
+        return Math.acos(val);
+    }
     if (funcOp == 3) return Math.atan(val);
     if (funcOp == 4) return inverseSinh(val);
-    if (funcOp == 5) return inverseCosh(val);
-    if (funcOp == 6) return inverseTanh(val);
-    if (funcOp == 7) return Math.log(val);
+    if (funcOp == 5) {
+        if (val < 1.0) return 0.0;
+        return inverseCosh(val);
+    }
+    if (funcOp == 6) {
+        if (val <= -1.0 || val >= 1.0) return 0.0;
+        return inverseTanh(val);
+    }
+    if (funcOp == 7) {
+        if (val <= 0.0) return 0.0;
+        return Math.log(val);
+    }
     if (funcOp == 8) return Math.exp(val);
     if (funcOp == 9) return val * val;
     return val;

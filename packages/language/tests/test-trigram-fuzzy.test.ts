@@ -95,15 +95,10 @@ describe("Gap 2: Dex-Style Trigram Fuzzy Search Tests", () => {
     expect(indexed).toBeGreaterThanOrEqual(3);
 
     // Query 'Motor'
-    try {
-      const motorResults = facade.fuzzyFindSymbols("Motor");
-      console.log("MOTOR_RESULTS:", JSON.stringify(motorResults));
-      expect(motorResults.length).toBeGreaterThanOrEqual(2);
-      expect(motorResults[0].score).toBeGreaterThan(0);
-    } catch (err: any) {
-      console.error("FUZZY_FIND_ERROR:", err && err.stack ? err.stack : err);
-      throw err;
-    }
+    const motorResults = facade.fuzzyFindSymbols("Motor");
+    console.log("MOTOR_RESULTS:", JSON.stringify(motorResults));
+    expect(motorResults.length).toBeGreaterThanOrEqual(2);
+    expect(motorResults[0].score).toBeGreaterThan(0);
 
     // Query 'Pump'
     const pumpResults = facade.fuzzyFindSymbols("Pump");
@@ -112,5 +107,20 @@ describe("Gap 2: Dex-Style Trigram Fuzzy Search Tests", () => {
     // Query 'Resistor'
     const resistorResults = facade.fuzzyFindSymbols("Resistor");
     expect(resistorResults.length).toBeGreaterThanOrEqual(1);
+
+    // Case-insensitivity check
+    const lowerResults = facade.fuzzyFindSymbols("motor");
+    const upperResults = facade.fuzzyFindSymbols("MOTOR");
+    expect(lowerResults.length).toBe(motorResults.length);
+    expect(upperResults.length).toBe(motorResults.length);
+
+    // Short prefix queries (< 3 characters)
+    const shortPrefixResults = facade.fuzzyFindSymbols("M");
+    expect(shortPrefixResults.length).toBeGreaterThanOrEqual(2);
+
+    // Exact match score boosting
+    const exactResults = facade.fuzzyFindSymbols("ResistorModel");
+    expect(exactResults.length).toBeGreaterThanOrEqual(1);
+    expect(exactResults[0].score).toBeGreaterThanOrEqual(1500); // 1000 exact + 500 prefix + trigram points
   });
 });

@@ -85,6 +85,7 @@ describe("Upgraded 4-Stage Zero-GC Hybrid Pipeline & Full Symbolic Isolation", (
     expect(wasmExports.isolateExplicit).toBeDefined();
     expect(wasmExports.isolateLinear).toBeDefined();
     expect(wasmExports.isolateQuadratic).toBeDefined();
+    expect(wasmExports.isolateQuadraticBranch).toBeDefined();
     expect(wasmExports.isolateHarmonic).toBeDefined();
     expect(wasmExports.isolateLambertW).toBeDefined();
     expect(wasmExports.isolateTreePeelTrig).toBeDefined();
@@ -97,9 +98,20 @@ describe("Upgraded 4-Stage Zero-GC Hybrid Pipeline & Full Symbolic Isolation", (
     expect(x).toBe(-5.0);
   });
 
-  it("should solve quadratic isolation (x^2 - 5x + 6 = 0 -> x = 3)", () => {
-    const x = wasmExports.isolateQuadratic(1.0, -5.0, 6.0);
-    expect(x).toBe(3.0);
+  it("should solve quadratic isolation with dual root branches and Citardauq stability", () => {
+    // x^2 - 5x + 6 = 0 -> roots are 3 and 2
+    const xDefault = wasmExports.isolateQuadratic(1.0, -5.0, 6.0);
+    expect(xDefault).toBe(3.0);
+
+    const xPrimary = wasmExports.isolateQuadraticBranch(1.0, -5.0, 6.0, 1.0);
+    expect(xPrimary).toBe(3.0);
+
+    const xSecondary = wasmExports.isolateQuadraticBranch(1.0, -5.0, 6.0, -1.0);
+    expect(xSecondary).toBe(2.0);
+
+    // Citardauq cancellation test: x^2 + 1e8 * x + 1 = 0 -> x1 ≈ -1e-8
+    const xStable = wasmExports.isolateQuadratic(1.0, 1e8, 1.0);
+    expect(xStable).toBeCloseTo(-1e-8, 12);
   });
 
   it("should solve harmonic isolation (sin(x) = 0 -> x = 0)", () => {
@@ -112,7 +124,7 @@ describe("Upgraded 4-Stage Zero-GC Hybrid Pipeline & Full Symbolic Isolation", (
     expect(x).toBeCloseTo(0.567143, 4);
   });
 
-  it("should solve tree peeling function inverses (sin, exp, sqrt)", () => {
+  it("should solve tree peeling function inverses with domain guards (sin, exp, sqrt, acosh, atanh)", () => {
     // asin(0.5) ≈ 0.523598
     const asinVal = wasmExports.isolateTreePeelTrig(1, 0.5);
     expect(asinVal).toBeCloseTo(Math.asin(0.5), 5);
@@ -124,5 +136,12 @@ describe("Upgraded 4-Stage Zero-GC Hybrid Pipeline & Full Symbolic Isolation", (
     // sqrt(4)^2 = 16
     const sqrtVal = wasmExports.isolateTreePeelTrig(9, 4.0);
     expect(sqrtVal).toBe(16.0);
+
+    // Domain protection guards
+    expect(wasmExports.isolateTreePeelTrig(1, 2.5)).toBe(0.0); // asin out of domain
+    expect(wasmExports.isolateTreePeelTrig(2, -1.5)).toBe(0.0); // acos out of domain
+    expect(wasmExports.isolateTreePeelTrig(5, 0.5)).toBe(0.0); // acosh out of domain (< 1)
+    expect(wasmExports.isolateTreePeelTrig(6, 1.5)).toBe(0.0); // atanh out of domain (>= 1)
+    expect(wasmExports.isolateTreePeelTrig(7, -5.0)).toBe(0.0); // log out of domain (<= 0)
   });
 });

@@ -44,10 +44,18 @@ export const COST_SHIFT_TRANSITION: i32 = 15;
  */
 export const COST_SHIFT_REOPEN_BASE: i32 = 20;
 
-/**
- * Additional penalty per unwind depth level when reopening a parent head in Branch T.
- */
 export const COST_SHIFT_REOPEN_PER_UNWIND: i32 = 10;
+
+/**
+ * Base cost added to `head.errorCost` when performing composite local error encapsulation
+ * (swallowing a run of unexpected tokens into an inline ERROR node while virtually shifting an expected terminal).
+ */
+export const COST_COMPOSITE_ENCAPSULATION: i32 = 8;
+
+/**
+ * Maximum tokens to skip and encapsulate in a single local composite repair.
+ */
+export const MAX_ENCAPSULATION_SKIP_TOKENS: u32 = 4;
 
 
 // ----------------------------------------------------------------------------
