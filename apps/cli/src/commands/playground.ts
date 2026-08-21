@@ -273,7 +273,7 @@ end ChuaCircuit;`;
   },
 };
 
-function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", initialCode = "") {
+export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", initialCode = "") {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -433,6 +433,9 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
             </label>
             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                 <input type="checkbox" id="toggle-island-mode" checked> Island Mode
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;" title="Toggle Monaco Monarch syntax token colorizer">
+                <input type="checkbox" id="toggle-monarch" checked> Monarch Colorizer
             </label>
             <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
                 <input type="checkbox" id="toggle-verbose-log"> Verbose Log
@@ -706,26 +709,57 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                     // NOTE: Double backslashes (e.g. \\w, \\d, \\[) are CRITICAL here because this code sits inside
                     // a TypeScript template literal string. Single backslashes get stripped by tsc, which produces
                     // broken JS regex syntax in the inline HTML output.
-                    monaco.languages.setMonarchTokensProvider(langId, {
-                        keywords,
-                        typeKeywords,
-                        tokenizer: {
-                            root: [
-                                [/\\/\\/.*/, 'comment'],
-                                [/\\/\\*[\\s\\S]*?\\*\\//, 'comment'],
-                                [/"[^"]*"/, 'string'],
-                                [/\\d+\\.?\\d*/, 'number'],
-                                [/[a-zA-Z_]\\w*/, {
-                                    cases: {
-                                        '@keywords': 'keyword',
-                                        '@typeKeywords': 'type',
-                                        '@default': 'identifier'
-                                    }
-                                }],
-                                [/[;,=(){}\\[\\].:+\\-*\\/]/, 'delimiter']
-                            ]
+                    window.currentLangId = langId;
+                    window.monarchKeywords = keywords;
+                    window.monarchTypeKeywords = typeKeywords;
+
+                    function applyMonarchTokens() {
+                        const enabled = document.getElementById('toggle-monarch')?.checked ?? true;
+                        if (window.monarchDisposable) {
+                            window.monarchDisposable.dispose();
+                            window.monarchDisposable = null;
                         }
-                    });
+                        if (window.currentLangId) {
+                            if (enabled) {
+                                window.monarchDisposable = monaco.languages.setMonarchTokensProvider(window.currentLangId, {
+                                    keywords: window.monarchKeywords || [],
+                                    typeKeywords: window.monarchTypeKeywords || [],
+                                    tokenizer: {
+                                        root: [
+                                            [/\\/\\/.*/, 'comment'],
+                                            [/\\/\\*[\\s\\S]*?\\*\\//, 'comment'],
+                                            [/"[^"]*"/, 'string'],
+                                            [/\\d+\\.?\\d*/, 'number'],
+                                            [/[a-zA-Z_]\\w*/, {
+                                                cases: {
+                                                    '@keywords': 'keyword',
+                                                    '@typeKeywords': 'type',
+                                                    '@default': 'identifier'
+                                                }
+                                            }],
+                                            [/[;,=(){}\\[\\].:+\\-*\\/]/, 'delimiter']
+                                        ]
+                                    }
+                                });
+                            } else {
+                                window.monarchDisposable = monaco.languages.setMonarchTokensProvider(window.currentLangId, {
+                                    tokenizer: {
+                                        root: []
+                                    }
+                                });
+                            }
+                        }
+                        if (window.codeEditor && window.codeEditor.getModel()) {
+                            const model = window.codeEditor.getModel();
+                            monaco.editor.setModelLanguage(model, 'plaintext');
+                            monaco.editor.setModelLanguage(model, window.currentLangId || 'exampledsl');
+                            if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
+                                model.tokenization.resetTokenization();
+                            }
+                        }
+                    }
+                    window.applyMonarchTokens = applyMonarchTokens;
+                    applyMonarchTokens();
 
                     if (window.semanticTokensProvider) {
                         window.semanticTokensProvider.dispose();
@@ -1042,6 +1076,11 @@ function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = "", ini
                 const branchB = document.getElementById('toggle-branch-b').checked;
                 const branchC = document.getElementById('toggle-branch-c').checked;
                 languageClient.sendConfigConfig({ branchA1, branchB, branchC, islandMode: e.target.checked });
+            });
+            document.getElementById('toggle-monarch')?.addEventListener('change', () => {
+                if (typeof window.applyMonarchTokens === 'function') {
+                    window.applyMonarchTokens();
+                }
             });
         });
     </script>

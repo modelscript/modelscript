@@ -1,5 +1,5 @@
 import vm from "node:vm";
-import { getCompilerWorkerJs, getLspWorkerJs } from "../src/commands/playground";
+import { getCompilerWorkerJs, getIndexHtml, getLspWorkerJs } from "../src/commands/playground";
 
 describe("Playground Embedded Worker Script Syntax", () => {
   it("should have valid JavaScript syntax for getLspWorkerJs()", () => {
@@ -14,5 +14,13 @@ describe("Playground Embedded Worker Script Syntax", () => {
     expect(() => {
       new vm.Script(compilerJs);
     }).not.toThrow();
+  });
+
+  it("should render Monarch Colorizer toggle in playground HTML", () => {
+    const html = getIndexHtml();
+    expect(html).toContain('id="toggle-monarch"');
+    expect(html).toContain("Monarch Colorizer");
+    expect(html).toContain("applyMonarchTokens");
+    expect(html).toContain("setMonarchTokensProvider");
   });
 });

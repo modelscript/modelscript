@@ -59,5 +59,8 @@
       "tag": true
     }
   },
-  "analytics": false
+  "analytics": false,
+  "tui": {
+    "autoExit": true
+  }
 }
