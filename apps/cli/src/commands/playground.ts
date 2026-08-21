@@ -504,11 +504,99 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'node_modules/@modelscript/language/index.d.ts');
             monaco.languages.typescript.typescriptDefaults.addExtraLib(dslModuleDecl, 'ts:filename/dsl-module.d.ts');
 
+            monaco.editor.defineTheme('dark-modern', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'keyword', foreground: '569cd6' },
+                    { token: 'keyword.control', foreground: 'c586c0' },
+                    { token: 'keyword.flow', foreground: 'c586c0' },
+                    { token: 'type', foreground: '4ec9b0' },
+                    { token: 'class', foreground: '4ec9b0' },
+                    { token: 'interface', foreground: '4ec9b0' },
+                    { token: 'struct', foreground: '4ec9b0' },
+                    { token: 'enum', foreground: '4ec9b0' },
+                    { token: 'typeParameter', foreground: '4ec9b0' },
+                    { token: 'function', foreground: 'dcdcaa' },
+                    { token: 'method', foreground: 'dcdcaa' },
+                    { token: 'property', foreground: '9cdcfe' },
+                    { token: 'variable', foreground: '9cdcfe' },
+                    { token: 'variable.name', foreground: '9cdcfe' },
+                    { token: 'variable.parameter', foreground: '9cdcfe' },
+                    { token: 'parameter', foreground: '9cdcfe' },
+                    { token: 'enumMember', foreground: '4fc1ff' },
+                    { token: 'number', foreground: 'b5cea8' },
+                    { token: 'string', foreground: 'ce9178' },
+                    { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
+                    { token: 'constant', foreground: '4fc1ff' },
+                    { token: 'delimiter', foreground: 'd4d4d4' },
+                    { token: 'operator', foreground: 'd4d4d4' },
+                    { token: 'namespace', foreground: '4ec9b0' },
+                    { token: 'tag', foreground: '569cd6' }
+                ],
+                colors: {
+                    'editor.background': '#1f1f1f',
+                    'editor.foreground': '#cccccc',
+                    'editor.lineHighlightBackground': '#282828',
+                    'editorCursor.foreground': '#aeafad',
+                    'editor.selectionBackground': '#264f78',
+                    'editor.inactiveSelectionBackground': '#3a3d41',
+                    'editorLineNumber.foreground': '#6e7681',
+                    'editorLineNumber.activeForeground': '#cccccc',
+                    'editorIndentGuide.background1': '#3b3b3b',
+                    'editorIndentGuide.activeBackground1': '#707070'
+                }
+            });
+
+            monaco.editor.defineTheme('light-modern', {
+                base: 'vs',
+                inherit: true,
+                rules: [
+                    { token: 'keyword', foreground: '0000ff' },
+                    { token: 'keyword.control', foreground: 'af00db' },
+                    { token: 'keyword.flow', foreground: 'af00db' },
+                    { token: 'type', foreground: '267f99' },
+                    { token: 'class', foreground: '267f99' },
+                    { token: 'interface', foreground: '267f99' },
+                    { token: 'struct', foreground: '267f99' },
+                    { token: 'enum', foreground: '267f99' },
+                    { token: 'typeParameter', foreground: '267f99' },
+                    { token: 'function', foreground: '795e26' },
+                    { token: 'method', foreground: '795e26' },
+                    { token: 'property', foreground: '001080' },
+                    { token: 'variable', foreground: '001080' },
+                    { token: 'variable.name', foreground: '001080' },
+                    { token: 'variable.parameter', foreground: '001080' },
+                    { token: 'parameter', foreground: '001080' },
+                    { token: 'enumMember', foreground: '0070c1' },
+                    { token: 'number', foreground: '098658' },
+                    { token: 'string', foreground: 'a31515' },
+                    { token: 'comment', foreground: '008000', fontStyle: 'italic' },
+                    { token: 'constant', foreground: '0070c1' },
+                    { token: 'delimiter', foreground: '000000' },
+                    { token: 'operator', foreground: '000000' },
+                    { token: 'namespace', foreground: '267f99' },
+                    { token: 'tag', foreground: '800000' }
+                ],
+                colors: {
+                    'editor.background': '#ffffff',
+                    'editor.foreground': '#3b3b3b',
+                    'editor.lineHighlightBackground': '#f8f8f8',
+                    'editorCursor.foreground': '#000000',
+                    'editor.selectionBackground': '#add6ff',
+                    'editor.inactiveSelectionBackground': '#e5ebf1',
+                    'editorLineNumber.foreground': '#6e7681',
+                    'editorLineNumber.activeForeground': '#0b216f',
+                    'editorIndentGuide.background1': '#d3d3d3',
+                    'editorIndentGuide.activeBackground1': '#939393'
+                }
+            });
+
             const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const editorTheme = prefersDark ? 'vs-dark' : 'vs';
+            const editorTheme = prefersDark ? 'dark-modern' : 'light-modern';
 
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-                monaco.editor.setTheme(e.matches ? 'vs-dark' : 'vs');
+                monaco.editor.setTheme(e.matches ? 'dark-modern' : 'light-modern');
             });
 
             const exampleDSL = ${JSON.stringify(initialDsl)};

@@ -16,11 +16,13 @@ describe("Playground Embedded Worker Script Syntax", () => {
     }).not.toThrow();
   });
 
-  it("should render Monarch Colorizer toggle in playground HTML", () => {
+  it("should render Monarch Colorizer toggle and modern themes in playground HTML", () => {
     const html = getIndexHtml();
     expect(html).toContain('id="toggle-monarch"');
     expect(html).toContain("Monarch Colorizer");
     expect(html).toContain("applyMonarchTokens");
     expect(html).toContain("setMonarchTokensProvider");
+    expect(html).toContain("dark-modern");
+    expect(html).toContain("light-modern");
   });
 });
