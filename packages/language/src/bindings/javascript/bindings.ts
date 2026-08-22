@@ -2158,6 +2158,39 @@ export class LspFacade {
     return this.exports.ontology_isSubClassOf(subHash, superHash) === 1;
   }
 
+  /** Evaluates if two classes are disjoint (directly or through superclasses). */
+  areDisjoint(class1: string, class2: string): boolean {
+    if (!this.exports.ontology_areDisjoint) return false;
+    const c1Hash = this.hashString(class1);
+    const c2Hash = this.hashString(class2);
+    return this.exports.ontology_areDisjoint(c1Hash, c2Hash) === 1;
+  }
+
+  /** Evaluates if an individual is an instance of a class (directly or through subclass inference). */
+  isInstanceOf(individual: string, className: string): boolean {
+    if (!this.exports.ontology_isInstanceOf) return false;
+    const indHash = this.hashString(individual);
+    const clsHash = this.hashString(className);
+    return this.exports.ontology_isInstanceOf(indHash, clsHash) === 1;
+  }
+
+  /** Computes the transitive closure of reachable nodes along a property from a source individual. */
+  getTransitiveClosure(property: string, source: string): number[] {
+    if (!this.exports.ontology_getTransitiveClosure || !this.exports.ontology_getQueryBuffer) return [];
+    const pHash = property ? this.hashString(property) : 0xffffffff;
+    const sHash = this.hashString(source);
+    const count = this.exports.ontology_getTransitiveClosure(pHash, sHash);
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const results: number[] = [];
+    for (let i = 0; i < count; i++) {
+      results.push(mem32[(dirPtr >>> 2) + i]);
+    }
+    return results;
+  }
+
   /** Queries indexed triples via SPO / POS / OSP pattern matching in WASM memory. */
   queryOntologyTriples(
     subjectPattern: string = "",

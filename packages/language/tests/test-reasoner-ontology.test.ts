@@ -194,4 +194,125 @@ describe("Phase 3: Knowledge Stores, Semantic Projections & Synthetic Deduplicat
     expect(matches[0].fileId).toBe(999);
     expect(matches[0].flags & 0x0100).toBe(0x0100); // FLAG_IS_SYNTHETIC
   });
+
+  test("should handle large triple queries and dynamic buffer reallocation without overflow", () => {
+    facade.clearOntology();
+    const AXIOM_CLASS_DECL = 1;
+    const LANG_MODELICA = 1;
+
+    // Assert 300 axioms (300 * 6 = 1800 words, exceeding the initial 1024-word buffer)
+    for (let i = 0; i < 300; i++) {
+      facade.addOntologyAxiom(AXIOM_CLASS_DECL, LANG_MODELICA, `DynamicClass_${i}`);
+    }
+
+    expect(facade.getOntologyAxiomCount()).toBe(300);
+
+    const allTriples = facade.queryOntologyTriples("", "", "");
+    expect(allTriples.length).toBe(300);
+    expect(allTriples[0].axiomType).toBe(AXIOM_CLASS_DECL);
+    expect(allTriples[299].axiomType).toBe(AXIOM_CLASS_DECL);
+  });
+
+  test("should evaluate EquivalentClasses in transitive subsumption reasoning", () => {
+    facade.clearOntology();
+    const AXIOM_EQUIV_CLASS = 3;
+    const AXIOM_SUBCLASS_OF = 2;
+    const LANG_MODELICA = 1;
+
+    // ElectricMotor == Motor
+    facade.addOntologyAxiom(AXIOM_EQUIV_CLASS, LANG_MODELICA, "ElectricMotor", "", "Motor");
+    // Motor SubClassOf ElectricalDevice
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "Motor", "", "ElectricalDevice");
+    // ElectricalDevice SubClassOf Device
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "ElectricalDevice", "", "Device");
+
+    // Symmetric equivalence
+    expect(facade.isSubClassOf("ElectricMotor", "Motor")).toBe(true);
+    expect(facade.isSubClassOf("Motor", "ElectricMotor")).toBe(true);
+
+    // Transitive subsumption through equivalence
+    expect(facade.isSubClassOf("ElectricMotor", "ElectricalDevice")).toBe(true);
+    expect(facade.isSubClassOf("ElectricMotor", "Device")).toBe(true);
+
+    // Negative case
+    expect(facade.isSubClassOf("Device", "ElectricMotor")).toBe(false);
+  });
+
+  test("should handle deep and broad class hierarchies exceeding 64 nodes without truncation", () => {
+    facade.clearOntology();
+    const AXIOM_SUBCLASS_OF = 2;
+    const LANG_MODELICA = 1;
+
+    // Build a deep 80-level taxonomy chain: Class_0 -> Class_1 -> ... -> Class_79
+    for (let i = 0; i < 79; i++) {
+      facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, `Class_${i}`, "", `Class_${i + 1}`);
+    }
+
+    expect(facade.isSubClassOf("Class_0", "Class_79")).toBe(true);
+    expect(facade.isSubClassOf("Class_0", "Class_40")).toBe(true);
+    expect(facade.isSubClassOf("Class_79", "Class_0")).toBe(false);
+  });
+
+  test("should check class disjointness directly and via subclass inheritance", () => {
+    facade.clearOntology();
+    const AXIOM_DISJOINT_CLASSES = 4;
+    const AXIOM_SUBCLASS_OF = 2;
+    const LANG_MODELICA = 1;
+
+    // Animal DisjointWith Plant
+    facade.addOntologyAxiom(AXIOM_DISJOINT_CLASSES, LANG_MODELICA, "Animal", "", "Plant");
+    // Dog SubClassOf Animal
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "Dog", "", "Animal");
+    // OakTree SubClassOf Plant
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "OakTree", "", "Plant");
+
+    expect(facade.areDisjoint("Animal", "Plant")).toBe(true);
+    expect(facade.areDisjoint("Plant", "Animal")).toBe(true);
+    expect(facade.areDisjoint("Dog", "OakTree")).toBe(true);
+    expect(facade.areDisjoint("OakTree", "Dog")).toBe(true);
+
+    expect(facade.areDisjoint("Dog", "Animal")).toBe(false);
+    expect(facade.areDisjoint("Dog", "Dog")).toBe(false);
+  });
+
+  test("should perform instance classification via direct assertions and inferred superclasses", () => {
+    facade.clearOntology();
+    const AXIOM_CLASS_ASSERT = 11;
+    const AXIOM_SUBCLASS_OF = 2;
+    const LANG_MODELICA = 1;
+
+    // pump1 : CentrifugalPump
+    facade.addOntologyAxiom(AXIOM_CLASS_ASSERT, LANG_MODELICA, "pump1", "", "CentrifugalPump");
+    // CentrifugalPump SubClassOf Pump
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "CentrifugalPump", "", "Pump");
+    // Pump SubClassOf HydraulicMachine
+    facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "Pump", "", "HydraulicMachine");
+
+    expect(facade.isInstanceOf("pump1", "CentrifugalPump")).toBe(true);
+    expect(facade.isInstanceOf("pump1", "Pump")).toBe(true);
+    expect(facade.isInstanceOf("pump1", "HydraulicMachine")).toBe(true);
+    expect(facade.isInstanceOf("pump1", "ElectricalMotor")).toBe(false);
+  });
+
+  test("should compute transitive property closure along object property chains", () => {
+    facade.clearOntology();
+    const AXIOM_OBJ_PROP_ASSERT = 7;
+    const LANG_MODELICA = 1;
+
+    // PowerPlant contains SteamTurbine -> Generator -> CoolingLoop
+    facade.addOntologyAxiom(AXIOM_OBJ_PROP_ASSERT, LANG_MODELICA, "PowerPlant", "contains", "SteamTurbine");
+    facade.addOntologyAxiom(AXIOM_OBJ_PROP_ASSERT, LANG_MODELICA, "SteamTurbine", "contains", "Generator");
+    facade.addOntologyAxiom(AXIOM_OBJ_PROP_ASSERT, LANG_MODELICA, "Generator", "contains", "CoolingLoop");
+
+    const reachable = facade.getTransitiveClosure("contains", "PowerPlant");
+    expect(reachable.length).toBe(3);
+
+    const turbineHash = facade.hashString("SteamTurbine");
+    const generatorHash = facade.hashString("Generator");
+    const coolingHash = facade.hashString("CoolingLoop");
+
+    expect(reachable).toContain(turbineHash);
+    expect(reachable).toContain(generatorHash);
+    expect(reachable).toContain(coolingHash);
+  });
 });
