@@ -425,3 +425,38 @@ export function dae_getVarCount(ptr: u32): u32 {
   return changetype<DaeBuilder>(ptr).varCount;
 }
 
+/**
+ * Helper export to get total expressions in DaeBuilder.
+ */
+export function dae_getExprCount(ptr: u32): u32 {
+  return changetype<DaeBuilder>(ptr).exprCount;
+}
+
+/**
+ * Helper export to inspect the kind of an expression.
+ */
+export function dae_getExprKind(ptr: u32, exprId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).exprData.get(exprId * 4 + 0);
+}
+
+/**
+ * Helper export to inspect data1 of an expression.
+ */
+export function dae_getExprData1(ptr: u32, exprId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).exprData.get(exprId * 4 + 1);
+}
+
+/**
+ * Helper export to inspect left operand of an expression.
+ */
+export function dae_getExprLeft(ptr: u32, exprId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).exprData.get(exprId * 4 + 2);
+}
+
+/**
+ * Helper export to inspect right operand of an expression.
+ */
+export function dae_getExprRight(ptr: u32, exprId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).exprData.get(exprId * 4 + 3);
+}
+

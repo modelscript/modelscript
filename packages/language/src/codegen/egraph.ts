@@ -3,7 +3,7 @@ import { compileRewriteRules } from "./compile_rules.js";
 
 /**
  * Generates an AssemblyScript e-graph saturation and Bellman-Ford DP extraction engine.
- * Emits zero-GC union-find data structures, hash-consing tables, Boyer-Moore inductive proof helpers,
+ * Emits zero-GC union-find data structures, dense e-node arrays, hash-consing deduplication,
  * and rule matching loops.
  *
  * @param grammar Language configuration options.
@@ -16,40 +16,47 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     'import { DaeBuilder } from "./dae";\n\n' +
     "// --- EGraph Engine (Zero-GC) ---\n" +
     "export const MAX_ECLASSES: u32 = 65536;\n" +
+    "export const MAX_ENODES: u32 = 65536;\n" +
+    "export const HASH_CAPACITY: u32 = 65536; // Power of 2\n" +
+    "export const HASH_MASK: u32 = HASH_CAPACITY - 1;\n" +
+    "export const EMPTY_KEY: u64 = 0xFFFFFFFFFFFFFFFF;\n\n" +
     "export function unwrapNode(node: u32): u32 {\n" +
     "    return node;\n" +
-    "}\n" +
+    "}\n\n" +
+    "// --- Union-Find Disjoint Set ---\n" +
     "let ufParentOffset: u32 = 0;\n" +
     "let ufRankOffset: u32 = 0;\n" +
-    "let ufCount: u32 = 0;\n" +
+    "export let ufCount: u32 = 0;\n\n" +
     "export function initEGraph(): void {\n" +
     "    if (ufParentOffset == 0) {\n" +
     "        ufParentOffset = atomicChunkAlloc(MAX_ECLASSES * 4);\n" +
     "        ufRankOffset = atomicChunkAlloc(MAX_ECLASSES);\n" +
     "    }\n" +
     "    ufCount = 0;\n" +
-    "}\n" +
+    "}\n\n" +
     "export function ufMakeSet(): u32 {\n" +
+    "    if (ufCount >= MAX_ECLASSES) return 0xFFFFFFFF;\n" +
     "    let id = ufCount++;\n" +
     "    store<u32>(ufParentOffset + id * 4, id);\n" +
     "    store<u8>(ufRankOffset + id, 0);\n" +
     "    return id;\n" +
-    "}\n" +
+    "}\n\n" +
     "export function ufFind(x: u32): u32 {\n" +
+    "    if (x >= MAX_ECLASSES || x == 0xFFFFFFFF || ufParentOffset == 0) return x;\n" +
     "    let root = x;\n" +
     "    while (true) {\n" +
     "        let parent = load<u32>(ufParentOffset + root * 4);\n" +
-    "        if (parent == root) break;\n" +
+    "        if (parent == root || parent >= MAX_ECLASSES) break;\n" +
     "        root = parent;\n" +
     "    }\n" +
     "    let curr = x;\n" +
-    "    while (curr != root) {\n" +
+    "    while (curr != root && curr < MAX_ECLASSES) {\n" +
     "        let nxt = load<u32>(ufParentOffset + curr * 4);\n" +
     "        store<u32>(ufParentOffset + curr * 4, root);\n" +
     "        curr = nxt;\n" +
     "    }\n" +
     "    return root;\n" +
-    "}\n" +
+    "}\n\n" +
     "export function ufUnion(a: u32, b: u32): u32 {\n" +
     "    let rootA = ufFind(a);\n" +
     "    let rootB = ufFind(b);\n" +
@@ -67,84 +74,161 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "        store<u8>(ufRankOffset + rootA, rankA + 1);\n" +
     "        return rootA;\n" +
     "    }\n" +
-    "}\n";
-
-  out +=
-    "\n// --- Hash-Consing Table (Deduplication) ---\n" +
+    "}\n\n" +
+    "// --- Dense E-Node Storage & Hash-Consing Deduplication Table ---\n" +
+    "export let eNodeKeysOffset: u32 = 0;\n" +
+    "export let eNodeClassesOffset: u32 = 0;\n" +
+    "export let eNodeCount: u32 = 0;\n\n" +
     "let hashKeysOffset: u32 = 0;\n" +
     "let hashValsOffset: u32 = 0;\n" +
-    "let hashCount: u32 = 0;\n" +
-    "const HASH_CAPACITY: u32 = 16384; // Must be power of 2\n" +
-    "const HASH_MASK: u32 = HASH_CAPACITY - 1;\n" +
-    "let hashOccupied: u32 = 0; // Track load factor\n" +
+    "export let hashOccupied: u32 = 0;\n\n" +
     "export function initHashCons(): void {\n" +
     "    if (hashKeysOffset == 0) {\n" +
     "        hashKeysOffset = atomicChunkAlloc(HASH_CAPACITY * 8);\n" +
     "        hashValsOffset = atomicChunkAlloc(HASH_CAPACITY * 4);\n" +
+    "        eNodeKeysOffset = atomicChunkAlloc(MAX_ENODES * 8);\n" +
+    "        eNodeClassesOffset = atomicChunkAlloc(MAX_ENODES * 4);\n" +
     "    }\n" +
-    "    hashCount = 0;\n" +
+    "    eNodeCount = 0;\n" +
     "    hashOccupied = 0;\n" +
-    "    // Zero out key slots (0 = empty sentinel)\n" +
-    "    memory.fill(hashKeysOffset, 0, HASH_CAPACITY * 8);\n" +
-    "}\n" +
-    "function hashProbe(key: u64): u32 {\n" +
-    "    // Fibonacci hashing for excellent distribution of u64 keys\n" +
+    "    // Set all key slots to EMPTY_KEY sentinel (0xFFFFFFFFFFFFFFFF)\n" +
+    "    memory.fill(hashKeysOffset, 0xFF, HASH_CAPACITY * 8);\n" +
+    "}\n\n" +
+    "export function hashProbe(key: u64): u32 {\n" +
     "    let h = (key ^ (key >> 32)) as u32;\n" +
     "    h = ((h >> 16) ^ h) * 0x45d9f3b;\n" +
     "    h = ((h >> 16) ^ h);\n" +
     "    return h & HASH_MASK;\n" +
-    "}\n" +
-    "function hashFind(key: u64): u32 {\n" +
+    "}\n\n" +
+    "export function hashFind(key: u64): u32 {\n" +
     "    let slot = hashProbe(key);\n" +
     "    let guard: u32 = 0;\n" +
     "    while (guard < HASH_CAPACITY) {\n" +
     "        let storedKey = load<u64>(hashKeysOffset + slot * 8);\n" +
-    "        if (storedKey == 0) return 0xFFFFFFFF; // Empty slot = not found\n" +
+    "        if (storedKey == EMPTY_KEY) return 0xFFFFFFFF; // Empty slot\n" +
     "        if (storedKey == key) return load<u32>(hashValsOffset + slot * 4);\n" +
-    "        slot = (slot + 1) & HASH_MASK; // Linear probing\n" +
+    "        slot = (slot + 1) & HASH_MASK;\n" +
     "        guard++;\n" +
     "    }\n" +
     "    return 0xFFFFFFFF;\n" +
-    "}\n" +
-    "function hashInsert(key: u64, val: u32): void {\n" +
+    "}\n\n" +
+    "export function hashInsert(key: u64, val: u32): void {\n" +
     "    let slot = hashProbe(key);\n" +
-    "    while (true) {\n" +
+    "    let guard: u32 = 0;\n" +
+    "    while (guard < HASH_CAPACITY) {\n" +
     "        let storedKey = load<u64>(hashKeysOffset + slot * 8);\n" +
-    "        if (storedKey == 0) {\n" +
-    "            // Empty slot — insert here\n" +
+    "        if (storedKey == EMPTY_KEY) {\n" +
     "            store<u64>(hashKeysOffset + slot * 8, key);\n" +
     "            store<u32>(hashValsOffset + slot * 4, val);\n" +
+    "            if (eNodeCount < MAX_ENODES) {\n" +
+    "                store<u64>(eNodeKeysOffset + eNodeCount * 8, key);\n" +
+    "                store<u32>(eNodeClassesOffset + eNodeCount * 4, val);\n" +
+    "                eNodeCount++;\n" +
+    "            }\n" +
     "            hashOccupied++;\n" +
-    "            hashCount++;\n" +
     "            return;\n" +
     "        }\n" +
     "        if (storedKey == key) {\n" +
-    "            // Key exists — update value\n" +
     "            store<u32>(hashValsOffset + slot * 4, val);\n" +
     "            return;\n" +
     "        }\n" +
     "        slot = (slot + 1) & HASH_MASK;\n" +
+    "        guard++;\n" +
     "    }\n" +
-    "}\n" +
+    "}\n\n" +
+    "export function rebuildEGraph(): void {\n" +
+    "    memory.fill(hashKeysOffset, 0xFF, HASH_CAPACITY * 8);\n" +
+    "    hashOccupied = 0;\n" +
+    "    let writeIdx: u32 = 0;\n" +
+    "    for (let i: u32 = 0; i < eNodeCount; i++) {\n" +
+    "        let key = load<u64>(eNodeKeysOffset + i * 8);\n" +
+    "        let eClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));\n" +
+    "        let op = (key >> 48) as u16;\n" +
+    "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n" +
+    "        let right = (key & 0xFFFFFF) as u32;\n\n" +
+    "        if (op >= 1280 && op <= 1283) {\n" +
+    "            left = ufFind(left);\n" +
+    "            right = ufFind(right);\n" +
+    "            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24) | ((right & 0xFFFFFF) as u64);\n" +
+    "        } else if (op == 1024 || op == 1026) {\n" +
+    "            left = ufFind(left);\n" +
+    "            key = ((op as u64) << 48) | (((left & 0xFFFFFF) as u64) << 24);\n" +
+    "        }\n\n" +
+    "        let existing = hashFind(key);\n" +
+    "        if (existing != 0xFFFFFFFF) {\n" +
+    "            ufUnion(eClass, existing);\n" +
+    "        } else {\n" +
+    "            let slot = hashProbe(key);\n" +
+    "            let guard: u32 = 0;\n" +
+    "            while (guard < HASH_CAPACITY) {\n" +
+    "                let storedKey = load<u64>(hashKeysOffset + slot * 8);\n" +
+    "                if (storedKey == EMPTY_KEY) {\n" +
+    "                    store<u64>(hashKeysOffset + slot * 8, key);\n" +
+    "                    store<u32>(hashValsOffset + slot * 4, eClass);\n" +
+    "                    hashOccupied++;\n" +
+    "                    break;\n" +
+    "                }\n" +
+    "                slot = (slot + 1) & HASH_MASK;\n" +
+    "                guard++;\n" +
+    "            }\n" +
+    "            store<u64>(eNodeKeysOffset + writeIdx * 8, key);\n" +
+    "            store<u32>(eNodeClassesOffset + writeIdx * 4, eClass);\n" +
+    "            writeIdx++;\n" +
+    "        }\n" +
+    "    }\n" +
+    "    eNodeCount = writeIdx;\n" +
+    "}\n\n" +
     "export function isConstant(eClass: u32, val: f64): boolean {\n" +
     "    let root = ufFind(eClass);\n" +
-    "    let keyReal: u64 = ((512 as u64) << 48) | (reinterpret<u64>(val) >>> 16);\n" +
+    "    let floatBits = reinterpret<u64>(val);\n" +
+    "    let keyReal: u64 = ((512 as u64) << 48) | (floatBits >>> 16);\n" +
     "    let classReal = hashFind(keyReal);\n" +
     "    if (classReal != 0xFFFFFFFF && ufFind(classReal) == root) return true;\n" +
     "    let keyInt: u64 = ((256 as u64) << 48) | ((val as u32) & 0xFFFFFFFF);\n" +
     "    let classInt = hashFind(keyInt);\n" +
     "    if (classInt != 0xFFFFFFFF && ufFind(classInt) == root) return true;\n" +
     "    return false;\n" +
-    "}\n";
+    "}\n\n";
+
   out += "export function addENode(exprId: u32, dae: DaeBuilder): u32 {\n";
   out += "    if (exprId == 0xFFFFFFFF) return 0xFFFFFFFF;\n";
   out += "    let exprOffset = exprId * 4;\n";
   out += "    let kind = dae.exprData.get(exprOffset + 0);\n";
   out += "    let data1 = dae.exprData.get(exprOffset + 1);\n";
+  out += "    let data2 = dae.exprData.get(exprOffset + 2);\n\n";
 
-  out += "    if (kind == 0 || kind == 1 || kind == 2) {\n"; // Name, Int, Real
-  out += "        let opType = kind << 8;\n";
-  out += "        let key: u64 = ((opType as u64) << 48) | (data1 as u64);\n";
+  out += "    if (kind == 0) {\n"; // Name
+  out += "        let key: u64 = (data1 as u64);\n";
+  out += "        let existing = hashFind(key);\n";
+  out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
+  out += "        let id = ufMakeSet();\n";
+  out += "        hashInsert(key, id);\n";
+  out += "        return id;\n";
+  out += "    }\n";
+
+  out += "    if (kind == 1) {\n"; // IntLiteral
+  out += "        let key: u64 = ((256 as u64) << 48) | ((data1 as u32) as u64);\n";
+  out += "        let existing = hashFind(key);\n";
+  out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
+  out += "        let id = ufMakeSet();\n";
+  out += "        hashInsert(key, id);\n";
+  out += "        return id;\n";
+  out += "    }\n";
+
+  out += "    if (kind == 2) {\n"; // RealLiteral
+  out += "        let lo = data1 as u64;\n";
+  out += "        let hi = data2 as u64;\n";
+  out += "        let floatBits: u64 = lo | (hi << 32);\n";
+  out += "        let key: u64 = ((512 as u64) << 48) | (floatBits >>> 16);\n";
+  out += "        let existing = hashFind(key);\n";
+  out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
+  out += "        let id = ufMakeSet();\n";
+  out += "        hashInsert(key, id);\n";
+  out += "        return id;\n";
+  out += "    }\n";
+
+  out += "    if (kind == 3) {\n"; // BoolLiteral
+  out += "        let key: u64 = ((768 as u64) << 48) | ((data1 != 0 ? 1 : 0) as u64);\n";
   out += "        let existing = hashFind(key);\n";
   out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "        let id = ufMakeSet();\n";
@@ -158,13 +242,27 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
   out += "        let leftClass = addENode(leftId, dae);\n";
   out += "        let rightClass = addENode(rightId, dae);\n";
   out += "        let opType = (kind << 8) | data1;\n";
-  out += "        let key: u64 = ((opType as u64) << 48) | ((leftClass as u64) << 24) | (rightClass as u64);\n";
+  out +=
+    "        let key: u64 = ((opType as u64) << 48) | (((ufFind(leftClass) & 0xFFFFFF) as u64) << 24) | ((ufFind(rightClass) & 0xFFFFFF) as u64);\n";
   out += "        let existing = hashFind(key);\n";
   out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "        let id = ufMakeSet();\n";
   out += "        hashInsert(key, id);\n";
   out += "        return id;\n";
   out += "    }\n";
+
+  out += "    if (kind == 6) {\n"; // Unary
+  out += "        let childId = dae.exprData.get(exprOffset + 2);\n";
+  out += "        let childClass = addENode(childId, dae);\n";
+  out += "        let opType = (kind << 8) | data1;\n";
+  out += "        let key: u64 = ((opType as u64) << 48) | (((ufFind(childClass) & 0xFFFFFF) as u64) << 24);\n";
+  out += "        let existing = hashFind(key);\n";
+  out += "        if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
+  out += "        let id = ufMakeSet();\n";
+  out += "        hashInsert(key, id);\n";
+  out += "        return id;\n";
+  out += "    }\n";
+
   out += "    return 0xFFFFFFFF;\n";
   out += "}\n";
 
@@ -188,212 +286,6 @@ export function generateEGraphEngine(grammar: LanguageOptions, rules: any[]): st
     "    let simplifiedAst = extractAst(rootClass, dae);\n" +
     "    if (simplifiedAst == 0xFFFFFFFF) return exprId;\n" +
     "    return simplifiedAst;\n" +
-    "}\n";
-
-  // --- Grammar-Aware Destructor Detection ---
-  // Destructors are structural access nodes (parent, source, target, dot, etc.)
-  // that should be generalized to fresh variables during Boyer-Moore induction.
-  const destructorKeywords = [
-    "parent",
-    "source",
-    "target",
-    "dot",
-    "member_access",
-    "field_access",
-    "index",
-    "subscript",
-  ];
-  let destructorTypes: number[] = [];
-  // Scan grammar production rules for destructor keywords
-  if ((grammar as any).grammar) {
-    let idx = 0;
-    for (const sym of Object.keys((grammar as any).grammar)) {
-      if (destructorKeywords.some((k) => sym.toLowerCase().includes(k))) {
-        destructorTypes.push(idx);
-      }
-      idx++;
-    }
-  }
-  // Also check the tokens array for structural access token types
-  if ((grammar as any).tokens) {
-    for (let i = 0; i < (grammar as any).tokens.length; i++) {
-      const tok = (grammar as any).tokens[i];
-      const tokStr = typeof tok === "string" ? tok : (tok as any)?.name || "";
-      if (destructorKeywords.some((k) => tokStr.toLowerCase().includes(k))) {
-        destructorTypes.push(i + 1000); // Offset to avoid collision with grammar IDs
-      }
-    }
-  }
-  // Generate isDestructorType as specific type-ID checks or fallback
-  const destructorCheckExpr =
-    destructorTypes.length > 0 ? destructorTypes.map((t) => `t == ${t}`).join(" || ") : "t > 50";
-
-  out +=
-    "\n// --- Grammar-Aware Destructor Detection ---\n" +
-    `function isDestructorType(t: u16): boolean { return ${destructorCheckExpr}; }\n` +
-    "\n// --- Boyer-Moore Helper: Negation ---\n" +
-    `// NOT type ID: ${(() => {
-      // Derive the NOT/negation type from the grammar
-      let notTypeId = 1; // default
-      if ((grammar as any).grammar) {
-        let idx = 0;
-        for (const sym of Object.keys((grammar as any).grammar)) {
-          if (sym.toLowerCase() === "not" || sym.toLowerCase() === "logical_not" || sym.toLowerCase() === "negation") {
-            notTypeId = idx;
-            break;
-          }
-          idx++;
-        }
-      }
-      return notTypeId;
-    })()}\n` +
-    `export function negateNode(nodeId: u32): u32 {\n` +
-    `    return allocNode(${(() => {
-      let notTypeId = 1;
-      if ((grammar as any).grammar) {
-        let idx = 0;
-        for (const sym of Object.keys((grammar as any).grammar)) {
-          if (sym.toLowerCase() === "not" || sym.toLowerCase() === "logical_not" || sym.toLowerCase() === "negation") {
-            notTypeId = idx;
-            break;
-          }
-          idx++;
-        }
-      }
-      return notTypeId;
-    })()} /* NOT */, nodeId, 0, 0);\n` +
-    "}\n" +
-    "\n" +
-    "// --- Boyer-Moore Helper: Generalization ---\n" +
-    "let generalizationVarCount: u32 = 1000;\n" +
-    "export function applyGeneralization(nodeId: u32): u32 {\n" +
-    "    if (nodeId == 0) return 0;\n" +
-    "    let type = getNodeType(nodeId);\n" +
-    "    \n" +
-    "    // Grammar-aware destructor detection:\n" +
-    "    // Structural access types are generalized to fresh symbolic variables.\n" +
-    "    if (isDestructorType(type)) {\n" +
-    "        let varId = generalizationVarCount++;\n" +
-    "        return allocNode(2 /* VARIABLE */, varId, 0, 0);\n" +
-    "    }\n" +
-    "    \n" +
-    "    let child1 = getNodeFirstChild(nodeId);\n" +
-    "    let child2 = getNodeNextSibling(child1);\n" +
-    "    \n" +
-    "    let newChild1 = applyGeneralization(child1);\n" +
-    "    let newChild2 = applyGeneralization(child2);\n" +
-    "    \n" +
-    "    if (newChild1 == child1 && newChild2 == child2) return nodeId;\n" +
-    "    return allocNode(type, newChild1, newChild2, 0);\n" +
-    "}\n" +
-    "\n// --- Boyer-Moore Inductive Waterfall (Phase 5) ---\n" +
-    "export function proveInductive(rootNode: u32, dae: DaeBuilder): boolean {\n" +
-    "    // Step 1: Simplification using E-Graph\n" +
-    "    initEGraph();\n" +
-    "    initHashCons();\n" +
-    "    let rootClass = addENode(rootNode, dae);\n" +
-    "    saturateEGraph();\n" +
-    "    \n" +
-    "    // If E-Graph reduced the formula directly to true (tautology)\n" +
-    "    if (isConstant(rootClass, 1)) return true;\n" +
-    "\n" +
-    "    // Step 2: Destructor Elimination & Generalization\n" +
-    "    // Replace deeply nested paths (node.parent.sibling) with fresh symbolic variables.\n" +
-    "    let generalizedAst = applyGeneralization(rootNode);\n" +
-    "\n" +
-    "    // Step 3: Induction Scheme Generation\n" +
-    "    // Identify the induction variable: the first child of the generalized AST\n" +
-    "    // that is a fresh variable (introduced by generalization).\n" +
-    "    let inductionVar = getNodeFirstChild(generalizedAst);\n" +
-    "    if (inductionVar == 0) return false; // Cannot induce on nothing\n" +
-    "\n" +
-    "    // Base Case: substitute the induction variable with a leaf (constant 0 / empty)\n" +
-    "    let leafNode = allocNode(20 /* CONSTANT */, 0, 0, 0); // Represent base: Leaf/Empty\n" +
-    "    let baseCase = substituteVar(generalizedAst, inductionVar, leafNode);\n" +
-    "\n" +
-    "    // Inductive Step: assume P(x), prove P(constructor(x))\n" +
-    "    // Create a fresh constructor wrapping the induction variable\n" +
-    "    let freshIH = allocNode(2 /* VARIABLE */, generalizationVarCount++, 0, 0);\n" +
-    "    let constructorNode = allocNode(getNodeType(generalizedAst), freshIH, 0, 0);\n" +
-    "    let inductiveStep = substituteVar(generalizedAst, inductionVar, constructorNode);\n" +
-    "\n" +
-    "    // Step 4: Sub-Query Dispatching\n" +
-    "    let baseCaseProved = isConstant(addENode(baseCase, dae), 1);\n" +
-    "    if (!baseCaseProved) return false; // Base case failed\n" +
-    "\n" +
-    "    let stepProved = isConstant(addENode(inductiveStep, dae), 1);\n" +
-    "    \n" +
-    "    return stepProved;\n" +
-    "}\n" +
-    "// --- Variable Substitution Helper ---\n" +
-    "function substituteVar(node: u32, targetVar: u32, replacement: u32): u32 {\n" +
-    "    if (node == 0) return 0;\n" +
-    "    if (node == targetVar) return replacement;\n" +
-    "    \n" +
-    "    let type = getNodeType(node);\n" +
-    "    let child1 = getNodeFirstChild(node);\n" +
-    "    let child2 = getNodeNextSibling(child1);\n" +
-    "    \n" +
-    "    let newChild1 = substituteVar(child1, targetVar, replacement);\n" +
-    "    let newChild2 = substituteVar(child2, targetVar, replacement);\n" +
-    "    \n" +
-    "    if (newChild1 == child1 && newChild2 == child2) return node;\n" +
-    "    return allocNode(type, newChild1, newChild2, 0);\n" +
-    "}\n" +
-    "// --- Symbolic Inversion via E-Graph (Phase 7) ---\n" +
-    "export function invertEquation(irEquationPtr: u32, targetVarId: u32): u32 {\n" +
-    "    // Algebraically isolate targetVarId on the LHS of the equation.\n" +
-    "    // Strategy: walk the equation tree, applying inverse operations\n" +
-    "    // at each level to move the target to the top.\n" +
-    "    //\n" +
-    "    // E.g., x + a = b  =>  x = b - a\n" +
-    "    //       a * x = b  =>  x = b / a\n" +
-    "    //       f(x) = b   =>  x = f^-1(b)  (via E-Graph rewrite rules)\n" +
-    "    \n" +
-    "    if (irEquationPtr == 0) return 0;\n" +
-    "    \n" +
-    "    let eqType = getNodeType(irEquationPtr);\n" +
-    "    \n" +
-    "    // Base case: if the equation IS the target variable, we're done\n" +
-    "    let child1 = getNodeFirstChild(irEquationPtr);\n" +
-    "    if (child1 == targetVarId) return irEquationPtr;\n" +
-    "    \n" +
-    "    // Check if target is in left or right subtree\n" +
-    "    let opNode = getNodeNextSibling(child1);\n" +
-    "    let child2 = getNodeNextSibling(opNode);\n" +
-    "    let opType = opNode != 0 ? getNodeType(opNode) : 0;\n" +
-    "    \n" +
-    "    // Check if target var appears in left subtree\n" +
-    "    let leftContains = containsNode(child1, targetVarId);\n" +
-    "    let rightContains = containsNode(child2, targetVarId);\n" +
-    "    \n" +
-    "    if (!leftContains && !rightContains) return 0; // Target not in this equation\n" +
-    "    \n" +
-    "    // Invert based on operator type\n" +
-    "    // ADD: target + rest = rhs  =>  target = rhs - rest\n" +
-    "    // MUL: target * rest = rhs  =>  target = rhs / rest\n" +
-    "    // SUB: target - rest = rhs  =>  target = rhs + rest\n" +
-    "    // DIV: target / rest = rhs  =>  target = rhs * rest\n" +
-    "    if (leftContains && opType != 0) {\n" +
-    "        // target (op) child2 = rhs => target = rhs (inv_op) child2\n" +
-    "        // We don't have the rhs here — caller passes it separately\n" +
-    "        // For now, build the inverted subtree\n" +
-    "        return child1; // Return the subtree containing the target\n" +
-    "    }\n" +
-    "    if (rightContains && opType != 0) {\n" +
-    "        // child1 (op) target = rhs => target = rhs (inv_op) child1\n" +
-    "        return child2; // Return the subtree containing the target\n" +
-    "    }\n" +
-    "    \n" +
-    "    return 0; // Cannot invert\n" +
-    "}\n" +
-    "function containsNode(tree: u32, target: u32): boolean {\n" +
-    "    if (tree == 0) return false;\n" +
-    "    if (tree == target) return true;\n" +
-    "    let c1 = getNodeFirstChild(tree);\n" +
-    "    if (containsNode(c1, target)) return true;\n" +
-    "    let c2 = getNodeNextSibling(c1);\n" +
-    "    return containsNode(c2, target);\n" +
     "}\n";
 
   return out;

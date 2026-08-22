@@ -19,7 +19,8 @@ export interface RewriteRule {
 export function compileRewriteRules(rules: RewriteRule[]): string {
   let out = "// --- AOT Compiled Rewrite Rules ---\n";
   out += "function allocEClass(opType: u16, leftClass: u32, rightClass: u32): u32 {\n";
-  out += "    let key: u64 = ((opType as u64) << 48) | ((leftClass as u64) << 24) | (rightClass as u64);\n";
+  out +=
+    "    let key: u64 = ((opType as u64) << 48) | (((ufFind(leftClass) & 0xFFFFFF) as u64) << 24) | ((ufFind(rightClass) & 0xFFFFFF) as u64);\n";
   out += "    let existing = hashFind(key);\n";
   out += "    if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "    let id = ufMakeSet();\n";
@@ -27,7 +28,8 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "    return id;\n";
   out += "}\n\n";
   out += "function allocConstantEClass(val: f64): u32 {\n";
-  out += "    let key: u64 = ((512 as u64) << 48) | (reinterpret<u64>(val) >>> 16);\n"; // 512 is (ExprKind.RealLiteral << 8)
+  out += "    let floatBits = reinterpret<u64>(val);\n";
+  out += "    let key: u64 = ((512 as u64) << 48) | (floatBits >>> 16);\n"; // 512 is (ExprKind.RealLiteral << 8)
   out += "    let existing = hashFind(key);\n";
   out += "    if (existing != 0xFFFFFFFF) return ufFind(existing);\n";
   out += "    let id = ufMakeSet();\n";
@@ -36,15 +38,16 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "}\n\n";
   out += "export function saturateEGraph(): void {\n";
   out += "    let anyMerged = true;\n";
-  out += "    let iterations = 0;\n";
+  out += "    let iterations: u32 = 0;\n";
   out += "    while (anyMerged && iterations < 10) {\n";
   out += "        anyMerged = false;\n";
-  out += "        for (let i: u32 = 0; i < hashCount; i++) {\n";
-  out += "            let eClass = ufFind(load<u32>(hashValsOffset + i * 4));\n";
-  out += "            let key = load<u64>(hashKeysOffset + i * 8);\n";
+  out += "        let count = eNodeCount;\n";
+  out += "        for (let i: u32 = 0; i < count; i++) {\n";
+  out += "            let eClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));\n";
+  out += "            let key = load<u64>(eNodeKeysOffset + i * 8);\n";
   out += "            let op = (key >> 48) as u16;\n";
-  out += "            let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
-  out += "            let right = (key & 0xFFFFFF) as u32;\n\n";
+  out += "            let left = ufFind(((key >> 24) & 0xFFFFFF) as u32);\n";
+  out += "            let right = ufFind((key & 0xFFFFFF) as u32);\n\n";
 
   for (let rule of rules) {
     if (typeof rule === "object" && rule !== null && !(rule as any).lhs) {
@@ -64,6 +67,9 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   }
 
   out += "        }\n";
+  out += "        if (anyMerged) {\n";
+  out += "            rebuildEGraph();\n";
+  out += "        }\n";
   out += "        iterations++;\n";
   out += "    }\n";
   out += "}\n\n";
@@ -81,23 +87,24 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "        store<u64>(dpKeyOffset + i * 8, 0);\n";
   out += "    }\n";
 
-  // Relaxation Loop
+  // Relaxation Loop over dense e-nodes
   out += "    let changed = true;\n";
-  out += "    while (changed) {\n";
+  out += "    let pass: u32 = 0;\n";
+  out += "    while (changed && pass < 20) {\n";
   out += "        changed = false;\n";
-  out += "        for (let i: u32 = 0; i < hashCount; i++) {\n";
-  out += "            let key = load<u64>(hashKeysOffset + i * 8);\n";
+  out += "        for (let i: u32 = 0; i < eNodeCount; i++) {\n";
+  out += "            let key = load<u64>(eNodeKeysOffset + i * 8);\n";
   out += "            let op = (key >> 48) as u16;\n";
-  out += "            let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
-  out += "            let right = (key & 0xFFFFFF) as u32;\n";
-  out += "            let nodeClass = ufFind(load<u32>(hashValsOffset + i * 4));\n";
+  out += "            let left = ufFind(((key >> 24) & 0xFFFFFF) as u32);\n";
+  out += "            let right = ufFind((key & 0xFFFFFF) as u32);\n";
+  out += "            let nodeClass = ufFind(load<u32>(eNodeClassesOffset + i * 4));\n";
   out += "            let cost: u32 = 1;\n";
-  out += "            if (op == 1280 || op == 1281 || op == 1282 || op == 1283) {\n";
-  out += "                let lCost = load<u32>(dpCostOffset + ufFind(left) * 4);\n";
-  out += "                let rCost = load<u32>(dpCostOffset + ufFind(right) * 4);\n";
+  out += "            if (op >= 1280 && op <= 1283) {\n";
+  out += "                let lCost = load<u32>(dpCostOffset + left * 4);\n";
+  out += "                let rCost = load<u32>(dpCostOffset + right * 4);\n";
   out += "                if (lCost == 0xFFFFFFFF || rCost == 0xFFFFFFFF) cost = 0xFFFFFFFF;\n";
   out += "                else cost += lCost + rCost;\n";
-  out += "            } else if (op == 512 || op == 256 || op == 0) {\n"; // RealLiteral, IntLiteral, Name
+  out += "            } else if (op == 512 || op == 256 || op == 0 || op == 768) {\n"; // RealLiteral, IntLiteral, Name, BoolLiteral
   out += "                cost = 1;\n";
   out += "            }\n";
   out += "            if (cost != 0xFFFFFFFF) {\n";
@@ -109,13 +116,14 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "                }\n";
   out += "            }\n";
   out += "        }\n";
+  out += "        pass++;\n";
   out += "    }\n";
   out += "}\n\n";
 
   out += "export function extractAst(eClass: u32, dae: DaeBuilder): u32 {\n";
   out += "    let root = ufFind(eClass);\n";
   out += "    let key = load<u64>(dpKeyOffset + root * 8);\n";
-  out += "    if (key == 0) return 0;\n";
+  out += "    if (key == 0) return 0xFFFFFFFF;\n";
   out += "    let op = (key >> 48) as u16;\n";
   out += "    if (op == 512) {\n"; // RealLiteral
   out += "        let valBits = (key & 0xFFFFFFFFFFFF) << 16;\n";
@@ -124,8 +132,8 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "        let val = (key & 0xFFFFFFFF) as i32;\n";
   out += "        return dae.addIntLiteral(val);\n";
   out += "    } else if (op == 0) {\n"; // Name
-  out += "        let originalNode = (key & 0xFFFFFFFF) as u32;\n";
-  out += "        return originalNode;\n";
+  out += "        let nameId = (key & 0xFFFFFFFF) as u32;\n";
+  out += "        return dae.addExpression(0 /* Name */, nameId, 0xFFFFFFFF, 0xFFFFFFFF);\n";
   out += "    } else if (op >= 1280 && op <= 1283) {\n";
   out += "        let left = ((key >> 24) & 0xFFFFFF) as u32;\n";
   out += "        let right = (key & 0xFFFFFF) as u32;\n";
@@ -135,7 +143,7 @@ export function compileRewriteRules(rules: RewriteRule[]): string {
   out += "        let binOp: u32 = op - 1280;\n";
   out += "        return dae.addExpression(5 /* Binary */, binOp, leftNode, rightNode);\n";
   out += "    }\n";
-  out += "    return 0;\n";
+  out += "    return 0xFFFFFFFF;\n";
   out += "}\n";
 
   return out;
@@ -325,12 +333,12 @@ function compileRule(rule: RewriteRule): string {
         let j = uid++;
         l_class = `l_class_${j}`;
         res += `${indent}    let ${l_class} = ${targetLeft};\n`;
-        res += `${indent}    for (let j${j}: u32 = 0; j${j} < hashCount; j${j}++) {\n`;
-        res += `${indent}        if (ufFind(load<u32>(hashValsOffset + j${j} * 4)) == ${l_class}) {\n`;
-        res += `${indent}            let key_j${j} = load<u64>(hashKeysOffset + j${j} * 8);\n`;
+        res += `${indent}    for (let j${j}: u32 = 0; j${j} < eNodeCount; j${j}++) {\n`;
+        res += `${indent}        if (ufFind(load<u32>(eNodeClassesOffset + j${j} * 4)) == ${l_class}) {\n`;
+        res += `${indent}            let key_j${j} = load<u64>(eNodeKeysOffset + j${j} * 8);\n`;
         res += `${indent}            let op_j${j} = (key_j${j} >> 48) as u16;\n`;
-        res += `${indent}            let left_j${j} = ((key_j${j} >> 24) & 0xFFFFFF) as u32;\n`;
-        res += `${indent}            let right_j${j} = (key_j${j} & 0xFFFFFF) as u32;\n`;
+        res += `${indent}            let left_j${j} = ufFind(((key_j${j} >> 24) & 0xFFFFFF) as u32);\n`;
+        res += `${indent}            let right_j${j} = ufFind((key_j${j} & 0xFFFFFF) as u32);\n`;
         let inner = genMatch(l_expr, l_class, `op_j${j}`, `left_j${j}`, `right_j${j}`, indent + "            ");
         res += inner;
       } else {
@@ -341,12 +349,12 @@ function compileRule(rule: RewriteRule): string {
         let j = uid++;
         r_class = `r_class_${j}`;
         res += `${indent}    let ${r_class} = ${targetRight};\n`;
-        res += `${indent}    for (let k${j}: u32 = 0; k${j} < hashCount; k${j}++) {\n`;
-        res += `${indent}        if (ufFind(load<u32>(hashValsOffset + k${j} * 4)) == ${r_class}) {\n`;
-        res += `${indent}            let key_k${j} = load<u64>(hashKeysOffset + k${j} * 8);\n`;
+        res += `${indent}    for (let k${j}: u32 = 0; k${j} < eNodeCount; k${j}++) {\n`;
+        res += `${indent}        if (ufFind(load<u32>(eNodeClassesOffset + k${j} * 4)) == ${r_class}) {\n`;
+        res += `${indent}            let key_k${j} = load<u64>(eNodeKeysOffset + k${j} * 8);\n`;
         res += `${indent}            let op_k${j} = (key_k${j} >> 48) as u16;\n`;
-        res += `${indent}            let left_k${j} = ((key_k${j} >> 24) & 0xFFFFFF) as u32;\n`;
-        res += `${indent}            let right_k${j} = (key_k${j} & 0xFFFFFF) as u32;\n`;
+        res += `${indent}            let left_k${j} = ufFind(((key_k${j} >> 24) & 0xFFFFFF) as u32);\n`;
+        res += `${indent}            let right_k${j} = ufFind((key_k${j} & 0xFFFFFF) as u32);\n`;
         let inner = genMatch(r_expr, r_class, `op_k${j}`, `left_k${j}`, `right_k${j}`, indent + "            ");
         res += inner;
       } else {
@@ -379,12 +387,12 @@ function compileRule(rule: RewriteRule): string {
 
   let rhsEmitStr = ``;
   if (typeof rhs === "string" && rhs.startsWith("?") && boundVars[rhs]) {
-    rhsEmitStr = `                if (ufUnion(eClass, ${boundVars[rhs]}) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                let rA = ufFind(eClass);\n                let rB = ufFind(${boundVars[rhs]});\n                if (rA != rB) { ufUnion(rA, rB); anyMerged = true; }\n`;
   } else if (typeof rhs === "string" && boundConsts[rhs]) {
-    rhsEmitStr = `                if (ufUnion(eClass, ${boundConsts[rhs]}) != eClass) anyMerged = true;\n`;
+    rhsEmitStr = `                let rA = ufFind(eClass);\n                let rB = ufFind(${boundConsts[rhs]});\n                if (rA != rB) { ufUnion(rA, rB); anyMerged = true; }\n`;
   } else {
     let rhsCall = genRHS(rhs, "");
-    rhsEmitStr = `                {\n                  let newRhs = ${rhsCall};\n                  if (ufUnion(eClass, newRhs) != eClass) anyMerged = true;\n                }\n`;
+    rhsEmitStr = `                {\n                  let newRhs = ${rhsCall};\n                  let rA = ufFind(eClass);\n                  let rB = ufFind(newRhs);\n                  if (rA != rB) { ufUnion(rA, rB); anyMerged = true; }\n                }\n`;
   }
 
   // Close blocks
