@@ -66,7 +66,7 @@ export type TensorHandle = u32;
 export const SOURCE_PATH_SYMBOL: unique symbol = Symbol.for("modelscript.sourcePath");
 export const SOURCE_TEXT_SYMBOL: unique symbol = Symbol.for("modelscript.sourceText");
 
-export const enum TensorType {
+export enum TensorType {
   Float64 = 0,
   Int32 = 1,
   Boolean = 2,
@@ -1788,8 +1788,6 @@ export interface VisualElement {
   /** Nested children / sub-elements / SVG container hierarchy */
   children?: VisualElement[];
 }
-
-export type X6Markup = VisualElement;
 
 /** Visual Node & Group configuration */
 export interface VisualNodeConfig<

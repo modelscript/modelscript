@@ -13,7 +13,7 @@
 
 import {
     initGSS,
-    ParseHead, t_activeHeads, activeHeadsCount, pushActiveHead, allocParseHead, t_extractedHeadsBuffer,
+    ParseHead, t_activeHeads, t_nextHeads, activeHeadsCount, nextHeadsCount, pushActiveHead, pushNextHead, swapActiveAndNextHeads, allocParseHead, t_extractedHeadsBuffer,
     globalCursorDepth, cursorNodeStack, cursorContentStartStack, globalCursorGotoNextSibling, globalCursorGotoParent, globalCursorGotoFirstChild
 } from "./gss";
 import { 
@@ -62,7 +62,7 @@ const ACCEPT_CACHE_CAPACITY: u32 = 16384;
 const ACCEPT_CACHE_MASK: u32 = 16383;
 const ACCEPT_CACHE_PROBE_LIMIT: u32 = 8;
 let t_acceptCache: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
-import { recoverUnwindAndMutate, recoverIslandMode, findShiftTarget } from "./recovery";
+import { recoverStackSummary, recoverSkipToken, recoverMissingToken, findShiftTarget } from "./recovery";
 import { initQueryArena, resetQueryArena, clearDiagnostics } from "./graph";
 
 /**
@@ -198,13 +198,22 @@ function parseLR(): u32 {
   
   token = invokeLexer(pos);
   while (load<u8>(is_extra_token + token) == 1) {
-    if (lexLen == 0) break;
+    if (lexLen == 0) {
+      pos += 1;
+      break;
+    }
     pendingPadding += lexLen;
-    pos += lexLen;
+    let nextPos = pos + lexLen;
+    pos = nextPos > pos ? nextPos : pos + 1;
     token = invokeLexer(pos);
   }
   
+  let lrLoopGuard: u32 = 0;
   while (currentParserMode == MODE_LR) {
+    if (lrLoopGuard++ > 50000) {
+      transitionToGlr(pos, pendingPadding, currentScannerState);
+      return 0;
+    }
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     let actionCount = lookupActions(currentState, token);
     
@@ -264,9 +273,13 @@ function parseLR(): u32 {
       token = invokeLexer(pos);
       pendingPadding = 0;
       while (load<u8>(is_extra_token + token) == 1) {
-        if (lexLen == 0) break;
+        if (lexLen == 0) {
+          pos += 1;
+          break;
+        }
         pendingPadding += lexLen;
-        pos += lexLen;
+        let nextPos = pos + lexLen;
+        pos = nextPos > pos ? nextPos : pos + 1;
         token = invokeLexer(pos);
       }
       
@@ -424,6 +437,75 @@ export function findGotoSymbol(fromState: i32, toState: i32): i32 {
   return -1;
 }
 
+export function addStateExpectedTokens(state: i32, depth: i32): void {
+  if (depth > 4 || state < 0 || state >= action_offsets.length) return;
+  let actionOffset = action_offsets[state];
+  if (actionOffset < 0 || actionOffset >= action_data.length) return;
+
+  let actionCount = action_data[actionOffset];
+  let idx = actionOffset + 1;
+
+  for (let j = 0; j < actionCount; j++) {
+    let sym = action_data[idx++];
+    let actCount = action_data[idx++];
+    if (sym > 0 && sym < 65536) {
+      store<u8>(expected_tokens + sym, 1);
+    }
+    if (sym == 0) {
+      for (let na = 0; na < actCount; na++) {
+        let aType = action_data[idx + na * 2];
+        let aTarget = action_data[idx + na * 2 + 1];
+        if (aType == ACTION_REDUCE && aTarget >= 0 && aTarget < prod_lhs.length) {
+          let lhs = prod_lhs[aTarget];
+          let gOffset = goto_offsets[state];
+          if (gOffset >= 0 && gOffset < goto_data.length) {
+            let gCount = goto_data[gOffset];
+            let gIdx = gOffset + 1;
+            for (let k = 0; k < gCount; k++) {
+              if (goto_data[gIdx++] == lhs) {
+                let nextSt = goto_data[gIdx++];
+                addStateExpectedTokens(nextSt, depth + 1);
+                break;
+              } else gIdx++;
+            }
+          }
+        }
+      }
+    }
+    idx += actCount * 2;
+  }
+}
+
+export let savedExpectedTokensPtr: usize = 0;
+
+export let lastPeekedTokenLen: u32 = 0;
+export let lastPeekedTokenEnd: u32 = 0;
+
+export function peekNextTokenInState(pos: u32, state: i32): i32 {
+  if (expected_tokens == 0) expected_tokens = atomicChunkAlloc(65536);
+  if (savedExpectedTokensPtr == 0) savedExpectedTokensPtr = atomicChunkAlloc(65536);
+  memory.copy(savedExpectedTokensPtr, expected_tokens, 65536);
+  memory.fill(expected_tokens, 0, 65536);
+  addStateExpectedTokens(state, 0);
+
+  let savedLexPos = lexPos;
+  let savedLexLen = lexLen;
+  let savedSrcLexPos = srcLexPos;
+  let savedScannerState = currentScannerState;
+
+  let tok = invokeLexer(pos);
+  lastPeekedTokenLen = lexLen;
+  lastPeekedTokenEnd = srcLexPos + lexLen;
+
+  lexPos = savedLexPos;
+  lexLen = savedLexLen;
+  srcLexPos = savedSrcLexPos;
+  currentScannerState = savedScannerState;
+
+  memory.copy(expected_tokens, savedExpectedTokensPtr, 65536);
+  return tok;
+}
+
 /**
  * Updates the `expected_tokens` bitset based on the valid action transitions
  * from the active parsing heads (either the single LR head or all GLR heads).
@@ -431,43 +513,18 @@ export function findGotoSymbol(fromState: i32, toState: i32): i32 {
  */
 function updateExpectedTokens(): void {
   if (expected_tokens == 0) {
-    expected_tokens = atomicChunkAlloc(2048);
+    expected_tokens = atomicChunkAlloc(65536);
   }
-  memory.fill(expected_tokens, 0, 2048);
+  memory.fill(expected_tokens, 0, 65536);
   if (currentParserMode == MODE_LR) {
     if (lrStackDepth > 0) {
       let state = t_lrStateStack[lrStackDepth - 1] as i32;
-      let actionOffset = action_offsets[state];
-      if (actionOffset >= 0 && actionOffset + 1 < action_data.length) {
-        let actionCount = action_data[actionOffset];
-        let idx = actionOffset + 1;
-        for (let j = 0; j < actionCount; j++) {
-          let sym = action_data[idx++];
-          if (sym < 2048) store<u8>(expected_tokens + sym, 1);
-          let actCount = action_data[idx++];
-          idx += actCount * 2;
-        }
-      }
+      addStateExpectedTokens(state, 0);
     }
   } else {
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
       let head = changetype<ParseHead>(t_activeHeads[i]);
-      let state = head.state;
-      let actionOffset = action_offsets[state];
-      let actionCount = 0;
-      let idx = 0;
-  
-      if (actionOffset >= 0 && actionOffset + 1 < action_data.length) {
-        actionCount = action_data[actionOffset];
-        idx = actionOffset + 1;
-      }
-  
-      for (let j = 0; j < actionCount; j++) {
-        let sym = action_data[idx++];
-        if (sym < 2048) store<u8>(expected_tokens + sym, 1);
-        let actCount = action_data[idx++];
-        idx += actCount * 2;
-      }
+      addStateExpectedTokens(head.state, 0);
     }
   }
 }
@@ -984,7 +1041,7 @@ function wrapWithTrailingErrors(acceptedNode: u32, acceptedPos: u32 = 0): u32 {
     }
     lastTokNode = tNode;
 
-    lexP = srcLexPos + tLen;
+    lexP = srcLexPos + tLen > lexP ? srcLexPos + tLen : lexP + 1;
   }
 
   lexPos = savedLexPos;
@@ -1678,7 +1735,7 @@ let savedCurrentScannerState: i32 = 0;
 let savedTokenBufferReadIdx: u32 = 0;
 let savedTokenBufferWriteIdx: u32 = 0;
 let savedTokenBufferLastPos: u32 = 0;
-let savedExpectedTokens = changetype<UnmanagedUint8Array>(atomicChunkAlloc(2048));
+let savedExpectedTokens = changetype<UnmanagedUint8Array>(atomicChunkAlloc(65536));
 
 let savedSimulatorMaxCost: i32 = 999999;
 let savedSimulatorMaxTokens: i32 = 0;
@@ -1711,7 +1768,7 @@ export function saveSimulationState(): void {
   savedBestAcceptedCount = bestAcceptedCount;
   savedBestAcceptedPad = bestAcceptedPad;
 
-  memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), 2048);
+  memory.copy(changetype<usize>(savedExpectedTokens), changetype<usize>(expected_tokens), 65536);
 }
 
 /**
@@ -1735,7 +1792,7 @@ export function restoreSimulationState(): void {
   bestAcceptedCount = savedBestAcceptedCount;
   bestAcceptedPad = savedBestAcceptedPad;
 
-  memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), 2048);
+  memory.copy(changetype<usize>(expected_tokens), changetype<usize>(savedExpectedTokens), 65536);
 }
 /**
  * Retrieves the best accepting head found so far.
@@ -1782,68 +1839,22 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
   }
 
   let leaf = allocNode(token as u16, paddingLength, lexLen, newBalance & 0xff);
-  
-  let vq0 = head.virtualQueue0;
-  let vq1 = head.virtualQueue1;
-  let vq2 = head.virtualQueue2;
-  let vq3 = head.virtualQueue3;
-  let vq4 = head.virtualQueue4;
-  let vCount = head.virtualQueueCount;
-
-  if (isVirtual || cameFromVirtualQueue) {
+  if (isVirtual) {
     setNodeFlags(leaf, getNodeFlags(leaf) | FLAG_IS_INSERTED);
   }
-  if (cameFromVirtualQueue) {
-    if (vCount > 0) {
-      vq0 = vq1;
-      vq1 = vq2;
-      vq2 = vq3;
-      vq3 = vq4;
-      vq4 = 0;
-      vCount--;
-    }
-  }
 
-  let nPos = (isVirtual || cameFromVirtualQueue) ? pos : srcLexPos + lexLen;
+  let nextPos = isVirtual ? pos : srcLexPos + lexLen;
+  let nPos = nextPos > pos ? nextPos : pos + 1;
   currentScannerState = 0;
   let newCost = head.errorCost;
   let newShifts = head.successfulShifts + 1;
-  if (g_simulatorMaxTokens > 0 && newShifts >= g_simulatorMaxTokens) {
-    // we will allocate newHead just for saving it.
-    let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
-    let finalHead = allocParseHead(
-      target, leaf, head, nPos, currentScannerState, newCost, newShifts, head.balanceHash, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
-      vq0, vq1, vq2, vq3, vq4, vCount
-    );
-    if (newCost <= bestAcceptedCost) {
-      bestAcceptedCost = newCost;
-      bestAcceptingHead = changetype<u32>(finalHead);
-    }
-    return; // Stop advancing this head
-  }
-
   let nextConsecutive = isVirtual ? head.consecutiveInsertions : 0;
 
   let newHead = allocParseHead(
-    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, nextConsecutive, head.dynamicPrec, 0, head.errorTail,
-    vq0, vq1, vq2, vq3, vq4, vCount
+    target, leaf, head, nPos, currentScannerState, newCost, newShifts, newBalance, nextConsecutive, head.dynamicPrec, 0, head.errorTail
   );
 
-  let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
-  if (mergeIdx >= 0) {
-    let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
-    if (
-      newHead.errorCost < ah.errorCost ||
-      (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions < ah.consecutiveInsertions) ||
-      (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions == ah.consecutiveInsertions && newHead.dynamicPrec > ah.dynamicPrec) ||
-      (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions == ah.consecutiveInsertions && newHead.dynamicPrec == ah.dynamicPrec && getTailLength(newHead.errorTail) < getTailLength(ah.errorTail))
-    ) {
-      t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
-    }
-  } else {
-    pushActiveHead(changetype<u32>(newHead));
-    registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
-  }
+  pushNextHead(changetype<u32>(newHead));
 }
 
 
@@ -1858,7 +1869,7 @@ function processShiftAction(head: ParseHead, target: i32, token: i32, pos: u32, 
  * @param pos The current byte offset in the input stream.
  * @returns True if a valid GOTO transition was found, false if the path is dead.
  */
-function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolean {
+function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): ParseHead | null {
   if (reduceProd < 0 || reduceProd >= prod_lengths.length) {
     throw new Error("BAD reduceProd: " + reduceProd.toString());
   }
@@ -1890,7 +1901,7 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
   }
   if (curr == null && needed > 0) {
     
-    return false;
+    return null;
   }
 
   let actualCount = 99999 - c_idx;
@@ -2017,31 +2028,14 @@ function processReduceAction(head: ParseHead, reduceProd: i32, pos: u32): boolea
       let newHead = allocParseHead(
         nextState, parentNode, curr, head.pos, 0, head.errorCost,
         head.successfulShifts, head.balanceHash, head.consecutiveInsertions,
-        head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
-        head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueue3, head.virtualQueue4, head.virtualQueueCount
+        head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
       );
-      let mergeIdx = findMergeCandidate(newHead.pos, newHead.state, newHead.prev);
-      if (mergeIdx >= 0) {
-        let ah = changetype<ParseHead>(t_activeHeads[(mergeIdx as u32)]);
-        if (
-          newHead.errorCost < ah.errorCost ||
-          (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions < ah.consecutiveInsertions) ||
-          (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions == ah.consecutiveInsertions && newHead.dynamicPrec > ah.dynamicPrec) ||
-          (newHead.errorCost == ah.errorCost && newHead.consecutiveInsertions == ah.consecutiveInsertions && newHead.dynamicPrec == ah.dynamicPrec && getTailLength(newHead.errorTail) < getTailLength(ah.errorTail))
-        ) {
-          t_activeHeads[(mergeIdx as u32)] = changetype<u32>(newHead);
-        }
-      } else {
-        pushActiveHead(changetype<u32>(newHead));
-        registerMergeCandidate(activeHeadsCount - 1, newHead.pos, newHead.state);
-      }
-      return true;
+      return newHead;
     } else {
-      
-      return false;
+      return null;
     }
   }
-  return false;
+  return null;
 }
 
 @inline
@@ -2064,7 +2058,6 @@ function getTailLength(tailPtr: u32): i32 {
  * @param head The accepting parse head.
  */
 function processAcceptAction(head: ParseHead): void {
-
   let t_curr: ParseHead | null = head;
   let t_bytes: u32 = 0;
   let t_count: u32 = 0;
@@ -2084,6 +2077,8 @@ function processAcceptAction(head: ParseHead): void {
   }
 
   let effectiveCost: i32 = head.errorCost;
+  let shiftDiscount: i32 = (head.successfulShifts as i32) * 15;
+  if (shiftDiscount > effectiveCost) effectiveCost = 0; else effectiveCost -= shiftDiscount;
   let realBytes: u32 = 0;
   {
     let rc: ParseHead | null = head;
@@ -2115,7 +2110,7 @@ function processAcceptAction(head: ParseHead): void {
   let newTailLen = getTailLength(head.errorTail);
   let tailBetter = newTailLen < curTailLen && effectiveCost <= bestAcceptedCost;
 
-  if (g_simulatorMaxTokens == 0 && head.pos >= inputLength && (
+  if (g_simulatorMaxTokens == 0 && (
     acceptedNode == 0 ||
     effectiveCost < bestAcceptedCost ||
     errorBetter ||
@@ -2138,9 +2133,9 @@ function processAcceptAction(head: ParseHead): void {
       while (rc) {
         if (rc.astNode != 0 && getNodeType(rc.astNode) != TOKEN_EOF) {
           let t = getNodeType(rc.astNode);
-          if (t >= 256) {
+          if (singleNode == 0) {
             singleNode = rc.astNode;
-          } else if (singleNode == 0) {
+          } else if (t >= 256 && getNodeType(singleNode) < 256) {
             singleNode = rc.astNode;
           }
         }
@@ -2199,12 +2194,27 @@ function processAcceptAction(head: ParseHead): void {
       for (let i: u32 = 0; i < t_count; i++) {
         let c = t_globalChildren[i];
         if (c == 0) continue;
-        let clone = cloneNodeShallow(c);
-        if (firstCloned == 0) firstCloned = clone;
-        if (lastC2 != 0) setNextSibling(lastC2, clone);
-        lastC2 = clone;
-        if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
-          appendedError = true;
+        let cType = getNodeType(c);
+        if (cType == (MAX_TERMINAL_ID + 1) as u16) {
+          let innerChild = getNodeFirstChild(c);
+          while (innerChild != 0) {
+            let clone = cloneNodeShallow(innerChild);
+            if (firstCloned == 0) firstCloned = clone;
+            if (lastC2 != 0) setNextSibling(lastC2, clone);
+            lastC2 = clone;
+            if (getNodeType(innerChild) == 0 || (getNodeFlags(innerChild) & FLAG_HAS_ERROR) != 0) {
+              appendedError = true;
+            }
+            innerChild = getNodeNextSibling(innerChild);
+          }
+        } else {
+          let clone = cloneNodeShallow(c);
+          if (firstCloned == 0) firstCloned = clone;
+          if (lastC2 != 0) setNextSibling(lastC2, clone);
+          lastC2 = clone;
+          if (getNodeType(c) == 0 || (getNodeFlags(c) & FLAG_HAS_ERROR) != 0) {
+            appendedError = true;
+          }
         }
       }
 
@@ -2613,8 +2623,7 @@ function processForcedReduction(head: ParseHead, actionOffset: i32, count2: i32,
     let newHead = allocParseHead(
       nextState, parentNode, curr, head.pos, currentScannerState, head.errorCost + dynamicMissingCost + (missingCount > 0 ? 50 : 0) + mrdCost,
       head.successfulShifts, head.balanceHash, head.consecutiveInsertions + missingCount,
-      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail,
-      head.virtualQueue0, head.virtualQueue1, head.virtualQueue2, head.virtualQueue3, head.virtualQueue4, head.virtualQueueCount
+      head.dynamicPrec + prod_dynamic_prec[reduceProd], head.pendingPadding, head.errorTail
     );
 
     pushActiveHead(changetype<u32>(newHead));
@@ -2741,689 +2750,292 @@ export let g_editNewEnd: u32 = 0;
 
 /**
  * The main GLR parsing engine loop.
- * Iteratively advances all active parsing heads in parallel.
- * Handles head merging, simulated lookahead for error recovery, and 
- * catastrophic fallback when all branches die.
+ * Operates in lockstep token-by-token rounds synchronized at the current byte position frontier.
+ * Prunes and condenses heads in O(H) time without arbitrary iteration bounds.
  */
 export function advanceGLR(): void {
-  let pos: u32 = 0;
-  let token: i32 = 0;
-  let maxHeads: u32 = 0;
-  let iterGuard: u32 = 0;
-
-  // --------------------------------------------------------------------------
-  // Main GSS Processing Loop
-  // --------------------------------------------------------------------------
-  while (true) {
-    lastIterCount = iterGuard;
-    mergeGeneration++; // Invalidate all merge index entries from previous iteration
-    let inputLen: u32 = inputLength;
-    let loopLimit: u32 = inputLen * LOOP_MULTIPLIER_LIMIT;
-    if (loopLimit < (MIN_LOOP_LIMIT as u32)) loopLimit = MIN_LOOP_LIMIT as u32;
-    if (iterGuard++ > loopLimit) {
-      if (activeHeadsCount > 0) {
-        bestDyingHead = t_activeHeads[0];
-      }
-      break;
-    }
-    if (activeHeadsCount > maxHeads) {
-      maxHeads = activeHeadsCount;
-      lastMaxHeads = maxHeads;
-    }
-    globalLoopIterations++;
-    globalLoopGuard++;
-    if (globalLoopGuard > 200000) {
-      break;
-    }
-
-    let headPtr: u32 = 0;
-
-    if (activeHeadsCount == 0) {
-      break;
-    } else {
-      let minPos: u32 = 0;
-      let minIdx = 0;
-      let hasErrors = false;
-      for (let i: u32 = 0; i < activeHeadsCount; i++) {
-        let h = changetype<ParseHead>(t_activeHeads[i]);
-        if (h.errorCost > 0) hasErrors = true;
-      }
-      if (hasErrors && activeHeadsCount > MAX_PARALLEL_HEADS) {
-        // Find the absolute frontier (maximum position) among all active heads.
-        // This protects heads generated by forward-scanning branches (like Deletion Recovery)
-        // that have proven they can recover, ensuring they aren't culled by cheaper
-        // but less advanced Insertion Recovery hallucinations.
-        let maxPos: u32 = 0;
-        for (let zi: u32 = 0; zi < activeHeadsCount; zi++) {
-          let zh = changetype<ParseHead>(t_activeHeads[zi]);
-          if (zh.pos > maxPos) maxPos = zh.pos;
-        }
-
-        // Partial sort: partition to keep top MAX_PARALLEL_HEADS by cost/pos.
-        // First, move all cost=0 AND EOF-reaching heads to the front so they're never dropped.
-        let protectedEnd: u32 = 0;
-        for (let zi: u32 = 0; zi < activeHeadsCount; zi++) {
-          let zh = changetype<ParseHead>(t_activeHeads[zi]);
-          let isStructRecovery = (zh.astNode != 0 && (getNodeFlags(zh.astNode) & FLAG_IS_INSERTED) != 0) || zh.consecutiveInsertions > 0 || zh.errorTail != 0;
-          if (zh.errorCost == 0 || zh.pos >= inputLength || isStructRecovery) {
-            if (zi != protectedEnd) {
-              let tmp = t_activeHeads[protectedEnd];
-              t_activeHeads[protectedEnd] = t_activeHeads[zi];
-              t_activeHeads[zi] = tmp;
-            }
-            protectedEnd++;
-          }
-        }
-        // Sort the remaining heads
-        let keepCount = MAX_PARALLEL_HEADS > protectedEnd ? MAX_PARALLEL_HEADS - protectedEnd : 0;
-        if (keepCount > 0 && activeHeadsCount > protectedEnd + keepCount) {
-          // O(H) heapify on the unprotected region [protectedEnd, activeHeadsCount)
-          // then extract top-K via repeated sift-down, replacing O(K*H) selection sort
-          let heapStart = protectedEnd;
-          let heapLen = activeHeadsCount - heapStart;
-          // Build min-heap by errorCost (ascending), breaking ties by pos (descending)
-          for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
-            let ci: u32 = hi as u32;
-            while (true) {
-              let smallest = ci;
-              let left = ci * 2 + 1;
-              let right = ci * 2 + 2;
-              if (left < heapLen) {
-                let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
-                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costL: i32 = hL.errorCost;
-                let costS: i32 = hS.errorCost;
-                if (costL < costS || (costL == costS && hL.pos > hS.pos)) smallest = left;
-              }
-              if (right < heapLen) {
-                let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
-                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costR: i32 = hR.errorCost;
-                let costS: i32 = hS.errorCost;
-                if (costR < costS || (costR == costS && hR.pos > hS.pos)) smallest = right;
-              }
-              if (smallest == ci) break;
-              let tmp = t_activeHeads[heapStart + ci];
-              t_activeHeads[heapStart + ci] = t_activeHeads[heapStart + smallest];
-              t_activeHeads[(heapStart + smallest)] = tmp;
-              ci = smallest;
-            }
-          }
-          // Extract top-keepCount elements from the heap into static unmanaged buffer
-          for (let ei: u32 = 0; ei < keepCount && heapLen > 0; ei++) {
-            // The root of the heap is the smallest element
-            t_extractedHeadsBuffer[ei] = t_activeHeads[heapStart];
-            
-            // Move the last element to the root and shrink the heap
-            let lastIdx = heapStart + heapLen - 1;
-            t_activeHeads[heapStart] = t_activeHeads[lastIdx];
-            heapLen--;
-            
-            // Sift down the new root
-            let ci: u32 = 0;
-            while (true) {
-              let smallest = ci;
-              let left = ci * 2 + 1;
-              let right = ci * 2 + 2;
-              if (left < heapLen) {
-                let hL = changetype<ParseHead>(t_activeHeads[(heapStart + left)]);
-                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costL: i32 = hL.errorCost;
-                let costS: i32 = hS.errorCost;
-                if (costL < costS || (costL == costS && hL.pos > hS.pos)) smallest = left;
-              }
-              if (right < heapLen) {
-                let hR = changetype<ParseHead>(t_activeHeads[(heapStart + right)]);
-                let hS = changetype<ParseHead>(t_activeHeads[(heapStart + smallest)]);
-                let costR: i32 = hR.errorCost;
-                let costS: i32 = hS.errorCost;
-                if (costR < costS || (costR == costS && hR.pos > hS.pos)) smallest = right;
-              }
-              if (smallest == ci) break;
-              let t2 = t_activeHeads[heapStart + ci];
-              t_activeHeads[heapStart + ci] = t_activeHeads[heapStart + smallest];
-              t_activeHeads[(heapStart + smallest)] = t2;
-              ci = smallest;
-            }
-          }
-          
-          // Copy the extracted elements back to the active heads array
-          for (let ei: u32 = 0; ei < keepCount; ei++) {
-            t_activeHeads[heapStart + ei] = t_extractedHeadsBuffer[ei];
-          }
-        }
-        activeHeadsCount = protectedEnd + keepCount;
-      }
-      minPos = 0;
-      minIdx = 0;
-      for (let i: u32 = 0; i < activeHeadsCount; i++) {
-        let h = changetype<ParseHead>(t_activeHeads[i]);
-        if (i == 0 || h.pos < minPos) {
-          minPos = h.pos;
-          minIdx = i;
-        }
-      }
-      headPtr = t_activeHeads[minIdx];
-      t_activeHeads[minIdx] = t_activeHeads[activeHeadsCount - 1];
-      activeHeadsCount -= 1;
-    }
-    let head = changetype<ParseHead>(headPtr);
-
-    if (g_simulatorMaxCost < 999999 && head.errorCost > g_simulatorMaxCost) {
-      continue;
-    }
-
-    // (Dead code loop for active heads trace removed)
-
-    pos = head.pos;
-
-    currentScannerState = head.scannerState;
-    lexPos = pos;
-
-    // Token Buffer Arena Consumption
-    // If position changed (e.g. after shift or recovery), flush stale buffered lookahead
-    if (pos != tokenBufferLastPos) {
-      tokenBufferReadIdx = tokenBufferWriteIdx;
-    }
-
-    let is_current_token_virtual = false;
-    if (head.virtualQueueCount > 0) {
-      tokenBufferReadIdx = tokenBufferWriteIdx; // Flush token buffer when consuming virtual tokens
-      token = head.virtualQueue0 & 0xFFFF;
-      lexLen = head.virtualQueue0 >> 16;
-      is_current_token_virtual = (lexLen == 0);
-      if (lexLen == 0) {
-        // Peek at the actual next token to anchor the diagnostic properly
-        let savedLexLen = lexLen;
-        let savedLexPos = lexPos;
-        let savedScanner = currentScannerState;
-        invokeLexer(pos);
-        let peekSrcLexPos = srcLexPos;
-        lexLen = savedLexLen;
-        lexPos = savedLexPos;
-        srcLexPos = peekSrcLexPos;
-        currentScannerState = savedScanner;
-        tokenBufferReadIdx = tokenBufferWriteIdx; // Flush token buffer so virtual token is not overwritten by peeked token
-      } else {
-        srcLexPos = pos >= lexLen ? pos - lexLen : 0;
-      }
-    } else if (tokenBufferReadIdx < tokenBufferWriteIdx) {
-      let rIdx = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
-      token = t_tokenBufferArena[rIdx];
-      lexLen = t_tokenBufferLenArena[rIdx];
-      tokenBufferLastPos = pos;
-      // Peek at the actual next token to anchor the diagnostic properly
-      let savedLexLen = lexLen;
-      let savedLexPos = lexPos;
-      let savedScanner = currentScannerState;
-      invokeLexer(pos);
-      let peekSrcLexPos = srcLexPos;
-      lexLen = savedLexLen;
-      lexPos = savedLexPos;
-      srcLexPos = peekSrcLexPos;
-      currentScannerState = savedScanner;
-    } else {
-      updateExpectedTokens();
-      // Also include the current head's expected tokens.
-      // The head was popped from activeHeads, so updateExpectedTokens() doesn't
-      // see it. Without this, island recovery heads that are the sole remaining
-      // head get empty expected_tokens, causing keywords to lex as identifiers.
-      {
-        let hState = head.state;
-        let hOff = action_offsets[hState];
-        if (hOff >= 0) {
-          let hCount = action_data[hOff];
-          let hIdx = hOff + 1;
-          for (let hj = 0; hj < hCount; hj++) {
-            let hSym = action_data[hIdx++];
-            if (hSym < 2048) store<u8>(expected_tokens + hSym, 1);
-            let hActCount = action_data[hIdx++];
-            hIdx += hActCount * 2;
-          }
-        }
-      }
-      
-      token = invokeLexer(pos);
-      while (load<u8>(is_extra_token + token) == 1) {
-        if (lexLen == 0) break;
-        head.pendingPadding += lexLen;
-        pos += lexLen;
-        token = invokeLexer(pos);
-      }
-      
-      if (tokenBufferReadIdx < tokenBufferWriteIdx) {
-        let rIdx2 = tokenBufferReadIdx & (ARENA_BUFFER_SIZE - 1);
-        token = t_tokenBufferArena[rIdx2];
-        lexLen = t_tokenBufferLenArena[rIdx2];
-        srcLexPos = pos;
-      }
-      tokenBufferLastPos = pos;
-    }
-
-
-    if (token == TOKEN_SUSPEND) {
-      // Push the head back and yield execution
-      pushActiveHead(changetype<u32>(head));
-      isSuspended = true;
-      if (tokenBufferReadIdx < tokenBufferWriteIdx) {
-        tokenBufferReadIdx++;
-      }
-      return 0xffffffff; // Special yield signal
-    }
-
-
-
-    let currentState = head.state;
-    if (currentState < 0 || currentState >= action_offsets.length) {
-      logInt(currentState);
-      logInt(action_offsets.length);
-      logInt(headPtr);
-      throw new Error("BAD currentState: " + currentState.toString() + " (max " + action_offsets.length.toString() + ")");
-    }
-
-    let oldPos = lexPos;
-    let oldSrcLexPos = srcLexPos;
-
-    if (lexPos >= g_editNewEnd) {
-      oldPos = g_editOldEnd + (lexPos - g_editNewEnd);
-    } else if (lexPos >= g_editStart) {
-      oldPos = 0xffffffff;
-    }
-
-    if (srcLexPos >= g_editNewEnd) {
-      oldSrcLexPos = g_editOldEnd + (srcLexPos - g_editNewEnd);
-    } else if (srcLexPos >= g_editStart) {
-      oldSrcLexPos = 0xffffffff;
-    }
-
-    let headSym: u32 = 0xffffffff;
-    if (head != null && head.astNode != 0) headSym = getNodeType(head.astNode) as u32;
-
-    // ------------------------------------------------------------------------
-    // Structural Node Reuse (Incremental Parsing Phase)
-    // ------------------------------------------------------------------------
-    let reusedNode: u32 = 0;
-    let expectedPadding: u32 = srcLexPos > pos ? srcLexPos - pos : 0;
-    if (oldSrcLexPos != 0xffffffff) {
-      reusedNode = findReusableNode(
-        oldPos,
-        oldSrcLexPos,
-        currentState,
-        head.balanceHash & 0xff,
-        g_editStart,
-        g_editOldEnd,
-        headSym,
-        expectedPadding
-      );
-      if (reusedNode != 0) {
-        let freshReuse = deepCloneSubtree(reusedNode, 0);
-        if (freshReuse != 0) reusedNode = freshReuse;
-        let totalPadding = expectedPadding;
-        setNodePadding(reusedNode, totalPadding);
+  while (activeHeadsCount > 0) {
+    // 1. Find minimum byte offset frontier across all active heads
+    let frontierPos: u32 = 0xffffffff;
+    for (let i: u32 = 0; i < activeHeadsCount; i++) {
+      let h = changetype<ParseHead>(t_activeHeads[i]);
+      if (h.pos < frontierPos) {
+        frontierPos = h.pos;
       }
     }
+    if (frontierPos == 0xffffffff) break;
 
-    if (reusedNode != 0) {
-      let nodeSym = getNodeType(reusedNode) as i32;
-      let totalPadding = expectedPadding;
+    updateExpectedTokens();
 
-      // Query the GOTO table to determine if this non-terminal can transition from the current state
-      let nextState = -1;
-      let nodeType = getNodeType(reusedNode);
-      if ((currentState as i32) < goto_offsets.length) {
-        let gOffset = goto_offsets[currentState];
-        if (gOffset >= 0 && gOffset < goto_data.length) {
-          let gCount = goto_data[gOffset];
-          for (let gi = 0; gi < gCount; gi++) {
-            let gSym = goto_data[gOffset + 1 + gi * 2];
-            if (gSym == nodeType) {
-              nextState = goto_data[gOffset + 1 + gi * 2 + 1];
-              break;
-            }
-          }
-        }
-      }
-
-      // If we found a valid GOTO state, verify that it can accept the UPCOMING token!
-      // If it cannot, shifting this massive reused node would trap the parser immediately before a garbage token,
-      // leading to catastrophic error recovery that swallows the node.
-      if (nextState != -1) {
-        let endPos = pos + totalPadding + getNodeByteLength(reusedNode);
-        let nextTok = invokeLexer(endPos);
-        while (load<u8>(is_extra_token + nextTok) == 1) {
-          if (lexLen == 0) break;
-          endPos += lexLen;
-          nextTok = invokeLexer(endPos);
-        }
-        let canAccept = stateCanAccept(head, nextState, nextTok, 0, 1);
-        if (canAccept == 0 && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
-          let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
-          let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
-          if (dist < 250) {
-            canAccept = 1;
-          }
-        }
-        if (canAccept == 0) {
-          nextState = -1;
-        }
-      }
-
-      // Splicing: If the parser is currently building a list (headSym == nodeSym)
-      // and there is no valid GOTO, we can manually append this list node.
-      let isSplice = false;
-      if (nextState == -1) {
-        let nodeFlags = getNodeFlags(reusedNode);
-        if (headSym == (nodeSym as u32) && (nodeFlags & FLAG_IS_LIST) != 0) {
-          isSplice = true;
-        }
-      }
-
-      if (isSplice) {
-        // Shallow clone the reused node so we can mutate its links without affecting the old tree
-        let cloneReused = allocNode(
-          nodeSym as u16,
-          totalPadding,
-          getNodeByteLength(reusedNode),
-          getNodeEnvHash(reusedNode),
-        );
-        setNodeFlags(cloneReused, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-        setFirstChild(cloneReused, getNodeFirstChild(reusedNode)); // Inherit old children
-        setNodePadding(cloneReused, totalPadding);
-
-        // Splice it into the GSS head
-        let merged = concatLists(head.astNode, cloneReused, nodeSym as u16, currentScannerState);
-        let newPos = pos + totalPadding + getNodeByteLength(reusedNode);
-
-        head = allocParseHead(
-          head.state,
-          merged,
-          head.prev,
-          newPos,
-          currentScannerState,
-          head.errorCost,
-          head.successfulShifts,
-          head.balanceHash,
-          head.consecutiveInsertions,
-          head.dynamicPrec,
-          0,
-          head.errorTail
-        );
-        pushActiveHead(changetype<u32>(head));
-        pos = newPos;
-        token = invokeLexer(pos);
-        while (load<u8>(is_extra_token + token) == 1) {
-          if (lexLen == 0) break;
-          head.pendingPadding += lexLen;
-          pos += lexLen;
-          token = invokeLexer(pos);
-        }
-        
-        continue; // Yield to the next GSS iteration
-      } else if (nextState != -1) {
-        // Standard GOTO shift over the reused subtree
-        let clone = reusedNode;
-        setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-        propagateFirstChildPadding(clone, totalPadding);
-
-        let newPos = pos + totalPadding + getNodeByteLength(reusedNode);
-
-        head = allocParseHead(
-          nextState,
-          clone,
-          head,
-          newPos,
-          currentScannerState,
-          head.errorCost,
-          head.successfulShifts,
-          head.balanceHash,
-          head.consecutiveInsertions,
-          head.dynamicPrec,
-          0,
-          head.errorTail
-        );
-        pushActiveHead(changetype<u32>(head));
-        pos = newPos;
-        token = invokeLexer(pos);
-        while (load<u8>(is_extra_token + token) == 1) {
-          if (lexLen == 0) break;
-          head.pendingPadding += lexLen;
-          pos += lexLen;
-          token = invokeLexer(pos);
-        }
-        
-        continue; // Yield to the next GSS iteration
-      }
-    }
-
-    // ------------------------------------------------------------------------
-    // Action Table Lookups (SHIFT / REDUCE / ACCEPT)
-    // ------------------------------------------------------------------------
-    let actionOffset = action_offsets[currentState];
-    let actionCount = 0;
-    let idx = 0;
-    if (actionOffset >= 0 && actionOffset < action_data.length) {
-      actionCount = action_data[actionOffset];
-      idx = actionOffset + 1;
-    }
-    
-
-    let anyAction = false;
-    for (let i = 0; i < actionCount; i++) {
-      if (idx < 0 || idx + 1 >= action_data.length) {
-        throw new Error("BAD idx in action loop");
-      }
-
-      let sym = action_data[idx++];
-      let actCount = action_data[idx++];
-      
-
-      // Match the exact token, or token 0 (which signifies a wildcard/default action)
-      if (sym == token || sym == 0) {
-        if (actCount > 1) {
-          let uCurr: ParseHead | null = head;
-          while (uCurr != null) {
-            if (uCurr.astNode != 0 && isNodeGen2(uCurr.astNode)) {
-              setNodeFlags(uCurr.astNode, getNodeFlags(uCurr.astNode) | FLAG_IS_SHARED);
-            }
-            uCurr = uCurr.prev;
-          }
-        }
-        for (let j = 0; j < actCount; j++) {
-          let type = action_data[idx++];
-          let target = action_data[idx++];
-          // --------------------------------------------------------------------
-          // TYPE 0: SHIFT ACTION
-          // --------------------------------------------------------------------
-          if (type == ACTION_SHIFT) {
-            let origState = head.state;
-            let origNode = head.astNode;
-            let origPrev = head.prev;
-            let origCost = head.errorCost;
-            let origBalance = head.balanceHash;
-            let origPrec = head.dynamicPrec;
-
-            processShiftAction(head, target, token, pos, is_current_token_virtual, head.virtualQueueCount > 0);
-            anyAction = true;
-
-            if (g_simulatorMaxTokens == 0 && !is_current_token_virtual && head.consecutiveInsertions == 0 && activeHeadsCount < MAX_PARALLEL_HEADS) {
-              let charLen = peekCharLen(pos);
-              if (charLen == 1) {
-                let c = peekChar(pos);
-                if (c == CHAR_RBRACE || c == CHAR_RBRACKET || c == CHAR_RPAREN) {
-                  let delPos = pos + lexLen;
-                  let nextTail = pushDiagnostic(head.errorTail, pos, delPos);
-                  let delHead = allocParseHead(
-                    origState,
-                    origNode,
-                    origPrev,
-                    delPos,
-                    currentScannerState,
-                    origCost + 20,
-                    0,
-                    origBalance,
-                    0,
-                    origPrec,
-                    0,
-                    nextTail
-                  );
-                  pushActiveHead(changetype<u32>(delHead));
-                }
-              }
-            }
-          } else if (type == ACTION_REDUCE) {
-            if (processReduceAction(head, target, pos)) {
-              anyAction = true;
-            }
-          } else if (type == ACTION_ACCEPT) {
-            processAcceptAction(head);
-            anyAction = true;
-          }
-        }
-        break;
-      } else {
-        idx += actCount * 2;
-      }
-    }
-
-    if (acceptedNode != 0 && activeHeadsCount == 0) {
-      return;
-    }
-
-    if (!anyAction) {
-      let defaultReduce = -1;
-      let hasConflictingReduce = false;
-      let rIdx = actionOffset + 1;
-      let rCount = action_data[actionOffset];
-      for (let j = 0; j < rCount; j++) {
-        let sym = action_data[rIdx++];
-        let actCount = action_data[rIdx++];
-        for (let a = 0; a < actCount; a++) {
-          let aType = action_data[rIdx++];
-          let aTarget = action_data[rIdx++];
-          if (aType == ACTION_SHIFT) {
-            hasConflictingReduce = true;
-          } else if (aType == ACTION_REDUCE) {
-            let pLen = prod_lengths[aTarget];
-            if (pLen > 0) {
-              if (defaultReduce == -1) {
-                defaultReduce = aTarget;
-              } else if (defaultReduce != aTarget) {
-                hasConflictingReduce = true;
-              }
-            }
-          }
-        }
-
-      }
-
-      if (defaultReduce != -1 && !hasConflictingReduce) {
-        if (processReduceAction(head, defaultReduce, pos)) {
-          anyAction = true;
-          continue;
-        }
-      }
-
-      if (g_simulatorMaxTokens > 0) {
-        continue; // In simulation mode, do not spawn recursive recoveries
-      }
-
-      // --------------------------------------------------------------------
-      // PHASE 3: GLR Error Recovery Forking
-      // --------------------------------------------------------------------
-      // When a parse head cannot shift or reduce the current token, it enters error recovery.
-      // We branch the GSS in multiple directions (Deletion, Insertion, Forced Reduction)
-      // and assign a penalty cost to each branch.
-      
-      let uCurr: ParseHead | null = head;
-      while (uCurr != null) {
-        if (uCurr.astNode != 0 && isNodeGen2(uCurr.astNode)) {
-          setNodeFlags(uCurr.astNode, getNodeFlags(uCurr.astNode) | FLAG_IS_SHARED);
-        }
-        uCurr = uCurr.prev;
-      }
-
-      if (furthestDyingPos < head.pos || bestDyingHead == 0 || (head.errorCost < changetype<ParseHead>(bestDyingHead).errorCost && head.pos >= furthestDyingPos)) {
-        let oldBest = bestDyingHead;
-        bestDyingHead = changetype<u32>(head);
+    // 2. Process all heads at frontierPos
+    for (let i: u32 = 0; i < activeHeadsCount; i++) {
+      let head: ParseHead = changetype<ParseHead>(t_activeHeads[i]);
+      if (head.pos > furthestDyingPos || (head.pos == furthestDyingPos && bestDyingHead == 0)) {
         furthestDyingPos = head.pos;
-        if (oldBest != 0 && oldBest != changetype<u32>(head)) {
-          // In ModelScript we rely on GC and Generation resets for memory management.
-          // oldBest will simply be collected or dropped.
-        }
+        bestDyingHead = changetype<u32>(head);
       }
-
-      // Prevent infinite error recovery loops by killing heads with catastrophic costs
-      if (head.errorCost > MAX_ERRORS) {
+      if (head.pos != frontierPos) {
+        pushNextHead(changetype<u32>(head));
         continue;
       }
 
-      // Prune if there is a single branch that is strictly better than us
-      // (i.e. has a lower cost and has advanced further in the file)
-      let strictlyBetterExists = false;
-      let aLength = activeHeadsCount;
-      for (let i: u32 = 0; i < aLength; i++) {
-        let ah = changetype<ParseHead>(t_activeHeads[i]);
-        if (ah.errorCost < head.errorCost && ah.pos > pos) {
-          strictlyBetterExists = true;
-          break;
+      let tok = invokeLexer(frontierPos);
+      let curPos = frontierPos;
+      while (load<u8>(is_extra_token + tok) == 1) {
+        if (lexLen == 0) { curPos += 1; break; }
+        head.pendingPadding += lexLen;
+        let nextP = curPos + lexLen;
+        curPos = nextP > curPos ? nextP : curPos + 1;
+        tok = invokeLexer(curPos);
+      }
+
+      // Check for Subtree Reuse
+      let oldPos = frontierPos;
+      let oldSrcLexPos = srcLexPos;
+
+      if (frontierPos >= g_editNewEnd) {
+        oldPos = g_editOldEnd + (frontierPos - g_editNewEnd);
+      } else if (frontierPos >= g_editStart) {
+        oldPos = 0xffffffff;
+      }
+
+      if (srcLexPos >= g_editNewEnd) {
+        oldSrcLexPos = g_editOldEnd + (srcLexPos - g_editNewEnd);
+      } else if (srcLexPos >= g_editStart) {
+        oldSrcLexPos = 0xffffffff;
+      }
+
+      let headSym: u32 = 0xffffffff;
+      if (head != null && head.astNode != 0) headSym = getNodeType(head.astNode) as u32;
+
+      let reusedNode: u32 = 0;
+      let expectedPadding: u32 = srcLexPos > frontierPos ? srcLexPos - frontierPos : 0;
+      if (oldSrcLexPos != 0xffffffff) {
+        reusedNode = findReusableNode(
+          oldPos,
+          oldSrcLexPos,
+          head.state,
+          head.balanceHash & 0xff,
+          g_editStart,
+          g_editOldEnd,
+          headSym,
+          expectedPadding
+        );
+        if (reusedNode != 0) {
+          let freshReuse = deepCloneSubtree(reusedNode, 0);
+          if (freshReuse != 0) reusedNode = freshReuse;
+          setNodePadding(reusedNode, expectedPadding);
+        }
+      }
+
+      if (reusedNode != 0) {
+        let nodeSym = getNodeType(reusedNode) as i32;
+        let totalPadding = expectedPadding;
+
+        let nextState = -1;
+        let nodeType = getNodeType(reusedNode);
+        if ((head.state as i32) < goto_offsets.length) {
+          let gOffset = goto_offsets[head.state];
+          if (gOffset >= 0 && gOffset < goto_data.length) {
+            let gCount = goto_data[gOffset];
+            for (let gi = 0; gi < gCount; gi++) {
+              let gSym = goto_data[gOffset + 1 + gi * 2];
+              if (gSym == nodeType) {
+                nextState = goto_data[gOffset + 1 + gi * 2 + 1];
+                break;
+              }
+            }
+          }
         }
 
-      }
-      if (strictlyBetterExists) continue;
+        if (nextState != -1) {
+          let endPos = frontierPos + totalPadding + getNodeByteLength(reusedNode);
+          let nextTok = invokeLexer(endPos);
+          while (load<u8>(is_extra_token + nextTok) == 1) {
+            if (lexLen == 0) {
+              endPos += 1;
+              break;
+            }
+            let nextEndPos = endPos + lexLen;
+            endPos = nextEndPos > endPos ? nextEndPos : endPos + 1;
+            nextTok = invokeLexer(endPos);
+          }
+          let canAccept = stateCanAccept(head, nextState, nextTok, 0, 1);
+          if (canAccept == 0 && nextTok >= 0 && nextTok <= MAX_TERMINAL_ID) {
+            let checkTok = nextTok == TOKEN_EOF ? 0 : nextTok;
+            let dist = reachability_matrix[nextState * (MAX_TERMINAL_ID + 1) + checkTok];
+            if (dist < 250) {
+              canAccept = 1;
+            }
+          }
+          if (canAccept == 0) {
+            nextState = -1;
+          }
+        }
 
-      let errorType = 0; // SyntaxType.ERROR
+        if (nextState != -1) {
+          let clone = reusedNode;
+          setNodeFlags(clone, (getNodeFlags(reusedNode) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+          propagateFirstChildPadding(clone, totalPadding);
 
-      let count2 = action_data[actionOffset];
-      let idx2 = actionOffset + 1;
-      let reduced = false;
+          let newPos = frontierPos + totalPadding + getNodeByteLength(reusedNode);
 
-      // If we hallucinated a token that caused an error, the recovery path is dead.
-      // Do not attempt to recover from our own recoveries, as this causes infinite loops.
-      if (is_current_token_virtual) {
-         pruneGSS(pos);
-         continue;
-      }
-
-      if (g_simulatorMaxTokens > 0) {
-         pruneGSS(pos);
-         continue;
-      }
-
-      // --------------------------------------------------------------------
-      // ERROR RECOVERY: Forced Default Reduction
-      if (configEnableBranchC) {
-        reduced = processForcedReduction(head, actionOffset, count2, token);
-        if (reduced) {
-          pruneGSS(pos);
+          let nextHead = allocParseHead(
+            nextState,
+            clone,
+            head,
+            newPos,
+            currentScannerState,
+            head.errorCost,
+            head.successfulShifts + 1,
+            head.balanceHash,
+            0,
+            head.dynamicPrec,
+            0,
+            head.errorTail
+          );
+          pushNextHead(changetype<u32>(nextHead));
           continue;
         }
       }
 
-      // --------------------------------------------------------------------
-      // ERROR RECOVERY: Token Deletion / Insertion (via Unwind & Mutate)
-      // --------------------------------------------------------------------
-      // Clear expected tokens to allow the lexer to match any keyword or symbol
-      // during the lookahead simulation in recovery functions.
-      memory.fill(changetype<usize>(expected_tokens), 1, 2048);
-      let initialHeads = activeHeadsCount;
-      let recSuccess = recoverUnwindAndMutate(head, token, inputLength, bestAcceptedCost);
+      // Standard LR action loop: exact match -> wildcard fallback -> SHIFT/ACCEPT/REDUCE
+      let didAct = false;
+      let reductionGuard: u32 = 0;
 
-      if (configEnableIslandMode) {
-        recoverIslandMode(head, inputLength, bestAcceptedCost, initialHeads);
+      while (reductionGuard++ < 100 && !didAct) {
+        let actionOffset = action_offsets[head.state];
+        if (actionOffset < 0 || actionOffset >= action_data.length) break;
+
+        let actCount = action_data[actionOffset];
+        let idx = actionOffset + 1;
+        let foundTok = false;
+        let shiftTarget = -1;
+        let isAccept = false;
+        let reduceProd = -1;
+
+        // Pass 1: exact match for sym == tok
+        for (let a = 0; a < actCount; a++) {
+          let sym = action_data[idx++];
+          let numActions = action_data[idx++];
+          if (sym == tok) {
+            foundTok = true;
+            for (let na = 0; na < numActions; na++) {
+              let aType = action_data[idx++];
+              let aTarget = action_data[idx++];
+              if (aType == ACTION_SHIFT && shiftTarget == -1) shiftTarget = aTarget;
+              else if (aType == ACTION_ACCEPT) isAccept = true;
+              else if (aType == ACTION_REDUCE && reduceProd == -1) reduceProd = aTarget;
+            }
+          } else {
+            idx += numActions * 2;
+          }
+        }
+
+        // Pass 2: wildcard match sym == 0 if no exact match found
+        if (!foundTok) {
+          idx = actionOffset + 1;
+          for (let a = 0; a < actCount; a++) {
+            let sym = action_data[idx++];
+            let numActions = action_data[idx++];
+            if (sym == 0) {
+              for (let na = 0; na < numActions; na++) {
+                let aType = action_data[idx++];
+                let aTarget = action_data[idx++];
+                if (aType == ACTION_SHIFT && shiftTarget == -1) shiftTarget = aTarget;
+                else if (aType == ACTION_ACCEPT) isAccept = true;
+                else if (aType == ACTION_REDUCE && reduceProd == -1) reduceProd = aTarget;
+              }
+            } else {
+              idx += numActions * 2;
+            }
+          }
+        }
+
+        // Pass 3: Default reduction if state has only reductions and no shifts
+        if (shiftTarget == -1 && !isAccept && reduceProd == -1) {
+          let hasAnyShift = false;
+          let candidateReduce = -1;
+          idx = actionOffset + 1;
+          for (let a = 0; a < actCount; a++) {
+            let sym = action_data[idx++];
+            let numActions = action_data[idx++];
+            for (let na = 0; na < numActions; na++) {
+              let aType = action_data[idx++];
+              let aTarget = action_data[idx++];
+              if (aType == ACTION_SHIFT) hasAnyShift = true;
+              else if (aType == ACTION_REDUCE && candidateReduce == -1) candidateReduce = aTarget;
+            }
+          }
+          if (!hasAnyShift && candidateReduce != -1) {
+            reduceProd = candidateReduce;
+          }
+        }
+
+        if (isAccept) {
+          processAcceptAction(head);
+          didAct = true;
+          break;
+        }
+        if (shiftTarget != -1) {
+          processShiftAction(head, shiftTarget, tok, frontierPos, false, false);
+          didAct = true;
+          break;
+        }
+        if (reduceProd != -1) {
+          if (head.state == 0 && prod_lengths[reduceProd] == 0 && tok != TOKEN_EOF) {
+            break;
+          }
+          let reducedHead = processReduceAction(head, reduceProd, frontierPos);
+          if (reducedHead != null) {
+            head = reducedHead;
+            continue;
+          }
+        }
+        break;
       }
 
-      // Restore expected_tokens after recovery — the recovery functions call
-      // expected_tokens.fill(1) for unrestricted lexing during lookahead, but
-      // the main parse loop needs the correct filtered set.
-      updateExpectedTokens();
-
-      // GSS PRUNING AND COMBINATORIAL EXPLOSION PREVENTION
-      pruneGSS(pos);
+      if (!didAct) {
+        if (tok != TOKEN_EOF) {
+          let recovered = recoverMissingToken(head, tok, frontierPos);
+          if (!recovered && head.errorCost < 500) {
+            recovered = recoverStackSummary(head, tok, frontierPos);
+          }
+          if (!recovered) {
+            recoverSkipToken(head, tok, frontierPos);
+          }
+        }
+      }
     }
-  }
-  
-  
 
+    // 3. Condense and prune next heads
+    if (nextHeadsCount > MAX_PARALLEL_HEADS) {
+      for (let i: u32 = 0; i < nextHeadsCount - 1; i++) {
+        let bestIdx = i;
+        let hi = changetype<ParseHead>(t_nextHeads[i]);
+        let bestCost = hi.errorCost > (hi.successfulShifts * 15) ? hi.errorCost - (hi.successfulShifts * 15) : 0;
+        let bestPrec = hi.dynamicPrec;
+        for (let j: u32 = i + 1; j < nextHeadsCount; j++) {
+          let hj = changetype<ParseHead>(t_nextHeads[j]);
+          let hjCost = hj.errorCost > (hj.successfulShifts * 15) ? hj.errorCost - (hj.successfulShifts * 15) : 0;
+          if (hjCost < bestCost || (hjCost == bestCost && hj.dynamicPrec > bestPrec)) {
+            bestIdx = j;
+            bestCost = hjCost;
+            bestPrec = hj.dynamicPrec;
+          }
+        }
+        if (bestIdx != i) {
+          let tmp = t_nextHeads[i];
+          t_nextHeads[i] = t_nextHeads[bestIdx];
+          t_nextHeads[bestIdx] = tmp;
+        }
+      }
+      nextHeadsCount = MAX_PARALLEL_HEADS;
+    }
+
+    // 4. Swap buffers and advance
+    swapActiveAndNextHeads();
+  }
 }
 
 /**
@@ -3441,6 +3053,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
   g_editNewEnd = editNewEnd;
   globalIsCatastrophic = false;
   globalSearchIterations = 0;
+  debugLog(9001, oldTree, editStart, editOldEnd);
 
   if (changetype<usize>(t_activeHeads) == 0) {
     initGSS();
@@ -3492,13 +3105,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     tokenBufferLastPos = 0;
     errorCount = 0;
 
-
-
     initGlobalCursor(oldTree);
 
     currentParserMode = MODE_LR;
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
+      debugLog(9002, editNewEnd, accepted, currentParserMode);
       return accepted;
     }
   }
@@ -3525,12 +3137,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let bah = changetype<ParseHead>(bestAcceptingHead);
       commitDiagnostics(bah.errorTail);
     }
-      acceptedNode = injectStrandedNodes(acceptedNode, bestAcceptingHead);
       sanitizeTree(acceptedNode);
       let acceptedPos: u32 = bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).pos : 0;
       let finalTree = wrapWithTrailingErrors(acceptedNode, acceptedPos);
       fixNodeLengthRecursive(finalTree);
       globalAstRoot = finalTree;
+      debugLog(9003, finalTree, bestAcceptedCost, errorCount);
       return finalTree;
   }
   if (bestDyingHead != 0) {
@@ -3590,7 +3202,10 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         if (tok == TOKEN_EOF) break;
         let pad = srcLexPos > p ? srcLexPos - p : 0;
         let tLen = lexLen;
-        if (tLen == 0) break; // prevent infinite loop
+        if (tLen == 0) {
+          p += 1;
+          continue;
+        }
 
         let tNode = allocNode(((tok == TOKEN_UNKNOWN ? NODE_TYPE_ERROR : tok) | 0x8000) as u16, lastTokNode == 0 ? 0 : pad, tLen, 0, false);
         setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
@@ -3601,7 +3216,8 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
         }
         lastTokNode = tNode;
 
-        p = srcLexPos + tLen;
+        let nextP = srcLexPos + tLen;
+        p = nextP > p ? nextP : p + 1;
       }
 
       totalBytes += remainingLen + missingPadding;
@@ -3647,8 +3263,12 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       lastChild = clone;
     }
 
+    globalAstRoot = root;
+    debugLog(9003, root, 999999, errorCount);
     return root;
   }
+  globalAstRoot = 0;
+  debugLog(9003, 0, 999999, errorCount);
   return 0;
 }
 function clearSubtreeErrorFlags(nodePtr: u32): void {

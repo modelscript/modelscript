@@ -281,20 +281,10 @@ export function generateParserTables(
         cleanSym !== "," &&
         cleanSym !== ":");
 
-    if (isStructuralDelimiter) {
-      tokenInsertCosts[symId] = 50; // Structural block delimiters ({, }, (, ), [, ]) are expensive to insert to prevent premature block escape/closure
-    } else if (sym.startsWith('"')) {
-      if (isOperator || isWord) {
-        tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators, keywords, and types
-      } else if (structuralSeparators.has(sym) || cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
-        tokenInsertCosts[symId] = 1; // Low cost for structural punctuation and list separators ; , :
-      } else {
-        tokenInsertCosts[symId] = 4;
-      }
-    } else if (sym.startsWith("/")) {
-      tokenInsertCosts[symId] = 50; // Data-bearing regex terminals (identifiers, numbers, strings) have restricted insertion cost
+    if (cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
+      tokenInsertCosts[symId] = 1; // Low cost strictly for structural punctuation and list separators ; , :
     } else {
-      tokenInsertCosts[symId] = 4;
+      tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators (=, +, -, etc.), keywords, types, block delimiters, and data terminals
     }
   }
   code += generateStaticArray(tokenInsertCosts, "token_insert_costs");

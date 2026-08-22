@@ -1770,7 +1770,7 @@ const requirementUsageLintsEnhanced = {
   ...requirementStructuralLints,
 };
 
-import { TableauReasoner } from "@modelscript/reasoner";
+import { TableauReasoner } from "@modelscript/language";
 
 // ---------------------------------------------------------------------------
 // Package-level traceability queries
@@ -1837,13 +1837,18 @@ const traceabilityQueries = {
       rootId = curr.parentId;
       curr = db.symbol(curr.parentId)!;
     }
-    const taxonomy = db.query("inferredTaxonomy", rootId) as Map<string, any>;
+    const taxonomy = db.query("inferredTaxonomy", rootId) as any;
     const iri = `sysml:${self.name || `anon_${self.id}`}`;
-    const node = taxonomy.get(iri);
+    const node = Array.isArray(taxonomy)
+      ? taxonomy.find((n: any) => n.iri === iri)
+      : taxonomy?.get
+        ? taxonomy.get(iri)
+        : undefined;
     if (!node) return [];
 
     // Convert IRI back to SysML names by stripping "sysml:"
-    return Array.from<string>(node.allSuperClasses || [])
+    const supers = node.directSuperClasses || node.allSuperClasses || [];
+    return Array.from<string>(supers)
       .filter((superIri: string) => superIri !== "owl:Thing" && superIri !== iri)
       .map((superIri: string) => superIri.replace("sysml:", ""));
   },

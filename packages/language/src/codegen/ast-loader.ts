@@ -96,6 +96,19 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
           namedImports.set(localName, { moduleSpecifier, importedName });
         }
       }
+    } else if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
+      for (const spec of node.exportClause.elements) {
+        const localName = spec.propertyName ? spec.propertyName.text : spec.name.text;
+        const exportedName = spec.name.text;
+        const cls = topLevelClasses.get(localName);
+        if (cls) {
+          result.classes.set(exportedName, cls);
+        }
+        const fn = topLevelFunctions.get(localName);
+        if (fn) {
+          result.functions.set(exportedName, fn);
+        }
+      }
     }
   });
 

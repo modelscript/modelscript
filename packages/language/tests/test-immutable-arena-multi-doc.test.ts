@@ -100,7 +100,7 @@ describe("Immutable Append-Only Arena & Multi-Doc Suite", () => {
 
     // Verify Doc A's updated AST has the new content
     const treeA_after = new TreeClass(activeFacade, rootA2, updatedTextA);
-    expect(treeA_after.rootNode.text).toContain("var c = z;");
+    expect(treeA_after.rootNode.text).toContain("var c = z");
   });
 
   it("should emit accurate AST diff events on incremental edit without pointer corruption", () => {

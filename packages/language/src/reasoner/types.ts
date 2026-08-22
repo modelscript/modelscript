@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Reasoner Interface
+ * Reasoner Interface & Types
  *
- * Abstract interface for OWL2 DL reasoners. Implementations include:
- * - `TableauReasoner` — Pure-TypeScript tableau-based reasoner (built-in)
- * - `FaCTPPReasoner`  — FaCT++ WASM backend (optional, requires `.wasm` binary)
- *
- * The interface is designed around the engineering-domain use cases of
- * ModelScript rather than full OWL2 DL compliance. It focuses on:
- * - Subsumption checking (is Motor a subclass of ElectricalDevice?)
- * - Consistency checking (do constraints conflict?)
- * - Instance classification (which classes does this component belong to?)
- * - Transitive property queries (fault propagation chains)
+ * Abstract types and interfaces for OWL2 DL reasoners and SPARQL-DL queries.
  */
 
 import type { OWL2Axiom, OWL2AxiomDelta } from "@modelscript/compiler";
@@ -39,8 +30,10 @@ export interface SubsumptionResult {
 /** Result of a consistency check. */
 export interface ConsistencyResult {
   readonly isConsistent: boolean;
-  /** If inconsistent, the minimal set of conflicting axioms. */
+  /** If inconsistent, the set of conflicting axioms. */
   readonly conflictingAxioms?: readonly OWL2Axiom[] | undefined;
+  /** If computed, the minimal unsatisfiable subset (MUS) / minimal conflict core via QuickXplain. */
+  readonly minimalConflictCore?: readonly OWL2Axiom[] | undefined;
   /** Human-readable explanation. */
   readonly explanation?: string | undefined;
 }
@@ -71,10 +64,12 @@ export interface PropertyChainResult {
 }
 
 // ---------------------------------------------------------------------------
-// SPARQL-DL Query
+// SPARQL-DL & Property Path Queries
 // ---------------------------------------------------------------------------
 
-/** A simplified SPARQL-DL query for engineering use cases. */
+export type PropertyPathOp = "direct" | "plus" | "star" | "inverse" | "inverse-plus" | "sequence" | "alternation";
+
+/** A simplified SPARQL-DL or Property Path query. */
 export interface DLQuery {
   /** The query type. */
   readonly type:
@@ -84,11 +79,35 @@ export interface DLQuery {
     | "equivalents" // C ≡ ?x — find all equivalent classes
     | "disjoint" // C ⊓ ?x ⊑ ⊥ — find all disjoint classes
     | "property-values" // C(?x, ?y) — find all (subject, object) pairs for property
-    | "reachable"; // C*(?x, ?y) — transitive closure of property
-  /** The class or property IRI to query against. */
+    | "reachable" // C*(?x, ?y) — transitive closure of property
+    | "path"; // SPARQL 1.1 Property Path (+, *, ^, /, |)
+  /** The class or property IRI to query against, or raw path expression. */
   readonly iri: string;
-  /** For reachable queries: the starting individual IRI. */
+  /** For reachable/path queries: the starting individual IRI. */
   readonly fromIri?: string | undefined;
+  /** Property path operator if parsed. */
+  readonly pathOp?: PropertyPathOp | undefined;
+  /** Second property IRI for sequence (/) or alternation (|). */
+  readonly stepPropertyIri2?: string | undefined;
+}
+
+/** A single triple pattern for conjunctive / BGP queries. */
+export interface TriplePattern {
+  readonly subject: string;
+  readonly predicate: string;
+  readonly object: string;
+}
+
+/** Basic Graph Pattern (BGP) query with multiple join variables. */
+export interface BgpQuery {
+  readonly patterns: readonly TriplePattern[];
+}
+
+/** Result of a BGP query. */
+export interface BgpQueryResult {
+  readonly variables: readonly string[];
+  readonly bindings: readonly Record<string, string>[];
+  readonly executionTimeMs: number;
 }
 
 /** Result of a DL query. */
@@ -143,6 +162,12 @@ export interface IOWLReasoner {
   /** Check if the current ontology is consistent. */
   checkConsistency(): ConsistencyResult;
 
+  /**
+   * Fast conflict pinpointing via Junker's QuickXplain algorithm.
+   * Finds the minimal conflict core in O(k log (N/k)) tests.
+   */
+  quickXplain(backgroundAxioms?: readonly OWL2Axiom[]): readonly OWL2Axiom[];
+
   /** Get the inferred taxonomy (class hierarchy). */
   getTaxonomy(): TaxonomyNode[];
 
@@ -155,8 +180,21 @@ export interface IOWLReasoner {
    */
   getTransitiveClosure(propertyIri: string, fromIri: string): PropertyChainResult;
 
+  /**
+   * Evaluates a SPARQL 1.1 Property Path (+, *, ^, /, |).
+   */
+  evaluatePropertyPath(
+    propertyIri: string,
+    pathOp: PropertyPathOp,
+    fromIri: string,
+    stepPropertyIri2?: string,
+  ): readonly string[];
+
   /** Execute a DL query. */
   query(q: DLQuery): DLQueryResult;
+
+  /** Execute a multi-pattern BGP query using Leapfrog Triejoin (WCOJ). */
+  queryBgp?(query: BgpQuery): BgpQueryResult;
 
   // -- Justification --
 
@@ -166,3 +204,16 @@ export interface IOWLReasoner {
    */
   explain(subClassIri: string, superClassIri: string): readonly OWL2Axiom[];
 }
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+export type OntologyEvent =
+  | { type: "status-changed"; status: ReasonerStatus }
+  | { type: "classified"; axiomCount: number; timeMs: number }
+  | { type: "consistency-result"; result: ConsistencyResult }
+  | { type: "delta-applied"; delta: OWL2AxiomDelta }
+  | { type: "error"; error: Error };
+
+export type OntologyEventListener = (event: OntologyEvent) => void;

@@ -3,14 +3,8 @@
 /**
  * SPARQL-DL Query Engine
  *
- * Provides a simple query DSL for engineering-domain ontology queries
- * executed against the IOWLReasoner. This is NOT a full SPARQL engine —
- * it covers the subset of SPARQL-DL patterns needed for ModelScript:
- *
- * - Instance retrieval: "which components are of type ElectricalDevice?"
- * - Subsumption queries: "what is the domain hierarchy of this connector?"
- * - Property queries: "what is connected to componentA?"
- * - Reachability: "trace fault propagation from sensorX"
+ * Provides a query DSL for engineering-domain ontology queries
+ * executed against an IOWLReasoner.
  *
  * ## Query Syntax (string-based)
  *
@@ -25,7 +19,81 @@
  * ```
  */
 
-import type { DLQuery, DLQueryResult, IOWLReasoner } from "./reasoner.js";
+import type { BgpQuery, BgpQueryResult, DLQuery, DLQueryResult, IOWLReasoner, PropertyPathOp } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// Property Path Parser
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses a SPARQL 1.1 property path string expression into an operator and components.
+ * Supports: `prop+`, `prop*`, `^prop`, `^prop+`, `prop1 / prop2`, `prop1 | prop2`.
+ */
+export function parsePropertyPathExpression(expr: string): {
+  iri: string;
+  pathOp: PropertyPathOp;
+  stepPropertyIri2?: string;
+} {
+  const trimmed = expr.trim();
+
+  // Sequence: prop1 / prop2
+  if (trimmed.includes("/")) {
+    const parts = trimmed.split("/").map((s) => s.trim());
+    return {
+      iri: parts[0] || trimmed,
+      pathOp: "sequence",
+      stepPropertyIri2: parts[1] || "",
+    };
+  }
+
+  // Alternation: prop1 | prop2
+  if (trimmed.includes("|")) {
+    const parts = trimmed.split("|").map((s) => s.trim());
+    return {
+      iri: parts[0] || trimmed,
+      pathOp: "alternation",
+      stepPropertyIri2: parts[1] || "",
+    };
+  }
+
+  // Inverse plus: ^prop+
+  if (trimmed.startsWith("^") && trimmed.endsWith("+")) {
+    return {
+      iri: trimmed.slice(1, -1).trim(),
+      pathOp: "inverse-plus",
+    };
+  }
+
+  // Inverse: ^prop
+  if (trimmed.startsWith("^")) {
+    return {
+      iri: trimmed.slice(1).trim(),
+      pathOp: "inverse",
+    };
+  }
+
+  // Plus: prop+
+  if (trimmed.endsWith("+")) {
+    return {
+      iri: trimmed.slice(0, -1).trim(),
+      pathOp: "plus",
+    };
+  }
+
+  // Star: prop*
+  if (trimmed.endsWith("*")) {
+    return {
+      iri: trimmed.slice(0, -1).trim(),
+      pathOp: "star",
+    };
+  }
+
+  // Direct: prop
+  return {
+    iri: trimmed,
+    pathOp: "direct",
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Query Parser
@@ -42,11 +110,11 @@ import type { DLQuery, DLQueryResult, IOWLReasoner } from "./reasoner.js";
  * - `disjoint(<iri>)`
  * - `property-values(<iri>)`
  * - `reachable(<propertyIri>, <fromIri>)`
+ * - `path(<pathExpression>, <fromIri>)`
  */
 export function parseDLQuery(queryString: string): DLQuery | null {
   const trimmed = queryString.trim();
 
-  // Match pattern: type(iri) or type(iri, fromIri)
   const match = trimmed.match(/^(\w[\w-]*)\(([^)]+)\)$/);
   if (!match) return null;
 
@@ -63,20 +131,31 @@ export function parseDLQuery(queryString: string): DLQuery | null {
     "disjoint",
     "property-values",
     "reachable",
+    "path",
   ];
 
   if (!validTypes.includes(type)) return null;
 
+  if (type === "path") {
+    const rawPath = args[0];
+    if (!rawPath) return null;
+    const fromIri = args[1];
+    const parsed = parsePropertyPathExpression(rawPath);
+    return {
+      type: "path",
+      iri: parsed.iri,
+      pathOp: parsed.pathOp,
+      stepPropertyIri2: parsed.stepPropertyIri2,
+      fromIri,
+    };
+  }
+
   const iri = args[0];
   if (!iri) return null;
-  const fromIri = args[1]; // Only for "reachable" queries
+  const fromIri = args[1];
 
   return { type, iri, fromIri };
 }
-
-// ---------------------------------------------------------------------------
-// Query Executor
-// ---------------------------------------------------------------------------
 
 /**
  * Execute a parsed DL query against a reasoner instance.
@@ -95,13 +174,26 @@ export function executeQueryString(reasoner: IOWLReasoner, queryString: string):
   return executeDLQuery(reasoner, query);
 }
 
+/**
+ * Execute a Basic Graph Pattern (BGP) query using Leapfrog Triejoin (WCOJ).
+ */
+export function executeBgpQuery(reasoner: IOWLReasoner, query: BgpQuery): BgpQueryResult {
+  if (reasoner.queryBgp) {
+    return reasoner.queryBgp(query);
+  }
+  return {
+    variables: [],
+    bindings: [],
+    executionTimeMs: 0,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Batch Query Support
 // ---------------------------------------------------------------------------
 
 /**
  * Execute multiple queries and return all results.
- * Useful for MCP tool implementations that need multiple query results.
  */
 export function executeBatchQueries(reasoner: IOWLReasoner, queries: readonly DLQuery[]): DLQueryResult[] {
   return queries.map((q) => executeDLQuery(reasoner, q));
@@ -113,7 +205,6 @@ export function executeBatchQueries(reasoner: IOWLReasoner, queries: readonly DL
 
 /**
  * Format a DL query result as a human-readable string.
- * Used for CLI output and MCP tool responses.
  */
 export function formatQueryResult(result: DLQueryResult): string {
   const lines: string[] = [];
@@ -135,6 +226,27 @@ export function formatQueryResult(result: DLQueryResult): string {
     lines.push("Pairs:");
     for (const pair of result.pairs) {
       lines.push(`  ${pair.subject} → ${pair.object}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format a BGP query result as a human-readable table string.
+ */
+export function formatBgpQueryResult(result: BgpQueryResult): string {
+  const lines: string[] = [];
+  lines.push(`BGP Query Results: ${result.bindings.length} row(s) in ${result.executionTimeMs.toFixed(2)}ms`);
+  lines.push(`Variables: ${result.variables.join(", ")}`);
+
+  if (result.bindings.length > 0) {
+    lines.push("");
+    for (const row of result.bindings) {
+      const entries = Object.entries(row)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      lines.push(`  { ${entries} }`);
     }
   }
 

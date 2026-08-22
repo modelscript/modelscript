@@ -868,6 +868,19 @@ export function transpileClass(
         return ts.factory.createBinaryExpression(targetObj, ts.SyntaxKind.EqualsEqualsToken, arg);
       }
 
+      // 4. Optional property access a?.b -> a.b
+      if (ts.isPropertyAccessChain(node)) {
+        const obj = visitNode(node.expression) as ts.Expression;
+        return ts.factory.createPropertyAccessExpression(obj, node.name);
+      }
+
+      // 5. Optional call a?.(...) -> a(...)
+      if (ts.isCallChain(node)) {
+        const expr = visitNode(node.expression) as ts.Expression;
+        const args = node.arguments.map((arg) => visitNode(arg) as ts.Expression);
+        return ts.factory.createCallExpression(expr, undefined, args);
+      }
+
       return ts.visitEachChild(node, visit, transformerContext);
     };
 

@@ -462,44 +462,20 @@ export class LspFacade {
       clearTimeout(this._idleTimer);
       this._idleTimer = null;
     }
-
-    if (immediate) {
-      this.gcCompact();
-      return;
-    }
-
-    this._idleTimer = setTimeout(() => {
-      this._idleTimer = null;
-      this.gcCompact();
-    }, 1500);
   }
 
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
   public checkMemoryQuota(): void {
-    if (this.exports.arena_getMemoryUsage) {
-      const memUsage = this.exports.arena_getMemoryUsage();
-      if (memUsage > this._maxMemoryQuotaBytes) {
-        this.gcCompact();
-      }
-    }
+    // In immutable append-only arena, memory is reset on generation boundaries (didOpen/didClose/config)
   }
 
   /**
-   * Performs generational mark-sweep compaction protecting all live document roots.
+   * Performs compaction protecting all live document roots if requested.
    */
   public gcCompact(): void {
-    if (!this.exports.clearAstMarks) return;
-    const allRoots = this.getAllDocumentRoots();
-    for (const root of allRoots) {
-      if (this.exports.registerRoot) {
-        this.exports.registerRoot(root);
-      }
-    }
-    if (allRoots.length > 0) {
-      this.exports.clearAstMarks(allRoots[0]);
-    }
+    // No-op during active editing sessions to preserve append-only immutability
   }
 
   /** Resets the internal parser state and clears all cached data. */
@@ -639,6 +615,11 @@ export class LspFacade {
     if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(lenBytes);
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
+    const preview = changeText.length > 30 ? changeText.substring(0, 30) + "..." : changeText;
+    console.log(
+      `[Bindings] parseIncremental START: changeText="${preview.replace(/\n/g, "\\n")}" (len ${changeText.length}), offset=${rangeOffset}, rangeLen=${rangeLength}, newTotalLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
+    );
+
     let editStart = rangeOffset * 2;
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
@@ -654,6 +635,9 @@ export class LspFacade {
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     let newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    console.log(
+      `[Bindings] parseIncremental WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
+    );
 
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
@@ -661,14 +645,12 @@ export class LspFacade {
       }
     }
     const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (_t2 - _t0 > 50) {
-      console.log(
-        `[parseIncremental] WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
-      );
-    }
+    console.log(
+      `[Bindings] parseIncremental diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
+    );
 
     const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
-    if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
+    if (isCatastrophic) {
       this.lastAstRoot = 0;
       if (uri) this.setDocumentRoot(uri, 0);
     } else {
@@ -772,22 +754,26 @@ export class LspFacade {
       memArray16.set(oldSnapshot.subarray(0, safeCopyLen));
     }
 
-    // Sort edits in descending order of rangeOffset so that applying each edit does not invalidate the offsets of subsequent edits
-    const sortedEdits = [...edits].sort((a, b) => b.rangeOffset - a.rangeOffset);
-    let runningTotalLength = oldTotalLength;
-    for (const edit of sortedEdits) {
+    console.log(
+      `[Bindings] parseIncrementalBatch START: ${edits.length} edits, netDelta=${netDelta}, oldLen=${oldTotalLength}, newLen=${newTotalLength}, prevRoot=${prevAstRoot}`,
+    );
+    let currentLen = oldTotalLength;
+    for (const edit of edits) {
       if (edit.text.length !== edit.rangeLength) {
         const sourceIndex = edit.rangeOffset + edit.rangeLength;
         const targetIndex = edit.rangeOffset + edit.text.length;
-        const count = runningTotalLength - sourceIndex;
+        const count = currentLen - sourceIndex;
         if (count > 0) {
           memArray16.copyWithin(targetIndex, sourceIndex, sourceIndex + count);
         }
-        runningTotalLength = runningTotalLength - edit.rangeLength + edit.text.length;
       }
       for (let i = 0; i < edit.text.length; i++) {
         memArray16[edit.rangeOffset + i] = edit.text.charCodeAt(i);
       }
+      currentLen = currentLen - edit.rangeLength + edit.text.length;
+    }
+    if (newTotalLength < maxLen) {
+      memArray16.fill(0, newTotalLength, maxLen);
     }
     this._cachedLineStarts = null;
 
@@ -815,6 +801,9 @@ export class LspFacade {
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     const newAstRoot = this.exports.parse(baseRoot, editStartByte, editOldEndByte, editNewEndByte);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    console.log(
+      `[Bindings] parseIncrementalBatch WASM parse finished in ${Math.round(_t1 - _t0)}ms -> newAstRoot=${newAstRoot}`,
+    );
 
     if (this.astListeners && this.astListeners.length > 0) {
       for (const listener of this.astListeners) {
@@ -822,15 +811,12 @@ export class LspFacade {
       }
     }
     const _t2 = typeof performance !== "undefined" ? performance.now() : Date.now();
-
-    if (_t2 - _t0 > 50) {
-      console.log(
-        `[parseIncrementalBatch] Batched ${edits.length} edits. WASM parse: ${Math.round(_t1 - _t0)}ms | JS AST diff: ${Math.round(_t2 - _t1)}ms`,
-      );
-    }
+    console.log(
+      `[Bindings] parseIncrementalBatch diff finished in ${Math.round(_t2 - _t1)}ms (total ${Math.round(_t2 - _t0)}ms)`,
+    );
 
     const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
-    if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
+    if (isCatastrophic) {
       this.lastAstRoot = 0;
       if (uri) this.setDocumentRoot(uri, 0);
     } else {
@@ -1080,46 +1066,48 @@ export class LspFacade {
       stackOffsets[0] = getNodePad(astRoot);
       stackTop = 1;
 
-      while (stackTop > 0) {
+      let iterations = 0;
+      while (stackTop > 0 && ++iterations < 100000) {
         stackTop--;
         const current = stackPtrs[stackTop];
         const nodeStart = stackOffsets[stackTop];
         if (requiredNodePtrs.has(current)) {
           offsetCache.set(current, nodeStart);
           requiredNodePtrs.delete(current);
+          if (requiredNodePtrs.size === 0) break;
         }
 
         const child = memory[(current + 12) / 4];
         if (child !== 0) {
           let childCount = 0;
           let c = child;
-          while (c !== 0) {
+          while (c !== 0 && childCount < 5000) {
             childCount++;
             c = memory[(c + 16) / 4];
           }
 
-          let currOffset = nodeStart;
-          let consumedInParent = 0;
-          let idx = 0;
-          c = child;
-          while (c !== 0) {
-            const cPad = getNodePad(c);
-            const cLen = getNodeLen(c);
-            if (idx > 0) {
-              currOffset += cPad;
-            }
-            const childStart = currOffset;
-            const slot = stackTop + (childCount - 1 - idx);
-            if (slot >= 0 && slot < 50000) {
+          if (stackTop + childCount < 50000) {
+            let currOffset = nodeStart;
+            let consumedInParent = 0;
+            let idx = 0;
+            c = child;
+            while (c !== 0 && idx < childCount) {
+              const cPad = getNodePad(c);
+              const cLen = getNodeLen(c);
+              if (idx > 0) {
+                currOffset += cPad;
+              }
+              const childStart = currOffset;
+              const slot = stackTop + (childCount - 1 - idx);
               stackPtrs[slot] = c;
               stackOffsets[slot] = childStart;
+              currOffset = childStart + cLen;
+              consumedInParent += cLen;
+              idx++;
+              c = memory[(c + 16) / 4];
             }
-            currOffset = childStart + cLen;
-            consumedInParent += cLen;
-            idx++;
-            c = memory[(c + 16) / 4];
+            stackTop += childCount;
           }
-          stackTop += childCount;
         }
       }
     }
@@ -1350,8 +1338,9 @@ export class LspFacade {
         const isOverlapping =
           (prev.endCharOffset !== undefined &&
             d.startCharOffset !== undefined &&
-            d.startCharOffset <= prev.endCharOffset) ||
-          (isStartSameLine && prev.range.end.character >= d.range.start.character) ||
+            (d.startCharOffset <= prev.endCharOffset ||
+              (isStartSameLine && d.startCharOffset <= prev.endCharOffset + 1))) ||
+          (isStartSameLine && prev.range.end.character + 1 >= d.range.start.character) ||
           (prev.range.start.line <= d.range.start.line && prev.range.end.line >= d.range.start.line);
 
         if (isOverlapping && prev.code === undefined && d.code === undefined) {
@@ -2191,6 +2180,230 @@ export class LspFacade {
     return results;
   }
 
+  /** Computes the transitive closure with traversal path edges. */
+  getTransitiveClosureWithPath(
+    property: string,
+    source: string,
+  ): { reachable: number[]; path: { subject: number; object: number }[] } {
+    if (!this.exports.ontology_getTransitiveClosureWithPath || !this.exports.ontology_getQueryBuffer) {
+      return { reachable: [], path: [] };
+    }
+    const pHash = property ? this.hashString(property) : 0xffffffff;
+    const sHash = this.hashString(source);
+    const count = this.exports.ontology_getTransitiveClosureWithPath(pHash, sHash);
+    if (count === 0) return { reachable: [], path: [] };
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let offset = dirPtr >>> 2;
+
+    const reachableCount = mem32[offset++];
+    const reachable: number[] = [];
+    for (let i = 0; i < reachableCount; i++) {
+      reachable.push(mem32[offset++]);
+    }
+
+    const edgeCount = mem32[offset++];
+    const path: { subject: number; object: number }[] = [];
+    for (let i = 0; i < edgeCount; i++) {
+      const s = mem32[offset++];
+      const o = mem32[offset++];
+      path.push({ subject: s, object: o });
+    }
+
+    return { reachable, path };
+  }
+
+  /** Explains why a subsumption holds by returning the chain of justifying axioms. */
+  explainSubsumption(
+    subClass: string,
+    superClass: string,
+  ): {
+    axiomType: number;
+    sourceLangId: number;
+    subjectHash: number;
+    predicateHash: number;
+    objectHash: number;
+    flags: number;
+  }[] {
+    if (!this.exports.ontology_explainSubsumption || !this.exports.ontology_getQueryBuffer) return [];
+    const subHash = this.hashString(subClass);
+    const superHash = this.hashString(superClass);
+    const count = this.exports.ontology_explainSubsumption(subHash, superHash);
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const stride = 6;
+    const results = [];
+
+    for (let i = 0; i < count * stride; i += stride) {
+      const typeAndLang = mem32[(dirPtr >>> 2) + i + 0];
+      results.push({
+        axiomType: typeAndLang & 0xffff,
+        sourceLangId: (typeAndLang >>> 16) & 0xffff,
+        subjectHash: mem32[(dirPtr >>> 2) + i + 1],
+        predicateHash: mem32[(dirPtr >>> 2) + i + 2],
+        objectHash: mem32[(dirPtr >>> 2) + i + 3],
+        flags: mem32[(dirPtr >>> 2) + i + 4],
+      });
+    }
+
+    return results;
+  }
+
+  /** Audits global ontology consistency, returning conflicting axioms if inconsistent. */
+  checkConsistency(): {
+    isConsistent: boolean;
+    conflictingAxioms: {
+      axiomType: number;
+      sourceLangId: number;
+      subjectHash: number;
+      predicateHash: number;
+      objectHash: number;
+      flags: number;
+    }[];
+    explanation?: string;
+  } {
+    if (!this.exports.ontology_checkConsistency || !this.exports.ontology_getQueryBuffer) {
+      return { isConsistent: true, conflictingAxioms: [] };
+    }
+    const count = this.exports.ontology_checkConsistency();
+    if (count === 0) return { isConsistent: true, conflictingAxioms: [] };
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const stride = 6;
+    const conflictingAxioms = [];
+
+    for (let i = 0; i < count * stride; i += stride) {
+      const typeAndLang = mem32[(dirPtr >>> 2) + i + 0];
+      conflictingAxioms.push({
+        axiomType: typeAndLang & 0xffff,
+        sourceLangId: (typeAndLang >>> 16) & 0xffff,
+        subjectHash: mem32[(dirPtr >>> 2) + i + 1],
+        predicateHash: mem32[(dirPtr >>> 2) + i + 2],
+        objectHash: mem32[(dirPtr >>> 2) + i + 3],
+        flags: mem32[(dirPtr >>> 2) + i + 4],
+      });
+    }
+
+    return {
+      isConsistent: false,
+      conflictingAxioms,
+      explanation: `Found ${conflictingAxioms.length} disjointness violation(s) in the ontology.`,
+    };
+  }
+
+  /** Classifies an individual, returning direct types and all transitive types. */
+  classifyIndividual(individual: string): { directTypes: number[]; allTypes: number[] } {
+    if (!this.exports.ontology_classifyIndividual || !this.exports.ontology_getQueryBuffer) {
+      return { directTypes: [], allTypes: [] };
+    }
+    const indHash = this.hashString(individual);
+    const wordCount = this.exports.ontology_classifyIndividual(indHash);
+    if (wordCount === 0) return { directTypes: [], allTypes: [] };
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let offset = dirPtr >>> 2;
+
+    const directCount = mem32[offset++];
+    const directTypes: number[] = [];
+    for (let i = 0; i < directCount; i++) {
+      directTypes.push(mem32[offset++]);
+    }
+
+    const allCount = mem32[offset++];
+    const allTypes: number[] = [];
+    for (let i = 0; i < allCount; i++) {
+      allTypes.push(mem32[offset++]);
+    }
+
+    return { directTypes, allTypes };
+  }
+
+  /** Returns all taxonomy nodes from the ontology. */
+  getTaxonomy(): {
+    classHash: number;
+    directSuperClasses: number[];
+    directSubClasses: number[];
+    equivalentClasses: number[];
+  }[] {
+    if (!this.exports.ontology_getTaxonomy || !this.exports.ontology_getQueryBuffer) return [];
+    const classCount = this.exports.ontology_getTaxonomy();
+    if (classCount === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    let offset = dirPtr >>> 2;
+
+    const totalClasses = mem32[offset++];
+    const nodes = [];
+
+    for (let c = 0; c < totalClasses; c++) {
+      const classHash = mem32[offset++];
+
+      const superCount = mem32[offset++];
+      const directSuperClasses: number[] = [];
+      for (let s = 0; s < superCount; s++) directSuperClasses.push(mem32[offset++]);
+
+      const subCount = mem32[offset++];
+      const directSubClasses: number[] = [];
+      for (let s = 0; s < subCount; s++) directSubClasses.push(mem32[offset++]);
+
+      const equivCount = mem32[offset++];
+      const equivalentClasses: number[] = [];
+      for (let e = 0; e < equivCount; e++) equivalentClasses.push(mem32[offset++]);
+
+      nodes.push({
+        classHash,
+        directSuperClasses,
+        directSubClasses,
+        equivalentClasses,
+      });
+    }
+
+    return nodes;
+  }
+
+  computeOntologyIntervalIndex(): void {
+    if (this.exports.ontology_computeIntervalIndex) {
+      this.exports.ontology_computeIntervalIndex();
+    }
+  }
+
+  evaluateOntologyPropertyPath(
+    propertyName: string,
+    pathOp: number,
+    stepPropertyName2: string,
+    sourceName: string,
+  ): number[] {
+    if (!this.exports.ontology_evaluatePropertyPath || !this.exports.ontology_getQueryBuffer) return [];
+    const pHash = propertyName ? this.hashString(propertyName) : 0;
+    const p2Hash = stepPropertyName2 ? this.hashString(stepPropertyName2) : 0;
+    const sHash = sourceName ? this.hashString(sourceName) : 0;
+
+    const count = this.exports.ontology_evaluatePropertyPath(pHash, pathOp, p2Hash, sHash);
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const offset = dirPtr >>> 2;
+    const result: number[] = [];
+    for (let i = 0; i < count; i++) {
+      result.push(mem32[offset + i]);
+    }
+    return result;
+  }
+
+  saturateOntologyELRules(): number {
+    if (this.exports.ontology_saturateELRules) {
+      return this.exports.ontology_saturateELRules();
+    }
+    return 0;
+  }
+
   /** Queries indexed triples via SPO / POS / OSP pattern matching in WASM memory. */
   queryOntologyTriples(
     subjectPattern: string = "",
@@ -2802,6 +3015,7 @@ export class LspFacade {
    * what semantic nodes changed.
    */
   walkAstDiff(oldRoot: number, newRoot: number, listener: AstChangeListener): void {
+    console.log(`[Bindings] walkAstDiff START: oldRoot=${oldRoot}, newRoot=${newRoot}`);
     let mem32 = new Uint32Array(this.wasmMemory.buffer);
     const getMem32 = () => {
       if (mem32.buffer !== this.wasmMemory.buffer || mem32.byteLength === 0) {
@@ -2826,7 +3040,9 @@ export class LspFacade {
       const parentTypeId = typeFlags & 0x03ff;
       let childIndex = 0;
 
-      while (curr !== 0) {
+      let slow = curr;
+      let step = 0;
+      while (curr !== 0 && childIndex < 5000) {
         if (opsCount >= MAX_DIFF_OPS) break;
         opsCount++;
         let fieldId = -1;
@@ -2841,6 +3057,9 @@ export class LspFacade {
         const field = fieldId >= 0 ? fieldIdToName[fieldId] : null;
         children.push({ ptr: curr, field });
         curr = getMem32()[(curr + 16) / 4];
+        if (step % 2 === 1) slow = getMem32()[(slow + 16) / 4];
+        if (step > 0 && slow === curr) break;
+        step++;
         childIndex++;
       }
       return children;
@@ -3005,10 +3224,12 @@ export class LspFacade {
     ): void => {
       if (opsCount >= MAX_DIFF_OPS) throw new Error("MAX_DIFF_OPS");
       if (oldPtr === newPtr && oldInvisiblePad === newInvisiblePad) {
-        const mem32r = getMem32();
-        const retFlags = (mem32r[newPtr / 4] >> 10) & 0x0fff;
-        listener.onNodeRetained(newPtr, retFlags);
-        return;
+        if (oldPtr !== oldRoot) {
+          const mem32r = getMem32();
+          const retFlags = (mem32r[newPtr / 4] >> 10) & 0x0fff;
+          listener.onNodeRetained(newPtr, retFlags);
+          return;
+        }
       }
       if (oldPtr === newPtr && oldInvisiblePad !== newInvisiblePad) {
         const mem32 = getMem32();
@@ -3118,29 +3339,22 @@ export class LspFacade {
         buildInsertions(newRoot);
       }
     } catch (e: any) {
-      if (e.message === "MAX_DIFF_OPS") {
-        console.warn("AST diff aborted due to complexity limit. Falling back to full re-insertion.");
-        if (listener.onFullReset) {
-          listener.onFullReset(newRoot);
-        } else if (oldRoot) {
-          listener.onNodeDeleted(oldRoot);
+      console.warn("AST diff fallback due to:", e?.message || e);
+      if (listener.onFullReset) {
+        listener.onFullReset(newRoot);
+      } else if (oldRoot) {
+        listener.onNodeDeleted(oldRoot);
+      }
+      if (newRoot) {
+        opsCount = 0;
+        try {
+          buildInsertions(newRoot);
+        } catch {
+          // Suppress fallback bounds
         }
-        if (newRoot) {
-          opsCount = 0;
-          try {
-            buildInsertions(newRoot);
-          } catch (e2: any) {
-            if (e2.message === "MAX_DIFF_OPS") {
-              console.warn("AST fallback insertion ALSO aborted due to complexity limit. Tree will be incomplete.");
-            } else {
-              throw e2;
-            }
-          }
-        }
-      } else {
-        throw e;
       }
     }
+    console.log(`[Bindings] walkAstDiff COMPLETE: oldRoot=${oldRoot}, newRoot=${newRoot}, total opsCount=${opsCount}`);
   }
 }
 

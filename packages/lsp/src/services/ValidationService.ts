@@ -15,9 +15,9 @@ import {
   VerificationRunner,
 } from "@modelscript/compiler";
 import { simulateArena } from "@modelscript/compiler/simulator";
+import { TableauReasoner } from "@modelscript/language";
 import { createModelicaLSPBridge, createModelicaScopeResolver } from "@modelscript/modelica/factory";
 import { ModelicaClassInstance } from "@modelscript/modelica/semantic-model";
-import { TableauReasoner } from "@modelscript/reasoner";
 import { createSysML2LSPBridge, createSysML2ScopeResolver } from "@modelscript/sysml2/factory";
 import { Node as SyntaxNode } from "web-tree-sitter";
 import { getArenaParameterInfo } from "../utils/arenaUtils";

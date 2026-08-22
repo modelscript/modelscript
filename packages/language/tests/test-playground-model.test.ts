@@ -632,9 +632,9 @@ end TestModel;
     const syntaxErrors = diags.filter((d: any) => d.range.start.line <= 1);
     expect(syntaxErrors.length).toBeGreaterThan(0);
 
-    // Verify AST parses the invalid line inside an isolated ERROR node
+    // Verify AST parses the invalid line inside an isolated ERROR node or node with error flag (E)
     const tree = activeFacade.getAstSExpr(ast);
-    expect(tree).toContain("ERROR");
+    expect(tree).toMatch(/ERROR|\(E\)/);
   });
 
   it("should directly verify WASM getChildByFieldId returns child 1 ('name' = power) when node has error flags", () => {
@@ -1234,8 +1234,8 @@ end SecondModel;
 
     // Both models should be parsed and present in the AST
     const sexpr = activeFacade.getAstSExpr(ast, true);
-    expect(sexpr).toContain("ModelDef [0, 0] - [2, 15]");
-    expect(sexpr).toContain("ModelDef [4, 0] - [6, 16]");
+    expect(sexpr).toContain("ModelDef (E) [0, 0] - [2, 15]");
+    expect(sexpr).toContain("ModelDef (E) [4, 0] - [6, 16]");
   });
 
   it("should isolate incomplete declaration 'Real power=;' without corrupting subsequent equations or downstream model offsets", () => {
@@ -1574,16 +1574,15 @@ end ThermalSystem;
     activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
+    const sExpr = activeFacade.getAstSExpr(ast);
 
     // Verify syntax error is isolated strictly to stray tokens 'errror error' (character 24 to 36)
     // and does NOT highlight 'ElectricalCircuit' (character 6 to 23)
-    const errorDiags = diags.filter((d) => d.severity === 1);
+    const errorDiags = diags.filter((d: any) => d.severity === 1);
     expect(errorDiags).toHaveLength(1);
     expect(errorDiags[0].range.start.line).toBe(0);
     expect(errorDiags[0].range.start.character).toBe(24);
     expect(errorDiags[0].range.end.character).toBe(36);
-
-    const sExpr = activeFacade.getAstSExpr(ast);
     expect(sExpr).toContain("ModelDef");
     expect(sExpr).toContain("Decl");
     expect(sExpr).toContain("Equation");

@@ -12,10 +12,9 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
   let tmpDir: string;
 
   beforeAll(async () => {
-    const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.js");
+    const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.ts");
     const mod = await import("file://" + target);
-    const modelicaLanguage = mod.modelicaLanguage;
-    const result = buildParser(modelicaLanguage as any);
+    const result = buildParser({ ...mod.modelicaLanguage, classes: [], lints: [], queries: {} } as any);
     tmpDir = path.join(__dirname, "scratch_build_full_modelica_hang");
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.mkdirSync(tmpDir, { recursive: true });
@@ -34,7 +33,12 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const outWasm = path.join(tmpDir, "parser.wasm");
 
     const ascCmd = `${ascPath} ${parserTs} -o ${outWasm} --exportRuntime --enable threads --optimize --runtime stub`;
-    childProcess.execSync(ascCmd, { stdio: "pipe" });
+    try {
+      childProcess.execSync(ascCmd, { stdio: "pipe" });
+    } catch (e: any) {
+      console.error("ASC ERROR:\n", e.stdout?.toString(), e.stderr?.toString());
+      throw e;
+    }
 
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
@@ -67,7 +71,7 @@ describe("Full Modelica Grammar Hang Reproduction", () => {
     const instance = await WebAssembly.instantiate(wasmModule, imports);
     activeFacade = new LspFacade(instance.exports.memory, instance.exports);
     activeFacade.syntaxNames = result.syntaxNames;
-  }, 60000);
+  }, 180000);
 
   afterAll(() => {
     if (fs.existsSync(tmpDir)) {

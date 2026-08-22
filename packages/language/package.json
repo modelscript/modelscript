@@ -58,6 +58,11 @@
     "*.ts": "eslint --no-warn-ignored",
     "*.{ts,tsx,js,json,md,yml,css}": "prettier --write"
   },
+  "dependencies": {
+    "@antv/layout": "^0.3.25",
+    "@antv/x6": "^3.1.7",
+    "@antv/x6-plugin-selection": "^2.2.2"
+  },
   "devDependencies": {
     "@as-pect/cli": "^9.0.0",
     "@eslint/js": "^10.0.1",

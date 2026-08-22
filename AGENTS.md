@@ -74,8 +74,8 @@ Source (.mo) → tree-sitter → CST
 | `packages/core/`      | `Context` (orchestrator), legacy `ModelicaFlattener`, linter, test runner                                                                  |
 | `packages/cosim/`     | MQTT co-simulation engine, JS/FMU participants, OpenFOAM CFD providers                                                                     |
 | `packages/fmi/`       | FMI integration, surrogate ROM generation, SUNDIALS WASM wrappers                                                                          |
+| `packages/language/`  | DSL compiler, parser/lexer codegen, WASM runtime, OWL2 reasoner, Datalog & SMT solver                                                      |
 | `packages/lsp/`       | Modularized Language Server (DI container, diagnostic handlers, completions)                                                               |
-| `packages/reasoner/`  | OWL2 Reasoner, DL-Lite entailment, SPARQL-DL evaluation                                                                                    |
 
 ### SymbolIndex Data Model
 

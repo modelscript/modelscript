@@ -3,7 +3,7 @@
 import type { Context } from "@modelscript/core";
 
 import type { UnifiedWorkspace } from "@modelscript/compiler";
-import type { OntologyBuilder } from "@modelscript/reasoner";
+import type { OntologyBuilder } from "@modelscript/language";
 
 /**
  * Shared server context — holds the current compiler Context,

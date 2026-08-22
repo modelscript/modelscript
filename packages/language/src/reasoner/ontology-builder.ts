@@ -14,20 +14,7 @@
 
 import type { OWL2AxiomDelta, OWL2OntologyStore } from "@modelscript/compiler";
 
-import type { ConsistencyResult, IOWLReasoner, ReasonerStatus, TaxonomyNode } from "./reasoner.js";
-
-// ---------------------------------------------------------------------------
-// Events
-// ---------------------------------------------------------------------------
-
-export type OntologyEvent =
-  | { type: "status-changed"; status: ReasonerStatus }
-  | { type: "classified"; axiomCount: number; timeMs: number }
-  | { type: "consistency-result"; result: ConsistencyResult }
-  | { type: "delta-applied"; delta: OWL2AxiomDelta }
-  | { type: "error"; error: Error };
-
-export type OntologyEventListener = (event: OntologyEvent) => void;
+import type { ConsistencyResult, IOWLReasoner, OntologyEvent, OntologyEventListener, TaxonomyNode } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Ontology Builder

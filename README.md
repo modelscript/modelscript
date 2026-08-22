@@ -31,20 +31,20 @@ This project is a monorepo managed with **Lerna**, **Nx**, and **npm workspaces*
 
 ### Packages (`packages/`)
 
-| Package                                           | Description                                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| [`@modelscript/cad`](./packages/cad/)             | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation   |
-| [`@modelscript/compiler`](./packages/compiler/)   | Salsa-based query engine for incremental compilation, type checking, and flattening |
-| [`@modelscript/core`](./packages/core/)           | Central compiler engine for ModelScript (legacy flattener, simulator, optimizer)    |
-| [`@modelscript/cosim`](./packages/cosim/)         | MQTT-linked co-simulation engine for ModelScript                                    |
-| [`@modelscript/diagram`](./packages/diagram/)     | Diagram rendering, interactive SVG generation, and X6-based visual layouts          |
-| [`@modelscript/ecad`](./packages/ecad/)           | ECAD structural extraction and Gerber layout generator for ModelScript              |
-| [`@modelscript/fmi`](./packages/fmi/)             | FMI 2.0/3.0 model description, C code generation, and FMU archive builder           |
-| [`@modelscript/lsp`](./packages/lsp/)             | Language Server Protocol — completions, hover, diagnostics, formatting, colors      |
-| [`@modelscript/mcp`](./packages/mcp/)             | Model Context Protocol implementation for AI/LLM integration                        |
-| [`@modelscript/reasoner`](./packages/reasoner/)   | ModelScript OWL2 Reasoner — subsumption, consistency, and SPARQL-DL queries         |
-| [`@modelscript/symbolics`](./packages/symbolics/) | ModelScript Symbolics Engine                                                        |
-| [`@modelscript/utils`](./packages/utils/)         | Common utility functions across the monorepo                                        |
+| Package                                           | Description                                                                             |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`@modelscript/cad`](./packages/cad/)             | Procedural CAD: TypeScript DSL for programmatic 3D geometry with STEP compilation       |
+| [`@modelscript/compiler`](./packages/compiler/)   | Salsa-based query engine for incremental compilation, type checking, and flattening     |
+| [`@modelscript/core`](./packages/core/)           | Central compiler engine for ModelScript (legacy flattener, simulator, optimizer)        |
+| [`@modelscript/cosim`](./packages/cosim/)         | MQTT-linked co-simulation engine for ModelScript                                        |
+| [`@modelscript/diagram`](./packages/diagram/)     | Diagram rendering, interactive SVG generation, and X6-based visual layouts              |
+| [`@modelscript/ecad`](./packages/ecad/)           | ECAD structural extraction and Gerber layout generator for ModelScript                  |
+| [`@modelscript/fmi`](./packages/fmi/)             | FMI 2.0/3.0 model description, C code generation, and FMU archive builder               |
+| [`@modelscript/language`](./packages/language/)   | ModelScript DSL Compiler — parser/lexer codegen, WASM runtime, reasoner, and SMT solver |
+| [`@modelscript/lsp`](./packages/lsp/)             | Language Server Protocol — completions, hover, diagnostics, formatting, colors          |
+| [`@modelscript/mcp`](./packages/mcp/)             | Model Context Protocol implementation for AI/LLM integration                            |
+| [`@modelscript/symbolics`](./packages/symbolics/) | ModelScript Symbolics Engine                                                            |
+| [`@modelscript/utils`](./packages/utils/)         | Common utility functions across the monorepo                                            |
 
 ### Languages (`languages/`)
 

@@ -12,12 +12,12 @@ import {
   type QueryEngine,
   type WorkspaceIndex,
 } from "@modelscript/compiler";
+import { ArenaQueryFlattener, type FlattenOptions } from "@modelscript/modelica";
 import {
   createModelicaQueryEngine,
   createModelicaWorkspaceIndex,
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
-import { ArenaQueryFlattener, type FlattenOptions } from "@modelscript/modelica/flattener-query";
 import { ModelicaPoParser, ModelicaTranslation } from "@modelscript/modelica/po";
 import { ModelicaClassInstance, type ModelicaElement } from "@modelscript/modelica/semantic-model";
 import { MODELSCRIPT_CAS_PACKAGE } from "@modelscript/symbolics";

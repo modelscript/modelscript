@@ -1,6 +1,6 @@
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
-import { ArenaQueryFlattener } from "../../../../languages/modelica/flattener-query.js";
+import { ArenaQueryFlattener } from "../../../../languages/modelica/src/flattener.js";
 import { Context } from "../../../core/src/compiler/context.js";
 import { NodeFileSystem } from "../../../core/tests/node-filesystem.js";
 import { simulateArena } from "../../src/simulator/core/simulate-arena.js";

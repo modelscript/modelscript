@@ -28,7 +28,7 @@ import { type SysML2Layout } from "./sysml2-layout";
 import { Node as SyntaxNode, Tree as TreeSitterTree } from "web-tree-sitter";
 
 import { ArenaDAEBuilder, Context, LineIndex, QueryEngine, initBltWasm } from "@modelscript/compiler";
-import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
+import { ArenaQueryFlattener } from "@modelscript/modelica";
 
 import { ModelicaClassDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 

@@ -6,39 +6,29 @@
  * Implements a subset of OWL2 DL reasoning sufficient for ModelScript's
  * engineering use cases:
  *
- * - **Subsumption** (SubClassOf entailment via transitive closure)
- * - **Consistency** (disjointness constraint checking)
- * - **Instance classification** (ClassAssertion reasoning)
- * - **Transitive property closure** (fault propagation, connection tracing)
- *
- * ## Algorithm
- *
- * Instead of a full tableau expansion (which is ExpTime for OWL2 DL),
- * this implementation uses a completion-based approach suitable for the
- * OWL2 EL profile (PTime) and OWL2 RL profile:
- *
- * 1. **TBox completion:** Compute the transitive closure of SubClassOf
- *    and propagate EquivalentClasses/DisjointClasses constraints.
- * 2. **ABox completion:** Propagate ClassAssertion and property assertions
- *    through the completed TBox hierarchy.
- * 3. **Consistency:** Check for disjointness violations in the completed ABox.
- *
- * This covers 95%+ of engineering ontology patterns while staying in PTime.
+ * - **Subsumption** (SubClassOf entailment via transitive closure & equivalence)
+ * - **Consistency** (disjointness constraint checking across classes and instances)
+ * - **Instance classification** (ClassAssertion reasoning with direct and transitive types)
+ * - **Transitive property closure** (fault propagation, connection tracing with paths)
+ * - **Justification** (shortest axiom path explanation)
  */
 
 import type { OWL2Axiom, OWL2AxiomDelta } from "@modelscript/compiler";
 
 import type {
+  BgpQuery,
+  BgpQueryResult,
   ClassificationResult,
   ConsistencyResult,
   DLQuery,
   DLQueryResult,
   IOWLReasoner,
   PropertyChainResult,
+  PropertyPathOp,
   ReasonerStatus,
   SubsumptionResult,
   TaxonomyNode,
-} from "./reasoner.js";
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Internal Structures
@@ -211,7 +201,64 @@ export class TableauReasoner implements IOWLReasoner {
 
   checkConsistency(): ConsistencyResult {
     if (!this._classified) this.classify();
-    return this.checkConsistencyInternal();
+    const res = this.checkConsistencyInternal();
+    if (!res.isConsistent) {
+      const core = this.quickXplain();
+      return {
+        ...res,
+        minimalConflictCore: core.length > 0 ? core : res.conflictingAxioms,
+      };
+    }
+    return res;
+  }
+
+  /**
+   * Fast conflict pinpointing via Junker's QuickXplain algorithm.
+   * Finds the minimal conflict core in O(k log (N/k)) tests.
+   */
+  quickXplain(backgroundAxioms?: readonly OWL2Axiom[]): readonly OWL2Axiom[] {
+    const bg = backgroundAxioms ? [...backgroundAxioms] : [];
+    const bgSet = new Set(bg.map((a) => JSON.stringify(a)));
+    const delta = this._axioms.filter((a) => !bgSet.has(JSON.stringify(a)));
+
+    if (this.testConsistencySubset([...bg, ...delta])) {
+      return []; // Consistent, no conflict
+    }
+
+    return this.qxRecursive(bg, delta);
+  }
+
+  private testConsistencySubset(axioms: OWL2Axiom[]): boolean {
+    const temp = new TableauReasoner();
+    temp.loadOntology(axioms);
+    return temp.checkConsistencyInternal().isConsistent;
+  }
+
+  private qxRecursive(b: OWL2Axiom[], delta: OWL2Axiom[]): OWL2Axiom[] {
+    if (b.length > 0 && !this.testConsistencySubset(b)) {
+      return [];
+    }
+    if (delta.length === 0) return [];
+    if (delta.length === 1) return delta;
+
+    const mid = Math.floor(delta.length / 2);
+    const d1 = delta.slice(0, mid);
+    const d2 = delta.slice(mid);
+
+    // If B + D1 is inconsistent, search within D1
+    if (!this.testConsistencySubset([...b, ...d1])) {
+      return this.qxRecursive(b, d1);
+    }
+
+    // Otherwise find conflict in D2 given B + D1
+    const d2Core = this.qxRecursive([...b, ...d1], d2);
+    // Find conflict in D1 given B + d2Core
+    const d1Core = this.qxRecursive([...b, ...d2Core], d1);
+
+    const merged = [...d1Core, ...d2Core];
+    const unique = new Map<string, OWL2Axiom>();
+    for (const a of merged) unique.set(JSON.stringify(a), a);
+    return Array.from(unique.values());
   }
 
   getTaxonomy(): TaxonomyNode[] {
@@ -234,7 +281,7 @@ export class TableauReasoner implements IOWLReasoner {
 
     const allTypes = this.individualTypes.get(individualIri) ?? new Set<string>();
 
-    // Direct types = types that are not superclasses of any other type
+    // Direct types = types that are not superclasses of any other type in allTypes
     const directTypes = new Set(allTypes);
     for (const typeIri of allTypes) {
       const node = this.classes.get(typeIri);
@@ -261,7 +308,7 @@ export class TableauReasoner implements IOWLReasoner {
     const reachable: string[] = [];
     const path: { subjectIri: string; objectIri: string }[] = [];
 
-    // BFS/DFS for transitive closure
+    // BFS for transitive closure
     const queue = [fromIri];
     visited.add(fromIri);
 
@@ -290,7 +337,6 @@ export class TableauReasoner implements IOWLReasoner {
 
     switch (q.type) {
       case "instances": {
-        // Find all individuals that are instances of the given class
         for (const [indIri, types] of this.individualTypes) {
           if (types.has(q.iri)) bindings.push(indIri);
         }
@@ -338,12 +384,210 @@ export class TableauReasoner implements IOWLReasoner {
         }
         break;
       }
+
+      case "path": {
+        if (q.fromIri) {
+          const op = q.pathOp ?? "direct";
+          bindings = [...this.evaluatePropertyPath(q.iri, op, q.fromIri, q.stepPropertyIri2)];
+        }
+        break;
+      }
     }
 
     return {
       query: q,
       bindings,
       pairs,
+      executionTimeMs: performance.now() - start,
+    };
+  }
+
+  evaluatePropertyPath(
+    propertyIri: string,
+    pathOp: PropertyPathOp,
+    fromIri: string,
+    stepPropertyIri2?: string,
+  ): readonly string[] {
+    const reachable = new Set<string>();
+
+    switch (pathOp) {
+      case "direct": {
+        const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
+        for (const e of edges) {
+          if (e.subjectIri === fromIri) reachable.add(e.objectIri);
+        }
+        break;
+      }
+
+      case "inverse": {
+        const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
+        for (const e of edges) {
+          if (e.objectIri === fromIri) reachable.add(e.subjectIri);
+        }
+        break;
+      }
+
+      case "star": {
+        reachable.add(fromIri);
+        // fall through to plus
+      }
+      case "plus": {
+        const queue = [fromIri];
+        const visited = new Set<string>([fromIri]);
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
+          for (const e of edges) {
+            if (e.subjectIri === curr && !visited.has(e.objectIri)) {
+              visited.add(e.objectIri);
+              reachable.add(e.objectIri);
+              queue.push(e.objectIri);
+            }
+          }
+        }
+        break;
+      }
+
+      case "inverse-plus": {
+        const queue = [fromIri];
+        const visited = new Set<string>([fromIri]);
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const edges = this.objectPropertyAssertions.get(propertyIri) ?? [];
+          for (const e of edges) {
+            if (e.objectIri === curr && !visited.has(e.subjectIri)) {
+              visited.add(e.subjectIri);
+              reachable.add(e.subjectIri);
+              queue.push(e.subjectIri);
+            }
+          }
+        }
+        break;
+      }
+
+      case "sequence": {
+        const step1Targets = new Set<string>();
+        const edges1 = this.objectPropertyAssertions.get(propertyIri) ?? [];
+        for (const e of edges1) {
+          if (e.subjectIri === fromIri) step1Targets.add(e.objectIri);
+        }
+        if (stepPropertyIri2) {
+          const edges2 = this.objectPropertyAssertions.get(stepPropertyIri2) ?? [];
+          for (const s of step1Targets) {
+            for (const e of edges2) {
+              if (e.subjectIri === s) reachable.add(e.objectIri);
+            }
+          }
+        }
+        break;
+      }
+
+      case "alternation": {
+        const edges1 = this.objectPropertyAssertions.get(propertyIri) ?? [];
+        for (const e of edges1) {
+          if (e.subjectIri === fromIri) reachable.add(e.objectIri);
+        }
+        if (stepPropertyIri2) {
+          const edges2 = this.objectPropertyAssertions.get(stepPropertyIri2) ?? [];
+          for (const e of edges2) {
+            if (e.subjectIri === fromIri) reachable.add(e.objectIri);
+          }
+        }
+        break;
+      }
+    }
+
+    return Array.from(reachable);
+  }
+
+  queryBgp(query: BgpQuery): BgpQueryResult {
+    if (!this._classified) this.classify();
+    const start = performance.now();
+
+    const varSet = new Set<string>();
+    for (const pat of query.patterns) {
+      if (pat.subject.startsWith("?")) varSet.add(pat.subject);
+      if (pat.predicate.startsWith("?")) varSet.add(pat.predicate);
+      if (pat.object.startsWith("?")) varSet.add(pat.object);
+    }
+    const variables = Array.from(varSet);
+
+    if (query.patterns.length === 0) {
+      return { variables, bindings: [], executionTimeMs: performance.now() - start };
+    }
+
+    const allFacts: { s: string; p: string; o: string }[] = [];
+    for (const ax of this._axioms) {
+      if (ax.type === "ObjectPropertyAssertion") {
+        allFacts.push({ s: ax.subjectIri, p: ax.propertyIri, o: ax.objectIri });
+      } else if (ax.type === "SubClassOf") {
+        allFacts.push({ s: ax.subClassIri, p: "rdfs:subClassOf", o: ax.superClassIri });
+      } else if (ax.type === "ClassAssertion") {
+        allFacts.push({ s: ax.individualIri, p: "rdf:type", o: ax.classIri });
+      }
+    }
+
+    let currentBindings: Record<string, string>[] = [{}];
+
+    for (const pat of query.patterns) {
+      const nextBindings: Record<string, string>[] = [];
+
+      for (const env of currentBindings) {
+        for (const fact of allFacts) {
+          let match = true;
+          const newEnv = { ...env };
+
+          if (pat.subject.startsWith("?")) {
+            if (env[pat.subject] !== undefined) {
+              if (env[pat.subject] !== fact.s) match = false;
+            } else {
+              newEnv[pat.subject] = fact.s;
+            }
+          } else if (pat.subject !== fact.s) {
+            match = false;
+          }
+
+          if (!match) continue;
+
+          if (pat.predicate.startsWith("?")) {
+            if (env[pat.predicate] !== undefined) {
+              if (env[pat.predicate] !== fact.p) match = false;
+            } else {
+              newEnv[pat.predicate] = fact.p;
+            }
+          } else if (pat.predicate !== fact.p) {
+            match = false;
+          }
+
+          if (!match) continue;
+
+          if (pat.object.startsWith("?")) {
+            if (env[pat.object] !== undefined) {
+              if (env[pat.object] !== fact.o) match = false;
+            } else {
+              newEnv[pat.object] = fact.o;
+            }
+          } else if (pat.object !== fact.o) {
+            match = false;
+          }
+
+          if (match) {
+            nextBindings.push(newEnv);
+          }
+        }
+      }
+
+      currentBindings = nextBindings;
+    }
+
+    const uniqueMap = new Map<string, Record<string, string>>();
+    for (const b of currentBindings) {
+      uniqueMap.set(JSON.stringify(b), b);
+    }
+
+    return {
+      variables,
+      bindings: Array.from(uniqueMap.values()),
       executionTimeMs: performance.now() - start,
     };
   }
@@ -373,7 +617,6 @@ export class TableauReasoner implements IOWLReasoner {
       }
 
       case "EquivalentClasses": {
-        // A ≡ B implies A ⊑ B and B ⊑ A
         for (let i = 0; i < axiom.classIris.length; i++) {
           const aIri = axiom.classIris[i];
           if (!aIri) continue;
@@ -466,17 +709,14 @@ export class TableauReasoner implements IOWLReasoner {
 
       case "ObjectSomeValuesFrom":
       case "DataSomeValuesFrom":
-        // Complex class expressions — tracked as axioms but not indexed structurally
         break;
     }
   }
 
   private removeAxiom(axiom: OWL2Axiom): void {
-    // Remove from the axiom list
     const idx = this._axioms.findIndex((a) => axiomEqual(a, axiom));
     if (idx !== -1) this._axioms.splice(idx, 1);
 
-    // Remove from structural indices
     switch (axiom.type) {
       case "SubClassOf": {
         const sub = this.classes.get(axiom.subClassIri);
@@ -530,8 +770,6 @@ export class TableauReasoner implements IOWLReasoner {
       }
 
       default:
-        // For other axiom types, a full re-index would be needed
-        // but for incremental use the common cases above suffice
         break;
     }
   }
@@ -545,19 +783,16 @@ export class TableauReasoner implements IOWLReasoner {
     if (!node) return new Set();
     if (node.allSuperClasses) return node.allSuperClasses;
 
-    // Mark as in-progress to detect cycles
     node.allSuperClasses = new Set();
 
     for (const superIri of node.superClasses) {
       node.allSuperClasses.add(superIri);
-      // Recursively add transitive superclasses
       const transitive = this.computeAllSuperClasses(superIri);
       for (const t of transitive) {
         node.allSuperClasses.add(t);
       }
     }
 
-    // Add equivalents' superclasses
     for (const eqIri of node.equivalents) {
       node.allSuperClasses.add(eqIri);
     }
@@ -572,7 +807,6 @@ export class TableauReasoner implements IOWLReasoner {
   private checkConsistencyInternal(): ConsistencyResult {
     const conflicts: OWL2Axiom[] = [];
 
-    // Check disjointness violations in the class hierarchy
     for (const pairKey of this.disjointPairs) {
       const [aIri, bIri] = pairKey.split("|");
       if (!aIri || !bIri) continue;
@@ -580,8 +814,17 @@ export class TableauReasoner implements IOWLReasoner {
       const aNode = this.classes.get(aIri);
       const bNode = this.classes.get(bIri);
 
-      // Check if A ⊑ B or B ⊑ A (subsumption between disjoint classes)
-      if (aNode?.allSuperClasses?.has(bIri) || bNode?.allSuperClasses?.has(aIri)) {
+      let hasClassConflict = aNode?.allSuperClasses?.has(bIri) || bNode?.allSuperClasses?.has(aIri);
+      if (!hasClassConflict) {
+        for (const [, candNode] of this.classes) {
+          if (candNode.allSuperClasses?.has(aIri) && candNode.allSuperClasses?.has(bIri)) {
+            hasClassConflict = true;
+            break;
+          }
+        }
+      }
+
+      if (hasClassConflict) {
         conflicts.push({
           type: "DisjointClasses",
           classIris: [aIri, bIri],
@@ -589,7 +832,6 @@ export class TableauReasoner implements IOWLReasoner {
         });
       }
 
-      // Check if any individual is an instance of both disjoint classes
       for (const [indIri, types] of this.individualTypes) {
         if (types.has(aIri) && types.has(bIri)) {
           conflicts.push({
@@ -618,8 +860,6 @@ export class TableauReasoner implements IOWLReasoner {
   // -------------------------------------------------------------------------
 
   private buildJustification(subIri: string, superIri: string): OWL2Axiom[] {
-    // Find the shortest path of SubClassOf axioms from sub to super
-    const path: OWL2Axiom[] = [];
     const visited = new Set<string>();
     const queue: { iri: string; trail: OWL2Axiom[] }[] = [{ iri: subIri, trail: [] }];
 
@@ -643,9 +883,18 @@ export class TableauReasoner implements IOWLReasoner {
         };
         queue.push({ iri: supIri, trail: [...trail, axiom] });
       }
+
+      for (const eqIri of node.equivalents) {
+        const axiom: OWL2Axiom = {
+          type: "EquivalentClasses",
+          classIris: [iri, eqIri],
+          sourceLang: "asserted",
+        };
+        queue.push({ iri: eqIri, trail: [...trail, axiom] });
+      }
     }
 
-    return path; // No path found
+    return [];
   }
 
   // -------------------------------------------------------------------------
@@ -685,9 +934,7 @@ export class TableauReasoner implements IOWLReasoner {
 // Utility
 // ---------------------------------------------------------------------------
 
-/** Check structural equality of two axioms. */
 function axiomEqual(a: OWL2Axiom, b: OWL2Axiom): boolean {
   if (a.type !== b.type) return false;
-  // Fast path: use JSON comparison for full structural equality
   return JSON.stringify(a) === JSON.stringify(b);
 }

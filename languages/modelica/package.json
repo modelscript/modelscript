@@ -3,6 +3,30 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./src": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./flattener": {
+      "types": "./dist/src/flattener.d.ts",
+      "default": "./dist/src/flattener.js"
+    },
+    "./connections": {
+      "types": "./dist/src/connections.d.ts",
+      "default": "./dist/src/connections.js"
+    },
+    "./equations": {
+      "types": "./dist/src/equations.d.ts",
+      "default": "./dist/src/equations.js"
+    },
+    "./visitor": {
+      "types": "./dist/src/visitor.d.ts",
+      "default": "./dist/src/visitor.js"
+    },
     "./factory": {
       "types": "./dist/factory.d.ts",
       "default": "./dist/factory.js"

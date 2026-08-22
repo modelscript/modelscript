@@ -379,7 +379,10 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
         if ((flags & FLAG_IS_INSERTED) != 0) {
           if (nodeStart < totalInputBytes) {
             dStart = nodeStart;
-            dEnd = nodeStart + step;
+            while (dStart < totalInputBytes && (peekChar(dStart) == 32 || peekChar(dStart) == 9 || peekChar(dStart) == 10 || peekChar(dStart) == 13)) {
+              dStart += step;
+            }
+            dEnd = dStart + step <= totalInputBytes ? dStart + step : totalInputBytes;
           } else {
             let scanPos = totalInputBytes;
             while (scanPos > 0) {

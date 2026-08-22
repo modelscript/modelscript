@@ -149,8 +149,10 @@ end ChuaCircuit;`;
       } else if (urlPath === "/diagram.browser.js") {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
-        const diagramJsPath = join(__dirname, "../../../../packages/diagram/dist/browser.js");
-        res.end(existsSync(diagramJsPath) ? readFileSync(diagramJsPath) : "");
+        const diagramJsPath = join(__dirname, "../../../../packages/language/dist/diagram.browser.js");
+        const fallbackDiagramJsPath = join(__dirname, "../../../../packages/diagram/dist/browser.js");
+        const finalPath = existsSync(diagramJsPath) ? diagramJsPath : fallbackDiagramJsPath;
+        res.end(existsSync(finalPath) ? readFileSync(finalPath) : "");
       } else if (urlPath?.startsWith("/vendor/")) {
         headers["Content-Type"] = "application/javascript";
         res.writeHead(200, headers);
@@ -935,7 +937,10 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     this.editor = editor;
                     
                     this.worker.addEventListener('message', (e) => this.handleMessage(e.data));
-                    this.editor.onDidChangeModelContent((e) => this.syncDocument('textDocument/didChange', e.changes));
+                    this.editor.onDidChangeModelContent((e) => {
+                        console.log("[Main Client] onDidChangeModelContent: " + e.changes.length + " change(s):", e.changes);
+                        this.syncDocument('textDocument/didChange', e.changes);
+                    });
                     
                     // Initialize
                     this.sendRequest('initialize', {
@@ -943,6 +948,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     }).then(() => {
                         this.sendNotification('initialized', {});
                         if (this.model) {
+                            console.log("[Main Client] didOpen initial text length: " + this.model.getValue().length);
                             this.syncDocument('textDocument/didOpen', [{ text: this.model.getValue() }]);
                         }
                     });
@@ -1194,6 +1200,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 const processMsg = (msg) => {
                     if (!msg) return;
                     if (msg.type === 'astPatchBinary') {
+                        console.log("[AstViewer] processMsg astPatchBinary: rootId=" + msg.rootId + ", isFullReset=" + msg.isFullReset + ", bufferBytes=" + (msg.buffer ? msg.buffer.byteLength : 0) + ", nodeMapPrevSize=" + nodeMap.current.size);
                         if (msg.isFullReset) {
                             nodeMap.current.clear();
                         }
@@ -1288,9 +1295,10 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             const flatNodes = useMemo(() => {
                 const nodes = [];
                 const visited = new Set();
+                let totalCalls = 0;
                 
                 const flatten = (ptr, depth, parentOffset, parentField) => {
-                    if (nodes.length >= 5000) return parentOffset;
+                    if (++totalCalls > 10000 || nodes.length >= 5000) return parentOffset;
                     if (visited.has(ptr)) {
                         nodes.push({ id: ptr + '_cycle', typeName: 'CYCLE_' + ptr, depth, isCycle: true, currentOffset: parentOffset });
                         return parentOffset;
@@ -1322,22 +1330,25 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 };
                 
                 const effectiveRoot = (rootId !== 0 && nodeMap.current.has(rootId)) ? rootId : 0;
+                console.log("[AstViewer] compute flatNodes: rootId=" + rootId + ", nodeMapSize=" + nodeMap.current.size + ", hasRoot=" + nodeMap.current.has(rootId) + ", effectiveRoot=" + effectiveRoot);
                 if (effectiveRoot) flatten(effectiveRoot, 0, 0, null);
+                console.log("[AstViewer] computed flatNodes done: " + nodes.length + " nodes");
                 return nodes;
             }, [updateTick, rootId]);
 
             const visibleNodes = flatNodes.slice(0, renderLimit);
 
             const getLineCol = (offsetBytes) => {
+                if (!lineStarts || lineStarts.length === 0) return { line: 1, col: 1 };
                 let low = 0, high = lineStarts.length - 1;
                 while (low <= high) {
                     const mid = (low + high) >> 1;
                     if (lineStarts[mid] <= offsetBytes) low = mid + 1;
                     else high = mid - 1;
                 }
-                const line = high;
+                const line = Math.max(0, Math.min(high, lineStarts.length - 1));
                 const charMult = window['__charMult'] || 2;
-                const colChars = Math.floor((offsetBytes - lineStarts[line]) / charMult);
+                const colChars = Math.max(0, Math.floor((offsetBytes - (lineStarts[line] || 0)) / charMult));
                 return { line: line + 1, col: colChars + 1 };
             };
 
@@ -2146,103 +2157,117 @@ function pushPatch(op, ptr, typeId, oldPtr, pad, len, flags, children) {
     }
 }
 
-let pendingChanges = [];
+// Each entry is one Monaco event's changes array — must be processed sequentially
+// because changes from different events use different document coordinate spaces.
+let pendingEventGroups = [];
 let isParsing = false;
 let parseDebounceTimer = null;
 
 function triggerDiagnostics(changes = null) {
     if (changes && changes.length > 0) {
-        pendingChanges.push(...changes);
+        // Push as a single event group to preserve coordinate-space boundaries
+        pendingEventGroups.push(changes);
     }
     
-    if (isParsing) return;
     if (parseDebounceTimer) clearTimeout(parseDebounceTimer);
     parseDebounceTimer = setTimeout(() => {
-        if (!isParsing && pendingChanges.length > 0) {
+        if (!isParsing && pendingEventGroups.length > 0) {
             runDiagnosticsNow();
         }
     }, 40);
 }
 
 async function runDiagnosticsNow() {
-    if (!lspFacade || pendingChanges.length === 0) return;
+    if (!lspFacade || pendingEventGroups.length === 0) return;
     
     isParsing = true;
-    const batch = pendingChanges.splice(0, pendingChanges.length);
+    // Drain all currently queued event groups
+    const eventGroups = pendingEventGroups.splice(0, pendingEventGroups.length);
+    console.log("[LSP Worker] runDiagnosticsNow START: " + eventGroups.length + " event group(s), currentTextLength=" + currentTextLength);
     
     try {
-        const lineStarts = lspFacade.getLineStarts();
         const charMult = (lspFacade && typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1) === 1 ? 2 : 1;
-        
-        let editsToApply = [];
-        let isFullReplacement = false;
+        patchOffset = 0;
         isFullResetNeeded = false;
+        let lastDiags = [];
+        let lastUpdatedLineStarts = null;
+        let hadAnyEdit = false;
+
+        let allEdits = [];
+        let isFullReplacement = false;
         let fullText = null;
 
-        for (const change of batch) {
-            if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
-                isFullReplacement = true;
-                isFullResetNeeded = true;
-                fullText = change.text;
-                editsToApply = [];
-            } else if (!isFullReplacement) {
-                let rangeOffset = change.rangeOffset;
-                let rangeLength = change.rangeLength;
-                if (rangeOffset === undefined && change.range) {
-                    const startLine = change.range.startLineNumber !== undefined ? change.range.startLineNumber - 1 : change.range.start.line;
-                    const startCol = change.range.startColumn !== undefined ? change.range.startColumn - 1 : change.range.start.character;
-                    const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
-                    const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
-                    
-                    const maxLineIdx = lineStarts && lineStarts.length > 0 ? lineStarts.length - 1 : 0;
-                    const validStartLine = Math.min(Math.max(0, startLine), maxLineIdx);
-                    const validEndLine = Math.min(Math.max(0, endLine), maxLineIdx);
+        for (let gIdx = 0; gIdx < eventGroups.length; gIdx++) {
+            const group = eventGroups[gIdx];
+            const lineStarts = lspFacade.getLineStarts();
 
-                    const startByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validStartLine] : 0) + (startCol * charMult);
-                    const endByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validEndLine] : 0) + (endCol * charMult);
-                    
-                    rangeOffset = Math.floor(startByte / charMult);
-                    rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
-                }
-                if (rangeOffset !== undefined) {
-                    editsToApply.push({
-                        rangeOffset: rangeOffset,
-                        rangeLength: rangeLength || 0,
-                        text: change.text || ""
-                    });
+            for (const change of group) {
+                if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
+                    isFullReplacement = true;
+                    isFullResetNeeded = true;
+                    fullText = change.text;
+                    allEdits = [];
+                } else if (!isFullReplacement) {
+                    let rangeOffset = change.rangeOffset;
+                    let rangeLength = change.rangeLength;
+                    if (rangeOffset === undefined && change.range) {
+                        const startLine = change.range.startLineNumber !== undefined ? change.range.startLineNumber - 1 : change.range.start.line;
+                        const startCol = change.range.startColumn !== undefined ? change.range.startColumn - 1 : change.range.start.character;
+                        const endLine = change.range.endLineNumber !== undefined ? change.range.endLineNumber - 1 : change.range.end.line;
+                        const endCol = change.range.endColumn !== undefined ? change.range.endColumn - 1 : change.range.end.character;
+                        
+                        const maxLineIdx = lineStarts && lineStarts.length > 0 ? lineStarts.length - 1 : 0;
+                        const validStartLine = Math.min(Math.max(0, startLine), maxLineIdx);
+                        const validEndLine = Math.min(Math.max(0, endLine), maxLineIdx);
+
+                        const startByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validStartLine] : 0) + (startCol * charMult);
+                        const endByte = (lineStarts && lineStarts.length > 0 ? lineStarts[validEndLine] : 0) + (endCol * charMult);
+                        
+                        rangeOffset = Math.floor(startByte / charMult);
+                        rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
+                    }
+                    if (rangeOffset !== undefined) {
+                        allEdits.push({
+                            rangeOffset: rangeOffset,
+                            rangeLength: rangeLength || 0,
+                            text: change.text || ""
+                        });
+                    }
                 }
             }
         }
-
-        patchOffset = 0;
-        const t0 = performance.now();
 
         if (isFullReplacement && fullText !== null) {
             const oldLen = currentTextLength;
             currentTextLength = fullText.length;
             lspFacade.lastAstRoot = 0;
+            console.log("[LSP Worker] Full replacement text len=" + fullText.length + ", oldLen=" + oldLen);
             globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length, latestUri);
-        } else if (editsToApply.length > 0) {
+            hadAnyEdit = true;
+        } else if (allEdits.length > 0) {
             let newTotalLen = currentTextLength;
-            for (const edit of editsToApply) {
+            for (const edit of allEdits) {
                 newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
             }
             currentTextLength = newTotalLen;
-            if (editsToApply.length === 1) {
-                const edit = editsToApply[0];
+            console.log("[LSP Worker] Coalesced " + allEdits.length + " edit(s) across " + eventGroups.length + " group(s) -> newTotalLen=" + newTotalLen);
+            if (allEdits.length === 1) {
+                const edit = allEdits[0];
                 globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
             } else {
-                globalAstRoot = lspFacade.parseIncrementalBatch(editsToApply, newTotalLen, latestUri);
+                globalAstRoot = lspFacade.parseIncrementalBatch(allEdits, newTotalLen, latestUri);
             }
-        } else {
+            hadAnyEdit = true;
+        }
+        lastUpdatedLineStarts = lspFacade.getLineStarts();
+
+        if (!hadAnyEdit) {
+            console.log("[LSP Worker] No edits applied in runDiagnosticsNow");
             return;
         }
 
-        const t1 = performance.now();
-        const updatedLineStarts = lspFacade.getLineStarts();
         const rawDiags = lspFacade.getDiagnostics(globalAstRoot);
-        
-        const diags = (rawDiags || []).map(d => ({
+        lastDiags = (rawDiags || []).map(d => ({
             range: d.range,
             severity: d.severity,
             code: d.code,
@@ -2251,15 +2276,16 @@ async function runDiagnosticsNow() {
             startCharOffset: d.startCharOffset,
             endCharOffset: d.endCharOffset
         }));
+        console.log("[LSP Worker] getDiagnostics returned " + lastDiags.length + " diagnostic(s)");
         
         let patchBufToTransfer = patchBuffer.slice(0, patchOffset * 4);
         patchBuffer = (patchBuffer === patchBufferA) ? patchBufferB : patchBufferA;
         patchInt32 = new Int32Array(patchBuffer);
         
         let lineStartsBuf = null;
-        if (updatedLineStarts && updatedLineStarts.length > 0) {
-            const copy = new Uint32Array(updatedLineStarts.length);
-            copy.set(updatedLineStarts);
+        if (lastUpdatedLineStarts && lastUpdatedLineStarts.length > 0) {
+            const copy = new Uint32Array(lastUpdatedLineStarts.length);
+            copy.set(lastUpdatedLineStarts);
             lineStartsBuf = copy.buffer;
         }
         
@@ -2268,26 +2294,27 @@ async function runDiagnosticsNow() {
             rootId: globalAstRoot,
             buffer: patchBufToTransfer,
             lineStartsBuffer: lineStartsBuf,
-            diagnostics: diags,
-            isFullReset: isFullResetNeeded || isFullReplacement,
+            diagnostics: lastDiags,
+            isFullReset: isFullResetNeeded,
             charMult: charMult
         };
         
+        console.log("[LSP Worker] Posting astPatchBinary: rootId=" + globalAstRoot + ", patchBytes=" + patchBufToTransfer.byteLength + ", isFullReset=" + isFullResetNeeded);
         const transferables = lineStartsBuf ? [patchBufToTransfer, lineStartsBuf] : [patchBufToTransfer];
         self.postMessage(patchMsg, transferables);
         self.postMessage({
             jsonrpc: '2.0',
             method: 'textDocument/publishDiagnostics',
-            params: { uri: latestUri, diagnostics: diags }
+            params: { uri: latestUri, diagnostics: lastDiags }
         });
     } catch(err) {
-        console.error("LSP Worker Diagnostics Error:", err);
+        console.error("[LSP Worker] ERROR in runDiagnosticsNow:", err);
     } finally {
         isParsing = false;
-        if (pendingChanges.length > 0) {
+        if (pendingEventGroups.length > 0) {
             if (parseDebounceTimer) clearTimeout(parseDebounceTimer);
             parseDebounceTimer = setTimeout(() => {
-                if (!isParsing && pendingChanges.length > 0) {
+                if (!isParsing && pendingEventGroups.length > 0) {
                     runDiagnosticsNow();
                 }
             }, 20);
@@ -2334,7 +2361,7 @@ self.onmessage = async (e) => {
                     }
                     console.error("WASM Abort:", str, "at line", line, "col", col);
                 } },
-                engine: { debugLog: function(cat, v1, v2, v3) {} },
+                engine: { debugLog: function(cat, v1, v2, v3) { console.log("[WASM debugLog] cat=" + cat + ", v1=" + v1 + ", v2=" + v2 + ", v3=" + v3); } },
                 parser: { 
                     logInt: function(val) { console.log("logInt:", val); },
                     emitTextEdit: function(op, len, start, end) {},
@@ -2387,10 +2414,22 @@ self.onmessage = async (e) => {
 
             const origLog = console.log;
             console.log = function(...args) {
-                if (args[0] && typeof args[0] === 'string' && (args[0].startsWith('[SEM]') || args[0].startsWith('[NODE_START]') || args[0].startsWith('[NODE_INFO]') || args[0].includes('CHILD_CALC'))) {
+                if (args[0] && typeof args[0] === 'string' && (args[0].startsWith('[') || args[0].includes('LSP') || args[0].includes('Bindings') || args[0].includes('WASM') || args[0].includes('CHILD_CALC'))) {
                     self.postMessage({ type: 'worker_log', args: args });
                 }
                 origLog.apply(console, args);
+            };
+            
+            const origWarn = console.warn;
+            console.warn = function(...args) {
+                self.postMessage({ type: 'worker_log', args: ['[WARN]', ...args] });
+                origWarn.apply(console, args);
+            };
+
+            const origError = console.error;
+            console.error = function(...args) {
+                self.postMessage({ type: 'worker_log', args: ['[ERROR]', ...args] });
+                origError.apply(console, args);
             };
             
             lspFacade = new LspFacade(memory, instance.exports);
@@ -2440,6 +2479,7 @@ self.onmessage = async (e) => {
         
         if (e.data.method === 'textDocument/didOpen') {
             const fullText = params.textDocument?.text || params.contentChanges?.[0]?.text;
+            console.log("[LSP Worker] textDocument/didOpen: uri=" + uri + ", textLength=" + (fullText ? fullText.length : 0));
             if (!lspFacade) {
                 pendingFullText = fullText;
             } else {
@@ -2448,6 +2488,7 @@ self.onmessage = async (e) => {
                 triggerDiagnostics([{ text: fullText }]);
             }
         } else {
+            console.log("[LSP Worker] textDocument/didChange: uri=" + uri + ", contentChanges count=" + (params.contentChanges ? params.contentChanges.length : 0));
             triggerDiagnostics(params.contentChanges);
         }
     } else if (e.data.method === 'textDocument/didClose') {

@@ -11,11 +11,20 @@ import {
   FLAG_VAR_FLOW,
   FLAG_EQ_STREAM_CONNECT,
 } from "./dae";
-import { getNodeFirstChild, getNodeNextSibling, getNodeType } from "./arena";
-import { CorrespondenceIndex } from "./correspondence";
-import { atomicChunkAlloc } from "./arena";
-import { ChunkedUint32Array, createChunkedUint32Array, ChunkedInt32Array, createChunkedInt32Array } from "./array";
+import {
+  getNodeFirstChild,
+  getNodeNextSibling,
+  getNodeType,
+  atomicChunkAlloc,
+} from "./arena";
+import {
+  ChunkedUint32Array,
+  createChunkedUint32Array,
+  ChunkedInt32Array,
+  createChunkedInt32Array,
+} from "./array";
 import { UnmanagedMap64, createMap64, UnmanagedSet64, createSet64 } from "./hashmap";
+import { CorrespondenceIndex } from "./correspondence";
 
 /**
  * Modification and Parameter Binding Environment in Linear Memory.

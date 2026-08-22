@@ -184,11 +184,11 @@ const MAX_CURSOR_DEPTH: i32 = 999999;
 export const INFINITE_COST: i32 = 999999;
 const MAX_UPWARD_STEPS: i32 = 100000;
 export const MAX_CHILD_NODES: i32 = 100000;
-export const MIN_LOOP_LIMIT: u32 = 1000000;
+export const MIN_LOOP_LIMIT: u32 = 10000;
 export const ARENA_BUFFER_SIZE: i32 = 16384;
 export const MAX_LOOKAHEAD_DEPTH: i32 = 6;
 export const MAX_AST_TRAVERSAL_DEPTH: u32 = 100;
-export const LOOP_MULTIPLIER_LIMIT: u32 = 100;
+export const LOOP_MULTIPLIER_LIMIT: u32 = 50;
 export const MAX_PANIC_SCAN_TOKENS: u32 = 500;
 
 export const PENALTY_UNWIND_NODE: i32 = 500;

@@ -272,6 +272,22 @@ export class UnmanagedMap64 {
         return 0;
     }
 
+    @inline has(hash: u64): boolean {
+        if (this.keys == 0 || this.capacity == 0) return false;
+        if (hash == 0) hash = 1;
+        let mask = this.capacity - 1;
+        let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
+        let probes: u32 = 0;
+        while (probes < this.capacity) {
+            let k = load<u64>(this.keys + (idx * 8));
+            if (k == 0) return false;
+            if (k == hash) return true;
+            idx = (idx + 1) & mask;
+            probes++;
+        }
+        return false;
+    }
+
     /**
      * Internal helper to double capacity and re-hash map entries.
      */

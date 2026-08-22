@@ -1,4 +1,4 @@
-import { OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
+import { OntologyBuilder, TableauReasoner } from "@modelscript/language";
 import { Connection } from "vscode-languageserver/browser";
 import { WorkspaceManager } from "./WorkspaceManager";
 
@@ -22,7 +22,7 @@ export class ReasonerService {
   public async initialize() {
     this.connection.console.info("[reasoner] Initializing TableauReasoner...");
     await this.ontologyBuilder.initialize();
-    this.connection.console.info(`[reasoner] Initialized with ${this.reasoner.getTaxonomy().size} taxonomy nodes.`);
+    this.connection.console.info(`[reasoner] Initialized with ${this.reasoner.getTaxonomy().length} taxonomy nodes.`);
   }
 
   /**
@@ -49,11 +49,14 @@ export class ReasonerService {
       );
 
       if (!consistency.isConsistent) {
-        // Find inconsistencies and surface them as diagnostics? (Phase 3)
-        // For now, log the explanation
-        for (const iri of consistency.inconsistentClasses) {
-          const explanation = this.reasoner.explain(iri, "satisfiability");
-          this.connection.console.warn(`[reasoner] Contradiction for ${iri}: ${explanation}`);
+        if (consistency.explanation) {
+          this.connection.console.warn(`[reasoner] Contradiction: ${consistency.explanation}`);
+        }
+        if (consistency.minimalConflictCore && consistency.minimalConflictCore.length > 0) {
+          const coreSummary = consistency.minimalConflictCore.map((ax) => JSON.stringify(ax)).join(", ");
+          this.connection.console.warn(
+            `[reasoner] QuickXplain Minimal Conflict Core (${consistency.minimalConflictCore.length} axioms): ${coreSummary}`,
+          );
         }
       }
     }

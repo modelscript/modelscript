@@ -14,7 +14,7 @@ import {
   ModelicaSyntaxNode,
 } from "./ast.js";
 import { evaluateCSTExpression } from "./diagram/annotation-evaluator.js";
-import { ArenaQueryFlattener } from "./flattener-query.js";
+import { ArenaQueryFlattener } from "./src/flattener.js";
 
 // Basic scope for script variables
 export class ScriptScope {

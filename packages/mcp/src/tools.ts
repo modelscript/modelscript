@@ -9,17 +9,19 @@ import {
   runSensitivityAnalysisArena,
   simulateArena,
 } from "@modelscript/compiler/simulator";
+import { Context, createModelicaQueryEngine, createSysML2QueryEngine } from "@modelscript/core";
 import {
-  Context,
-  createModelicaQueryEngine,
-  createSysML2QueryEngine,
-  ModelicaClassInstance,
-  ModelicaComponentInstance,
-  ModelicaStoredDefinitionSyntaxNode,
-} from "@modelscript/core";
-import { ArenaQueryFlattener } from "@modelscript/modelica/flattener-query";
+  executeBgpQuery,
+  executeQueryString,
+  formatBgpQueryResult,
+  formatQueryResult,
+  OntologyBuilder,
+  TableauReasoner,
+} from "@modelscript/language";
+import { ArenaQueryFlattener } from "@modelscript/modelica";
+import { ModelicaStoredDefinitionSyntaxNode } from "@modelscript/modelica/ast";
 import modelicaLangFallback from "@modelscript/modelica/language";
-import { executeQueryString, formatQueryResult, OntologyBuilder, TableauReasoner } from "@modelscript/reasoner";
+import { ModelicaClassInstance, ModelicaComponentInstance } from "@modelscript/modelica/semantic-model";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import path from "node:path";
 import { z } from "zod";
@@ -591,10 +593,14 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           content: [{ type: "text" as const, text: "System is semantically consistent." }],
         };
       } else {
-        const errors = result.conflictingAxioms?.map((a) => JSON.stringify(a)).join("\n") ?? "Unknown conflict.";
+        const coreAxioms = result.minimalConflictCore ?? result.conflictingAxioms;
+        const errors = coreAxioms?.map((a) => JSON.stringify(a)).join("\n") ?? "Unknown conflict.";
+        const coreNote = result.minimalConflictCore
+          ? `\nQuickXplain Minimal Conflict Core (${result.minimalConflictCore.length} axioms):\n`
+          : "\nConflicts:\n";
         return {
           content: [
-            { type: "text" as const, text: `System is inconsistent:\n${result.explanation}\nConflicts:\n${errors}` },
+            { type: "text" as const, text: `System is inconsistent:\n${result.explanation}${coreNote}${errors}` },
           ],
           isError: true,
         };
@@ -606,8 +612,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
   server.tool(
     "query_ontology_sparql",
-    "Evaluate a SPARQL-DL query against the unified polyglot ontology.",
-    { query: z.string().describe("Query string (e.g., 'subclasses(mo:ElectricalDevice)')") },
+    "Evaluate a SPARQL-DL or Property Path query against the unified polyglot ontology.",
+    {
+      query: z
+        .string()
+        .describe("Query string (e.g., 'subclasses(mo:ElectricalDevice)', 'path(connectedTo+, mo:pump)')"),
+    },
     async ({ query }) => {
       if (!ctx.ontologyBuilder) {
         return {
@@ -628,6 +638,39 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
       return {
         content: [{ type: "text" as const, text: formatQueryResult(result) }],
+      };
+    },
+  );
+
+  // ── query_ontology_bgp ─────────────────────────────────────────────────
+
+  server.tool(
+    "query_ontology_bgp",
+    "Evaluate a multi-pattern Basic Graph Pattern (BGP) query using Leapfrog Triejoin (Worst-Case Optimal Join).",
+    {
+      patterns: z
+        .array(
+          z.object({
+            subject: z.string().describe("Subject (IRI or variable starting with '?')"),
+            predicate: z.string().describe("Predicate (IRI or variable starting with '?')"),
+            object: z.string().describe("Object (IRI or variable starting with '?')"),
+          }),
+        )
+        .describe("List of triple patterns to join"),
+    },
+    async ({ patterns }) => {
+      if (!ctx.ontologyBuilder) {
+        return {
+          content: [{ type: "text" as const, text: "Ontology not initialized. Run hybrid_simulate first." }],
+          isError: true,
+        };
+      }
+
+      const reasoner = ctx.ontologyBuilder.backend;
+      const result = executeBgpQuery(reasoner, { patterns });
+
+      return {
+        content: [{ type: "text" as const, text: formatBgpQueryResult(result) }],
       };
     },
   );

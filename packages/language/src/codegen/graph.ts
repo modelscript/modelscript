@@ -12,9 +12,21 @@ import { transpileQuery as transpileQueryExternal } from "./transpiler.js";
  * @returns AssemblyScript source code string for the graph query bridge.
  */
 export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
-  const sourcePath = (grammar as any).sourcePath || (grammar as any)[SOURCE_PATH_SYMBOL];
   const sourceText = (grammar as any).sourceText || (grammar as any)[SOURCE_TEXT_SYMBOL];
-  const ast = sourceText ? extractLanguageAST(sourceText) : sourcePath ? extractLanguageAST(sourcePath) : null;
+  const sourcePath = (grammar as any).sourcePath || (grammar as any)[SOURCE_PATH_SYMBOL];
+  const hasQueries = !!(
+    grammar.queries ||
+    grammar.pipelines ||
+    grammar.lints ||
+    (grammar.lsp && grammar.lsp.definition)
+  );
+  const ast = hasQueries
+    ? sourceText
+      ? extractLanguageAST(sourceText)
+      : sourcePath
+        ? extractLanguageAST(sourcePath)
+        : null
+    : null;
 
   let switchCode = "";
   let customQueries = "";
