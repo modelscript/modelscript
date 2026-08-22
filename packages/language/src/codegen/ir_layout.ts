@@ -32,6 +32,12 @@ export function generateBlockLayoutConstants(): string {
   return `
 // --- Shared IR Block Layout Constants ---
 export const IR_INSTR_SIZE: u32 = ${IR_INSTR_SIZE};
+export const IR_INSTR_OPCODE: u32 = ${IR_INSTR_OPCODE};
+export const IR_INSTR_TYPE_ID: u32 = ${IR_INSTR_TYPE_ID};
+export const IR_INSTR_OPERAND1: u32 = ${IR_INSTR_OPERAND1};
+export const IR_INSTR_OPERAND2: u32 = ${IR_INSTR_OPERAND2};
+export const IR_INSTR_NEXT: u32 = ${IR_INSTR_NEXT};
+export const IR_OPCODE_PHI: u16 = ${IR_OPCODE_PHI};
 export const BLOCK_SIZE: u32 = ${BLOCK_SIZE};
 export const BLOCK_FIRST_INSTR: u32 = ${BLOCK_FIRST_INSTR};
 export const BLOCK_LAST_INSTR: u32 = ${BLOCK_LAST_INSTR};
@@ -46,7 +52,5 @@ export const BLOCK_DOMINATOR: u32 = ${BLOCK_DOMINATOR};
 export const BLOCK_STATE_TRUE: u32 = ${BLOCK_STATE_TRUE};
 export const BLOCK_STATE_FALSE: u32 = ${BLOCK_STATE_FALSE};
 export const BLOCK_POST_ORDER: u32 = ${BLOCK_POST_ORDER};
-export const IR_OPCODE_PHI: u16 = ${IR_OPCODE_PHI};
-export const IR_INSTR_NEXT: u32 = ${IR_INSTR_NEXT};
 `;
 }

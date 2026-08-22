@@ -58,9 +58,10 @@ export function buildCFG(rootNodeId: u32): u32 { return 0; }
   let code = `
 import { allocGen0, getNodeType, getNodeFirstChild, getNodeNextSibling, getNodeFlags, FLAG_IS_SYNTHETIC } from "./arena";
 import { SyntaxType } from "./parser";
-import { BLOCK_SIZE, BLOCK_TRUE_BRANCH, BLOCK_FALSE_BRANCH } from "./ir_layout";
+import { BLOCK_SIZE, BLOCK_TRUE_BRANCH, BLOCK_FALSE_BRANCH, BLOCK_NEXT, BLOCK_PREV } from "./ir_layout";
 
 export let firstBlock: u32 = 0;
+export let lastBlock: u32 = 0;
 export let currentBlock: u32 = 0;
 export let currentLoopHeader: u32 = 0;
 export let currentLoopExit: u32 = 0;
@@ -70,7 +71,13 @@ export function allocBlock(): u32 {
     let blk = allocGen0(BLOCK_SIZE);
     if (blk != 0) {
         memory.fill(blk as usize, 0, BLOCK_SIZE);
-        if (firstBlock == 0) firstBlock = blk;
+        if (firstBlock == 0) {
+            firstBlock = blk;
+        } else if (lastBlock != 0) {
+            store<u32>(lastBlock + BLOCK_NEXT, blk);
+            store<u32>(blk + BLOCK_PREV, lastBlock);
+        }
+        lastBlock = blk;
     }
     return blk;
 }
@@ -82,6 +89,7 @@ export function allocBlock(): u32 {
 export function buildCFG(rootNodeId: u32): u32 {
     // Reset IR state
     firstBlock = 0;
+    lastBlock = 0;
     currentBlock = 0;
     currentLoopHeader = 0;
     currentLoopExit = 0;
