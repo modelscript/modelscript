@@ -360,8 +360,12 @@ export class LspFacade {
   );
   private wasmMemory: WebAssembly.Memory;
   public exports: any;
-  private lastAstRoot: number = 0;
+  public lastAstRoot: number = 0;
   private _cachedLineStarts: Uint32Array | null = null;
+  private documentRoots = new Map<string, number>();
+  private documentVersions = new Map<string, number>();
+  private _idleTimer: any = null;
+  private _maxMemoryQuotaBytes: number = 32 * 1024 * 1024; // 32MB threshold
 
   /**
    * Returns true if a character matches the grammar's `extras` definition (whitespace/trivia).
@@ -391,12 +395,121 @@ export class LspFacade {
     }
   }
 
+  /**
+   * Retrieves the AST root for a specific document URI or numeric fileId (or the default/active document).
+   */
+  public getDocumentRoot(uriOrFileId?: string | number): number {
+    if (typeof uriOrFileId === "number") {
+      if (this.exports.lsp_getDocumentRoot) {
+        return this.exports.lsp_getDocumentRoot(uriOrFileId);
+      }
+      return this.lastAstRoot;
+    }
+    if (typeof uriOrFileId === "string" && this.documentRoots.has(uriOrFileId)) {
+      return this.documentRoots.get(uriOrFileId)!;
+    }
+    return this.lastAstRoot;
+  }
+
+  /**
+   * Registers/updates the AST root for a specific document URI.
+   */
+  public setDocumentRoot(uri: string, rootPtr: number, version: number = 0): void {
+    const oldRoot = this.documentRoots.get(uri);
+    if (oldRoot && oldRoot !== rootPtr && this.exports.dropRoot) {
+      this.exports.dropRoot(oldRoot);
+    }
+    this.documentRoots.set(uri, rootPtr);
+    this.documentVersions.set(uri, version);
+    if (rootPtr && this.exports.registerRoot) {
+      this.exports.registerRoot(rootPtr);
+    }
+    this.lastAstRoot = rootPtr;
+  }
+
+  /**
+   * Closes a document, unregistering its root from GC and triggering compaction.
+   */
+  public removeDocument(uri: string): void {
+    const root = this.documentRoots.get(uri);
+    if (root && this.exports.dropRoot) {
+      this.exports.dropRoot(root);
+    }
+    this.documentRoots.delete(uri);
+    this.documentVersions.delete(uri);
+    if (this.lastAstRoot === root) {
+      this.lastAstRoot = 0;
+    }
+    // Trigger 3: Document lifecycle event (cleanup on close)
+    this.scheduleCompaction(true);
+  }
+
+  /**
+   * Returns all active document roots across open files in the workspace.
+   */
+  public getAllDocumentRoots(): number[] {
+    const roots = Array.from(this.documentRoots.values()).filter((r) => r > 0);
+    if (roots.length === 0 && this.lastAstRoot > 0) roots.push(this.lastAstRoot);
+    return roots;
+  }
+
+  /**
+   * Schedules a generational sweep/compaction pass.
+   * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
+   */
+  public scheduleCompaction(immediate: boolean = false): void {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
+
+    if (immediate) {
+      this.gcCompact();
+      return;
+    }
+
+    this._idleTimer = setTimeout(() => {
+      this._idleTimer = null;
+      this.gcCompact();
+    }, 1500);
+  }
+
+  /**
+   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   */
+  public checkMemoryQuota(): void {
+    if (this.exports.arena_getMemoryUsage) {
+      const memUsage = this.exports.arena_getMemoryUsage();
+      if (memUsage > this._maxMemoryQuotaBytes) {
+        this.gcCompact();
+      }
+    }
+  }
+
+  /**
+   * Performs generational mark-sweep compaction protecting all live document roots.
+   */
+  public gcCompact(): void {
+    if (!this.exports.clearAstMarks) return;
+    const allRoots = this.getAllDocumentRoots();
+    for (const root of allRoots) {
+      if (this.exports.registerRoot) {
+        this.exports.registerRoot(root);
+      }
+    }
+    if (allRoots.length > 0) {
+      this.exports.clearAstMarks(allRoots[0]);
+    }
+  }
+
   /** Resets the internal parser state and clears all cached data. */
   resetParser(): void {
     if (this.exports.resetParser) {
       this.exports.resetParser();
     }
     this.lastAstRoot = 0;
+    this.documentRoots.clear();
+    this.documentVersions.clear();
     this._cachedLineStarts = null;
     this._childTailCache.clear();
   }
@@ -441,7 +554,13 @@ export class LspFacade {
    * @param rangeLength - The number of UTF-16 characters being replaced.
    * @param newTotalLength - The new total length of the document in UTF-16 characters.
    */
-  parseIncremental(changeText: string, rangeOffset: number, rangeLength: number, newTotalLength: number): number {
+  parseIncremental(
+    changeText: string,
+    rangeOffset: number,
+    rangeLength: number,
+    newTotalLength: number,
+    uri?: string,
+  ): number {
     const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
 
@@ -454,7 +573,7 @@ export class LspFacade {
     if (this.exports.abortSuspend) this.exports.abortSuspend();
 
     const lenBytes = newTotalLength * 2;
-    const prevAstRoot = this.lastAstRoot;
+    const prevAstRoot = this.getDocumentRoot(uri);
 
     // Fast path for empty input (e.g., clearing the editor)
     if (newTotalLength <= 0) {
@@ -462,16 +581,15 @@ export class LspFacade {
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
+      if (uri) this.setDocumentRoot(uri, newAstRoot);
       if (this.astListeners && this.astListeners.length > 0) {
         for (const listener of this.astListeners) {
           this.walkAstDiff(prevAstRoot, newAstRoot, listener);
         }
       }
-      if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
-        this.exports.clearAstMarks(this.lastAstRoot);
-      }
+      this.scheduleCompaction(false);
       this._cachedLineStarts = new Uint32Array([0]);
-      return this.lastAstRoot;
+      return newAstRoot;
     }
 
     const oldTotalLength = newTotalLength + rangeLength - changeText.length;
@@ -525,16 +643,16 @@ export class LspFacade {
     let editOldEnd = (rangeOffset + rangeLength) * 2;
     let editNewEnd = (rangeOffset + changeText.length) * 2;
 
-    if (this.lastAstRoot === 0 || (editStart === 0 && editOldEnd === 0 && editNewEnd === 0)) {
-      this.lastAstRoot = 0; // Force full reparse internally if offsets are zeroed or initial parse
+    let baseRoot = prevAstRoot;
+    if (baseRoot === 0 || (editStart === 0 && editOldEnd === 0 && editNewEnd === 0)) {
+      baseRoot = 0; // Force full reparse internally if offsets are zeroed or initial parse
       editStart = 0;
       editOldEnd = 0;
       editNewEnd = 0;
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const wasIncremental = this.lastAstRoot !== 0;
-    let newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    let newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (this.astListeners && this.astListeners.length > 0) {
@@ -552,13 +670,16 @@ export class LspFacade {
     const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
     if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
       this.lastAstRoot = 0;
+      if (uri) this.setDocumentRoot(uri, 0);
     } else {
       this.lastAstRoot = newAstRoot;
+      if (uri) this.setDocumentRoot(uri, newAstRoot);
     }
 
-    if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
-      this.exports.clearAstMarks(this.lastAstRoot);
-    }
+    // Trigger 2: Check memory quota after parse
+    this.checkMemoryQuota();
+    // Trigger 1: Schedule idle compaction
+    this.scheduleCompaction(false);
 
     return newAstRoot;
   }
@@ -572,16 +693,8 @@ export class LspFacade {
 
     let childPtr = mem32[(astRoot + 12) >>> 2];
     while (childPtr !== 0) {
-      const w0 = mem32[childPtr >>> 2];
-      const nodeType = w0 & 0x03ff;
-      const flags = (w0 >>> 10) & 0x0fff;
-      const w1 = mem32[(childPtr + 4) >>> 2];
-      const byteLen = w1 & 0x007fffff;
-
-      if (nodeType === 0) return true;
-      if ((flags & (128 | 256)) !== 0) return true;
-      if (byteLen === 0 && (flags & 0x100) !== 0) return true;
-
+      const cFlags = (mem32[childPtr >>> 2] >>> 10) & 0x0fff;
+      if ((cFlags & (128 | 256)) !== 0) return true;
       childPtr = mem32[(childPtr + 16) >>> 2];
     }
     return false;
@@ -592,53 +705,50 @@ export class LspFacade {
    * and triggering a single reparse to minimize overhead.
    */
   parseIncrementalBatch(
-    edits: { rangeOffset: number; rangeLength: number; text: string }[],
+    edits: { text: string; rangeOffset: number; rangeLength: number }[],
     newTotalLength: number,
+    uri?: string,
   ): number {
-    if (!this.exports.parse || !this.exports.getInputBuffer) return 0;
-    if (edits.length === 0) return this.lastAstRoot;
+    const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
+    if (!this.exports.parse || !getInputBuf) return 0;
+    if (!edits || edits.length === 0) return this.getDocumentRoot(uri);
 
     this._cachedLineStarts = null;
     this._childTailCache.clear();
 
     // First, compute the bounding box of all edits in original coordinates
     let minOrigStart = Infinity;
-    let maxOrigEnd = 0;
+    let maxOrigEnd = -Infinity;
     let netDelta = 0;
 
     for (const edit of edits) {
-      if (edit.rangeOffset === undefined) {
-        // Full replacement fallback
-        return this.parseIncremental(edit.text, 0, this.currentInputLength, newTotalLength);
-      }
-      if (edit.rangeOffset < minOrigStart) minOrigStart = edit.rangeOffset;
-      const editEnd = edit.rangeOffset + edit.rangeLength;
-      if (editEnd > maxOrigEnd) maxOrigEnd = editEnd;
-
+      const origStart = edit.rangeOffset;
+      const origEnd = edit.rangeOffset + edit.rangeLength;
+      if (origStart < minOrigStart) minOrigStart = origStart;
+      if (origEnd > maxOrigEnd) maxOrigEnd = origEnd;
       netDelta += edit.text.length - edit.rangeLength;
     }
     if (minOrigStart === Infinity) minOrigStart = 0;
 
     const oldTotalLength = this.currentInputLength > 0 ? this.currentInputLength : newTotalLength - netDelta;
 
-    const prevAstRoot = this.lastAstRoot;
+    const prevAstRoot = this.getDocumentRoot(uri);
 
     if (newTotalLength <= 0) {
       if (this.exports.lsp_setInputEncoding) this.exports.lsp_setInputEncoding(1);
       if (this.exports.lsp_setInputLength) this.exports.lsp_setInputLength(0);
       const newAstRoot = this.exports.parse(0, 0, 0, 0);
       this.lastAstRoot = newAstRoot;
+      if (uri) this.setDocumentRoot(uri, newAstRoot);
       if (this.astListeners && this.astListeners.length > 0) {
         for (const listener of this.astListeners) {
           this.walkAstDiff(prevAstRoot, newAstRoot, listener);
         }
       }
-      if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
-        this.exports.clearAstMarks(this.lastAstRoot);
-      }
+      this.scheduleCompaction(false);
       this._cachedLineStarts = new Uint32Array([0]);
       this.currentInputLength = 0;
-      return this.lastAstRoot;
+      return newAstRoot;
     }
 
     if (this.exports.abortSuspend) this.exports.abortSuspend();
@@ -694,15 +804,16 @@ export class LspFacade {
     let editOldEndByte = maxOrigEnd * 2;
     let editNewEndByte = maxNewEnd * 2;
 
-    if (this.lastAstRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
-      this.lastAstRoot = 0;
+    let baseRoot = prevAstRoot;
+    if (baseRoot === 0 || (editStartByte === 0 && editOldEndByte === 0 && editNewEndByte === 0)) {
+      baseRoot = 0;
       editStartByte = 0;
       editOldEndByte = 0;
       editNewEndByte = 0;
     }
 
     const _t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStartByte, editOldEndByte, editNewEndByte);
+    const newAstRoot = this.exports.parse(baseRoot, editStartByte, editOldEndByte, editNewEndByte);
     const _t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (this.astListeners && this.astListeners.length > 0) {
@@ -721,13 +832,14 @@ export class LspFacade {
     const isCatastrophic = this.exports.lsp_isCatastrophicError ? this.exports.lsp_isCatastrophicError() : false;
     if (isCatastrophic || this._hasTopLevelErrors(newAstRoot)) {
       this.lastAstRoot = 0;
+      if (uri) this.setDocumentRoot(uri, 0);
     } else {
       this.lastAstRoot = newAstRoot;
+      if (uri) this.setDocumentRoot(uri, newAstRoot);
     }
 
-    if (this.exports.clearAstMarks && this.lastAstRoot !== 0) {
-      this.exports.clearAstMarks(this.lastAstRoot);
-    }
+    this.checkMemoryQuota();
+    this.scheduleCompaction(false);
 
     return newAstRoot;
   }
@@ -1535,14 +1647,6 @@ export class LspFacade {
     if (this.exports.lsp_clearDocuments) {
       this.exports.lsp_clearDocuments();
     }
-  }
-
-  /** Retrieves the registered AST root for a given fileId. */
-  getDocumentRoot(fileId: number): number {
-    if (this.exports.lsp_getDocumentRoot) {
-      return this.exports.lsp_getDocumentRoot(fileId);
-    }
-    return 0;
   }
 
   /** Evicts a document's full AST from the Tier 2 arena while preserving Tier 1 stubs. */
@@ -2604,7 +2708,7 @@ export class LspFacade {
    * Performs a full non-incremental parse of the given text buffer.
    * Used as a fallback or for initial parsing.
    */
-  parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0): number {
+  parse(text: string, editStart: number = 0, editOldEnd: number = 0, editNewEnd: number = 0, uri?: string): number {
     const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
@@ -2625,18 +2729,20 @@ export class LspFacade {
     else if (this.exports.setInputLength) this.exports.setInputLength(lenBytes);
 
     this.currentInputLength = text.length;
+    const prevAstRoot = this.getDocumentRoot(uri);
 
+    let baseRoot = prevAstRoot;
     if (editStart === 0 && editOldEnd === 0 && editNewEnd === 0) {
       editNewEnd = lenBytes;
-      this.lastAstRoot = 0;
+      baseRoot = 0;
     }
 
-    const newAstRoot = this.exports.parse(this.lastAstRoot, editStart, editOldEnd, editNewEnd);
+    const newAstRoot = this.exports.parse(baseRoot, editStart, editOldEnd, editNewEnd);
 
     if (this.astListeners.length > 0) {
-      if (this.lastAstRoot !== 0) {
+      if (prevAstRoot !== 0) {
         for (const listener of this.astListeners) {
-          this.walkAstDiff(this.lastAstRoot, newAstRoot, listener);
+          this.walkAstDiff(prevAstRoot, newAstRoot, listener);
         }
       } else if (newAstRoot !== 0) {
         for (const listener of this.astListeners) {
@@ -2646,12 +2752,12 @@ export class LspFacade {
     }
 
     this.lastAstRoot = newAstRoot;
+    if (uri) this.setDocumentRoot(uri, newAstRoot);
 
-    if (this.exports.clearAstMarks) {
-      this.exports.clearAstMarks(this.lastAstRoot);
-    }
+    this.checkMemoryQuota();
+    this.scheduleCompaction(false);
 
-    return this.lastAstRoot;
+    return newAstRoot;
   }
 
   /**

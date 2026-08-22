@@ -1275,7 +1275,7 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
       setNodeFlags(cloneRight, FLAG_IS_LIST | FLAG_INVISIBLE | combinedErrorFlag);
 
       let total = lDirectChildCount + rDirectChildCount;
-      let leftHalf = total / 2;
+      let leftHalf = total > 1 ? total / 2 : 1;
 
       let gc = getNodeFirstChild(leftNode);
       let rc = getNodeFirstChild(rightNode);
@@ -1300,9 +1300,12 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
         setNodePadding(clone, getNodePadding(clone) + pAdd);
 
         if (lastChild == 0) {
-           setNodePadding(clone, 0); // padding transferred to `p`
+           setNodePadding(p, getNodePadding(p) + getNodePadding(clone));
+           setNodePadding(clone, 0);
            setFirstChild(cloneLeft, clone);
-        } else setNextSibling(lastChild, clone);
+        } else {
+           setNextSibling(lastChild, clone);
+        }
         
         setNextSibling(clone, 0);
         lastChild = clone;
@@ -1331,7 +1334,9 @@ export function concatLists(leftNode: u32, rightNode: u32, listSym: u16, envHash
            setNodePadding(cloneRight, getNodePadding(clone)); // Transfer padding to cloneRight
            setNodePadding(clone, 0);
            setFirstChild(cloneRight, clone);
-        } else setNextSibling(lastChild, clone);
+        } else {
+           setNextSibling(lastChild, clone);
+        }
         
         setNextSibling(clone, 0);
         lastChild = clone;
@@ -3494,7 +3499,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     currentParserMode = MODE_LR;
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
-      clearAstMarks(accepted);
       return accepted;
     }
   }
@@ -3526,7 +3530,6 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       let acceptedPos: u32 = bestAcceptingHead != 0 ? changetype<ParseHead>(bestAcceptingHead).pos : 0;
       let finalTree = wrapWithTrailingErrors(acceptedNode, acceptedPos);
       fixNodeLengthRecursive(finalTree);
-      clearAstMarks(finalTree);
       globalAstRoot = finalTree;
       return finalTree;
   }

@@ -505,19 +505,14 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   let ptr: u32 = 0;
 
   let flags: u32 = (type == 0 || (type & 0x8000) != 0) ? FLAG_HAS_ERROR : 0;
-  // 1. Attempt to reclaim memory from the free list (structural sharing)
-  if (s.freeNodeHead != 0) {
-    ptr = s.freeNodeHead;
-    s.freeNodeHead = changetype<ASTNode>(ptr).freeListNext; // Reclaim using freeListNext alias
-  } else {
-    // 2. Perform atomic bump allocation in the currently active generation
-    let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
+  // Perform atomic bump allocation in the currently active generation (Immutable Append-Only)
+  let endLimit = s.activeGeneration == 0 ? s.gen0_endLimit : (s.activeGeneration == 1 ? s.gen1_endLimit : s.gen2_endLimit);
 
-    // Atomically claim a 32-byte slot (8-byte aligned)
-    ptr = s.atomicAddOffset(NODE_SIZE);
+  // Atomically claim a 32-byte slot (8-byte aligned)
+  ptr = s.atomicAddOffset(NODE_SIZE);
 
-    // 3. Request a new chunk if the claimed slot exceeds the current chunk boundary
-    if (ptr + NODE_SIZE > endLimit) {
+  // Request a new chunk if the claimed slot exceeds the current chunk boundary
+  if (ptr + NODE_SIZE > endLimit) {
       let isGen0 = s.activeGeneration == 0;
       let isGen2 = s.activeGeneration == 2;
       // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
@@ -579,7 +574,6 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     if (s.activeGeneration == 1) {
       s.arenaOffset = ptr + NODE_SIZE;
     }
-  }
 
   // 4. Handle values that exceed the 10-bit inline padding limit (0x03ff = 1023)
   // Fat padding arena is eagerly initialized in initArena(), no null check needed here

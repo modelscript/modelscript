@@ -2221,7 +2221,7 @@ async function runDiagnosticsNow() {
             const oldLen = currentTextLength;
             currentTextLength = fullText.length;
             lspFacade.lastAstRoot = 0;
-            globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length);
+            globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length, latestUri);
         } else if (editsToApply.length > 0) {
             let newTotalLen = currentTextLength;
             for (const edit of editsToApply) {
@@ -2230,9 +2230,9 @@ async function runDiagnosticsNow() {
             currentTextLength = newTotalLen;
             if (editsToApply.length === 1) {
                 const edit = editsToApply[0];
-                globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen);
+                globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
             } else {
-                globalAstRoot = lspFacade.parseIncrementalBatch(editsToApply, newTotalLen);
+                globalAstRoot = lspFacade.parseIncrementalBatch(editsToApply, newTotalLen, latestUri);
             }
         } else {
             return;
@@ -2449,6 +2449,11 @@ self.onmessage = async (e) => {
             }
         } else {
             triggerDiagnostics(params.contentChanges);
+        }
+    } else if (e.data.method === 'textDocument/didClose') {
+        const uri = e.data.params?.textDocument?.uri;
+        if (uri && lspFacade && lspFacade.removeDocument) {
+            lspFacade.removeDocument(uri);
         }
     } else if (e.data.method === 'textDocument/definition') {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
