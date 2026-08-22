@@ -47,6 +47,8 @@ import { generateLexer } from "./lexer.js";
 import { generateOctagonDomain } from "./octagon.js";
 import { generatePantelidesDomain } from "./pantelides.js";
 import { generateReasoner } from "./reasoner.js";
+import { generateSAT } from "./sat.js";
+import { generateSimplex } from "./simplex.js";
 import { generateSSA } from "./ssa.js";
 import { transpileClass, transpileHelperFunction } from "./transpiler.js";
 import { generateTypes } from "./types.js";
@@ -962,6 +964,14 @@ export function generateParserTables(
   if (originalGrammar.semantics) {
     const rsCode = generateReasoner(originalGrammar, grammar);
     code += "\n" + extractExports(rsCode, "./reasoner");
+    if ((originalGrammar.semantics.reasoner as any)?.smt) {
+      if ((originalGrammar.semantics.reasoner as any)?.smt?.theories?.includes("LRA")) {
+        const simplexCode = generateSimplex(originalGrammar);
+        code += "\n" + extractExports(simplexCode, "./simplex");
+      }
+      const satCode = generateSAT(originalGrammar, grammar);
+      code += "\n" + extractExports(satCode, "./sat");
+    }
   }
 
   if (originalGrammar.polyglot) {

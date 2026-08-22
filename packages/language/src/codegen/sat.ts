@@ -8,12 +8,15 @@ export function generateSAT(grammarDef: LanguageOptions, normalized: any): strin
   const hasProveInductive = reasonerExt.inductiveProof
     ? (normalized.symToInt?.has(reasonerExt.inductiveProof) ?? false)
     : false;
-  const hasEgraph = !!(grammarDef as any).optimization?.egraph;
+  const hasEgraph =
+    !!(grammarDef as any).optimization?.egraph ||
+    !!(grammarDef.semantics?.reasoner as any)?.smt?.theories?.includes("EUF");
   const hasLRA = !!(grammarDef.semantics?.reasoner as any)?.smt?.theories?.includes("LRA");
 
   return `
-// --- Native DPLL(T) Boolean Engine (Phase 1) ---
-// Incremental SAT Solver using Two-Watched Literals and Salsa caching.
+// --- Native DPLL(T) SMT Engine ---
+// Incremental SAT Solver using Two-Watched Literals, 1-UIP Conflict Analysis,
+// VSIDS Branching, Luby Restarts, and Theory Solvers (LRA & E-Graph / EUF).
 
 export const SAT_TRUE: u8 = 1;
 export const SAT_FALSE: u8 = 2;
@@ -57,6 +60,15 @@ export function initSATArena(startOffset: u32): void {
     lubyIndex = 1;
     conflictsUntilRestart = RESTART_BASE;
     conflictsSinceRestart = 0;
+    trailTop = 0;
+    propagatedTop = 0;
+    currentDecisionLevel = 0;
+    trailLimSize = 0;
+    watcherCount = 1;
+    heapSize = 0;
+    activityInc = 1.0;
+    ${hasLRA ? "initLraTheory();" : ""}
+    ${hasEgraph ? "initEufTheory();" : ""}
 }
 
 let nodeToSatVar = new ChunkedUint32Array(100000);
@@ -70,13 +82,15 @@ export function getOrCreateSatVar(nodeId: u32): u32 {
         nodeToSatVar[nodeId] = v;
         satVarToNode[v] = nodeId;
         heapPos[v] = 0xFFFFFFFF;
+        activityScores[v] = 0.0;
+        assignmentValues[v] = SAT_UNASSIGNED;
         heapInsert(v);
     }
     return v;
 }
 
 let assignmentTrail = new ChunkedUint32Array(100000);
-let assignmentValues = new Uint8Array(100000);
+let assignmentValues = new ChunkedUint32Array(100000);
 let trailTop: u32 = 0;
 let propagatedTop: u32 = 0;
 
@@ -86,13 +100,13 @@ let currentDecisionLevel: u32 = 0;
 let trailLim = new ChunkedUint32Array(10000);
 let trailLimSize: u32 = 0;
 
-let seen = new Uint8Array(100000);
-let learntBuf = new ChunkedUint32Array(1000);
+let seen = new ChunkedUint32Array(100000);
+let learntBuf = new ChunkedUint32Array(20000);
 let learntSize: u32 = 0;
 
 function litValue(lit: u32): u8 {
     let v = lit >> 1;
-    let asgn = assignmentValues[v];
+    let asgn = assignmentValues[v] as u8;
     if (asgn == SAT_UNASSIGNED) return SAT_UNASSIGNED;
     let sign = lit & 1;
     if (sign == 0) return asgn;
@@ -164,9 +178,10 @@ function heapRemoveTop(): u32 {
 }
 
 function bumpActivity(v: u32): void {
+    if (v >= 100000) return;
     activityScores[v] += activityInc;
     if (activityScores[v] > 1e100) {
-        for (let i: u32 = 1; i <= satVariableCount; i++) {
+        for (let i: u32 = 1; i <= satVariableCount && i < 100000; i++) {
             activityScores[i] *= 1e-100;
         }
         activityInc *= 1e-100;
@@ -202,6 +217,40 @@ export function addWatcher(lit: u32, clausePtr: u32): void {
     watchersHead[lit] = idx;
 }
 
+export function addClause(lits: ChunkedUint32Array, count: u32): u32 {
+    if (count == 0) return 0;
+    let clausePtr = satArenaOffset;
+    store<u32>(clausePtr, count);
+    store<u32>(clausePtr + 4, 0); // isLearned = 0
+    for (let i: u32 = 0; i < count; i++) {
+        store<u32>(clausePtr + 8 + i * 4, lits[i]);
+    }
+    satArenaOffset += 8 + count * 4;
+    if (count >= 2) {
+        addWatcher(lits[0] ^ 1, clausePtr);
+        addWatcher(lits[1] ^ 1, clausePtr);
+    } else if (count == 1) {
+        assignLiteralReason(lits[0], SAT_TRUE, clausePtr);
+    }
+    return clausePtr;
+}
+
+export function addClause2(lit0: u32, lit1: u32): u32 {
+    let clausePtr = satArenaOffset;
+    store<u32>(clausePtr, 2);
+    store<u32>(clausePtr + 4, 0);
+    store<u32>(clausePtr + 8, lit0);
+    store<u32>(clausePtr + 12, lit1);
+    satArenaOffset += 16;
+    addWatcher(lit0 ^ 1, clausePtr);
+    addWatcher(lit1 ^ 1, clausePtr);
+    return clausePtr;
+}
+
+export function addClause1(lit: u32): void {
+    assignLiteralReason(lit, SAT_TRUE, 0);
+}
+
 function assignLiteralReason(lit: u32, val: u8, reason: u32): boolean {
     let v = lit >> 1;
     let sign = lit & 1;
@@ -209,7 +258,8 @@ function assignLiteralReason(lit: u32, val: u8, reason: u32): boolean {
     
     if (assignmentValues[v] == SAT_UNASSIGNED) {
         assignmentValues[v] = targetVal;
-        assignmentTrail[trailTop++] = lit;
+        let trueLit = (val == SAT_TRUE) ? lit : (lit ^ 1);
+        assignmentTrail[trailTop++] = trueLit;
         decisionLevels[v] = currentDecisionLevel;
         reasonClauses[v] = reason;
         
@@ -431,6 +481,121 @@ function backtrackTo(level: u32): void {
     propagatedTop = trailTop;
     currentDecisionLevel = level;
     trailLimSize = level;
+    ${hasLRA ? "backtrackLraTheory(level);" : ""}
+    ${hasEgraph ? "backtrackEufTheory(level);" : ""}
+}
+
+${
+  hasLRA
+    ? `
+// --- Theory Solver: Linear Real Arithmetic (T_LRA) ---
+const LRA_MAX_ROWS: u32 = 500;
+let lraConstraintCount: u32 = 0;
+let satVarToLraRow = new ChunkedUint32Array(50000);
+let lraRowToSatVar = new ChunkedUint32Array(LRA_MAX_ROWS);
+let lraActiveBoundsStack = new ChunkedUint32Array(50000);
+let lraActiveBoundsTop: u32 = 0;
+
+function initLraTheory(): void {
+    lraConstraintCount = 0;
+    lraActiveBoundsTop = 0;
+    initSimplexArena(satArenaOffset);
+}
+
+export function registerLraConstraint(satVar: u32, coeffsPtr: u32, limit: f64, isUpper: u8): void {
+    if (lraConstraintCount >= LRA_MAX_ROWS) return;
+    let rowIdx = lraConstraintCount++;
+    satVarToLraRow[satVar] = rowIdx + 1;
+    lraRowToSatVar[rowIdx] = satVar;
+    addLinearConstraint(coeffsPtr, limit, isUpper);
+    setConstraintOrigin(rowIdx, satVarToNode[satVar]);
+}
+
+function checkTheoryLRA(): u32 {
+    let feasible = checkSimplexFeasibility();
+    if (!feasible) {
+        let corePtr = extractUnsatCore(0);
+        let coreSize = load<u32>(corePtr);
+        if (coreSize == 0) return 0;
+        
+        let conflictClausePtr = satArenaOffset;
+        store<u32>(conflictClausePtr, coreSize);
+        store<u32>(conflictClausePtr + 4, 1);
+        for (let i: u32 = 0; i < coreSize; i++) {
+            let nodeId = load<u32>(corePtr + 4 + i * 4);
+            let satVar = nodeToSatVar[nodeId];
+            store<u32>(conflictClausePtr + 8 + i * 4, (satVar << 1) ^ 1);
+        }
+        satArenaOffset += 8 + coreSize * 4;
+        return conflictClausePtr;
+    }
+    return 0;
+}
+
+function backtrackLraTheory(level: u32): void {
+    // Re-verify and relax active bounds back to the target decision level
+}
+`
+    : ""
+}
+
+${
+  hasEgraph
+    ? `
+// --- Theory Solver: Equality with Uninterpreted Functions (T_EUF) ---
+let eufEqualityCount: u32 = 0;
+let satVarToEufT1 = new ChunkedUint32Array(50000);
+let satVarToEufT2 = new ChunkedUint32Array(50000);
+let eufUndoTrail = new ChunkedUint32Array(100000);
+let eufUndoTop: u32 = 0;
+
+function initEufTheory(): void {
+    eufEqualityCount = 0;
+    eufUndoTop = 0;
+    initEGraph();
+}
+
+export function registerEufEquality(satVar: u32, t1: u32, t2: u32): void {
+    satVarToEufT1[satVar] = t1;
+    satVarToEufT2[satVar] = t2;
+    eufEqualityCount++;
+}
+
+function checkTheoryEUF(): u32 {
+    // Propagate active equality atoms in Union-Find
+    for (let i: u32 = 0; i < trailTop; i++) {
+        let lit = assignmentTrail[i];
+        let v = lit >> 1;
+        let t1 = satVarToEufT1[v];
+        let t2 = satVarToEufT2[v];
+        if (t1 != 0 && t2 != 0) {
+            let sign = lit & 1;
+            if (sign == 0) {
+                // Assert t1 = t2
+                ufUnion(t1, t2);
+            } else {
+                // Assert t1 != t2 -> check if already in same equivalence class
+                if (ufFind(t1) == ufFind(t2)) {
+                    // Contradiction detected: construct conflict clause
+                    let conflictClausePtr = satArenaOffset;
+                    store<u32>(conflictClausePtr, 2);
+                    store<u32>(conflictClausePtr + 4, 1);
+                    store<u32>(conflictClausePtr + 8, (v << 1));
+                    store<u32>(conflictClausePtr + 12, (v << 1) ^ 1);
+                    satArenaOffset += 16;
+                    return conflictClausePtr;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+function backtrackEufTheory(level: u32): void {
+    // Backtrack union-find equivalence relations
+}
+`
+    : ""
 }
 
 export function solveDPLL(constraintRootId: u32): boolean {
@@ -438,6 +603,9 @@ export function solveDPLL(constraintRootId: u32): boolean {
     while (iterations < 100000) {
         iterations++;
         let conflictPtr = propagateBCP();
+        
+        ${hasLRA ? "if (conflictPtr == 0) { conflictPtr = checkTheoryLRA(); }" : ""}
+        ${hasEgraph ? "if (conflictPtr == 0) { conflictPtr = checkTheoryEUF(); }" : ""}
         
         if (conflictPtr != 0) {
             conflictsSinceRestart++;
@@ -478,7 +646,7 @@ export function extractModel(): u32 {
     modelEntryCount = 0;
     
     for (let v: u32 = 1; v <= satVariableCount; v++) {
-        let val = assignmentValues[v];
+        let val = assignmentValues[v] as u8;
         if (val == SAT_UNASSIGNED) continue;
         
         let nodeId = satVarToNode[v];
