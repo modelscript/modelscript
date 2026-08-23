@@ -1273,25 +1273,6 @@ export class LspFacade {
       const encoding = this.getInputEncoding();
       const charDiv = encoding === 1 ? 2 : 1;
 
-      // Clamp diagnostic ranges to a max of 3 lines to prevent Monaco UI freezes
-      // when dealing with unclosed blocks or runaway string literals spanning 100k lines.
-      const MAX_LINES = 3;
-      const MAX_COLS = 120;
-
-      if (startPos.character > MAX_COLS) {
-        startPos = { line: startPos.line, character: MAX_COLS };
-      }
-
-      if (endPos.line > startPos.line + MAX_LINES) {
-        endPos = { line: startPos.line + MAX_LINES, character: 0 };
-      }
-
-      if (endPos.line === startPos.line && endPos.character - startPos.character > MAX_COLS) {
-        endPos = { line: startPos.line, character: startPos.character + MAX_COLS };
-      } else if (endPos.character > MAX_COLS) {
-        endPos = { line: endPos.line, character: MAX_COLS };
-      }
-
       // Prevent diagnostic bleed: if a diagnostic ends exactly at the start of the next line,
       // clamp it to the end of the previous line so VS Code doesn't render it under the next token.
       if (endPos.line > startPos.line && endPos.character === 0) {

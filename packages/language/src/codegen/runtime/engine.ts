@@ -53,6 +53,9 @@ import {
   token_is_word as _token_is_word,
   token_is_operator as _token_is_operator,
   reachability_matrix as _reachability_matrix,
+  precomputed_repairs as _precomputed_repairs,
+  token_string_offsets as _token_string_offsets,
+  token_string_bytes as _token_string_bytes,
   sorted_insertion_symbols as _sorted_insertion_symbols,
   type_fields as _type_fields,
   type_field_data as _type_field_data,
@@ -122,6 +125,9 @@ export let token_delete_costs: StaticTable = changetype<StaticTable>(0);
 export let token_is_word: StaticTable = changetype<StaticTable>(0);
 export let token_is_operator: StaticTable = changetype<StaticTable>(0);
 export let reachability_matrix: StaticTable = changetype<StaticTable>(0);
+export let precomputed_repairs: StaticTable = changetype<StaticTable>(0);
+export let token_string_offsets: StaticTable = changetype<StaticTable>(0);
+export let token_string_bytes: StaticTable = changetype<StaticTable>(0);
 export let sorted_insertion_symbols: StaticTable = changetype<StaticTable>(0);
 
 export let prod_lengths: StaticTable = changetype<StaticTable>(0);
@@ -149,6 +155,9 @@ export function initStaticTables(): void {
   token_is_word = changetype<StaticTable>(_token_is_word);
   token_is_operator = changetype<StaticTable>(_token_is_operator);
   reachability_matrix = changetype<StaticTable>(_reachability_matrix);
+  precomputed_repairs = changetype<StaticTable>(_precomputed_repairs);
+  token_string_offsets = changetype<StaticTable>(_token_string_offsets);
+  token_string_bytes = changetype<StaticTable>(_token_string_bytes);
   sorted_insertion_symbols = changetype<StaticTable>(_sorted_insertion_symbols);
   prod_lengths = changetype<StaticTable>(_prod_lengths);
   prod_right_offsets = changetype<StaticTable>(_prod_right_offsets);

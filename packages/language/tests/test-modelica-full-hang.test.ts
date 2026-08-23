@@ -10,17 +10,26 @@ const __dirname = path.dirname(__filename);
 describe("Full Modelica Grammar Hang Reproduction", () => {
   let activeFacade: any;
   let tmpDir: string;
+  let buildResult: any;
 
   beforeAll(async () => {
     const target = path.join(__dirname, "..", "..", "..", "languages", "modelica", "src", "language.ts");
     const mod = await import("file://" + target);
     const result = buildParser({ ...mod.modelicaLanguage, classes: [], lints: [], queries: {} } as any);
+    buildResult = result;
     tmpDir = path.join(__dirname, "scratch_build_full_modelica_hang");
     if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.mkdirSync(tmpDir, { recursive: true });
 
     for (const file of result.assemblyScriptFiles) {
       fs.writeFileSync(path.join(tmpDir, file.filename), file.content);
+      if (file.filename === "tables.ts") {
+        const lines = file.content.split("\n");
+        const actOffsetLine = lines.find((l) => l.includes("action_offsets ="));
+        const actDataLine = lines.find((l) => l.includes("action_data ="));
+        console.log("DEBUG actOffsetLine:", actOffsetLine?.slice(0, 100));
+        console.log("DEBUG actDataLine (first 100):", actDataLine?.slice(0, 200));
+      }
     }
 
     const ascPath =
@@ -120,6 +129,18 @@ end ChuaCircuit;
       onNodeUpdated: (newPtr: number, oldPtr: number) => diffOps.push({ op: "update", newPtr, oldPtr }),
     };
 
+    // Test fresh full parse directly on "mo del ..."
+    const freshFullCode = currentCode.slice(0, 2) + " " + currentCode.slice(2);
+    console.log(
+      "symToInt model:",
+      buildResult?.symToInt?.get('"model"'),
+      "within:",
+      buildResult?.symToInt?.get('"within"'),
+    );
+    const freshAst = activeFacade.parse(freshFullCode);
+    console.log("FRESH FULL PARSE AST:\n", activeFacade.getAstSExpr(freshAst, true));
+    console.log("FRESH FULL PARSE DIAGNOSTICS:\n", activeFacade.getDiagnostics(freshAst));
+
     // 1. Initial parse
     activeFacade.lastAstRoot = 0;
     let ast = activeFacade.parseIncremental(currentCode, 0, 0, currentCode.length);
@@ -131,6 +152,8 @@ end ChuaCircuit;
     currentCode = currentCode.slice(0, 2) + " " + currentCode.slice(2);
     ast = activeFacade.parseIncremental(" ", 2, 0, currentCode.length);
     console.log("Step 2 (mo del) astRoot:", ast, "diags:", activeFacade.getDiagnostics(ast).length);
+    console.log("Step 2 AST S-Expr:\n", activeFacade.getAstSExpr(ast, true));
+    console.log("Step 2 Diagnostics:\n", activeFacade.getDiagnostics(ast));
     activeFacade.walkAstDiff(prevRoot, ast, listener);
     prevRoot = ast;
 

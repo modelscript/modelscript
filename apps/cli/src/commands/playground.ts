@@ -509,12 +509,14 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             monaco.editor.defineTheme('dark-modern', {
                 base: 'vs-dark',
                 inherit: true,
+                semanticHighlighting: true,
                 rules: [
                     { token: 'keyword', foreground: '569cd6' },
                     { token: 'keyword.control', foreground: 'c586c0' },
                     { token: 'keyword.flow', foreground: 'c586c0' },
                     { token: 'type', foreground: '4ec9b0' },
                     { token: 'class', foreground: '4ec9b0' },
+                    { token: 'class.declaration', foreground: '4ec9b0' },
                     { token: 'interface', foreground: '4ec9b0' },
                     { token: 'struct', foreground: '4ec9b0' },
                     { token: 'enum', foreground: '4ec9b0' },
@@ -522,6 +524,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     { token: 'function', foreground: 'dcdcaa' },
                     { token: 'method', foreground: 'dcdcaa' },
                     { token: 'property', foreground: '9cdcfe' },
+                    { token: 'property.declaration', foreground: '9cdcfe' },
                     { token: 'variable', foreground: '9cdcfe' },
                     { token: 'variable.name', foreground: '9cdcfe' },
                     { token: 'variable.parameter', foreground: '9cdcfe' },
@@ -553,12 +556,14 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             monaco.editor.defineTheme('light-modern', {
                 base: 'vs',
                 inherit: true,
+                semanticHighlighting: true,
                 rules: [
                     { token: 'keyword', foreground: '0000ff' },
                     { token: 'keyword.control', foreground: 'af00db' },
                     { token: 'keyword.flow', foreground: 'af00db' },
                     { token: 'type', foreground: '267f99' },
                     { token: 'class', foreground: '267f99' },
+                    { token: 'class.declaration', foreground: '267f99' },
                     { token: 'interface', foreground: '267f99' },
                     { token: 'struct', foreground: '267f99' },
                     { token: 'enum', foreground: '267f99' },
@@ -566,6 +571,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     { token: 'function', foreground: '795e26' },
                     { token: 'method', foreground: '795e26' },
                     { token: 'property', foreground: '001080' },
+                    { token: 'property.declaration', foreground: '001080' },
                     { token: 'variable', foreground: '001080' },
                     { token: 'variable.name', foreground: '001080' },
                     { token: 'variable.parameter', foreground: '001080' },
@@ -598,7 +604,8 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             const editorTheme = prefersDark ? 'dark-modern' : 'light-modern';
 
             window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-                monaco.editor.setTheme(e.matches ? 'dark-modern' : 'light-modern');
+                const newTheme = e.matches ? 'dark-modern' : 'light-modern';
+                monaco.editor.setTheme(newTheme);
             });
 
             const exampleDSL = ${JSON.stringify(initialDsl)};
@@ -616,6 +623,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 language: 'plaintext',
                 theme: editorTheme,
                 minimap: { enabled: false },
+                'semanticHighlighting.enabled': true,
                 semanticHighlighting: { enabled: true }
             });
 
@@ -641,6 +649,9 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 if (msg && (msg.type === 'astPatch' || msg.type === 'astPatchBinary')) {
                     window['__latestAstPatch'] = msg;
                     window.dispatchEvent(new CustomEvent('astPatch', { detail: msg }));
+                    if (window['__semanticTokensEmitter']) {
+                        window['__semanticTokensEmitter'].fire();
+                    }
 
                     // Debounce diagram data request on AST update
                     if (window['__diagramDebounceTimer']) clearTimeout(window['__diagramDebounceTimer']);
@@ -859,8 +870,16 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     }
                     if (e.data.semanticLegend) {
                         const getLegend = function () { return e.data.semanticLegend; };
+                        if (window['__semanticTokensEmitter']) {
+                            window['__semanticTokensEmitter'].dispose();
+                        }
+                        const semanticTokensEmitter = new monaco.Emitter();
+                        window['__semanticTokensEmitter'] = semanticTokensEmitter;
+
                         const providerObj = {
                             getLegend,
+                            legend: e.data.semanticLegend,
+                            onDidChange: semanticTokensEmitter.event,
                             provideDocumentSemanticTokens: async (model, lastResultId, token) => {
                                 if (token.isCancellationRequested) return null;
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/full', { textDocument: { uri: model.uri.toString() } }).catch(() => null);
@@ -878,6 +897,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         };
                         const rangeProviderObj = {
                             getLegend,
+                            legend: e.data.semanticLegend,
                             provideDocumentRangeSemanticTokens: async (model, range, token) => {
                                 if (token.isCancellationRequested) return null;
                                 const result = await languageClient.sendRequest('textDocument/semanticTokens/range', {
@@ -905,6 +925,10 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     if (window.codeEditor && window.codeEditor.getModel()) {
                         const model = window.codeEditor.getModel();
                         monaco.editor.setModelLanguage(model, langId);
+                        window.codeEditor.updateOptions({
+                            'semanticHighlighting.enabled': true,
+                            semanticHighlighting: { enabled: true }
+                        });
                         if (model.tokenization && typeof model.tokenization.resetTokenization === 'function') {
                             model.tokenization.resetTokenization();
                         }
@@ -1016,6 +1040,9 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         monaco.editor.setModelMarkers(currentModel, 'dsl-lsp', markers);
                         window['__latestDiagnostics'] = msg.params.diagnostics || [];
                         window.dispatchEvent(new Event('diagnosticsUpdated'));
+                        if (window['__semanticTokensEmitter']) {
+                            window['__semanticTokensEmitter'].fire();
+                        }
                     } else if (msg.type === 'statusUpdate') {
                         document.getElementById('status').innerText = msg.message;
                     } else if (msg.type === 'worker_log') {

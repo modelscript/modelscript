@@ -609,7 +609,7 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
     
     let semOffset: i32 = -1;
     // @ts-ignore
-    if (!isErrorNode && !hasError && (type as i32) <= MAX_SYMBOL_ID) {
+    if (!isErrorNode && (type as i32) <= MAX_SYMBOL_ID) {
       // @ts-ignore
       semOffset = load<i32>(type_semantics + type * 4);
     }
@@ -623,29 +623,25 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         let child = getNodeFirstChild(node);
         let childCount = 0;
         let targetChild: u32 = 0;
-        let currOffset = start + pad;
+        let currOffset = nodeStart;
         let childOffset: u32 = 0;
-        let isFirstChild = true;
 
-      while (child != 0) {
+        while (child != 0) {
           let cPad = getNodePadding(child);
           let cType = getNodeType(child);
           let cFlags = getNodeFlags(child);
           let cLen = getNodeByteLength(child);
           let isExtra = cType == NODE_TYPE_ERROR;
-          
-          let effectivePad = isFirstChild ? 0 : cPad;
 
           if (!isExtra) {
             if (childCount == childIdx) {
               targetChild = child;
-              childOffset = currOffset + effectivePad;
+              childOffset = currOffset + cPad;
               break;
             }
             childCount++;
           }
-          currOffset += effectivePad + cLen;
-          isFirstChild = false;
+          currOffset += cPad + cLen;
           child = getNodeNextSibling(child);
         }
 
@@ -697,10 +693,8 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         countChild = getNodeNextSibling(countChild);
       }
 
-      
-
       ensureTraverseStack(stackTop + childCount);
-      let currOffset = start;
+      let currOffset = nodeStart;
       let writeIdx = stackTop + childCount - 1;
       let errorFlagBit: u32 = (isErrorNode || inError) ? 0x80000000 : 0;
       while (child != 0) {

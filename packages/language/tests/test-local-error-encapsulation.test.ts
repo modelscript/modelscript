@@ -17,7 +17,7 @@ const modelicaLikeGrammar = language({
       seq(
         semanticToken("keyword", "model"),
         field("name", $.Identifier),
-        repeat(choice($.Decl, $.Equation)),
+        repeat(choice($.Decl, $.Equation, seq("equation", repeat($.Equation)))),
         semanticToken("keyword", "end"),
         field("endName", $.Identifier),
         ";",

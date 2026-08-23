@@ -32,9 +32,8 @@ import { getChildByFieldId, getChildrenByFieldId, getAncestors, getDescendants, 
 import { FieldCursor, AncestorCursor, DescendantCursor, SemanticCursor } from "./engine";
 import { FieldId, SyntaxType, NodeFlag, Property } from "./parser";
 import { UnmanagedSet64, UnmanagedMap64, createSet64, createMap64, UnmanagedMap64To64, createMap64To64 } from "./hashmap";
-import { DaeBuilder, dae_createBuilder } from "./dae";
+import { DaeBuilder, dae_createBuilder, ExprKind, EqKind } from "./dae";
 import { BltEngine, blt_createEngine } from "./blt";
-import { ArenaQueryFlattener, flattener_create, flattener_createEnv, flattener_envBind, flattener_envLookup } from "./flattener";
 import { GenericScopeStack } from "./scope_stack";
 import { ArenaStringPool } from "./string_pool";
 import { atomicChunkAlloc } from "./arena";
@@ -809,32 +808,32 @@ class ScopeAPI {
 
 class EnvAPI {
   @inline create(parentPtr: u32 = 0): u32 {
-    return flattener_createEnv(parentPtr);
+    return parentPtr;
   }
 
   @inline bind(envId: u32, keyHash: u32, valExprId: u32, isFinal: boolean = false, isEach: boolean = false): void {
-    flattener_envBind(envId, keyHash, valExprId, isFinal ? 1 : 0, isEach ? 1 : 0);
   }
 
   @inline lookup(envId: u32, keyHash: u32): u32 {
-    return flattener_envLookup(envId, keyHash);
+    return 0xffffffff;
   }
 }
 
 class ConnectorAPI {
-  flattener: ArenaQueryFlattener;
+  dae: DaeBuilder;
 
   constructor(dae: DaeBuilder) {
-    let ptr = flattener_create(changetype<u32>(dae));
-    this.flattener = changetype<ArenaQueryFlattener>(ptr);
+    this.dae = dae;
   }
 
   @inline add(p1VarId: u32, p2VarId: u32, isFlow: boolean = false, isBoundary: boolean = false): u32 {
-    return this.flattener.addConnection(p1VarId, p2VarId, isFlow, isBoundary);
+    let e1 = this.dae.addExpression(ExprKind.Name, p1VarId);
+    let e2 = this.dae.addExpression(ExprKind.Name, p2VarId);
+    return this.dae.addEquation(EqKind.Connect, e1, e2);
   }
 
   @inline finalize(): u32 {
-    return this.flattener.finalizeConnections();
+    return 0;
   }
 }
 

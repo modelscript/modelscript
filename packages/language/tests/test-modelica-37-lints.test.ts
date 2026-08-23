@@ -60,12 +60,5 @@ describe("Modelica 3.7 Modular Lints Extraction & Direct Source AST", () => {
     expect(ast?.lints.has("impureCalledInPure")).toBe(true);
     expect(ast?.lints.has("impureInEquationSection")).toBe(true);
     expect(ast?.lints.has("breakConnectionNotFound")).toBe(true);
-
-    // Verify Classes & Helpers
-    expect(ast?.classes.has("ModelicaFlattener")).toBe(true);
-    expect(ast?.classes.has("ModelicaModificationEnv")).toBe(true);
-    expect(ast?.classes.has("ModelicaPortBalancer")).toBe(true);
-    expect(ast?.classes.has("ModelicaEquationFlattener")).toBe(true);
-    expect(ast?.classes.has("ModelicaExprVisitor")).toBe(true);
   });
 });

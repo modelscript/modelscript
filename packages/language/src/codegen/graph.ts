@@ -74,11 +74,20 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
     });
   }
 
+  function getNodeSourceFile(node: ts.Node): ts.SourceFile {
+    let curr: ts.Node = node;
+    while (curr.parent) curr = curr.parent;
+    if (ts.isSourceFile(curr)) return curr;
+    if (node.getSourceFile && node.getSourceFile()) return node.getSourceFile();
+    return ast.sourceFile;
+  }
+
   // 1. Emit Top-Level Constants (e.g. VARIABILITY_CONTINUOUS, TYPE_REAL, etc.)
   if (ast && ast.constants) {
     for (const [constName, decl] of ast.constants.entries()) {
-      const typeStr = decl.type ? ": " + decl.type.getText(ast.sourceFile) : "";
-      const initStr = decl.initializer ? decl.initializer.getText(ast.sourceFile) : "0";
+      const sf = getNodeSourceFile(decl);
+      const typeStr = decl.type ? ": " + decl.type.getText(sf) : "";
+      const initStr = decl.initializer ? decl.initializer.getText(sf) : "0";
       customQueries += `export const ${constName}${typeStr} = ${initStr};\n`;
     }
     if (ast.constants.size > 0) {
@@ -89,6 +98,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
   // 2. Emit Top-Level Helper Functions (e.g. inferExprType, isTypeCompatible, etc.)
   if (ast && ast.functions) {
     for (const [fnName, fnDecl] of ast.functions.entries()) {
+      const fnSf = getNodeSourceFile(fnDecl);
       const fnInfo = transpileQuery(fnDecl);
       let fnStr = fnInfo.body;
       if (!fnStr.startsWith("export function") && !fnStr.startsWith("function")) {
@@ -96,9 +106,9 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         const paramsStr = nonDollar
           .map((p) => {
             if (ts.isFunctionDeclaration(fnDecl)) {
-              const originalP = fnDecl.parameters.find((orig) => orig.name.getText(ast.sourceFile) === p);
+              const originalP = fnDecl.parameters.find((orig) => orig.name.getText(fnSf) === p);
               if (originalP && originalP.type) {
-                const pType = originalP.type.getText(ast.sourceFile);
+                const pType = originalP.type.getText(fnSf);
                 if (pType === "bool" || pType === "boolean") return `${p}: bool`;
                 return `${p}: ${pType}`;
               }
@@ -108,7 +118,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
           .join(", ");
         const returnTypeStr =
           ts.isFunctionDeclaration(fnDecl) && fnDecl.type
-            ? ": " + (fnDecl.type.getText(ast.sourceFile) === "boolean" ? "bool" : fnDecl.type.getText(ast.sourceFile))
+            ? ": " + (fnDecl.type.getText(fnSf) === "boolean" ? "bool" : fnDecl.type.getText(fnSf))
             : ": u32";
         fnStr = `export function ${fnName}(${paramsStr})${returnTypeStr} {\n${fnStr}\n}`;
       }
@@ -282,10 +292,10 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
 
   let code = graphCode;
 
-  code = code.replace(/__GRAPH_SWITCH_CODE__/g, switchCode);
-  code = code.replace(/__CUSTOM_QUERIES__/g, customQueries);
-  code = code.replace(/__OUTLINE_QUERY_WRAPPER__/g, outlineQueryWrapper);
-  code = code.replace(/__MODEL_ACCESSORS__/g, "");
+  code = code.replace(/__GRAPH_SWITCH_CODE__/g, () => switchCode);
+  code = code.replace(/__CUSTOM_QUERIES__/g, () => customQueries);
+  code = code.replace(/__OUTLINE_QUERY_WRAPPER__/g, () => outlineQueryWrapper);
+  code = code.replace(/__MODEL_ACCESSORS__/g, () => "");
 
   return code;
 }

@@ -5,23 +5,21 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
    * M6001: Mixed clock domains without synchronous operator.
    */
   mixedClockDomains: {
-    nodes: ["add_expression", "sub_expression", "mul_expression", "div_expression"],
+    nodes: ["expression"],
     severity: "error",
     code: 6001,
     message: "Mixed clock domains without explicit conversion operator.",
     query: (db: CodeGraph, node: u32) => {
-      const left = db.ast.getFirstChild(node);
-      if (left != 0) {
-        const right = db.ast.getNextSibling(left);
-        if (right != 0) {
-          const leftSym = db.scope.resolve(left);
-          const rightSym = db.scope.resolve(right);
-          if (leftSym != 0 && rightSym != 0) {
-            const clockL = db.model.getProperty(leftSym, "clockId");
-            const clockR = db.model.getProperty(rightSym, "clockId");
-            if (clockL != 0 && clockR != 0 && clockL != clockR) {
-              db.diagnostic(node);
-            }
+      const left = db.ast.getChildByFieldId(node, "left");
+      const right = db.ast.getChildByFieldId(node, "right");
+      if (left != 0 && right != 0) {
+        const leftSym = db.scope.resolve(left);
+        const rightSym = db.scope.resolve(right);
+        if (leftSym != 0 && rightSym != 0) {
+          const clockL = db.model.getProperty(leftSym, "clockId");
+          const clockR = db.model.getProperty(rightSym, "clockId");
+          if (clockL != 0 && clockR != 0 && clockL != clockR) {
+            db.diagnostic(node);
           }
         }
       }
@@ -89,7 +87,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "hold")) {
-        for (const sec of db.ast.getAncestors(node, $.class_definition)) {
+        for (const sec of db.ast.getAncestors(node, 0)) {
           if (db.ast.getType(sec) == $.equation_section) {
             db.diagnostic(node);
           }

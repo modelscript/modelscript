@@ -5,12 +5,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M1003: Empty array constructors are not valid in Modelica.
    */
   emptyArrayConstructor: {
-    nodes: ["array_constructor", "array_comprehension"],
+    nodes: ["primary"],
     severity: "error",
     code: 1003,
     message: "Parse error: Empty array constructors are not valid in Modelica.",
     query: (db: CodeGraph, node: u32) => {
-      if (db.ast.getChildCount(node) == 0) {
+      if (db.ast.textEquals(node, "[]") || db.ast.textEquals(node, "{}")) {
         db.diagnostic(node);
       }
     },
@@ -20,7 +20,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M2005: Identifier at start and end of class must match.
    */
   identifierMismatch: {
-    nodes: ["class_definition"],
+    nodes: ["long_class_specifier"],
     severity: "error",
     code: 2005,
     message: "The identifier at start and end are different.",
@@ -60,14 +60,16 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4006,
     message: "Element is not allowed in function context: algorithm.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const sec of db.ast.getDescendants(cls, $.algorithm_section)) {
-          if (sec != 0) {
-            db.diagnostic(node);
-            return;
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const sec of db.ast.getDescendants(cls, $.algorithm_section)) {
+            if (sec != 0) {
+              db.diagnostic(node);
+              return;
+            }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -76,28 +78,28 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4007: Non-input/output variable declared in public section of function.
    */
   functionPublicVariable: {
-    nodes: ["public_element_list"],
+    nodes: ["component_clause"],
     severity: "warning",
     code: 4007,
     message: "Invalid public variable, function variables that are not input/output must be protected.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-          if (db.ast.textEquals(pfx, "function")) {
-            for (const comp of db.ast.getDescendants(node, $.component_clause)) {
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+            if (db.ast.textEquals(pfx, "function")) {
               let hasIO = false;
-              for (const tp of db.ast.getDescendants(comp, $.type_prefix)) {
+              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
                 if (db.ast.textEquals(tp, "input") || db.ast.textEquals(tp, "output")) {
                   hasIO = true;
                 }
               }
               if (!hasIO) {
-                db.diagnostic(comp);
+                db.diagnostic(node);
               }
             }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -106,24 +108,24 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4011: Function variables that are input/output must be public.
    */
   functionProtectedIO: {
-    nodes: ["protected_element_list"],
+    nodes: ["component_clause"],
     severity: "error",
     code: 4011,
     message: "Invalid protected variable, function variables that are input/output must be public.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-          if (db.ast.textEquals(pfx, "function")) {
-            for (const comp of db.ast.getDescendants(node, $.component_clause)) {
-              for (const tp of db.ast.getDescendants(comp, $.type_prefix)) {
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+            if (db.ast.textEquals(pfx, "function")) {
+              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
                 if (db.ast.textEquals(tp, "input") || db.ast.textEquals(tp, "output")) {
                   db.diagnostic(tp);
                 }
               }
             }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -137,7 +139,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4013,
     message: "Nested when statements are not allowed.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const anc of db.ast.getAncestors(node, $.class_definition)) {
+      for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc != node && (db.ast.getType(anc) == $.when_statement || db.ast.getType(anc) == $.when_equation)) {
           db.diagnostic(node);
           return;
@@ -150,16 +152,18 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4014: Tuple expressions only allowed on LHS of assignment/equation.
    */
   tupleExpressionContext: {
-    nodes: ["tuple_expression"],
+    nodes: ["output_expression_list"],
     severity: "error",
     code: 4014,
     message:
       "Tuple expressions may only occur on the left side of an assignment or equation with a single function call on the right side.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const parent = db.ast.getFirstChild(node);
-      if (parent != 0 && db.ast.getType(parent) != $.statement && db.ast.getType(parent) != $.equation) {
-        db.diagnostic(node);
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.statement || db.ast.getType(anc) == $.equation_or_procedure) {
+          return;
+        }
       }
+      db.diagnostic(node);
     },
   },
 
@@ -172,13 +176,15 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4017,
     message: "Equations are not allowed in records or connectors.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-          if (db.ast.textEquals(pfx, "record") || db.ast.textEquals(pfx, "connector")) {
-            db.diagnostic(node);
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+            if (db.ast.textEquals(pfx, "record") || db.ast.textEquals(pfx, "connector")) {
+              db.diagnostic(node);
+            }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -231,13 +237,15 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: "The built-in variable 'time' is only available in models and blocks, not in functions or records.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       if (db.ast.textEquals(node, "time")) {
-        for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-            if (db.ast.textEquals(pfx, "function")) {
-              db.diagnostic(node);
+        for (const cls of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(cls) == $.class_definition) {
+            for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+              if (db.ast.textEquals(pfx, "function")) {
+                db.diagnostic(node);
+              }
             }
+            break;
           }
-          break;
         }
       }
     },
@@ -247,7 +255,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    * M4022: Enumeration range cannot have a step size.
    */
   enumRangeWithStep: {
-    nodes: ["range_expression"],
+    nodes: ["expression"],
     severity: "error",
     code: 4022,
     message: "Range of type enumeration may not specify a step size.",
@@ -272,7 +280,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4023,
     message: "connect may not be used inside when-equations.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const anc of db.ast.getAncestors(node, $.class_definition)) {
+      for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.when_equation || db.ast.getType(anc) == $.when_statement) {
           db.diagnostic(node);
           return;
@@ -290,10 +298,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4024,
     message: "Connect equations are not allowed in initial equation sections.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const anc of db.ast.getAncestors(node, $.class_definition)) {
-        if (db.ast.getType(anc) == $.initial_equation_section) {
-          db.diagnostic(node);
-          return;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.equation_section) {
+          if (db.ast.textEquals(anc, "initial")) {
+            db.diagnostic(node);
+            return;
+          }
         }
       }
     },
@@ -324,17 +334,19 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4032,
     message: "Invalid prefix on formal parameter.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-          if (db.ast.textEquals(pfx, "function")) {
-            for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
-              if (db.ast.textEquals(tp, "flow") || db.ast.textEquals(tp, "stream")) {
-                db.diagnostic(tp);
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+            if (db.ast.textEquals(pfx, "function")) {
+              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
+                if (db.ast.textEquals(tp, "flow") || db.ast.textEquals(tp, "stream")) {
+                  db.diagnostic(tp);
+                }
               }
             }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -370,19 +382,21 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4036,
     message: "Variable in package is not constant.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-        for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-          if (db.ast.textEquals(pfx, "package")) {
-            let isConst = false;
-            for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
-              if (db.ast.textEquals(tp, "constant")) isConst = true;
-            }
-            if (!isConst) {
-              db.diagnostic(node);
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+            if (db.ast.textEquals(pfx, "package")) {
+              let isConst = false;
+              for (const tp of db.ast.getDescendants(node, $.type_prefix)) {
+                if (db.ast.textEquals(tp, "constant")) isConst = true;
+              }
+              if (!isConst) {
+                db.diagnostic(node);
+              }
             }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -397,15 +411,17 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: "Prefix 'flow' used outside connector declaration.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       if (db.ast.textEquals(node, "flow")) {
-        for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-          let inConnector = false;
-          for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
-            if (db.ast.textEquals(pfx, "connector")) inConnector = true;
+        for (const cls of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(cls) == $.class_definition) {
+            let inConnector = false;
+            for (const pfx of db.ast.getDescendants(cls, $.class_prefixes)) {
+              if (db.ast.textEquals(pfx, "connector")) inConnector = true;
+            }
+            if (!inConnector) {
+              db.diagnostic(node);
+            }
+            break;
           }
-          if (!inConnector) {
-            db.diagnostic(node);
-          }
-          break;
         }
       }
     },
@@ -420,22 +436,24 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4042,
     message: "Constant has no value.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
-        for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
-          if (db.ast.textEquals(pfx, "constant")) {
-            let hasBinding = false;
-            for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-              if (mod) {
-                hasBinding = true;
-                break;
+      for (const comp of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(comp) == $.component_clause) {
+          for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
+            if (db.ast.textEquals(pfx, "constant")) {
+              let hasBinding = false;
+              for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
+                if (mod) {
+                  hasBinding = true;
+                  break;
+                }
+              }
+              if (!hasBinding) {
+                db.diagnostic(node);
               }
             }
-            if (!hasBinding) {
-              db.diagnostic(node);
-            }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -451,7 +469,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "cardinality")) {
-        for (const anc of db.ast.getAncestors(node, $.class_definition)) {
+        for (const anc of db.ast.getAncestors(node, 0)) {
           const type = db.ast.getType(anc);
           if (type == $.if_equation || type == $.if_statement) return;
         }

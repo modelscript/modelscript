@@ -2997,11 +2997,13 @@ export function advanceGLR(): void {
 
       if (!didAct) {
         if (tok != TOKEN_EOF) {
-          let recovered = recoverMissingToken(head, tok, frontierPos);
-          if (!recovered && head.errorCost < 500) {
-            recovered = recoverStackSummary(head, tok, frontierPos);
+          if (configEnableBranchB && head.consecutiveInsertions < 3) {
+            recoverMissingToken(head, tok, frontierPos);
           }
-          if (!recovered) {
+          if (head.errorCost < 500 && head.prev != null) {
+            recoverStackSummary(head, tok, frontierPos);
+          }
+          if (configEnableBranchA1) {
             recoverSkipToken(head, tok, frontierPos);
           }
         }

@@ -11,10 +11,20 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 2001,
     message: "Undefined reference.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const parent = db.ast.getFirstChild(node);
-      if (parent != 0 && db.ast.getType(parent) == $.component_declaration) return;
-      if (parent != 0 && db.ast.getType(parent) == $.class_definition) return;
-      if (db.ast.textEquals(node, "time")) return;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (anc != node) {
+          const type = db.ast.getType(anc);
+          if (
+            type == $.declaration ||
+            type == $.long_class_specifier ||
+            type == $.short_class_specifier ||
+            type == $.import_clause
+          ) {
+            return;
+          }
+        }
+      }
+      if (db.ast.textEquals(node, "time") || db.ast.textEquals(node, "der")) return;
 
       const sym = db.scope.resolve(node);
       if (sym == 0) {
@@ -35,11 +45,13 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const typeSpec = db.ast.getChildByFieldId(node, "type_specifier");
       if (typeSpec != 0) {
         const baseClass = db.scope.resolve(typeSpec);
-        for (const cls of db.ast.getAncestors(node, $.class_definition)) {
-          if (cls == baseClass) {
-            db.diagnostic(node);
+        for (const cls of db.ast.getAncestors(node, 0)) {
+          if (db.ast.getType(cls) == $.class_definition) {
+            if (cls == baseClass) {
+              db.diagnostic(node);
+            }
+            break;
           }
-          break;
         }
       }
     },
@@ -106,23 +118,25 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4027,
     message: "Component of variability parameter has binding of higher continuous variability.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
-        for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
-          if (db.ast.textEquals(pfx, "parameter")) {
-            let binding: u32 = 0;
-            for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-              binding = mod;
-              break;
-            }
-            if (binding != 0) {
-              const varb = getExpressionVariability(db, binding, $);
-              if (varb == VARIABILITY_CONTINUOUS) {
-                db.diagnostic(binding);
+      for (const comp of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(comp) == $.component_clause) {
+          for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
+            if (db.ast.textEquals(pfx, "parameter")) {
+              let binding: u32 = 0;
+              for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
+                binding = mod;
+                break;
+              }
+              if (binding != 0) {
+                const varb = getExpressionVariability(db, binding, $);
+                if (varb == VARIABILITY_CONTINUOUS) {
+                  db.diagnostic(binding);
+                }
               }
             }
           }
+          break;
         }
-        break;
       }
     },
   },
@@ -175,23 +189,25 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4043,
     message: "Component of variability constant has binding of higher variability.",
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
-        for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
-          if (db.ast.textEquals(pfx, "constant")) {
-            let binding: u32 = 0;
-            for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-              binding = mod;
-              break;
-            }
-            if (binding != 0) {
-              const varb = getExpressionVariability(db, binding, $);
-              if (varb == VARIABILITY_CONTINUOUS) {
-                db.diagnostic(binding);
+      for (const comp of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(comp) == $.component_clause) {
+          for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
+            if (db.ast.textEquals(pfx, "constant")) {
+              let binding: u32 = 0;
+              for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
+                binding = mod;
+                break;
+              }
+              if (binding != 0) {
+                const varb = getExpressionVariability(db, binding, $);
+                if (varb == VARIABILITY_CONTINUOUS) {
+                  db.diagnostic(binding);
+                }
               }
             }
           }
+          break;
         }
-        break;
       }
     },
   },

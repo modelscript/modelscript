@@ -456,6 +456,22 @@ export function generateParserTables(
   }
   code += generateStaticArray(Array.from(precomputedRepairs), "precomputed_repairs");
 
+  // Literal terminal strings for keyword/symbol similarity matching
+  const tokenStringOffsets: number[] = new Array(symToInt.size + 1).fill(-1);
+  const tokenStringBytes: number[] = [];
+  for (const [sym, symId] of symToInt.entries()) {
+    if (sym.startsWith('"') && sym.endsWith('"') && sym.length > 2) {
+      const literal = sym.slice(1, -1);
+      tokenStringOffsets[symId] = tokenStringBytes.length;
+      tokenStringBytes.push(literal.length);
+      for (let i = 0; i < literal.length; i++) {
+        tokenStringBytes.push(literal.charCodeAt(i));
+      }
+    }
+  }
+  code += generateStaticArray(tokenStringOffsets, "token_string_offsets");
+  code += generateStaticArray(tokenStringBytes, "token_string_bytes");
+
   const syncIds: number[] = [];
   for (const t of syncTokens) {
     const id = symToInt.get(`"${t}"`) || symToInt.get(t);
@@ -908,6 +924,9 @@ export function generateParserTables(
       "token_is_word",
       "token_is_operator",
       "reachability_matrix",
+      "precomputed_repairs",
+      "token_string_offsets",
+      "token_string_bytes",
       "sorted_insertion_symbols",
       "prod_lengths",
       "prod_right_offsets",
@@ -946,6 +965,7 @@ export function generateParserTables(
   code += extractExports(bltCode, "./blt");
   code += extractExports(correspondenceCode, "./correspondence");
   code += extractExports(polyglot_arenaCode, "./polyglot_arena");
+  code += extractExports(flattenerCode, "./flattener");
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -1034,11 +1054,11 @@ export function generateParserTables(
     { filename: "ontology.ts", content: ontologyCode },
     { filename: "ontology_projection.ts", content: ontology_projectionCode },
     { filename: "builtins_math.ts", content: builtins_mathCode },
-    { filename: "flattener.ts", content: flattenerCode },
     { filename: "scope_stack.ts", content: scope_stackCode },
     { filename: "string_pool.ts", content: string_poolCode },
     { filename: "cas.ts", content: casCode },
     { filename: "tape.ts", content: tapeCode },
+    { filename: "flattener.ts", content: flattenerCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1065,7 +1085,6 @@ export function generateParserTables(
   code += extractExports(ontologyCode, "./ontology");
   code += extractExports(ontology_projectionCode, "./ontology_projection");
   code += extractExports(builtins_mathCode, "./builtins_math");
-  code += extractExports(flattenerCode, "./flattener");
   code += extractExports(scope_stackCode, "./scope_stack");
   code += extractExports(string_poolCode, "./string_pool");
   code += extractExports(hashmapCode, "./hashmap");

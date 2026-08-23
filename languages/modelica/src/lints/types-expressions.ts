@@ -75,20 +75,14 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
    * M5005: Division by literal zero.
    */
   divisionByZero: {
-    nodes: ["div_expression"],
+    nodes: ["expression"],
     severity: "error",
     code: 5005,
     message: "Division by zero.",
-    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+    query: (db: CodeGraph, node: u32) => {
       const rightChild = db.ast.getChildByFieldId(node, "right");
       if (rightChild != 0) {
-        const type = db.ast.getType(rightChild);
-        if (type == $.unsigned_integer && db.ast.textEquals(rightChild, "0")) {
-          db.diagnostic(node);
-        } else if (
-          type == $.unsigned_real &&
-          (db.ast.textEquals(rightChild, "0.0") || db.ast.textEquals(rightChild, "0"))
-        ) {
+        if (db.ast.textEquals(rightChild, "0") || db.ast.textEquals(rightChild, "0.0")) {
           db.diagnostic(node);
         }
       }

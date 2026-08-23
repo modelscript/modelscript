@@ -10,20 +10,9 @@ import {
   seq,
   token,
 } from "@modelscript/language";
-import { ModelicaPortBalancer } from "./connections.js";
-import { ModelicaEquationFlattener } from "./equations.js";
-import { ModelicaFlattener, ModelicaModificationEnv } from "./flattener.js";
 import { allModelicaLints } from "./lints/index.js";
-import { ModelicaExprVisitor } from "./visitor.js";
 
-export {
-  allModelicaLints,
-  ModelicaEquationFlattener,
-  ModelicaExprVisitor,
-  ModelicaFlattener,
-  ModelicaModificationEnv,
-  ModelicaPortBalancer,
-};
+export { allModelicaLints };
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -41,14 +30,6 @@ const PRECEDENCE = {
 
 export const modelicaLanguage = language({
   name: "Modelica",
-
-  classes: [
-    ModelicaFlattener,
-    ModelicaModificationEnv,
-    ModelicaPortBalancer,
-    ModelicaEquationFlattener,
-    ModelicaExprVisitor,
-  ],
 
   word: ($) => $.identifier,
 
@@ -301,7 +282,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          semanticToken("class", $.identifier, ["declaration"]),
+          semanticToken("class", field("end_name", $.identifier), ["declaration"]),
         ),
         seq(
           "extends",
@@ -310,7 +291,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          semanticToken("class", $.identifier, ["declaration"]),
+          semanticToken("class", field("end_name", $.identifier), ["declaration"]),
         ),
       ),
 
@@ -367,16 +348,16 @@ export const modelicaLanguage = language({
             $.algorithm_section,
           ),
         ),
-        optional(
-          seq(
-            "external",
-            optional($.language_specification),
-            optional($.external_function_call),
-            optional($.annotation_clause),
-            ";",
-          ),
-        ),
+        optional(seq($.external_clause, ";")),
         optional(seq($.annotation_clause, ";")),
+      ),
+
+    external_clause: ($) =>
+      seq(
+        "external",
+        optional($.language_specification),
+        optional($.external_function_call),
+        optional($.annotation_clause),
       ),
 
     language_specification: ($) => $.string_literal,
@@ -421,7 +402,12 @@ export const modelicaLanguage = language({
 
     // A.2.3 Extends
     extends_clause: ($) =>
-      seq("extends", $.type_specifier, optional($.class_or_inheritance_modification), optional($.annotation_clause)),
+      seq(
+        "extends",
+        field("type_specifier", $.type_specifier),
+        optional($.class_or_inheritance_modification),
+        optional($.annotation_clause),
+      ),
 
     constraining_clause: ($) => seq("constrainedby", $.type_specifier, optional($.class_modification)),
 
@@ -438,8 +424,13 @@ export const modelicaLanguage = language({
     // A.2.4 Component Clause
     component_clause: ($) =>
       choice(
-        seq($.type_prefix, $.type_specifier, optional($.array_subscripts), $.component_list),
-        seq($.type_specifier, optional($.array_subscripts), $.component_list),
+        seq(
+          field("type_prefix", $.type_prefix),
+          field("type_specifier", $.type_specifier),
+          optional($.array_subscripts),
+          $.component_list,
+        ),
+        seq(field("type_specifier", $.type_specifier), optional($.array_subscripts), $.component_list),
       ),
 
     type_prefix: () =>
@@ -513,7 +504,7 @@ export const modelicaLanguage = language({
     // GLR parsers handle this without needing left-factoring!
     equation_or_procedure: ($) => choice($.simple_equation, $.function_call),
 
-    simple_equation: ($) => seq($.expression, "=", $.expression),
+    simple_equation: ($) => seq(field("lhs", $.expression), "=", field("rhs", $.expression)),
 
     statement: ($) =>
       seq(
@@ -530,14 +521,16 @@ export const modelicaLanguage = language({
         $.description,
       ),
 
-    statement_or_procedure: ($) =>
+    statement_or_procedure: ($) => choice($.function_call, $.assignment_statement),
+
+    assignment_statement: ($) =>
       choice(
-        $.function_call,
-        seq($.component_reference, ":=", $.expression),
-        seq("der", "(", $.component_reference, ")", ":=", $.expression),
+        seq(field("target", $.component_reference), ":=", field("value", $.expression)),
+        seq("der", "(", field("target", $.component_reference), ")", ":=", field("value", $.expression)),
       ),
 
-    function_call: ($) => seq(semanticToken("function", $.component_reference), $.function_call_args),
+    function_call: ($) =>
+      seq(field("name", semanticToken("function", $.component_reference)), field("args", $.function_call_args)),
 
     if_equation: ($) =>
       seq(
@@ -591,7 +584,8 @@ export const modelicaLanguage = language({
         "end when",
       ),
 
-    connect_equation: ($) => seq("connect", "(", $.component_reference, ",", $.component_reference, ")"),
+    connect_equation: ($) =>
+      seq("connect", "(", field("lhs", $.component_reference), ",", field("rhs", $.component_reference), ")"),
 
     // A.2.7 Expressions (Flattened for AST efficiency)
     expression: ($) =>

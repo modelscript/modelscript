@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import * as ts from "typescript";
 
 export interface ExtractedLanguageAST {
@@ -111,6 +112,48 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       }
     }
   });
+
+  // Automatically resolve all relative named imports to collect helper functions and constants
+  for (const [localName, imp] of namedImports.entries()) {
+    if (imp.moduleSpecifier.startsWith("./") || imp.moduleSpecifier.startsWith("../")) {
+      try {
+        const baseDir =
+          filePath !== "language.ts" && filePath.includes("/") ? filePath.substring(0, filePath.lastIndexOf("/")) : "";
+        let targetPath = baseDir ? `${baseDir}/${imp.moduleSpecifier}` : imp.moduleSpecifier;
+        if (targetPath.endsWith(".js")) {
+          targetPath = targetPath.slice(0, -3);
+        }
+        const candidates = [targetPath + ".ts", targetPath + ".js", targetPath + "/index.ts", targetPath];
+        for (const testPath of candidates) {
+          const normalized = path.resolve(testPath);
+          if (normalized.includes("/packages/language/src/") || normalized.includes("/node_modules/")) {
+            continue;
+          }
+          if (fs.existsSync(normalized)) {
+            const subAst = extractLanguageAST(normalized);
+            if (subAst) {
+              if (subAst.constants.has(imp.importedName)) {
+                result.constants.set(localName, subAst.constants.get(imp.importedName)!);
+              }
+              if (subAst.functions.has(imp.importedName)) {
+                result.functions.set(localName, subAst.functions.get(imp.importedName)!);
+              }
+              if (subAst.classes.has(imp.importedName)) {
+                result.classes.set(localName, subAst.classes.get(imp.importedName)!);
+              }
+              for (const [k, v] of subAst.constants) {
+                if (!result.constants.has(k)) result.constants.set(k, v);
+              }
+              for (const [k, v] of subAst.functions) {
+                if (!result.functions.has(k)) result.functions.set(k, v);
+              }
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+  }
 
   function resolveClass(name: string): ts.ClassDeclaration | ts.ClassExpression | undefined {
     const topClass = topLevelClasses.get(name);
