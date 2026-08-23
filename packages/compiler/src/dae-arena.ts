@@ -447,6 +447,43 @@ export class ArenaDAEBuilder {
   /** Collected annotations to be emitted at the end of the algorithm section. */
   algorithmAnnotations: string[] = [];
 
+  // ── Synchronous Clock Domains (Modelica 3.7 §16) ──
+  private _clocks: { id: number; intervalExprId: number; resolutionExprId?: number; shiftExprId?: number }[] = [];
+  private _varClockIds = new Map<number, number>();
+  private _eqClockIds = new Map<number, number>();
+
+  /** Register a discrete clock partition */
+  addClock(intervalExprId: number, resolutionExprId?: number, shiftExprId?: number): number {
+    const id = this._clocks.length + 1;
+    this._clocks.push({ id, intervalExprId, resolutionExprId, shiftExprId });
+    return id;
+  }
+
+  /** Set the clock domain ID for a variable */
+  setVarClock(varIdx: number, clockId: number): void {
+    this._varClockIds.set(varIdx, clockId);
+  }
+
+  /** Get the clock domain ID for a variable */
+  getVarClock(varIdx: number): number | undefined {
+    return this._varClockIds.get(varIdx);
+  }
+
+  /** Set the clock domain ID for an equation */
+  setEqClock(eqIdx: number, clockId: number): void {
+    this._eqClockIds.set(eqIdx, clockId);
+  }
+
+  /** Get the clock domain ID for an equation */
+  getEqClock(eqIdx: number): number | undefined {
+    return this._eqClockIds.get(eqIdx);
+  }
+
+  /** Get all registered discrete clocks */
+  getClocks(): readonly { id: number; intervalExprId: number; resolutionExprId?: number; shiftExprId?: number }[] {
+    return this._clocks;
+  }
+
   // ── O(1) Secondary Indices (Wave 0) ──
 
   /** Exact name → variable index. O(1) lookup. */

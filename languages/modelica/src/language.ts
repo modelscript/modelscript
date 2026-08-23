@@ -36,6 +36,7 @@ const PRECEDENCE = {
   unary: 8,
   mul: 9,
   exp: 10,
+  postfix_transpose: 11,
 };
 
 export const modelicaLanguage = language({
@@ -65,9 +66,11 @@ export const modelicaLanguage = language({
         "algorithm",
         "and",
         "annotation",
+        "backSample",
         "block",
         "break",
         "class",
+        "Clock",
         "connect",
         "connector",
         "constant",
@@ -90,6 +93,7 @@ export const modelicaLanguage = language({
         "flow",
         "for",
         "function",
+        "hold",
         "if",
         "import",
         "impure",
@@ -97,8 +101,10 @@ export const modelicaLanguage = language({
         "initial",
         "inner",
         "input",
+        "interval",
         "loop",
         "model",
+        "noClock",
         "not",
         "operator",
         "or",
@@ -107,6 +113,7 @@ export const modelicaLanguage = language({
         "package",
         "parameter",
         "partial",
+        "previous",
         "protected",
         "public",
         "pure",
@@ -114,7 +121,11 @@ export const modelicaLanguage = language({
         "redeclare",
         "replaceable",
         "return",
+        "sample",
+        "shiftSample",
         "stream",
+        "subSample",
+        "superSample",
         "then",
         "time",
         "true",
@@ -636,6 +647,9 @@ export const modelicaLanguage = language({
 
         // exp
         prec.right(PRECEDENCE.exp, seq(field("left", $.expression), choice("^", ".^"), field("right", $.expression))),
+
+        // postfix transpose (')
+        prec(PRECEDENCE.postfix_transpose, seq(field("operand", $.primary), "'")),
       ),
 
     primary: ($) =>

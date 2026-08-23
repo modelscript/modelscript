@@ -1,5 +1,7 @@
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
+import fs from "node:fs";
+import path from "node:path";
 import { defineConfig } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -68,7 +70,7 @@ export default defineConfig(({ isSsrBuild }) => {
               src: "../../scripts/SysML-v2-Release-2026-03.zip",
               dest: "lsp/server/dist",
             },
-          ],
+          ].filter((t) => fs.existsSync(path.resolve(import.meta.dirname, t.src))),
         }),
     ],
     build: {

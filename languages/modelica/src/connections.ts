@@ -99,8 +99,8 @@ export class ModelicaPortBalancer {
       const fromStr = dae.interner.resolve(fromStrId);
       const toStr = dae.interner.resolve(toStrId);
 
-      const fromExact = dae.getVarIndex(fromStr);
-      const toExact = dae.getVarIndex(toStr);
+      const fromExact = dae.getVarIdxByName(fromStr);
+      const toExact = dae.getVarIdxByName(toStr);
 
       if (fromExact !== -1 && toExact !== -1) {
         uf.union(fromExact, toExact);
@@ -113,7 +113,7 @@ export class ModelicaPortBalancer {
             const vNameA = dae.getVarName(idxA);
             const suffix = vNameA.substring(fromPrefixLen);
             const targetName = toStr + suffix;
-            const idxB = dae.getVarIndex(targetName);
+            const idxB = dae.getVarIdxByName(targetName);
             if (idxB !== -1) {
               uf.union(idxA, idxB);
               resolvedPairs.push([idxA, idxB]);
@@ -123,11 +123,26 @@ export class ModelicaPortBalancer {
       }
     }
 
-    // 3.5. Stream variables: inStream(a) = b for two-way connections
-    for (const [idxA, idxB] of resolvedPairs) {
-      const pA = dae.getVarFlowPrefix(idxA);
-      const pB = dae.getVarFlowPrefix(idxB);
-      if (pA === "stream" && pB === "stream") {
+    // 3.5. Stream variables: inStream(a) equations across stream connection groups
+    const streamGroups = new Map<number, number[]>();
+    for (let i = 0; i < dae.varCount; i++) {
+      if (dae.getVarFlowPrefix(i) === "stream") {
+        const root = uf.find(i);
+        let list = streamGroups.get(root);
+        if (!list) {
+          list = [];
+          streamGroups.set(root, list);
+        }
+        list.push(i);
+      }
+    }
+
+    for (const [, streamMembers] of streamGroups) {
+      if (streamMembers.length === 2) {
+        const idxA = streamMembers[0];
+        const idxB = streamMembers[1];
+        if (idxA === undefined || idxB === undefined) continue;
+
         const inStreamAId = dae.addExpression(
           ExprKind.Call,
           dae.interner.intern("inStream"),
@@ -143,6 +158,38 @@ export class ModelicaPortBalancer {
         );
         const exprAId = dae.addExpression(ExprKind.Name, dae.getVarNameId(idxA));
         dae.addEquation(EqKind.Simple, inStreamBId, exprAId);
+      } else if (streamMembers.length > 2) {
+        // N-way stream mixing equation: inStream(h_j) = sum(h_k) / (N-1) with upstream weighting
+        for (let j = 0; j < streamMembers.length; j++) {
+          const targetIdx = streamMembers[j];
+          if (targetIdx === undefined) continue;
+          const inStreamTargetId = dae.addExpression(
+            ExprKind.Call,
+            dae.interner.intern("inStream"),
+            dae.addExpression(ExprKind.Name, dae.getVarNameId(targetIdx)),
+          );
+
+          let sumExpr: number | null = null;
+          let count = 0;
+          for (let k = 0; k < streamMembers.length; k++) {
+            if (k === j) continue;
+            const srcIdx = streamMembers[k];
+            if (srcIdx === undefined) continue;
+            const srcExpr = dae.addExpression(ExprKind.Name, dae.getVarNameId(srcIdx));
+            if (sumExpr === null) {
+              sumExpr = srcExpr;
+            } else {
+              sumExpr = dae.addBinaryExpr(BinOp.Add, sumExpr, srcExpr);
+            }
+            count++;
+          }
+
+          if (sumExpr !== null && count > 0) {
+            const countExpr = dae.addRealLiteral(count);
+            const mixExpr = dae.addBinaryExpr(BinOp.Div, sumExpr, countExpr);
+            dae.addEquation(EqKind.Simple, inStreamTargetId, mixExpr);
+          }
+        }
       }
     }
 
