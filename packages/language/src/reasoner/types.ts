@@ -1,12 +1,120 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// ---------------------------------------------------------------------------
+// OWL2 Axiom Types
+// ---------------------------------------------------------------------------
 
-/**
- * Reasoner Interface & Types
- *
- * Abstract types and interfaces for OWL2 DL reasoners and SPARQL-DL queries.
- */
+export interface OWL2ClassDeclaration {
+  readonly type: "ClassDeclaration";
+  readonly iri: string;
+  readonly sourceLang: string;
+  readonly sourceQualifiedName: string;
+}
 
-import type { OWL2Axiom, OWL2AxiomDelta } from "@modelscript/compiler";
+export interface OWL2SubClassOf {
+  readonly type: "SubClassOf";
+  readonly subClassIri: string;
+  readonly superClassIri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2EquivalentClasses {
+  readonly type: "EquivalentClasses";
+  readonly classIris: readonly string[];
+  readonly sourceLang: string;
+}
+
+export interface OWL2DisjointClasses {
+  readonly type: "DisjointClasses";
+  readonly classIris: readonly string[];
+  readonly sourceLang: string;
+}
+
+export interface OWL2ObjectPropertyDeclaration {
+  readonly type: "ObjectPropertyDeclaration";
+  readonly iri: string;
+  readonly sourceLang: string;
+  readonly characteristics?: readonly ("Transitive" | "Functional" | "Symmetric" | "InverseFunctional")[];
+}
+
+export interface OWL2DataPropertyDeclaration {
+  readonly type: "DataPropertyDeclaration";
+  readonly iri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2ObjectPropertyAssertion {
+  readonly type: "ObjectPropertyAssertion";
+  readonly propertyIri: string;
+  readonly subjectIri: string;
+  readonly objectIri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2DataPropertyAssertion {
+  readonly type: "DataPropertyAssertion";
+  readonly propertyIri: string;
+  readonly subjectIri: string;
+  readonly value: string;
+  readonly datatype?: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2TransitiveObjectProperty {
+  readonly type: "TransitiveObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2IndividualDeclaration {
+  readonly type: "IndividualDeclaration";
+  readonly iri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2ClassAssertion {
+  readonly type: "ClassAssertion";
+  readonly classIri: string;
+  readonly individualIri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2ObjectSomeValuesFrom {
+  readonly type: "ObjectSomeValuesFrom";
+  readonly propertyIri: string;
+  readonly fillerClassIri: string;
+  readonly sourceLang: string;
+}
+
+export interface OWL2DataSomeValuesFrom {
+  readonly type: "DataSomeValuesFrom";
+  readonly propertyIri: string;
+  readonly dataRange: string;
+  readonly sourceLang: string;
+}
+
+export type OWL2Axiom =
+  | OWL2ClassDeclaration
+  | OWL2SubClassOf
+  | OWL2EquivalentClasses
+  | OWL2DisjointClasses
+  | OWL2ObjectPropertyDeclaration
+  | OWL2DataPropertyDeclaration
+  | OWL2ObjectPropertyAssertion
+  | OWL2DataPropertyAssertion
+  | OWL2TransitiveObjectProperty
+  | OWL2IndividualDeclaration
+  | OWL2ClassAssertion
+  | OWL2ObjectSomeValuesFrom
+  | OWL2DataSomeValuesFrom;
+
+export interface OWL2AxiomDelta {
+  readonly retractions: readonly OWL2Axiom[];
+  readonly assertions: readonly OWL2Axiom[];
+}
+
+export interface IOWL2OntologyStore {
+  readonly size: number;
+  readonly axioms: readonly OWL2Axiom[];
+}
 
 // ---------------------------------------------------------------------------
 // Reasoner Status

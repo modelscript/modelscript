@@ -102,3 +102,61 @@ export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: Record
 
   return VARIABILITY_CONSTANT;
 }
+
+/**
+ * Fast $O(1)$ check for class kind (e.g. "function", "record", "connector", "model", "block", "package").
+ * Inspects immediate class prefix children rather than walking all descendants of the class.
+ */
+export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean {
+  if (clsNode == 0) return false;
+  let ch = db.ast.getFirstChild(clsNode);
+  while (ch != 0) {
+    if (db.ast.textEquals(ch, kind)) return true;
+    let sub = db.ast.getFirstChild(ch);
+    while (sub != 0) {
+      if (db.ast.textEquals(sub, kind)) return true;
+      sub = db.ast.getNextSibling(sub);
+    }
+    ch = db.ast.getNextSibling(ch);
+  }
+  return false;
+}
+
+/**
+ * Fast check for whether a component_clause has a specific type prefix (e.g. "constant", "input", "output", "flow", "stream").
+ */
+export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string): boolean {
+  if (compClauseNode == 0) return false;
+  let pfx = db.ast.getChildByFieldId(compClauseNode, "type_prefix");
+  if (pfx == 0) pfx = db.ast.getChildByFieldId(compClauseNode, "typePrefix");
+  if (pfx != 0) {
+    if (db.ast.textEquals(pfx, prefix)) return true;
+    let ch = db.ast.getFirstChild(pfx);
+    while (ch != 0) {
+      if (db.ast.textEquals(ch, prefix)) return true;
+      ch = db.ast.getNextSibling(ch);
+    }
+  }
+  return false;
+}
+
+/**
+ * Fast lookup to check if an identifier matches any top-level class name in the document.
+ */
+export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<string, u16>): boolean {
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return false;
+  for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+    const nameId = db.ast.getChildByFieldId(spec, "name");
+    if (nameId != 0 && db.ast.textEqualsNode(nameNode, nameId)) {
+      return true;
+    }
+  }
+  for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+    const nameId = db.ast.getChildByFieldId(spec, "name");
+    if (nameId != 0 && db.ast.textEqualsNode(nameNode, nameId)) {
+      return true;
+    }
+  }
+  return false;
+}

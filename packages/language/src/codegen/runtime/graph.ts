@@ -891,6 +891,18 @@ class CodeGraph {
 }
 export const graph = new CodeGraph();
 
+export function graph_getStringLength(id: u32): u32 {
+  return graph.scope.pool.getLength(id);
+}
+
+export function graph_copyString(id: u32, targetBuf: usize): u32 {
+  return graph.scope.pool.copyOut(id, targetBuf);
+}
+
+export function graph_internString(srcPtr: usize, len: u32): u32 {
+  return graph.scope.pool.intern(srcPtr, len);
+}
+
 /**
  * Utility to bit-pack an outline flag directly into an aligned node pointer.
  * Since node pointers are 16-byte aligned, the lowest 4 bits are mathematically guaranteed to be 0,

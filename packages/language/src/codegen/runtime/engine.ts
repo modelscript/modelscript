@@ -936,8 +936,9 @@ export class AncestorCursor {
      let stack = this.pathStack; 
      let stackDepth = 0;
      let current = rootNode;
+     let iters = 0;
      
-     while (current != 0) {
+     while (current != 0 && ++iters < 50000) {
          if (current == targetNode) {
              this.pathLength = stackDepth;
              this.currentIndex = stackDepth - 1;
@@ -973,15 +974,15 @@ export class AncestorCursor {
   }
 
   @inline hasNext(): boolean {
-     while (this.currentIndex >= 0) {
-         let n = load<u32>(this.pathStack + (this.currentIndex << 2));
-         if (this.filterType == 0xFFFF || getNodeType(n) == this.filterType) {
-             return true;
-         }
-         this.currentIndex--;
-     }
-     return false;
-  }
+      while (this.currentIndex >= 0) {
+          let n = load<u32>(this.pathStack + (this.currentIndex << 2));
+          if (this.filterType == 0xFFFF || this.filterType == 0 || getNodeType(n) == this.filterType) {
+              return true;
+          }
+          this.currentIndex--;
+      }
+      return false;
+   }
   
   @inline next(): u32 {
      let n = load<u32>(this.pathStack + (this.currentIndex << 2));

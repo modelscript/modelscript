@@ -8,7 +8,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["expression"],
     severity: "error",
     code: 6001,
-    message: "Mixed clock domains without explicit conversion operator.",
+    message: (target) => `Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,
     query: (db: CodeGraph, node: u32) => {
       const left = db.ast.getChildByFieldId(node, "left");
       const right = db.ast.getChildByFieldId(node, "right");
@@ -33,7 +33,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 6002,
-    message: "Sample factor must be a positive integer.",
+    message: (target) => `Sample factor '${target.text}' must be a positive non-zero integer.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && (db.ast.textEquals(name, "subSample") || db.ast.textEquals(name, "superSample"))) {
@@ -57,7 +57,8 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 6003,
-    message: "previous() can only be called on clocked discrete variables.",
+    message: (target) =>
+      `previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "previous")) {
@@ -83,7 +84,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 6004,
-    message: "hold() called in continuous equation without boundary causality.",
+    message: () => `hold() operator cannot be called in continuous equation section without boundary causality.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "hold")) {
@@ -103,7 +104,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["class_definition"],
     severity: "error",
     code: 6010,
-    message: "More than one state marked as initialState in state machine.",
+    message: (target) => `More than one state marked as initialState in state machine '${target.name}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let initCount = 0;
       for (const comp of db.ast.getDescendants(node, $.component_clause)) {
@@ -126,7 +127,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 6020,
-    message: "Pure function cannot call impure function.",
+    message: (target) => `Pure function cannot call impure function '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0) {
@@ -151,7 +152,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 6021,
-    message: "Impure functions may only be called in algorithm sections or when equations.",
+    message: (target) => `Impure function '${target.text}' may only be called in algorithm sections or when equations.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0) {
@@ -174,7 +175,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["inheritance_modification"],
     severity: "error",
     code: 6040,
-    message: "Break connection does not exist in inherited base classes.",
+    message: (target) => `Break connection '${target.text}' does not exist in inherited base classes.`,
     query: (db: CodeGraph, node: u32) => {
       const conn = db.ast.getChildByFieldId(node, "connect_equation");
       if (conn != 0) {

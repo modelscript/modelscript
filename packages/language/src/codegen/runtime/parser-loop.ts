@@ -208,12 +208,8 @@ function parseLR(): u32 {
     token = invokeLexer(pos);
   }
   
-  let lrLoopGuard: u32 = 0;
+  let consecutiveReductions: u32 = 0;
   while (currentParserMode == MODE_LR) {
-    if (lrLoopGuard++ > 50000) {
-      transitionToGlr(pos, pendingPadding, currentScannerState);
-      return 0;
-    }
     let currentState = t_lrStateStack[(lrStackDepth - 1)] as i32;
     let actionCount = lookupActions(currentState, token);
     
@@ -261,6 +257,7 @@ function parseLR(): u32 {
     }
     
     if (type == ACTION_SHIFT) {
+      consecutiveReductions = 0;
       let paddingLength = (srcLexPos > pos ? srcLexPos - pos : 0) + pendingPadding;
       let leaf = allocNode(token as u16, paddingLength, lexLen, 0);
       
@@ -284,6 +281,10 @@ function parseLR(): u32 {
       }
       
     } else if (type == ACTION_REDUCE) {
+      if (++consecutiveReductions > 5000) {
+        transitionToGlr(pos, pendingPadding, currentScannerState);
+        return 0;
+      }
       let reduceProd = target;
       let popCount = prod_lengths[reduceProd] as i32;
       let lhsSym = prod_lhs[reduceProd];
@@ -706,30 +707,61 @@ export function stateCanAccept(head: ParseHead | null, state: i32, tok: i32, dep
  * Deep clones an AST subtree.
  * Memory corruption from GLR ambiguity or incremental reuse can cause invalid type IDs,
  * so this deep-cloning ensures clean separation of shared subtrees.
+ */
+let t_cloneStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
+
+/**
+ * Deeply clones an AST subtree using an iterative traversal stack.
+ * Operates in O(N) time with zero recursion, safe for arbitrarily deep nested trees.
  * 
- * @param node The node to clone.
- * @param depth The current recursion depth (capped to prevent stack overflows on cyclic trees).
+ * @param root The root node of the subtree to clone.
+ * @param _depth Unused legacy parameter maintained for API compatibility.
  * @returns A fresh, independent clone of the subtree.
  */
-function deepCloneSubtree(node: u32, depth: i32): u32 {
-  if (node == 0 || depth > 250) return 0;
-  let clone = allocNode(getNodeType(node), getNodePadding(node), getNodeByteLength(node), getNodeEnvHash(node));
-  setNodeFlags(clone, getNodeFlags(node) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
-
-  let lastChild: u32 = 0;
-  let child = getNodeFirstChild(node);
-  let guard: u32 = 0;
-  while (child != 0 && guard < 10000) {
-    guard++;
-    let childClone = deepCloneSubtree(child, depth + 1);
-    if (childClone != 0) {
-      if (lastChild == 0) setFirstChild(clone, childClone);
-      else setNextSibling(lastChild, childClone);
-      lastChild = childClone;
-    }
-    child = getNodeNextSibling(child);
+function deepCloneSubtree(root: u32, _depth: i32 = 0): u32 {
+  if (root == 0) return 0;
+  if (changetype<usize>(t_cloneStack) == 0) {
+    t_cloneStack = createChunkedUint32Array(50000);
+  } else {
+    t_cloneStack.clear();
   }
-  return clone;
+
+  let rootClone = allocNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root));
+  setNodeFlags(rootClone, getNodeFlags(root) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+
+  t_cloneStack.push(root);
+  t_cloneStack.push(rootClone);
+
+  while (t_cloneStack.length > 0) {
+    let currClone = t_cloneStack.pop();
+    let currSrc = t_cloneStack.pop();
+    if (currSrc == 0 || currClone == 0) continue;
+
+    let child = getNodeFirstChild(currSrc);
+    let lastClonedChild: u32 = 0;
+    let siblingCount: u32 = 0;
+
+    while (child != 0 && siblingCount < 500000) {
+      siblingCount++;
+      let childClone = allocNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child));
+      setNodeFlags(childClone, getNodeFlags(child) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
+
+      if (lastClonedChild == 0) {
+        setFirstChild(currClone, childClone);
+      } else {
+        setNextSibling(lastClonedChild, childClone);
+      }
+      lastClonedChild = childClone;
+
+      if (getNodeFirstChild(child) != 0) {
+        t_cloneStack.push(child);
+        t_cloneStack.push(childClone);
+      }
+
+      child = getNodeNextSibling(child);
+    }
+  }
+  return rootClone;
 }
 
 let t_sanitizeStack: ChunkedUint32Array = changetype<ChunkedUint32Array>(0);
@@ -768,7 +800,7 @@ function sanitizeTree(root: u32): void {
     let modified = false;
     let siblingGuard: u32 = 0;
 
-    while (child != 0 && siblingGuard < 10000) {
+    while (child != 0 && siblingGuard < 500000) {
       siblingGuard++;
       let childType = getNodeType(child);
       let nextSib = getNodeNextSibling(child);
@@ -1148,12 +1180,36 @@ export function fixNodeLength(node: u32): void {
 
 export function fixNodeLengthRecursive(node: u32): void {
   if (node == 0) return;
-  let child = getNodeFirstChild(node);
-  while (child != 0) {
-    fixNodeLengthRecursive(child);
-    child = getNodeNextSibling(child);
+  if (changetype<usize>(t_sanitizeStack) == 0) {
+    t_sanitizeStack = createChunkedUint32Array(50000);
+    t_sanitizeVisited = createChunkedUint32Array(50000);
+  } else {
+    t_sanitizeStack.clear();
+    t_sanitizeVisited.clear();
   }
-  fixNodeLength(node);
+
+  // Pass 1: Post-order traversal setup using Stack 1 & Stack 2
+  t_sanitizeStack.push(node);
+
+  while (t_sanitizeStack.length > 0) {
+    let curr = t_sanitizeStack.pop();
+    if (curr == 0) continue;
+    t_sanitizeVisited.push(curr);
+
+    let child = getNodeFirstChild(curr);
+    while (child != 0) {
+      t_sanitizeStack.push(child);
+      child = getNodeNextSibling(child);
+    }
+  }
+
+  // Pass 2: Process nodes bottom-up (children before parents)
+  while (t_sanitizeVisited.length > 0) {
+    let curr = t_sanitizeVisited.pop();
+    if (curr != 0) {
+      fixNodeLength(curr);
+    }
+  }
 }
 /**
  * Measures the nested list depth of a node for a specific list symbol.
@@ -3112,6 +3168,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
     currentParserMode = MODE_LR;
     let accepted = parseLR();
     if (currentParserMode == MODE_LR) {
+      globalAstRoot = accepted;
       debugLog(9002, editNewEnd, accepted, currentParserMode);
       return accepted;
     }

@@ -90,4 +90,15 @@ export class ArenaStringPool {
   getOffset(id: u32): u32 {
     return id < this.stringCount ? this.stringOffsets.get(id) : 0;
   }
+
+  copyOut(id: u32, targetBuf: usize): u32 {
+    if (id >= this.stringCount) return 0;
+    let len = this.stringLengths.get(id);
+    if (targetBuf == 0) return len;
+    let start = this.stringOffsets.get(id);
+    for (let i: u32 = 0; i < len; i++) {
+      store<u8>(targetBuf + i, this.charBuffer.get(start + i));
+    }
+    return len;
+  }
 }

@@ -8,7 +8,8 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     nodes: ["connect_equation"],
     severity: "warning",
     code: 5004,
-    message: "Flow variable sets differ between connectors.",
+    message: (target, lhsFlows, rhsFlows) =>
+      `Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,
     query: (db: CodeGraph, node: u32) => {
       const lhs = db.ast.getChildByFieldId(node, "lhs");
       const rhs = db.ast.getChildByFieldId(node, "rhs");
@@ -19,7 +20,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
           const lhsFlows = db.model.getProperty(lhsSym, "flowCount");
           const rhsFlows = db.model.getProperty(rhsSym, "flowCount");
           if (lhsFlows != rhsFlows) {
-            db.diagnostic(node);
+            db.diagnostic(node, node, lhsFlows, rhsFlows);
           }
         }
       }
@@ -33,7 +34,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     nodes: ["component_clause"],
     severity: "error",
     code: 4037,
-    message: "Invalid variability on connector.",
+    message: (target) => `Invalid variability prefix '${target.text}' on connector.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const pfx of db.ast.getDescendants(node, $.type_prefix)) {
         if (db.ast.textEquals(pfx, "constant") || db.ast.textEquals(pfx, "parameter")) {
@@ -56,7 +57,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration"],
     severity: "error",
     code: 4046,
-    message: "Constant must be fixed.",
+    message: (target) => `Constant declaration '${target.text}' must be fixed.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       for (const comp of db.ast.getAncestors(node, $.component_clause)) {
         for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
@@ -80,7 +81,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     nodes: ["component_clause"],
     severity: "warning",
     code: 0,
-    message: "No corresponding 'inner' declaration found for outer component.",
+    message: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let isOuter = false;
       for (const pfx of db.ast.getDescendants(node, $.type_prefix)) {

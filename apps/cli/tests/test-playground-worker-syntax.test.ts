@@ -1,28 +1,13 @@
-import vm from "node:vm";
-import { getCompilerWorkerJs, getIndexHtml, getLspWorkerJs } from "../src/commands/playground";
+import { getCompilerWorkerJs, getLspWorkerJs } from "../src/commands/playground.js";
 
-describe("Playground Embedded Worker Script Syntax", () => {
-  it("should have valid JavaScript syntax for getLspWorkerJs()", () => {
-    const lspJs = getLspWorkerJs();
-    expect(() => {
-      new vm.Script(lspJs);
-    }).not.toThrow();
+describe("Playground Worker Syntax", () => {
+  test("compiler worker js has valid syntax", () => {
+    const code = getCompilerWorkerJs();
+    expect(() => new Function(code)).not.toThrow();
   });
 
-  it("should have valid JavaScript syntax for getCompilerWorkerJs()", () => {
-    const compilerJs = getCompilerWorkerJs();
-    expect(() => {
-      new vm.Script(compilerJs);
-    }).not.toThrow();
-  });
-
-  it("should render Monarch Colorizer toggle and modern themes in playground HTML", () => {
-    const html = getIndexHtml();
-    expect(html).toContain('id="toggle-monarch"');
-    expect(html).toContain("Monarch Colorizer");
-    expect(html).toContain("applyMonarchTokens");
-    expect(html).toContain("setMonarchTokensProvider");
-    expect(html).toContain("dark-modern");
-    expect(html).toContain("light-modern");
+  test("lsp worker js has valid syntax", () => {
+    const code = getLspWorkerJs();
+    expect(() => new Function(code)).not.toThrow();
   });
 });

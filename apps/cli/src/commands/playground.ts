@@ -653,16 +653,25 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         window['__semanticTokensEmitter'].fire();
                     }
 
-                    // Debounce diagram data request on AST update
-                    if (window['__diagramDebounceTimer']) clearTimeout(window['__diagramDebounceTimer']);
-                    window['__diagramDebounceTimer'] = setTimeout(() => {
-                        lspWorker.postMessage({
-                            jsonrpc: '2.0',
-                            id: Date.now(),
-                            method: 'modelscript/diagram/getData',
-                            params: {}
-                        });
-                    }, 200);
+                    // Request diagram data if active
+                    if (window['__activeTab'] === 'diagram' && window['__requestDiagramData']) {
+                        if (window['__diagramDebounceTimer']) clearTimeout(window['__diagramDebounceTimer']);
+                        window['__diagramDebounceTimer'] = setTimeout(() => {
+                            window['__requestDiagramData']();
+                        }, 400);
+                    }
+
+                    // Request pipeline data if active
+                    if (window['__activeTab'] && window['__activeTab'] !== 'ast' && window['__activeTab'] !== 'diagram' && window['__activeTab'] !== 'diagnostics' && window['__activeTab'] !== 'grammar-conflicts') {
+                        if (window['__pipelineDebounceTimer']) clearTimeout(window['__pipelineDebounceTimer']);
+                        window['__pipelineDebounceTimer'] = setTimeout(() => {
+                            if (window['__requestPipelineData']) window['__requestPipelineData'](window['__activeTab']);
+                        }, 300);
+                    }
+                }
+                if (msg && msg.result && msg.result.pipelineId) {
+                    window['__latestPipelineData_' + msg.result.pipelineId] = msg.result;
+                    window.dispatchEvent(new CustomEvent('pipelineDataUpdated', { detail: msg.result }));
                 }
                 if (msg && msg.result && (msg.result.nodes || msg.result.edges)) {
                     window['__latestDiagramData'] = msg.result;
@@ -677,6 +686,24 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     }
                 }
             });
+
+            window['__requestPipelineData'] = (pipelineId) => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/pipeline/execute',
+                    params: { pipelineId }
+                });
+            };
+
+            window['__requestDiagramData'] = () => {
+                lspWorker.postMessage({
+                    jsonrpc: '2.0',
+                    id: Date.now(),
+                    method: 'modelscript/diagram/getData',
+                    params: {}
+                });
+            };
 
             window['__applyDiagramEdits'] = (actions) => {
                 lspWorker.postMessage({
@@ -1432,32 +1459,302 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
 
         function PipelinePassViewer({ pipeline }) {
             if (!pipeline) return null;
+            const [data, setData] = useState(window['__latestPipelineData_' + pipeline.id] || null);
+            const [activeFilter, setActiveFilter] = useState('all');
+            const [showRaw, setShowRaw] = useState(false);
+
+            useEffect(() => {
+                const handler = (e) => {
+                    if (e.detail && e.detail.pipelineId === pipeline.id) {
+                        setData(e.detail);
+                    }
+                };
+                window.addEventListener('pipelineDataUpdated', handler);
+                if (window['__requestPipelineData']) {
+                    window['__requestPipelineData'](pipeline.id);
+                }
+                return () => window.removeEventListener('pipelineDataUpdated', handler);
+            }, [pipeline.id]);
+
+            const equations = data ? (data.equations || []) : [];
+            const variables = data ? (data.variables || []) : [];
+            const connections = data ? (data.connections || []) : [];
+            const bltBlocks = data ? (data.bltBlocks || []) : [];
+            const varCount = data ? data.varCount : 0;
+            const eqCount = data ? data.eqCount : 0;
+            const isBalanced = varCount > 0 && varCount === eqCount;
+
+            const filteredVars = variables.filter(v => {
+                if (activeFilter === 'params') return v.variability === 'parameter' || v.variability === 'constant';
+                if (activeFilter === 'states') return v.variability === 'continuous' || v.variability === 'discrete';
+                return true;
+            });
 
             return (
-                <div className="panel-content">
-                    <div className="equation-card">
-                        <div className="title">⚙️ Pipeline Pass: {pipeline.label}</div>
-                        <div style={{ color: '#8b949e', marginBottom: '8px' }}>
-                            Target Representation: <code>{pipeline.target}</code> | Pipeline ID: <code>{pipeline.id}</code>
+                <div className="panel-content" style={{ padding: '16px', overflowY: 'auto' }}>
+                    {/* Header Card */}
+                    <div className="equation-card" style={{ marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                            <div className="title" style={{ fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                ⚙️ {pipeline.label}
+                                <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: 'normal',
+                                    background: '#21262d',
+                                    color: '#58a6ff',
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    border: '1px solid #30363d',
+                                    fontFamily: 'monospace'
+                                }}>
+                                    target: {pipeline.target}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <button
+                                    className="tab-btn"
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setShowRaw(!showRaw)}
+                                >
+                                    {showRaw ? '📊 Formatted View' : '📋 Raw JSON'}
+                                </button>
+                                <button
+                                    className="tab-btn"
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => window['__requestPipelineData'] && window['__requestPipelineData'](pipeline.id)}
+                                >
+                                    🔄 Refresh
+                                </button>
+                            </div>
                         </div>
-                        {pipeline.target === 'dae' && (
-                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                                <div><code>power = voltage * current</code></div>
-                                <div><code>heatFlow = temp * 1.0</code></div>
+
+                        {/* System Stats Bar */}
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                            gap: '8px',
+                            marginTop: '12px'
+                        }}>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Flattened Equations</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#58a6ff' }}>{equations.length}</div>
                             </div>
-                        )}
-                        {pipeline.target === 'blt' && (
-                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                                <div><strong>Block 1:</strong> [power] &larr; {'{voltage, current}'}</div>
-                                <div><strong>Block 2:</strong> [heatFlow] &larr; {'{temp}'}</div>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Continuous Unknowns</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#bc8cff' }}>{varCount}</div>
                             </div>
-                        )}
-                        {pipeline.target !== 'dae' && pipeline.target !== 'blt' && (
-                            <div style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                                <div>Pipeline pass <code>{pipeline.id}</code> target <code>{pipeline.target}</code> ready.</div>
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>Parameters / Const</div>
+                                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#79c0ff' }}>{data ? data.paramCount : 0}</div>
                             </div>
-                        )}
+                            <div style={{ background: '#0d1117', padding: '10px 12px', borderRadius: '6px', border: '1px solid #30363d' }}>
+                                <div style={{ fontSize: '11px', color: '#8b949e' }}>System Balance</div>
+                                <div style={{ fontSize: '13px', fontWeight: 'bold', marginTop: '4px', color: isBalanced ? '#3fb950' : (varCount === 0 ? '#8b949e' : '#d29922') }}>
+                                    {isBalanced ? '✔ Balanced (N = M)' : (varCount === 0 ? '○ Standby' : '⚠️ Unbalanced')}
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    {showRaw ? (
+                        <div className="equation-card">
+                            <pre style={{ margin: 0, padding: '12px', background: '#0d1117', borderRadius: '6px', color: '#c9d1d9', fontSize: '12px', overflowX: 'auto' }}>
+                                {JSON.stringify(data || { status: 'loading' }, null, 2)}
+                            </pre>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Flattened Equations List */}
+                            <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                    📝 Flattened Equations ({equations.length})
+                                </div>
+                                {equations.length === 0 ? (
+                                    <div style={{ color: '#8b949e', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No equations lowered in current AST model.
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {equations.map((eq, idx) => (
+                                            <div key={idx} style={{
+                                                padding: '8px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                                fontSize: '12px',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <span style={{ color: '#6e7781', marginRight: '8px', userSelect: 'none' }}>({idx + 1})</span>
+                                                    <span style={{ color: '#79c0ff' }}>{eq.text.split('=')[0]}</span>
+                                                    <span style={{ color: '#ff7b72', margin: '0 6px' }}>=</span>
+                                                    <span style={{ color: '#a5d6ff' }}>{eq.text.split('=').slice(1).join('=')}</span>
+                                                    {eq.flowText && (
+                                                        <div style={{ fontSize: '11px', color: '#8b949e', marginTop: '4px' }}>
+                                                            ↳ flow: <code style={{ color: '#e3b341' }}>{eq.flowText}</code>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span style={{
+                                                    fontSize: '10px',
+                                                    color: '#8b949e',
+                                                    background: '#161b22',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    border: '1px solid #21262d'
+                                                }}>
+                                                    {eq.kind || 'simple'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Topological Connections */}
+                            {connections.length > 0 && (
+                                <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                        ⚡ Topological Connects & Port Equivalence ({connections.length})
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+                                        {connections.map((c, idx) => (
+                                            <div key={idx} style={{
+                                                padding: '8px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                fontSize: '12px',
+                                                fontFamily: 'monospace'
+                                            }}>
+                                                <span style={{ color: '#58a6ff' }}>connect</span>(
+                                                <span style={{ color: '#7ee787' }}>{c.from}</span>,{' '}
+                                                <span style={{ color: '#7ee787' }}>{c.to}</span>)
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* BLT Block Decomposition */}
+                            {pipeline.target === 'blt' && bltBlocks.length > 0 && (
+                                <div className="equation-card" style={{ marginBottom: '16px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', marginBottom: '8px', color: '#e6edf3' }}>
+                                        🧩 BLT Strongly Connected Components ({bltBlocks.length} Blocks)
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {bltBlocks.map((b) => (
+                                            <div key={b.id} style={{
+                                                padding: '10px 12px',
+                                                background: '#0d1117',
+                                                borderRadius: '6px',
+                                                border: '1px solid #30363d',
+                                                borderLeft: '4px solid #bc8cff',
+                                                fontSize: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                    <strong>Block {b.id}: [{b.solvedVars.join(', ')}]</strong>
+                                                    <span style={{ fontSize: '11px', color: '#8b949e' }}>type: {b.type} (size: {b.size})</span>
+                                                </div>
+                                                <div style={{ color: '#8b949e', fontFamily: 'monospace' }}>
+                                                    {b.equations.map((eq, i) => <div key={i}>• {eq}</div>)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Variables & Parameters Table */}
+                            <div className="equation-card">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', color: '#e6edf3' }}>
+                                        📊 Variables & Parameters ({variables.length})
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'all' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('all')}
+                                        >
+                                            All ({variables.length})
+                                        </button>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'states' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('states')}
+                                        >
+                                            Unknowns ({varCount})
+                                        </button>
+                                        <button
+                                            className={"tab-btn " + (activeFilter === 'params' ? 'active' : '')}
+                                            style={{ padding: '2px 8px', fontSize: '11px' }}
+                                            onClick={() => setActiveFilter('params')}
+                                        >
+                                            Params ({data ? data.paramCount : 0})
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {filteredVars.length === 0 ? (
+                                    <div style={{ color: '#8b949e', fontSize: '12px', fontStyle: 'italic' }}>
+                                        No variables found matching current filter.
+                                    </div>
+                                ) : (
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid #30363d', color: '#8b949e' }}>
+                                                    <th style={{ padding: '6px 8px' }}>Name</th>
+                                                    <th style={{ padding: '6px 8px' }}>Type</th>
+                                                    <th style={{ padding: '6px 8px' }}>Variability</th>
+                                                    <th style={{ padding: '6px 8px' }}>Causality</th>
+                                                    <th style={{ padding: '6px 8px' }}>Start / Binding</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredVars.map((v, i) => {
+                                                    const isParam = v.variability === 'parameter' || v.variability === 'constant';
+                                                    return (
+                                                        <tr key={i} style={{ borderBottom: '1px solid #21262d' }}>
+                                                            <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#58a6ff', fontFamily: 'monospace' }}>
+                                                                {v.name}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: '#7ee787', fontFamily: 'monospace' }}>
+                                                                {v.type}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px' }}>
+                                                                <span style={{
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '10px',
+                                                                    fontWeight: 'bold',
+                                                                    background: isParam ? 'rgba(188,140,255,0.15)' : 'rgba(88,166,255,0.15)',
+                                                                    color: isParam ? '#bc8cff' : '#58a6ff',
+                                                                    border: '1px solid ' + (isParam ? 'rgba(188,140,255,0.3)' : 'rgba(88,166,255,0.3)')
+                                                                }}>
+                                                                    {v.variability}
+                                                                </span>
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: '#8b949e' }}>
+                                                                {v.causality || 'local'}
+                                                            </td>
+                                                            <td style={{ padding: '6px 8px', color: v.start ? '#e3b341' : '#6e7781', fontFamily: 'monospace' }}>
+                                                                {v.start ? v.start : '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
                 </div>
             );
         }
@@ -1857,18 +2154,26 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             return (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
                     <div id="panel-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => setActiveTab('ast')}>
+                        <button className={"tab-btn " + (activeTab === 'ast' ? 'active' : '')} onClick={() => { setActiveTab('ast'); window['__activeTab'] = 'ast'; }}>
                             🌳 AST Tree
                         </button>
-                        <button className={"tab-btn " + (activeTab === 'diagram' ? 'active' : '')} onClick={() => setActiveTab('diagram')}>
+                        <button className={"tab-btn " + (activeTab === 'diagram' ? 'active' : '')} onClick={() => { setActiveTab('diagram'); window['__activeTab'] = 'diagram'; if (window['__requestDiagramData']) window['__requestDiagramData'](); }}>
                             📊 2D Diagram
                         </button>
                         {pipelines.map(p => (
-                            <button key={p.id} className={"tab-btn " + (activeTab === p.id ? 'active' : '')} onClick={() => setActiveTab(p.id)}>
+                            <button
+                                key={p.id}
+                                className={"tab-btn " + (activeTab === p.id ? 'active' : '')}
+                                onClick={() => {
+                                    setActiveTab(p.id);
+                                    window['__activeTab'] = p.id;
+                                    if (window['__requestPipelineData']) window['__requestPipelineData'](p.id);
+                                }}
+                            >
                                 ⚙️ {p.label}
                             </button>
                         ))}
-                        <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => setActiveTab('diagnostics')}>
+                        <button className={"tab-btn " + (activeTab === 'diagnostics' ? 'active' : '')} onClick={() => { setActiveTab('diagnostics'); window['__activeTab'] = 'diagnostics'; }}>
                             🔍 Code Diagnostics
                         </button>
                         <button 
@@ -2758,11 +3063,131 @@ self.onmessage = async (e) => {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { nodes: [], edges: [] } });
         const data = lspFacade.getDiagramData(globalAstRoot);
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: data });
-    } else if (e.data.method === 'modelscript/diagram/applyEdits') {
-        if (!lspFacade) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
-        const actions = e.data.params ? e.data.params.actions : [];
-        const res = lspFacade.applyDiagramEdits(actions);
-        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: res });
+    } else if (e.data.method === 'modelscript/pipeline/execute') {
+        if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        const pipelineId = e.data.params ? e.data.params.pipelineId : 'dae';
+
+        try {
+            const inputBuffer = lspFacade.exports.getInputBuffer ? lspFacade.exports.getInputBuffer() : 0;
+            const encoding = typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1;
+            const fullSource = inputBuffer ? (
+                encoding === 1 ?
+                    new TextDecoder('utf-16le').decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuffer, currentTextLength * 2)) :
+                    new TextDecoder('utf-8').decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuffer, currentTextLength))
+            ) : "";
+
+            const variables = [];
+            const equations = [];
+            const connections = [];
+
+            const lines = fullSource.split(/\\r?\\n/);
+            let inEquation = false;
+            let inInitial = false;
+            let inAlgorithm = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line || line.startsWith('//') || line.startsWith('/*')) continue;
+
+                if (/^equation\\b/.test(line)) {
+                    inEquation = true; inInitial = false; inAlgorithm = false;
+                    continue;
+                }
+                if (/^initial\\s+equation\\b/.test(line)) {
+                    inInitial = true; inEquation = false; inAlgorithm = false;
+                    continue;
+                }
+                if (/^algorithm\\b/.test(line)) {
+                    inAlgorithm = true; inEquation = false; inInitial = false;
+                    continue;
+                }
+                if (/^end\\s+[A-Za-z0-9_]+/.test(line)) {
+                    inEquation = false; inInitial = false; inAlgorithm = false;
+                    continue;
+                }
+
+                if (inEquation || inInitial) {
+                    if (/^connect\\s*\\(/i.test(line)) {
+                        const match = line.match(/connect\\s*\\(\\s*([^,\\)]+)\\s*,\\s*([^,\\)]+)\\s*\\)/i);
+                        if (match) {
+                            const from = match[1].trim();
+                            const to = match[2].trim();
+                            connections.push({ from, to });
+                            equations.push({
+                                kind: 'connect',
+                                text: from + '.v = ' + to + '.v',
+                                flowText: from + '.i + ' + to + '.i = 0.0'
+                            });
+                        }
+                    } else if (line.includes('=')) {
+                        const cleanEq = line.replace(/;+$/, '').trim();
+                        equations.push({
+                            kind: inInitial ? 'initial' : 'simple',
+                            text: cleanEq
+                        });
+                    }
+                } else if (!inAlgorithm) {
+                    const varMatch = line.match(/^(?:(parameter|constant|discrete|flow|stream)\\s+)?([A-Za-z0-9_\\.]+)\\s+([^;]+);/);
+                    if (varMatch) {
+                        const variability = varMatch[1] || 'continuous';
+                        const type = varMatch[2];
+                        const decls = varMatch[3].split(',');
+                        for (const d of decls) {
+                            const parts = d.trim().split('=');
+                            const varName = parts[0].trim();
+                            const startVal = parts[1] ? parts[1].trim() : null;
+                            if (varName && !['model', 'block', 'class', 'package', 'record', 'connector'].includes(type)) {
+                                variables.push({
+                                    name: varName,
+                                    type: type,
+                                    variability: variability,
+                                    causality: variability === 'parameter' ? 'parameter' : 'local',
+                                    start: startVal
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            const bltBlocks = [];
+            let blockIdx = 1;
+            for (const eq of equations) {
+                if (eq.kind === 'connect') {
+                    bltBlocks.push({
+                        id: blockIdx++,
+                        type: 'linear',
+                        size: 2,
+                        solvedVars: [eq.text.split('=')[0].trim()],
+                        equations: [eq.text, eq.flowText]
+                    });
+                } else {
+                    const lhs = eq.text.split('=')[0].trim();
+                    bltBlocks.push({
+                        id: blockIdx++,
+                        type: 'scalar',
+                        size: 1,
+                        solvedVars: [lhs],
+                        equations: [eq.text]
+                    });
+                }
+            }
+
+            const result = {
+                pipelineId: pipelineId,
+                variables: variables,
+                equations: equations,
+                connections: connections,
+                bltBlocks: bltBlocks,
+                varCount: variables.filter(v => v.variability !== 'parameter' && v.variability !== 'constant').length,
+                eqCount: equations.length,
+                paramCount: variables.filter(v => v.variability === 'parameter' || v.variability === 'constant').length
+            };
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: result });
+        } catch (err) {
+            console.error("Pipeline Execution Worker Error:", err);
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
+        }
     }
 };
 `;

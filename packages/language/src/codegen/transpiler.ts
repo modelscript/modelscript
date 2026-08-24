@@ -7,6 +7,7 @@ export interface TranspileOptions {
   hostQueryIdMap?: Map<string, number>;
   attrIdMap?: Map<string, number>;
   rules?: Record<string, any>;
+  fieldToInt?: Map<string, number> | Set<string>;
 }
 
 /**
@@ -21,6 +22,7 @@ export function transpileQuery(
   const queryIdMap = opts.queryIdMap || new Map();
   const hostQueryIdMap = opts.hostQueryIdMap || new Map();
   const attrIdMap = opts.attrIdMap || new Map();
+  const fieldToInt = opts.fieldToInt;
 
   let queryStr: string;
   if (typeof queryFn === "object" && queryFn !== null && "kind" in queryFn && typeof queryFn.getText === "function") {
@@ -354,8 +356,9 @@ export function transpileQuery(
               if (!ts.isIdentifier(targetNodeExpr) || targetNodeExpr.text !== "node") {
                 const createOffsetCall = () =>
                   ts.factory.createCallExpression(ts.factory.createIdentifier("lsp_findNodeOffset"), undefined, [
-                    ts.factory.createIdentifier("globalAstRoot"),
+                    ts.factory.createIdentifier("node"),
                     targetNodeExpr,
+                    ts.factory.createIdentifier("nodeStart"),
                   ]);
                 const startNodeOffset = ts.factory.createConditionalExpression(
                   ts.factory.createBinaryExpression(
@@ -530,6 +533,14 @@ export function transpileQuery(
               if (ts.isStringLiteral(fieldArg)) {
                 const fieldName = fieldArg.text;
                 const safeName = fieldName.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase();
+                const fieldExists = fieldToInt ? fieldToInt.has(fieldName) : true;
+                const fieldExpr = fieldExists
+                  ? ts.factory.createPropertyAccessExpression(
+                      ts.factory.createIdentifier("FieldId"),
+                      ts.factory.createIdentifier(safeName),
+                    )
+                  : ts.factory.createNumericLiteral(0);
+
                 return ts.factory.createCallExpression(
                   ts.factory.createPropertyAccessExpression(
                     ts.factory.createPropertyAccessExpression(
@@ -541,13 +552,7 @@ export function transpileQuery(
                   undefined,
                   [
                     visitNode(nodeArg) as ts.Expression,
-                    ts.factory.createTypeAssertion(
-                      ts.factory.createTypeReferenceNode("u32"),
-                      ts.factory.createPropertyAccessExpression(
-                        ts.factory.createIdentifier("FieldId"),
-                        ts.factory.createIdentifier(safeName),
-                      ),
-                    ),
+                    ts.factory.createTypeAssertion(ts.factory.createTypeReferenceNode("u32"), fieldExpr),
                   ],
                 );
               }

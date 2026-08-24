@@ -42,7 +42,7 @@ export class ASTNode {
   nextSibling: u32;
   merkleLow: u32;
   merkleHigh: u32;
-  pad: u32;
+  fatPadding: u32;
 
   // --- Core Bitfield Accessors ---
   @inline get type(): u16 { return (this.word0 & 0x03ff) as u16; }
@@ -576,25 +576,11 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
     }
 
   // 4. Handle values that exceed the 10-bit inline padding limit (0x03ff = 1023)
-  // Fat padding arena is eagerly initialized in initArena(), no null check needed here
   let fatFlag: u32 = 0;
+  let fullPadding = paddingLength;
   if (paddingLength >= 0x03ff) {
-    if (s.fatPaddingCount >= 0x03fe) {
-      paddingLength = 0x03fe; // gracefully cap
-    } else {
-      if (s.fatPaddingCount >= fatPaddingCapacity) {
-      // Grow the fat padding arena dynamically
-      let newCapacity = fatPaddingCapacity * 2;
-      let newPtr = atomicChunkAlloc(newCapacity * 4);
-      memory.copy(newPtr, changetype<usize>(s.fatPaddingArenaPtr), fatPaddingCapacity * 4);
-      s.fatPaddingArenaPtr = changetype<UnmanagedUint32Array>(newPtr);
-      fatPaddingCapacity = newCapacity;
-    }
-    s.fatPaddingArenaPtr[s.fatPaddingCount] = paddingLength;
-    paddingLength = s.fatPaddingCount;
-    s.fatPaddingCount++;
     fatFlag = 1;
-    }
+    paddingLength = 0;
   }
 
   // 5. Clamp lengths to fit within bit-packed limits
@@ -621,7 +607,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
   node.nextSibling = 0;
   node.merkleLow = 0;
   node.merkleHigh = 0;
-  node.pad = 0;
+  node.fatPadding = fatFlag != 0 ? fullPadding : 0;
 
   return ptr;
 }
@@ -914,33 +900,19 @@ export function getNodeType(ptr: u32): u16 {
 
 export function getNodePadding(ptr: u32): u32 {
   let node = changetype<ASTNode>(ptr);
-  if (node.isFatPadding) return S().fatPaddingArenaPtr[node.paddingLength];
+  if (node.isFatPadding) return node.fatPadding;
   return node.paddingLength;
 }
 
 export function setNodePadding(ptr: u32, pad: u32): void {
-  let s = S();
   let node = changetype<ASTNode>(ptr);
   if (pad >= 0x03ff) {
-    if (s.fatPaddingCount >= 0x03fe) {
-      // 10-bit index limit reached, gracefully degrade by capping
-      node.paddingLength = 0x03fe;
-      node.isFatPadding = false;
-      return;
-    }
-    if (s.fatPaddingCount >= fatPaddingCapacity) {
-      let newCapacity = fatPaddingCapacity * 2;
-      let newPtr = atomicChunkAlloc(newCapacity * 4);
-      memory.copy(newPtr, changetype<usize>(s.fatPaddingArenaPtr), fatPaddingCapacity * 4);
-      s.fatPaddingArenaPtr = changetype<UnmanagedUint32Array>(newPtr);
-      fatPaddingCapacity = newCapacity;
-    }
-    s.fatPaddingArenaPtr[s.fatPaddingCount] = pad;
-    node.paddingLength = s.fatPaddingCount;
-    s.fatPaddingCount++;
+    node.paddingLength = 0;
+    node.fatPadding = pad;
     node.isFatPadding = true;
   } else {
     node.paddingLength = pad;
+    node.fatPadding = 0;
     node.isFatPadding = false;
   }
 }

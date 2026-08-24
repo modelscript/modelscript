@@ -375,6 +375,29 @@ export class LspFacade {
     if (ch === "\n" || ch === "\r") return false;
     return this.extrasRegex.test(ch);
   }
+
+  /**
+   * Retrieves an interned string path from the WASM linear memory string pool.
+   */
+  public getStringFromPool(id: number): string {
+    if (!this.exports || id === 0) return "";
+    if (this.exports.graph_getStringLength && this.exports.graph_copyString) {
+      const len = this.exports.graph_getStringLength(id);
+      if (len === 0) return "";
+      const bufPtr = this.exports.lsp_getBinaryBuffer ? this.exports.lsp_getBinaryBuffer() : 0;
+      if (bufPtr === 0) return "";
+      this.exports.graph_copyString(id, bufPtr);
+      const u8 = new Uint8Array(len);
+      u8.set(new Uint8Array(this.wasmMemory.buffer, bufPtr, len));
+      if (typeof TextDecoder !== "undefined") {
+        return new TextDecoder("utf-8").decode(u8);
+      }
+      let str = "";
+      for (let i = 0; i < len; i++) str += String.fromCharCode(u8[i]);
+      return str;
+    }
+    return "";
+  }
   private _childTailCache = new Map<number, number>();
   private currentInputLength: number = 0;
 
@@ -1165,10 +1188,11 @@ export class LspFacade {
               : this.exports.lsp_getInputBuffer
                 ? this.exports.lsp_getInputBuffer()
                 : 0;
-            const textBuffer = new Uint8Array(this.wasmMemory.buffer, inputBufPtr, lenBytes);
             let chars = "";
-            if (startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
-              const slice = new Uint8Array(textBuffer.subarray(startByte, endByte));
+            if (inputBufPtr > 0 && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+              const sliceLen = endByte - startByte;
+              const slice = new Uint8Array(sliceLen);
+              slice.set(new Uint8Array(this.wasmMemory.buffer, inputBufPtr + startByte, sliceLen));
               const encoding = this.getInputEncoding();
               if (encoding === 1) {
                 chars = new TextDecoder("utf-16le").decode(slice);
@@ -1180,56 +1204,92 @@ export class LspFacade {
             const createContext = (nodePtr: number, fallbackText: string) => {
               let syntaxNode: SyntaxNode | null = null;
               let text = fallbackText;
-              if (nodePtr > 0 && this.exports.getChildByFieldId) {
+
+              const isAlignedAddress = nodePtr > 0 && nodePtr % 4 === 0 && nodePtr / 4 < memory.length - 4;
+              if (isAlignedAddress && this.exports.getChildByFieldId) {
                 const typeFlags = memory[nodePtr / 4];
                 const typeId = typeFlags & 0x03ff;
                 const pad = typeFlags >>> 22;
                 const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
-                let actualStart = startByte;
+                let actualStart = -1;
                 if (offsetCache.has(nodePtr)) {
                   actualStart = offsetCache.get(nodePtr)!;
                 } else if (this.exports.lsp_findNodeOffset) {
-                  const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
-                  memory = new Uint32Array(this.wasmMemory.buffer);
-                  if (offset >= 0) actualStart = offset;
+                  try {
+                    const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
+                    memory = new Uint32Array(this.wasmMemory.buffer);
+                    if (offset >= 0) actualStart = offset;
+                  } catch (_e) {
+                    // Safe fallback if pointer is not in active tree
+                  }
                 }
-                const dummyTree = {
-                  sourceCode: {
-                    substring: (start: number, end: number) => {
-                      const currentBuf = this.wasmMemory.buffer;
-                      const inputPtr = this.exports.getInputBuffer
-                        ? this.exports.getInputBuffer()
-                        : this.exports.lsp_getInputBuffer
-                          ? this.exports.lsp_getInputBuffer()
+
+                if (actualStart >= 0) {
+                  const dummyTree = {
+                    sourceCode: {
+                      substring: (start: number, end: number) => {
+                        const currentBuf = this.wasmMemory.buffer;
+                        const inputPtr = this.exports.getInputBuffer
+                          ? this.exports.getInputBuffer()
+                          : this.exports.lsp_getInputBuffer
+                            ? this.exports.lsp_getInputBuffer()
+                            : 0;
+                        const totalLenBytes = this.exports.inputLength
+                          ? typeof this.exports.inputLength.value === "number"
+                            ? this.exports.inputLength.value
+                            : Number(this.exports.inputLength) || 0
                           : 0;
-                      const totalLenBytes = this.exports.inputLength
-                        ? typeof this.exports.inputLength.value === "number"
-                          ? this.exports.inputLength.value
-                          : Number(this.exports.inputLength) || 0
-                        : 0;
-                      const totalLenChars = Math.floor(totalLenBytes / 2);
-                      if (inputPtr > 0 && start >= 0 && end <= totalLenChars && start <= end) {
-                        const u8 = new Uint8Array(currentBuf, inputPtr + start * 2, (end - start) * 2);
-                        return new TextDecoder("utf-16le").decode(u8);
-                      }
-                      return "";
+                        const totalLenChars = Math.floor(totalLenBytes / 2);
+                        if (inputPtr > 0 && start >= 0 && end <= totalLenChars && start <= end) {
+                          const byteLen = (end - start) * 2;
+                          const u8 = new Uint8Array(byteLen);
+                          u8.set(new Uint8Array(currentBuf, inputPtr + start * 2, byteLen));
+                          return new TextDecoder("utf-16le").decode(u8);
+                        }
+                        return "";
+                      },
                     },
-                  },
-                  mem32: memory,
-                  offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
-                  facade: this,
-                };
-                syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualStart, null, pad, len, typeId);
-                text = dummyTree.sourceCode.substring(syntaxNode.startIndex, syntaxNode.endIndex);
+                    mem32: memory,
+                    offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
+                    facade: this,
+                  };
+                  syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualStart, null, pad, len, typeId);
+                  text = dummyTree.sourceCode.substring(syntaxNode.startIndex, syntaxNode.endIndex);
+                }
               }
+
+              const isAstNode = syntaxNode !== null;
+              const nodeText = isAstNode ? text : fallbackText !== "" ? fallbackText : String(nodePtr);
 
               return new Proxy(
                 {},
                 {
-                  get: (target, prop: string) => {
-                    if (prop === "text") return text;
-                    if (!syntaxNode) return "";
-                    return syntaxNode.childText(prop);
+                  get: (target, prop: string | symbol) => {
+                    if (prop === "text") return nodeText;
+                    if (prop === "field") return (name: string) => (syntaxNode ? syntaxNode.childText(name) : "");
+                    if (prop === "asNumber") return () => Number(nodePtr);
+                    if (prop === "asSymbol") return () => this.getStringFromPool(nodePtr) || String(nodePtr);
+                    if (prop === "toString") return () => nodeText;
+                    if (prop === "valueOf") return () => Number(nodePtr);
+                    if (prop === "fields") {
+                      return new Proxy(
+                        {},
+                        {
+                          get: (_, fieldName: string) => (syntaxNode ? syntaxNode.childText(fieldName) : ""),
+                        },
+                      );
+                    }
+                    if (typeof prop === "symbol") {
+                      if (prop === Symbol.toPrimitive) {
+                        return (hint: string) => (hint === "number" ? Number(nodePtr) : nodeText);
+                      }
+                      return undefined;
+                    }
+                    if (syntaxNode) {
+                      const cText = syntaxNode.childText(prop);
+                      if (cText) return cText;
+                    }
+                    return "";
                   },
                 },
               );
@@ -1499,9 +1559,11 @@ export class LspFacade {
         const flags = mem32[offset + 12];
 
         let nodeText = "";
-        if (textBuffer && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
+        if (inputBufPtr > 0 && lenBytes > 0 && startByte < lenBytes && endByte <= lenBytes && startByte <= endByte) {
           try {
-            const slice = new Uint8Array(textBuffer.subarray(startByte, endByte));
+            const sliceLen = endByte - startByte;
+            const slice = new Uint8Array(sliceLen);
+            slice.set(new Uint8Array(this.wasmMemory.buffer, inputBufPtr + startByte, sliceLen));
             nodeText = decoder.decode(slice);
           } catch (e) {}
         }
@@ -1584,10 +1646,11 @@ export class LspFacade {
     let updatedText = "";
     if (updatedLen > 0 && this.exports.lsp_getBinaryBuffer) {
       const dirPtr = this.exports.lsp_getBinaryBuffer();
-      const mem8 = new Uint8Array(this.wasmMemory.buffer, dirPtr, updatedLen);
+      const mem8 = new Uint8Array(updatedLen);
+      mem8.set(new Uint8Array(this.wasmMemory.buffer, dirPtr, updatedLen));
       const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
       const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
-      updatedText = decoder.decode(new Uint8Array(mem8));
+      updatedText = decoder.decode(mem8);
     }
 
     return { text: updatedText, edits: [] };
@@ -2627,14 +2690,14 @@ export class LspFacade {
     const numBytes = this.exports.lsp_formatDocument(astRoot, preserveFormatting ? 1 : 0);
     if (numBytes === 0) return "";
 
-    const mem8 = new Uint8Array(this.wasmMemory.buffer);
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    const bytes = mem8.subarray(dirPtr, dirPtr + numBytes);
+    const bytes = new Uint8Array(numBytes);
+    bytes.set(new Uint8Array(this.wasmMemory.buffer, dirPtr, numBytes));
     const encoding = this.getInputEncoding();
     if (encoding === 1) {
-      return new TextDecoder("utf-16le").decode(new Uint8Array(bytes));
+      return new TextDecoder("utf-16le").decode(bytes);
     }
-    return new TextDecoder("utf-8").decode(new Uint8Array(bytes));
+    return new TextDecoder("utf-8").decode(bytes);
   }
 
   /** Reads a WASM-allocated length-prefixed UTF-16 string into a JavaScript string. */
@@ -2644,10 +2707,12 @@ export class LspFacade {
     const lenBytes = mem32[(ptr - 4) >>> 2] || 0;
     const lenChars = lenBytes >>> 1;
     if (lenChars <= 0) return "";
-    const u16 = new Uint16Array(this.wasmMemory.buffer, ptr, lenChars);
+    const u8 = new Uint8Array(lenBytes);
+    u8.set(new Uint8Array(this.wasmMemory.buffer, ptr, lenBytes));
     if (typeof TextDecoder !== "undefined") {
-      return new TextDecoder("utf-16le").decode(u16);
+      return new TextDecoder("utf-16le").decode(u8);
     }
+    const u16 = new Uint16Array(u8.buffer);
     return String.fromCharCode.apply(null, Array.from(u16));
   }
 
@@ -3368,7 +3433,10 @@ export class SyntaxNode {
   /** Gets the semantic type name of this node (e.g., 'ModelicaClassDefinition'). */
   get type(): string {
     if (this._cachedTypeId === 0) return "ERROR";
-    let name = this.tree.facade.syntaxNames[this._cachedTypeId] || `node_${this._cachedTypeId}`;
+    let name =
+      (this.tree.facade?.syntaxNames && this.tree.facade.syntaxNames[this._cachedTypeId]) ||
+      (SYNTAX_NAMES && SYNTAX_NAMES[this._cachedTypeId]) ||
+      `node_${this._cachedTypeId}`;
     if (name.startsWith("T_")) name = name.substring(2);
     return name;
   }
@@ -3460,7 +3528,10 @@ export class SyntaxNode {
       if (currentChildPtr !== 0) {
         const typeFlags = mem32[currentChildPtr / 4];
         const typeId = typeFlags & 0x03ff;
-        const name = this.tree.facade.syntaxNames[typeId] || `node_${typeId}`;
+        const name =
+          (this.tree.facade?.syntaxNames && this.tree.facade.syntaxNames[typeId]) ||
+          (SYNTAX_NAMES && SYNTAX_NAMES[typeId]) ||
+          `node_${typeId}`;
         const envHashPadding = mem32[(currentChildPtr + 4) / 4];
         const rawPad = typeFlags >>> 22;
         const isFat = (envHashPadding >>> 23) & 1;

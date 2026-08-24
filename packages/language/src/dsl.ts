@@ -133,7 +133,13 @@ export interface CodeGraph<
   error(message: string): void;
   runQuery(queryId: QueryName | (string & {}) | u32, queryArg?: u32, queryArg2?: u32): u32;
   runHostQuery(queryId: string, arg1?: u32, arg2?: u32, arg3?: u32): u32;
-  diagnostic(targetNode: u32, arg0?: u32, arg1?: u32, arg2?: u32, arg3?: u32): void;
+  diagnostic(
+    targetNode: u32,
+    arg0?: u32 | i32 | number,
+    arg1?: u32 | i32 | number,
+    arg2?: u32 | i32 | number,
+    arg3?: u32 | i32 | number,
+  ): void;
 }
 
 /**
@@ -550,8 +556,22 @@ export type ASTLintFunction<
 ) => void;
 
 export interface DiagnosticContext<FieldName extends string = string> {
+  /** The full source text of the referenced AST node */
   text: string;
+  /** Explicit field accessor */
+  field(name: FieldName | (string & {})): string;
+  /** Treats the underlying argument as a numeric value (count, dimension, constant, etc.) */
+  asNumber(): number;
+  /** Treats the underlying argument as a string pool symbol / identifier ID */
+  asSymbol(): string;
+  /** String coercion returns the text of the node or numeric representation */
+  toString(): string;
+  /** ValueOf returns the underlying raw number or node pointer */
+  valueOf(): number;
+  /** Backward compatible child field dictionary */
   fields: Record<FieldName | (string & {}), string>;
+  /** Direct field text access (e.g. `target.name` or `target.type`) */
+  [field: string]: any;
 }
 
 export interface CompilerLint<

@@ -9,7 +9,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration"],
     severity: "error",
     code: 3001,
-    message: "Type mismatch in binding.",
+    message: (target) => `Type mismatch in binding expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let bindingNode: u32 = 0;
       for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
@@ -39,7 +39,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["subscript"],
     severity: "error",
     code: 3009,
-    message: "Array index type mismatch: expected Integer or Boolean.",
+    message: (target) => `Array index '${target.text}' has invalid type: expected Integer or Boolean.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const idxType = inferExprType(db, node, $);
       if (idxType != TYPE_UNKNOWN && idxType != TYPE_INTEGER && idxType != 2 /* Boolean */) {
@@ -55,7 +55,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["simple_equation"],
     severity: "error",
     code: 5001,
-    message: "Type mismatch in equation.",
+    message: (target) => `Type mismatch in equation '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const lhs = db.ast.getChildByFieldId(node, "lhs");
       const rhs = db.ast.getChildByFieldId(node, "rhs");
@@ -78,12 +78,12 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["expression"],
     severity: "error",
     code: 5005,
-    message: "Division by zero.",
+    message: (target) => `Division by literal zero in '${target.text}'.`,
     query: (db: CodeGraph, node: u32) => {
       const rightChild = db.ast.getChildByFieldId(node, "right");
       if (rightChild != 0) {
         if (db.ast.textEquals(rightChild, "0") || db.ast.textEquals(rightChild, "0.0")) {
-          db.diagnostic(node);
+          db.diagnostic(rightChild);
         }
       }
     },
@@ -96,7 +96,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5006,
-    message: "Type mismatch in assignment.",
+    message: (target) => `Type mismatch in assignment statement '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const target = db.ast.getChildByFieldId(node, "target");
       const value = db.ast.getChildByFieldId(node, "value");
@@ -119,7 +119,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5008,
-    message: "Trying to assign to constant component.",
+    message: (target) => `Trying to assign to constant component '${target.text}'.`,
     query: (db: CodeGraph, node: u32) => {
       const target = db.ast.getChildByFieldId(node, "target");
       if (target != 0) {
@@ -138,7 +138,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["assignment_statement"],
     severity: "error",
     code: 5009,
-    message: "Trying to assign to input component.",
+    message: (target) => `Trying to assign to input component '${target.text}'.`,
     query: (db: CodeGraph, node: u32) => {
       const target = db.ast.getChildByFieldId(node, "target");
       if (target != 0) {
@@ -157,7 +157,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 5013,
-    message: "Operand is not a stream variable.",
+    message: (target) => `Operand '${target.text}' is not a stream variable.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       const nameNode = db.ast.getChildByFieldId(node, "name");
       if (nameNode != 0 && (db.ast.textEquals(nameNode, "inStream") || db.ast.textEquals(nameNode, "actualStream"))) {
@@ -171,6 +171,25 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           if (symId != 0 && !db.model.hasFlag(symId, "isStream")) {
             db.diagnostic(argNode);
           }
+        }
+      }
+    },
+  },
+
+  /**
+   * M5007: Iterator in for loop must be a 1D range or array expression.
+   */
+  forIteratorNot1D: {
+    nodes: ["for_index"],
+    severity: "error",
+    code: 5007,
+    message: (target) => `Iterator in '${target.text}' must evaluate to a 1D sequence or array expression.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      const expr = db.ast.getChildByFieldId(node, "expression");
+      if (expr != 0) {
+        const type = inferExprType(db, expr, $);
+        if (type != TYPE_UNKNOWN && type != TYPE_INTEGER && type != 4 /* Enum */) {
+          db.diagnostic(node);
         }
       }
     },

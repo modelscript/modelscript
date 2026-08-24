@@ -176,6 +176,13 @@ export function generateTypes(grammar: LanguageOptions<any>, normalized: Normali
     "IS_RECORD",
     "IS_TYPE",
     "IS_PACKAGE",
+    "IS_CLASS",
+    "IS_ARRAY",
+    "IS_VARIABLE",
+    "IS_PRIMITIVE",
+    "IS_ENUM",
+    "IS_STRUCT",
+    "IS_ROOT",
   ];
   for (const flag of commonFlags) {
     if (!flagMap.has(flag) && flagBits < 30) {

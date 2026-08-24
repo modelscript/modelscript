@@ -71,6 +71,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       hostQueryIdMap,
       attrIdMap,
       rules: grammar.rules,
+      fieldToInt: (grammar as any).fieldToInt,
     });
   }
 

@@ -222,8 +222,14 @@ function ensureFindTraverseStack(required: u32): void {
     if (required > t_lspFindStackCapacity) {
         let newCap = t_lspFindStackCapacity * 2;
         while (newCap < required) newCap *= 2;
-        t_lspFindTraverseStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
-        t_lspFindOffsetStack = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
+        let newTrav = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
+        let newOff = changetype<UnmanagedUint32Array>(atomicChunkAlloc(newCap * 4));
+        for (let i: u32 = 0; i < t_lspFindStackCapacity; i++) {
+            newTrav[i] = t_lspFindTraverseStack[i];
+            newOff[i] = t_lspFindOffsetStack[i];
+        }
+        t_lspFindTraverseStack = newTrav;
+        t_lspFindOffsetStack = newOff;
         t_lspFindStackCapacity = newCap;
     }
 }
@@ -302,7 +308,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
   stackTop++;
 
   while (stackTop > 0) {
-    if (t_lspBinaryBuffer.length >= 1000 * 7) {
+    if (t_lspBinaryBuffer.length >= 50000 * 7) {
       break;
     }
     stackTop--;
@@ -313,7 +319,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
     let hasErrorSibling = getHasErrorSiblingFromStack(offsetStackVal);
     let inTainted = getInTaintedFromStack(offsetStackVal);
 
-    if (stackTop > 10000) { break; }
+    if (stackTop > 500000) { break; }
 
     let step: u32 = getEncodingStep();
     let flags = getNodeFlags(node);
@@ -550,6 +556,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 export function lsp_getDiagnostics(astRoot: u32): u32 {
   ensureLspBuffers();
   if (astRoot != 0) {
+    globalAstRoot = astRoot;
     lsp_extractDiagnosticsForRoot(astRoot, 0);
   }
   if (astRoot == globalAstRoot) {
@@ -1067,7 +1074,8 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
    t_lspFindOffsetStack[0] = rootStart;
    stackTop++;
    
-   while (stackTop > 0) {
+   let iterations: i32 = 0;
+   while (stackTop > 0 && ++iterations < 50000) {
       stackTop--;
       let current = t_lspFindTraverseStack[stackTop];
       let nodeStart = t_lspFindOffsetStack[stackTop];
@@ -1080,14 +1088,14 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
       if (child != 0) {
          let childCount: i32 = 0;
          let c = child;
-         while (c != 0) { childCount++; c = getNodeNextSibling(c); }
+         while (c != 0 && childCount < 5000) { childCount++; c = getNodeNextSibling(c); }
          
          ensureFindTraverseStack(stackTop + childCount);
          
          let currOffset = nodeStart;
          let idx: i32 = 0;
          c = child;
-         while (c != 0) {
+         while (c != 0 && idx < childCount) {
             let cPad = getNodeLeadingPad(c);
             let cLen = getNodeByteLength(c);
             if (idx > 0) {
@@ -1103,6 +1111,9 @@ export function lsp_findNodeOffset(rootNode: u32, targetNode: u32, rootOffset: u
          }
          stackTop += childCount;
       }
+   }
+   if (rootNode != globalAstRoot && globalAstRoot != 0) {
+      return lsp_findNodeOffset(globalAstRoot, targetNode, 0);
    }
    return -1;
 }

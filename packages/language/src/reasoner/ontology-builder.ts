@@ -3,8 +3,7 @@
 /**
  * Ontology Builder
  *
- * Bridges the `OWL2OntologyStore` (from @modelscript/compiler) to the
- * `IOWLReasoner` interface. Handles:
+ * Bridges the `IOWL2OntologyStore` to the `IOWLReasoner` interface. Handles:
  *
  * - Initial ontology loading from the store into the reasoner
  * - Incremental delta streaming with debouncing
@@ -12,9 +11,15 @@
  * - Event emission for IDE consumers (status changes, diagnostics)
  */
 
-import type { OWL2AxiomDelta, OWL2OntologyStore } from "@modelscript/compiler";
-
-import type { ConsistencyResult, IOWLReasoner, OntologyEvent, OntologyEventListener, TaxonomyNode } from "./types.js";
+import type {
+  ConsistencyResult,
+  IOWL2OntologyStore,
+  IOWLReasoner,
+  OntologyEvent,
+  OntologyEventListener,
+  OWL2AxiomDelta,
+  TaxonomyNode,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Ontology Builder
@@ -22,7 +27,7 @@ import type { ConsistencyResult, IOWLReasoner, OntologyEvent, OntologyEventListe
 
 export class OntologyBuilder {
   private reasoner: IOWLReasoner;
-  private store: OWL2OntologyStore;
+  private store: IOWL2OntologyStore;
   private listeners: OntologyEventListener[] = [];
 
   /** Debounce timer for coalescing rapid delta applications. */
@@ -37,7 +42,7 @@ export class OntologyBuilder {
 
   constructor(
     reasoner: IOWLReasoner,
-    store: OWL2OntologyStore,
+    store: IOWL2OntologyStore,
     options?: {
       debounceMs?: number;
       autoClassify?: boolean;

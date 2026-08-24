@@ -110,6 +110,7 @@ export function generateParserTables(
   syncTokens: string[] = [],
   preprocessorHook = "",
 ): GeneratedFile[] {
+  (originalGrammar as any).fieldToInt = grammar.fieldToInt;
   const LEX_FN = preprocessorHook ? preprocessorHook : "lex";
   let code = `import { ChunkedUint32Array, ChunkedInt32Array, UnmanagedUint32Array } from "./array";\nimport { allocNode, getInputBuffer, atomicChunkAlloc, getArenaOffset, getNodeType, getNodeFirstChild, getNodeNextSibling } from "./arena";\nimport { DaeBuilder } from "./dae";\nimport { allocDiagnostic } from "./graph";\nimport { CorrespondenceIndex } from "./correspondence";\nimport { PolyglotArena } from "./polyglot_arena";\nexport { getInputBuffer } from "./arena";\n\n@external("parser", "logInt")\nexport declare function logInt(val: i32): void;\n\nexport function decodeHexIntArray(hex: string, numElements: i32): usize {
   let raw = atomicChunkAlloc((numElements + 1) * 4);

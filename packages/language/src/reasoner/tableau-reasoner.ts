@@ -13,8 +13,6 @@
  * - **Justification** (shortest axiom path explanation)
  */
 
-import type { OWL2Axiom, OWL2AxiomDelta } from "@modelscript/compiler";
-
 import type {
   BgpQuery,
   BgpQueryResult,
@@ -23,6 +21,8 @@ import type {
   DLQuery,
   DLQueryResult,
   IOWLReasoner,
+  OWL2Axiom,
+  OWL2AxiomDelta,
   PropertyChainResult,
   PropertyPathOp,
   ReasonerStatus,
