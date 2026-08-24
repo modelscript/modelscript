@@ -108,6 +108,13 @@ export let t_lspFlatBinaryBufferPtr: u32 = 0;
 let t_lspFlatBinaryCapacity: u32 = 0;
 
 export function lsp_getBinaryBuffer(): u32 {
+  if (t_lspFlatBinaryBufferPtr == 0) {
+    let newCap: u32 = 50000;
+    let newPtr = atomicChunkAlloc(newCap * 4);
+    t_lspFlatBinaryBuffer = changetype<UnmanagedUint32Array>(newPtr);
+    t_lspFlatBinaryBufferPtr = newPtr as u32;
+    t_lspFlatBinaryCapacity = newCap;
+  }
   return t_lspFlatBinaryBufferPtr;
 }
 export function lsp_getBinaryLength(): u32 {
@@ -477,7 +484,7 @@ function lsp_extractDiagnosticsForRoot(astRoot: u32, fileId: u32 = 0): void {
 
     }
 
-    if (!isErrorNode && !isTainted && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
+    if (!isErrorNode && !hasChildError && (flags & FLAG_IS_INSERTED) == 0) {
       executeLints(type, node, nodeStart, nodeEnd);
     }
 

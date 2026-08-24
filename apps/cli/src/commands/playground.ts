@@ -1461,7 +1461,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             if (!pipeline) return null;
             const [data, setData] = useState(window['__latestPipelineData_' + pipeline.id] || null);
             const [activeFilter, setActiveFilter] = useState('all');
-            const [showRaw, setShowRaw] = useState(false);
+            const [viewMode, setViewMode] = useState('formatted');
 
             useEffect(() => {
                 const handler = (e) => {
@@ -1510,13 +1510,27 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                                     target: {pipeline.target}
                                 </span>
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <button
-                                    className="tab-btn"
+                                    className={"tab-btn " + (viewMode === 'formatted' ? 'active' : '')}
                                     style={{ padding: '2px 8px', fontSize: '11px' }}
-                                    onClick={() => setShowRaw(!showRaw)}
+                                    onClick={() => setViewMode('formatted')}
                                 >
-                                    {showRaw ? '📊 Formatted View' : '📋 Raw JSON'}
+                                    📊 Formatted DAE
+                                </button>
+                                <button
+                                    className={"tab-btn " + (viewMode === 'flat' ? 'active' : '')}
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setViewMode('flat')}
+                                >
+                                    📄 Raw Flat Modelica
+                                </button>
+                                <button
+                                    className={"tab-btn " + (viewMode === 'json' ? 'active' : '')}
+                                    style={{ padding: '2px 8px', fontSize: '11px' }}
+                                    onClick={() => setViewMode('json')}
+                                >
+                                    📋 Raw JSON
                                 </button>
                                 <button
                                     className="tab-btn"
@@ -1556,10 +1570,49 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         </div>
                     </div>
 
-                    {showRaw ? (
+                    {viewMode === 'json' ? (
                         <div className="equation-card">
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                                <button
+                                    className="tab-btn"
+                                    style={{ fontSize: '11px', padding: '2px 8px' }}
+                                    onClick={() => navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(data, null, 2))}
+                                >
+                                    📋 Copy JSON
+                                </button>
+                            </div>
                             <pre style={{ margin: 0, padding: '12px', background: '#0d1117', borderRadius: '6px', color: '#c9d1d9', fontSize: '12px', overflowX: 'auto' }}>
                                 {JSON.stringify(data || { status: 'loading' }, null, 2)}
+                            </pre>
+                        </div>
+                    ) : viewMode === 'flat' ? (
+                        <div className="equation-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div className="title" style={{ fontSize: '13px', fontWeight: 'bold', color: '#e6edf3' }}>
+                                    📄 Canonical Flat Code Representation
+                                </div>
+                                <button
+                                    className="tab-btn"
+                                    style={{ fontSize: '11px', padding: '2px 8px' }}
+                                    onClick={() => navigator.clipboard && navigator.clipboard.writeText(data ? (data.flatText || data.flatModelica || '') : '')}
+                                >
+                                    📋 Copy Flat Code
+                                </button>
+                            </div>
+                            <pre style={{
+                                margin: 0,
+                                padding: '14px 16px',
+                                background: '#0d1117',
+                                borderRadius: '6px',
+                                border: '1px solid #30363d',
+                                color: '#79c0ff',
+                                fontSize: '12px',
+                                fontFamily: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+                                lineHeight: '1.6',
+                                overflowX: 'auto',
+                                whiteSpace: 'pre'
+                            }}>
+                                {data && (data.flatText || data.flatModelica) ? (data.flatText || data.flatModelica) : '// No flat code generated'}
                             </pre>
                         </div>
                     ) : (
@@ -3065,124 +3118,10 @@ self.onmessage = async (e) => {
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: data });
     } else if (e.data.method === 'modelscript/pipeline/execute') {
         if (!lspFacade || !globalAstRoot) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: null });
-        const pipelineId = e.data.params ? e.data.params.pipelineId : 'dae';
+        const pipelineId = e.data.params ? e.data.params.pipelineId : 'flatten';
 
         try {
-            const inputBuffer = lspFacade.exports.getInputBuffer ? lspFacade.exports.getInputBuffer() : 0;
-            const encoding = typeof lspFacade.getInputEncoding === 'function' ? lspFacade.getInputEncoding() : 1;
-            const fullSource = inputBuffer ? (
-                encoding === 1 ?
-                    new TextDecoder('utf-16le').decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuffer, currentTextLength * 2)) :
-                    new TextDecoder('utf-8').decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuffer, currentTextLength))
-            ) : "";
-
-            const variables = [];
-            const equations = [];
-            const connections = [];
-
-            const lines = fullSource.split(/\\r?\\n/);
-            let inEquation = false;
-            let inInitial = false;
-            let inAlgorithm = false;
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line || line.startsWith('//') || line.startsWith('/*')) continue;
-
-                if (/^equation\\b/.test(line)) {
-                    inEquation = true; inInitial = false; inAlgorithm = false;
-                    continue;
-                }
-                if (/^initial\\s+equation\\b/.test(line)) {
-                    inInitial = true; inEquation = false; inAlgorithm = false;
-                    continue;
-                }
-                if (/^algorithm\\b/.test(line)) {
-                    inAlgorithm = true; inEquation = false; inInitial = false;
-                    continue;
-                }
-                if (/^end\\s+[A-Za-z0-9_]+/.test(line)) {
-                    inEquation = false; inInitial = false; inAlgorithm = false;
-                    continue;
-                }
-
-                if (inEquation || inInitial) {
-                    if (/^connect\\s*\\(/i.test(line)) {
-                        const match = line.match(/connect\\s*\\(\\s*([^,\\)]+)\\s*,\\s*([^,\\)]+)\\s*\\)/i);
-                        if (match) {
-                            const from = match[1].trim();
-                            const to = match[2].trim();
-                            connections.push({ from, to });
-                            equations.push({
-                                kind: 'connect',
-                                text: from + '.v = ' + to + '.v',
-                                flowText: from + '.i + ' + to + '.i = 0.0'
-                            });
-                        }
-                    } else if (line.includes('=')) {
-                        const cleanEq = line.replace(/;+$/, '').trim();
-                        equations.push({
-                            kind: inInitial ? 'initial' : 'simple',
-                            text: cleanEq
-                        });
-                    }
-                } else if (!inAlgorithm) {
-                    const varMatch = line.match(/^(?:(parameter|constant|discrete|flow|stream)\\s+)?([A-Za-z0-9_\\.]+)\\s+([^;]+);/);
-                    if (varMatch) {
-                        const variability = varMatch[1] || 'continuous';
-                        const type = varMatch[2];
-                        const decls = varMatch[3].split(',');
-                        for (const d of decls) {
-                            const parts = d.trim().split('=');
-                            const varName = parts[0].trim();
-                            const startVal = parts[1] ? parts[1].trim() : null;
-                            if (varName && !['model', 'block', 'class', 'package', 'record', 'connector'].includes(type)) {
-                                variables.push({
-                                    name: varName,
-                                    type: type,
-                                    variability: variability,
-                                    causality: variability === 'parameter' ? 'parameter' : 'local',
-                                    start: startVal
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
-            const bltBlocks = [];
-            let blockIdx = 1;
-            for (const eq of equations) {
-                if (eq.kind === 'connect') {
-                    bltBlocks.push({
-                        id: blockIdx++,
-                        type: 'linear',
-                        size: 2,
-                        solvedVars: [eq.text.split('=')[0].trim()],
-                        equations: [eq.text, eq.flowText]
-                    });
-                } else {
-                    const lhs = eq.text.split('=')[0].trim();
-                    bltBlocks.push({
-                        id: blockIdx++,
-                        type: 'scalar',
-                        size: 1,
-                        solvedVars: [lhs],
-                        equations: [eq.text]
-                    });
-                }
-            }
-
-            const result = {
-                pipelineId: pipelineId,
-                variables: variables,
-                equations: equations,
-                connections: connections,
-                bltBlocks: bltBlocks,
-                varCount: variables.filter(v => v.variability !== 'parameter' && v.variability !== 'constant').length,
-                eqCount: equations.length,
-                paramCount: variables.filter(v => v.variability === 'parameter' || v.variability === 'constant').length
-            };
+            const result = lspFacade.executePipeline(globalAstRoot, pipelineId);
             self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: result });
         } catch (err) {
             console.error("Pipeline Execution Worker Error:", err);

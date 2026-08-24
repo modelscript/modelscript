@@ -687,21 +687,62 @@ export class HashAPI {
  * AST navigation and node span query API.
  */
 export class AstAPI {
-  @inline textEquals(nodeId: u32, text: string): boolean {
-      if (nodeId == 0) return false;
-      let nodeLen = getNodeByteLength(nodeId);
-      let step = getEncodingStep();
-      let charLen = nodeLen / step;
-      if (charLen != (text.length as u32)) return false;
+  @inline startsWith(nodeId: u32, prefix: string): boolean {
+      if (nodeId == 0 || prefix.length == 0) return false;
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
       if (offset < 0) return false;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
       let buffer = getInputBuffer();
+      while (true) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
+      for (let i = 0; i < prefix.length; i++) {
+          let code = prefix.charCodeAt(i);
+          if (step == 2) {
+              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
+          } else {
+              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+          }
+      }
+      return true;
+  }
+
+  @inline textEquals(nodeId: u32, text: string): boolean {
+      if (nodeId == 0) return false;
+      let offset = lsp_findNodeOffset(globalAstRoot, nodeId);
+      if (offset < 0) return false;
+      let step = getEncodingStep();
+      let pad = lsp_getNodeLeadingPad(nodeId);
+      let actualOffset = offset + pad * step;
+      let buffer = getInputBuffer();
+      while (true) {
+          let ch = step == 2 ? load<u16>(buffer + actualOffset) : load<u8>(buffer + actualOffset);
+          if (ch == 32 || ch == 9 || ch == 10 || ch == 13) {
+              actualOffset += step;
+          } else {
+              break;
+          }
+      }
       for (let i = 0; i < text.length; i++) {
           let code = text.charCodeAt(i);
           if (step == 2) {
-              if (load<u16>(buffer + offset + (i << 1)) != (code as u16)) return false;
+              if (load<u16>(buffer + actualOffset + (i << 1)) != (code as u16)) return false;
           } else {
-              if (load<u8>(buffer + offset + i) != (code as u8)) return false;
+              if (load<u8>(buffer + actualOffset + i) != (code as u8)) return false;
+          }
+      }
+      let nextOffset = actualOffset + text.length * step;
+      let nextCh = step == 2 ? load<u16>(buffer + nextOffset) : load<u8>(buffer + nextOffset);
+      if (nextCh != 0 && nextCh != 32 && nextCh != 9 && nextCh != 10 && nextCh != 13 && nextCh != 59 && nextCh != 40 && nextCh != 41 && nextCh != 44) {
+          if ((nextCh >= 65 && nextCh <= 90) || (nextCh >= 97 && nextCh <= 122) || (nextCh >= 48 && nextCh <= 57) || nextCh == 95) {
+              return false;
           }
       }
       return true;
@@ -803,6 +844,18 @@ class ScopeAPI {
   @inline resolve(localId: u32): u32 {
     return this.stack.resolveLocal(localId);
   }
+
+  @inline internNode(nodeId: u32): u32 {
+    return this.pool.internAstNode(nodeId);
+  }
+
+  @inline concatPrefix(prefixId: u32, suffixId: u32): u32 {
+    return this.pool.concatIds(prefixId, suffixId);
+  }
+
+  @inline equals(id1: u32, id2: u32): boolean {
+    return this.pool.equals(id1, id2);
+  }
 }
 
 
@@ -901,6 +954,14 @@ export function graph_copyString(id: u32, targetBuf: usize): u32 {
 
 export function graph_internString(srcPtr: usize, len: u32): u32 {
   return graph.scope.pool.intern(srcPtr, len);
+}
+
+export function graph_getDaeBuilder(): u32 {
+  return changetype<u32>(graph.dae);
+}
+
+export function graph_getBltEngine(): u32 {
+  return changetype<u32>(graph.blt);
 }
 
 /**

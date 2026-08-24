@@ -1,6 +1,7 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
 import {
   getExpressionVariability,
+  isDescendantOfInnerClass,
   isTopLevelClassName,
   isVariableDeclaredInClass,
   VARIABILITY_CONTINUOUS,
@@ -61,8 +62,19 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
       if (enclosingClass == 0) return;
 
-      if (isVariableDeclaredInClass(db, enclosingClass, rootId, $)) {
-        return;
+      let currClass = enclosingClass;
+      while (currClass != 0) {
+        if (isVariableDeclaredInClass(db, currClass, rootId, $)) {
+          return;
+        }
+        let parentClass: u32 = 0;
+        for (const anc of db.ast.getAncestors(currClass, 0)) {
+          if (anc != currClass && db.ast.getType(anc) == $.class_definition) {
+            parentClass = anc;
+            break;
+          }
+        }
+        currClass = parentClass;
       }
 
       if (isTopLevelClassName(db, rootId, $)) return;
@@ -93,35 +105,49 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 2003,
     message: (target) => `Class or type '${target.text}' not found in scope.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let firstIdent: u32 = 0;
+      for (const id of db.ast.getDescendants(node, $.identifier)) {
+        firstIdent = id;
+        break;
+      }
+
       if (
+        db.ast.startsWith(node, "Real") ||
         db.ast.textEquals(node, "Real") ||
+        db.ast.startsWith(node, "Integer") ||
         db.ast.textEquals(node, "Integer") ||
+        db.ast.startsWith(node, "Boolean") ||
         db.ast.textEquals(node, "Boolean") ||
+        db.ast.startsWith(node, "String") ||
         db.ast.textEquals(node, "String") ||
+        db.ast.startsWith(node, "Clock") ||
         db.ast.textEquals(node, "Clock") ||
+        db.ast.startsWith(node, "ExternalObject") ||
         db.ast.textEquals(node, "ExternalObject") ||
         db.ast.textEquals(node, "Modelica.SIunits.Voltage") ||
         db.ast.textEquals(node, "Modelica.SIunits.Current") ||
         db.ast.textEquals(node, "Modelica.SIunits.Resistance") ||
         db.ast.textEquals(node, "Modelica.SIunits.Capacitance") ||
         db.ast.textEquals(node, "Modelica.SIunits.Inductance") ||
-        db.ast.textEquals(node, "Modelica.SIunits.Time")
-      ) {
-        return;
-      }
-
-      let firstIdent: u32 = 0;
-      for (const id of db.ast.getDescendants(node, $.identifier)) {
-        firstIdent = id;
-        break;
-      }
-      if (
-        firstIdent != 0 &&
-        (db.ast.textEquals(firstIdent, "Modelica") ||
-          db.ast.textEquals(firstIdent, "SIunits") ||
-          db.ast.textEquals(firstIdent, "Icons") ||
-          db.ast.textEquals(firstIdent, "Blocks") ||
-          db.ast.textEquals(firstIdent, "Electrical"))
+        db.ast.textEquals(node, "Modelica.SIunits.Time") ||
+        (firstIdent != 0 &&
+          (db.ast.textEquals(firstIdent, "Real") ||
+            db.ast.startsWith(firstIdent, "Real") ||
+            db.ast.textEquals(firstIdent, "Integer") ||
+            db.ast.startsWith(firstIdent, "Integer") ||
+            db.ast.textEquals(firstIdent, "Boolean") ||
+            db.ast.startsWith(firstIdent, "Boolean") ||
+            db.ast.textEquals(firstIdent, "String") ||
+            db.ast.startsWith(firstIdent, "String") ||
+            db.ast.textEquals(firstIdent, "Clock") ||
+            db.ast.startsWith(firstIdent, "Clock") ||
+            db.ast.textEquals(firstIdent, "ExternalObject") ||
+            db.ast.startsWith(firstIdent, "ExternalObject") ||
+            db.ast.textEquals(firstIdent, "Modelica") ||
+            db.ast.textEquals(firstIdent, "SIunits") ||
+            db.ast.textEquals(firstIdent, "Icons") ||
+            db.ast.textEquals(firstIdent, "Blocks") ||
+            db.ast.textEquals(firstIdent, "Electrical")))
       ) {
         return;
       }
@@ -200,10 +226,10 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       let varCount = 0;
       let eqCount = 0;
       for (const elem of db.ast.getDescendants(node, $.component_declaration)) {
-        if (elem != 0) varCount++;
+        if (elem != 0 && !isDescendantOfInnerClass(db, elem, node, $)) varCount++;
       }
       for (const eq of db.ast.getDescendants(node, $.simple_equation)) {
-        if (eq != 0) eqCount++;
+        if (eq != 0 && !isDescendantOfInnerClass(db, eq, node, $)) eqCount++;
       }
       if (varCount > 0 && eqCount > 0 && varCount != eqCount) {
         let targetNode = node;

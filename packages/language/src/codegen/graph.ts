@@ -287,7 +287,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
         passIdx++;
       }
 
-      customQueries += `export function runPipeline_${pipelineName}(rootNode: u32 = 0): u32 {\n${pipelinePassCode}  return graph.dae.varCount;\n}\n\n`;
+      customQueries += `export function runPipeline_${pipelineName}(rootNode: u32 = 0): u32 {\n  if (rootNode != 0) globalAstRoot = rootNode;\n  graph.dae.reset();\n${pipelinePassCode}  return graph.dae.varCount;\n}\n\n`;
     }
   }
 

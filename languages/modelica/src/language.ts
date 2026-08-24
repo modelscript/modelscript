@@ -11,8 +11,9 @@ import {
   token,
 } from "@modelscript/language";
 import { allModelicaLints } from "./lints/index.js";
+import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
 
-export { allModelicaLints };
+export { allModelicaLints, modelicaFlatteningPasses };
 
 const PRECEDENCE = {
   if_exp: 1,
@@ -32,6 +33,23 @@ export const modelicaLanguage = language({
   name: "Modelica",
 
   word: ($) => $.identifier,
+
+  conflicts: ($) => [
+    [$.name],
+    [$.class_prefixes],
+    [$.component_reference, $.identifier],
+    [$.external_function_call, $.identifier],
+    [$.primary, $.output_expression_list],
+    [$.equation_section, $.primary],
+    [$.expression],
+    [$.some_equation],
+    [$.if_equation],
+    [$.if_statement],
+    [$.when_equation],
+    [$.when_statement],
+    [$.for_equation],
+    [$.for_statement],
+  ],
 
   inline: ["element_list", "component_list", "statement_or_procedure"],
 
@@ -225,25 +243,7 @@ export const modelicaLanguage = language({
     flatten: {
       label: "Modelica In-DSL Physical Flattening Pipeline",
       target: "dae",
-      passes: [
-        // Pass 1: Symbol & Scope Indexing
-        (graph: { scope: { reset: () => void } }) => {
-          graph.scope.reset();
-        },
-        // Pass 2: Component Instantiation & Modification Environments
-        () => {
-          // Instantiates class elements with modification cascades
-        },
-        // Pass 3: Equation Elaboration & Connector Balance
-        (graph: { connectors: { finalize: () => void } }) => {
-          graph.connectors.finalize();
-        },
-        // Pass 4: Algorithm SSA Lowering & BLT Canonicalization
-        (graph: { blt: { computeBLT: () => void } }) => {
-          // Lowers algorithm sections to DAE and optimizes
-          graph.blt.computeBLT();
-        },
-      ],
+      passes: modelicaFlatteningPasses,
     },
   },
 
@@ -263,13 +263,13 @@ export const modelicaLanguage = language({
         choice(
           "class",
           "model",
-          seq(optional("operator"), "record"),
           "block",
-          seq(optional("expandable"), "connector"),
           "type",
           "package",
-          seq(optional(choice("pure", "impure")), optional("operator"), "function"),
-          "operator",
+          seq(optional("expandable"), "connector"),
+          seq(optional(choice("pure", "impure")), "function"),
+          seq("operator", optional(choice("record", "function"))),
+          "record",
         ),
       ),
 
@@ -282,7 +282,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          semanticToken("class", field("end_name", $.identifier), ["declaration"]),
+          optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
         ),
         seq(
           "extends",
@@ -291,7 +291,7 @@ export const modelicaLanguage = language({
           $.description_string,
           $.composition,
           "end",
-          semanticToken("class", field("end_name", $.identifier), ["declaration"]),
+          optional(semanticToken("class", field("end_name", $.identifier), ["declaration"])),
         ),
       ),
 
@@ -611,7 +611,10 @@ export const modelicaLanguage = language({
         ),
 
         // range (:)
-        prec(PRECEDENCE.range, seq($.expression, ":", $.expression, optional(seq(":", $.expression)))),
+        prec.left(
+          PRECEDENCE.range,
+          choice(seq($.expression, ":", $.expression, ":", $.expression), seq($.expression, ":", $.expression)),
+        ),
 
         // logical or
         prec.left(PRECEDENCE.or, seq(field("left", $.expression), "or", field("right", $.expression))),
@@ -730,7 +733,8 @@ export const modelicaLanguage = language({
 
     function_partial_application: ($) => seq("function", $.type_specifier, "(", optional($.named_arguments), ")"),
 
-    output_expression_list: ($) => seq(optional($.expression), repeat(seq(",", optional($.expression)))),
+    output_expression_list: ($) =>
+      choice(seq(), seq(optional($.expression), ",", optional($.expression), repeat(seq(",", optional($.expression))))),
 
     expression_list: ($) => seq($.expression, repeat(seq(",", $.expression))),
 

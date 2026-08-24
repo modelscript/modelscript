@@ -1046,7 +1046,7 @@ export class DescendantCursor {
   
   @inline hasNext(): boolean {
      while (this.current != 0) {
-         if (this.filterType == 0xFFFF || getNodeType(this.current) == this.filterType) {
+         if (this.filterType == 0xFFFF || this.filterType == 0 || getNodeType(this.current) == this.filterType) {
              return true;
          }
          this.advance();

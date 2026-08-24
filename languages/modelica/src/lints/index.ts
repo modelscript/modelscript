@@ -5,11 +5,23 @@ import { modelicaSyncLints } from "./synchronous-clocks.js";
 import { modelicaSyntaxLints } from "./syntax-placement.js";
 import { modelicaTypeLints } from "./types-expressions.js";
 
-import { getExpressionVariability, inferExprType, isTypeCompatible, resolveComplexName } from "./helpers.js";
+import {
+  getExpressionVariability,
+  getFlowVariableCount,
+  getVariableTypeInClass,
+  inferExprType,
+  isClassKind,
+  isTypeCompatible,
+  resolveComplexName,
+  resolveComponentClassDefinition,
+} from "./helpers.js";
 
 export {
   getExpressionVariability,
+  getFlowVariableCount,
+  getVariableTypeInClass,
   inferExprType,
+  isClassKind,
   isTypeCompatible,
   modelicaConnectionLints,
   modelicaHierarchyLints,
@@ -17,6 +29,7 @@ export {
   modelicaSyntaxLints,
   modelicaTypeLints,
   resolveComplexName,
+  resolveComponentClassDefinition,
 };
 
 export const allModelicaLints: Record<string, CompilerLint> = {

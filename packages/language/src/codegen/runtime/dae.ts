@@ -183,6 +183,17 @@ export class DaeBuilder {
   }
 
   /**
+   * Resets all equation, variable, expression, and statement counters.
+   */
+  @inline
+  reset(): void {
+    this.varCount = 0;
+    this.eqCount = 0;
+    this.exprCount = 0;
+    this.stmtCount = 0;
+  }
+
+  /**
    * Registers a variable declaration in the DAE system.
    * Encodes `startValue` into 64-bit IEEE-754 bit representations across high/low 32-bit fields.
    */
@@ -458,5 +469,49 @@ export function dae_getExprLeft(ptr: u32, exprId: u32): u32 {
  */
 export function dae_getExprRight(ptr: u32, exprId: u32): u32 {
   return changetype<DaeBuilder>(ptr).exprData.get(exprId * 4 + 3);
+}
+
+export function dae_getVarNameId(ptr: u32, varId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).varData.get(varId * VAR_STRIDE + VAR_NAME) as u32;
+}
+
+export function dae_getVarType(ptr: u32, varId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).varData.get(varId * VAR_STRIDE + VAR_TYPE);
+}
+
+export function dae_getVarVariability(ptr: u32, varId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).varData.get(varId * VAR_STRIDE + VAR_VARIABILITY);
+}
+
+export function dae_getVarCausality(ptr: u32, varId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).varData.get(varId * VAR_STRIDE + VAR_CAUSALITY);
+}
+
+export function dae_getVarFlags(ptr: u32, varId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).varData.get(varId * VAR_STRIDE + VAR_FLAGS);
+}
+
+export function dae_getVarStartValue(ptr: u32, varId: u32): f64 {
+  let builder = changetype<DaeBuilder>(ptr);
+  let hi = (builder.varData.get(varId * VAR_STRIDE + VAR_START_HI) as u64) << 32;
+  let lo = (builder.varData.get(varId * VAR_STRIDE + VAR_START_LO) as u64) & 0xffffffff;
+  let bits = hi | lo;
+  return f64.reinterpret_i64(bits as i64);
+}
+
+export function dae_getEqKind(ptr: u32, eqId: u32): i32 {
+  return changetype<DaeBuilder>(ptr).eqData.get(eqId * EQ_STRIDE + EQ_KIND);
+}
+
+export function dae_getEqLhs(ptr: u32, eqId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).eqData.get(eqId * EQ_STRIDE + EQ_LHS) as u32;
+}
+
+export function dae_getEqRhs(ptr: u32, eqId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).eqData.get(eqId * EQ_STRIDE + EQ_RHS) as u32;
+}
+
+export function dae_getEqAux(ptr: u32, eqId: u32): u32 {
+  return changetype<DaeBuilder>(ptr).eqData.get(eqId * EQ_STRIDE + EQ_AUX) as u32;
 }
 

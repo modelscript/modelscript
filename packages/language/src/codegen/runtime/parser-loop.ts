@@ -3281,6 +3281,11 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
 
       totalBytes += remainingLen + missingPadding;
       nodeCount++;
+    } else {
+      if (errorCount == 0 && inputLength > 0) {
+        let errStart = inputLength > 1 ? inputLength - 1 : 0;
+        reportGlobalError(errStart, inputLength);
+      }
     }
 
     let totalNodes = nodeCount;
@@ -3309,6 +3314,7 @@ export function parse(oldTree: u32, editStart: u32, editOldEnd: u32, editNewEnd:
       totalBytes > firstChildPadding ? totalBytes - firstChildPadding : 0,
       0,
     );
+    setNodeFlags(root, getNodeFlags(root) | FLAG_HAS_ERROR);
 
     // Link them together
     let lastChild = 0;

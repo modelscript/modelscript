@@ -1211,20 +1211,22 @@ export class LspFacade {
                 const typeId = typeFlags & 0x03ff;
                 const pad = typeFlags >>> 22;
                 const len = memory[(nodePtr + 4) / 4] & 0x007fffff;
-                let actualStart = -1;
+                let actualByteStart = -1;
                 if (offsetCache.has(nodePtr)) {
-                  actualStart = offsetCache.get(nodePtr)!;
+                  actualByteStart = offsetCache.get(nodePtr)!;
                 } else if (this.exports.lsp_findNodeOffset) {
                   try {
-                    const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr);
+                    const offset = this.exports.lsp_findNodeOffset(astRoot, nodePtr, 0);
                     memory = new Uint32Array(this.wasmMemory.buffer);
-                    if (offset >= 0) actualStart = offset;
+                    if (offset >= 0) {
+                      actualByteStart = offset;
+                    }
                   } catch (_e) {
                     // Safe fallback if pointer is not in active tree
                   }
                 }
 
-                if (actualStart >= 0) {
+                if (actualByteStart >= 0) {
                   const dummyTree = {
                     sourceCode: {
                       substring: (start: number, end: number) => {
@@ -1253,7 +1255,7 @@ export class LspFacade {
                     offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
                     facade: this,
                   };
-                  syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualStart, null, pad, len, typeId);
+                  syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualByteStart, null, 0, len, typeId);
                   text = dummyTree.sourceCode.substring(syntaxNode.startIndex, syntaxNode.endIndex);
                 }
               }
@@ -2738,17 +2740,164 @@ export class LspFacade {
   }
 
   /** Executes a specific compiler pipeline by its ID. */
-  executePipeline(astRoot: number, pipelineId: string): { success: boolean; data: any } {
-    if (!this.exports.lsp_executePipeline || !this.exports.lsp_getBinaryBuffer) {
-      return { success: false, data: null };
+  executePipeline(astRoot: number, pipelineId: string): any {
+    const fnName = `runPipeline_${pipelineId}`;
+    if (this.exports[fnName]) {
+      this.exports[fnName](astRoot);
+    } else if (this.exports.lsp_executePipeline) {
+      let hash: number = 5381;
+      for (let i = 0; i < pipelineId.length; i++) {
+        hash = (hash << 5) + hash + pipelineId.charCodeAt(i);
+      }
+      this.exports.lsp_executePipeline(astRoot, hash >>> 0);
     }
-    let hash: number = 5381;
-    for (let i = 0; i < pipelineId.length; i++) {
-      hash = (hash << 5) + hash + pipelineId.charCodeAt(i);
+
+    const daePtr = this.exports.graph_getDaeBuilder ? this.exports.graph_getDaeBuilder() : 0;
+    if (daePtr === 0 || !this.exports.dae_getVarCount) {
+      return {
+        pipelineId,
+        variables: [],
+        equations: [],
+        connections: [],
+        bltBlocks: [],
+        flatText: "// Pipeline executed without DAE output",
+        varCount: 0,
+        eqCount: 0,
+        paramCount: 0,
+      };
     }
-    const resultPtr = this.exports.lsp_executePipeline(astRoot, hash >>> 0);
-    if (resultPtr === 0) return { success: false, data: null };
-    return { success: true, data: { resultPtr } };
+
+    const numVars = this.exports.dae_getVarCount(daePtr);
+    const numEqs = this.exports.dae_getEqCount ? this.exports.dae_getEqCount(daePtr) : 0;
+    const varTypeNames = ["Real", "Integer", "Boolean", "String", "Enumeration", "Clock"];
+    const variabilityNames = ["continuous", "discrete", "parameter", "constant"];
+    const causalityNames = ["local", "input", "output"];
+
+    const variables: any[] = [];
+    for (let i = 0; i < numVars; i++) {
+      const nameId = this.exports.dae_getVarNameId ? this.exports.dae_getVarNameId(daePtr, i) : 0;
+      const name = this.getStringFromPool(nameId) || `v_${i}`;
+      const typeIdx = this.exports.dae_getVarType ? this.exports.dae_getVarType(daePtr, i) : 0;
+      const varType = varTypeNames[typeIdx] || "Real";
+      const varIdx = this.exports.dae_getVarVariability ? this.exports.dae_getVarVariability(daePtr, i) : 0;
+      const variability = variabilityNames[varIdx] || "continuous";
+      const causIdx = this.exports.dae_getVarCausality ? this.exports.dae_getVarCausality(daePtr, i) : 0;
+      const causality = causalityNames[causIdx] || "local";
+      const flags = this.exports.dae_getVarFlags ? this.exports.dae_getVarFlags(daePtr, i) : 0;
+      const isFlow = (flags & (1 << 1)) !== 0;
+      const startVal = this.exports.dae_getVarStartValue ? this.exports.dae_getVarStartValue(daePtr, i) : 0;
+
+      variables.push({
+        name,
+        type: varType,
+        variability,
+        causality,
+        isFlow,
+        start: startVal !== 0 ? startVal : null,
+      });
+    }
+
+    const decompileExpr = (exprId: number): string => {
+      if (exprId === 0xffffffff || exprId < 0 || !this.exports.dae_getExprKind) return "";
+      const kind = this.exports.dae_getExprKind(daePtr, exprId);
+      const data1 = this.exports.dae_getExprData1 ? this.exports.dae_getExprData1(daePtr, exprId) : 0;
+      const left = this.exports.dae_getExprLeft ? this.exports.dae_getExprLeft(daePtr, exprId) : 0xffffffff;
+      const right = this.exports.dae_getExprRight ? this.exports.dae_getExprRight(daePtr, exprId) : 0xffffffff;
+
+      switch (kind) {
+        case 0: {
+          return this.getStringFromPool(data1) || `var_${data1}`;
+        }
+        case 1:
+          return String(data1 | 0);
+        case 2:
+          return String(data1);
+        case 5: {
+          const binOps = [" + ", " - ", " * ", " / ", " ^ "];
+          const op = binOps[data1] || " + ";
+          return `${decompileExpr(left)}${op}${decompileExpr(right)}`;
+        }
+        case 12:
+          return `der(${decompileExpr(left)})`;
+        case 14:
+          return `-${decompileExpr(left)}`;
+        default:
+          return `expr_${exprId}`;
+      }
+    };
+
+    const equations: any[] = [];
+    for (let i = 0; i < numEqs; i++) {
+      const eqKind = this.exports.dae_getEqKind ? this.exports.dae_getEqKind(daePtr, i) : 0;
+      const lhs = this.exports.dae_getEqLhs ? this.exports.dae_getEqLhs(daePtr, i) : 0;
+      const rhs = this.exports.dae_getEqRhs ? this.exports.dae_getEqRhs(daePtr, i) : 0;
+      const lhsStr = decompileExpr(lhs);
+      const rhsStr = decompileExpr(rhs);
+      const eqText = rhsStr ? `${lhsStr} = ${rhsStr}` : lhsStr;
+      const kindStr = eqKind === 6 ? "connect" : eqKind === 7 ? "initial" : "simple";
+      equations.push({
+        kind: kindStr,
+        text: eqText,
+        lhs: lhsStr,
+        rhs: rhsStr,
+      });
+    }
+
+    const bltBlocks: any[] = [];
+    for (let i = 0; i < equations.length; i++) {
+      const eq = equations[i];
+      const lhs = eq.text.split("=")[0].trim();
+      bltBlocks.push({
+        id: i + 1,
+        type: eq.kind === "connect" ? "linear" : "scalar",
+        size: 1,
+        solvedVars: [lhs],
+        equations: [eq.text],
+      });
+    }
+
+    const continuousVars = variables.filter((v) => v.variability !== "parameter" && v.variability !== "constant");
+    const paramVars = variables.filter((v) => v.variability === "parameter" || v.variability === "constant");
+
+    const flatLines: string[] = [];
+    flatLines.push("model FlattenedModel");
+    if (continuousVars.length > 0) {
+      flatLines.push("  // --- Continuous & Discrete Unknowns ---");
+      for (const v of continuousVars) {
+        const prefix = v.isFlow ? "flow " : "";
+        const startStr = v.start !== null ? ` (start = ${v.start})` : "";
+        flatLines.push(`  ${prefix}${v.type} ${v.name}${startStr};`);
+      }
+    }
+    if (paramVars.length > 0) {
+      flatLines.push("");
+      flatLines.push("  // --- Parameters & Constants ---");
+      for (const p of paramVars) {
+        const startStr = p.start !== null ? ` = ${p.start}` : "";
+        flatLines.push(`  ${p.variability} ${p.type} ${p.name}${startStr};`);
+      }
+    }
+    if (equations.length > 0) {
+      flatLines.push("");
+      flatLines.push("equation");
+      for (const eq of equations) {
+        flatLines.push(`  ${eq.text};`);
+      }
+    }
+    flatLines.push("end FlattenedModel;");
+    const flatText = flatLines.join("\n");
+
+    return {
+      pipelineId,
+      variables,
+      equations,
+      connections: [],
+      bltBlocks,
+      flatText,
+      varCount: continuousVars.length,
+      eqCount: equations.length,
+      paramCount: paramVars.length,
+    };
   }
 
   private _lastDiagBinaryLength: number = 0;

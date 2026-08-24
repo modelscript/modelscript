@@ -58,6 +58,17 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     return TYPE_BOOLEAN;
   }
 
+  // Check descendants for literals if wrapped in modification_expression / expression
+  for (const lit of db.ast.getDescendants(exprNode, $.string_literal)) {
+    if (lit != 0) return TYPE_STRING;
+  }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_real)) {
+    if (lit != 0) return TYPE_REAL;
+  }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_integer)) {
+    if (lit != 0) return TYPE_INTEGER;
+  }
+
   // Identifier / component reference
   if (nodeType == $.identifier || nodeType == $.name || nodeType == $.component_reference) {
     const symId = resolveComplexName(db, exprNode, $);
@@ -109,12 +120,23 @@ export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: Record
  */
 export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean {
   if (clsNode == 0) return false;
+  if (db.ast.startsWith(clsNode, kind)) return true;
   let ch = db.ast.getFirstChild(clsNode);
   while (ch != 0) {
-    if (db.ast.textEquals(ch, kind)) return true;
+    if (db.ast.startsWith(ch, kind) || db.ast.textEquals(ch, kind)) return true;
     let sub = db.ast.getFirstChild(ch);
     while (sub != 0) {
-      if (db.ast.textEquals(sub, kind)) return true;
+      if (db.ast.startsWith(sub, kind) || db.ast.textEquals(sub, kind)) return true;
+      let leaf = db.ast.getFirstChild(sub);
+      while (leaf != 0) {
+        if (db.ast.startsWith(leaf, kind) || db.ast.textEquals(leaf, kind)) return true;
+        let leafSub = db.ast.getFirstChild(leaf);
+        while (leafSub != 0) {
+          if (db.ast.startsWith(leafSub, kind) || db.ast.textEquals(leafSub, kind)) return true;
+          leafSub = db.ast.getNextSibling(leafSub);
+        }
+        leaf = db.ast.getNextSibling(leaf);
+      }
       sub = db.ast.getNextSibling(sub);
     }
     ch = db.ast.getNextSibling(ch);
@@ -130,14 +152,86 @@ export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string
   let pfx = db.ast.getChildByFieldId(compClauseNode, "type_prefix");
   if (pfx == 0) pfx = db.ast.getChildByFieldId(compClauseNode, "typePrefix");
   if (pfx != 0) {
-    if (db.ast.textEquals(pfx, prefix)) return true;
+    if (db.ast.startsWith(pfx, prefix) || db.ast.textEquals(pfx, prefix)) return true;
     let ch = db.ast.getFirstChild(pfx);
     while (ch != 0) {
-      if (db.ast.textEquals(ch, prefix)) return true;
+      if (db.ast.startsWith(ch, prefix) || db.ast.textEquals(ch, prefix)) return true;
       ch = db.ast.getNextSibling(ch);
     }
   }
   return false;
+}
+
+/**
+ * Resolves a component reference (e.g. `a` inside `model X`) to its class definition in the document.
+ */
+export function resolveComponentClassDefinition(
+  db: CodeGraph,
+  enclosingClass: u32,
+  compRefNode: u32,
+  $: Record<string, u16>,
+): u32 {
+  if (enclosingClass == 0 || compRefNode == 0) return 0;
+
+  // 1. Find declaration for compRefNode in enclosingClass
+  let typeSpecNode: u32 = 0;
+  for (const comp of db.ast.getDescendants(enclosingClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, enclosingClass, $)) continue;
+    let matchesComp = false;
+    for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+      for (const id of db.ast.getDescendants(decl, $.identifier)) {
+        if (db.ast.textEqualsNode(compRefNode, id)) {
+          matchesComp = true;
+          break;
+        }
+      }
+      if (matchesComp) break;
+    }
+    if (matchesComp) {
+      for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
+        typeSpecNode = ts;
+        break;
+      }
+      break;
+    }
+  }
+
+  if (typeSpecNode == 0) return 0;
+
+  // 2. Find class_definition in document matching typeSpecNode
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return 0;
+  for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+    const nameId = db.ast.getChildByFieldId(spec, "name");
+    if (nameId != 0) {
+      for (const tsId of db.ast.getDescendants(typeSpecNode, $.identifier)) {
+        if (db.ast.textEqualsNode(tsId, nameId)) {
+          for (const cls of db.ast.getAncestors(spec, 0)) {
+            if (db.ast.getType(cls) == $.class_definition) return cls;
+          }
+        }
+        break;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * Counts the number of flow variables in a class/connector definition.
+ */
+export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: Record<string, u16>): u32 {
+  if (classDefNode == 0) return 0;
+  let count: u32 = 0;
+  for (const comp of db.ast.getDescendants(classDefNode, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, classDefNode, $)) continue;
+    if (hasTypePrefix(db, comp, "flow")) {
+      for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+        if (decl != 0) count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -146,15 +240,33 @@ export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string
 export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<string, u16>): boolean {
   const docRoot = db.ast.getRootNode();
   if (docRoot == 0) return false;
+  let targetIdent: u32 = nameNode;
+  for (const id of db.ast.getDescendants(nameNode, $.identifier)) {
+    targetIdent = id;
+    break;
+  }
   for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
     const nameId = db.ast.getChildByFieldId(spec, "name");
-    if (nameId != 0 && db.ast.textEqualsNode(nameNode, nameId)) {
+    if (nameId != 0 && (db.ast.textEqualsNode(nameNode, nameId) || db.ast.textEqualsNode(targetIdent, nameId))) {
       return true;
     }
   }
   for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
     const nameId = db.ast.getChildByFieldId(spec, "name");
-    if (nameId != 0 && db.ast.textEqualsNode(nameNode, nameId)) {
+    if (nameId != 0 && (db.ast.textEqualsNode(nameNode, nameId) || db.ast.textEqualsNode(targetIdent, nameId))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns true if `target` is nested inside an inner class_definition child of `classNode`.
+ */
+export function isDescendantOfInnerClass(db: CodeGraph, target: u32, classNode: u32, $: Record<string, u16>): boolean {
+  for (const anc of db.ast.getAncestors(target, 0)) {
+    if (anc == classNode) break;
+    if (db.ast.getType(anc) == $.class_definition) {
       return true;
     }
   }
@@ -172,8 +284,9 @@ export function isVariableDeclaredInClass(
 ): boolean {
   if (classNode == 0 || identNode == 0) return false;
 
-  // 1. Direct declarations in classNode
+  // 1. Direct declarations in classNode (ignoring nested classes)
   for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
+    if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
     let declId: u32 = 0;
     for (const id of db.ast.getDescendants(decl, $.identifier)) {
       declId = id;
@@ -235,4 +348,89 @@ export function isVariableDeclaredInClass(
   }
 
   return false;
+}
+
+/**
+ * Resolves the declared type (e.g. TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK)
+ * of a variable identifier `identNode` in `classNode` or its inherited base classes.
+ */
+export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
+  if (classNode == 0 || identNode == 0) return TYPE_UNKNOWN;
+
+  // 1. Direct declarations in classNode (ignoring nested classes)
+  for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
+    if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
+    let declId: u32 = 0;
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      declId = id;
+      break;
+    }
+    if (declId != 0 && db.ast.textEqualsNode(identNode, declId)) {
+      // Find parent component_clause or component_clause1
+      for (const anc of db.ast.getAncestors(decl, 0)) {
+        const ancType = db.ast.getType(anc);
+        if (ancType == $.component_clause || ancType == $.component_clause1) {
+          for (const id of db.ast.getDescendants(anc, $.identifier)) {
+            if (db.ast.textEquals(id, "Real")) return TYPE_REAL;
+            if (db.ast.textEquals(id, "Integer")) return TYPE_INTEGER;
+            if (db.ast.textEquals(id, "Boolean")) return TYPE_BOOLEAN;
+            if (db.ast.textEquals(id, "String")) return TYPE_STRING;
+            if (db.ast.textEquals(id, "Clock")) return TYPE_CLOCK;
+            break;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // 2. Inherited declarations via `extends_clause`
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return TYPE_UNKNOWN;
+
+  for (const ext of db.ast.getDescendants(classNode, $.extends_clause)) {
+    let typeSpec = db.ast.getChildByFieldId(ext, "type_specifier");
+    if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
+    if (typeSpec == 0) continue;
+
+    let baseNameId: u32 = typeSpec;
+    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+      baseNameId = id;
+      break;
+    }
+
+    // Find class_definition for baseNameId
+    for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(spec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = spec;
+        for (const anc of db.ast.getAncestors(spec, 0)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        const inheritedType = getVariableTypeInClass(db, baseClass, identNode, $);
+        if (inheritedType != TYPE_UNKNOWN) return inheritedType;
+        break;
+      }
+    }
+    for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(spec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = spec;
+        for (const anc of db.ast.getAncestors(spec, 0)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        const inheritedType = getVariableTypeInClass(db, baseClass, identNode, $);
+        if (inheritedType != TYPE_UNKNOWN) return inheritedType;
+        break;
+      }
+    }
+  }
+
+  return TYPE_UNKNOWN;
 }

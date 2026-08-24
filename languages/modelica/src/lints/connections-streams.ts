@@ -1,4 +1,5 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
+import { getFlowVariableCount, resolveComponentClassDefinition } from "./helpers.js";
 
 export const modelicaConnectionLints: Record<string, CompilerLint> = {
   /**
@@ -10,17 +11,38 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 5004,
     message: (target, lhsFlows, rhsFlows) =>
       `Flow variable sets differ in connect(): '${target.lhs}' (${lhsFlows.asNumber()} flows) vs '${target.rhs}' (${rhsFlows.asNumber()} flows).`,
-    query: (db: CodeGraph, node: u32) => {
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let enclosingClass: u32 = 0;
+      for (const cls of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(cls) == $.class_definition) {
+          enclosingClass = cls;
+          break;
+        }
+      }
+      if (enclosingClass == 0) return;
+
       const lhs = db.ast.getChildByFieldId(node, "lhs");
       const rhs = db.ast.getChildByFieldId(node, "rhs");
       if (lhs != 0 && rhs != 0) {
-        const lhsSym = db.scope.resolve(lhs);
-        const rhsSym = db.scope.resolve(rhs);
-        if (lhsSym != 0 && rhsSym != 0) {
-          const lhsFlows = db.model.getProperty(lhsSym, "flowCount");
-          const rhsFlows = db.model.getProperty(rhsSym, "flowCount");
-          if (lhsFlows != rhsFlows) {
-            db.diagnostic(node, node, lhsFlows, rhsFlows);
+        let lhsRef: u32 = 0;
+        for (const id of db.ast.getDescendants(lhs, $.identifier)) {
+          lhsRef = id;
+          break;
+        }
+        let rhsRef: u32 = 0;
+        for (const id of db.ast.getDescendants(rhs, $.identifier)) {
+          rhsRef = id;
+          break;
+        }
+        if (lhsRef != 0 && rhsRef != 0) {
+          const lhsClass = resolveComponentClassDefinition(db, enclosingClass, lhsRef, $);
+          const rhsClass = resolveComponentClassDefinition(db, enclosingClass, rhsRef, $);
+          if (lhsClass != 0 && rhsClass != 0) {
+            const lhsFlows = getFlowVariableCount(db, lhsClass, $);
+            const rhsFlows = getFlowVariableCount(db, rhsClass, $);
+            if (lhsFlows != rhsFlows) {
+              db.diagnostic(node, lhsFlows, rhsFlows);
+            }
           }
         }
       }

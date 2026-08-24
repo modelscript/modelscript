@@ -637,7 +637,12 @@ export class GLRTable {
         for (const conflictGroup of this.grammar.conflicts) {
           let matchesAll = true;
           for (const rule of involvedRules) {
-            if (!conflictGroup.includes(rule)) {
+            const hasMatch = conflictGroup.some((g) => {
+              if (g === rule) return true;
+              if (rule.includes(g) || g.includes(rule)) return true;
+              return false;
+            });
+            if (!hasMatch) {
               matchesAll = false;
               break;
             }

@@ -553,7 +553,11 @@ export function transpileQuery(
                   ],
                 );
               }
-            } else if (methodName === "textEquals" && args.length === 2 && ts.isStringLiteral(args[1])) {
+            } else if (
+              (methodName === "textEquals" || methodName === "startsWith") &&
+              args.length === 2 &&
+              ts.isStringLiteral(args[1])
+            ) {
               const nodeArg = visitNode(args[0]) as ts.Expression;
               return ts.factory.createCallExpression(
                 ts.factory.createPropertyAccessExpression(
@@ -561,7 +565,7 @@ export function transpileQuery(
                     ts.factory.createIdentifier("graph"),
                     ts.factory.createIdentifier("ast"),
                   ),
-                  ts.factory.createIdentifier("textEquals"),
+                  ts.factory.createIdentifier(methodName),
                 ),
                 undefined,
                 [nodeArg, args[1]],

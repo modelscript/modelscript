@@ -153,6 +153,9 @@ export interface ScopeAPI {
   currentFqn(): u32;
   currentPrefix(): u32;
   resolve(localName: string | u32): u32;
+  internNode(nodeId: u32): u32;
+  concatPrefix(prefixId: u32, suffixId: u32): u32;
+  equals(id1: u32, id2: u32): boolean;
 }
 
 /**
@@ -204,6 +207,7 @@ export interface AstAPI<RuleName extends string, FieldName extends string = stri
 
   textEqualsNode(nodeA: u32, nodeB: u32): boolean;
   textEquals(nodeId: u32, literal: string): boolean;
+  startsWith(nodeId: u32, prefix: string): boolean;
 
   getType(nodeId: u32): u16;
   getFirstChild(nodeId: u32): u32;
@@ -245,6 +249,7 @@ export interface DaeAPI {
   addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId?: u32): u32;
   addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
   extractEquations(rootId: u32): void;
+  reset(): void;
 }
 
 /**

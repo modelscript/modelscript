@@ -1,5 +1,15 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
-import { inferExprType, isTypeCompatible, TYPE_INTEGER, TYPE_UNKNOWN } from "./helpers.js";
+import {
+  getVariableTypeInClass,
+  inferExprType,
+  isTypeCompatible,
+  TYPE_BOOLEAN,
+  TYPE_CLOCK,
+  TYPE_INTEGER,
+  TYPE_REAL,
+  TYPE_STRING,
+  TYPE_UNKNOWN,
+} from "./helpers.js";
 
 export const modelicaTypeLints: Record<string, CompilerLint> = {
   /**
@@ -9,24 +19,202 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration"],
     severity: "error",
     code: 3001,
-    message: (target) => `Type mismatch in binding expression '${target.text}'.`,
+    message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let bindingNode: u32 = 0;
-      for (const mod of db.ast.getDescendants(node, $.modification_expression)) {
-        bindingNode = mod;
+      let expectedType: u16 = TYPE_UNKNOWN;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const ancType = db.ast.getType(anc);
+        if (ancType == $.component_clause || ancType == $.component_clause1) {
+          for (const id of db.ast.getDescendants(anc, $.identifier)) {
+            if (db.ast.textEquals(id, "Real")) expectedType = TYPE_REAL;
+            else if (db.ast.textEquals(id, "Integer")) expectedType = TYPE_INTEGER;
+            else if (db.ast.textEquals(id, "Boolean")) expectedType = TYPE_BOOLEAN;
+            else if (db.ast.textEquals(id, "String")) expectedType = TYPE_STRING;
+            else if (db.ast.textEquals(id, "Clock")) expectedType = TYPE_CLOCK;
+            break;
+          }
+          break;
+        }
+      }
+      if (expectedType == TYPE_UNKNOWN) return;
+
+      if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
+        let foundStr = false;
+        if ($.string_literal != 0) {
+          for (const str of db.ast.getDescendants(node, $.string_literal)) {
+            db.diagnostic(str);
+            foundStr = true;
+            break;
+          }
+        }
+        if (!foundStr) {
+          for (const d of db.ast.getDescendants(node, 0)) {
+            if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
+              db.diagnostic(d);
+              break;
+            }
+          }
+        }
+      } else if (expectedType == TYPE_STRING) {
+        for (const num of db.ast.getDescendants(node, $.unsigned_real)) {
+          db.diagnostic(num);
+        }
+        for (const num of db.ast.getDescendants(node, $.unsigned_integer)) {
+          db.diagnostic(num);
+        }
+      }
+    },
+  },
+
+  /**
+   * M3001: Type mismatch in element modification expression.
+   */
+  typeMismatchModification: {
+    nodes: ["element_modification"],
+    severity: "error",
+    code: 3001,
+    message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let nameNode: u32 = 0;
+      for (const n of db.ast.getDescendants(node, $.name)) {
+        nameNode = n;
         break;
       }
-      if (bindingNode == 0) return;
+      if (nameNode == 0) return;
 
-      const symId = db.scope.resolve(node);
-      if (symId == 0) return;
+      // Find enclosing component_clause1, element_redeclaration, component_clause, or extends_clause
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (
+          type == $.component_clause1 ||
+          type == $.element_redeclaration ||
+          type == $.component_clause ||
+          type == $.extends_clause
+        ) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
 
-      const expectedType = db.model.getProperty(symId, "baseType") as u16;
-      const actualType = inferExprType(db, bindingNode, $);
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
 
-      if (expectedType != TYPE_UNKNOWN && actualType != TYPE_UNKNOWN) {
-        if (!isTypeCompatible(actualType, expectedType)) {
-          db.diagnostic(bindingNode);
+      let baseTypeId: u32 = typeNode;
+      for (const id of db.ast.getDescendants(typeNode, $.identifier)) {
+        baseTypeId = id;
+        break;
+      }
+
+      let expectedType: u16 = TYPE_UNKNOWN;
+
+      // 1. Primitive types
+      if (db.ast.textEquals(baseTypeId, "Real")) {
+        if (
+          db.ast.textEquals(nameNode, "start") ||
+          db.ast.textEquals(nameNode, "min") ||
+          db.ast.textEquals(nameNode, "max") ||
+          db.ast.textEquals(nameNode, "nominal")
+        ) {
+          expectedType = TYPE_REAL;
+        } else if (db.ast.textEquals(nameNode, "fixed") || db.ast.textEquals(nameNode, "uncertain")) {
+          expectedType = TYPE_BOOLEAN;
+        } else if (
+          db.ast.textEquals(nameNode, "unit") ||
+          db.ast.textEquals(nameNode, "displayUnit") ||
+          db.ast.textEquals(nameNode, "quantity")
+        ) {
+          expectedType = TYPE_STRING;
+        }
+      } else if (db.ast.textEquals(baseTypeId, "Integer")) {
+        if (
+          db.ast.textEquals(nameNode, "start") ||
+          db.ast.textEquals(nameNode, "min") ||
+          db.ast.textEquals(nameNode, "max")
+        ) {
+          expectedType = TYPE_INTEGER;
+        } else if (db.ast.textEquals(nameNode, "fixed")) {
+          expectedType = TYPE_BOOLEAN;
+        } else if (db.ast.textEquals(nameNode, "quantity")) {
+          expectedType = TYPE_STRING;
+        }
+      } else if (db.ast.textEquals(baseTypeId, "Boolean")) {
+        if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "fixed")) {
+          expectedType = TYPE_BOOLEAN;
+        } else if (db.ast.textEquals(nameNode, "quantity")) {
+          expectedType = TYPE_STRING;
+        }
+      } else if (db.ast.textEquals(baseTypeId, "String")) {
+        if (db.ast.textEquals(nameNode, "start") || db.ast.textEquals(nameNode, "quantity")) {
+          expectedType = TYPE_STRING;
+        }
+      } else {
+        // 2. User-defined classes
+        const docRoot = db.ast.getRootNode();
+        if (docRoot != 0) {
+          for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+            const cName = db.ast.getChildByFieldId(spec, "name");
+            if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+              let classDef: u32 = spec;
+              for (const anc of db.ast.getAncestors(spec, 0)) {
+                if (db.ast.getType(anc) == $.class_definition) {
+                  classDef = anc;
+                  break;
+                }
+              }
+              expectedType = getVariableTypeInClass(db, classDef, nameNode, $);
+              break;
+            }
+          }
+          if (expectedType == TYPE_UNKNOWN) {
+            for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+              const cName = db.ast.getChildByFieldId(spec, "name");
+              if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+                let classDef: u32 = spec;
+                for (const anc of db.ast.getAncestors(spec, 0)) {
+                  if (db.ast.getType(anc) == $.class_definition) {
+                    classDef = anc;
+                    break;
+                  }
+                }
+                expectedType = getVariableTypeInClass(db, classDef, nameNode, $);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      if (expectedType == TYPE_UNKNOWN) return;
+
+      if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
+        let foundStr = false;
+        if ($.string_literal != 0) {
+          for (const str of db.ast.getDescendants(node, $.string_literal)) {
+            db.diagnostic(str);
+            foundStr = true;
+            break;
+          }
+        }
+        if (!foundStr) {
+          for (const d of db.ast.getDescendants(node, 0)) {
+            if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
+              db.diagnostic(d);
+              break;
+            }
+          }
+        }
+      } else if (expectedType == TYPE_STRING) {
+        for (const num of db.ast.getDescendants(node, $.unsigned_real)) {
+          db.diagnostic(num);
+        }
+        for (const num of db.ast.getDescendants(node, $.unsigned_integer)) {
+          db.diagnostic(num);
         }
       }
     },
