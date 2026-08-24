@@ -1,5 +1,10 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
-import { getExpressionVariability, isTopLevelClassName, VARIABILITY_CONTINUOUS } from "./helpers.js";
+import {
+  getExpressionVariability,
+  isTopLevelClassName,
+  isVariableDeclaredInClass,
+  VARIABILITY_CONTINUOUS,
+} from "./helpers.js";
 
 export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   /**
@@ -11,18 +16,12 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 2002,
     message: (target) => `Variable '${target.text}' not found in scope.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      let rootId: u32 = node;
-      const firstChild = db.ast.getFirstChild(node);
-      if (firstChild != 0) {
-        if (db.ast.getType(firstChild) == $.identifier) {
-          rootId = firstChild;
-        } else {
-          const sib = db.ast.getNextSibling(firstChild);
-          if (sib != 0 && db.ast.getType(sib) == $.identifier) {
-            rootId = sib;
-          }
-        }
+      let rootId: u32 = 0;
+      for (const id of db.ast.getDescendants(node, $.identifier)) {
+        rootId = id;
+        break;
       }
+      if (rootId == 0) rootId = node;
 
       if (
         db.ast.textEquals(rootId, "time") ||
@@ -62,15 +61,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       }
       if (enclosingClass == 0) return;
 
-      for (const decl of db.ast.getDescendants(enclosingClass, $.declaration)) {
-        let declId: u32 = decl;
-        const declChild = db.ast.getFirstChild(decl);
-        if (declChild != 0 && db.ast.getType(declChild) == $.identifier) {
-          declId = declChild;
-        }
-        if (db.ast.textEqualsNode(rootId, declId)) {
-          return;
-        }
+      if (isVariableDeclaredInClass(db, enclosingClass, rootId, $)) {
+        return;
       }
 
       if (isTopLevelClassName(db, rootId, $)) return;
@@ -227,7 +219,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           else targetNode = spec;
           break;
         }
-        db.diagnostic(targetNode, targetNode, eqCount, varCount);
+        db.diagnostic(targetNode, eqCount, varCount);
       }
     },
   },
@@ -416,6 +408,141 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
           if (!inWhen) {
             db.diagnostic(lhs);
           }
+        }
+      }
+    },
+  },
+
+  /**
+   * M4045: Modified element / attribute not found in class or built-in type.
+   */
+  modifiedElementNotFound: {
+    nodes: ["element_modification"],
+    severity: "error",
+    code: 4045,
+    message: (target, typeName) => `Modified element '${target.text}' not found in class '${typeName.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let nameNode: u32 = 0;
+      for (const n of db.ast.getDescendants(node, $.name)) {
+        nameNode = n;
+        break;
+      }
+      if (nameNode == 0) return;
+
+      // Find enclosing component_clause1, element_redeclaration, component_clause or extends_clause
+      let parentDecl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        const type = db.ast.getType(anc);
+        if (
+          type == $.component_clause1 ||
+          type == $.element_redeclaration ||
+          type == $.component_clause ||
+          type == $.extends_clause
+        ) {
+          parentDecl = anc;
+          break;
+        }
+      }
+      if (parentDecl == 0) return;
+
+      let typeNode: u32 = 0;
+      for (const t of db.ast.getDescendants(parentDecl, $.type_specifier)) {
+        typeNode = t;
+        break;
+      }
+      if (typeNode == 0) return;
+
+      let baseTypeId: u32 = typeNode;
+      for (const id of db.ast.getDescendants(typeNode, $.identifier)) {
+        baseTypeId = id;
+        break;
+      }
+
+      // Check primitive types
+      if (db.ast.textEquals(baseTypeId, "Real")) {
+        if (
+          !db.ast.textEquals(nameNode, "start") &&
+          !db.ast.textEquals(nameNode, "fixed") &&
+          !db.ast.textEquals(nameNode, "min") &&
+          !db.ast.textEquals(nameNode, "max") &&
+          !db.ast.textEquals(nameNode, "nominal") &&
+          !db.ast.textEquals(nameNode, "unit") &&
+          !db.ast.textEquals(nameNode, "displayUnit") &&
+          !db.ast.textEquals(nameNode, "quantity") &&
+          !db.ast.textEquals(nameNode, "stateSelect") &&
+          !db.ast.textEquals(nameNode, "uncertain")
+        ) {
+          db.diagnostic(nameNode, baseTypeId);
+        }
+        return;
+      }
+
+      if (db.ast.textEquals(baseTypeId, "Integer")) {
+        if (
+          !db.ast.textEquals(nameNode, "start") &&
+          !db.ast.textEquals(nameNode, "fixed") &&
+          !db.ast.textEquals(nameNode, "min") &&
+          !db.ast.textEquals(nameNode, "max") &&
+          !db.ast.textEquals(nameNode, "quantity")
+        ) {
+          db.diagnostic(nameNode, baseTypeId);
+        }
+        return;
+      }
+
+      if (db.ast.textEquals(baseTypeId, "Boolean")) {
+        if (
+          !db.ast.textEquals(nameNode, "start") &&
+          !db.ast.textEquals(nameNode, "fixed") &&
+          !db.ast.textEquals(nameNode, "quantity")
+        ) {
+          db.diagnostic(nameNode, baseTypeId);
+        }
+        return;
+      }
+
+      if (db.ast.textEquals(baseTypeId, "String")) {
+        if (!db.ast.textEquals(nameNode, "start") && !db.ast.textEquals(nameNode, "quantity")) {
+          db.diagnostic(nameNode, baseTypeId);
+        }
+        return;
+      }
+
+      // Check user-defined classes in document root
+      const docRoot = db.ast.getRootNode();
+      if (docRoot == 0) return;
+
+      for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+        const cName = db.ast.getChildByFieldId(spec, "name");
+        if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+          let classDef: u32 = spec;
+          for (const anc of db.ast.getAncestors(spec, 0)) {
+            if (db.ast.getType(anc) == $.class_definition) {
+              classDef = anc;
+              break;
+            }
+          }
+          if (!isVariableDeclaredInClass(db, classDef, nameNode, $)) {
+            db.diagnostic(nameNode, baseTypeId);
+          }
+          return;
+        }
+      }
+
+      for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+        const cName = db.ast.getChildByFieldId(spec, "name");
+        if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
+          let classDef: u32 = spec;
+          for (const anc of db.ast.getAncestors(spec, 0)) {
+            if (db.ast.getType(anc) == $.class_definition) {
+              classDef = anc;
+              break;
+            }
+          }
+          if (!isVariableDeclaredInClass(db, classDef, nameNode, $)) {
+            db.diagnostic(nameNode, baseTypeId);
+          }
+          return;
         }
       }
     },

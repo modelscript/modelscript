@@ -139,4 +139,150 @@ end ElectricalCircuit;`;
     const diags = activeFacade.getDiagnostics(root);
     console.log("CIRCUIT DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
   });
+
+  test("resolves variables inherited from base model via extends without diagnostics", () => {
+    const code = `model A
+  Real x;
+end A;
+
+model B
+  extends A;
+  Real y = x;
+end B;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_extends.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("EXTENDS DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+    const varDiags = diags.filter((d: any) => d.code === 2002);
+    expect(varDiags).toEqual([]);
+  });
+
+  test("flags unknown variable in model that extends base model", () => {
+    const code = `model A
+  Real x;
+end A;
+
+model B
+  extends A;
+  Real y = unknownVar;
+end B;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_extends_unknown.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    const varDiag = diags.find((d: any) => d.code === 2002);
+    expect(varDiag).toBeDefined();
+    expect(varDiag.message).toBe("Variable 'unknownVar' not found in scope.");
+  });
+
+  test("catches invalid attribute 'error' on Real x(error=7)", () => {
+    const code = `model A
+  Real x(error=7);
+end A;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_invalid_attr.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("INVALID ATTR DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+    const attrDiag = diags.find((d: any) => d.code === 4045);
+    expect(attrDiag).toBeDefined();
+    expect(attrDiag.message).toBe("Modified element 'error' not found in class 'Real'.");
+  });
+
+  test("accepts valid attribute 'start' on Real x(start=7)", () => {
+    const code = `model A
+  Real x(start=7);
+end A;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_attr_valid.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    const attrDiags = diags.filter((d: any) => d.code === 4045);
+    expect(attrDiags).toEqual([]);
+  });
+
+  test("runs WeatherStation replaceable sensor model", () => {
+    const code = `model WeatherStation
+  // The sensor is marked replaceable and defaults to IdealSensor
+  replaceable BaseSensor sensor = IdealSensor;
+  Real data;
+equation
+  data = sensor.measurement;
+end WeatherStation;
+
+partial model BaseSensor
+  Real measurement;
+equation
+  // Base class has no specific equations
+end BaseSensor;
+
+model IdealSensor
+  extends BaseSensor;
+equation
+  measurement = time; // Simple ideal behavior
+end IdealSensor;
+
+model NoisySensor
+  extends BaseSensor;
+  parameter Real noise = 0.1;
+equation
+  measurement = time + noise; // Behavior with added noise
+end NoisySensor;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_weather.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("WEATHER STATION DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+
+    const varDiags = diags.filter((d: any) => d.code === 2002);
+    expect(varDiags).toEqual([]);
+  });
+
+  test("parses Simulation model with redeclare NoisySensor without syntax errors", () => {
+    const code = `model WeatherStation
+  replaceable BaseSensor sensor = IdealSensor;
+  Real data;
+equation
+  data = sensor.measurement;
+end WeatherStation;
+
+partial model BaseSensor
+  Real measurement;
+end BaseSensor;
+
+model IdealSensor
+  extends BaseSensor;
+equation
+  measurement = time;
+end IdealSensor;
+
+model NoisySensor
+  extends BaseSensor;
+  parameter Real noise = 0.1;
+equation
+  measurement = time + noise;
+end NoisySensor;
+
+model Simulation
+  // Station A uses the default IdealSensor
+  WeatherStation stationA;
+
+  // Station B redeclares the sensor to use NoisySensor instead
+  WeatherStation stationB(redeclare NoisySensor sensor(noise=0.5));
+end Simulation;`;
+
+    const root = activeFacade.parseIncremental(code, 0, 0, code.length, "file:///test_simulation.mo");
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("SIMULATION DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+    const syntaxErrors = diags.filter((d: any) => d.severity === 1 && (!d.code || d.code < 1000));
+    expect(syntaxErrors).toEqual([]);
+  });
 });

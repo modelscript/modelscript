@@ -484,7 +484,11 @@ export const modelicaLanguage = language({
     element_replaceable: ($) =>
       seq("replaceable", choice($.short_class_definition, $.component_clause1), optional($.constraining_clause)),
 
-    component_clause1: ($) => seq($.type_prefix, $.type_specifier, $.component_declaration1),
+    component_clause1: ($) =>
+      choice(
+        seq(field("type_prefix", $.type_prefix), field("type_specifier", $.type_specifier), $.component_declaration1),
+        seq(field("type_specifier", $.type_specifier), $.component_declaration1),
+      ),
 
     component_declaration1: ($) => seq($.declaration, $.description),
 

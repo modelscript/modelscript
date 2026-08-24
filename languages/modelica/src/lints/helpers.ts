@@ -160,3 +160,79 @@ export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<stri
   }
   return false;
 }
+
+/**
+ * Checks if a variable identifier `identNode` is declared in `classNode` or any of its inherited base classes via `extends`.
+ */
+export function isVariableDeclaredInClass(
+  db: CodeGraph,
+  classNode: u32,
+  identNode: u32,
+  $: Record<string, u16>,
+): boolean {
+  if (classNode == 0 || identNode == 0) return false;
+
+  // 1. Direct declarations in classNode
+  for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
+    let declId: u32 = 0;
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      declId = id;
+      break;
+    }
+    if (declId != 0 && db.ast.textEqualsNode(identNode, declId)) {
+      return true;
+    }
+  }
+
+  // 2. Inherited declarations via `extends_clause`
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return false;
+
+  for (const ext of db.ast.getDescendants(classNode, $.extends_clause)) {
+    let typeSpec = db.ast.getChildByFieldId(ext, "type_specifier");
+    if (typeSpec == 0) typeSpec = db.ast.getFirstChild(ext);
+    if (typeSpec == 0) continue;
+
+    let baseNameId: u32 = typeSpec;
+    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+      baseNameId = id;
+      break;
+    }
+
+    // Find class_definition for baseNameId
+    for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(spec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = spec;
+        for (const anc of db.ast.getAncestors(spec, 0)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        if (isVariableDeclaredInClass(db, baseClass, identNode, $)) {
+          return true;
+        }
+        break;
+      }
+    }
+    for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+      const nameId = db.ast.getChildByFieldId(spec, "name");
+      if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+        let baseClass: u32 = spec;
+        for (const anc of db.ast.getAncestors(spec, 0)) {
+          if (db.ast.getType(anc) == $.class_definition) {
+            baseClass = anc;
+            break;
+          }
+        }
+        if (isVariableDeclaredInClass(db, baseClass, identNode, $)) {
+          return true;
+        }
+        break;
+      }
+    }
+  }
+
+  return false;
+}
