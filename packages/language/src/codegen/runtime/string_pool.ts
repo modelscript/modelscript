@@ -151,4 +151,36 @@ export class ArenaStringPool {
     }
     return true;
   }
+
+  hasPrefix(id: u32, prefixId: u32): boolean {
+    if (id == 0 || prefixId == 0 || id >= this.stringCount || prefixId >= this.stringCount) return false;
+    let len = this.stringLengths.get(id);
+    let prefLen = this.stringLengths.get(prefixId);
+    if (len <= prefLen) return false;
+    let off = this.stringOffsets.get(id);
+    let prefOff = this.stringOffsets.get(prefixId);
+    for (let i: u32 = 0; i < prefLen; i++) {
+      if (this.charBuffer.get(off + i) != this.charBuffer.get(prefOff + i)) return false;
+    }
+    return this.charBuffer.get(off + prefLen) == 46; // '.'
+  }
+
+  getSuffixAfterPrefix(id: u32, prefixId: u32): u32 {
+    if (!this.hasPrefix(id, prefixId)) return 0;
+    let len = this.stringLengths.get(id);
+    let prefLen = this.stringLengths.get(prefixId);
+    let suffLen = len - prefLen - 1;
+    let suffStart = this.stringOffsets.get(id) + prefLen + 1;
+
+    let newId = this.stringCount++;
+    this.stringLengths.set(newId, suffLen);
+    this.stringOffsets.set(newId, this.charOffset);
+
+    let start = this.charOffset;
+    for (let i: u32 = 0; i < suffLen; i++) {
+      this.charBuffer.set(start + i, this.charBuffer.get(suffStart + i));
+    }
+    this.charOffset += suffLen;
+    return newId;
+  }
 }

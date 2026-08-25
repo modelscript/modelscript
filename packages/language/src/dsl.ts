@@ -156,6 +156,8 @@ export interface ScopeAPI {
   internNode(nodeId: u32): u32;
   concatPrefix(prefixId: u32, suffixId: u32): u32;
   equals(id1: u32, id2: u32): boolean;
+  hasPrefix(id: u32, prefixId: u32): boolean;
+  getSuffixAfterPrefix(id: u32, prefixId: u32): u32;
 }
 
 /**
@@ -191,6 +193,16 @@ export interface ConnectorDefinition {
   potential?: string[];
   flow?: string[];
   stream?: string[];
+}
+
+/**
+ * Fast Set API.
+ */
+export interface SetAPI {
+  create(): u32;
+  add(setId: u32, val: u32): void;
+  has(setId: u32, val: u32): boolean;
+  release(setId: u32): void;
 }
 
 /**
@@ -246,8 +258,15 @@ export interface SetAPI {
 export interface DaeAPI {
   addVariable(nameId: u32, type: u8, variability: u8, causality: u8, startValue: f64, flags?: i32): u32;
   addExpression(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+  addRealLiteral(val: f64): u32;
+  addBinaryExpr(op: u16, left: u32, right: u32): u32;
   addEquation(kind: u8, lhsId: u32, rhsId: u32, auxId?: u32): u32;
   addStatement(kind: u8, data1: u32, left?: u32, right?: u32): u32;
+  varCount: u32;
+  getVarCount(): i32;
+  getVarNameId(varIdx: u32): u32;
+  getVarType(varIdx: u32): i32;
+  isVarFlow(varIdx: u32): boolean;
   extractEquations(rootId: u32): void;
   reset(): void;
 }

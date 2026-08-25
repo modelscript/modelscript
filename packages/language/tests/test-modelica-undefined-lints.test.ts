@@ -480,6 +480,87 @@ end;`;
     expect(m5004Diags).toEqual([]);
   });
 
+  test("catches undefined member in compound component reference x.error in connect equation", () => {
+    const code = `connector Pin2
+  flow Real a;
+  Real b;
+end;
+model X
+  Real val;
+end;
+model Y
+  Pin2 p2;
+end;
+model Z
+  X x;
+  Y y;
+equation
+  connect(x.error, y.p2);
+end;`;
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("COMPOUND MEMBER DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+    const m2002Diag = diags.find((d: any) => d.code === 2002);
+    expect(m2002Diag).toBeDefined();
+    expect(m2002Diag.message).toBe("Variable 'x.error' not found in scope.");
+  });
+
+  test("catches connector port type and flow mismatch in hierarchical connect(x.p1, y.p2)", () => {
+    const code = `connector Pin1
+  flow Real x;
+end;
+connector Pin2
+  flow Real a;
+  Real b;
+end;
+model X
+  Pin1 p1;
+end;
+model Y
+  Pin2 p2;
+end;
+model Z
+  X x;
+  Y y;
+equation
+  connect(x.p1, y.p2);
+end;`;
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    console.log("HIERARCHICAL CONNECT DIAGNOSTICS:\n", JSON.stringify(diags, null, 2));
+    const m5004Diag = diags.find((d: any) => d.code === 5004);
+    expect(m5004Diag).toBeDefined();
+    expect(m5004Diag.message).toBe("Flow variable sets differ in connect(): 'x.p1' (1 flows) vs 'y.p2' (1 flows).");
+  });
+
+  test("accepts valid hierarchical connect(x.p1, y.p1) with matching ports without warnings", () => {
+    const code = `connector Pin1
+  flow Real x;
+end;
+model X
+  Pin1 p1;
+end;
+model Y
+  Pin1 p1;
+end;
+model Z
+  X x;
+  Y y;
+equation
+  connect(x.p1, y.p1);
+end;`;
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const diags = activeFacade.getDiagnostics(root);
+    const diagsFiltered = diags.filter((d: any) => d.code === 5004 || d.code === 2002);
+    expect(diagsFiltered).toEqual([]);
+  });
+
   test("executes physical in-DSL flattening pipeline on Modelica AST", () => {
     const code = `model A
   Real x;
@@ -562,5 +643,46 @@ end Circuit;`;
     expect(varNames).toContain("r1.n.v");
     expect(varNames).toContain("r1.n.i");
     expect(varNames).toContain("r1.R");
+  });
+
+  test("expands connect(x.xc, y.yc) into Kirchhoff zero-sum flow conservation equations", () => {
+    const code = `connector XC
+  flow Real x;
+end;
+
+connector YC
+  flow Real x;
+end;
+
+model X
+  XC xc;
+end;
+
+model Y
+  YC yc;
+end;
+
+model Z
+  X x;
+  Y y;
+equation
+  connect(x.xc, y.yc);
+end Z;`;
+    const root = activeFacade.parse(code);
+    expect(root).toBeGreaterThan(0);
+
+    const pipelineResult = activeFacade.executePipeline(root, "flatten");
+    console.log("PIPELINE CONNECTOR EXPANSION RESULT:\n", JSON.stringify(pipelineResult, null, 2));
+
+    expect(pipelineResult).toBeDefined();
+    const varNames = pipelineResult.variables.map((v: any) => v.name);
+    expect(varNames).toContain("x.xc.x");
+    expect(varNames).toContain("y.yc.x");
+
+    // Verify connect equation emitted for flattened connector references
+    expect(pipelineResult.equations.length).toBe(1);
+    const eq = pipelineResult.equations[0];
+    expect(eq.kind).toBe("connect");
+    expect(eq.text).toContain("connect(x.xc, y.yc)");
   });
 });

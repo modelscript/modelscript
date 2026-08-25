@@ -265,22 +265,42 @@ export const modelicaFlatteningPasses = [
             }
           }
           if (lhsNode != 0 && rhsNode != 0) {
-            let targetLhs: u32 = lhsNode;
-            while (targetLhs != 0) {
-              const ch = graph.ast.getFirstChild(targetLhs);
-              if (ch == 0) break;
-              targetLhs = ch;
+            let lhsStrId: u32 = 0;
+            for (const id of graph.ast.getDescendants(lhsNode, $.identifier)) {
+              let leafId = id;
+              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
+              const segStrId = graph.scope.internNode(leafId);
+              if (lhsStrId == 0) {
+                lhsStrId = segStrId;
+              } else {
+                lhsStrId = graph.scope.concatPrefix(lhsStrId, segStrId);
+              }
+            }
+            if (lhsStrId == 0) {
+              let targetLhs = lhsNode;
+              while (targetLhs != 0 && graph.ast.getFirstChild(targetLhs) != 0)
+                targetLhs = graph.ast.getFirstChild(targetLhs);
+              lhsStrId = graph.scope.internNode(targetLhs);
             }
 
-            let targetRhs: u32 = rhsNode;
-            while (targetRhs != 0) {
-              const ch = graph.ast.getFirstChild(targetRhs);
-              if (ch == 0) break;
-              targetRhs = ch;
+            let rhsStrId: u32 = 0;
+            for (const id of graph.ast.getDescendants(rhsNode, $.identifier)) {
+              let leafId = id;
+              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
+              const segStrId = graph.scope.internNode(leafId);
+              if (rhsStrId == 0) {
+                rhsStrId = segStrId;
+              } else {
+                rhsStrId = graph.scope.concatPrefix(rhsStrId, segStrId);
+              }
+            }
+            if (rhsStrId == 0) {
+              let targetRhs = rhsNode;
+              while (targetRhs != 0 && graph.ast.getFirstChild(targetRhs) != 0)
+                targetRhs = graph.ast.getFirstChild(targetRhs);
+              rhsStrId = graph.scope.internNode(targetRhs);
             }
 
-            const lhsStrId = graph.scope.internNode(targetLhs);
-            const rhsStrId = graph.scope.internNode(targetRhs);
             const fullLhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, lhsStrId) : lhsStrId;
             const fullRhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, rhsStrId) : rhsStrId;
 
@@ -307,22 +327,42 @@ export const modelicaFlatteningPasses = [
           const lhsNode = graph.ast.getChildByFieldId(conn, "lhs");
           const rhsNode = graph.ast.getChildByFieldId(conn, "rhs");
           if (lhsNode != 0 && rhsNode != 0) {
-            let targetLhs: u32 = lhsNode;
-            while (targetLhs != 0) {
-              const ch = graph.ast.getFirstChild(targetLhs);
-              if (ch == 0) break;
-              targetLhs = ch;
+            let lhsStrId: u32 = 0;
+            for (const id of graph.ast.getDescendants(lhsNode, $.identifier)) {
+              let leafId = id;
+              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
+              const segStrId = graph.scope.internNode(leafId);
+              if (lhsStrId == 0) {
+                lhsStrId = segStrId;
+              } else {
+                lhsStrId = graph.scope.concatPrefix(lhsStrId, segStrId);
+              }
+            }
+            if (lhsStrId == 0) {
+              let targetLhs = lhsNode;
+              while (targetLhs != 0 && graph.ast.getFirstChild(targetLhs) != 0)
+                targetLhs = graph.ast.getFirstChild(targetLhs);
+              lhsStrId = graph.scope.internNode(targetLhs);
             }
 
-            let targetRhs: u32 = rhsNode;
-            while (targetRhs != 0) {
-              const ch = graph.ast.getFirstChild(targetRhs);
-              if (ch == 0) break;
-              targetRhs = ch;
+            let rhsStrId: u32 = 0;
+            for (const id of graph.ast.getDescendants(rhsNode, $.identifier)) {
+              let leafId = id;
+              while (leafId != 0 && graph.ast.getFirstChild(leafId) != 0) leafId = graph.ast.getFirstChild(leafId);
+              const segStrId = graph.scope.internNode(leafId);
+              if (rhsStrId == 0) {
+                rhsStrId = segStrId;
+              } else {
+                rhsStrId = graph.scope.concatPrefix(rhsStrId, segStrId);
+              }
+            }
+            if (rhsStrId == 0) {
+              let targetRhs = rhsNode;
+              while (targetRhs != 0 && graph.ast.getFirstChild(targetRhs) != 0)
+                targetRhs = graph.ast.getFirstChild(targetRhs);
+              rhsStrId = graph.scope.internNode(targetRhs);
             }
 
-            const lhsStrId = graph.scope.internNode(targetLhs);
-            const rhsStrId = graph.scope.internNode(targetRhs);
             const fullLhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, lhsStrId) : lhsStrId;
             const fullRhsId = prefixId != 0 ? graph.scope.concatPrefix(prefixId, rhsStrId) : rhsStrId;
 

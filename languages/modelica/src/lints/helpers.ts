@@ -163,7 +163,7 @@ export function hasTypePrefix(db: CodeGraph, compClauseNode: u32, prefix: string
 }
 
 /**
- * Resolves a component reference (e.g. `a` inside `model X`) to its class definition in the document.
+ * Resolves a single component identifier (e.g. `p1` inside `model X`) to its class definition in the document.
  */
 export function resolveComponentClassDefinition(
   db: CodeGraph,
@@ -172,8 +172,10 @@ export function resolveComponentClassDefinition(
   $: Record<string, u16>,
 ): u32 {
   if (enclosingClass == 0 || compRefNode == 0) return 0;
+  const docRoot = db.ast.getRootNode();
+  if (docRoot == 0) return 0;
 
-  // 1. Find declaration for compRefNode in enclosingClass
+  // 1. Direct declarations in enclosingClass (ignoring inner classes)
   let typeSpecNode: u32 = 0;
   for (const comp of db.ast.getDescendants(enclosingClass, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, enclosingClass, $)) continue;
@@ -196,11 +198,41 @@ export function resolveComponentClassDefinition(
     }
   }
 
+  // 2. Inherited declarations in enclosingClass via extends_clause
+  if (typeSpecNode == 0) {
+    for (const ext of db.ast.getDescendants(enclosingClass, $.extends_clause)) {
+      if (isDescendantOfInnerClass(db, ext, enclosingClass, $)) continue;
+      let extTypeSpec = db.ast.getChildByFieldId(ext, "type_specifier");
+      if (extTypeSpec == 0) extTypeSpec = db.ast.getFirstChild(ext);
+      if (extTypeSpec == 0) continue;
+
+      let baseNameId: u32 = extTypeSpec;
+      for (const id of db.ast.getDescendants(extTypeSpec, $.identifier)) {
+        baseNameId = id;
+        break;
+      }
+
+      for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
+        const nameId = db.ast.getChildByFieldId(spec, "name");
+        if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
+          let baseClass: u32 = spec;
+          for (const anc of db.ast.getAncestors(spec, 0)) {
+            if (db.ast.getType(anc) == $.class_definition) {
+              baseClass = anc;
+              break;
+            }
+          }
+          const resolved = resolveComponentClassDefinition(db, baseClass, compRefNode, $);
+          if (resolved != 0) return resolved;
+          break;
+        }
+      }
+    }
+  }
+
   if (typeSpecNode == 0) return 0;
 
-  // 2. Find class_definition in document matching typeSpecNode
-  const docRoot = db.ast.getRootNode();
-  if (docRoot == 0) return 0;
+  // 3. Find class_definition in document matching typeSpecNode
   for (const spec of db.ast.getDescendants(docRoot, $.long_class_specifier)) {
     const nameId = db.ast.getChildByFieldId(spec, "name");
     if (nameId != 0) {
@@ -214,7 +246,119 @@ export function resolveComponentClassDefinition(
       }
     }
   }
+  for (const spec of db.ast.getDescendants(docRoot, $.short_class_specifier)) {
+    const nameId = db.ast.getChildByFieldId(spec, "name");
+    if (nameId != 0) {
+      for (const tsId of db.ast.getDescendants(typeSpecNode, $.identifier)) {
+        if (db.ast.textEqualsNode(tsId, nameId)) {
+          for (const cls of db.ast.getAncestors(spec, 0)) {
+            if (db.ast.getType(cls) == $.class_definition) return cls;
+          }
+        }
+        break;
+      }
+    }
+  }
   return 0;
+}
+
+/**
+ * Resolves a potentially dotted component reference (e.g. `x.p1`) starting from `enclosingClass`
+ * down to its leaf class definition (e.g. `Pin1`).
+ */
+export function resolveDottedComponentClass(
+  db: CodeGraph,
+  enclosingClass: u32,
+  compRefNode: u32,
+  $: Record<string, u16>,
+): u32 {
+  if (enclosingClass == 0 || compRefNode == 0) return 0;
+
+  let currClass = enclosingClass;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+    if (nextClass == 0) return 0;
+    currClass = nextClass;
+  }
+
+  return currClass != enclosingClass ? currClass : 0;
+}
+
+/**
+ * Checks if a potentially dotted variable reference (e.g. `x` or `x.error` or `x.p1`)
+ * is declared across the class hierarchy.
+ */
+export function isDottedVariableDeclared(
+  db: CodeGraph,
+  enclosingClass: u32,
+  compRefNode: u32,
+  $: Record<string, u16>,
+): boolean {
+  if (enclosingClass == 0 || compRefNode == 0) return false;
+
+  let idCount: u32 = 0;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (id != 0) idCount++;
+  }
+  if (idCount == 0) return isVariableDeclaredInClass(db, enclosingClass, compRefNode, $);
+
+  if (idCount == 1) {
+    for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+      return isVariableDeclaredInClass(db, enclosingClass, id, $);
+    }
+  }
+
+  // Multi-segment reference (e.g. `x.error` or `x.p1.v`)
+  let currClass = enclosingClass;
+  let idx: u32 = 0;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (idx == idCount - 1) {
+      // Leaf segment: check declaration in currClass
+      return isVariableDeclaredInClass(db, currClass, id, $);
+    }
+    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+    if (nextClass == 0) return false;
+    currClass = nextClass;
+    idx++;
+  }
+
+  return true;
+}
+
+/**
+ * Checks if two connector classes are compatible for a connect() equation.
+ */
+export function isConnectorCompatible(db: CodeGraph, lhsClass: u32, rhsClass: u32, $: Record<string, u16>): boolean {
+  if (lhsClass == 0 || rhsClass == 0) return true;
+  if (lhsClass == rhsClass) return true;
+
+  // 1. Flow variable count must match
+  const lhsFlows = getFlowVariableCount(db, lhsClass, $);
+  const rhsFlows = getFlowVariableCount(db, rhsClass, $);
+  if (lhsFlows != rhsFlows) return false;
+
+  // 2. Non-flow variable count must match
+  let lhsNonFlows: u32 = 0;
+  for (const comp of db.ast.getDescendants(lhsClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, lhsClass, $)) continue;
+    if (!hasTypePrefix(db, comp, "flow")) {
+      for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+        if (decl != 0) lhsNonFlows++;
+      }
+    }
+  }
+  let rhsNonFlows: u32 = 0;
+  for (const comp of db.ast.getDescendants(rhsClass, $.component_clause)) {
+    if (isDescendantOfInnerClass(db, comp, rhsClass, $)) continue;
+    if (!hasTypePrefix(db, comp, "flow")) {
+      for (const decl of db.ast.getDescendants(comp, $.declaration)) {
+        if (decl != 0) rhsNonFlows++;
+      }
+    }
+  }
+  if (lhsNonFlows != rhsNonFlows) return false;
+
+  return true;
 }
 
 /**

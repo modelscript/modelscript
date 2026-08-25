@@ -1201,6 +1201,48 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 }
             });
 
+            monaco.languages.registerCompletionItemProvider('*', {
+                triggerCharacters: ['.', ' ', ':', '=', '(', ','],
+                provideCompletionItems: async (model, position, context, token) => {
+                    const result = await languageClient.sendRequest('textDocument/completion', {
+                        textDocument: { uri: model.uri.toString() },
+                        position: { line: position.lineNumber - 1, character: position.column - 1 },
+                        context: {
+                            triggerKind: context.triggerKind,
+                            triggerCharacter: context.triggerCharacter
+                        }
+                    });
+                    
+                    if (result && Array.isArray(result.items)) {
+                        const word = model.getWordUntilPosition(position);
+                        const defaultRange = new monaco.Range(
+                            position.lineNumber,
+                            word.startColumn,
+                            position.lineNumber,
+                            word.endColumn
+                        );
+                        
+                        const suggestions = result.items.map((item, idx) => ({
+                            label: item.label,
+                            kind: item.kind !== undefined ? item.kind : monaco.languages.CompletionItemKind.Keyword,
+                            detail: item.detail || '',
+                            documentation: item.documentation || '',
+                            insertText: item.insertText || item.label,
+                            insertTextRules: item.isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+                            range: item.range ? new monaco.Range(
+                                item.range.start.line + 1,
+                                item.range.start.character + 1,
+                                item.range.end.line + 1,
+                                item.range.end.character + 1
+                            ) : defaultRange,
+                            sortText: item.sortText || String(idx).padStart(5, '0')
+                        }));
+                        return { suggestions };
+                    }
+                    return { suggestions: [] };
+                }
+            });
+
             document.getElementById('toggle-branch-a1')?.addEventListener('change', (e) => {
                 const branchB = document.getElementById('toggle-branch-b').checked;
                 const branchC = document.getElementById('toggle-branch-c').checked;
@@ -2980,6 +3022,282 @@ self.onmessage = async (e) => {
             }
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
+    } else if (e.data.method === 'textDocument/completion') {
+        const params = e.data.params;
+        const pos = params.position; // { line, character }
+        
+        let docText = "";
+        if (lspFacade && lspFacade.exports && lspFacade.exports.getInputBuffer && currentTextLength > 0) {
+            const inputBuf = lspFacade.exports.getInputBuffer();
+            if (inputBuf > 0) {
+                const isUtf16 = (lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
+                const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
+                docText = decoder.decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf, currentTextLength * (isUtf16 ? 2 : 1))).replace(/\0/g, '');
+            }
+        }
+        
+        const NL = String.fromCharCode(10);
+        const lines = docText.split(NL);
+        const lineText = lines[pos.line] || '';
+        const textBeforeCursor = lineText.slice(0, pos.character);
+        
+        const items = [];
+        
+        // 1. Check for dot-access (e.g. x. or a.b.)
+        const dotRegex = new RegExp('([a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*)\\.([a-zA-Z0-9_]*)$');
+        const dotMatch = textBeforeCursor.match(dotRegex);
+        const classHeaderRegex = new RegExp('\\b(model|connector|record|block|class|function|package)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+        const classEndRegex = new RegExp('\\bend\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*;');
+        const extendsRegex = new RegExp('\\bextends\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+        const declRegex = new RegExp('^(?:(parameter|constant|flow|stream|input|output|discrete)\\s+)*([a-zA-Z_][a-zA-Z0-9_.]*)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+
+        if (dotMatch) {
+            const chain = dotMatch[1].split('.');
+            
+            // Find enclosing class for current position
+            let enclosingClass = "";
+            for (let i = pos.line; i >= 0; i--) {
+                const l = lines[i];
+                const m = l.match(classHeaderRegex);
+                if (m) {
+                    enclosingClass = m[2];
+                    break;
+                }
+            }
+            
+            // Map of all classes in document
+            const classDefs = {};
+            let activeClass = null;
+            for (let i = 0; i < lines.length; i++) {
+                const l = lines[i].trim();
+                const classStart = l.match(classHeaderRegex);
+                if (classStart && !l.startsWith('//') && !l.startsWith('/*')) {
+                    activeClass = classStart[2];
+                    classDefs[activeClass] = {
+                        name: activeClass,
+                        kind: classStart[1],
+                        extendsList: [],
+                        declarations: []
+                    };
+                    continue;
+                }
+                const classEnd = l.match(classEndRegex);
+                if (classEnd && activeClass === classEnd[1]) {
+                    activeClass = null;
+                    continue;
+                }
+                if (activeClass && classDefs[activeClass]) {
+                    const extMatch = l.match(extendsRegex);
+                    if (extMatch) {
+                        classDefs[activeClass].extendsList.push(extMatch[1]);
+                    }
+                    const declMatch = l.match(declRegex);
+                    if (declMatch && !l.startsWith('connect(') && !l.startsWith('equation') && !l.startsWith('algorithm')) {
+                        const isFlow = l.includes('flow ');
+                        const isParam = l.includes('parameter ');
+                        const typeName = declMatch[2];
+                        const varName = declMatch[3];
+                        if (varName !== 'equation' && varName !== 'algorithm' && varName !== 'end' && varName !== 'public' && varName !== 'protected') {
+                            classDefs[activeClass].declarations.push({
+                                name: varName,
+                                type: typeName,
+                                isFlow,
+                                isParam
+                            });
+                        }
+                    }
+                }
+            }
+            
+            function getAllDecls(clsName, visited = new Set()) {
+                if (!clsName || visited.has(clsName) || !classDefs[clsName]) return [];
+                visited.add(clsName);
+                const cls = classDefs[clsName];
+                let list = [...cls.declarations];
+                for (const base of cls.extendsList) {
+                    list = list.concat(getAllDecls(base, visited));
+                }
+                return list;
+            }
+            
+            let currClass = enclosingClass;
+            for (let s = 0; s < chain.length; s++) {
+                const seg = chain[s];
+                const decls = getAllDecls(currClass);
+                const matchDecl = decls.find(d => d.name === seg);
+                if (matchDecl && classDefs[matchDecl.type]) {
+                    currClass = matchDecl.type;
+                } else if (matchDecl) {
+                    currClass = matchDecl.type;
+                } else {
+                    currClass = "";
+                    break;
+                }
+            }
+            
+            if (currClass && classDefs[currClass]) {
+                const members = getAllDecls(currClass);
+                for (const m of members) {
+                    items.push({
+                        label: m.name,
+                        kind: m.isFlow ? 5 /* Field */ : 6 /* Property */,
+                        detail: (m.isFlow ? "flow " : m.isParam ? "parameter " : "") + m.type + " " + m.name,
+                        documentation: "Member of " + currClass,
+                        insertText: m.name
+                    });
+                }
+            }
+        } else {
+            // 2. Non-dot context: Keywords, Types, Built-ins, Document Symbols, Local Variables, Snippets
+            const keywords = [
+                'model', 'connector', 'record', 'block', 'package', 'function', 'type', 'class',
+                'extends', 'equation', 'algorithm', 'connect', 'der', 'parameter', 'constant',
+                'flow', 'stream', 'input', 'output', 'public', 'protected', 'end', 'annotation',
+                'if', 'then', 'else', 'elseif', 'for', 'in', 'loop', 'while', 'when', 'elsewhen',
+                'initial', 'terminal', 'assert', 'terminate', 'reinit', 'redeclare', 'replaceable',
+                'constrainedby', 'import', 'within', 'discrete', 'final', 'each'
+            ];
+            for (const kw of keywords) {
+                items.push({
+                    label: kw,
+                    kind: 14, // Keyword
+                    detail: "Modelica keyword",
+                    insertText: kw
+                });
+            }
+            
+            const types = ['Real', 'Integer', 'Boolean', 'String', 'Clock'];
+            for (const t of types) {
+                items.push({
+                    label: t,
+                    kind: 25, // TypeParameter
+                    detail: "Modelica primitive type",
+                    insertText: t
+                });
+            }
+            
+            const builtins = [
+                { name: 'der', sig: 'der(x)', doc: 'Time derivative of variable x' },
+                { name: 'time', sig: 'time', doc: 'Continuous simulation time' },
+                { name: 'sin', sig: 'sin(u)', doc: 'Sine function' },
+                { name: 'cos', sig: 'cos(u)', doc: 'Cosine function' },
+                { name: 'tan', sig: 'tan(u)', doc: 'Tangent function' },
+                { name: 'asin', sig: 'asin(u)', doc: 'Inverse sine' },
+                { name: 'acos', sig: 'acos(u)', doc: 'Inverse cosine' },
+                { name: 'atan', sig: 'atan(u)', doc: 'Inverse tangent' },
+                { name: 'atan2', sig: 'atan2(u1, u2)', doc: 'Four-quadrant inverse tangent' },
+                { name: 'sinh', sig: 'sinh(u)', doc: 'Hyperbolic sine' },
+                { name: 'cosh', sig: 'cosh(u)', doc: 'Hyperbolic cosine' },
+                { name: 'tanh', sig: 'tanh(u)', doc: 'Hyperbolic tangent' },
+                { name: 'exp', sig: 'exp(u)', doc: 'Exponential function' },
+                { name: 'log', sig: 'log(u)', doc: 'Natural logarithm' },
+                { name: 'log10', sig: 'log10(u)', doc: 'Base-10 logarithm' },
+                { name: 'sqrt', sig: 'sqrt(u)', doc: 'Square root' },
+                { name: 'abs', sig: 'abs(u)', doc: 'Absolute value' },
+                { name: 'sign', sig: 'sign(u)', doc: 'Sign of u (-1, 0, 1)' },
+                { name: 'min', sig: 'min(u1, u2)', doc: 'Minimum of arguments' },
+                { name: 'max', sig: 'max(u1, u2)', doc: 'Maximum of arguments' },
+                { name: 'sum', sig: 'sum(v)', doc: 'Sum of array elements' },
+                { name: 'product', sig: 'product(v)', doc: 'Product of array elements' },
+                { name: 'inStream', sig: 'inStream(v)', doc: 'Stream connection inlet value' },
+                { name: 'actualStream', sig: 'actualStream(v)', doc: 'Actual stream variable value' }
+            ];
+            for (const b of builtins) {
+                items.push({
+                    label: b.name,
+                    kind: 3, // Function
+                    detail: b.sig,
+                    documentation: b.doc,
+                    insertText: b.name
+                });
+            }
+            
+            const classGlobalRegex = new RegExp('\\b(model|connector|record|block|class|function|package)\\s+([a-zA-Z_][a-zA-Z0-9_]*)', 'g');
+            const classMatches = docText.matchAll(classGlobalRegex);
+            const seenClasses = new Set();
+            for (const cm of classMatches) {
+                const kind = cm[1];
+                const name = cm[2];
+                if (!seenClasses.has(name)) {
+                    seenClasses.add(name);
+                    items.push({
+                        label: name,
+                        kind: 7, // Class
+                        detail: kind + " " + name,
+                        documentation: "Declared in document",
+                        insertText: name
+                    });
+                }
+            }
+            
+            let enclosingClass = "";
+            for (let i = pos.line; i >= 0; i--) {
+                const l = lines[i];
+                const m = l.match(classHeaderRegex);
+                if (m) {
+                    enclosingClass = m[2];
+                    break;
+                }
+            }
+            if (enclosingClass) {
+                let insideTarget = false;
+                for (let i = 0; i < lines.length; i++) {
+                    const l = lines[i].trim();
+                    const cs = l.match(classHeaderRegex);
+                    if (cs && cs[2] === enclosingClass) {
+                        insideTarget = true;
+                        continue;
+                    }
+                    const ce = l.match(classEndRegex);
+                    if (ce && ce[1] === enclosingClass) {
+                        insideTarget = false;
+                        break;
+                    }
+                    if (insideTarget) {
+                        const dm = l.match(declRegex);
+                        if (dm && !l.startsWith('connect(') && !l.startsWith('equation') && !l.startsWith('algorithm')) {
+                            const vName = dm[3];
+                            const vType = dm[2];
+                            if (vName !== 'equation' && vName !== 'algorithm' && vName !== 'end' && vName !== 'public' && vName !== 'protected') {
+                                items.push({
+                                    label: vName,
+                                    kind: 6, // Variable
+                                    detail: (l.includes('flow ') ? "flow " : l.includes('parameter ') ? "parameter " : "") + vType + " " + vName,
+                                    documentation: "Declared in " + enclosingClass,
+                                    insertText: vName
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            const S = '$';
+            const snippets = [
+                { label: 'model', insertText: ['model ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Modelica model declaration' },
+                { label: 'connector', insertText: ['connector ' + S + '{1:Pin}', '  flow Real ' + S + '{2:i};', '  Real ' + S + '{3:v};', 'end ' + S + '{1:Pin};'].join(NL), detail: 'Connector port declaration' },
+                { label: 'record', insertText: ['record ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Record data structure' },
+                { label: 'block', insertText: ['block ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Block declaration' },
+                { label: 'function', insertText: ['function ' + S + '{1:name}', '  input Real ' + S + '{2:u};', '  output Real ' + S + '{3:y};', 'algorithm', '  ' + S + '{0}y := u;', 'end ' + S + '{1:name};'].join(NL), detail: 'Function declaration' },
+                { label: 'connect', insertText: 'connect(' + S + '{1:p1}, ' + S + '{2:p2});', detail: 'Connect equation' },
+                { label: 'for', insertText: ['for ' + S + '{1:i} in ' + S + '{2:1:n} loop', '  ' + S + '{0}', 'end for;'].join(NL), detail: 'For loop' },
+                { label: 'if', insertText: ['if ' + S + '{1:condition} then', '  ' + S + '{0}', 'end if;'].join(NL), detail: 'If statement/equation' },
+                { label: 'when', insertText: ['when ' + S + '{1:condition} then', '  ' + S + '{0}', 'end when;'].join(NL), detail: 'When equation' },
+                { label: 'der', insertText: 'der(' + S + '{1:x}) = ' + S + '{0};', detail: 'Time derivative equation' }
+            ];
+            for (const s of snippets) {
+                items.push({
+                    label: s.label,
+                    kind: 15, // Snippet
+                    detail: s.detail,
+                    documentation: s.detail,
+                    insertText: s.insertText,
+                    isSnippet: true
+                });
+            }
+        }
+        
+        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { items } });
     } else if (e.data.method === 'workspace/symbol') {
         if (!lspFacade) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
         const query = e.data.params ? (e.data.params.query || "") : "";

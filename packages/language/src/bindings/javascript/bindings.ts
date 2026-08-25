@@ -2810,8 +2810,13 @@ export class LspFacade {
         }
         case 1:
           return String(data1 | 0);
-        case 2:
-          return String(data1);
+        case 2: {
+          const bits = (BigInt(left >>> 0) << 32n) | BigInt(data1 >>> 0);
+          const buf = new ArrayBuffer(8);
+          new BigUint64Array(buf)[0] = bits;
+          const floatVal = new Float64Array(buf)[0];
+          return String(floatVal);
+        }
         case 5: {
           const binOps = [" + ", " - ", " * ", " / ", " ^ "];
           const op = binOps[data1] || " + ";
@@ -2833,7 +2838,7 @@ export class LspFacade {
       const rhs = this.exports.dae_getEqRhs ? this.exports.dae_getEqRhs(daePtr, i) : 0;
       const lhsStr = decompileExpr(lhs);
       const rhsStr = decompileExpr(rhs);
-      const eqText = rhsStr ? `${lhsStr} = ${rhsStr}` : lhsStr;
+      const eqText = eqKind === 6 ? `connect(${lhsStr}, ${rhsStr})` : rhsStr ? `${lhsStr} = ${rhsStr}` : lhsStr;
       const kindStr = eqKind === 6 ? "connect" : eqKind === 7 ? "initial" : "simple";
       equations.push({
         kind: kindStr,

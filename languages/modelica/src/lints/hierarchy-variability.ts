@@ -2,6 +2,7 @@ import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
 import {
   getExpressionVariability,
   isDescendantOfInnerClass,
+  isDottedVariableDeclared,
   isTopLevelClassName,
   isVariableDeclaredInClass,
   VARIABILITY_CONTINUOUS,
@@ -64,7 +65,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
 
       let currClass = enclosingClass;
       while (currClass != 0) {
-        if (isVariableDeclaredInClass(db, currClass, rootId, $)) {
+        if (isDottedVariableDeclared(db, currClass, node, $)) {
           return;
         }
         let parentClass: u32 = 0;

@@ -261,6 +261,34 @@ export class DaeBuilder {
     return this.addExpression(ExprKind.RealLiteral, lo, hi);
   }
 
+  @inline
+  addBinaryExpr(op: u16, left: u32, right: u32): u32 {
+    return this.addExpression(ExprKind.Binary, op as u32, left, right);
+  }
+
+  @inline
+  getVarCount(): i32 {
+    return this.varCount as i32;
+  }
+
+  @inline
+  getVarNameId(varIdx: u32): u32 {
+    if (varIdx >= this.varCount) return 0;
+    return this.varData.get(varIdx * VAR_STRIDE + VAR_NAME) as u32;
+  }
+
+  @inline
+  getVarType(varIdx: u32): i32 {
+    if (varIdx >= this.varCount) return -1;
+    return this.varData.get(varIdx * VAR_STRIDE + VAR_TYPE);
+  }
+
+  @inline
+  isVarFlow(varIdx: u32): boolean {
+    if (varIdx >= this.varCount) return false;
+    return (this.varData.get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FLOW) != 0;
+  }
+
   /**
    * Adds an equation to the DAE system (e.g. `lhs = rhs`).
    */

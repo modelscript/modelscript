@@ -856,6 +856,14 @@ class ScopeAPI {
   @inline equals(id1: u32, id2: u32): boolean {
     return this.pool.equals(id1, id2);
   }
+
+  @inline hasPrefix(id: u32, prefixId: u32): boolean {
+    return this.pool.hasPrefix(id, prefixId);
+  }
+
+  @inline getSuffixAfterPrefix(id: u32, prefixId: u32): u32 {
+    return this.pool.getSuffixAfterPrefix(id, prefixId);
+  }
 }
 
 

@@ -1,5 +1,5 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
-import { getFlowVariableCount, resolveComponentClassDefinition } from "./helpers.js";
+import { getFlowVariableCount, isConnectorCompatible, resolveDottedComponentClass } from "./helpers.js";
 
 export const modelicaConnectionLints: Record<string, CompilerLint> = {
   /**
@@ -24,25 +24,13 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       const lhs = db.ast.getChildByFieldId(node, "lhs");
       const rhs = db.ast.getChildByFieldId(node, "rhs");
       if (lhs != 0 && rhs != 0) {
-        let lhsRef: u32 = 0;
-        for (const id of db.ast.getDescendants(lhs, $.identifier)) {
-          lhsRef = id;
-          break;
-        }
-        let rhsRef: u32 = 0;
-        for (const id of db.ast.getDescendants(rhs, $.identifier)) {
-          rhsRef = id;
-          break;
-        }
-        if (lhsRef != 0 && rhsRef != 0) {
-          const lhsClass = resolveComponentClassDefinition(db, enclosingClass, lhsRef, $);
-          const rhsClass = resolveComponentClassDefinition(db, enclosingClass, rhsRef, $);
-          if (lhsClass != 0 && rhsClass != 0) {
-            const lhsFlows = getFlowVariableCount(db, lhsClass, $);
-            const rhsFlows = getFlowVariableCount(db, rhsClass, $);
-            if (lhsFlows != rhsFlows) {
-              db.diagnostic(node, lhsFlows, rhsFlows);
-            }
+        const lhsClass = resolveDottedComponentClass(db, enclosingClass, lhs, $);
+        const rhsClass = resolveDottedComponentClass(db, enclosingClass, rhs, $);
+        if (lhsClass != 0 && rhsClass != 0) {
+          const lhsFlows = getFlowVariableCount(db, lhsClass, $);
+          const rhsFlows = getFlowVariableCount(db, rhsClass, $);
+          if (lhsFlows != rhsFlows || !isConnectorCompatible(db, lhsClass, rhsClass, $)) {
+            db.diagnostic(node, lhsFlows, rhsFlows);
           }
         }
       }
