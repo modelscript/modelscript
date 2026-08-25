@@ -52,7 +52,7 @@ const interpolationGrammar = language({
         `Model '${target.name}' is unbalanced: ${eqCount.asNumber()} equations for ${varCount} variables.`,
       query: (db: CodeGraph, node: u32) => {
         // Pass dummy counts 5 and 7 as raw numbers
-        db.diagnostic(node, node, 5, 7);
+        db.diagnostic(node, 5, 7);
       },
     },
     explicitFieldAccessor: {

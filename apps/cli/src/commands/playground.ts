@@ -623,6 +623,11 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                 language: 'plaintext',
                 theme: editorTheme,
                 minimap: { enabled: false },
+                quickSuggestions: { other: true, comments: true, strings: true },
+                suggestOnTriggerCharacters: true,
+                acceptSuggestionOnEnter: 'on',
+                tabCompletion: 'on',
+                wordBasedSuggestions: 'off',
                 'semanticHighlighting.enabled': true,
                 semanticHighlighting: { enabled: true }
             });
@@ -961,6 +966,10 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                         }
                     }
 
+                    if (typeof window.registerLspProvidersForLanguage === 'function') {
+                        window.registerLspProvidersForLanguage(langId);
+                    }
+
                     const branchA1 = document.getElementById('toggle-branch-a1')?.checked ?? true;
                     const branchB = document.getElementById('toggle-branch-b')?.checked ?? true;
                     const branchC = document.getElementById('toggle-branch-c')?.checked ?? true;
@@ -1085,163 +1094,190 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
             // Start the client
             const languageClient = new SimpleMonacoLanguageClient(lspWorker, window.codeEditor);
 
-            monaco.languages.registerDefinitionProvider('*', {
-                provideDefinition: async (model, position, token) => {
-                    const result = await languageClient.sendRequest('textDocument/definition', {
-                        textDocument: { uri: model.uri.toString() },
-                        position: { line: position.lineNumber - 1, character: position.column - 1 }
-                    });
-                    if (result && result.range) {
-                        return {
-                            uri: model.uri,
-                            range: new monaco.Range(
-                                result.range.start.line + 1,
-                                result.range.start.character + 1,
-                                result.range.end.line + 1,
-                                result.range.end.character + 1
-                            )
-                        };
+            window.lspDisposablesByLang = window.lspDisposablesByLang || new Map();
+
+            function registerLspProvidersForLanguage(langId) {
+                if (!langId) return;
+                if (window.lspDisposablesByLang.has(langId)) {
+                    const oldDisposables = window.lspDisposablesByLang.get(langId);
+                    for (const d of oldDisposables) {
+                        try { d.dispose(); } catch {}
                     }
-                    return null;
+                    window.lspDisposablesByLang.delete(langId);
                 }
-            });
 
-            monaco.languages.registerReferenceProvider('*', {
-                provideReferences: async (model, position, context, token) => {
-                    const result = await languageClient.sendRequest('textDocument/references', {
-                        textDocument: { uri: model.uri.toString() },
-                        position: { line: position.lineNumber - 1, character: position.column - 1 }
-                    });
-                    if (result && result.length > 0) {
-                        return result.map(loc => ({
-                            uri: model.uri,
-                            range: new monaco.Range(
-                                loc.range.start.line + 1,
-                                loc.range.start.character + 1,
-                                loc.range.end.line + 1,
-                                loc.range.end.character + 1
-                            )
-                        }));
-                    }
-                    return null;
-                }
-            });
+                const disposables = [];
 
-            monaco.languages.registerFoldingRangeProvider('*', {
-                provideFoldingRanges: async (model, context, token) => {
-                    await new Promise(r => setTimeout(r, 150));
-                    if (token.isCancellationRequested) return null;
-
-                    const result = await languageClient.sendRequest('textDocument/foldingRange', {
-                        textDocument: { uri: model.uri.toString() }
-                    });
-                    if (result && result.length > 0) {
-                        return result.map(f => ({
-                            start: f.startLine + 1,
-                            end: f.endLine + 1,
-                            kind: monaco.languages.FoldingRangeKind.Region
-                        }));
-                    }
-                    return null;
-                }
-            });
-
-            monaco.languages.registerDocumentSymbolProvider('*', {
-                provideDocumentSymbols: async (model, token) => {
-                    await new Promise(r => setTimeout(r, 150));
-                    if (token.isCancellationRequested) return null;
-
-                    const result = await languageClient.sendRequest('textDocument/documentSymbol', {
-                        textDocument: { uri: model.uri.toString() }
-                    });
-                    if (result && result.length > 0) {
-                        return result.map(s => ({
-                            name: s.name,
-                            detail: s.detail || '',
-                            kind: s.kind || monaco.languages.SymbolKind.Class,
-                            range: new monaco.Range(s.range.start.line + 1, s.range.start.character + 1, s.range.end.line + 1, s.range.end.character + 1),
-                            selectionRange: new monaco.Range(s.selectionRange.start.line + 1, s.selectionRange.start.character + 1, s.selectionRange.end.line + 1, s.selectionRange.end.character + 1),
-                            tags: []
-                        }));
-                    }
-                    return null;
-                }
-            });
-
-            monaco.languages.registerRenameProvider('*', {
-                provideRenameEdits: async (model, position, newName, token) => {
-                    const result = await languageClient.sendRequest('textDocument/rename', {
-                        textDocument: { uri: model.uri.toString() },
-                        position: { line: position.lineNumber - 1, character: position.column - 1 },
-                        newName: newName
-                    });
-                    
-                    if (result && result.changes) {
-                        const edits = [];
-                        for (const uri in result.changes) {
-                            for (const change of result.changes[uri]) {
-                                edits.push({
-                                    resource: monaco.Uri.parse(uri),
-                                    textEdit: {
-                                        range: new monaco.Range(
-                                            change.range.start.line + 1,
-                                            change.range.start.character + 1,
-                                            change.range.end.line + 1,
-                                            change.range.end.character + 1
-                                        ),
-                                        text: change.newText
-                                    },
-                                    versionId: undefined
-                                });
-                            }
+                disposables.push(monaco.languages.registerDefinitionProvider(langId, {
+                    provideDefinition: async (model, position, token) => {
+                        const result = await languageClient.sendRequest('textDocument/definition', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.range) {
+                            return {
+                                uri: model.uri,
+                                range: new monaco.Range(
+                                    result.range.start.line + 1,
+                                    result.range.start.character + 1,
+                                    result.range.end.line + 1,
+                                    result.range.end.character + 1
+                                )
+                            };
                         }
-                        return { edits };
+                        return null;
                     }
-                    return null;
-                }
-            });
+                }));
 
-            monaco.languages.registerCompletionItemProvider('*', {
-                triggerCharacters: ['.', ' ', ':', '=', '(', ','],
-                provideCompletionItems: async (model, position, context, token) => {
-                    const result = await languageClient.sendRequest('textDocument/completion', {
-                        textDocument: { uri: model.uri.toString() },
-                        position: { line: position.lineNumber - 1, character: position.column - 1 },
-                        context: {
-                            triggerKind: context.triggerKind,
-                            triggerCharacter: context.triggerCharacter
+                disposables.push(monaco.languages.registerReferenceProvider(langId, {
+                    provideReferences: async (model, position, context, token) => {
+                        const result = await languageClient.sendRequest('textDocument/references', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(loc => ({
+                                uri: model.uri,
+                                range: new monaco.Range(
+                                    loc.range.start.line + 1,
+                                    loc.range.start.character + 1,
+                                    loc.range.end.line + 1,
+                                    loc.range.end.character + 1
+                                )
+                            }));
                         }
-                    });
-                    
-                    if (result && Array.isArray(result.items)) {
-                        const word = model.getWordUntilPosition(position);
-                        const defaultRange = new monaco.Range(
-                            position.lineNumber,
-                            word.startColumn,
-                            position.lineNumber,
-                            word.endColumn
-                        );
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerFoldingRangeProvider(langId, {
+                    provideFoldingRanges: async (model, context, token) => {
+                        await new Promise(r => setTimeout(r, 150));
+                        if (token.isCancellationRequested) return null;
+
+                        const result = await languageClient.sendRequest('textDocument/foldingRange', {
+                            textDocument: { uri: model.uri.toString() }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(f => ({
+                                start: f.startLine + 1,
+                                end: f.endLine + 1,
+                                kind: monaco.languages.FoldingRangeKind.Region
+                            }));
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerDocumentSymbolProvider(langId, {
+                    provideDocumentSymbols: async (model, token) => {
+                        await new Promise(r => setTimeout(r, 150));
+                        if (token.isCancellationRequested) return null;
+
+                        const result = await languageClient.sendRequest('textDocument/documentSymbol', {
+                            textDocument: { uri: model.uri.toString() }
+                        });
+                        if (result && result.length > 0) {
+                            return result.map(s => ({
+                                name: s.name,
+                                detail: s.detail || '',
+                                kind: s.kind || monaco.languages.SymbolKind.Class,
+                                range: new monaco.Range(s.range.start.line + 1, s.range.start.character + 1, s.range.end.line + 1, s.range.end.character + 1),
+                                selectionRange: new monaco.Range(s.selectionRange.start.line + 1, s.selectionRange.start.character + 1, s.selectionRange.end.line + 1, s.selectionRange.end.character + 1),
+                                tags: []
+                            }));
+                        }
+                        return null;
+                    }
+                }));
+
+                disposables.push(monaco.languages.registerRenameProvider(langId, {
+                    provideRenameEdits: async (model, position, newName, token) => {
+                        const result = await languageClient.sendRequest('textDocument/rename', {
+                            textDocument: { uri: model.uri.toString() },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 },
+                            newName: newName
+                        });
                         
-                        const suggestions = result.items.map((item, idx) => ({
-                            label: item.label,
-                            kind: item.kind !== undefined ? item.kind : monaco.languages.CompletionItemKind.Keyword,
-                            detail: item.detail || '',
-                            documentation: item.documentation || '',
-                            insertText: item.insertText || item.label,
-                            insertTextRules: item.isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
-                            range: item.range ? new monaco.Range(
-                                item.range.start.line + 1,
-                                item.range.start.character + 1,
-                                item.range.end.line + 1,
-                                item.range.end.character + 1
-                            ) : defaultRange,
-                            sortText: item.sortText || String(idx).padStart(5, '0')
-                        }));
-                        return { suggestions };
+                        if (result && result.changes) {
+                            const edits = [];
+                            for (const uri in result.changes) {
+                                for (const change of result.changes[uri]) {
+                                    edits.push({
+                                        resource: monaco.Uri.parse(uri),
+                                        textEdit: {
+                                            range: new monaco.Range(
+                                                change.range.start.line + 1,
+                                                change.range.start.character + 1,
+                                                change.range.end.line + 1,
+                                                change.range.end.character + 1
+                                            ),
+                                            text: change.newText
+                                        },
+                                        versionId: undefined
+                                    });
+                                }
+                            }
+                            return { edits };
+                        }
+                        return null;
                     }
-                    return { suggestions: [] };
-                }
-            });
+                }));
+
+                disposables.push(monaco.languages.registerCompletionItemProvider(langId, {
+                    triggerCharacters: ['.', ' ', ':', '=', '(', ','],
+                    provideCompletionItems: async (model, position, context, token) => {
+                        const result = await languageClient.sendRequest('textDocument/completion', {
+                            textDocument: { 
+                                uri: model.uri.toString(),
+                                text: model.getValue()
+                            },
+                            position: { line: position.lineNumber - 1, character: position.column - 1 },
+                            context: {
+                                triggerKind: context.triggerKind,
+                                triggerCharacter: context.triggerCharacter
+                            }
+                        });
+                        
+                        if (result && Array.isArray(result.items)) {
+                            const word = model.getWordUntilPosition(position);
+                            const defaultRange = new monaco.Range(
+                                position.lineNumber,
+                                word.startColumn,
+                                position.lineNumber,
+                                word.endColumn
+                            );
+                            
+                            const suggestions = result.items.map((item, idx) => ({
+                                label: item.label,
+                                kind: item.kind !== undefined ? item.kind : monaco.languages.CompletionItemKind.Property,
+                                detail: item.detail || '',
+                                documentation: item.documentation || '',
+                                insertText: item.insertText || item.label,
+                                filterText: item.filterText || item.label,
+                                insertTextRules: item.isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+                                range: item.range ? new monaco.Range(
+                                    item.range.start.line + 1,
+                                    item.range.start.character + 1,
+                                    item.range.end.line + 1,
+                                    item.range.end.character + 1
+                                ) : defaultRange,
+                                sortText: item.sortText || String(idx).padStart(5, '0')
+                            }));
+                            return { suggestions, incomplete: false };
+                        }
+                        return { suggestions: [], incomplete: false };
+                    }
+                }));
+
+                window.lspDisposablesByLang.set(langId, disposables);
+            }
+
+            window.registerLspProvidersForLanguage = registerLspProvidersForLanguage;
+            if (window.currentLangId) {
+                registerLspProvidersForLanguage(window.currentLangId);
+            }
+            registerLspProvidersForLanguage('plaintext');
 
             document.getElementById('toggle-branch-a1')?.addEventListener('change', (e) => {
                 const branchB = document.getElementById('toggle-branch-b').checked;
@@ -1411,7 +1447,7 @@ export function getIndexHtml(dslLibStr = "", dslLibModuleStr = "", initialDsl = 
                     const hasErrorFlag = (node.flags & 0x0080) !== 0; // FLAG_HAS_ERROR
                     const isTainted = (node.flags & 0x0010) !== 0; // FLAG_IS_TAINED
                     const isInserted = (node.flags & 0x0100) !== 0; // FLAG_IS_INSERTED
-                    const isError = node.typeName === "ERROR" || isTainted;
+                    const isError = node.typeName === "ERROR" || isTainted || hasErrorFlag;
                     const isGhost = isInserted;
                     
                     nodes.push({ ...node, depth, isGhost, isError, currentOffset, parentField });
@@ -2620,21 +2656,21 @@ async function runDiagnosticsNow() {
         let lastUpdatedLineStarts = null;
         let hadAnyEdit = false;
 
-        let allEdits = [];
-        let isFullReplacement = false;
-        let fullText = null;
-
         for (let gIdx = 0; gIdx < eventGroups.length; gIdx++) {
             const group = eventGroups[gIdx];
             const lineStarts = lspFacade.getLineStarts();
 
+            let groupEdits = [];
+            let isGroupFullReplacement = false;
+            let groupFullText = null;
+
             for (const change of group) {
                 if (change.text !== undefined && change.range === undefined && change.rangeOffset === undefined) {
-                    isFullReplacement = true;
+                    isGroupFullReplacement = true;
                     isFullResetNeeded = true;
-                    fullText = change.text;
-                    allEdits = [];
-                } else if (!isFullReplacement) {
+                    groupFullText = change.text;
+                    groupEdits = [];
+                } else if (!isGroupFullReplacement) {
                     let rangeOffset = change.rangeOffset;
                     let rangeLength = change.rangeLength;
                     if (rangeOffset === undefined && change.range) {
@@ -2654,7 +2690,7 @@ async function runDiagnosticsNow() {
                         rangeLength = Math.max(0, Math.floor((endByte - startByte) / charMult));
                     }
                     if (rangeOffset !== undefined) {
-                        allEdits.push({
+                        groupEdits.push({
                             rangeOffset: rangeOffset,
                             rangeLength: rangeLength || 0,
                             text: change.text || ""
@@ -2662,29 +2698,27 @@ async function runDiagnosticsNow() {
                     }
                 }
             }
-        }
 
-        if (isFullReplacement && fullText !== null) {
-            const oldLen = currentTextLength;
-            currentTextLength = fullText.length;
-            lspFacade.lastAstRoot = 0;
-            console.log("[LSP Worker] Full replacement text len=" + fullText.length + ", oldLen=" + oldLen);
-            globalAstRoot = lspFacade.parseIncremental(fullText, 0, oldLen, fullText.length, latestUri);
-            hadAnyEdit = true;
-        } else if (allEdits.length > 0) {
-            let newTotalLen = currentTextLength;
-            for (const edit of allEdits) {
-                newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
+            if (isGroupFullReplacement && groupFullText !== null) {
+                const oldLen = currentTextLength;
+                currentTextLength = groupFullText.length;
+                lspFacade.lastAstRoot = 0;
+                globalAstRoot = lspFacade.parseIncremental(groupFullText, 0, oldLen, groupFullText.length, latestUri);
+                hadAnyEdit = true;
+            } else if (groupEdits.length > 0) {
+                let newTotalLen = currentTextLength;
+                for (const edit of groupEdits) {
+                    newTotalLen = newTotalLen - edit.rangeLength + edit.text.length;
+                }
+                currentTextLength = newTotalLen;
+                if (groupEdits.length === 1) {
+                    const edit = groupEdits[0];
+                    globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
+                } else {
+                    globalAstRoot = lspFacade.parseIncrementalBatch(groupEdits, newTotalLen, latestUri);
+                }
+                hadAnyEdit = true;
             }
-            currentTextLength = newTotalLen;
-            console.log("[LSP Worker] Coalesced " + allEdits.length + " edit(s) across " + eventGroups.length + " group(s) -> newTotalLen=" + newTotalLen);
-            if (allEdits.length === 1) {
-                const edit = allEdits[0];
-                globalAstRoot = lspFacade.parseIncremental(edit.text, edit.rangeOffset, edit.rangeLength, newTotalLen, latestUri);
-            } else {
-                globalAstRoot = lspFacade.parseIncrementalBatch(allEdits, newTotalLen, latestUri);
-            }
-            hadAnyEdit = true;
         }
         lastUpdatedLineStarts = lspFacade.getLineStarts();
 
@@ -2758,8 +2792,11 @@ self.onmessage = async (e) => {
             
             // Force a re-parse by faking a full text change
             if (latestUri && currentTextLength > 0) {
-                const text = lspFacade.exports.getInputBuffer ? 
-                    new TextDecoder('utf-16le').decode(new Uint8Array(lspFacade.wasmMemory.buffer, lspFacade.exports.getInputBuffer(), currentTextLength * 2)) : "";
+                let text = "";
+                if (lspFacade.exports.getInputBuffer) {
+                    const raw = new Uint8Array(lspFacade.wasmMemory.buffer, lspFacade.exports.getInputBuffer(), currentTextLength * 2);
+                    text = new TextDecoder('utf-16le').decode(new Uint8Array(raw));
+                }
                 
                 lspFacade.resetParser();
                 currentTextLength = 0;
@@ -2826,14 +2863,19 @@ self.onmessage = async (e) => {
             const { instance } = await WebAssembly.instantiate(wasmBytes, imports);
             
             let LspFacade;
+            let Tree;
+            let SyntaxNode;
             try {
                 const cleanedJs = jsWrapper
                     .replace(/^\\s*export\\s+\\{[\\s\\S]*?\\};?/gm, "")
                     .replace(/^\\s*export\\s+default\\s+/gm, "")
                     .replace(/^\\s*export\\s+(var|let|const|class|function|enum|interface|type|declare|async function)\\s+/gm, "$1 ")
                     .replace(/^\\s*export\\b.*/gm, "// $&");
-                const evalFn = new Function(cleanedJs + "; return LspFacade;");
-                LspFacade = evalFn();
+                const evalFn = new Function(cleanedJs + "; return { LspFacade, Tree, SyntaxNode };");
+                const res = evalFn();
+                LspFacade = res.LspFacade;
+                Tree = res.Tree;
+                SyntaxNode = res.SyntaxNode;
             } catch (e1) {
                 console.error("Evaluation failed for LspFacade in worker-lsp:", e1);
                 throw e1;
@@ -3023,248 +3065,397 @@ self.onmessage = async (e) => {
         };
         self.postMessage({ jsonrpc: '2.0', id: e.data.id, result });
     } else if (e.data.method === 'textDocument/completion') {
-        const params = e.data.params;
-        const pos = params.position; // { line, character }
-        
-        let docText = "";
-        if (lspFacade && lspFacade.exports && lspFacade.exports.getInputBuffer && currentTextLength > 0) {
-            const inputBuf = lspFacade.exports.getInputBuffer();
-            if (inputBuf > 0) {
-                const isUtf16 = (lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
-                const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
-                docText = decoder.decode(new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf, currentTextLength * (isUtf16 ? 2 : 1))).replace(/\0/g, '');
+        try {
+            const params = e.data.params;
+            const pos = params.position; // { line, character }
+            
+            let docText = (params.textDocument && typeof params.textDocument.text === 'string') 
+                ? params.textDocument.text 
+                : "";
+            
+            if (!docText && lspFacade && lspFacade.exports && lspFacade.exports.getInputBuffer && currentTextLength > 0) {
+                const inputBuf = lspFacade.exports.getInputBuffer();
+                if (inputBuf > 0) {
+                    const isUtf16 = (lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
+                    const decoder = isUtf16 ? new TextDecoder('utf-16le') : new TextDecoder('utf-8');
+                    const rawBytes = new Uint8Array(lspFacade.wasmMemory.buffer, inputBuf, currentTextLength * (isUtf16 ? 2 : 1));
+                    const copyBytes = new Uint8Array(rawBytes);
+                    docText = decoder.decode(copyBytes).replace(/\0/g, '');
+                }
             }
-        }
-        
-        const NL = String.fromCharCode(10);
-        const lines = docText.split(NL);
-        const lineText = lines[pos.line] || '';
-        const textBeforeCursor = lineText.slice(0, pos.character);
-        
-        const items = [];
-        
-        // 1. Check for dot-access (e.g. x. or a.b.)
-        const dotRegex = new RegExp('([a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)*)\\.([a-zA-Z0-9_]*)$');
-        const dotMatch = textBeforeCursor.match(dotRegex);
-        const classHeaderRegex = new RegExp('\\b(model|connector|record|block|class|function|package)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
-        const classEndRegex = new RegExp('\\bend\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*;');
-        const extendsRegex = new RegExp('\\bextends\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
-        const declRegex = new RegExp('^(?:(parameter|constant|flow|stream|input|output|discrete)\\s+)*([a-zA-Z_][a-zA-Z0-9_.]*)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+            
+            const NL = String.fromCharCode(10);
+            const lines = docText.split(NL);
+            const lineText = lines[pos.line] || '';
+            const textBeforeCursor = lineText.slice(0, pos.character);
+            
+            const items = [];
+            
+            const lineStarts = (lspFacade && typeof lspFacade.getLineStarts === 'function')
+                ? lspFacade.getLineStarts()
+                : new Uint32Array([0]);
+            const isUtf16 = (lspFacade && lspFacade.getInputEncoding ? lspFacade.getInputEncoding() : 1) === 1;
+            const charMult = isUtf16 ? 2 : 1;
 
-        if (dotMatch) {
-            const chain = dotMatch[1].split('.');
-            
-            // Find enclosing class for current position
-            let enclosingClass = "";
-            for (let i = pos.line; i >= 0; i--) {
-                const l = lines[i];
-                const m = l.match(classHeaderRegex);
-                if (m) {
-                    enclosingClass = m[2];
-                    break;
+            let cursorOffset = 0;
+            if (lspFacade && typeof lspFacade.posToOffset === 'function') {
+                cursorOffset = lspFacade.posToOffset(pos.line, pos.character, lineStarts);
+            } else if (lineStarts && pos.line < lineStarts.length) {
+                cursorOffset = lineStarts[pos.line] + (pos.character * charMult);
+            }
+
+            const cstCtx = (lspFacade && globalAstRoot > 0 && typeof lspFacade.getCompletionContext === 'function')
+                ? lspFacade.getCompletionContext(globalAstRoot, cursorOffset)
+                : null;
+
+            let targetExpr = "";
+            let replaceRange = null;
+
+            // Universal member access delimiter regex: supports dot '.', arrow '->', double-colon '::', etc.
+            const memberAccessRegex = new RegExp('([a-zA-Z_][a-zA-Z0-9_.\\[\\]()]*)(?:\\.|->|::)([a-zA-Z0-9_]*)$');
+            const memberMatch = textBeforeCursor.match(memberAccessRegex);
+            const isMemberContext = Boolean(memberMatch || (cstCtx && cstCtx.hasTarget && cstCtx.targetText));
+
+            if (cstCtx && cstCtx.hasTarget && cstCtx.targetText) {
+                targetExpr = cstCtx.targetText;
+                const startPos = (lspFacade && typeof lspFacade.offsetToPos === 'function')
+                    ? lspFacade.offsetToPos(cstCtx.replaceRange.start, lineStarts)
+                    : { line: pos.line, character: pos.character };
+                const endPos = (lspFacade && typeof lspFacade.offsetToPos === 'function')
+                    ? lspFacade.offsetToPos(cstCtx.replaceRange.end, lineStarts)
+                    : { line: pos.line, character: pos.character };
+                replaceRange = { start: startPos, end: endPos };
+            } else if (memberMatch) {
+                targetExpr = memberMatch[1];
+                const prefixLen = memberMatch[2] ? memberMatch[2].length : 0;
+                replaceRange = {
+                    start: { line: pos.line, character: pos.character - prefixLen },
+                    end: { line: pos.line, character: pos.character }
+                };
+            }
+
+            // =========================================================================
+            // 1. GENERIC AST-BASED SYMBOL & SCOPE GRAPH
+            // =========================================================================
+            let tree = null;
+            if (Tree && lspFacade && globalAstRoot > 0) {
+                try {
+                    tree = new Tree(lspFacade, globalAstRoot, docText);
+                } catch (errTree) {}
+            }
+
+            const typeDefinitions = new Map(); // TypeName -> { name, typeNode, members: Array<{ name, type }> }
+            const scopeDeclarations = new Map(); // ScopeKey -> Array<{ name, type }>
+
+            // Recursive AST Symbol & Type Harvester
+            function walkAstForSymbols(node, currentScope) {
+                if (!node || node.ptr === 0) return;
+
+                const nameNode = node.childForFieldName ? node.childForFieldName("name") : null;
+                const typeNode = node.childForFieldName ? node.childForFieldName("type") : null;
+
+                let isContainer = false;
+                let containerName = "";
+
+                if (nameNode && nameNode.text && node.childCount > 2) {
+                    const nText = nameNode.text.trim();
+                    if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(nText)) {
+                        containerName = nText;
+                        if (!typeDefinitions.has(containerName)) {
+                            typeDefinitions.set(containerName, {
+                                name: containerName,
+                                typeNode: node,
+                                members: []
+                            });
+                        }
+                        isContainer = true;
+                    }
+                }
+
+                if (nameNode && nameNode.text) {
+                    const varName = nameNode.text.trim();
+                    let varType = typeNode ? typeNode.text.trim() : "";
+                    
+                    if (!varType && node.children) {
+                        for (const child of node.children) {
+                            if (child.ptr !== nameNode.ptr && /^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(child.text.trim()) && child.startIndex < nameNode.startIndex) {
+                                varType = child.text.trim();
+                                break;
+                            }
+                        }
+                    }
+
+                    if (varName && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varName) && varName !== containerName) {
+                        const decl = { name: varName, type: varType };
+                        if (currentScope && typeDefinitions.has(currentScope)) {
+                            typeDefinitions.get(currentScope).members.push(decl);
+                        }
+                        const scopeKey = currentScope || "global";
+                        if (!scopeDeclarations.has(scopeKey)) scopeDeclarations.set(scopeKey, []);
+                        scopeDeclarations.get(scopeKey).push(decl);
+                    }
+                }
+
+                const nextScope = isContainer ? containerName : currentScope;
+                if (node.children) {
+                    for (const child of node.children) {
+                        walkAstForSymbols(child, nextScope);
+                    }
                 }
             }
-            
-            // Map of all classes in document
-            const classDefs = {};
-            let activeClass = null;
-            for (let i = 0; i < lines.length; i++) {
-                const l = lines[i].trim();
-                const classStart = l.match(classHeaderRegex);
-                if (classStart && !l.startsWith('//') && !l.startsWith('/*')) {
-                    activeClass = classStart[2];
-                    classDefs[activeClass] = {
-                        name: activeClass,
-                        kind: classStart[1],
-                        extendsList: [],
-                        declarations: []
-                    };
-                    continue;
-                }
-                const classEnd = l.match(classEndRegex);
-                if (classEnd && activeClass === classEnd[1]) {
-                    activeClass = null;
-                    continue;
-                }
-                if (activeClass && classDefs[activeClass]) {
-                    const extMatch = l.match(extendsRegex);
-                    if (extMatch) {
-                        classDefs[activeClass].extendsList.push(extMatch[1]);
-                    }
-                    const declMatch = l.match(declRegex);
-                    if (declMatch && !l.startsWith('connect(') && !l.startsWith('equation') && !l.startsWith('algorithm')) {
-                        const isFlow = l.includes('flow ');
-                        const isParam = l.includes('parameter ');
-                        const typeName = declMatch[2];
-                        const varName = declMatch[3];
-                        if (varName !== 'equation' && varName !== 'algorithm' && varName !== 'end' && varName !== 'public' && varName !== 'protected') {
-                            classDefs[activeClass].declarations.push({
-                                name: varName,
-                                type: typeName,
-                                isFlow,
-                                isParam
+
+            if (tree && tree.rootNode) {
+                walkAstForSymbols(tree.rootNode, null);
+            }
+
+            // Universal text scanner for in-flight / partial grammar declarations
+            function scanGenericTextDeclarations() {
+                let currentContainer = null;
+                const containerStartRegex = new RegExp('^\\s*(?:[a-zA-Z0-9_]+\\s+)*?(model|connector|record|block|class|function|package|type|interface|struct|enum|actor|component|entity|module|def)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+                const containerEndRegex = new RegExp('^\\s*(?:end(?:\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\s*;?|\\})');
+                const cDeclLineRegex = new RegExp('^\\s*(?:[a-zA-Z0-9_]+\\s+)*?([a-zA-Z_][a-zA-Z0-9_.]*)\\s+([^;]+);?');
+                const colonDeclRegex = new RegExp('^\\s*(?:[a-zA-Z0-9_]+\\s+)*?([a-zA-Z_][a-zA-Z0-9_]*)\\s*:\\s*([a-zA-Z_][a-zA-Z0-9_.]*)');
+
+                for (let i = 0; i < lines.length; i++) {
+                    const l = lines[i].trim();
+                    if (!l || l.startsWith('//') || l.startsWith('/*')) continue;
+
+                    const cStart = l.match(containerStartRegex);
+                    if (cStart) {
+                        if (currentContainer && typeDefinitions.has(currentContainer)) {
+                            typeDefinitions.get(currentContainer).endLine = i - 1;
+                        }
+                        currentContainer = cStart[2];
+                        if (!typeDefinitions.has(currentContainer)) {
+                            typeDefinitions.set(currentContainer, { 
+                                name: currentContainer, 
+                                startLine: i, 
+                                endLine: lines.length - 1, 
+                                typeNode: null, 
+                                members: [] 
                             });
+                        } else {
+                            const def = typeDefinitions.get(currentContainer);
+                            def.startLine = i;
+                            def.endLine = lines.length - 1;
+                        }
+                        continue;
+                    }
+
+                    const cEnd = l.match(containerEndRegex);
+                    if (cEnd) {
+                        const endName = cEnd[1];
+                        if (!endName || endName === currentContainer) {
+                            if (currentContainer && typeDefinitions.has(currentContainer)) {
+                                typeDefinitions.get(currentContainer).endLine = i;
+                            }
+                            currentContainer = null;
+                            continue;
+                        }
+                    }
+
+                    if (l.startsWith('connect(') || l.startsWith('equation') || l.startsWith('algorithm')) continue;
+
+                    const colonMatch = l.match(colonDeclRegex);
+                    if (colonMatch) {
+                        const vName = colonMatch[1];
+                        const vType = colonMatch[2];
+                        if (vName && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(vName)) {
+                            const decl = { name: vName, type: vType };
+                            if (currentContainer && typeDefinitions.has(currentContainer)) {
+                                const def = typeDefinitions.get(currentContainer);
+                                if (!def.members.some(m => m.name === vName)) def.members.push(decl);
+                            }
+                            const scopeKey = currentContainer || "global";
+                            if (!scopeDeclarations.has(scopeKey)) scopeDeclarations.set(scopeKey, []);
+                            const sDecls = scopeDeclarations.get(scopeKey);
+                            if (!sDecls.some(d => d.name === vName)) sDecls.push(decl);
+                        }
+                        continue;
+                    }
+
+                    const cMatch = l.match(cDeclLineRegex);
+                    if (cMatch) {
+                        const vType = cMatch[1];
+                        const rest = cMatch[2];
+                        const vars = rest.split(',');
+                        for (let v of vars) {
+                            v = v.trim();
+                            const vNameMatch = v.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+                            if (vNameMatch) {
+                                const vName = vNameMatch[1];
+                                if (vName && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(vName) && vName !== 'equation' && vName !== 'algorithm' && vName !== 'end') {
+                                    const decl = { name: vName, type: vType };
+                                    if (currentContainer && typeDefinitions.has(currentContainer)) {
+                                        const def = typeDefinitions.get(currentContainer);
+                                        if (!def.members.some(m => m.name === vName)) def.members.push(decl);
+                                    }
+                                    const scopeKey = currentContainer || "global";
+                                    if (!scopeDeclarations.has(scopeKey)) scopeDeclarations.set(scopeKey, []);
+                                    const sDecls = scopeDeclarations.get(scopeKey);
+                                    if (!sDecls.some(d => d.name === vName)) sDecls.push(decl);
+                                }
+                            }
                         }
                     }
                 }
             }
-            
-            function getAllDecls(clsName, visited = new Set()) {
-                if (!clsName || visited.has(clsName) || !classDefs[clsName]) return [];
-                visited.add(clsName);
-                const cls = classDefs[clsName];
-                let list = [...cls.declarations];
-                for (const base of cls.extendsList) {
-                    list = list.concat(getAllDecls(base, visited));
-                }
-                return list;
-            }
-            
-            let currClass = enclosingClass;
-            for (let s = 0; s < chain.length; s++) {
-                const seg = chain[s];
-                const decls = getAllDecls(currClass);
-                const matchDecl = decls.find(d => d.name === seg);
-                if (matchDecl && classDefs[matchDecl.type]) {
-                    currClass = matchDecl.type;
-                } else if (matchDecl) {
-                    currClass = matchDecl.type;
-                } else {
-                    currClass = "";
-                    break;
+
+            scanGenericTextDeclarations();
+
+            // Find current scope at cursor position
+            let enclosingScopeName = "";
+            for (const [tName, def] of typeDefinitions.entries()) {
+                if (pos.line >= def.startLine && pos.line <= def.endLine) {
+                    enclosingScopeName = tName;
                 }
             }
-            
-            if (currClass && classDefs[currClass]) {
-                const members = getAllDecls(currClass);
-                for (const m of members) {
-                    items.push({
-                        label: m.name,
-                        kind: m.isFlow ? 5 /* Field */ : 6 /* Property */,
-                        detail: (m.isFlow ? "flow " : m.isParam ? "parameter " : "") + m.type + " " + m.name,
-                        documentation: "Member of " + currClass,
-                        insertText: m.name
-                    });
-                }
-            }
-        } else {
-            // 2. Non-dot context: Keywords, Types, Built-ins, Document Symbols, Local Variables, Snippets
-            const keywords = [
-                'model', 'connector', 'record', 'block', 'package', 'function', 'type', 'class',
-                'extends', 'equation', 'algorithm', 'connect', 'der', 'parameter', 'constant',
-                'flow', 'stream', 'input', 'output', 'public', 'protected', 'end', 'annotation',
-                'if', 'then', 'else', 'elseif', 'for', 'in', 'loop', 'while', 'when', 'elsewhen',
-                'initial', 'terminal', 'assert', 'terminate', 'reinit', 'redeclare', 'replaceable',
-                'constrainedby', 'import', 'within', 'discrete', 'final', 'each'
-            ];
-            for (const kw of keywords) {
-                items.push({
-                    label: kw,
-                    kind: 14, // Keyword
-                    detail: "Modelica keyword",
-                    insertText: kw
-                });
-            }
-            
-            const types = ['Real', 'Integer', 'Boolean', 'String', 'Clock'];
-            for (const t of types) {
-                items.push({
-                    label: t,
-                    kind: 25, // TypeParameter
-                    detail: "Modelica primitive type",
-                    insertText: t
-                });
-            }
-            
-            const builtins = [
-                { name: 'der', sig: 'der(x)', doc: 'Time derivative of variable x' },
-                { name: 'time', sig: 'time', doc: 'Continuous simulation time' },
-                { name: 'sin', sig: 'sin(u)', doc: 'Sine function' },
-                { name: 'cos', sig: 'cos(u)', doc: 'Cosine function' },
-                { name: 'tan', sig: 'tan(u)', doc: 'Tangent function' },
-                { name: 'asin', sig: 'asin(u)', doc: 'Inverse sine' },
-                { name: 'acos', sig: 'acos(u)', doc: 'Inverse cosine' },
-                { name: 'atan', sig: 'atan(u)', doc: 'Inverse tangent' },
-                { name: 'atan2', sig: 'atan2(u1, u2)', doc: 'Four-quadrant inverse tangent' },
-                { name: 'sinh', sig: 'sinh(u)', doc: 'Hyperbolic sine' },
-                { name: 'cosh', sig: 'cosh(u)', doc: 'Hyperbolic cosine' },
-                { name: 'tanh', sig: 'tanh(u)', doc: 'Hyperbolic tangent' },
-                { name: 'exp', sig: 'exp(u)', doc: 'Exponential function' },
-                { name: 'log', sig: 'log(u)', doc: 'Natural logarithm' },
-                { name: 'log10', sig: 'log10(u)', doc: 'Base-10 logarithm' },
-                { name: 'sqrt', sig: 'sqrt(u)', doc: 'Square root' },
-                { name: 'abs', sig: 'abs(u)', doc: 'Absolute value' },
-                { name: 'sign', sig: 'sign(u)', doc: 'Sign of u (-1, 0, 1)' },
-                { name: 'min', sig: 'min(u1, u2)', doc: 'Minimum of arguments' },
-                { name: 'max', sig: 'max(u1, u2)', doc: 'Maximum of arguments' },
-                { name: 'sum', sig: 'sum(v)', doc: 'Sum of array elements' },
-                { name: 'product', sig: 'product(v)', doc: 'Product of array elements' },
-                { name: 'inStream', sig: 'inStream(v)', doc: 'Stream connection inlet value' },
-                { name: 'actualStream', sig: 'actualStream(v)', doc: 'Actual stream variable value' }
-            ];
-            for (const b of builtins) {
-                items.push({
-                    label: b.name,
-                    kind: 3, // Function
-                    detail: b.sig,
-                    documentation: b.doc,
-                    insertText: b.name
-                });
-            }
-            
-            const classGlobalRegex = new RegExp('\\b(model|connector|record|block|class|function|package)\\s+([a-zA-Z_][a-zA-Z0-9_]*)', 'g');
-            const classMatches = docText.matchAll(classGlobalRegex);
-            const seenClasses = new Set();
-            for (const cm of classMatches) {
-                const kind = cm[1];
-                const name = cm[2];
-                if (!seenClasses.has(name)) {
-                    seenClasses.add(name);
-                    items.push({
-                        label: name,
-                        kind: 7, // Class
-                        detail: kind + " " + name,
-                        documentation: "Declared in document",
-                        insertText: name
-                    });
-                }
-            }
-            
-            let enclosingClass = "";
-            for (let i = pos.line; i >= 0; i--) {
-                const l = lines[i];
-                const m = l.match(classHeaderRegex);
-                if (m) {
-                    enclosingClass = m[2];
-                    break;
-                }
-            }
-            if (enclosingClass) {
-                let insideTarget = false;
-                for (let i = 0; i < lines.length; i++) {
-                    const l = lines[i].trim();
-                    const cs = l.match(classHeaderRegex);
-                    if (cs && cs[2] === enclosingClass) {
-                        insideTarget = true;
-                        continue;
-                    }
-                    const ce = l.match(classEndRegex);
-                    if (ce && ce[1] === enclosingClass) {
-                        insideTarget = false;
+            if (!enclosingScopeName) {
+                const containerStartRegex = new RegExp('^\\s*(?:[a-zA-Z0-9_]+\\s+)*?(model|connector|record|block|class|function|package|type|interface|struct|enum|actor|component|entity|module|def)\\s+([a-zA-Z_][a-zA-Z0-9_]*)');
+                for (let i = pos.line; i >= 0; i--) {
+                    const m = lines[i].match(containerStartRegex);
+                    if (m) {
+                        enclosingScopeName = m[2];
                         break;
                     }
-                    if (insideTarget) {
-                        const dm = l.match(declRegex);
-                        if (dm && !l.startsWith('connect(') && !l.startsWith('equation') && !l.startsWith('algorithm')) {
-                            const vName = dm[3];
-                            const vType = dm[2];
-                            if (vName !== 'equation' && vName !== 'algorithm' && vName !== 'end' && vName !== 'public' && vName !== 'protected') {
+                }
+            }
+
+            // Universal Type Resolver
+            function resolveGenericType(exprStr, scopeName) {
+                if (!exprStr) return "";
+                let clean = exprStr.trim();
+                while (clean.startsWith('(') && clean.endsWith(')')) clean = clean.slice(1, -1).trim();
+
+                // Array / Index
+                if (clean.endsWith(']')) {
+                    const openBracket = clean.lastIndexOf('[');
+                    if (openBracket > 0) return resolveGenericType(clean.slice(0, openBracket), scopeName);
+                }
+
+                // Call / Invocation
+                if (clean.endsWith(')')) {
+                    const openParen = clean.lastIndexOf('(');
+                    if (openParen > 0) {
+                        const callee = clean.slice(0, openParen);
+                        return resolveGenericType(callee, scopeName);
+                    }
+                }
+
+                // Chained Member Access e.g. a.b.c
+                if (clean.includes('.')) {
+                    const parts = clean.split('.');
+                    let currType = resolveGenericType(parts[0], scopeName);
+                    for (let idx = 1; idx < parts.length; idx++) {
+                        const prop = parts[idx].trim();
+                        if (!currType || !typeDefinitions.has(currType)) return "";
+                        const def = typeDefinitions.get(currType);
+                        const member = def.members.find(m => m.name === prop);
+                        if (member) currType = member.type;
+                        else return "";
+                    }
+                    return currType;
+                }
+
+                // Scope lookups (innermost scope -> global scope)
+                const scopesToSearch = [scopeName, "global"].filter(Boolean);
+                for (const s of scopesToSearch) {
+                    if (scopeDeclarations.has(s)) {
+                        const decl = scopeDeclarations.get(s).find(d => d.name === clean);
+                        if (decl && decl.type) return decl.type;
+                    }
+                    if (typeDefinitions.has(s)) {
+                        const member = typeDefinitions.get(s).members.find(m => m.name === clean);
+                        if (member && member.type) return member.type;
+                    }
+                }
+
+                // Fallback: search across all scopes in document
+                for (const [s, decls] of scopeDeclarations.entries()) {
+                    const decl = decls.find(d => d.name === clean);
+                    if (decl && decl.type) return decl.type;
+                }
+                for (const [t, def] of typeDefinitions.entries()) {
+                    const member = def.members.find(m => m.name === clean);
+                    if (member && member.type) return member.type;
+                }
+
+                if (typeDefinitions.has(clean)) return clean;
+                return "";
+            }
+
+            // =========================================================================
+            // 2. DISPATCH COMPLETIONS BY CONTEXT
+            // =========================================================================
+            if (isMemberContext) {
+                // In Member Context: ONLY return members of the target expression
+                if (targetExpr) {
+                    const resolvedType = resolveGenericType(targetExpr, enclosingScopeName);
+                    if (resolvedType && typeDefinitions.has(resolvedType)) {
+                        const typeDef = typeDefinitions.get(resolvedType);
+                        for (const m of typeDef.members) {
+                            items.push({
+                                label: m.name,
+                                kind: 6 /* Property / Field */,
+                                detail: (m.type ? m.type + " " : "") + m.name,
+                                documentation: "Member of " + resolvedType,
+                                insertText: m.name,
+                                filterText: m.name,
+                                range: replaceRange
+                            });
+                        }
+                    }
+                }
+            } else {
+                // Non-member context: Grammar Keywords + In-Scope Declarations + Document Types
+                // 1. Dynamic Grammar Keywords from Syntax Names
+                const syntaxList = (lspFacade && Array.isArray(lspFacade.syntaxNames))
+                    ? lspFacade.syntaxNames
+                    : (self.syntaxNames && Array.isArray(self.syntaxNames))
+                        ? self.syntaxNames
+                        : [];
+
+                const seenKeywords = new Set();
+                for (const sym of syntaxList) {
+                    if (sym && typeof sym === 'string' && sym.startsWith('"') && sym.endsWith('"')) {
+                        const kw = sym.slice(1, -1);
+                        if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(kw) && !seenKeywords.has(kw)) {
+                            seenKeywords.add(kw);
+                            items.push({
+                                label: kw,
+                                kind: 14, // Keyword
+                                detail: "Keyword",
+                                insertText: kw
+                            });
+                        }
+                    }
+                }
+
+                // 2. Document Defined Types
+                for (const [tName] of typeDefinitions.entries()) {
+                    items.push({
+                        label: tName,
+                        kind: 7, // Class / Type
+                        detail: "Type " + tName,
+                        documentation: "Defined in document",
+                        insertText: tName
+                    });
+                }
+
+                // 3. Declarations In Current Scope
+                const inScope = [enclosingScopeName, "global"].filter(Boolean);
+                const seenVars = new Set();
+                for (const s of inScope) {
+                    if (scopeDeclarations.has(s)) {
+                        for (const decl of scopeDeclarations.get(s)) {
+                            if (!seenVars.has(decl.name)) {
+                                seenVars.add(decl.name);
                                 items.push({
-                                    label: vName,
+                                    label: decl.name,
                                     kind: 6, // Variable
-                                    detail: (l.includes('flow ') ? "flow " : l.includes('parameter ') ? "parameter " : "") + vType + " " + vName,
-                                    documentation: "Declared in " + enclosingClass,
-                                    insertText: vName
+                                    detail: (decl.type ? decl.type + " " : "") + decl.name,
+                                    documentation: "Declared in " + (s === "global" ? "document" : s),
+                                    insertText: decl.name
                                 });
                             }
                         }
@@ -3272,32 +3463,11 @@ self.onmessage = async (e) => {
                 }
             }
             
-            const S = '$';
-            const snippets = [
-                { label: 'model', insertText: ['model ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Modelica model declaration' },
-                { label: 'connector', insertText: ['connector ' + S + '{1:Pin}', '  flow Real ' + S + '{2:i};', '  Real ' + S + '{3:v};', 'end ' + S + '{1:Pin};'].join(NL), detail: 'Connector port declaration' },
-                { label: 'record', insertText: ['record ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Record data structure' },
-                { label: 'block', insertText: ['block ' + S + '{1:Name}', '  ' + S + '{0}', 'end ' + S + '{1:Name};'].join(NL), detail: 'Block declaration' },
-                { label: 'function', insertText: ['function ' + S + '{1:name}', '  input Real ' + S + '{2:u};', '  output Real ' + S + '{3:y};', 'algorithm', '  ' + S + '{0}y := u;', 'end ' + S + '{1:name};'].join(NL), detail: 'Function declaration' },
-                { label: 'connect', insertText: 'connect(' + S + '{1:p1}, ' + S + '{2:p2});', detail: 'Connect equation' },
-                { label: 'for', insertText: ['for ' + S + '{1:i} in ' + S + '{2:1:n} loop', '  ' + S + '{0}', 'end for;'].join(NL), detail: 'For loop' },
-                { label: 'if', insertText: ['if ' + S + '{1:condition} then', '  ' + S + '{0}', 'end if;'].join(NL), detail: 'If statement/equation' },
-                { label: 'when', insertText: ['when ' + S + '{1:condition} then', '  ' + S + '{0}', 'end when;'].join(NL), detail: 'When equation' },
-                { label: 'der', insertText: 'der(' + S + '{1:x}) = ' + S + '{0};', detail: 'Time derivative equation' }
-            ];
-            for (const s of snippets) {
-                items.push({
-                    label: s.label,
-                    kind: 15, // Snippet
-                    detail: s.detail,
-                    documentation: s.detail,
-                    insertText: s.insertText,
-                    isSnippet: true
-                });
-            }
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { items } });
+        } catch (err) {
+            console.error('[Completion Error]:', err);
+            self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { items: [] } });
         }
-        
-        self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: { items } });
     } else if (e.data.method === 'workspace/symbol') {
         if (!lspFacade) return self.postMessage({ jsonrpc: '2.0', id: e.data.id, result: [] });
         const query = e.data.params ? (e.data.params.query || "") : "";

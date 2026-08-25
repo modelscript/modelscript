@@ -37,6 +37,7 @@ import {
   getNodeByteLength,
   setFirstChild,
   setNextSibling,
+  getNodeFirstChild,
   getNodeType,
   allocNode,
   FLAG_IS_INSERTED,
@@ -92,18 +93,36 @@ export function findShiftTarget(state: i32, tok: u16): i32 {
  * Wraps popped AST subtrees between startHead and endHead into a new ERROR AST node.
  * Operates in zero-alloc linear memory (Generation 0).
  */
+/**
+ * Wraps popped AST subtrees between startHead and endHead into a new ERROR AST node,
+ * while retaining already-completed valid non-terminal subtrees (Completed Subtree Retention).
+ * Operates in zero-alloc linear memory (Generation 0).
+ */
 export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead, currentPos: u32): u32 {
   let count: u32 = 0;
   let curr: ParseHead | null = startHead;
   let totalBytes: u32 = 0;
+  let cleanBoundaryHead: ParseHead | null = null;
 
   while (curr != null && curr != endHead) {
-    if (curr.astNode != 0) {
+    let node = curr.astNode;
+    if (node != 0) {
+      let isCompletedNonTerminal =
+        getNodeFirstChild(node) != 0 &&
+        (getNodeFlags(node) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0 &&
+        getNodeType(node) != NODE_TYPE_ERROR &&
+        (getNodeType(node) & 0x8000) == 0;
+
+      if (isCompletedNonTerminal && count > 0) {
+        cleanBoundaryHead = curr;
+        break;
+      }
+
       if (count < (MAX_CHILD_NODES as u32)) {
-        t_globalChildNodes[count] = curr.astNode;
+        t_globalChildNodes[count] = node;
         count++;
       }
-      totalBytes += getNodePadding(curr.astNode) + getNodeByteLength(curr.astNode);
+      totalBytes += getNodePadding(node) + getNodeByteLength(node);
     }
     curr = curr.prev;
   }
@@ -112,8 +131,9 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
   if (count > 0) {
     pad = getNodePadding(t_globalChildNodes[count - 1]);
   }
-  if (currentPos > 0 && currentPos > endHead.pos) {
-    let span = currentPos - endHead.pos;
+  let basePos = cleanBoundaryHead != null ? cleanBoundaryHead.pos : (endHead != null ? endHead.pos : 0);
+  if (currentPos > 0 && currentPos > basePos) {
+    let span = currentPos - basePos;
     if (span > totalBytes) totalBytes = span;
   }
 
@@ -137,9 +157,10 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
 }
 
 /**
- * Tree-sitter Strategy 1: StackSummary Unwind.
+ * Tree-sitter Strategy 1: StackSummary Unwind with Completed Subtree Retention.
  * Walks the GSS ancestor chain within local scope to find a previous state where
- * the current lookahead token is valid. If found, wraps all popped nodes in an ERROR node.
+ * the current lookahead token is valid. If found, wraps damaged uncommitted nodes
+ * into an ERROR node, preserving preceding completed subtrees.
  */
 export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): boolean {
   if (token == TOKEN_EOF) return false;
@@ -158,9 +179,32 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
     if (ancState >= 0 && ancState < action_offsets.length) {
       let canAccept = stateCanAccept(anc, ancState, token, 0, 1);
       if (canAccept > 0) {
+        // Scan backwards to find the boundary between clean completed subtrees and damaged tokens
+        let currScan: ParseHead | null = head;
+        let cleanHead: ParseHead | null = null;
+        let damagedCount = 0;
+
+        while (currScan != null && currScan != anc) {
+          let n = currScan.astNode;
+          if (n != 0) {
+            let isClean =
+              getNodeFirstChild(n) != 0 &&
+              (getNodeFlags(n) & (FLAG_HAS_ERROR | FLAG_IS_INSERTED)) == 0 &&
+              getNodeType(n) != NODE_TYPE_ERROR &&
+              (getNodeType(n) & 0x8000) == 0;
+            if (isClean && damagedCount > 0) {
+              cleanHead = currScan;
+              break;
+            }
+            damagedCount++;
+          }
+          currScan = currScan.prev;
+        }
+
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
-        let diagStart = anc.pos + firstPad;
+        let baseStart = cleanHead != null ? cleanHead.pos : anc.pos;
+        let diagStart = baseStart + firstPad;
         let diagEnd = pos > diagStart ? pos : diagStart + 1;
         while (diagStart < diagEnd && (peekChar(diagStart) == 32 || peekChar(diagStart) == 9 || peekChar(diagStart) == 10 || peekChar(diagStart) == 13)) {
           let cl = peekCharLen(diagStart);
@@ -175,13 +219,14 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
           }
         }
         let errLen = diagEnd > diagStart ? diagEnd - diagStart : 1;
-        let penalty: i32 = ERROR_COST_PER_SKIPPED_TREE + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
+        let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
         let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd);
 
+        let parentHead = cleanHead != null ? cleanHead : anc;
         let errHead = allocParseHead(
           ancState,
           errNode,
-          anc,
+          parentHead,
           pos,
           anc.scannerState,
           currentCost + penalty,

@@ -1533,3 +1533,157 @@ export function lsp_applyDiagramEdits(actionBufferPtr: u32, actionCount: u32): u
 
   return lsp_formatDocument(globalAstRoot);
 }
+
+/**
+ * Generic Completion Context Query.
+ * Locates the node around cursorOffset, determines if it is a member/navigation access,
+ * and serializes [targetStartByte, targetEndByte, replaceStartByte, replaceEndByte] into t_lspBinaryBuffer.
+ * Returns 4 if a target is found, or 0 if top-level / keyword context.
+ */
+export function lsp_getCompletionContext(rootNode: u32, cursorOffset: u32): u32 {
+  if (rootNode == 0) return 0;
+  globalAstRoot = rootNode;
+  ensureLspBuffers();
+
+  let targetOffset: u32 = (cursorOffset > 0) ? cursorOffset - 1 : 0;
+
+  ensureTraverseStack(2);
+  let stackTop: i32 = 0;
+  t_lspTraverseStack[0] = rootNode;
+  t_lspOffsetStack[0] = 0; 
+  stackTop = 1;
+  
+  let bestMatch: u32 = 0;
+  let bestParent: u32 = 0;
+  let bestStart: u32 = 0;
+
+  let parentStack: u32[] = [0];
+
+  while (stackTop > 0) {
+    stackTop--;
+    let node = t_lspTraverseStack[stackTop];
+    let tokenStart = t_lspOffsetStack[stackTop];
+    let parent: u32 = parentStack.length > stackTop ? parentStack[stackTop] : 0;
+    let len = getNodeByteLength(node);
+    let tokenEnd = tokenStart + len;
+    
+    if (targetOffset >= tokenStart && targetOffset <= tokenEnd) {
+       let update = true;
+       if (bestMatch != 0) {
+          let bestLen = getNodeByteLength(bestMatch);
+          if (tokenStart == bestStart && len == bestLen) {
+             let bestType = getNodeType(bestMatch);
+             let nodeType = getNodeType(node);
+             if (bestType > (MAX_TERMINAL_ID as u16) && nodeType <= (MAX_TERMINAL_ID as u16)) {
+                update = true;
+             } else if (bestType <= (MAX_TERMINAL_ID as u16) && nodeType > (MAX_TERMINAL_ID as u16)) {
+                update = false;
+             }
+          }
+       }
+       if (update) {
+          bestMatch = node;
+          bestParent = parent;
+          bestStart = tokenStart;
+       }
+    }
+    
+    if (targetOffset < tokenStart || targetOffset > tokenEnd) {
+       continue;
+    }
+    
+    let child = getNodeFirstChild(node);
+    if (child != 0) {
+      let childCount: i32 = 0;
+      let c = child;
+      while (c != 0) { childCount++; c = getNodeNextSibling(c); }
+
+      ensureTraverseStack(stackTop + childCount);
+      let currOffset = tokenStart;
+      let writeIdx: i32 = stackTop + childCount - 1;
+      let isFirstChild = true;
+      c = child;
+      while (c != 0) {
+         let cPad = getNodeLeadingPad(c);
+         let cLen = getNodeByteLength(c);
+         if (!isFirstChild) {
+            currOffset += cPad;
+         }
+         if (writeIdx >= 0) {
+            t_lspTraverseStack[writeIdx] = c;
+            t_lspOffsetStack[writeIdx] = currOffset;
+            while (parentStack.length <= writeIdx) parentStack.push(0);
+            parentStack[writeIdx] = node;
+            writeIdx--;
+         }
+         currOffset += cLen;
+         isFirstChild = false;
+         c = getNodeNextSibling(c);
+      }
+      stackTop += childCount;
+    }
+  }
+
+  if (bestMatch == 0) return 0;
+
+  let nodeType = getNodeType(bestMatch);
+  let targetNode: u32 = 0;
+  let replaceStart: u32 = cursorOffset;
+  let replaceEnd: u32 = cursorOffset;
+
+  // Case 1: Cursor is directly at or after a punctuation terminal
+  if (nodeType <= (MAX_TERMINAL_ID as u16)) {
+    if (bestParent != 0) {
+      let firstChild = getNodeFirstChild(bestParent);
+      if (firstChild != 0 && firstChild != bestMatch) {
+        let prev: u32 = firstChild;
+        let c: u32 = getNodeNextSibling(firstChild);
+        while (c != 0 && c != bestMatch) {
+          prev = c;
+          c = getNodeNextSibling(c);
+        }
+        if (prev != 0 && prev != bestMatch) {
+          targetNode = prev;
+          replaceStart = bestStart + getNodeByteLength(bestMatch);
+          replaceEnd = cursorOffset;
+        }
+      }
+    }
+  } else {
+    // Case 2: Cursor is inside an identifier that has an operator sibling to the left
+    if (bestParent != 0) {
+      let firstChild = getNodeFirstChild(bestParent);
+      let prevOp: u32 = 0;
+      let prevTarget: u32 = 0;
+      let c = firstChild;
+      while (c != 0 && c != bestMatch) {
+        let cType = getNodeType(c);
+        if (cType <= (MAX_TERMINAL_ID as u16)) {
+          prevOp = c;
+        } else {
+          prevTarget = c;
+        }
+        c = getNodeNextSibling(c);
+      }
+      if (prevOp != 0 && prevTarget != 0) {
+        targetNode = prevTarget;
+        replaceStart = bestStart;
+        replaceEnd = bestStart + getNodeByteLength(bestMatch);
+      }
+    }
+  }
+
+  if (targetNode == 0) return 0;
+
+  let targetStart = lsp_findNodeOffset(rootNode, targetNode);
+  if (targetStart < 0) return 0;
+  let targetEnd = (targetStart as u32) + getNodeByteLength(targetNode);
+
+  t_lspBinaryBuffer.push(targetStart as u32);
+  t_lspBinaryBuffer.push(targetEnd as u32);
+  t_lspBinaryBuffer.push(replaceStart);
+  t_lspBinaryBuffer.push(replaceEnd);
+  flushBinaryBuffer();
+
+  return 4;
+}

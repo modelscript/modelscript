@@ -165,6 +165,7 @@ function transitionToGlr(pos: u32, pendingPadding: u32, scannerState: u32): void
   }
   
   if (prevHead) {
+    prevHead.pos = pos;
     prevHead.pendingPadding = pendingPadding;
     activeHeadsCount = 0;
     t_activeHeads[activeHeadsCount++] = changetype<u32>(prevHead);
@@ -726,7 +727,7 @@ function deepCloneSubtree(root: u32, _depth: i32 = 0): u32 {
     t_cloneStack.clear();
   }
 
-  let rootClone = allocNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root));
+  let rootClone = allocNode(getNodeType(root), getNodePadding(root), getNodeByteLength(root), getNodeEnvHash(root), false, getNodeStartState(root));
   setNodeFlags(rootClone, getNodeFlags(root) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
 
   t_cloneStack.push(root);
@@ -743,7 +744,7 @@ function deepCloneSubtree(root: u32, _depth: i32 = 0): u32 {
 
     while (child != 0 && siblingCount < 500000) {
       siblingCount++;
-      let childClone = allocNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child));
+      let childClone = allocNode(getNodeType(child), getNodePadding(child), getNodeByteLength(child), getNodeEnvHash(child), false, getNodeStartState(child));
       setNodeFlags(childClone, getNodeFlags(child) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED));
 
       if (lastClonedChild == 0) {

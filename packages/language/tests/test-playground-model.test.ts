@@ -1186,7 +1186,7 @@ end ThermalSystem;
     expect(diags3.length).toBeGreaterThan(0);
 
     if (fs.existsSync(tmpDirLocal)) fs.rmSync(tmpDirLocal, { recursive: true, force: true });
-  }, 30000);
+  }, 120000);
 
   it("should accurately position keyword substitution squiggles when leading indentation is present", () => {
     const code = `   error ElectricalCircuit

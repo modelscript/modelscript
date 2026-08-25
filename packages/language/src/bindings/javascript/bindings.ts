@@ -1006,7 +1006,7 @@ export class LspFacade {
    * Performs a binary search on the cached line starts to map a linear byte offset
    * to a line and character position (LSP format).
    */
-  private offsetToPos(offset: number, lineStarts: Uint32Array): Position {
+  public offsetToPos(offset: number, lineStarts: Uint32Array): Position {
     let low = 0;
     let high = lineStarts.length - 1;
     let line = 0;
@@ -1024,6 +1024,18 @@ export class LspFacade {
     const charDiv = encoding === 1 ? 2 : 1;
     const charOffset = Math.floor((offset - lineStarts[line]) / charDiv);
     return { line, character: charOffset };
+  }
+
+  /**
+   * Maps a line and character position to a linear byte offset.
+   */
+  public posToOffset(line: number, character: number, lineStarts: Uint32Array): number {
+    const encoding = this.getInputEncoding();
+    const charMult = encoding === 1 ? 2 : 1;
+    if (line < lineStarts.length) {
+      return lineStarts[line] + character * charMult;
+    }
+    return lineStarts.length > 0 ? lineStarts[lineStarts.length - 1] + character * charMult : character * charMult;
   }
 
   /**
@@ -1201,6 +1213,36 @@ export class LspFacade {
               }
             }
 
+            const dummyTree = {
+              sourceCode: {
+                substring: (start: number, end: number) => {
+                  const currentBuf = this.wasmMemory.buffer;
+                  const inputPtr = this.exports.getInputBuffer
+                    ? this.exports.getInputBuffer()
+                    : this.exports.lsp_getInputBuffer
+                      ? this.exports.lsp_getInputBuffer()
+                      : 0;
+                  const totalLenBytes =
+                    this.exports.inputLength && typeof this.exports.inputLength.value === "number"
+                      ? this.exports.inputLength.value
+                      : this.currentInputLength > 0
+                        ? this.currentInputLength * 2
+                        : 0;
+                  const totalLenChars = Math.floor(totalLenBytes / 2);
+                  if (inputPtr > 0 && start >= 0 && end <= totalLenChars && start <= end) {
+                    const byteLen = (end - start) * 2;
+                    const u8 = new Uint8Array(byteLen);
+                    u8.set(new Uint8Array(currentBuf, inputPtr + start * 2, byteLen));
+                    return new TextDecoder("utf-16le").decode(u8);
+                  }
+                  return "";
+                },
+              },
+              mem32: memory,
+              offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
+              facade: this,
+            };
+
             const createContext = (nodePtr: number, fallbackText: string) => {
               let syntaxNode: SyntaxNode | null = null;
               let text = fallbackText;
@@ -1227,34 +1269,6 @@ export class LspFacade {
                 }
 
                 if (actualByteStart >= 0) {
-                  const dummyTree = {
-                    sourceCode: {
-                      substring: (start: number, end: number) => {
-                        const currentBuf = this.wasmMemory.buffer;
-                        const inputPtr = this.exports.getInputBuffer
-                          ? this.exports.getInputBuffer()
-                          : this.exports.lsp_getInputBuffer
-                            ? this.exports.lsp_getInputBuffer()
-                            : 0;
-                        const totalLenBytes = this.exports.inputLength
-                          ? typeof this.exports.inputLength.value === "number"
-                            ? this.exports.inputLength.value
-                            : Number(this.exports.inputLength) || 0
-                          : 0;
-                        const totalLenChars = Math.floor(totalLenBytes / 2);
-                        if (inputPtr > 0 && start >= 0 && end <= totalLenChars && start <= end) {
-                          const byteLen = (end - start) * 2;
-                          const u8 = new Uint8Array(byteLen);
-                          u8.set(new Uint8Array(currentBuf, inputPtr + start * 2, byteLen));
-                          return new TextDecoder("utf-16le").decode(u8);
-                        }
-                        return "";
-                      },
-                    },
-                    mem32: memory,
-                    offsetToPoint: (o: number) => this.offsetToPos(o, lineStarts),
-                    facade: this,
-                  };
                   syntaxNode = new SyntaxNode(dummyTree as any, nodePtr, actualByteStart, null, 0, len, typeId);
                   text = dummyTree.sourceCode.substring(syntaxNode.startIndex, syntaxNode.endIndex);
                 }
@@ -1289,6 +1303,19 @@ export class LspFacade {
                     }
                     if (syntaxNode) {
                       const cText = syntaxNode.childText(prop);
+                      if (cText) return cText;
+                    }
+                    if (arg1 > 0 && nodePtr !== arg1 && offsetCache.has(arg1)) {
+                      const ctxSyntaxNode = new SyntaxNode(
+                        dummyTree as any,
+                        arg1,
+                        offsetCache.get(arg1)!,
+                        null,
+                        0,
+                        memory[(arg1 + 4) / 4] & 0x007fffff,
+                        memory[arg1 / 4] & 0x03ff,
+                      );
+                      const cText = ctxSyntaxNode.childText(prop);
                       if (cText) return cText;
                     }
                     return "";
@@ -1512,6 +1539,52 @@ export class LspFacade {
       });
     }
     return references;
+  }
+
+  /**
+   * Generic Completion Context Query.
+   * Inspects CST around cursorOffset and returns target expression and replacement range.
+   */
+  getCompletionContext(
+    astRoot: number,
+    cursorOffset: number,
+  ): {
+    hasTarget: boolean;
+    targetText: string;
+    targetRange: { start: number; end: number };
+    replaceRange: { start: number; end: number };
+  } | null {
+    if (!this.exports.lsp_getCompletionContext || !this.exports.lsp_getBinaryBuffer) return null;
+    const count = this.exports.lsp_getCompletionContext(astRoot, cursorOffset);
+    if (count < 4) return null;
+
+    const dirPtr = this.exports.lsp_getBinaryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const targetStart = mem32[(dirPtr >>> 2) + 0];
+    const targetEnd = mem32[(dirPtr >>> 2) + 1];
+    const replaceStart = mem32[(dirPtr >>> 2) + 2];
+    const replaceEnd = mem32[(dirPtr >>> 2) + 3];
+
+    let targetText = "";
+    const inputBufPtr = this.exports.getInputBuffer
+      ? this.exports.getInputBuffer()
+      : this.exports.lsp_getInputBuffer
+        ? this.exports.lsp_getInputBuffer()
+        : 0;
+
+    if (inputBufPtr > 0 && targetEnd > targetStart) {
+      const isUtf16 = this.getInputEncoding ? this.getInputEncoding() === 1 : false;
+      const decoder = isUtf16 ? new TextDecoder("utf-16le") : new TextDecoder("utf-8");
+      const rawBytes = new Uint8Array(this.wasmMemory.buffer, inputBufPtr + targetStart, targetEnd - targetStart);
+      targetText = decoder.decode(new Uint8Array(rawBytes)).replace(/\0/g, "").trim();
+    }
+
+    return {
+      hasTarget: true,
+      targetText,
+      targetRange: { start: targetStart, end: targetEnd },
+      replaceRange: { start: replaceStart, end: replaceEnd },
+    };
   }
 
   /** Extracts 2D diagram nodes, ports, spatial positions, and edges for visual modeling. */
