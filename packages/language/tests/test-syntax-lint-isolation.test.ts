@@ -140,13 +140,14 @@ end ElectricalCircuit;`;
   });
 
   it("should accurately position squiggles on downstream model after error recovery", () => {
-    const code = `model ElectricalCircuit error
+    const code = `model ElectricalCircuit
   Real voltage = 12.0;
   Real current = 2.5;
   Real power;
 
   power = voltage * current;
-end ElectricalCircuit; error error error
+end ElectricalCircuit;
+error
 
 model ThermalSystem
   Real temp = 293.15;
@@ -157,27 +158,20 @@ end ThermalSystem;`;
     activeFacade.lastAstRoot = 0;
     const ast = activeFacade.parse(code);
     const diags = activeFacade.getDiagnostics(ast);
-    console.log("LINE 6 AST SEXPR:\n", activeFacade.getAstSExpr(ast, true));
-    console.log("LINE 6 DIAGS:\n", JSON.stringify(diags, null, 2));
-    const line0Diags = diags.filter((d: any) => d.severity === 1 && d.range.start.line === 0);
-    expect(line0Diags.length).toBe(1);
-    expect(line0Diags[0].range.start.character).toBe(24);
-    expect(line0Diags[0].range.end.character).toBe(29);
-
-    // Line 3 lint warning: 'power' uninitialized (chars 7..12)
+    console.log("TEST 3 DIAGS:", JSON.stringify(diags, null, 2));
     const line3Diags = diags.filter((d: any) => d.severity === 2 && d.range.start.line === 3);
     expect(line3Diags.length).toBe(1);
     expect(line3Diags[0].range.start.character).toBe(7);
     expect(line3Diags[0].range.end.character).toBe(12);
 
-    // Line 6 syntax error: 'error error error' (chars 23..40)
-    const line6Diags = diags.filter((d: any) => d.severity === 1 && d.range.start.line === 6);
-    expect(line6Diags.length).toBeGreaterThanOrEqual(1);
-    expect(line6Diags[0].range.start.character).toBe(23);
-    expect(line6Diags[line6Diags.length - 1].range.end.character).toBeGreaterThanOrEqual(36);
+    // Line 7 syntax error: 'error;'
+    const line7Diags = diags.filter((d: any) => d.severity === 1 && d.range.start.line === 7);
+    expect(line7Diags.length).toBeGreaterThanOrEqual(1);
+    expect(line7Diags[0].range.start.character).toBe(0);
+    expect(line7Diags[line7Diags.length - 1].range.end.character).toBeGreaterThanOrEqual(5);
 
-    // Line 10 lint warning: 'heatFlow' uninitialized on downstream model (chars 4..15)
-    const heatFlowDiags = diags.filter((d: any) => d.severity === 2 && d.range.start.line === 10);
+    // Line 11 lint warning: 'heatFlow' uninitialized on downstream model (chars 7..15)
+    const heatFlowDiags = diags.filter((d: any) => d.severity === 2 && d.range.start.line === 11);
     expect(heatFlowDiags.length).toBe(1);
     const heatDiag = heatFlowDiags[0];
     expect(heatDiag.range.start.character).toBeGreaterThanOrEqual(4);

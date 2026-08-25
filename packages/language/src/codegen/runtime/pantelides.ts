@@ -32,6 +32,7 @@ import {
   createChunkedInt32Array,
   createChunkedUint8Array,
 } from "./array";
+import { atomicChunkAlloc, debugLog } from "./arena";
 
 /**
  * Checks if an expression evaluates structurally to zero literal.
@@ -40,15 +41,15 @@ import {
 export function isZeroExpr(exprId: u32, dae: DaeBuilder): boolean {
   if (exprId == 0xffffffff) return false;
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
   if (kind == ExprKind.IntLiteral) {
-    return (dae.exprData.get(offset + EXPR_DATA1) as i32) == 0;
+    return (dae.getExprData().get(offset + EXPR_DATA1) as i32) == 0;
   }
   if (kind == ExprKind.RealLiteral) {
-    let lo = dae.exprData.get(offset + EXPR_DATA1) as u32;
-    let hi = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let bits = ((hi as i64) << 32) | (lo as i64);
-    let val = f64.reinterpret_i64(bits);
+    let lo = (dae.getExprData().get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+    let hi = (dae.getExprData().get(offset + EXPR_LEFT) as u64) & 0xffffffff;
+    let bits = (hi << 32) | lo;
+    let val = f64.reinterpret_i64(bits as i64);
     return val == 0.0;
   }
   return false;
@@ -61,15 +62,15 @@ export function isZeroExpr(exprId: u32, dae: DaeBuilder): boolean {
 export function isOneExpr(exprId: u32, dae: DaeBuilder): boolean {
   if (exprId == 0xffffffff) return false;
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
   if (kind == ExprKind.IntLiteral) {
-    return (dae.exprData.get(offset + EXPR_DATA1) as i32) == 1;
+    return (dae.getExprData().get(offset + EXPR_DATA1) as i32) == 1;
   }
   if (kind == ExprKind.RealLiteral) {
-    let lo = dae.exprData.get(offset + EXPR_DATA1) as u32;
-    let hi = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let bits = ((hi as i64) << 32) | (lo as i64);
-    let val = f64.reinterpret_i64(bits);
+    let lo = (dae.getExprData().get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+    let hi = (dae.getExprData().get(offset + EXPR_LEFT) as u64) & 0xffffffff;
+    let bits = (hi << 32) | lo;
+    let val = f64.reinterpret_i64(bits as i64);
     return val == 1.0;
   }
   return false;
@@ -82,21 +83,21 @@ export function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
   if (exprId == 0xffffffff) return false;
 
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
   if (kind == ExprKind.Der) return true;
 
   if (kind == ExprKind.Binary || kind == ExprKind.Range) {
-    let left = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let right = dae.exprData.get(offset + EXPR_RIGHT) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
     if (left != 0xffffffff && containsDerivative(left, dae)) return true;
     if (right != 0xffffffff && containsDerivative(right, dae)) return true;
     return false;
   }
 
   if (kind == ExprKind.IfElse) {
-    let cond = dae.exprData.get(offset + EXPR_DATA1) as u32;
-    let thenBranch = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let elseBranch = dae.exprData.get(offset + EXPR_RIGHT) as u32;
+    let cond = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let thenBranch = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let elseBranch = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
     if (cond != 0xffffffff && containsDerivative(cond, dae)) return true;
     if (thenBranch != 0xffffffff && containsDerivative(thenBranch, dae)) return true;
     if (elseBranch != 0xffffffff && containsDerivative(elseBranch, dae)) return true;
@@ -104,13 +105,13 @@ export function containsDerivative(exprId: u32, dae: DaeBuilder): boolean {
   }
 
   if (kind == ExprKind.Unary || kind == ExprKind.Negate || kind == ExprKind.Pre) {
-    let left = dae.exprData.get(offset + EXPR_LEFT) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     return left != 0xffffffff && containsDerivative(left, dae);
   }
 
   if (kind == ExprKind.Call || kind == ExprKind.ArrayCtor || kind == ExprKind.Tuple) {
-    let count: u32 = u32(dae.exprData.get(offset + EXPR_RIGHT));
-    let first: u32 = u32(dae.exprData.get(offset + EXPR_LEFT));
+    let count: u32 = u32(dae.getExprData().get(offset + EXPR_RIGHT));
+    let first: u32 = u32(dae.getExprData().get(offset + EXPR_LEFT));
     for (let j: u32 = 0; j < count; j++) {
       if (containsDerivative(first + j, dae)) return true;
     }
@@ -128,7 +129,7 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
   if (exprId == 0xffffffff) return 0xffffffff;
 
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
 
   // Constants & Literals -> d/dt (c) = 0.0
   if (
@@ -143,9 +144,9 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
   // Variable Reference
   if (kind == ExprKind.Name) {
-    let varId: u32 = u32(dae.exprData.get(offset + EXPR_DATA1));
+    let varId: u32 = u32(dae.getExprData().get(offset + EXPR_DATA1));
     if (varId < dae.varCount) {
-      let variability = dae.varData.get(varId * VAR_STRIDE + VAR_VARIABILITY);
+      let variability = dae.getVarData().get(varId * VAR_STRIDE + VAR_VARIABILITY);
       if (variability == Variability.Parameter || variability == Variability.Constant) {
         return dae.addRealLiteral(0.0);
       }
@@ -166,15 +167,15 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
   // Unary Negation: d(-u) = -(du)
   if (kind == ExprKind.Negate) {
-    let left = dae.exprData.get(offset + EXPR_LEFT) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let dLeft = differentiateExpr(left, dae, stateVars);
     if (isZeroExpr(dLeft, dae)) return dLeft;
     return dae.addExpression(ExprKind.Negate, 0, dLeft);
   }
 
   if (kind == ExprKind.Unary) {
-    let op = dae.exprData.get(offset + EXPR_DATA1);
-    let left = dae.exprData.get(offset + EXPR_LEFT) as u32;
+    let op = dae.getExprData().get(offset + EXPR_DATA1);
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
     let dLeft = differentiateExpr(left, dae, stateVars);
     if (op == UnaryOp.Negate) {
       if (isZeroExpr(dLeft, dae)) return dLeft;
@@ -185,9 +186,9 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
   // Conditional Expression: d(if c then u else v) = if c then du else dv
   if (kind == ExprKind.IfElse) {
-    let cond = dae.exprData.get(offset + EXPR_DATA1) as u32;
-    let thenBranch = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let elseBranch = dae.exprData.get(offset + EXPR_RIGHT) as u32;
+    let cond = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let thenBranch = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let elseBranch = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
     let dThen = differentiateExpr(thenBranch, dae, stateVars);
     let dElse = differentiateExpr(elseBranch, dae, stateVars);
     return dae.addExpression(ExprKind.IfElse, cond, dThen, dElse);
@@ -195,9 +196,9 @@ export function differentiateExpr(exprId: u32, dae: DaeBuilder, stateVars: Chunk
 
   // Binary Expression
   if (kind == ExprKind.Binary) {
-    let op = dae.exprData.get(offset + EXPR_DATA1);
-    let left = dae.exprData.get(offset + EXPR_LEFT) as u32;
-    let right = dae.exprData.get(offset + EXPR_RIGHT) as u32;
+    let op = dae.getExprData().get(offset + EXPR_DATA1);
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
 
     let dLeft = differentiateExpr(left, dae, stateVars);
     let dRight = differentiateExpr(right, dae, stateVars);
@@ -307,23 +308,25 @@ export class PantelidesEngine {
   diffRounds: u32;
   structuralIndex: u32;
 
-  init(dae: DaeBuilder, blt: BltEngine): void {
+  init(dae: DaeBuilder, blt: BltEngine | null = null): void {
     this.dae = dae;
-    this.blt = blt;
+    if (blt != null) {
+      this.blt = blt;
+    } else {
+      let bltPtr = atomicChunkAlloc(sizeof<BltEngine>());
+      this.blt = changetype<BltEngine>(bltPtr);
+      this.blt.init(dae);
+    }
 
     this.eqDepPtrs = createChunkedInt32Array(1024);
     this.eqDepVars = createChunkedInt32Array(4096);
-
     this.matchEqToVar = createChunkedInt32Array(1024);
     this.matchVarToEq = createChunkedInt32Array(1024);
-
     this.visitedEq = createChunkedUint8Array(1024);
     this.visitedVar = createChunkedUint8Array(1024);
-
     this.eqDiffLevel = createChunkedInt32Array(1024);
     this.varDiffLevel = createChunkedInt32Array(1024);
     this.varDerivativeOf = createChunkedInt32Array(1024);
-
     this.dummyDerivatives = createChunkedInt32Array(256);
     this.diffRounds = 0;
     this.structuralIndex = 1;
@@ -346,10 +349,9 @@ export class PantelidesEngine {
     for (let i: u32 = 0; i <= eqCount; i++) {
       this.eqDepPtrs.push(0);
     }
-
     let isStateVar = createChunkedUint8Array(varCount);
     for (let i: u32 = 0; i < varCount; i++) {
-      let flags = this.dae.varData.get(i * VAR_STRIDE + VAR_FLAGS);
+      let flags = this.dae.getVarData().get(i * VAR_STRIDE + VAR_FLAGS);
       isStateVar.push((flags & (FLAG_VAR_STATE | FLAG_VAR_STATE_DER)) != 0 ? 1 : 0);
     }
 
@@ -357,9 +359,9 @@ export class PantelidesEngine {
     let exprStack = createChunkedInt32Array(256);
     for (let i: u32 = 0; i < eqCount; i++) {
       let offset = i * EQ_STRIDE;
-      if (this.dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
-      let lhsId = this.dae.eqData.get(offset + EQ_LHS) as u32;
-      let rhsId = this.dae.eqData.get(offset + EQ_RHS) as u32;
+      if (this.dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
+      let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
+      let rhsId = this.dae.getEqData().get(offset + EQ_RHS) as u32;
       exprStack.clear();
       if (lhsId != 0xffffffff) exprStack.push(lhsId as i32);
       if (rhsId != 0xffffffff) exprStack.push(rhsId as i32);
@@ -368,21 +370,32 @@ export class PantelidesEngine {
         let exprId = exprStack.pop() as u32;
         if (exprId == 0xffffffff) continue;
         let exprOffset = exprId * EXPR_STRIDE;
-        let kind = this.dae.exprData.get(exprOffset + EXPR_KIND);
+        let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
         if (kind == ExprKind.Der) {
-          let inner = this.dae.exprData.get(exprOffset + EXPR_DATA1) as u32;
+          let inner = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
           if (inner != 0xffffffff) {
             let innerOffset = inner * EXPR_STRIDE;
-            if (this.dae.exprData.get(innerOffset + EXPR_KIND) == ExprKind.Name) {
-              let vId = this.dae.exprData.get(innerOffset + EXPR_DATA1) as u32;
+            if (this.dae.getExprData().get(innerOffset + EXPR_KIND) == ExprKind.Name) {
+              let vId = this.dae.getExprData().get(innerOffset + EXPR_DATA1) as u32;
               if (vId < varCount) isStateVar.set(vId, 1);
             }
           }
+        } else if (kind == ExprKind.Binary) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (left != 0xffffffff) exprStack.push(left as i32);
+          if (right != 0xffffffff) exprStack.push(right as i32);
+        } else if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          if (left != 0xffffffff) exprStack.push(left as i32);
+        } else if (kind == ExprKind.IfElse) {
+          let cond = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (cond != 0xffffffff) exprStack.push(cond as i32);
+          if (left != 0xffffffff) exprStack.push(left as i32);
+          if (right != 0xffffffff) exprStack.push(right as i32);
         }
-        let left = this.dae.exprData.get(exprOffset + EXPR_LEFT) as u32;
-        let right = this.dae.exprData.get(exprOffset + EXPR_RIGHT) as u32;
-        if (left != 0xffffffff) exprStack.push(left as i32);
-        if (right != 0xffffffff) exprStack.push(right as i32);
       }
     }
 
@@ -393,10 +406,10 @@ export class PantelidesEngine {
       this.eqDepPtrs.set(i, this.eqDepVars.length as i32);
 
       let offset = i * EQ_STRIDE;
-      if (this.dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+      if (this.dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
-      let lhsId = this.dae.eqData.get(offset + EQ_LHS) as u32;
-      let rhsId = this.dae.eqData.get(offset + EQ_RHS) as u32;
+      let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
+      let rhsId = this.dae.getEqData().get(offset + EQ_RHS) as u32;
 
       exprStack.clear();
       if (lhsId != 0xffffffff) exprStack.push(lhsId as i32);
@@ -407,14 +420,14 @@ export class PantelidesEngine {
         if (exprId == 0xffffffff) continue;
 
         let exprOffset = exprId * EXPR_STRIDE;
-        let kind = this.dae.exprData.get(exprOffset + EXPR_KIND);
+        let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
 
         if (kind == ExprKind.Der) {
-          let inner = this.dae.exprData.get(exprOffset + EXPR_DATA1) as u32;
+          let inner = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
           if (inner != 0xffffffff) {
             let innerOffset = inner * EXPR_STRIDE;
-            if (this.dae.exprData.get(innerOffset + EXPR_KIND) == ExprKind.Name) {
-              let varId = this.dae.exprData.get(innerOffset + EXPR_DATA1) as u32;
+            if (this.dae.getExprData().get(innerOffset + EXPR_KIND) == ExprKind.Name) {
+              let varId = this.dae.getExprData().get(innerOffset + EXPR_DATA1) as u32;
               if (varId < varCount) {
                 if (seenVars.get(varId) == 0) {
                   seenVars.set(varId, 1);
@@ -424,9 +437,9 @@ export class PantelidesEngine {
             }
           }
         } else if (kind == ExprKind.Name) {
-          let varId: u32 = u32(this.dae.exprData.get(exprOffset + EXPR_DATA1));
+          let varId: u32 = u32(this.dae.getExprData().get(exprOffset + EXPR_DATA1));
           if (varId < varCount) {
-            let variability = this.dae.varData.get(varId * VAR_STRIDE + VAR_VARIABILITY);
+            let variability = this.dae.getVarData().get(varId * VAR_STRIDE + VAR_VARIABILITY);
             if (variability != Variability.Parameter && variability != Variability.Constant) {
               if (isStateVar.get(varId) == 0) {
                 if (seenVars.get(varId) == 0) {
@@ -436,12 +449,22 @@ export class PantelidesEngine {
               }
             }
           }
+        } else if (kind == ExprKind.Binary) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (left != 0xffffffff) exprStack.push(left as i32);
+          if (right != 0xffffffff) exprStack.push(right as i32);
+        } else if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          if (left != 0xffffffff) exprStack.push(left as i32);
+        } else if (kind == ExprKind.IfElse) {
+          let cond = this.dae.getExprData().get(exprOffset + EXPR_DATA1) as u32;
+          let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT) as u32;
+          let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT) as u32;
+          if (cond != 0xffffffff) exprStack.push(cond as i32);
+          if (left != 0xffffffff) exprStack.push(left as i32);
+          if (right != 0xffffffff) exprStack.push(right as i32);
         }
-
-        let left = this.dae.exprData.get(exprOffset + EXPR_LEFT) as u32;
-        let right = this.dae.exprData.get(exprOffset + EXPR_RIGHT) as u32;
-        if (left != 0xffffffff) exprStack.push(left as i32);
-        if (right != 0xffffffff) exprStack.push(right as i32);
       }
 
       let startVars = this.eqDepPtrs.get(i) as u32;
@@ -487,9 +510,16 @@ export class PantelidesEngine {
    * Returns the count of newly synthesized constraint equations.
    */
   @inline
-  reduceIndex(stateVars: ChunkedInt32Array): u32 {
+  reduceIndex(stateVars: ChunkedInt32Array | null = null): u32 {
+    if (stateVars == null) {
+      stateVars = createChunkedInt32Array(0);
+    }
     let initialEqCount = this.dae.eqCount;
     let initialVarCount = this.dae.varCount;
+    if (initialEqCount == 0 || initialVarCount == 0) {
+      this.structuralIndex = 1;
+      return 0;
+    }
 
     this.eqDiffLevel.clear();
     for (let i: u32 = 0; i < initialEqCount; i++) this.eqDiffLevel.push(0);
@@ -583,8 +613,8 @@ export class PantelidesEngine {
         let eqIdx = activeEqs.get(a) as u32;
         if (this.visitedEq.get(eqIdx) == 1) {
           let offset = eqIdx * EQ_STRIDE;
-          let lhsId = this.dae.eqData.get(offset + EQ_LHS) as u32;
-          let rhsId = this.dae.eqData.get(offset + EQ_RHS) as u32;
+          let lhsId = this.dae.getEqData().get(offset + EQ_LHS) as u32;
+          let rhsId = this.dae.getEqData().get(offset + EQ_RHS) as u32;
 
           let dLhs = differentiateExpr(lhsId, this.dae, stateVars);
           let dRhs = differentiateExpr(rhsId, this.dae, stateVars);
@@ -621,7 +651,7 @@ export class PantelidesEngine {
       let parent = v < this.varDerivativeOf.length ? this.varDerivativeOf.get(v) : -1;
 
       if (parent != -1 && (parent as u32) < varCount) {
-        let parentIsState = (this.dae.varData.get((parent as u32) * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STATE) != 0;
+        let parentIsState = (this.dae.getVarData().get((parent as u32) * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STATE) != 0;
         if (parentIsState) {
           let matchedEq = v < this.matchVarToEq.length ? this.matchVarToEq.get(v) : -1;
           let isMatchedAsState = false;
@@ -638,4 +668,62 @@ export class PantelidesEngine {
       }
     }
   }
+
+  /**
+   * Dynamically swaps dynamic state variables when approaching kinematic singularities.
+   */
+  swapDynamicState(oldVar: u32, newVar: u32): boolean {
+    if (oldVar >= this.dae.varCount || newVar >= this.dae.varCount) return false;
+
+    let eq = this.matchVarToEq.get(oldVar);
+    if (eq >= 0) {
+      this.matchVarToEq.set(oldVar, -1);
+      this.matchVarToEq.set(newVar, eq);
+      this.matchEqToVar.set(eq, newVar as i32);
+    }
+
+    this.dae.setVarFlag(oldVar, FLAG_TEARING_VAR);
+    let currFlags = this.dae.getVarData().get(newVar * VAR_STRIDE + VAR_FLAGS);
+    this.dae.getVarData().set(newVar * VAR_STRIDE + VAR_FLAGS, currFlags & ~FLAG_TEARING_VAR);
+    return true;
+  }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported C/WASM Bridge Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function dae_createPantelides(daePtr: u32, bltPtr: u32): u32 {
+  let pantPtr = atomicChunkAlloc(sizeof<PantelidesEngine>());
+  let pant = changetype<PantelidesEngine>(pantPtr);
+  let dae = changetype<DaeBuilder>(daePtr);
+  let blt: BltEngine | null = null;
+  if (bltPtr != 0) {
+    blt = changetype<BltEngine>(bltPtr);
+  }
+  pant.init(dae, blt);
+  return pantPtr as u32;
+}
+
+export function dae_runPantelides(pantPtr: u32, stateVarsPtr: u32): u32 {
+  if (pantPtr == 0) return 0;
+  let stateVars = stateVarsPtr != 0 ? changetype<ChunkedInt32Array>(stateVarsPtr) : changetype<PantelidesEngine>(pantPtr).dummyDerivatives;
+  return changetype<PantelidesEngine>(pantPtr).reduceIndex(stateVars);
+}
+
+export function dae_getPantelidesIndex(pantPtr: u32): u32 {
+  if (pantPtr == 0) return 1;
+  return changetype<PantelidesEngine>(pantPtr).structuralIndex;
+}
+
+export function dae_getDummyDerivativeCount(pantPtr: u32): u32 {
+  if (pantPtr == 0) return 0;
+  return changetype<PantelidesEngine>(pantPtr).dummyDerivatives.length;
+}
+
+export function dae_swapDynamicState(pantPtr: u32, oldVar: u32, newVar: u32): boolean {
+  if (pantPtr == 0) return false;
+  return changetype<PantelidesEngine>(pantPtr).swapDynamicState(oldVar, newVar);
+}
+
+

@@ -1,6 +1,6 @@
 import { ChunkedInt32Array, ChunkedUint8Array, createChunkedInt32Array, createChunkedUint8Array } from "./array";
 import { DaeBuilder, ExprKind, EXPR_STRIDE, EXPR_KIND, EXPR_DATA1, EXPR_LEFT, EXPR_RIGHT, EQ_STRIDE, EQ_LHS, EQ_RHS, VAR_STRIDE, VAR_FLAGS, FLAG_TEARING_VAR } from "./dae";
-import { atomicChunkAlloc } from "./arena";
+import { atomicChunkAlloc, debugLog } from "./arena";
 import { simplifyAst } from "./parser";
 
 /**
@@ -109,8 +109,8 @@ export class BltEngine {
       this.eqDepPtrs.set(i, this.eqDepVars.length);
       
       let offset = i * EQ_STRIDE;
-      let lhsId = this.dae.eqData.get(offset + EQ_LHS);
-      let rhsId = this.dae.eqData.get(offset + EQ_RHS);
+      let lhsId = this.dae.getEqData().get(offset + EQ_LHS);
+      let rhsId = this.dae.getEqData().get(offset + EQ_RHS);
 
       exprStack.clear();
       sideStack.clear();
@@ -123,7 +123,7 @@ export class BltEngine {
         sideStack.push(1);
       }
 
-      let lhsIsName = lhsId != 0xffffffff && (this.dae.exprData.get(lhsId * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name);
+      let lhsIsName = lhsId != 0xffffffff && (this.dae.getExprData().get(lhsId * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name);
 
       // Iterative DFS of expression tree
       while (exprStack.length > 0) {
@@ -132,10 +132,10 @@ export class BltEngine {
         if (exprId == 0xffffffff) continue;
 
         let exprOffset = exprId * EXPR_STRIDE;
-        let kind = this.dae.exprData.get(exprOffset + EXPR_KIND);
+        let kind = this.dae.getExprData().get(exprOffset + EXPR_KIND);
 
         if (kind == ExprKind.Name) {
-          let varId = this.dae.exprData.get(exprOffset + EXPR_DATA1);
+          let varId = this.dae.getExprData().get(exprOffset + EXPR_DATA1);
           if ((varId as u32) < this.dae.varCount && seenVars.get(varId) == 0) {
             seenVars.set(varId, 1);
             this.eqDepVars.push(varId);
@@ -156,8 +156,8 @@ export class BltEngine {
           }
         }
 
-        let left = this.dae.exprData.get(exprOffset + EXPR_LEFT);
-        let right = this.dae.exprData.get(exprOffset + EXPR_RIGHT);
+        let left = this.dae.getExprData().get(exprOffset + EXPR_LEFT);
+        let right = this.dae.getExprData().get(exprOffset + EXPR_RIGHT);
 
         if (left != 0xffffffff) {
           exprStack.push(left);
@@ -310,8 +310,8 @@ export class BltEngine {
   @inline
   isolateEquation(eqId: u32, targetVarId: u32): void {
     let eqOffset = eqId * EQ_STRIDE;
-    let lhsId = this.dae.eqData.get(eqOffset + EQ_LHS);
-    let rhsId = this.dae.eqData.get(eqOffset + EQ_RHS);
+    let lhsId = this.dae.getEqData().get(eqOffset + EQ_LHS);
+    let rhsId = this.dae.getEqData().get(eqOffset + EQ_RHS);
     
     if (lhsId == 0xffffffff || rhsId == 0xffffffff) return; // Not an equality equation
     
@@ -326,8 +326,8 @@ export class BltEngine {
     // 3. Replace the equation: targetVarId = simplifiedResidual
     let newLhs = this.dae.addExpression(ExprKind.Name, targetVarId);
     
-    this.dae.eqData.set(eqOffset + EQ_LHS, newLhs);
-    this.dae.eqData.set(eqOffset + EQ_RHS, simplifiedResidual);
+    this.dae.getEqData().set(eqOffset + EQ_LHS, newLhs);
+    this.dae.getEqData().set(eqOffset + EQ_RHS, simplifiedResidual);
   }
 
   /**
@@ -366,8 +366,8 @@ export class BltEngine {
 
     if (selectedTearVar != -1) {
       let offset = selectedTearVar * VAR_STRIDE;
-      let curFlags = this.dae.varData.get(offset + VAR_FLAGS);
-      this.dae.varData.set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
+      let curFlags = this.dae.getVarData().get(offset + VAR_FLAGS);
+      this.dae.getVarData().set(offset + VAR_FLAGS, curFlags | FLAG_TEARING_VAR);
     }
   }
 

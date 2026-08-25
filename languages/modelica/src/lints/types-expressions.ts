@@ -245,8 +245,19 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5001,
     message: (target) => `Type mismatch in equation '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
-      const lhs = db.ast.getChildByFieldId(node, "lhs");
-      const rhs = db.ast.getChildByFieldId(node, "rhs");
+      let lhs = db.ast.getChildByFieldId(node, "lhs");
+      let rhs = db.ast.getChildByFieldId(node, "rhs");
+      if (lhs == 0) lhs = db.ast.getFirstChild(node);
+      if (rhs == 0 && lhs != 0) {
+        let sib = db.ast.getNextSibling(lhs);
+        while (sib != 0) {
+          if (db.ast.getType(sib) != 0 && !db.ast.textEquals(sib, "=")) {
+            rhs = sib;
+            break;
+          }
+          sib = db.ast.getNextSibling(sib);
+        }
+      }
       if (lhs != 0 && rhs != 0) {
         const lhsType = inferExprType(db, lhs, $);
         const rhsType = inferExprType(db, rhs, $);

@@ -52,6 +52,12 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
 
   if (nodeType == $.unsigned_real) return TYPE_REAL;
   if (nodeType == $.unsigned_integer) return TYPE_INTEGER;
+  if (nodeType == $.unsigned_number) {
+    for (const r of db.ast.getDescendants(exprNode, $.unsigned_real)) {
+      if (r != 0) return TYPE_REAL;
+    }
+    return TYPE_INTEGER;
+  }
   if (nodeType == $.string_literal) return TYPE_STRING;
 
   if (db.ast.textEquals(exprNode, "true") || db.ast.textEquals(exprNode, "false")) {
@@ -68,12 +74,87 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
   for (const lit of db.ast.getDescendants(exprNode, $.unsigned_integer)) {
     if (lit != 0) return TYPE_INTEGER;
   }
+  for (const lit of db.ast.getDescendants(exprNode, $.unsigned_number)) {
+    if (lit != 0) {
+      for (const r of db.ast.getDescendants(lit, $.unsigned_real)) {
+        if (r != 0) return TYPE_REAL;
+      }
+      return TYPE_INTEGER;
+    }
+  }
 
-  // Identifier / component reference
+  // Find enclosing class definition for component reference resolution
+  let enclosingClass: u32 = 0;
+  for (const anc of db.ast.getAncestors(exprNode, 0)) {
+    if (db.ast.getType(anc) == $.class_definition) {
+      enclosingClass = anc;
+      break;
+    }
+  }
+
+  // If node is an expression / primary wrapper, check for relational / logical / arithmetic operators
+  if (
+    nodeType == $.expression ||
+    nodeType == $.primary ||
+    nodeType == $.some_equation ||
+    nodeType == $.simple_equation
+  ) {
+    const leftChild = db.ast.getChildByFieldId(exprNode, "left");
+    const rightChild = db.ast.getChildByFieldId(exprNode, "right");
+    if (leftChild != 0 && rightChild != 0) {
+      for (const ch of db.ast.getDescendants(exprNode, 0)) {
+        if (
+          db.ast.textEquals(ch, "==") ||
+          db.ast.textEquals(ch, "<>") ||
+          db.ast.textEquals(ch, "<") ||
+          db.ast.textEquals(ch, "<=") ||
+          db.ast.textEquals(ch, ">") ||
+          db.ast.textEquals(ch, ">=") ||
+          db.ast.textEquals(ch, "and") ||
+          db.ast.textEquals(ch, "or") ||
+          db.ast.textEquals(ch, "not")
+        ) {
+          return TYPE_BOOLEAN;
+        }
+      }
+      const lType = inferExprType(db, leftChild, $);
+      const rType = inferExprType(db, rightChild, $);
+      if (lType == TYPE_REAL || rType == TYPE_REAL) return TYPE_REAL;
+      if (lType == TYPE_INTEGER && rType == TYPE_INTEGER) return TYPE_INTEGER;
+      if (lType != TYPE_UNKNOWN) return lType;
+      if (rType != TYPE_UNKNOWN) return rType;
+    }
+  }
+
+  // Component reference / Identifier lookup in enclosingClass
+  if (enclosingClass != 0) {
+    let compRef: u32 = 0;
+    if (nodeType == $.component_reference || nodeType == $.name || nodeType == $.identifier) {
+      compRef = exprNode;
+    } else {
+      for (const cr of db.ast.getDescendants(exprNode, $.component_reference)) {
+        compRef = cr;
+        break;
+      }
+      if (compRef == 0) {
+        for (const id of db.ast.getDescendants(exprNode, $.identifier)) {
+          compRef = id;
+          break;
+        }
+      }
+    }
+    if (compRef != 0) {
+      const resolvedType = db.runQuery("resolveDottedType", enclosingClass, compRef) as u16;
+      if (resolvedType != TYPE_UNKNOWN) return resolvedType;
+    }
+  }
+
+  // Identifier / component reference global symbol lookup fallback
   if (nodeType == $.identifier || nodeType == $.name || nodeType == $.component_reference) {
     const symId = resolveComplexName(db, exprNode, $);
     if (symId != 0) {
-      return db.model.getProperty(symId, "baseType") as u16;
+      const baseType = db.model.getProperty(symId, "baseType") as u16;
+      if (baseType != 0) return baseType;
     }
   }
 
@@ -95,6 +176,10 @@ export function isTypeCompatible(actualType: u16, expectedType: u16): boolean {
   if (actualType == expectedType) return true;
   // Integer coerces to Real
   if (actualType == TYPE_INTEGER && expectedType == TYPE_REAL) return true;
+  // User-defined types (>= 0x8000) are incompatible with primitive scalar types (< 0x8000)
+  if ((actualType >= 0x8000 && expectedType < 0x8000) || (expectedType >= 0x8000 && actualType < 0x8000)) {
+    return false;
+  }
   return false;
 }
 
@@ -495,11 +580,59 @@ export function isVariableDeclaredInClass(
 }
 
 /**
- * Resolves the declared type (e.g. TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK)
+ * Resolves the declared type of a potentially dotted variable reference (e.g. `x` or `x.y`)
+ * across the class hierarchy.
+ */
+export function getDottedVariableType(
+  db: CodeGraph,
+  enclosingClass: u32,
+  compRefNode: u32,
+  $: Record<string, u16>,
+): u16 {
+  if (enclosingClass == 0 || compRefNode == 0) return TYPE_UNKNOWN;
+
+  let idCount: u32 = 0;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (id != 0) idCount++;
+  }
+  if (idCount == 0) return db.runQuery("resolveComponentTypeInClass", enclosingClass, compRefNode) as u16;
+
+  if (idCount == 1) {
+    for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+      return db.runQuery("resolveComponentTypeInClass", enclosingClass, id) as u16;
+    }
+  }
+
+  // Multi-segment reference (e.g. `x.y` or `a.b.c`)
+  let currClass = enclosingClass;
+  let idx: u32 = 0;
+  for (const id of db.ast.getDescendants(compRefNode, $.identifier)) {
+    if (idx == idCount - 1) {
+      return db.runQuery("resolveComponentTypeInClass", currClass, id) as u16;
+    }
+    const nextClass = resolveComponentClassDefinition(db, currClass, id, $);
+    if (nextClass == 0) return TYPE_UNKNOWN;
+    currClass = nextClass;
+    idx++;
+  }
+
+  return TYPE_UNKNOWN;
+}
+
+/**
+ * Resolves the declared type (e.g. TYPE_REAL, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_STRING, TYPE_CLOCK, or User-Defined Type)
  * of a variable identifier `identNode` in `classNode` or its inherited base classes.
  */
 export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 {
   if (classNode == 0 || identNode == 0) return TYPE_UNKNOWN;
+
+  let targetId = identNode;
+  if (db.ast.getType(identNode) != $.identifier) {
+    for (const id of db.ast.getDescendants(identNode, $.identifier)) {
+      targetId = id;
+      break;
+    }
+  }
 
   // 1. Direct declarations in classNode (ignoring nested classes)
   for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
@@ -509,11 +642,30 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
       declId = id;
       break;
     }
-    if (declId != 0 && db.ast.textEqualsNode(identNode, declId)) {
+    if (declId == 0 && db.ast.getType(decl) == $.identifier) declId = decl;
+    if (declId != 0 && db.ast.textEqualsNode(targetId, declId)) {
       // Find parent component_clause or component_clause1
       for (const anc of db.ast.getAncestors(decl, 0)) {
         const ancType = db.ast.getType(anc);
         if (ancType == $.component_clause || ancType == $.component_clause1) {
+          let tsNode: u32 = 0;
+          for (const ts of db.ast.getDescendants(anc, $.type_specifier)) {
+            tsNode = ts;
+            break;
+          }
+          if (tsNode != 0) {
+            for (const id of db.ast.getDescendants(tsNode, $.identifier)) {
+              if (db.ast.textEquals(id, "Real")) return TYPE_REAL;
+              if (db.ast.textEquals(id, "Integer")) return TYPE_INTEGER;
+              if (db.ast.textEquals(id, "Boolean")) return TYPE_BOOLEAN;
+              if (db.ast.textEquals(id, "String")) return TYPE_STRING;
+              if (db.ast.textEquals(id, "Clock")) return TYPE_CLOCK;
+
+              const span = db.ast.getTextSpan(id);
+              const nameHash = (db.ast.hashSpan(span) & 0x7fff) as u16;
+              return 0x8000 | (nameHash != 0 ? nameHash : 1);
+            }
+          }
           for (const id of db.ast.getDescendants(anc, $.identifier)) {
             if (db.ast.textEquals(id, "Real")) return TYPE_REAL;
             if (db.ast.textEquals(id, "Integer")) return TYPE_INTEGER;

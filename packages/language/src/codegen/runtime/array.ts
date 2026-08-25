@@ -37,7 +37,6 @@ export class ChunkedArray<T> {
    * @param initialElements The expected number of elements, used to eagerly allocate chunks.
    */
   public init(initialElements: u32 = 0): void {
-    if (this.directory != 0) return; // Prevent memory leak from re-initialization
     this.dirCapacity = 1024;
     this.directory = atomicChunkAlloc(this.dirCapacity * sizeof<usize>()) as usize;
     this.allocatedChunks = 0;

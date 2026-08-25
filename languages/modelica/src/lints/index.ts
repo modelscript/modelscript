@@ -6,6 +6,7 @@ import { modelicaSyntaxLints } from "./syntax-placement.js";
 import { modelicaTypeLints } from "./types-expressions.js";
 
 import {
+  getDottedVariableType,
   getExpressionVariability,
   getFlowVariableCount,
   getVariableTypeInClass,
@@ -17,6 +18,7 @@ import {
 } from "./helpers.js";
 
 export {
+  getDottedVariableType,
   getExpressionVariability,
   getFlowVariableCount,
   getVariableTypeInClass,

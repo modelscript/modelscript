@@ -2965,6 +2965,12 @@ export class LspFacade {
     flatLines.push("end FlattenedModel;");
     const flatText = flatLines.join("\n");
 
+    const clockCount = this.exports.dae_getClockCount ? this.exports.dae_getClockCount(daePtr) : 0;
+    const smCount = this.exports.dae_getStateMachineCount ? this.exports.dae_getStateMachineCount(daePtr) : 0;
+    const eventIndicatorCount = this.exports.dae_getEventIndicatorCount
+      ? this.exports.dae_getEventIndicatorCount(daePtr)
+      : 0;
+
     return {
       pipelineId,
       variables,
@@ -2975,6 +2981,9 @@ export class LspFacade {
       varCount: continuousVars.length,
       eqCount: equations.length,
       paramCount: paramVars.length,
+      clockCount,
+      stateMachineCount: smCount,
+      eventIndicatorCount,
     };
   }
 

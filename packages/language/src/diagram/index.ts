@@ -3,14 +3,19 @@
 // Webview-side script: receives diagram data via postMessage and
 // renders it using AntV X6.
 /* eslint-disable @typescript-eslint/no-extraneous-class */
+import * as antvLayout from "@antv/layout";
 import * as x6 from "@antv/x6";
-const Graph: any = (x6 as any).Graph || (x6 as any).default?.Graph || class {};
-const Cell: any = (x6 as any).Cell || (x6 as any).default?.Cell || class {};
-const Selection: any = (x6 as any).Selection || (x6 as any).default?.Selection || class {};
-const Transform: any = (x6 as any).Transform || (x6 as any).default?.Transform || class {};
-const DagreLayout: any = (x6 as any).DagreLayout || (x6 as any).default?.DagreLayout || class {};
+
+const Graph: any = (x6 as any).Graph || class {};
+const Cell: any = (x6 as any).Cell || class {};
+const Selection: any = (x6 as any).Selection || class {};
+const Transform: any = (x6 as any).Transform || class {};
+const DagreLayout: any = (antvLayout as any).DagreLayout || class {};
+
 type Graph = any;
 type Cell = any;
+type Selection = any;
+type Transform = any;
 
 import { applySequenceLayout } from "./sequence-layout.js";
 import * as Spinner from "./spinner.js";

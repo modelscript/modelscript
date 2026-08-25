@@ -344,7 +344,7 @@ export class UnmanagedMap64 {
     /**
      * Creates or recycles a 64-bit to 32-bit hash map from the object pool.
      */
-    static create(): u32 {
+    static create(initialCapacity: u32 = 16): u32 {
         let m: UnmanagedMap64;
         if (UnmanagedMap64.poolBuf != 0 && UnmanagedMap64.poolDepth > 0) {
             UnmanagedMap64.poolDepth--;
@@ -355,7 +355,7 @@ export class UnmanagedMap64 {
             memory.fill(ptr, 0, sizeof<UnmanagedMap64>());
             m = changetype<UnmanagedMap64>(ptr);
         }
-        m.init();
+        m.init(initialCapacity);
         return changetype<u32>(m);
     }
 }
@@ -544,8 +544,8 @@ export function releaseSet64(s: UnmanagedSet64): void {
     s.release();
 }
 
-export function createMap64(): u32 {
-    return UnmanagedMap64.create();
+export function createMap64(initialCapacity: u32 = 16): u32 {
+    return UnmanagedMap64.create(initialCapacity);
 }
 
 export function releaseMap64(m: UnmanagedMap64): void {

@@ -1,3 +1,4 @@
+import type { CodeGraph, u16, u32 } from "@modelscript/language";
 import {
   choice,
   domain,
@@ -10,6 +11,7 @@ import {
   seq,
   token,
 } from "@modelscript/language";
+import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
 import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
 
@@ -158,6 +160,9 @@ export const modelicaLanguage = language({
 
   symbols: {
     class_definition: { name: "name", kind: "Class", scope: true },
+    long_class_specifier: { name: "name", kind: "Class", scope: true },
+    short_class_specifier: { name: "name", kind: "Class", scope: true },
+    der_class_specifier: { name: "name", kind: "Class", scope: true },
     component_declaration: { name: "name", kind: "Variable", scope: false },
     extends_clause: { name: "name", kind: "Extends", scope: false },
     connect_equation: { name: "from", kind: "Connection", scope: false },
@@ -754,6 +759,25 @@ export const modelicaLanguage = language({
     unsigned_integer: () => semanticToken("number", token(/\d+/)),
     unsigned_real: () =>
       semanticToken("number", token(/\d+\.\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+/)),
+  },
+
+  queries: {
+    resolveComponentTypeInClass: (db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 => {
+      return getVariableTypeInClass(db, classNode, identNode, $);
+    },
+
+    resolveDottedType: (db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: Record<string, u16>): u16 => {
+      return getDottedVariableType(db, enclosingClass, compRefNode, $);
+    },
+
+    resolveEnclosingClass: (db: CodeGraph, node: u32, $: Record<string, u16>): u32 => {
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.class_definition) {
+          return anc;
+        }
+      }
+      return 0;
+    },
   },
 
   extras: () => [/\s+/],

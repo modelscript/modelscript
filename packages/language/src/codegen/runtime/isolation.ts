@@ -1,218 +1,311 @@
-// --- Zero-GC WASM Isolation Runtime & Solvers ---
-// Provides dual-number AD, warm-start vector caching, 1x1 Newton solvers, and Homotopy continuation.
+import {
+  DaeBuilder,
+  ExprKind,
+  BinOp,
+  UnaryOp,
+  EXPR_STRIDE,
+  EXPR_KIND,
+  EXPR_DATA1,
+  EXPR_LEFT,
+  EXPR_RIGHT,
+  EQ_STRIDE,
+  EQ_KIND,
+  EQ_LHS,
+  EQ_RHS,
+  EqKind,
+} from "./dae";
+import { cas_simplify, cas_isZero } from "./cas";
+import { BuiltinMathFunc } from "./fold";
 
-import { allocGen0 } from "./arena";
+/**
+ * Checks if an expression is a direct reference to targetVarId or der(targetVarId).
+ */
+@inline
+export function isTargetVar(dae: DaeBuilder, exprId: u32, targetVarId: u32): boolean {
+  if (exprId >= dae.exprCount) return false;
+  let offset = exprId * EXPR_STRIDE;
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
 
-// --- Dual Numbers for Forward-Mode AD in CPU Registers ---
-export class Dual {
-    val: f64;
-    der: f64;
-}
-
-export function createDual(val: f64, der: f64): Dual {
-    let d: Dual;
-    d.val = val;
-    d.der = der;
-    return d;
-}
-
-export function dualConst(val: f64): Dual {
-    return createDual(val, 0.0);
-}
-
-export function dualVar(val: f64): Dual {
-    return createDual(val, 1.0);
-}
-
-export function dualAdd(a: Dual, b: Dual): Dual {
-    return createDual(a.val + b.val, a.der + b.der);
-}
-
-export function dualSub(a: Dual, b: Dual): Dual {
-    return createDual(a.val - b.val, a.der - b.der);
-}
-
-export function dualMul(a: Dual, b: Dual): Dual {
-    return createDual(a.val * b.val, a.val * b.der + a.der * b.val);
-}
-
-export function dualDiv(a: Dual, b: Dual): Dual {
-    let invB = 1.0 / b.val;
-    return createDual(a.val * invB, (a.der * b.val - a.val * b.der) * (invB * invB));
-}
-
-export function dualSin(a: Dual): Dual {
-    return createDual(Math.sin(a.val), Math.cos(a.val) * a.der);
-}
-
-export function dualCos(a: Dual): Dual {
-    return createDual(Math.cos(a.val), -Math.sin(a.val) * a.der);
-}
-
-export function dualExp(a: Dual): Dual {
-    let e = Math.exp(a.val);
-    return createDual(e, e * a.der);
-}
-
-export function dualLog(a: Dual): Dual {
-    return createDual(Math.log(a.val), a.der / a.val);
-}
-
-// --- Elementary Math Inverse Helpers ---
-export function inverseSinh(v: f64): f64 {
-    // sinh⁻¹(v) = log(v + sqrt(v² + 1))
-    return Math.log(v + Math.sqrt(v * v + 1.0));
-}
-
-export function inverseCosh(v: f64): f64 {
-    // cosh⁻¹(v) = log(v + sqrt(v² - 1)) for v >= 1.0
-    if (v < 1.0) return 0.0;
-    return Math.log(v + Math.sqrt(v * v - 1.0));
-}
-
-export function inverseTanh(v: f64): f64 {
-    // tanh⁻¹(v) = 0.5 * log((1 + v) / (1 - v)) for -1.0 < v < 1.0
-    if (v <= -1.0 || v >= 1.0) return 0.0;
-    return 0.5 * Math.log((1.0 + v) / (1.0 - v));
-}
-
-export function lambertW0(x: f64): f64 {
-    // Lambert W0 branch expansion for small/moderate x
-    if (x < -0.36787944117144233) return 0.0;
-    let w: f64 = x < 1.0 ? 0.0 : Math.log(x);
-    for (let i = 0; i < 10; i++) {
-        let ew = Math.exp(w);
-        let wEw = w * ew;
-        let res = wEw - x;
-        if (Math.abs(res) < 1e-12) break;
-        let num = res;
-        let den = ew * (w + 1.0) - ((w + 2.0) * res) / (2.0 * w + 2.0);
-        w -= num / den;
+  if (kind == ExprKind.Name) {
+    return (dae.getExprData().get(offset + EXPR_DATA1) as u32) == targetVarId;
+  }
+  if (kind == ExprKind.Der) {
+    let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+      return (dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32) == targetVarId;
     }
-    return w;
+  }
+  return false;
 }
 
-// --- Warm-Start State Vector Cache ---
-let warmStartBuf: u32 = 0;
-let warmStartCap: u32 = 0;
+/**
+ * Counts the number of times targetVarId occurs inside an expression AST.
+ */
+export function countVarOccurrences(dae: DaeBuilder, exprId: u32, targetVarId: u32): u32 {
+  if (exprId >= dae.exprCount) return 0;
+  if (isTargetVar(dae, exprId, targetVarId)) return 1;
 
-export function initWarmStartCache(capacity: u32): void {
-    if (capacity > warmStartCap) {
-        warmStartCap = capacity;
-        warmStartBuf = allocGen0(capacity * 8);
+  let offset = exprId * EXPR_STRIDE;
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
+
+  if (kind == ExprKind.Binary || kind == ExprKind.Range) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    return countVarOccurrences(dae, left, targetVarId) + countVarOccurrences(dae, right, targetVarId);
+  }
+
+  if (kind == ExprKind.Unary || kind == ExprKind.Negate || kind == ExprKind.Pre || kind == ExprKind.Der) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    if (left != 0xffffffff) return countVarOccurrences(dae, left, targetVarId);
+    let data1 = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    return countVarOccurrences(dae, data1, targetVarId);
+  }
+
+  if (kind == ExprKind.IfElse) {
+    let cond = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let thenBranch = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let elseBranch = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    return (
+      countVarOccurrences(dae, cond, targetVarId) +
+      countVarOccurrences(dae, thenBranch, targetVarId) +
+      countVarOccurrences(dae, elseBranch, targetVarId)
+    );
+  }
+
+  if (kind == ExprKind.Call) {
+    let count = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    let first = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let sum: u32 = 0;
+    for (let i: u32 = 0; i < count; i++) {
+      sum += countVarOccurrences(dae, first + i, targetVarId);
     }
+    return sum;
+  }
+
+  return 0;
 }
 
-export function getWarmStartValue(varIdx: u32): f64 {
-    if (warmStartBuf == 0 || varIdx >= warmStartCap) return 0.0;
-    return load<f64>(warmStartBuf + varIdx * 8);
+/**
+ * Strategy 0: Explicit form detection.
+ * Returns the isolated RHS expression if equation is already `x = rhs` or `lhs = x`.
+ */
+export function isExplicitlySolvable(dae: DaeBuilder, eqIdx: u32, targetVarId: u32): u32 {
+  if (eqIdx >= dae.eqCount) return 0xffffffff;
+  let offset = eqIdx * EQ_STRIDE;
+  let lhs = dae.getEqData().get(offset + EQ_LHS) as u32;
+  let rhs = dae.getEqData().get(offset + EQ_RHS) as u32;
+
+  if (isTargetVar(dae, lhs, targetVarId)) {
+    if (countVarOccurrences(dae, rhs, targetVarId) == 0) return rhs;
+  }
+  if (isTargetVar(dae, rhs, targetVarId)) {
+    if (countVarOccurrences(dae, lhs, targetVarId) == 0) return lhs;
+  }
+  return 0xffffffff;
 }
 
-export function setWarmStartValue(varIdx: u32, val: f64): void {
-    if (warmStartBuf == 0 || varIdx >= warmStartCap) return;
-    store<f64>(warmStartBuf + varIdx * 8, val);
-}
+/**
+ * Strategy 2: Single-occurrence function inversion / peeling.
+ * Given `F(x) = targetValExpr`, computes `x = F^{-1}(targetValExpr)`.
+ */
+export function invertSingleOccurrence(
+  dae: DaeBuilder,
+  exprId: u32,
+  targetVarId: u32,
+  targetValExpr: u32
+): u32 {
+  if (exprId >= dae.exprCount) return 0xffffffff;
+  if (isTargetVar(dae, exprId, targetVarId)) return targetValExpr;
 
-// --- Inline 1x1 Stack Newton-Raphson Solver ---
-// Operates with zero heap allocations on WASM execution stack
-export function solve1x1Newton(
-    varIdx: u32,
-    evalFunc: (x: f64) => Dual,
-    targetRhs: f64,
-    maxIter: u32 = 20,
-    tol: f64 = 1e-10
-): f64 {
-    let x: f64 = getWarmStartValue(varIdx);
-    if (x == 0.0) x = 1.0;
+  let offset = exprId * EXPR_STRIDE;
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
 
-    let iter: u32 = 0;
-    let converged = false;
+  // Unary Negation: -u = val -> u = -val
+  if (kind == ExprKind.Negate) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let negVal = dae.addExpression(ExprKind.Negate, 0, targetValExpr);
+    return invertSingleOccurrence(dae, left, targetVarId, negVal);
+  }
 
-    while (iter < maxIter) {
-        iter++;
-        let d = evalFunc(x);
-        let res = d.val - targetRhs;
+  if (kind == ExprKind.Unary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    if (op == UnaryOp.Negate) {
+      let negVal = dae.addExpression(ExprKind.Negate, 0, targetValExpr);
+      return invertSingleOccurrence(dae, left, targetVarId, negVal);
+    }
+  }
 
-        if (Math.abs(res) < tol) {
-            converged = true;
-            break;
-        }
+  // Binary Expression Inversions
+  if (kind == ExprKind.Binary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
 
-        let der = d.der;
-        if (Math.abs(der) < 1e-14) {
-            der = der >= 0 ? 1e-6 : -1e-6;
-        }
+    let leftCount = countVarOccurrences(dae, left, targetVarId);
+    let rightCount = countVarOccurrences(dae, right, targetVarId);
 
-        let step = res / der;
-        
-        // Armijo Line Search Backtracking
-        let alpha: f64 = 1.0;
-        let xNew = x - step;
-        let dNew = evalFunc(xNew);
-        let resNew = Math.abs(dNew.val - targetRhs);
-
-        while (resNew >= Math.abs(res) && alpha > 0.0625) {
-            alpha *= 0.5;
-            xNew = x - alpha * step;
-            dNew = evalFunc(xNew);
-            resNew = Math.abs(dNew.val - targetRhs);
-        }
-
-        x = xNew;
+    // Addition: u + v = val
+    if (op == BinOp.Add || op == BinOp.ElemAdd) {
+      if (leftCount == 1 && rightCount == 0) {
+        // u = val - v
+        let newTarget = dae.addBinaryExpr(BinOp.Sub as u16, targetValExpr, right);
+        return invertSingleOccurrence(dae, left, targetVarId, newTarget);
+      }
+      if (rightCount == 1 && leftCount == 0) {
+        // v = val - u
+        let newTarget = dae.addBinaryExpr(BinOp.Sub as u16, targetValExpr, left);
+        return invertSingleOccurrence(dae, right, targetVarId, newTarget);
+      }
     }
 
-    if (converged) {
-        setWarmStartValue(varIdx, x);
+    // Subtraction: u - v = val
+    if (op == BinOp.Sub || op == BinOp.ElemSub) {
+      if (leftCount == 1 && rightCount == 0) {
+        // u = val + v
+        let newTarget = dae.addBinaryExpr(BinOp.Add as u16, targetValExpr, right);
+        return invertSingleOccurrence(dae, left, targetVarId, newTarget);
+      }
+      if (rightCount == 1 && leftCount == 0) {
+        // v = u - val
+        let newTarget = dae.addBinaryExpr(BinOp.Sub as u16, left, targetValExpr);
+        return invertSingleOccurrence(dae, right, targetVarId, newTarget);
+      }
     }
-    return x;
+
+    // Multiplication: u * v = val
+    if (op == BinOp.Mul || op == BinOp.ElemMul) {
+      if (leftCount == 1 && rightCount == 0) {
+        // u = val / v
+        let newTarget = dae.addBinaryExpr(BinOp.Div as u16, targetValExpr, right);
+        return invertSingleOccurrence(dae, left, targetVarId, newTarget);
+      }
+      if (rightCount == 1 && leftCount == 0) {
+        // v = val / u
+        let newTarget = dae.addBinaryExpr(BinOp.Div as u16, targetValExpr, left);
+        return invertSingleOccurrence(dae, right, targetVarId, newTarget);
+      }
+    }
+
+    // Division: u / v = val
+    if (op == BinOp.Div || op == BinOp.ElemDiv) {
+      if (leftCount == 1 && rightCount == 0) {
+        // u = val * v
+        let newTarget = dae.addBinaryExpr(BinOp.Mul as u16, targetValExpr, right);
+        return invertSingleOccurrence(dae, left, targetVarId, newTarget);
+      }
+      if (rightCount == 1 && leftCount == 0) {
+        // v = u / val
+        let newTarget = dae.addBinaryExpr(BinOp.Div as u16, left, targetValExpr);
+        return invertSingleOccurrence(dae, right, targetVarId, newTarget);
+      }
+    }
+
+    // Power: u ^ p = val
+    if (op == BinOp.Pow || op == BinOp.ElemPow) {
+      if (leftCount == 1 && rightCount == 0) {
+        // u = val ^ (1/p)
+        let one = dae.addRealLiteral(1.0);
+        let invP = dae.addBinaryExpr(BinOp.Div as u16, one, right);
+        let newTarget = dae.addBinaryExpr(BinOp.Pow as u16, targetValExpr, invP);
+        return invertSingleOccurrence(dae, left, targetVarId, newTarget);
+      }
+    }
+  }
+
+  // Math Builtin Function Inversions
+  if (kind == ExprKind.Call) {
+    let funcId = dae.getExprData().get(offset + EXPR_DATA1) as i32;
+    let firstArg = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let argCount = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+
+    if (argCount == 1 && countVarOccurrences(dae, firstArg, targetVarId) == 1) {
+      let invArg: u32 = 0xffffffff;
+      let newFirst = dae.exprCount;
+
+      if (funcId == BuiltinMathFunc.Exp) {
+        // exp(u) = val -> u = log(val)
+        invArg = dae.addCall(BuiltinMathFunc.Log, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Log) {
+        // log(u) = val -> u = exp(val)
+        invArg = dae.addCall(BuiltinMathFunc.Exp, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Sqrt) {
+        // sqrt(u) = val -> u = val ^ 2
+        let two = dae.addRealLiteral(2.0);
+        invArg = dae.addBinaryExpr(BinOp.Pow as u16, targetValExpr, two);
+      } else if (funcId == BuiltinMathFunc.Sin) {
+        // sin(u) = val -> u = asin(val)
+        invArg = dae.addCall(BuiltinMathFunc.Asin, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Cos) {
+        // cos(u) = val -> u = acos(val)
+        invArg = dae.addCall(BuiltinMathFunc.Acos, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Tan) {
+        // tan(u) = val -> u = atan(val)
+        invArg = dae.addCall(BuiltinMathFunc.Atan, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Asin) {
+        invArg = dae.addCall(BuiltinMathFunc.Sin, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Acos) {
+        invArg = dae.addCall(BuiltinMathFunc.Cos, targetValExpr, 1);
+      } else if (funcId == BuiltinMathFunc.Atan) {
+        invArg = dae.addCall(BuiltinMathFunc.Tan, targetValExpr, 1);
+      }
+
+      if (invArg != 0xffffffff) {
+        return invertSingleOccurrence(dae, firstArg, targetVarId, invArg);
+      }
+    }
+  }
+
+  return 0xffffffff;
 }
 
-// --- Adaptive Homotopy Continuation Solver ---
-// Solves H(x, lambda) = lambda * F(x) + (1 - lambda) * (x - x0) = 0
-export function solveHomotopy(
-    varIdx: u32,
-    evalFunc: (x: f64) => Dual,
-    targetRhs: f64,
-    x0: f64 = 0.0
-): f64 {
-    let x: f64 = x0;
-    let lambda: f64 = 0.0;
-    let dLambda: f64 = 0.2;
+/**
+ * Attempts multi-strategy symbolic equation inversion to isolate targetVarId in eqIdx.
+ * Returns the isolated ExprId or 0xffffffff if symbolic isolation fails.
+ */
+export function isolateSymbolically(dae: DaeBuilder, eqIdx: u32, targetVarId: u32): u32 {
+  if (eqIdx >= dae.eqCount) return 0xffffffff;
 
-    while (lambda < 1.0) {
-        let nextLambda = lambda + dLambda;
-        if (nextLambda > 1.0) nextLambda = 1.0;
+  // Strategy 0: Explicit form
+  let explicitRes = isExplicitlySolvable(dae, eqIdx, targetVarId);
+  if (explicitRes != 0xffffffff) return explicitRes;
 
-        let iter: u32 = 0;
-        let stepConverged = false;
+  let offset = eqIdx * EQ_STRIDE;
+  let lhs = dae.getEqData().get(offset + EQ_LHS) as u32;
+  let rhs = dae.getEqData().get(offset + EQ_RHS) as u32;
 
-        while (iter < 15) {
-            iter++;
-            let d = evalFunc(x);
-            let fVal = d.val - targetRhs;
-            let hVal = nextLambda * fVal + (1.0 - nextLambda) * (x - x0);
-            
-            if (Math.abs(hVal) < 1e-8) {
-                stepConverged = true;
-                break;
-            }
+  // Strategy 2: Single-occurrence peeling
+  let lhsCount = countVarOccurrences(dae, lhs, targetVarId);
+  let rhsCount = countVarOccurrences(dae, rhs, targetVarId);
 
-            let hDer = nextLambda * d.der + (1.0 - nextLambda);
-            if (Math.abs(hDer) < 1e-12) hDer = 1e-6;
+  if (lhsCount == 1 && rhsCount == 0) {
+    let res = invertSingleOccurrence(dae, lhs, targetVarId, rhs);
+    if (res != 0xffffffff) return cas_simplify(dae, res);
+  }
 
-            x -= hVal / hDer;
-        }
+  if (rhsCount == 1 && lhsCount == 0) {
+    let res = invertSingleOccurrence(dae, rhs, targetVarId, lhs);
+    if (res != 0xffffffff) return cas_simplify(dae, res);
+  }
 
-        if (stepConverged) {
-            lambda = nextLambda;
-            if (dLambda < 0.2) dLambda *= 1.5;
-        } else {
-            // Reduce step size and retry
-            dLambda *= 0.5;
-            if (dLambda < 0.001) break; // Failed
-        }
-    }
+  // Residual peeling: (LHS - RHS) = 0
+  let residual = dae.addBinaryExpr(BinOp.Sub as u16, lhs, rhs);
+  let totalCount = countVarOccurrences(dae, residual, targetVarId);
+  if (totalCount == 1) {
+    let zero = dae.addRealLiteral(0.0);
+    let res = invertSingleOccurrence(dae, residual, targetVarId, zero);
+    if (res != 0xffffffff) return cas_simplify(dae, res);
+  }
 
-    setWarmStartValue(varIdx, x);
-    return x;
+  return 0xffffffff;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// C/WASM Export Wrappers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function dae_isolateEquation(daePtr: u32, eqId: u32, targetVarId: u32): u32 {
+  if (daePtr == 0) return 0xffffffff;
+  let dae = changetype<DaeBuilder>(daePtr);
+  return isolateSymbolically(dae, eqId, targetVarId);
 }

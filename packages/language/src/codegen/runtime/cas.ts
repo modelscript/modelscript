@@ -8,19 +8,21 @@ import { DaeBuilder, ExprKind, BinOp, UnaryOp, EXPR_STRIDE, EXPR_KIND, EXPR_DATA
  */
 
 export function cas_getRealValue(dae: DaeBuilder, exprId: u32): f64 {
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let lo = dae.exprData.get(offset + EXPR_DATA1) as u32;
-  let hi = dae.exprData.get(offset + EXPR_LEFT) as u32;
-  let bits = ((hi as u64) << 32) | (lo as u64);
-  return reinterpret<f64>(bits);
+  let lo = (exprData.get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+  let hi = (exprData.get(offset + EXPR_LEFT) as u64) & 0xffffffff;
+  let bits = (hi << 32) | lo;
+  return f64.reinterpret_i64(bits as i64);
 }
 
 export function cas_isZero(dae: DaeBuilder, exprId: u32): boolean {
   if (exprId >= dae.exprCount) return false;
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
   if (kind == ExprKind.IntLiteral) {
-    return (dae.exprData.get(offset + EXPR_DATA1) as i32) == 0;
+    return (exprData.get(offset + EXPR_DATA1) as i32) == 0;
   }
   if (kind == ExprKind.RealLiteral) {
     return cas_getRealValue(dae, exprId) == 0.0;
@@ -30,10 +32,11 @@ export function cas_isZero(dae: DaeBuilder, exprId: u32): boolean {
 
 export function cas_isOne(dae: DaeBuilder, exprId: u32): boolean {
   if (exprId >= dae.exprCount) return false;
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
   if (kind == ExprKind.IntLiteral) {
-    return (dae.exprData.get(offset + EXPR_DATA1) as i32) == 1;
+    return (exprData.get(offset + EXPR_DATA1) as i32) == 1;
   }
   if (kind == ExprKind.RealLiteral) {
     return cas_getRealValue(dae, exprId) == 1.0;
@@ -43,8 +46,9 @@ export function cas_isOne(dae: DaeBuilder, exprId: u32): boolean {
 
 export function cas_isConstant(dae: DaeBuilder, exprId: u32): boolean {
   if (exprId >= dae.exprCount) return false;
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
   return kind == ExprKind.IntLiteral || kind == ExprKind.RealLiteral;
 }
 
@@ -53,13 +57,14 @@ export function cas_isConstant(dae: DaeBuilder, exprId: u32): boolean {
  */
 export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
   if (exprId >= dae.exprCount) return exprId;
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Binary) {
-    let op = dae.exprData.get(offset + EXPR_DATA1);
-    let left = cas_simplify(dae, dae.exprData.get(offset + EXPR_LEFT));
-    let right = cas_simplify(dae, dae.exprData.get(offset + EXPR_RIGHT));
+    let op = exprData.get(offset + EXPR_DATA1);
+    let left = cas_simplify(dae, exprData.get(offset + EXPR_LEFT));
+    let right = cas_simplify(dae, exprData.get(offset + EXPR_RIGHT));
 
     // Constant folding if both operands are numeric constants
     if (cas_isConstant(dae, left) && cas_isConstant(dae, right)) {
@@ -108,16 +113,16 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
   }
 
   if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
-    let sub = cas_simplify(dae, dae.exprData.get(offset + EXPR_LEFT));
+    let sub = cas_simplify(dae, exprData.get(offset + EXPR_LEFT));
     if (cas_isConstant(dae, sub)) {
       let val = cas_getRealValue(dae, sub);
       return dae.addRealLiteral(-val);
     }
     // -(-x) -> x
     let subOffset = sub * EXPR_STRIDE;
-    let subKind = dae.exprData.get(subOffset + EXPR_KIND);
+    let subKind = exprData.get(subOffset + EXPR_KIND);
     if (subKind == ExprKind.Negate || subKind == ExprKind.Unary) {
-      return dae.exprData.get(subOffset + EXPR_LEFT);
+      return exprData.get(subOffset + EXPR_LEFT);
     }
     return dae.addExpression(ExprKind.Negate, 0, sub, 0xffffffff);
   }
@@ -130,11 +135,12 @@ export function cas_simplify(dae: DaeBuilder, exprId: u32): u32 {
  */
 export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32): u32 {
   if (exprId >= dae.exprCount) return dae.addRealLiteral(0.0);
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
 
   if (kind == ExprKind.Name) {
-    let varId = dae.exprData.get(offset + EXPR_DATA1);
+    let varId = exprData.get(offset + EXPR_DATA1);
     // d(x) / dx = 1, d(y) / dx = 0
     return varId == targetVarId ? dae.addRealLiteral(1.0) : dae.addRealLiteral(0.0);
   }
@@ -145,9 +151,9 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
   }
 
   if (kind == ExprKind.Binary) {
-    let op = dae.exprData.get(offset + EXPR_DATA1);
-    let u = dae.exprData.get(offset + EXPR_LEFT);
-    let v = dae.exprData.get(offset + EXPR_RIGHT);
+    let op = exprData.get(offset + EXPR_DATA1);
+    let u = exprData.get(offset + EXPR_LEFT);
+    let v = exprData.get(offset + EXPR_RIGHT);
     let du = cas_differentiate(dae, u, targetVarId);
     let dv = cas_differentiate(dae, v, targetVarId);
 
@@ -180,7 +186,7 @@ export function cas_differentiate(dae: DaeBuilder, exprId: u32, targetVarId: u32
   }
 
   if (kind == ExprKind.Negate || kind == ExprKind.Unary) {
-    let u = dae.exprData.get(offset + EXPR_LEFT);
+    let u = exprData.get(offset + EXPR_LEFT);
     let du = cas_differentiate(dae, u, targetVarId);
     let neg = dae.addExpression(ExprKind.Negate, 0, du, 0xffffffff);
     return cas_simplify(dae, neg);

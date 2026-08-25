@@ -1,7 +1,6 @@
 import { DaeBuilder, EQ_STRIDE, EQ_KIND, EqKind, EQ_LHS, EQ_RHS, EXPR_STRIDE, EXPR_KIND, ExprKind, EXPR_DATA1 } from "./dae";
 import { evalEquationResidual } from "./eval";
 import { EventDetector } from "./events";
-import { getWarmStartValue, setWarmStartValue } from "./isolation";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
 
 /**
@@ -38,13 +37,14 @@ export function solveBlockAlgebraicConstraints(
   let dxPtr = rPtr + n * 8;
   let jPtr = dxPtr + n * 8;
   let pivPtr = jPtr + n * n * 8;
-  let scalePtr = pivPtr + n * 4;
+  let pivSize = (n * 4 + 7) & ~7;
+  let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + n * 8;
 
   // Warm-start variables if cached values exist
   for (let i: u32 = 0; i < n; i++) {
     let vIdx = load<u32>(varIndicesPtr + i * 4);
-    let warmVal = getWarmStartValue(vIdx);
+    let warmVal = dae.getWarmStartValue(vIdx);
     if (warmVal != 0.0) {
       store<f64>(varValuesPtr + vIdx * 8, warmVal);
     }
@@ -153,7 +153,7 @@ export function solveBlockAlgebraicConstraints(
   for (let i: u32 = 0; i < n; i++) {
     let vIdx = load<u32>(varIndicesPtr + i * 4);
     let xFinal = load<f64>(varValuesPtr + vIdx * 8);
-    setWarmStartValue(vIdx, xFinal);
+    dae.setWarmStartValue(vIdx, xFinal);
   }
 
   return true;
@@ -167,21 +167,21 @@ export function solveBlockAlgebraicConstraints(
 export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): void {
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
-    if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+    if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
     // Check if equation target LHS is a non-derivative variable
-    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    let lhsExpr = dae.getEqData().get(offset + EQ_LHS);
     if (lhsExpr == 0xffffffff) continue;
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
-    let lhsKind = dae.exprData.get(lhsOffset + EXPR_KIND);
+    let lhsKind = dae.getExprData().get(lhsOffset + EXPR_KIND);
     if (lhsKind != ExprKind.Name) continue; // Only handle algebraic variable assignments
 
-    let targetVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1) as u32;
+    let targetVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
     if (targetVarIdx >= dae.varCount) continue;
 
     // Retrieve warm start value if available
-    let warmVal = getWarmStartValue(targetVarIdx);
+    let warmVal = dae.getWarmStartValue(targetVarIdx);
     if (warmVal != 0.0) {
       store<f64>(varValuesPtr + targetVarIdx * 8, warmVal);
     }
@@ -224,7 +224,7 @@ export function solveAlgebraicConstraints(dae: DaeBuilder, varValuesPtr: u32): v
     }
 
     store<f64>(varValuesPtr + targetVarIdx * 8, x);
-    setWarmStartValue(targetVarIdx, x);
+    dae.setWarmStartValue(targetVarIdx, x);
   }
 }
 
@@ -236,14 +236,14 @@ export function stepEuler(dae: DaeBuilder, varValuesPtr: u32, dt: f64): void {
   // 1. Explicit ODE State Update
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
-    if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+    if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
-    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    let lhsExpr = dae.getEqData().get(offset + EQ_LHS);
     if (lhsExpr == 0xffffffff) continue;
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
-    if (dae.exprData.get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
-      let stateVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1);
+    if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
+      let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1);
       let res = evalEquationResidual(i, dae, varValuesPtr);
       let stateVal = load<f64>(varValuesPtr + stateVarIdx * 8);
       store<f64>(varValuesPtr + stateVarIdx * 8, stateVal + dt * res);
@@ -405,14 +405,14 @@ export function computeDerivatives(dae: DaeBuilder, varValuesPtr: u32, kOutPtr: 
 
   for (let i: u32 = 0; i < dae.eqCount; i++) {
     let offset = i * EQ_STRIDE;
-    if (dae.eqData.get(offset + EQ_KIND) != EqKind.Simple) continue;
+    if (dae.getEqData().get(offset + EQ_KIND) != EqKind.Simple) continue;
 
-    let lhsExpr = dae.eqData.get(offset + EQ_LHS);
+    let lhsExpr = dae.getEqData().get(offset + EQ_LHS);
     if (lhsExpr == 0xffffffff) continue;
 
     let lhsOffset = lhsExpr * EXPR_STRIDE;
-    if (dae.exprData.get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
-      let stateVarIdx = dae.exprData.get(lhsOffset + EXPR_DATA1) as u32;
+    if (dae.getExprData().get(lhsOffset + EXPR_KIND) == ExprKind.Der) {
+      let stateVarIdx = dae.getExprData().get(lhsOffset + EXPR_DATA1) as u32;
       if (stateVarIdx < numVars) {
         let res = evalEquationResidual(i, dae, varValuesPtr);
         store<f64>(kOutPtr + stateVarIdx * 8, res);
@@ -624,7 +624,8 @@ export function stepBDF(
   let dxPtr = rPtr + numVars * 8;
   let jPtr = dxPtr + numVars * 8;
   let pivPtr = jPtr + numVars * numVars * 8;
-  let scalePtr = pivPtr + numVars * 4;
+  let pivSize = (numVars * 4 + 7) & ~7;
+  let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + numVars * 8;
   let fEvalPtr = luScratchPtr + numVars * 8;
   let fPerturbPtr = fEvalPtr + numVars * 8;
@@ -699,3 +700,212 @@ export function stepBDF(
 
   return false;
 }
+
+/**
+ * Radau IIA (Order 3, 2-Stage) Implicit Runge-Kutta Integrator for Stiff DAE Systems.
+ * Stiffly accurate L-stable integrator with automated stage-residual Newton convergence.
+ */
+@inline
+export function stepRadauIIA(
+  dae: DaeBuilder,
+  varValuesPtr: u32,
+  stageYPtr: u32,
+  scratchPtr: u32,
+  dt: f64
+): bool {
+  let numVars = dae.varCount;
+  if (numVars == 0) return true;
+
+  // Radau IIA 2-Stage Butcher Coefficients
+  let a11: f64 = 5.0 / 12.0;
+  let a12: f64 = -1.0 / 12.0;
+  let a21: f64 = 3.0 / 4.0;
+  let a22: f64 = 1.0 / 4.0;
+
+  let y1Ptr = stageYPtr;
+  let y2Ptr = stageYPtr + numVars * 8;
+  let f1Ptr = stageYPtr + numVars * 8 * 2;
+  let f2Ptr = stageYPtr + numVars * 8 * 3;
+
+  // Scratch memory layout for 2N dimension coupled Newton system
+  let dim2N = numVars * 2;
+  let rPtr = scratchPtr;
+  let dxPtr = rPtr + dim2N * 8;
+  let jPtr = dxPtr + dim2N * 8;
+  let pivPtr = jPtr + dim2N * dim2N * 8;
+  let scalePtr = pivPtr + dim2N * 4;
+  let luScratchPtr = scalePtr + dim2N * 8;
+  let fPerturbPtr = luScratchPtr + dim2N * 8;
+
+  // Initial stage guess: Y1 = y_n, Y2 = y_n
+  for (let v: u32 = 0; v < numVars; v++) {
+    let y0 = load<f64>(varValuesPtr + v * 8);
+    store<f64>(y1Ptr + v * 8, y0);
+    store<f64>(y2Ptr + v * 8, y0);
+  }
+
+  let maxIter: u32 = 25;
+  let tol: f64 = 1e-9;
+  let eps: f64 = 1e-7;
+
+  for (let iter: u32 = 0; iter < maxIter; iter++) {
+    computeDerivatives(dae, y1Ptr, f1Ptr);
+    computeDerivatives(dae, y2Ptr, f2Ptr);
+
+    // 1. Evaluate Residual R1 and R2
+    for (let i: u32 = 0; i < numVars; i++) {
+      let y0 = load<f64>(varValuesPtr + i * 8);
+      let y1 = load<f64>(y1Ptr + i * 8);
+      let y2 = load<f64>(y2Ptr + i * 8);
+      let f1 = load<f64>(f1Ptr + i * 8);
+      let f2 = load<f64>(f2Ptr + i * 8);
+
+      let r1 = y1 - y0 - dt * (a11 * f1 + a12 * f2);
+      let r2 = y2 - y0 - dt * (a21 * f1 + a22 * f2);
+
+      store<f64>(rPtr + i * 8, r1);
+      store<f64>(rPtr + (numVars + i) * 8, r2);
+    }
+
+    // Check convergence: ||R||_inf < tol
+    let normR = vectorNormInf(rPtr, dim2N);
+    if (normR < tol) {
+      // Radau IIA is stiffly accurate: y_{n+1} = Y2
+      for (let v: u32 = 0; v < numVars; v++) {
+        store<f64>(varValuesPtr + v * 8, load<f64>(y2Ptr + v * 8));
+      }
+      solveAlgebraicConstraints(dae, varValuesPtr);
+      return true;
+    }
+
+    // 2. Build Block 2N x 2N Jacobian via finite differences
+    for (let j: u32 = 0; j < numVars; j++) {
+      let y1Orig = load<f64>(y1Ptr + j * 8);
+      let hJ1 = eps * Math.max(Math.abs(y1Orig), 1.0);
+      store<f64>(y1Ptr + j * 8, y1Orig + hJ1);
+      computeDerivatives(dae, y1Ptr, fPerturbPtr);
+      store<f64>(y1Ptr + j * 8, y1Orig);
+
+      for (let i: u32 = 0; i < numVars; i++) {
+        let f1Orig = load<f64>(f1Ptr + i * 8);
+        let df1dy1 = (load<f64>(fPerturbPtr + i * 8) - f1Orig) / hJ1;
+
+        // Block (1, 1): I - dt * a11 * df1/dy1
+        let j11 = (i == j ? 1.0 : 0.0) - dt * a11 * df1dy1;
+        store<f64>(jPtr + (i * dim2N + j) * 8, j11);
+
+        // Block (2, 1): -dt * a21 * df1/dy1
+        let j21 = -dt * a21 * df1dy1;
+        store<f64>(jPtr + ((numVars + i) * dim2N + j) * 8, j21);
+      }
+
+      let y2Orig = load<f64>(y2Ptr + j * 8);
+      let hJ2 = eps * Math.max(Math.abs(y2Orig), 1.0);
+      store<f64>(y2Ptr + j * 8, y2Orig + hJ2);
+      computeDerivatives(dae, y2Ptr, fPerturbPtr);
+      store<f64>(y2Ptr + j * 8, y2Orig);
+
+      for (let i: u32 = 0; i < numVars; i++) {
+        let f2Orig = load<f64>(f2Ptr + i * 8);
+        let df2dy2 = (load<f64>(fPerturbPtr + i * 8) - f2Orig) / hJ2;
+
+        // Block (1, 2): -dt * a12 * df2/dy2
+        let j12 = -dt * a12 * df2dy2;
+        store<f64>(jPtr + (i * dim2N + (numVars + j)) * 8, j12);
+
+        // Block (2, 2): I - dt * a22 * df2/dy2
+        let j22 = (i == j ? 1.0 : 0.0) - dt * a22 * df2dy2;
+        store<f64>(jPtr + ((numVars + i) * dim2N + (numVars + j)) * 8, j22);
+      }
+    }
+
+    // 3. Solve J * dx = R
+    if (!luFactor(jPtr, pivPtr, scalePtr, dim2N)) return false;
+    for (let i: u32 = 0; i < dim2N; i++) {
+      store<f64>(dxPtr + i * 8, load<f64>(rPtr + i * 8));
+    }
+    luSolve(jPtr, pivPtr, scalePtr, dxPtr, luScratchPtr, dim2N);
+
+    // 4. Update stages: Y1 = Y1 - dx1, Y2 = Y2 - dx2
+    for (let i: u32 = 0; i < numVars; i++) {
+      let y1 = load<f64>(y1Ptr + i * 8);
+      let dx1 = load<f64>(dxPtr + i * 8);
+      store<f64>(y1Ptr + i * 8, y1 - dx1);
+
+      let y2 = load<f64>(y2Ptr + i * 8);
+      let dx2 = load<f64>(dxPtr + (numVars + i) * 8);
+      store<f64>(y2Ptr + i * 8, y2 - dx2);
+    }
+  }
+
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Exported C/WASM Simulation & Integrator Bridge Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function sim_stepEuler(daePtr: u32, varValuesPtr: u32, dt: f64): void {
+  stepEuler(changetype<DaeBuilder>(daePtr), varValuesPtr, dt);
+}
+
+export function sim_stepRK4(
+  daePtr: u32,
+  varValuesPtr: u32,
+  tempPtr: u32,
+  k1Ptr: u32,
+  k2Ptr: u32,
+  k3Ptr: u32,
+  k4Ptr: u32,
+  dt: f64
+): void {
+  stepRK4(changetype<DaeBuilder>(daePtr), varValuesPtr, tempPtr, k1Ptr, k2Ptr, k3Ptr, k4Ptr, dt);
+}
+
+export function sim_stepDopri5(
+  daePtr: u32,
+  varValuesPtr: u32,
+  kStagesPtr: u32,
+  tempValuesPtr: u32,
+  yNewPtr: u32,
+  dt: f64,
+  atol: f64,
+  rtol: f64
+): bool {
+  return stepDopri5(changetype<DaeBuilder>(daePtr), varValuesPtr, kStagesPtr, tempValuesPtr, yNewPtr, dt, atol, rtol);
+}
+
+export function sim_stepRadauIIA(
+  daePtr: u32,
+  varValuesPtr: u32,
+  stageYPtr: u32,
+  scratchPtr: u32,
+  dt: f64
+): bool {
+  return stepRadauIIA(changetype<DaeBuilder>(daePtr), varValuesPtr, stageYPtr, scratchPtr, dt);
+}
+
+export function sim_stepBDF(
+  daePtr: u32,
+  varValuesPtr: u32,
+  historyBufPtr: u32,
+  scratchPtr: u32,
+  dt: f64,
+  order: i32
+): bool {
+  return stepBDF(changetype<DaeBuilder>(daePtr), varValuesPtr, historyBufPtr, scratchPtr, dt, order);
+}
+
+export function sim_interpolateDenseOutput(
+  y0Ptr: u32,
+  y1Ptr: u32,
+  k1Ptr: u32,
+  k7Ptr: u32,
+  dt: f64,
+  theta: f64,
+  numVars: u32,
+  outPtr: u32
+): void {
+  hermiteInterpolate(y0Ptr, y1Ptr, k1Ptr, k7Ptr, dt, theta, numVars, outPtr);
+}
+

@@ -132,7 +132,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
       const queryFn = ast?.queries?.get(queryName) || rawQueryFn;
       let queryInfo = transpileQuery(queryFn);
       let asQueryStr = queryInfo.body;
-      const nonDollarParams = queryInfo.params.filter((p) => p !== "$");
+      const nonDollarParams = queryInfo.params.filter((p) => p !== "$" && p !== "db" && p !== "graph");
       const actualArgNames = nonDollarParams;
 
       let signatureArgs =

@@ -6,18 +6,25 @@ import { extractLanguageAST } from "./ast-loader.js";
 import {
   arenaCode,
   arrayCode,
+  bdfCode,
   bltCode,
   builtins_mathCode,
   casCode,
+  coloringCode,
   correspondenceCode,
+  cseCode,
   cursorCode,
   daeCode,
+  delayCode,
   engineCode,
   evalCode,
   eventsCode,
   flattenerCode,
+  fmi3_wasmCode,
+  foldCode,
   gssCode,
   hashmapCode,
+  homotopyCode,
   integratorsCode,
   isolationCode,
   lspCode,
@@ -29,10 +36,13 @@ import {
   polyglot_arenaCode,
   recoveryCode,
   recoveryConfigCode,
+  scalarizeCode,
   scope_stackCode,
+  sparse_luCode,
   string_poolCode,
   stubCode,
   tapeCode,
+  tearingCode,
   trigramCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
@@ -1060,6 +1070,16 @@ export function generateParserTables(
     { filename: "cas.ts", content: casCode },
     { filename: "tape.ts", content: tapeCode },
     { filename: "flattener.ts", content: flattenerCode },
+    { filename: "fold.ts", content: foldCode },
+    { filename: "tearing.ts", content: tearingCode },
+    { filename: "scalarize.ts", content: scalarizeCode },
+    { filename: "cse.ts", content: cseCode },
+    { filename: "coloring.ts", content: coloringCode },
+    { filename: "sparse_lu.ts", content: sparse_luCode },
+    { filename: "bdf.ts", content: bdfCode },
+    { filename: "homotopy.ts", content: homotopyCode },
+    { filename: "delay.ts", content: delayCode },
+    { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1078,6 +1098,7 @@ export function generateParserTables(
   code += extractExports(arenaCode, "./arena");
   code += extractExports(daeCode, "./dae");
   code += extractExports(bltCode, "./blt");
+  code += extractExports(evalCode, "./eval");
   code += extractExports(eventsCode, "./events");
   code += extractExports(integratorsCode, "./integrators");
   code += extractExports(matrixCode, "./matrix");
@@ -1091,6 +1112,18 @@ export function generateParserTables(
   code += extractExports(hashmapCode, "./hashmap");
   code += extractExports(casCode, "./cas");
   code += extractExports(tapeCode, "./tape");
+  code += extractExports(foldCode, "./fold");
+  code += extractExports(tearingCode, "./tearing");
+  code += extractExports(pantelidesCode, "./pantelides");
+  code += extractExports(isolationCode, "./isolation");
+  code += extractExports(scalarizeCode, "./scalarize");
+  code += extractExports(cseCode, "./cse");
+  code += extractExports(coloringCode, "./coloring");
+  code += extractExports(sparse_luCode, "./sparse_lu");
+  code += extractExports(bdfCode, "./bdf");
+  code += extractExports(homotopyCode, "./homotopy");
+  code += extractExports(delayCode, "./delay");
+  code += extractExports(fmi3_wasmCode, "./fmi3_wasm");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

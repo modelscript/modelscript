@@ -7,37 +7,38 @@ import { DaeBuilder, ExprKind, BinOp, UnaryOp, EXPR_STRIDE, EXPR_KIND, EXPR_DATA
 export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
   if (exprId == 0xffffffff || exprId >= dae.exprCount) return 0.0;
 
+  let exprData = dae.getExprData();
   let offset = exprId * EXPR_STRIDE;
-  let kind = dae.exprData.get(offset + EXPR_KIND);
+  let kind = exprData.get(offset + EXPR_KIND);
 
   if (kind == ExprKind.RealLiteral) {
-    let lo = dae.exprData.get(offset + EXPR_DATA1) as u64;
-    let hi = dae.exprData.get(offset + EXPR_LEFT) as u64;
+    let lo = (exprData.get(offset + EXPR_DATA1) as u64) & 0xffffffff;
+    let hi = (exprData.get(offset + EXPR_LEFT) as u64) & 0xffffffff;
     let bits = (hi << 32) | lo;
-    return reinterpret<f64>(bits);
+    return f64.reinterpret_i64(bits as i64);
   }
 
   if (kind == ExprKind.IntLiteral) {
-    let val = dae.exprData.get(offset + EXPR_DATA1) as i32;
+    let val = exprData.get(offset + EXPR_DATA1) as i32;
     return val as f64;
   }
 
   if (kind == ExprKind.Name) {
-    let varId = dae.exprData.get(offset + EXPR_DATA1) as u32;
+    let varId = exprData.get(offset + EXPR_DATA1) as u32;
     if (varId == 0xffffffff || varId >= dae.varCount) return 0.0;
     return load<f64>(varValuesPtr + varId * 8);
   }
 
   if (kind == ExprKind.Unary || kind == ExprKind.Negate) {
-    let left = dae.exprData.get(offset + EXPR_LEFT);
+    let left = exprData.get(offset + EXPR_LEFT);
     let val = evalExpr(left, dae, varValuesPtr);
     return -val;
   }
 
   if (kind == ExprKind.Binary) {
-    let op = dae.exprData.get(offset + EXPR_DATA1);
-    let left = dae.exprData.get(offset + EXPR_LEFT);
-    let right = dae.exprData.get(offset + EXPR_RIGHT);
+    let op = exprData.get(offset + EXPR_DATA1);
+    let left = exprData.get(offset + EXPR_LEFT);
+    let right = exprData.get(offset + EXPR_RIGHT);
 
     let lVal = evalExpr(left, dae, varValuesPtr);
     let rVal = evalExpr(right, dae, varValuesPtr);
@@ -50,9 +51,9 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
   }
 
   if (kind == ExprKind.Call) {
-    let funcId = dae.exprData.get(offset + EXPR_DATA1);
-    let arg1 = dae.exprData.get(offset + EXPR_LEFT);
-    let arg2 = dae.exprData.get(offset + EXPR_RIGHT);
+    let funcId = exprData.get(offset + EXPR_DATA1);
+    let arg1 = exprData.get(offset + EXPR_LEFT);
+    let arg2 = exprData.get(offset + EXPR_RIGHT);
 
     let v1 = evalExpr(arg1, dae, varValuesPtr);
     let v2 = evalExpr(arg2, dae, varValuesPtr);
@@ -78,12 +79,21 @@ export function evalExpr(exprId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
 @inline
 export function evalEquationResidual(eqId: u32, dae: DaeBuilder, varValuesPtr: u32): f64 {
   if (eqId >= dae.eqCount) return 0.0;
+  let eqData = dae.getEqData();
   let offset = eqId * EQ_STRIDE;
-  let lhsId = dae.eqData.get(offset + EQ_LHS);
-  let rhsId = dae.eqData.get(offset + EQ_RHS);
+  let lhsId = eqData.get(offset + EQ_LHS);
+  let rhsId = eqData.get(offset + EQ_RHS);
 
   let lhsVal = evalExpr(lhsId, dae, varValuesPtr);
   let rhsVal = evalExpr(rhsId, dae, varValuesPtr);
 
   return rhsVal - lhsVal;
+}
+
+export function dae_evalExpr(daePtr: u32, exprId: u32, varValuesPtr: u32): f64 {
+  return evalExpr(exprId, changetype<DaeBuilder>(daePtr), varValuesPtr);
+}
+
+export function dae_evalEquationResidual(daePtr: u32, eqId: u32, varValuesPtr: u32): f64 {
+  return evalEquationResidual(eqId, changetype<DaeBuilder>(daePtr), varValuesPtr);
 }

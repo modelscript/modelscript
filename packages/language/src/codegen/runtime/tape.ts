@@ -40,13 +40,13 @@ export class AdTape {
     let lo = this.nodeTable.get(offset + 4) as u32;
     let hi = this.nodeTable.get(offset + 5) as u32;
     let bits = ((hi as u64) << 32) | (lo as u64);
-    return reinterpret<f64>(bits);
+    return f64.reinterpret_i64(bits as i64);
   }
 
   @inline
   setNodeValue(nodeIdx: u32, val: f64): void {
     let offset = nodeIdx * TAPE_STRIDE;
-    let bits = reinterpret<u64>(val);
+    let bits = i64.reinterpret_f64(val) as u64;
     this.nodeTable.set(offset + 4, (bits & 0xffffffff) as u32);
     this.nodeTable.set(offset + 5, (bits >>> 32) as u32);
   }
@@ -57,13 +57,13 @@ export class AdTape {
     let lo = this.nodeTable.get(offset + 6) as u32;
     let hi = this.nodeTable.get(offset + 7) as u32;
     let bits = ((hi as u64) << 32) | (lo as u64);
-    return reinterpret<f64>(bits);
+    return f64.reinterpret_i64(bits as i64);
   }
 
   @inline
   setNodeGrad(nodeIdx: u32, grad: f64): void {
     let offset = nodeIdx * TAPE_STRIDE;
-    let bits = reinterpret<u64>(grad);
+    let bits = i64.reinterpret_f64(grad) as u64;
     this.nodeTable.set(offset + 6, (bits & 0xffffffff) as u32);
     this.nodeTable.set(offset + 7, (bits >>> 32) as u32);
   }
