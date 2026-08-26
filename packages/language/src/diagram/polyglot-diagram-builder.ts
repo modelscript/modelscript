@@ -182,6 +182,8 @@ export interface PolyglotDiagramData {
   diagramBackground?: any;
   /** Optional: the type of diagram, used by the renderer to select layout algorithms */
   diagramType?: string;
+  /** Layout strategy (dagre, sequence, manual, grid, etc.) */
+  layout?: string;
 }
 
 // ── Builder ──
@@ -193,38 +195,34 @@ export interface PolyglotDiagramData {
  * @param gfxConfig    Maps symbol kind → GraphicsConfig (from generated graphics_config.ts).
  * @param resourceId   Optional resource URI to limit scope to symbols from one document.
  * @param resolver     Optional ScopeResolver for resolving edge source/target via the scope graph.
+ * @param diagramType  Optional projection/diagram type name (default: "All").
+ * @param customProjections Optional map of custom DSL projection configs.
  */
 export function buildPolyglotDiagram(
   index: SymbolIndex,
   gfxConfig: Record<string, GraphicsConfig>,
   resourceId?: string,
   resolver?: ScopeResolver,
-  diagramType:
-    | "All"
-    | "BDD"
-    | "IBD"
-    | "StateMachine"
-    | "Activity"
-    | "UseCase"
-    | "Requirement"
-    | "Parametric"
-    | "Sequence"
-    | "Package" = "All",
+  diagramType: string = "All",
+  customProjections?: Record<string, any>,
 ): PolyglotDiagramData {
   const nodes: PolyglotDiagramNode[] = [];
   const edges: PolyglotDiagramEdge[] = [];
+  const activeProjection = customProjections?.[diagramType];
 
   // Collect all symbols, optionally filtered to one document
   const allSymbols: SymbolEntry[] = [];
   for (const sym of index.symbols.values()) {
     if (resourceId && sym.resourceId !== resourceId) continue;
 
-    // Phase 6: Diagram Type Filtering
-    if (diagramType === "BDD") {
-      // In BDD, we only want structural nodes (Packages, Blocks) and extending taxonomy
-      // Hide internal parts/ports from the main canvas (except as compartment text)
+    // DSL-Declared Custom Projection Filtering
+    if (activeProjection) {
+      if (activeProjection.includeRules && !activeProjection.includeRules.includes(sym.ruleName)) continue;
+      if (activeProjection.excludeRules && activeProjection.excludeRules.includes(sym.ruleName)) continue;
+      if (typeof activeProjection.filter === "function" && !activeProjection.filter(sym as any)) continue;
+    } else if (diagramType === "BDD") {
+      // Fallback built-in SysML2 BDD
       if (sym.ruleName === "PartUsage" || sym.ruleName === "PortUsage") continue;
-      // Hide State Machines and their innards
       if (sym.ruleName.startsWith("State") || sym.ruleName.startsWith("Transition")) continue;
     } else if (diagramType === "IBD") {
       // In IBD, we only want Parts, Ports, and their connections.
@@ -1898,6 +1896,7 @@ export function buildPolyglotDiagram(
     },
     diagramBackground: null,
     diagramType,
+    layout: activeProjection?.defaultLayout,
   };
 }
 
@@ -2503,11 +2502,16 @@ export function buildDiagramFromDSL(
     edges.push(x6Edge);
   }
 
+  const activeProj = diagramConfig?.projections?.[activeView || ""] || diagramConfig?.views?.[activeView || ""];
   return {
     nodes,
     edges,
     coordinateSystem: null,
     diagramBackground: null,
     diagramType: activeView || "All",
+    layout:
+      diagramConfig?.projections?.[activeView || ""]?.defaultLayout ||
+      diagramConfig?.views?.[activeView || ""]?.defaultLayout ||
+      diagramConfig?.layout,
   };
 }

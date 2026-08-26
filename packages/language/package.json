@@ -26,6 +26,26 @@
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./diagram": {
+      "types": "./dist/diagram/index.d.ts",
+      "default": "./dist/diagram/index.js"
+    },
+    "./diagram/builder": {
+      "types": "./dist/diagram/polyglot-diagram-builder.d.ts",
+      "default": "./dist/diagram/polyglot-diagram-builder.js"
+    },
+    "./diagram/browser": {
+      "types": "./dist/diagram.browser.js",
+      "default": "./dist/diagram.browser.js"
+    },
+    "./diagram/sequence-layout": {
+      "types": "./dist/diagram/sequence-layout.d.ts",
+      "default": "./dist/diagram/sequence-layout.js"
+    },
+    "./diagram/spinner": {
+      "types": "./dist/diagram/spinner.d.ts",
+      "default": "./dist/diagram/spinner.js"
+    },
     "./package.json": "./package.json"
   },
   "main": "dist/index.js",

@@ -91,6 +91,24 @@ export interface OWL2DataSomeValuesFrom {
   readonly sourceLang: string;
 }
 
+export interface OWL2FunctionalObjectProperty {
+  readonly type: "FunctionalObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2FunctionalDataProperty {
+  readonly type: "FunctionalDataProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2SameIndividual {
+  readonly type: "SameIndividual";
+  readonly individualIris: readonly string[];
+  readonly sourceLang?: string;
+}
+
 export type OWL2Axiom =
   | OWL2ClassDeclaration
   | OWL2SubClassOf
@@ -104,7 +122,10 @@ export type OWL2Axiom =
   | OWL2IndividualDeclaration
   | OWL2ClassAssertion
   | OWL2ObjectSomeValuesFrom
-  | OWL2DataSomeValuesFrom;
+  | OWL2DataSomeValuesFrom
+  | OWL2FunctionalObjectProperty
+  | OWL2FunctionalDataProperty
+  | OWL2SameIndividual;
 
 export interface OWL2AxiomDelta {
   readonly retractions: readonly OWL2Axiom[];
@@ -142,6 +163,10 @@ export interface ConsistencyResult {
   readonly conflictingAxioms?: readonly OWL2Axiom[] | undefined;
   /** If computed, the minimal unsatisfiable subset (MUS) / minimal conflict core via QuickXplain. */
   readonly minimalConflictCore?: readonly OWL2Axiom[] | undefined;
+  /** All orthogonal minimal conflict cores via Reiter's Hitting Set Tree (HST). */
+  readonly allMinimalConflictCores?: readonly (readonly OWL2Axiom[])[] | undefined;
+  /** Minimal correction subsets (MCS) to restore consistency. */
+  readonly minimalCorrectionSubsets?: readonly (readonly OWL2Axiom[])[] | undefined;
   /** Human-readable explanation. */
   readonly explanation?: string | undefined;
 }
@@ -275,6 +300,11 @@ export interface IOWLReasoner {
    * Finds the minimal conflict core in O(k log (N/k)) tests.
    */
   quickXplain(backgroundAxioms?: readonly OWL2Axiom[]): readonly OWL2Axiom[];
+
+  /**
+   * Enumerates All Minimal Unsatisfiable Subsets (All-MUS) via Reiter's Hitting Set Tree (HST).
+   */
+  allMus(maxCores?: number): readonly (readonly OWL2Axiom[])[];
 
   /** Get the inferred taxonomy (class hierarchy). */
   getTaxonomy(): TaxonomyNode[];

@@ -2569,6 +2569,128 @@ export class LspFacade {
     return this.exports.ontology_getAxiomCount ? this.exports.ontology_getAxiomCount() : 0;
   }
 
+  /** Retracts an axiom by ID in WASM memory using DRed over-deletion and rederivation. */
+  retractOntologyAxiom(axiomId: number): number {
+    return this.exports.ontology_retractAxiom ? this.exports.ontology_retractAxiom(axiomId) : 0;
+  }
+
+  /** Applies an incremental delta of additions and retractions in WASM linear memory. */
+  applyOntologyDelta(
+    adds: {
+      axiomType: number;
+      sourceLangId?: number;
+      subject: string;
+      predicate?: string;
+      object?: string;
+      flags?: number;
+    }[],
+    retractions: { axiomType: number; subject: string; predicate?: string; object?: string }[],
+  ): number {
+    if (!this.exports.ontology_applyDelta) return 0;
+    const addCount = adds.length;
+    const retractCount = retractions.length;
+
+    const addBuffer = new Uint32Array(addCount * 6);
+    for (let i = 0; i < addCount; i++) {
+      const a = adds[i];
+      const typeAndLang = (a.axiomType & 0xffff) | (((a.sourceLangId || 1) & 0xffff) << 16);
+      addBuffer[i * 6 + 0] = typeAndLang;
+      addBuffer[i * 6 + 1] = a.subject ? this.hashString(a.subject) : 0;
+      addBuffer[i * 6 + 2] = a.predicate ? this.hashString(a.predicate) : 0;
+      addBuffer[i * 6 + 3] = a.object ? this.hashString(a.object) : 0;
+      addBuffer[i * 6 + 4] = a.flags || 0;
+      addBuffer[i * 6 + 5] = 0;
+    }
+
+    const retBuffer = new Uint32Array(retractCount * 6);
+    for (let i = 0; i < retractCount; i++) {
+      const r = retractions[i];
+      retBuffer[i * 6 + 0] = r.axiomType & 0xffff;
+      retBuffer[i * 6 + 1] = r.subject ? this.hashString(r.subject) : 0;
+      retBuffer[i * 6 + 2] = r.predicate ? this.hashString(r.predicate) : 0;
+      retBuffer[i * 6 + 3] = r.object ? this.hashString(r.object) : 0;
+      retBuffer[i * 6 + 4] = 0;
+      retBuffer[i * 6 + 5] = 0;
+    }
+
+    const addPtr = this.exports.atomicChunkAlloc ? this.exports.atomicChunkAlloc(addCount * 24) : 0;
+    const retPtr = this.exports.atomicChunkAlloc ? this.exports.atomicChunkAlloc(retractCount * 24) : 0;
+
+    if (addPtr && addCount > 0) {
+      new Uint32Array(this.wasmMemory.buffer, addPtr, addCount * 6).set(addBuffer);
+    }
+    if (retPtr && retractCount > 0) {
+      new Uint32Array(this.wasmMemory.buffer, retPtr, retractCount * 6).set(retBuffer);
+    }
+
+    return this.exports.ontology_applyDelta(addCount, addPtr, retractCount, retPtr);
+  }
+
+  /** Saturates functional object properties and unifies individual equivalence classes. */
+  saturateFunctionalOntology(): number {
+    return this.exports.ontology_saturateFunctional ? this.exports.ontology_saturateFunctional() : 0;
+  }
+
+  /** Isolates a Minimal Unsatisfiable Subset (MUS) using QuickXplain in WASM linear memory. */
+  quickXplainOntology(): {
+    axiomType: number;
+    sourceLangId: number;
+    subjectHash: number;
+    predicateHash: number;
+    objectHash: number;
+    flags: number;
+  }[] {
+    if (!this.exports.ontology_quickXplain || !this.exports.ontology_getQueryBuffer) return [];
+    const count = this.exports.ontology_quickXplain();
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const stride = 6;
+    const results = [];
+
+    // First word is count
+    for (let i = 0; i < count; i++) {
+      const base = (dirPtr >>> 2) + 1 + i * stride;
+      const typeAndLang = mem32[base + 0];
+      results.push({
+        axiomType: typeAndLang & 0xffff,
+        sourceLangId: (typeAndLang >>> 16) & 0xffff,
+        subjectHash: mem32[base + 1],
+        predicateHash: mem32[base + 2],
+        objectHash: mem32[base + 3],
+        flags: mem32[base + 4],
+      });
+    }
+    return results;
+  }
+
+  /** Enumerates all minimal unsatisfiable subsets using Reiter's Hitting Set Tree (HST). */
+  allMusOntology(maxCores: number = 16): number[][] {
+    if (!this.exports.ontology_allMus || !this.exports.ontology_getQueryBuffer) return [];
+    const coreCount = this.exports.ontology_allMus(maxCores);
+    if (coreCount === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const offset = dirPtr >>> 2;
+
+    const totalCores = mem32[offset];
+    let ptr = offset + 1;
+    const allCores: number[][] = [];
+
+    for (let c = 0; c < totalCores; c++) {
+      const coreSize = mem32[ptr++];
+      const coreAxiomIds: number[] = [];
+      for (let k = 0; k < coreSize; k++) {
+        coreAxiomIds.push(mem32[ptr++]);
+      }
+      allCores.push(coreAxiomIds);
+    }
+
+    return allCores;
+  }
+
   /** Clears the WASM ontology store and inverted indices. */
   clearOntology(): void {
     if (this.exports.ontology_clear) {

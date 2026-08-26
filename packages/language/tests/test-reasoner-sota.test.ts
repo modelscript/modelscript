@@ -69,7 +69,7 @@ describe("SOTA Reasoning Enhancements Suite", () => {
     const wasm = fs.readFileSync(outWasm);
     const wasmModule = await WebAssembly.compile(wasm);
 
-    const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024, shared: true });
+    const memory = new WebAssembly.Memory({ initial: 512, maximum: 1024, shared: true });
     const imports = {
       env: {
         memory,
@@ -103,15 +103,19 @@ describe("SOTA Reasoning Enhancements Suite", () => {
       const AXIOM_SUBCLASS_OF = 2;
       const LANG_MODELICA = 1;
 
-      // Tree: Device -> ElectricalDevice -> Motor -> InductionMotor
       facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "InductionMotor", "", "Motor");
       facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "Motor", "", "ElectricalDevice");
       facade.addOntologyAxiom(AXIOM_SUBCLASS_OF, LANG_MODELICA, "ElectricalDevice", "", "Device");
 
+      // Check before interval indexing (BFS fallback path)
+      expect(facade.isSubClassOf("InductionMotor", "Motor")).toBe(true);
+      expect(facade.isSubClassOf("InductionMotor", "Device")).toBe(true);
+      expect(facade.isSubClassOf("Device", "InductionMotor")).toBe(false);
+
       // Compute intervals
       facade.computeOntologyIntervalIndex();
 
-      // Check subsumption
+      // Check subsumption (O(1) interval dominance path)
       expect(facade.isSubClassOf("InductionMotor", "Device")).toBe(true);
       expect(facade.isSubClassOf("InductionMotor", "Motor")).toBe(true);
       expect(facade.isSubClassOf("Device", "InductionMotor")).toBe(false);

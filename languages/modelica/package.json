@@ -154,6 +154,8 @@
     "@modelscript/cad": "*",
     "@modelscript/compiler": "*",
     "@modelscript/language": "^0.0.18",
+    "@modelscript/utils": "*",
+    "@svgdotjs/svg.js": "^3.2.4",
     "node-addon-api": "^8.5.0",
     "node-gyp-build": "^4.8.4"
   },

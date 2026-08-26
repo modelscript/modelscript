@@ -296,6 +296,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
 export interface DiagramDispatchDeps {
   modelica: DiagramBackend;
   sysml2: DiagramBackend;
+  customBackends?: Map<string | RegExp, DiagramBackend>;
 }
 
 /**
@@ -303,11 +304,22 @@ export interface DiagramDispatchDeps {
  * appropriate language backend based on the document URI.
  */
 export function createDiagramDispatch(backends: DiagramDispatchDeps) {
+  const custom = backends.customBackends ?? new Map<string | RegExp, DiagramBackend>();
+
   function getBackend(uri: string): DiagramBackend {
+    for (const [matcher, backend] of custom.entries()) {
+      if (typeof matcher === "string" && uri.endsWith(matcher)) return backend;
+      if (matcher instanceof RegExp && matcher.test(uri)) return backend;
+    }
     return uri.endsWith(".sysml") ? backends.sysml2 : backends.modelica;
   }
 
   return {
+    getBackend,
+    registerBackend(matcher: string | RegExp, backend: DiagramBackend) {
+      custom.set(matcher, backend);
+    },
+
     async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
       return await getBackend(params.uri).getData(params);
     },

@@ -70,6 +70,8 @@ export class TableauReasoner implements IOWLReasoner {
   private objectProperties = new Set<string>();
   private dataProperties = new Set<string>();
   private transitiveProperties = new Set<string>();
+  private functionalObjectProperties = new Set<string>();
+  private sameIndividualGroups = new Map<string, Set<string>>();
 
   // ABox
   private individualTypes = new Map<string, Set<string>>(); // individual → class IRIs
@@ -152,6 +154,28 @@ export class TableauReasoner implements IOWLReasoner {
       }
     }
 
+    // ELF Functional property merging & SameIndividual propagation
+    for (const propIri of this.functionalObjectProperties) {
+      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+      const bySubject = new Map<string, string[]>();
+      for (const e of edges) {
+        const list = bySubject.get(e.subjectIri) ?? [];
+        list.push(e.objectIri);
+        bySubject.set(e.subjectIri, list);
+      }
+      for (const [, objs] of bySubject) {
+        if (objs.length > 1) {
+          for (let i = 0; i < objs.length; i++) {
+            for (let j = i + 1; j < objs.length; j++) {
+              const o1 = objs[i]!;
+              const o2 = objs[j]!;
+              this.unifyIndividuals(o1, o2);
+            }
+          }
+        }
+      }
+    }
+
     // Propagate individual types through hierarchy
     for (const [indIri, types] of this.individualTypes) {
       const inferredTypes = new Set(types);
@@ -170,6 +194,21 @@ export class TableauReasoner implements IOWLReasoner {
     const consistency = this.checkConsistencyInternal();
     this._status = consistency.isConsistent ? "ready" : "inconsistent";
     this._classified = true;
+  }
+
+  private unifyIndividuals(ind1: string, ind2: string): void {
+    if (ind1 === ind2) return;
+    const group = this.sameIndividualGroups.get(ind1) ?? new Set([ind1]);
+    group.add(ind2);
+    this.sameIndividualGroups.set(ind1, group);
+    this.sameIndividualGroups.set(ind2, group);
+
+    const types1 = this.individualTypes.get(ind1) ?? new Set();
+    const types2 = this.individualTypes.get(ind2) ?? new Set();
+    for (const t of types1) types2.add(t);
+    for (const t of types2) types1.add(t);
+    this.individualTypes.set(ind1, types1);
+    this.individualTypes.set(ind2, types2);
   }
 
   dispose(): void {
@@ -203,10 +242,12 @@ export class TableauReasoner implements IOWLReasoner {
     if (!this._classified) this.classify();
     const res = this.checkConsistencyInternal();
     if (!res.isConsistent) {
-      const core = this.quickXplain();
+      const allCores = this.allMus();
+      const core = allCores.length > 0 ? allCores[0]! : this.quickXplain() || res.conflictingAxioms;
       return {
         ...res,
-        minimalConflictCore: core.length > 0 ? core : res.conflictingAxioms,
+        minimalConflictCore: core,
+        allMinimalConflictCores: allCores,
       };
     }
     return res;
@@ -228,9 +269,55 @@ export class TableauReasoner implements IOWLReasoner {
     return this.qxRecursive(bg, delta);
   }
 
+  /**
+   * Enumerates All Minimal Unsatisfiable Subsets (All-MUS) via Reiter's Hitting Set Tree (HST).
+   */
+  allMus(maxCores: number = 16): readonly (readonly OWL2Axiom[])[] {
+    const root = this.quickXplain();
+    if (root.length === 0) return [];
+
+    const discovered: (readonly OWL2Axiom[])[] = [root];
+    const queue: OWL2Axiom[][] = root.map((ax) => [ax]);
+
+    const serializeAxiom = (a: OWL2Axiom) => JSON.stringify(a);
+    const areCoresEqual = (c1: readonly OWL2Axiom[], c2: readonly OWL2Axiom[]) => {
+      if (c1.length !== c2.length) return false;
+      const s1 = new Set(c1.map(serializeAxiom));
+      return c2.every((a) => s1.has(serializeAxiom(a)));
+    };
+
+    while (queue.length > 0 && discovered.length < maxCores) {
+      const excludedPath = queue.shift()!;
+      const excludedSet = new Set(excludedPath.map(serializeAxiom));
+      const delta = this._axioms.filter((a) => !excludedSet.has(serializeAxiom(a)));
+
+      const temp = new TableauReasoner();
+      temp.loadOntology(delta);
+      if (!temp.checkConsistencyInternal().isConsistent) {
+        const newCore = temp.quickXplain();
+        if (newCore.length > 0) {
+          const alreadyFound = discovered.some((d) => areCoresEqual(d, newCore));
+          if (!alreadyFound) {
+            discovered.push(newCore);
+            if (discovered.length < maxCores) {
+              for (const ax of newCore) {
+                if (!excludedSet.has(serializeAxiom(ax))) {
+                  queue.push([...excludedPath, ax]);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return discovered;
+  }
+
   private testConsistencySubset(axioms: OWL2Axiom[]): boolean {
     const temp = new TableauReasoner();
     temp.loadOntology(axioms);
+    temp.classify();
     return temp.checkConsistencyInternal().isConsistent;
   }
 
@@ -707,6 +794,27 @@ export class TableauReasoner implements IOWLReasoner {
         break;
       }
 
+      case "FunctionalObjectProperty": {
+        this.functionalObjectProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "FunctionalDataProperty": {
+        this.dataProperties.add(axiom.propertyIri);
+        break;
+      }
+
+      case "SameIndividual": {
+        for (let i = 0; i < axiom.individualIris.length; i++) {
+          for (let j = i + 1; j < axiom.individualIris.length; j++) {
+            const a = axiom.individualIris[i]!;
+            const b = axiom.individualIris[j]!;
+            this.unifyIndividuals(a, b);
+          }
+        }
+        break;
+      }
+
       case "ObjectSomeValuesFrom":
       case "DataSomeValuesFrom":
         break;
@@ -766,6 +874,11 @@ export class TableauReasoner implements IOWLReasoner {
       case "ClassAssertion": {
         const types = this.individualTypes.get(axiom.individualIri);
         types?.delete(axiom.classIri);
+        break;
+      }
+
+      case "FunctionalObjectProperty": {
+        this.functionalObjectProperties.delete(axiom.propertyIri);
         break;
       }
 

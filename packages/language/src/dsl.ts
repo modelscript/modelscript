@@ -1913,11 +1913,15 @@ export interface DiagramProjectionConfig<RuleName extends string = string, Field
   /** Perspective / Viewpoint identifier */
   perspective?: string;
   viewpoint?: string; // Alias for backward-compat
+  /** Explicit list of grammar rules included in this projection */
+  includeRules?: (RuleName | string)[];
+  /** Explicit list of grammar rules excluded from this projection */
+  excludeRules?: (RuleName | string)[];
   /** Scope query: which AST nodes are candidate entities */
   scope?: (db: CodeGraph, root: u32) => Cursor;
   expose?: string[] | ((db: CodeGraph, root: u32) => Cursor);
   /** Node filter predicate */
-  filter?: (db: CodeGraph, node: u32) => boolean;
+  filter?: ((db: CodeGraph, node: u32) => boolean) | ((entry: any) => boolean);
   /** Layout strategy */
   defaultLayout?: "dagre" | "elk" | "grid" | "force" | "tree" | "sequence" | "circular" | "manual";
 }
