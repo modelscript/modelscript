@@ -166,7 +166,7 @@ function parseUnitAtom(s: string): SIUnit | null {
   const match = s.match(/^([a-zA-Z]+)(-?\d+)?$/);
   if (!match) return null;
 
-  const baseName = match[1] ?? "";
+  const baseName = match[1] ? match[1] : "";
   const exponent = match[2] ? parseInt(match[2], 10) : 1;
 
   const baseUnit = SI_UNITS[baseName];
@@ -185,9 +185,9 @@ export function formatSIUnit(u: SIUnit): string {
 
   const parts: string[] = [];
   for (let i = 0; i < 7; i++) {
-    const exp = u[i] ?? 0;
+    const exp = u[i] ? u[i] : 0;
     if (exp !== 0) {
-      const dim = SI_DIMENSIONS[i] ?? "";
+      const dim = SI_DIMENSIONS[i] ? SI_DIMENSIONS[i] : "";
       parts.push(exp === 1 ? dim : `${dim}${exp}`);
     }
   }

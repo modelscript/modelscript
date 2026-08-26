@@ -6,11 +6,14 @@ import { modelicaSyntaxLints } from "./syntax-placement.js";
 import { modelicaTypeLints } from "./types-expressions.js";
 
 import {
+  getComponentUnit,
   getDottedVariableType,
   getExpressionVariability,
   getFlowVariableCount,
   getVariableTypeInClass,
+  getVariableUnitInClass,
   inferExprType,
+  inferExprUnit,
   isClassKind,
   isTypeCompatible,
   resolveComplexName,
@@ -18,11 +21,14 @@ import {
 } from "./helpers.js";
 
 export {
+  getComponentUnit,
   getDottedVariableType,
   getExpressionVariability,
   getFlowVariableCount,
   getVariableTypeInClass,
+  getVariableUnitInClass,
   inferExprType,
+  inferExprUnit,
   isClassKind,
   isTypeCompatible,
   modelicaConnectionLints,

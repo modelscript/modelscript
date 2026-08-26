@@ -1,7 +1,10 @@
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/language";
+import { unitsCompatible } from "../units.js";
 import {
+  getComponentUnit,
   getVariableTypeInClass,
   inferExprType,
+  inferExprUnit,
   isTypeCompatible,
   TYPE_BOOLEAN,
   TYPE_CLOCK,
@@ -22,7 +25,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
       let expectedType: u16 = TYPE_UNKNOWN;
-      for (const anc of db.ast.getAncestors(node, 0)) {
+      for (const anc of db.ast.getAncestors(node)) {
         const ancType = db.ast.getType(anc);
         if (ancType == $.component_clause || ancType == $.component_clause1) {
           for (const id of db.ast.getDescendants(anc, $.identifier)) {
@@ -42,16 +45,54 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         let foundStr = false;
         if ($.string_literal != 0) {
           for (const str of db.ast.getDescendants(node, $.string_literal)) {
-            db.diagnostic(str);
-            foundStr = true;
-            break;
+            let isAttrMod = false;
+            for (const anc of db.ast.getAncestors(str)) {
+              if (anc == node) break;
+              if (db.ast.getType(anc) == $.element_modification) {
+                for (const id of db.ast.getDescendants(anc, $.identifier)) {
+                  if (
+                    db.ast.textEquals(id, "unit") ||
+                    db.ast.textEquals(id, "displayUnit") ||
+                    db.ast.textEquals(id, "quantity")
+                  ) {
+                    isAttrMod = true;
+                    break;
+                  }
+                }
+                break;
+              }
+            }
+            if (!isAttrMod) {
+              db.diagnostic(str);
+              foundStr = true;
+              break;
+            }
           }
         }
         if (!foundStr) {
-          for (const d of db.ast.getDescendants(node, 0)) {
+          for (const d of db.ast.getDescendants(node)) {
             if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
-              db.diagnostic(d);
-              break;
+              let isAttrMod = false;
+              for (const anc of db.ast.getAncestors(d)) {
+                if (anc == node) break;
+                if (db.ast.getType(anc) == $.element_modification) {
+                  for (const id of db.ast.getDescendants(anc, $.identifier)) {
+                    if (
+                      db.ast.textEquals(id, "unit") ||
+                      db.ast.textEquals(id, "displayUnit") ||
+                      db.ast.textEquals(id, "quantity")
+                    ) {
+                      isAttrMod = true;
+                      break;
+                    }
+                  }
+                  break;
+                }
+              }
+              if (!isAttrMod) {
+                db.diagnostic(d);
+                break;
+              }
             }
           }
         }
@@ -84,7 +125,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       // Find enclosing component_clause1, element_redeclaration, component_clause, or extends_clause
       let parentDecl: u32 = 0;
-      for (const anc of db.ast.getAncestors(node, 0)) {
+      for (const anc of db.ast.getAncestors(node)) {
         const type = db.ast.getType(anc);
         if (
           type == $.component_clause1 ||
@@ -161,7 +202,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
             const cName = db.ast.getChildByFieldId(spec, "name");
             if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
               let classDef: u32 = spec;
-              for (const anc of db.ast.getAncestors(spec, 0)) {
+              for (const anc of db.ast.getAncestors(spec)) {
                 if (db.ast.getType(anc) == $.class_definition) {
                   classDef = anc;
                   break;
@@ -176,7 +217,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
               const cName = db.ast.getChildByFieldId(spec, "name");
               if (cName != 0 && db.ast.textEqualsNode(baseTypeId, cName)) {
                 let classDef: u32 = spec;
-                for (const anc of db.ast.getAncestors(spec, 0)) {
+                for (const anc of db.ast.getAncestors(spec)) {
                   if (db.ast.getType(anc) == $.class_definition) {
                     classDef = anc;
                     break;
@@ -202,7 +243,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           }
         }
         if (!foundStr) {
-          for (const d of db.ast.getDescendants(node, 0)) {
+          for (const d of db.ast.getDescendants(node)) {
             if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
               db.diagnostic(d);
               break;
@@ -388,6 +429,128 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       if (expr != 0) {
         const type = inferExprType(db, expr, $);
         if (type != TYPE_UNKNOWN && type != TYPE_INTEGER && type != 4 /* Enum */) {
+          db.diagnostic(node);
+        }
+      }
+    },
+  },
+
+  /**
+   * M3010: Unit mismatch in simple equation.
+   */
+  unitMismatchEquation: {
+    nodes: ["simple_equation"],
+    severity: "warning",
+    code: 3010,
+    message: (target) => `Unit mismatch in equation '${target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let classNode: u32 = 0;
+      for (const anc of db.ast.getAncestors(node)) {
+        const t = db.ast.getType(anc);
+        if (t == $.class_definition || t == $.short_class_definition) {
+          classNode = anc;
+          break;
+        }
+      }
+
+      let lhs = db.ast.getChildByFieldId(node, "lhs");
+      let rhs = db.ast.getChildByFieldId(node, "rhs");
+      if (lhs == 0) lhs = db.ast.getFirstChild(node);
+      if (rhs == 0) {
+        let afterEq = false;
+        let sib = db.ast.getFirstChild(node);
+        while (sib != 0) {
+          if (db.ast.textEquals(sib, "=")) {
+            afterEq = true;
+          } else if (afterEq && db.ast.getType(sib) != 0) {
+            rhs = sib;
+            break;
+          }
+          sib = db.ast.getNextSibling(sib);
+        }
+      }
+
+      if (lhs != 0 && rhs != 0) {
+        const lhsUnit = inferExprUnit(db, lhs, $, classNode);
+        const rhsUnit = inferExprUnit(db, rhs, $, classNode);
+
+        if (lhsUnit != null && rhsUnit != null && !unitsCompatible(lhsUnit, rhsUnit)) {
+          db.diagnostic(node);
+        }
+      }
+    },
+  },
+
+  /**
+   * M3010: Unit mismatch in component declaration binding.
+   */
+  unitMismatchBinding: {
+    nodes: ["component_declaration", "declaration"],
+    severity: "warning",
+    code: 3010,
+    message: (target) => `Unit mismatch in component binding '${target.text}'.`,
+    query: (db: CodeGraph, node: u32, $: Record<string, u16>) => {
+      let classNode: u32 = 0;
+      for (const anc of db.ast.getAncestors(node)) {
+        const t = db.ast.getType(anc);
+        if (t == $.class_definition || t == $.short_class_definition) {
+          classNode = anc;
+          break;
+        }
+      }
+
+      const compUnit = getComponentUnit(db, node, $);
+      if (compUnit == null) return;
+
+      let declNode = node;
+      if (db.ast.getType(node) == $.component_declaration) {
+        let c = db.ast.getFirstChild(node);
+        while (c != 0) {
+          if (db.ast.getType(c) == $.declaration) {
+            declNode = c;
+            break;
+          }
+          c = db.ast.getNextSibling(c);
+        }
+      }
+
+      let exprNode = 0;
+      for (const m of db.ast.getDescendants(declNode, $.modification_expression)) {
+        let insideElemMod = false;
+        for (const anc of db.ast.getAncestors(m)) {
+          if (anc == declNode) break;
+          const t = db.ast.getType(anc);
+          if (t == $.element_modification || t == $.class_modification) {
+            insideElemMod = true;
+            break;
+          }
+        }
+        if (!insideElemMod) {
+          exprNode = m;
+          break;
+        }
+      }
+      if (exprNode == 0) {
+        for (const e of db.ast.getDescendants(declNode, $.expression)) {
+          let insideElemMod = false;
+          for (const anc of db.ast.getAncestors(e)) {
+            if (anc == declNode) break;
+            const t = db.ast.getType(anc);
+            if (t == $.element_modification || t == $.class_modification) {
+              insideElemMod = true;
+              break;
+            }
+          }
+          if (!insideElemMod) {
+            exprNode = e;
+            break;
+          }
+        }
+      }
+
+      if (exprNode != 0) {
+        const exprUnit = inferExprUnit(db, exprNode, $, classNode);
+        if (exprUnit != null && !unitsCompatible(compUnit, exprUnit)) {
           db.diagnostic(node);
         }
       }

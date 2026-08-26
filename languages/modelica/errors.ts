@@ -167,6 +167,13 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (actualType: string) => `Array index type mismatch: expected Integer or Boolean, but got '${actualType}'.`,
   },
+  UNIT_MISMATCH: {
+    code: 3010,
+    rule: "unit-mismatch",
+    severity: "warning",
+    message: (lhsUnit: string, rhsUnit: string) =>
+      `Unit mismatch: Left-hand side has unit '${lhsUnit}' but right-hand side has incompatible unit '${rhsUnit}'.`,
+  },
 
   // ── 4xxx: Structural / Semantic ───────────────────────────────────────
   EXTENDS_CYCLE: {

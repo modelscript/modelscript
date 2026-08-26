@@ -2,6 +2,7 @@
 
 export * from "./connections.js";
 export * from "./equations.js";
+export * from "./flattener-wasm.js";
 export * from "./flattener.js";
 export { modelicaLanguage } from "./language.js";
 export * from "./modifications.js";

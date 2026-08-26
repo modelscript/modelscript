@@ -1,4 +1,6 @@
 import type { CodeGraph, u16, u32, u8 } from "@modelscript/language";
+import type { SIUnit } from "../units.js";
+import { createDimensionless, parseUnit, unitDivide, unitMultiply, unitPower } from "../units.js";
 
 export const TYPE_UNKNOWN: u16 = 0xffff;
 export const TYPE_REAL: u16 = 0;
@@ -85,7 +87,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
 
   // Find enclosing class definition for component reference resolution
   let enclosingClass: u32 = 0;
-  for (const anc of db.ast.getAncestors(exprNode, 0)) {
+  for (const anc of db.ast.getAncestors(exprNode)) {
     if (db.ast.getType(anc) == $.class_definition) {
       enclosingClass = anc;
       break;
@@ -102,7 +104,7 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: Record<string, u1
     const leftChild = db.ast.getChildByFieldId(exprNode, "left");
     const rightChild = db.ast.getChildByFieldId(exprNode, "right");
     if (leftChild != 0 && rightChild != 0) {
-      for (const ch of db.ast.getDescendants(exprNode, 0)) {
+      for (const ch of db.ast.getDescendants(exprNode)) {
         if (
           db.ast.textEquals(ch, "==") ||
           db.ast.textEquals(ch, "<>") ||
@@ -301,7 +303,7 @@ export function resolveComponentClassDefinition(
         const nameId = db.ast.getChildByFieldId(spec, "name");
         if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
           let baseClass: u32 = spec;
-          for (const anc of db.ast.getAncestors(spec, 0)) {
+          for (const anc of db.ast.getAncestors(spec)) {
             if (db.ast.getType(anc) == $.class_definition) {
               baseClass = anc;
               break;
@@ -323,7 +325,7 @@ export function resolveComponentClassDefinition(
     if (nameId != 0) {
       for (const tsId of db.ast.getDescendants(typeSpecNode, $.identifier)) {
         if (db.ast.textEqualsNode(tsId, nameId)) {
-          for (const cls of db.ast.getAncestors(spec, 0)) {
+          for (const cls of db.ast.getAncestors(spec)) {
             if (db.ast.getType(cls) == $.class_definition) return cls;
           }
         }
@@ -336,7 +338,7 @@ export function resolveComponentClassDefinition(
     if (nameId != 0) {
       for (const tsId of db.ast.getDescendants(typeSpecNode, $.identifier)) {
         if (db.ast.textEqualsNode(tsId, nameId)) {
-          for (const cls of db.ast.getAncestors(spec, 0)) {
+          for (const cls of db.ast.getAncestors(spec)) {
             if (db.ast.getType(cls) == $.class_definition) return cls;
           }
         }
@@ -493,7 +495,7 @@ export function isTopLevelClassName(db: CodeGraph, nameNode: u32, $: Record<stri
  * Returns true if `target` is nested inside an inner class_definition child of `classNode`.
  */
 export function isDescendantOfInnerClass(db: CodeGraph, target: u32, classNode: u32, $: Record<string, u16>): boolean {
-  for (const anc of db.ast.getAncestors(target, 0)) {
+  for (const anc of db.ast.getAncestors(target)) {
     if (anc == classNode) break;
     if (db.ast.getType(anc) == $.class_definition) {
       return true;
@@ -546,7 +548,7 @@ export function isVariableDeclaredInClass(
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
         let baseClass: u32 = spec;
-        for (const anc of db.ast.getAncestors(spec, 0)) {
+        for (const anc of db.ast.getAncestors(spec)) {
           if (db.ast.getType(anc) == $.class_definition) {
             baseClass = anc;
             break;
@@ -562,7 +564,7 @@ export function isVariableDeclaredInClass(
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
         let baseClass: u32 = spec;
-        for (const anc of db.ast.getAncestors(spec, 0)) {
+        for (const anc of db.ast.getAncestors(spec)) {
           if (db.ast.getType(anc) == $.class_definition) {
             baseClass = anc;
             break;
@@ -645,7 +647,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
     if (declId == 0 && db.ast.getType(decl) == $.identifier) declId = decl;
     if (declId != 0 && db.ast.textEqualsNode(targetId, declId)) {
       // Find parent component_clause or component_clause1
-      for (const anc of db.ast.getAncestors(decl, 0)) {
+      for (const anc of db.ast.getAncestors(decl)) {
         const ancType = db.ast.getType(anc);
         if (ancType == $.component_clause || ancType == $.component_clause1) {
           let tsNode: u32 = 0;
@@ -700,7 +702,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
         let baseClass: u32 = spec;
-        for (const anc of db.ast.getAncestors(spec, 0)) {
+        for (const anc of db.ast.getAncestors(spec)) {
           if (db.ast.getType(anc) == $.class_definition) {
             baseClass = anc;
             break;
@@ -715,7 +717,7 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
       const nameId = db.ast.getChildByFieldId(spec, "name");
       if (nameId != 0 && db.ast.textEqualsNode(baseNameId, nameId)) {
         let baseClass: u32 = spec;
-        for (const anc of db.ast.getAncestors(spec, 0)) {
+        for (const anc of db.ast.getAncestors(spec)) {
           if (db.ast.getType(anc) == $.class_definition) {
             baseClass = anc;
             break;
@@ -729,4 +731,451 @@ export function getVariableTypeInClass(db: CodeGraph, classNode: u32, identNode:
   }
 
   return TYPE_UNKNOWN;
+}
+
+/**
+ * Resolves the declared or inferred SI unit for a component declaration or clause.
+ */
+export function getComponentUnit(db: CodeGraph, compNode: u32, $: Record<string, u16>): SIUnit | null {
+  if (compNode == 0) return null;
+
+  // 1. Check for explicit (unit = "...") in modification
+  let hasUnit = false;
+  for (const d of db.ast.getDescendants(compNode)) {
+    if (db.ast.textEquals(d, "unit") || db.ast.startsWith(d, "unit")) {
+      hasUnit = true;
+      break;
+    }
+  }
+
+  let matchedUnit: SIUnit | null = null;
+  if (hasUnit) {
+    for (const str of db.ast.getDescendants(compNode)) {
+      if (
+        db.ast.getType(str) == $.string_literal ||
+        (db.ast.getFirstChild(str) == 0 && (db.ast.startsWith(str, '"') || db.ast.startsWith(str, "'")))
+      ) {
+        if (db.ast.textEquals(str, '"m"') || db.ast.textEquals(str, "'m'") || db.ast.textEquals(str, "m")) {
+          matchedUnit = parseUnit("m");
+          break;
+        }
+        if (db.ast.textEquals(str, '"kg"') || db.ast.textEquals(str, "'kg'") || db.ast.textEquals(str, "kg")) {
+          matchedUnit = parseUnit("kg");
+          break;
+        }
+        if (db.ast.textEquals(str, '"s"') || db.ast.textEquals(str, "'s'") || db.ast.textEquals(str, "s")) {
+          matchedUnit = parseUnit("s");
+          break;
+        }
+        if (db.ast.textEquals(str, '"A"') || db.ast.textEquals(str, "'A'") || db.ast.textEquals(str, "A")) {
+          matchedUnit = parseUnit("A");
+          break;
+        }
+        if (db.ast.textEquals(str, '"K"') || db.ast.textEquals(str, "'K'") || db.ast.textEquals(str, "K")) {
+          matchedUnit = parseUnit("K");
+          break;
+        }
+        if (db.ast.textEquals(str, '"V"') || db.ast.textEquals(str, "'V'") || db.ast.textEquals(str, "V")) {
+          matchedUnit = parseUnit("V");
+          break;
+        }
+        if (db.ast.textEquals(str, '"Ohm"') || db.ast.textEquals(str, "'Ohm'") || db.ast.textEquals(str, "Ohm")) {
+          matchedUnit = parseUnit("Ohm");
+          break;
+        }
+        if (db.ast.textEquals(str, '"F"') || db.ast.textEquals(str, "'F'") || db.ast.textEquals(str, "F")) {
+          matchedUnit = parseUnit("F");
+          break;
+        }
+        if (db.ast.textEquals(str, '"H"') || db.ast.textEquals(str, "'H'") || db.ast.textEquals(str, "H")) {
+          matchedUnit = parseUnit("H");
+          break;
+        }
+        if (db.ast.textEquals(str, '"N"') || db.ast.textEquals(str, "'N'") || db.ast.textEquals(str, "N")) {
+          matchedUnit = parseUnit("N");
+          break;
+        }
+        if (db.ast.textEquals(str, '"Pa"') || db.ast.textEquals(str, "'Pa'") || db.ast.textEquals(str, "Pa")) {
+          matchedUnit = parseUnit("Pa");
+          break;
+        }
+        if (db.ast.textEquals(str, '"J"') || db.ast.textEquals(str, "'J'") || db.ast.textEquals(str, "J")) {
+          matchedUnit = parseUnit("J");
+          break;
+        }
+        if (db.ast.textEquals(str, '"W"') || db.ast.textEquals(str, "'W'") || db.ast.textEquals(str, "W")) {
+          matchedUnit = parseUnit("W");
+          break;
+        }
+        if (db.ast.textEquals(str, '"Hz"') || db.ast.textEquals(str, "'Hz'") || db.ast.textEquals(str, "Hz")) {
+          matchedUnit = parseUnit("Hz");
+          break;
+        }
+        if (db.ast.textEquals(str, '"rad"') || db.ast.textEquals(str, "'rad'") || db.ast.textEquals(str, "rad")) {
+          matchedUnit = parseUnit("rad");
+          break;
+        }
+        if (db.ast.textEquals(str, '"rad/s"') || db.ast.textEquals(str, "'rad/s'") || db.ast.textEquals(str, "rad/s")) {
+          matchedUnit = parseUnit("rad/s");
+          break;
+        }
+        if (db.ast.textEquals(str, '"m/s"') || db.ast.textEquals(str, "'m/s'") || db.ast.textEquals(str, "m/s")) {
+          matchedUnit = parseUnit("m/s");
+          break;
+        }
+        if (db.ast.textEquals(str, '"m/s2"') || db.ast.textEquals(str, "'m/s2'") || db.ast.textEquals(str, "m/s2")) {
+          matchedUnit = parseUnit("m/s2");
+          break;
+        }
+        if (db.ast.textEquals(str, '"kg/m3"') || db.ast.textEquals(str, "'kg/m3'") || db.ast.textEquals(str, "kg/m3")) {
+          matchedUnit = parseUnit("kg/m3");
+          break;
+        }
+        if (
+          db.ast.textEquals(str, '"J/(kg.K)"') ||
+          db.ast.textEquals(str, "'J/(kg.K)'") ||
+          db.ast.textEquals(str, "J/(kg.K)")
+        ) {
+          matchedUnit = parseUnit("J/(kg.K)");
+          break;
+        }
+        if (
+          db.ast.textEquals(str, '"W/(m.K)"') ||
+          db.ast.textEquals(str, "'W/(m.K)'") ||
+          db.ast.textEquals(str, "W/(m.K)")
+        ) {
+          matchedUnit = parseUnit("W/(m.K)");
+          break;
+        }
+        if (db.ast.textEquals(str, '"1"') || db.ast.textEquals(str, "'1'") || db.ast.textEquals(str, "1")) {
+          matchedUnit = parseUnit("1");
+          break;
+        }
+      }
+    }
+  }
+  if (matchedUnit != null) return matchedUnit;
+
+  // 2. Check type specifier for SI standard types
+  let typeSpec = 0;
+  for (const ts of db.ast.getDescendants(compNode, $.type_specifier)) {
+    typeSpec = ts;
+    break;
+  }
+  if (typeSpec == 0) {
+    for (const anc of db.ast.getAncestors(compNode)) {
+      const ancType = db.ast.getType(anc);
+      if (ancType == $.component_clause || ancType == $.component_clause1) {
+        for (const ts of db.ast.getDescendants(anc, $.type_specifier)) {
+          typeSpec = ts;
+          break;
+        }
+        break;
+      }
+    }
+  }
+
+  if (typeSpec != 0) {
+    for (const id of db.ast.getDescendants(typeSpec, $.identifier)) {
+      if (db.ast.textEquals(id, "Voltage")) {
+        matchedUnit = parseUnit("V");
+        break;
+      }
+      if (db.ast.textEquals(id, "Current")) {
+        matchedUnit = parseUnit("A");
+        break;
+      }
+      if (db.ast.textEquals(id, "Resistance")) {
+        matchedUnit = parseUnit("Ohm");
+        break;
+      }
+      if (db.ast.textEquals(id, "Capacitance")) {
+        matchedUnit = parseUnit("F");
+        break;
+      }
+      if (db.ast.textEquals(id, "Inductance")) {
+        matchedUnit = parseUnit("H");
+        break;
+      }
+      if (db.ast.textEquals(id, "Time")) {
+        matchedUnit = parseUnit("s");
+        break;
+      }
+      if (db.ast.textEquals(id, "Length") || db.ast.textEquals(id, "Position")) {
+        matchedUnit = parseUnit("m");
+        break;
+      }
+      if (db.ast.textEquals(id, "Velocity")) {
+        matchedUnit = parseUnit("m/s");
+        break;
+      }
+      if (db.ast.textEquals(id, "Acceleration")) {
+        matchedUnit = parseUnit("m/s2");
+        break;
+      }
+      if (db.ast.textEquals(id, "Pressure")) {
+        matchedUnit = parseUnit("Pa");
+        break;
+      }
+      if (db.ast.textEquals(id, "Force")) {
+        matchedUnit = parseUnit("N");
+        break;
+      }
+      if (db.ast.textEquals(id, "Power")) {
+        matchedUnit = parseUnit("W");
+        break;
+      }
+      if (db.ast.textEquals(id, "Energy")) {
+        matchedUnit = parseUnit("J");
+        break;
+      }
+      if (db.ast.textEquals(id, "Temperature")) {
+        matchedUnit = parseUnit("K");
+        break;
+      }
+      if (db.ast.textEquals(id, "Mass")) {
+        matchedUnit = parseUnit("kg");
+        break;
+      }
+      if (db.ast.textEquals(id, "Angle")) {
+        matchedUnit = parseUnit("rad");
+        break;
+      }
+      if (db.ast.textEquals(id, "AngularVelocity")) {
+        matchedUnit = parseUnit("rad/s");
+        break;
+      }
+      if (db.ast.textEquals(id, "Frequency")) {
+        matchedUnit = parseUnit("Hz");
+        break;
+      }
+    }
+  }
+  if (matchedUnit != null) return matchedUnit;
+
+  return null;
+}
+
+/**
+ * Resolves the unit of a variable identifier in a class.
+ */
+export function getVariableUnitInClass(
+  db: CodeGraph,
+  classNode: u32,
+  identNode: u32,
+  $: Record<string, u16>,
+): SIUnit | null {
+  if (classNode == 0 || identNode == 0) return null;
+
+  let targetId = identNode;
+  if (db.ast.getType(identNode) != $.identifier) {
+    for (const id of db.ast.getDescendants(identNode, $.identifier)) {
+      targetId = id;
+      break;
+    }
+  }
+
+  // 1. Direct declarations in classNode
+  let directUnit: SIUnit | null = null;
+  for (const decl of db.ast.getDescendants(classNode, $.declaration)) {
+    if (isDescendantOfInnerClass(db, decl, classNode, $)) continue;
+    let declId = 0;
+    for (const id of db.ast.getDescendants(decl, $.identifier)) {
+      declId = id;
+      break;
+    }
+    if (declId == 0 && db.ast.getType(decl) == $.identifier) declId = decl;
+    if (declId != 0 && db.ast.textEqualsNode(targetId, declId)) {
+      const u = getComponentUnit(db, decl, $);
+      if (u != null) {
+        directUnit = u;
+        break;
+      }
+    }
+  }
+  if (directUnit != null) return directUnit;
+
+  return null;
+}
+
+/**
+ * Recursively infers the SI unit of an AST expression.
+ */
+export function inferExprUnit(db: CodeGraph, exprNode: u32, $: Record<string, u16>, classNode: u32 = 0): SIUnit | null {
+  if (exprNode == 0) return null;
+  const nodeType = db.ast.getType(exprNode);
+
+  // 0. Unwrap expression wrappers if single child
+  const firstChild = db.ast.getFirstChild(exprNode);
+  if (firstChild != 0 && db.ast.getNextSibling(firstChild) == 0) {
+    const unwrapped = inferExprUnit(db, firstChild, $, classNode);
+    if (unwrapped != null) return unwrapped;
+  }
+
+  // 1. Numbers / Literals
+  if (nodeType == $.unsigned_real || nodeType == $.unsigned_integer || nodeType == $.number) {
+    return createDimensionless();
+  }
+
+  // 2. Component references / identifiers
+  if (nodeType == $.component_reference || nodeType == $.identifier) {
+    if (classNode != 0) {
+      const u = getVariableUnitInClass(db, classNode, exprNode, $);
+      if (u != null) return u;
+    }
+  }
+
+  // 3. der(x) call
+  if (
+    nodeType == $.primary ||
+    nodeType == $.function_call ||
+    nodeType == $.call_expression ||
+    db.ast.startsWith(exprNode, "der")
+  ) {
+    let isDer = false;
+    for (const d of db.ast.getDescendants(exprNode)) {
+      if (db.ast.textEquals(d, "der")) {
+        isDer = true;
+        break;
+      }
+    }
+    if (isDer) {
+      for (const arg of db.ast.getDescendants(exprNode, $.component_reference)) {
+        const u = inferExprUnit(db, arg, $, classNode);
+        if (u != null) {
+          const sUnit = parseUnit("s");
+          return sUnit ? unitDivide(u, sUnit) : u;
+        }
+      }
+      for (const arg of db.ast.getDescendants(exprNode, $.expression)) {
+        const u = inferExprUnit(db, arg, $, classNode);
+        if (u != null) {
+          const sUnit = parseUnit("s");
+          return sUnit ? unitDivide(u, sUnit) : u;
+        }
+      }
+    }
+  }
+
+  // 4. Binary Expressions (+, -, *, /, ^)
+  const left = db.ast.getChildByFieldId(exprNode, "left");
+  const right = db.ast.getChildByFieldId(exprNode, "right");
+  if (left != 0 && right != 0) {
+    const u1 = inferExprUnit(db, left, $, classNode);
+    const u2 = inferExprUnit(db, right, $, classNode);
+
+    let isMul = false;
+    let isDiv = false;
+    let isAddSub = false;
+    for (const d of db.ast.getDescendants(exprNode, 0)) {
+      if (db.ast.textEquals(d, "*") || db.ast.textEquals(d, ".*")) {
+        isMul = true;
+        break;
+      }
+      if (db.ast.textEquals(d, "/") || db.ast.textEquals(d, "./")) {
+        isDiv = true;
+        break;
+      }
+      if (
+        db.ast.textEquals(d, "+") ||
+        db.ast.textEquals(d, "-") ||
+        db.ast.textEquals(d, ".+") ||
+        db.ast.textEquals(d, ".-")
+      ) {
+        isAddSub = true;
+        break;
+      }
+    }
+
+    if (isMul) {
+      if (u1 && u2) return unitMultiply(u1, u2);
+      return u1 ? u1 : u2;
+    }
+    if (isDiv) {
+      if (u1 && u2) return unitDivide(u1, u2);
+      if (u1) return u1;
+      if (u2) return unitPower(u2, -1);
+    }
+    if (isAddSub) {
+      return u1 ? u1 : u2;
+    }
+  }
+
+  const child1 = db.ast.getFirstChild(exprNode);
+  if (child1 != 0) {
+    let opNode = 0;
+    let child2 = 0;
+    let sib = db.ast.getNextSibling(child1);
+    while (sib != 0) {
+      if (opNode == 0) {
+        if (
+          db.ast.textEquals(sib, "+") ||
+          db.ast.textEquals(sib, "-") ||
+          db.ast.textEquals(sib, "*") ||
+          db.ast.textEquals(sib, "/") ||
+          db.ast.textEquals(sib, "^")
+        ) {
+          opNode = sib;
+        }
+      } else if (child2 == 0 && db.ast.getType(sib) != 0) {
+        child2 = sib;
+        break;
+      }
+      sib = db.ast.getNextSibling(sib);
+    }
+
+    if (child2 != 0 && opNode != 0) {
+      const u1 = inferExprUnit(db, child1, $, classNode);
+      const u2 = inferExprUnit(db, child2, $, classNode);
+
+      if (db.ast.textEquals(opNode, "+") || db.ast.textEquals(opNode, "-")) {
+        return u1 ? u1 : u2;
+      }
+      if (db.ast.textEquals(opNode, "*")) {
+        if (u1 && u2) return unitMultiply(u1, u2);
+        return u1 ? u1 : u2;
+      }
+      if (db.ast.textEquals(opNode, "/")) {
+        if (u1 && u2) return unitDivide(u1, u2);
+        if (u1) return u1;
+        if (u2) return unitPower(u2, -1);
+      }
+    }
+  }
+
+  // 5. Unpack single-child wrappers
+  const first = db.ast.getFirstChild(exprNode);
+  if (first != 0 && db.ast.getNextSibling(first) == 0) {
+    const unwrapped = inferExprUnit(db, first, $, classNode);
+    if (unwrapped != null) return unwrapped;
+  }
+
+  // 6. Direct fallback for component reference within expression
+  if (classNode != 0) {
+    let crFound = 0;
+    for (const cr of db.ast.getDescendants(exprNode, $.component_reference)) {
+      crFound = cr;
+      break;
+    }
+    if (crFound != 0) {
+      let isOp = false;
+      for (const op of db.ast.getDescendants(exprNode)) {
+        if (
+          db.ast.textEquals(op, "+") ||
+          db.ast.textEquals(op, "-") ||
+          db.ast.textEquals(op, "*") ||
+          db.ast.textEquals(op, "/")
+        ) {
+          isOp = true;
+          break;
+        }
+      }
+      if (!isOp) {
+        const u = getVariableUnitInClass(db, classNode, crFound, $);
+        if (u != null) return u;
+      }
+    }
+  }
+
+  return null;
 }

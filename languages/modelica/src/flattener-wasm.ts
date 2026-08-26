@@ -1,4 +1,6 @@
-/* eslint-disable */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+export const modelicaFlattenerWasmCode = `/* eslint-disable */
 // @ts-nocheck
 import {
   DaeBuilder,
@@ -129,7 +131,7 @@ export class ModificationEnvironment {
 
   /**
    * Merges another modification environment into this environment.
-   * Respects `final` modifiers: if a key is marked `final` in this environment,
+   * Respects 'final' modifiers: if a key is marked 'final' in this environment,
    * incoming modifiers cannot override it.
    */
   merge(otherEnvPtr: u32): void {
@@ -287,7 +289,7 @@ export class ArenaQueryFlattener {
 
   /**
    * Finalizes all connection graphs, emitting zero-sum equations for flow variable sets:
-   * e.g. `p1.i + p2.i - p_outer.i = 0` (accounting for boundary ports)
+   * e.g. p1.i + p2.i - p_outer.i = 0 (accounting for boundary ports)
    */
   finalizeConnections(): u32 {
     let generatedFlowEqs: u32 = 0;
@@ -326,7 +328,7 @@ export class ArenaQueryFlattener {
 
   /**
    * Translates sequential statements from an algorithm block into SSA algebraic DAE equations.
-   * e.g. `x := x + 1; y := x * 2;` -> `x_1 = x_0 + 1; y = x_1 * 2;`
+   * e.g. x := x + 1; y := x * 2; -> x_1 = x_0 + 1; y = x_1 * 2;
    */
   lowerAlgorithmBlock(stmtHeadPtr: u32, stmtCount: u32): u32 {
     let emittedEqs: u32 = 0;
@@ -469,5 +471,4 @@ export function flattener_unionSets(flattenerPtr: u32, v1: u32, v2: u32): void {
     changetype<ArenaQueryFlattener>(flattenerPtr).unionSets(v1, v2);
   }
 }
-
-
+`;

@@ -11,6 +11,7 @@ import {
   seq,
   token,
 } from "@modelscript/language";
+import { modelicaFlattenerWasmCode } from "./flattener-wasm.js";
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
 import { modelicaFlatteningPasses } from "./pipelines/flatten.js";
@@ -33,6 +34,8 @@ const PRECEDENCE = {
 
 export const modelicaLanguage = language({
   name: "Modelica",
+
+  runtimeFiles: [{ filename: "flattener.ts", content: modelicaFlattenerWasmCode }],
 
   word: ($) => $.identifier,
 

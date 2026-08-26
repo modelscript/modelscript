@@ -80,5 +80,12 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "nx": {
+    "targets": {
+      "build": {
+        "dependsOn": []
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ import * as ts from "typescript";
 import { graphCode } from "../../build/src-gen/runtime-templates.js";
 import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "../dsl.js";
 import { extractLanguageAST } from "./ast-loader.js";
-import { transpileQuery as transpileQueryExternal } from "./transpiler.js";
+import { transpileClass, transpileQuery as transpileQueryExternal } from "./transpiler.js";
 
 /**
  * Generates the CodeGraph AssemblyScript bridge, transpiling TypeScript user query functions
@@ -30,6 +30,15 @@ export function generateCodeGraphBridge(grammar: LanguageOptions<any>): string {
 
   let switchCode = "";
   let customQueries = "";
+
+  // 1.4. Emit Top-Level Helper Classes (e.g. SIUnit)
+  if (ast && ast.classes) {
+    for (const [, clsDecl] of ast.classes.entries()) {
+      const clsStr = transpileClass(clsDecl);
+      customQueries += clsStr + "\n\n";
+    }
+  }
+
   let outlineQueryWrapper = "";
   let queryTypeIdx = 1; // 0 is parse
 

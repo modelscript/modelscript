@@ -144,6 +144,9 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
               for (const [k, v] of subAst.constants) {
                 if (!result.constants.has(k)) result.constants.set(k, v);
               }
+              for (const [k, v] of subAst.classes) {
+                if (!result.classes.has(k)) result.classes.set(k, v);
+              }
               for (const [k, v] of subAst.functions) {
                 if (!result.functions.has(k)) result.functions.set(k, v);
               }

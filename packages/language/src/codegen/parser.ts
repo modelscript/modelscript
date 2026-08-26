@@ -19,7 +19,6 @@ import {
   engineCode,
   evalCode,
   eventsCode,
-  flattenerCode,
   fmi3_wasmCode,
   foldCode,
   gssCode,
@@ -978,7 +977,6 @@ export function generateParserTables(
   code += extractExports(bltCode, "./blt");
   code += extractExports(correspondenceCode, "./correspondence");
   code += extractExports(polyglot_arenaCode, "./polyglot_arena");
-  code += extractExports(flattenerCode, "./flattener");
 
   if (originalGrammar.typeSystem) {
     const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
@@ -1071,7 +1069,6 @@ export function generateParserTables(
     { filename: "string_pool.ts", content: string_poolCode },
     { filename: "cas.ts", content: casCode },
     { filename: "tape.ts", content: tapeCode },
-    { filename: "flattener.ts", content: flattenerCode },
     { filename: "fold.ts", content: foldCode },
     { filename: "tearing.ts", content: tearingCode },
     { filename: "scalarize.ts", content: scalarizeCode },
@@ -1085,6 +1082,13 @@ export function generateParserTables(
     { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
     { filename: "vmap.ts", content: vmapCode },
   ];
+
+  if (originalGrammar.runtimeFiles) {
+    for (const rf of originalGrammar.runtimeFiles) {
+      outFiles.push({ filename: rf.filename, content: rf.content });
+      code += "\n" + extractExports(rf.content, `./${rf.filename.replace(/\.ts$/, "")}`);
+    }
+  }
 
   if (originalGrammar.typeSystem) {
     outFiles.push({

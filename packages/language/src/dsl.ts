@@ -775,6 +775,12 @@ export interface LanguageOptions<
    */
   functions?: ((...args: any[]) => any)[] | Record<string, (...args: any[]) => any>;
 
+  /**
+   * Supplemental language-specific AssemblyScript runtime files
+   * (e.g. Modelica-specific flattener, connection managers, or custom solvers).
+   */
+  runtimeFiles?: { filename: string; content: string }[];
+
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>>;
 
