@@ -1247,4 +1247,60 @@ export function dae_getMemF64(ptr: u32): f64 {
   return load<f64>(ptr);
 }
 
+/**
+ * Zero-copy strided array slice view descriptor in WASM linear memory.
+ */
+@unmanaged
+export class ArraySliceView {
+  baseVarId: u32;
+  offset: u32;
+  stride: u32;
+  length: u32;
+
+  init(baseVarId: u32, offset: u32, stride: u32, length: u32): void {
+    this.baseVarId = baseVarId;
+    this.offset = offset;
+    this.stride = stride;
+    this.length = length;
+  }
+
+  getVarId(index: u32): u32 {
+    if (index >= this.length) return 0;
+    return this.baseVarId + this.offset + index * this.stride;
+  }
+
+  getValue(index: u32, varValuesPtr: u32): f64 {
+    let vId = this.getVarId(index);
+    return load<f64>(varValuesPtr + vId * 8);
+  }
+
+  setValue(index: u32, varValuesPtr: u32, val: f64): void {
+    let vId = this.getVarId(index);
+    store<f64>(varValuesPtr + vId * 8, val);
+  }
+}
+
+export function dae_createSliceView(baseVarId: u32, offset: u32, stride: u32, length: u32): u32 {
+  let ptr = atomicChunkAlloc(32);
+  let view = changetype<ArraySliceView>(ptr);
+  view.init(baseVarId, offset, stride, length);
+  return ptr as u32;
+}
+
+export function dae_getSliceVarId(viewPtr: u32, index: u32): u32 {
+  if (viewPtr == 0) return 0;
+  return changetype<ArraySliceView>(viewPtr).getVarId(index);
+}
+
+export function dae_getSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32): f64 {
+  if (viewPtr == 0) return 0.0;
+  return changetype<ArraySliceView>(viewPtr).getValue(index, varValuesPtr);
+}
+
+export function dae_setSliceValue(viewPtr: u32, index: u32, varValuesPtr: u32, val: f64): void {
+  if (viewPtr == 0) return;
+  changetype<ArraySliceView>(viewPtr).setValue(index, varValuesPtr, val);
+}
+
+
 

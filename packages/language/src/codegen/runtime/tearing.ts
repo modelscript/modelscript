@@ -21,6 +21,8 @@ import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
 import { atomicChunkAlloc } from "./arena";
 import { evalExpr, evalEquationResidual } from "./eval";
 import { luFactor, luSolve, vectorNormInf } from "./matrix";
+import { evalExprDerivative } from "./coloring";
+import { UnmanagedMap64, createMap64 } from "./hashmap";
 
 /**
  * Representation of an algebraic loop partitioned by tearing into:
@@ -67,7 +69,7 @@ export function createTornBlock(
   varIndicesPtr: u32,
   n: u32
 ): TornBlock {
-  let tornPtr = atomicChunkAlloc(sizeof<TornBlock>());
+  let tornPtr = atomicChunkAlloc(256);
   let torn = changetype<TornBlock>(tornPtr);
   torn.init();
   torn.blockSize = n;
@@ -180,16 +182,12 @@ export function evalInnerChain(dae: DaeBuilder, torn: TornBlock, varValuesPtr: u
       }
     }
 
-    // 1D Newton fallback for inner equation
+    // 1D Newton fallback for inner equation using analytical derivative
     let x = load<f64>(varValuesPtr + varIdx * 8);
-    let eps: f64 = 1e-7;
     for (let iter: u32 = 0; iter < 10; iter++) {
       let r = evalEquationResidual(eqIdx, dae, varValuesPtr);
       if (Math.abs(r) < 1e-10) break;
-      store<f64>(varValuesPtr + varIdx * 8, x + eps);
-      let rPlus = evalEquationResidual(eqIdx, dae, varValuesPtr);
-      store<f64>(varValuesPtr + varIdx * 8, x);
-      let der = (rPlus - r) / eps;
+      let der = evalExprDerivative(rhs, dae, varIdx, varValuesPtr) - evalExprDerivative(lhs, dae, varIdx, varValuesPtr);
       if (Math.abs(der) < 1e-14) der = 1e-6;
       x -= r / der;
       store<f64>(varValuesPtr + varIdx * 8, x);
@@ -217,7 +215,8 @@ export function solveTornBlock(
   let dxPtr = rPtr + k * 8;
   let jPtr = dxPtr + k * 8;
   let pivPtr = jPtr + k * k * 8;
-  let scalePtr = pivPtr + k * 4;
+  let pivSize = (k * 4 + 7) & ~7;
+  let scalePtr = pivPtr + pivSize;
   let luScratchPtr = scalePtr + k * 8;
 
   let tol: f64 = 1e-10;
@@ -320,8 +319,56 @@ export function solveTornBlock(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Exported C/WASM Bridge Functions
+// Exported C/WASM Bridge Functions & Incremental Tearing Cache
 // ─────────────────────────────────────────────────────────────────────────────
+
+@unmanaged
+export class TearingCache {
+  map: UnmanagedMap64;
+
+  init(capacity: u32 = 256): void {
+    this.map = changetype<UnmanagedMap64>(createMap64(capacity));
+  }
+
+  get(sccHash: u64): u32 {
+    return this.map.get(sccHash);
+  }
+
+  set(sccHash: u64, tornBlockPtr: u32): void {
+    this.map.set(sccHash, tornBlockPtr);
+  }
+}
+
+export function dae_createTearingCache(capacity: u32 = 256): u32 {
+  let ptr = atomicChunkAlloc(sizeof<TearingCache>());
+  let cache = changetype<TearingCache>(ptr);
+  cache.init(capacity);
+  return ptr as u32;
+}
+
+export function dae_getOrCacheTornBlock(
+  cachePtr: u32,
+  sccHashHi: u32,
+  sccHashLo: u32,
+  daePtr: u32,
+  eqIndicesPtr: u32,
+  varIndicesPtr: u32,
+  n: u32
+): u32 {
+  let sccHash = ((sccHashHi as u64) << 32) | (sccHashLo as u64);
+  if (cachePtr != 0) {
+    let cache = changetype<TearingCache>(cachePtr);
+    let existing = cache.get(sccHash);
+    if (existing != 0) return existing;
+  }
+
+  let block = createTornBlock(changetype<DaeBuilder>(daePtr), eqIndicesPtr, varIndicesPtr, n);
+  let resPtr = changetype<usize>(block) as u32;
+  if (cachePtr != 0) {
+    changetype<TearingCache>(cachePtr).set(sccHash, resPtr);
+  }
+  return resPtr;
+}
 
 export function dae_createTornBlock(daePtr: u32, eqIndicesPtr: u32, varIndicesPtr: u32, n: u32): u32 {
   let block = createTornBlock(changetype<DaeBuilder>(daePtr), eqIndicesPtr, varIndicesPtr, n);
@@ -331,3 +378,4 @@ export function dae_createTornBlock(daePtr: u32, eqIndicesPtr: u32, varIndicesPt
 export function dae_solveTornBlock(daePtr: u32, tornBlockPtr: u32, varValuesPtr: u32, scratchPtr: u32): bool {
   return solveTornBlock(changetype<DaeBuilder>(daePtr), changetype<TornBlock>(tornBlockPtr), varValuesPtr, scratchPtr);
 }
+

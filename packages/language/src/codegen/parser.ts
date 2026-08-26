@@ -44,6 +44,7 @@ import {
   tapeCode,
   tearingCode,
   trigramCode,
+  vmapCode,
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
@@ -1080,6 +1081,7 @@ export function generateParserTables(
     { filename: "homotopy.ts", content: homotopyCode },
     { filename: "delay.ts", content: delayCode },
     { filename: "fmi3_wasm.ts", content: fmi3_wasmCode },
+    { filename: "vmap.ts", content: vmapCode },
   ];
 
   if (originalGrammar.typeSystem) {
@@ -1124,6 +1126,7 @@ export function generateParserTables(
   code += extractExports(homotopyCode, "./homotopy");
   code += extractExports(delayCode, "./delay");
   code += extractExports(fmi3_wasmCode, "./fmi3_wasm");
+  code += extractExports(vmapCode, "./vmap");
 
   if (originalGrammar.cfgNodes || originalGrammar.analysis) {
     let layoutContent = generateBlockLayoutConstants();

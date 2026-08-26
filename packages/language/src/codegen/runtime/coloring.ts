@@ -9,10 +9,13 @@ import {
   EXPR_LEFT,
   EXPR_RIGHT,
   ExprKind,
+  BinOp,
+  UnaryOp,
 } from "./dae";
 import { ChunkedInt32Array, createChunkedInt32Array } from "./array";
 import { atomicChunkAlloc } from "./arena";
-import { evalEquationResidual } from "./eval";
+import { evalEquationResidual, evalExpr } from "./eval";
+import { BuiltinMathFunc } from "./fold";
 
 /**
  * Compressed Column Storage (CCS) Sparse Matrix Header in WASM Memory
@@ -226,6 +229,144 @@ export function colorJacobianColumns(ccs: CCSMatrix): ColoringResult {
 }
 
 /**
+ * Evaluates the analytical directional derivative d(expr) / d(targetVar) at varValues.
+ */
+export function evalExprDerivative(
+  exprId: u32,
+  dae: DaeBuilder,
+  targetVar: u32,
+  varValuesPtr: u32
+): f64 {
+  if (exprId == 0xffffffff || exprId >= dae.exprCount) return 0.0;
+
+  let offset = exprId * EXPR_STRIDE;
+  let kind = dae.getExprData().get(offset + EXPR_KIND);
+
+  if (kind == ExprKind.IntLiteral || kind == ExprKind.RealLiteral || kind == ExprKind.BoolLiteral || kind == ExprKind.StringLiteral) {
+    return 0.0;
+  }
+
+  if (kind == ExprKind.Name) {
+    let vId = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    return vId == targetVar ? 1.0 : 0.0;
+  }
+
+  if (kind == ExprKind.Der) {
+    let inner = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    if (inner < dae.exprCount && dae.getExprData().get(inner * EXPR_STRIDE + EXPR_KIND) == ExprKind.Name) {
+      let vId = dae.getExprData().get(inner * EXPR_STRIDE + EXPR_DATA1) as u32;
+      return vId == targetVar ? 1.0 : 0.0;
+    }
+    return 0.0;
+  }
+
+  if (kind == ExprKind.Negate) {
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    return -evalExprDerivative(left, dae, targetVar, varValuesPtr);
+  }
+
+  if (kind == ExprKind.Unary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1);
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let dLeft = evalExprDerivative(left, dae, targetVar, varValuesPtr);
+    if (op == UnaryOp.Negate) return -dLeft;
+    if (op == UnaryOp.Not) return 0.0;
+    return dLeft;
+  }
+
+  if (kind == ExprKind.Binary) {
+    let op = dae.getExprData().get(offset + EXPR_DATA1);
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+
+    let dLeft = evalExprDerivative(left, dae, targetVar, varValuesPtr);
+    let dRight = evalExprDerivative(right, dae, targetVar, varValuesPtr);
+
+    if (op == BinOp.Add) return dLeft + dRight;
+    if (op == BinOp.Sub) return dLeft - dRight;
+    if (op == BinOp.Mul) {
+      let u = evalExpr(left, dae, varValuesPtr);
+      let v = evalExpr(right, dae, varValuesPtr);
+      return dLeft * v + u * dRight;
+    }
+    if (op == BinOp.Div) {
+      let u = evalExpr(left, dae, varValuesPtr);
+      let v = evalExpr(right, dae, varValuesPtr);
+      if (v == 0.0) return 0.0;
+      return (dLeft * v - u * dRight) / (v * v);
+    }
+    if (op == BinOp.Pow) {
+      let u = evalExpr(left, dae, varValuesPtr);
+      let v = evalExpr(right, dae, varValuesPtr);
+      if (u <= 0.0) return 0.0;
+      let uv = Math.pow(u, v);
+      return uv * (dRight * Math.log(u) + v * dLeft / u);
+    }
+  }
+
+  if (kind == ExprKind.IfElse) {
+    let cond = dae.getExprData().get(offset + EXPR_DATA1) as u32;
+    let left = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let right = dae.getExprData().get(offset + EXPR_RIGHT) as u32;
+    let condVal = evalExpr(cond, dae, varValuesPtr);
+    return condVal != 0.0
+      ? evalExprDerivative(left, dae, targetVar, varValuesPtr)
+      : evalExprDerivative(right, dae, targetVar, varValuesPtr);
+  }
+
+  if (kind == ExprKind.Call) {
+    let funcId = dae.getExprData().get(offset + EXPR_DATA1);
+    let firstArg = dae.getExprData().get(offset + EXPR_LEFT) as u32;
+    let dArg0 = evalExprDerivative(firstArg, dae, targetVar, varValuesPtr);
+    let arg0 = evalExpr(firstArg, dae, varValuesPtr);
+
+    if (funcId == BuiltinMathFunc.Sin) return Math.cos(arg0) * dArg0;
+    if (funcId == BuiltinMathFunc.Cos) return -Math.sin(arg0) * dArg0;
+    if (funcId == BuiltinMathFunc.Tan) {
+      let cosVal = Math.cos(arg0);
+      return (1.0 / (cosVal * cosVal)) * dArg0;
+    }
+    if (funcId == BuiltinMathFunc.Exp) return Math.exp(arg0) * dArg0;
+    if (funcId == BuiltinMathFunc.Log && arg0 > 0.0) return (1.0 / arg0) * dArg0;
+    if (funcId == BuiltinMathFunc.Sqrt && arg0 > 0.0) return (0.5 / Math.sqrt(arg0)) * dArg0;
+  }
+
+  return 0.0;
+}
+
+/**
+ * Evaluates the sparse Jacobian analytically without numerical finite differencing.
+ * For each non-zero entry (r, c), evaluates d(residual_r) / d(var_c) directly.
+ */
+export function evalAnalyticalSparseJacobian(
+  dae: DaeBuilder,
+  ccs: CCSMatrix,
+  eqIndicesPtr: u32,
+  varIndicesPtr: u32,
+  varValuesPtr: u32
+): void {
+  if (ccs.nnz == 0 || ccs.valuesPtr == 0) return;
+
+  for (let c: u32 = 0; c < ccs.nCols; c++) {
+    let varIdx = load<u32>(varIndicesPtr + c * 4);
+    let cStart = ccs.colPtr.get(c) as u32;
+    let cEnd = ccs.colPtr.get(c + 1) as u32;
+
+    for (let p: u32 = cStart; p < cEnd; p++) {
+      let r = ccs.rowIndices.get(p) as u32;
+      let eqIdx = load<u32>(eqIndicesPtr + r * 4);
+      let eqOffset = eqIdx * EQ_STRIDE;
+      let lhs = dae.getEqData().get(eqOffset + EQ_LHS) as u32;
+      let rhs = dae.getEqData().get(eqOffset + EQ_RHS) as u32;
+
+      let dLhs = evalExprDerivative(lhs, dae, varIdx, varValuesPtr);
+      let dRhs = evalExprDerivative(rhs, dae, varIdx, varValuesPtr);
+      store<f64>(ccs.valuesPtr + p * 8, dLhs - dRhs);
+    }
+  }
+}
+
+/**
  * Evaluates compressed Jacobian in O(numColors) evaluations via compressed finite differences.
  */
 export function evalCompressedJacobian(
@@ -300,17 +441,57 @@ export function dae_buildJacobianSparsity(
   if (daePtr == 0) return 0;
   let dae = changetype<DaeBuilder>(daePtr);
   let ccs = buildJacobianSparsity(dae, eqIndicesPtr, nRows, varIndicesPtr, nCols);
-  return changetype<u32>(ccs);
+  return changetype<usize>(ccs) as u32;
 }
 
 export function dae_computeGraphColoring(ccsPtr: u32): u32 {
   if (ccsPtr == 0) return 0;
   let ccs = changetype<CCSMatrix>(ccsPtr);
   let coloring = colorJacobianColumns(ccs);
-  return changetype<u32>(coloring);
+  return changetype<usize>(coloring) as u32;
 }
 
 export function dae_getColoringNumColors(coloringPtr: u32): u32 {
   if (coloringPtr == 0) return 0;
   return changetype<ColoringResult>(coloringPtr).numColors;
+}
+
+export function dae_getJacobianNNZ(ccsPtr: u32): u32 {
+  if (ccsPtr == 0) return 0;
+  return changetype<CCSMatrix>(ccsPtr).nnz;
+}
+
+export function dae_getJacobianValuesPtr(ccsPtr: u32): u32 {
+  if (ccsPtr == 0) return 0;
+  return changetype<CCSMatrix>(ccsPtr).valuesPtr as u32;
+}
+
+export function dae_evalAnalyticalJacobian(
+  daePtr: u32,
+  ccsPtr: u32,
+  eqIndicesPtr: u32,
+  varIndicesPtr: u32,
+  varValuesPtr: u32
+): void {
+  if (daePtr == 0 || ccsPtr == 0) return;
+  let dae = changetype<DaeBuilder>(daePtr);
+  let ccs = changetype<CCSMatrix>(ccsPtr);
+  evalAnalyticalSparseJacobian(dae, ccs, eqIndicesPtr, varIndicesPtr, varValuesPtr);
+}
+
+export function dae_evalCompressedJacobian(
+  daePtr: u32,
+  ccsPtr: u32,
+  coloringPtr: u32,
+  eqIndicesPtr: u32,
+  varIndicesPtr: u32,
+  varValuesPtr: u32,
+  baseResidualsPtr: u32,
+  eps: f64
+): void {
+  if (daePtr == 0 || ccsPtr == 0 || coloringPtr == 0) return;
+  let dae = changetype<DaeBuilder>(daePtr);
+  let ccs = changetype<CCSMatrix>(ccsPtr);
+  let coloring = changetype<ColoringResult>(coloringPtr);
+  evalCompressedJacobian(dae, ccs, coloring, eqIndicesPtr, varIndicesPtr, varValuesPtr, baseResidualsPtr, eps);
 }

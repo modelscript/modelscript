@@ -245,6 +245,57 @@ function cloneExprScalarized(
   return outDae.addExpression(kind, data1, left, right);
 }
 
+/**
+ * Uniform Array Parameterized Equation Block Descriptor.
+ * Represents a parameterized uniform equation stencil across indices [startIdx, endIdx].
+ */
+@unmanaged
+export class UniformArrayBlock {
+  stateBaseVarId: u32;
+  derBaseVarId: u32;
+  startIdx: u32;
+  endIdx: u32;
+  stencilWidth: u32; // e.g. 3 for [i-1, i, i+1]
+  coeffCenter: f64;
+  coeffLeft: f64;
+  coeffRight: f64;
+
+  init(
+    stateBaseVarId: u32,
+    derBaseVarId: u32,
+    startIdx: u32,
+    endIdx: u32,
+    coeffCenter: f64,
+    coeffLeft: f64,
+    coeffRight: f64
+  ): void {
+    this.stateBaseVarId = stateBaseVarId;
+    this.derBaseVarId = derBaseVarId;
+    this.startIdx = startIdx;
+    this.endIdx = endIdx;
+    this.stencilWidth = 3;
+    this.coeffCenter = coeffCenter;
+    this.coeffLeft = coeffLeft;
+    this.coeffRight = coeffRight;
+  }
+
+  evalStencil(varValuesPtr: u32, derValuesPtr: u32): void {
+    let sBase = this.stateBaseVarId;
+    let dBase = this.derBaseVarId;
+    let cC = this.coeffCenter;
+    let cL = this.coeffLeft;
+    let cR = this.coeffRight;
+
+    for (let i: u32 = this.startIdx; i <= this.endIdx; i++) {
+      let xCenter = load<f64>(varValuesPtr + (sBase + i) * 8);
+      let xLeft = load<f64>(varValuesPtr + (sBase + i - 1) * 8);
+      let xRight = load<f64>(varValuesPtr + (sBase + i + 1) * 8);
+      let der = cC * xCenter + cL * xLeft + cR * xRight;
+      store<f64>(derValuesPtr + (dBase + i) * 8, der);
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // C/WASM Export Wrappers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -255,3 +306,24 @@ export function dae_scalarize(daePtr: u32): u32 {
   let resDae = scalarizeDae(srcDae);
   return changetype<u32>(resDae);
 }
+
+export function dae_createUniformArrayBlock(
+  stateBaseVarId: u32,
+  derBaseVarId: u32,
+  startIdx: u32,
+  endIdx: u32,
+  coeffCenter: f64,
+  coeffLeft: f64,
+  coeffRight: f64
+): u32 {
+  let ptr = atomicChunkAlloc(64);
+  let block = changetype<UniformArrayBlock>(ptr);
+  block.init(stateBaseVarId, derBaseVarId, startIdx, endIdx, coeffCenter, coeffLeft, coeffRight);
+  return ptr as u32;
+}
+
+export function dae_evalUniformArrayBlock(blockPtr: u32, varValuesPtr: u32, derValuesPtr: u32): void {
+  if (blockPtr == 0) return;
+  changetype<UniformArrayBlock>(blockPtr).evalStencil(varValuesPtr, derValuesPtr);
+}
+

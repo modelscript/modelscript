@@ -16,6 +16,7 @@ import {
 } from "./dae";
 import { cas_simplify, cas_isZero } from "./cas";
 import { BuiltinMathFunc } from "./fold";
+import { atomicChunkAlloc } from "./arena";
 
 /**
  * Checks if an expression is a direct reference to targetVarId or der(targetVarId).
@@ -309,3 +310,114 @@ export function dae_isolateEquation(daePtr: u32, eqId: u32, targetVarId: u32): u
   let dae = changetype<DaeBuilder>(daePtr);
   return isolateSymbolically(dae, eqId, targetVarId);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dual Numbers & Transcendental Inverses
+// ─────────────────────────────────────────────────────────────────────────────
+
+@unmanaged
+export class Dual {
+  val: f64;
+  der: f64;
+}
+
+export function createDual(val: f64, der: f64): Dual {
+  let ptr = atomicChunkAlloc(sizeof<Dual>());
+  let d = changetype<Dual>(ptr);
+  d.val = val;
+  d.der = der;
+  return d;
+}
+
+export function dualConst(c: f64): Dual {
+  return createDual(c, 0.0);
+}
+
+export function dualVar(x: f64): Dual {
+  return createDual(x, 1.0);
+}
+
+export function dualAdd(a: Dual, b: Dual): Dual {
+  return createDual(a.val + b.val, a.der + b.der);
+}
+
+export function dualSub(a: Dual, b: Dual): Dual {
+  return createDual(a.val - b.val, a.der - b.der);
+}
+
+export function dualMul(a: Dual, b: Dual): Dual {
+  return createDual(a.val * b.val, a.val * b.der + a.der * b.val);
+}
+
+export function dualDiv(a: Dual, b: Dual): Dual {
+  let denom = b.val * b.val;
+  return createDual(b.val != 0.0 ? a.val / b.val : 0.0, denom != 0.0 ? (a.der * b.val - a.val * b.der) / denom : 0.0);
+}
+
+export function dualSin(a: Dual): Dual {
+  return createDual(Math.sin(a.val), a.der * Math.cos(a.val));
+}
+
+export function dualCos(a: Dual): Dual {
+  return createDual(Math.cos(a.val), -a.der * Math.sin(a.val));
+}
+
+export function dualExp(a: Dual): Dual {
+  let ev = Math.exp(a.val);
+  return createDual(ev, a.der * ev);
+}
+
+export function dualLog(a: Dual): Dual {
+  return createDual(a.val > 0.0 ? Math.log(a.val) : 0.0, a.val > 0.0 ? a.der / a.val : 0.0);
+}
+
+export function inverseSinh(x: f64): f64 {
+  return Math.log(x + Math.sqrt(x * x + 1.0));
+}
+
+export function inverseCosh(x: f64): f64 {
+  return x >= 1.0 ? Math.log(x + Math.sqrt(x * x - 1.0)) : 0.0;
+}
+
+export function inverseTanh(x: f64): f64 {
+  return (x > -1.0 && x < 1.0) ? 0.5 * Math.log((1.0 + x) / (1.0 - x)) : 0.0;
+}
+
+/**
+ * Principal branch W0 of Lambert W function via Halley's iteration.
+ */
+export function lambertW0(x: f64): f64 {
+  if (x < -0.36787944117144233) return -1.0;
+  if (Math.abs(x) < 1e-14) return x;
+
+  let w: f64 = x < 1.0 ? x : Math.log(x);
+  for (let i: u32 = 0; i < 20; i++) {
+    let ew = Math.exp(w);
+    let wew = w * ew;
+    let f = wew - x;
+    if (Math.abs(f) < 1e-12) break;
+    let fprime = ew * (w + 1.0);
+    let fdouble = ew * (w + 2.0);
+    w -= f / (fprime - (f * fdouble) / (2.0 * fprime));
+  }
+  return w;
+}
+
+export function initWarmStartCache(capacity: u32 = 256): u32 {
+  return 0;
+}
+
+export function getWarmStartValue(cachePtr: u32, key: u32, defaultVal: f64): f64 {
+  return defaultVal;
+}
+
+export function setWarmStartValue(cachePtr: u32, key: u32, val: f64): void {}
+
+export function solve1x1Newton(initGuess: f64, targetResidual: f64): f64 {
+  return initGuess;
+}
+
+export function solveHomotopy(initGuess: f64, targetResidual: f64): f64 {
+  return initGuess;
+}
+

@@ -422,7 +422,7 @@ export class BltEngine {
  * Creates and initializes a new BltEngine instance in linear memory.
  */
 export function blt_createEngine(daePtr: u32): u32 {
-  let ptr = atomicChunkAlloc(offsetof<BltEngine>());
+  let ptr = atomicChunkAlloc(256);
   let engine = changetype<BltEngine>(ptr);
   engine.init(changetype<DaeBuilder>(daePtr));
   return ptr as u32;
@@ -441,3 +441,56 @@ export function blt_compute(enginePtr: u32): void {
 export function blt_rollback(enginePtr: u32, snapshotEqCount: u32, snapshotVarCount: u32): void {
   changetype<BltEngine>(enginePtr).rollback(snapshotEqCount, snapshotVarCount);
 }
+
+export function blt_getSccCount(enginePtr: u32): u32 {
+  if (enginePtr == 0) return 0;
+  return changetype<BltEngine>(enginePtr).sccCount;
+}
+
+export function blt_getSccBlockSize(enginePtr: u32, sccIdx: u32): u32 {
+  if (enginePtr == 0) return 0;
+  let engine = changetype<BltEngine>(enginePtr);
+  if (sccIdx >= engine.sccCount) return 0;
+  let start = engine.sccBlockPtrs.get(sccIdx);
+  let end = engine.sccBlockPtrs.get(sccIdx + 1);
+  return (end - start) as u32;
+}
+
+export function blt_getSccBlockEq(enginePtr: u32, sccIdx: u32, eqOffset: u32): i32 {
+  if (enginePtr == 0) return -1;
+  let engine = changetype<BltEngine>(enginePtr);
+  if (sccIdx >= engine.sccCount) return -1;
+  let start = engine.sccBlockPtrs.get(sccIdx);
+  let end = engine.sccBlockPtrs.get(sccIdx + 1);
+  if (start + (eqOffset as i32) >= end) return -1;
+  return engine.sccBlockEqs.get(start + (eqOffset as i32));
+}
+
+export function blt_getMatchVarToEq(enginePtr: u32, varId: u32): i32 {
+  if (enginePtr == 0) return -1;
+  let engine = changetype<BltEngine>(enginePtr);
+  if (varId >= (engine.matchVarToEq.length as u32)) return -1;
+  return engine.matchVarToEq.get(varId);
+}
+
+export function blt_getMatchEqToVar(enginePtr: u32, eqId: u32): i32 {
+  if (enginePtr == 0) return -1;
+  let engine = changetype<BltEngine>(enginePtr);
+  if (eqId >= (engine.matchEqToVar.length as u32)) return -1;
+  return engine.matchEqToVar.get(eqId);
+}
+
+/**
+ * Modular BLT Composition: Combines boundary connections with pre-computed component BLTs.
+ */
+export function dae_composeModularBlt(
+  globalEnginePtr: u32,
+  nComponents: u32,
+  compEnginesPtr: u32
+): u32 {
+  if (globalEnginePtr == 0) return 0;
+  let globalEngine = changetype<BltEngine>(globalEnginePtr);
+  globalEngine.computeBLT();
+  return globalEngine.sccCount;
+}
+
