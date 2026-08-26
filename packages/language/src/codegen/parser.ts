@@ -38,6 +38,7 @@ import {
   recoveryConfigCode,
   scalarizeCode,
   scope_stackCode,
+  sparse_choleskyCode,
   sparse_luCode,
   string_poolCode,
   stubCode,
@@ -1077,6 +1078,7 @@ export function generateParserTables(
     { filename: "cse.ts", content: cseCode },
     { filename: "coloring.ts", content: coloringCode },
     { filename: "sparse_lu.ts", content: sparse_luCode },
+    { filename: "sparse_cholesky.ts", content: sparse_choleskyCode },
     { filename: "bdf.ts", content: bdfCode },
     { filename: "homotopy.ts", content: homotopyCode },
     { filename: "delay.ts", content: delayCode },
@@ -1122,6 +1124,7 @@ export function generateParserTables(
   code += extractExports(cseCode, "./cse");
   code += extractExports(coloringCode, "./coloring");
   code += extractExports(sparse_luCode, "./sparse_lu");
+  code += extractExports(sparse_choleskyCode, "./sparse_cholesky");
   code += extractExports(bdfCode, "./bdf");
   code += extractExports(homotopyCode, "./homotopy");
   code += extractExports(delayCode, "./delay");
