@@ -176,6 +176,55 @@ export class TableauReasoner implements IOWLReasoner {
       }
     }
 
+    // Symmetric, Inverse, Universal, and Self restrictions propagation
+    for (const axiom of this._axioms) {
+      if (axiom.type === "SymmetricObjectProperty") {
+        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        const toAdd: PropertyEdge[] = [];
+        for (const e of edges) {
+          if (!edges.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            toAdd.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        for (const add of toAdd) edges.push(add);
+        this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+      } else if (axiom.type === "InverseObjectProperty") {
+        const edgesR = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        const edgesS = this.objectPropertyAssertions.get(axiom.inversePropertyIri) ?? [];
+        for (const e of edgesR) {
+          if (!edgesS.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            edgesS.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        for (const e of edgesS) {
+          if (!edgesR.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            edgesR.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        this.objectPropertyAssertions.set(axiom.propertyIri, edgesR);
+        this.objectPropertyAssertions.set(axiom.inversePropertyIri, edgesS);
+      } else if (axiom.type === "UniversalRestriction") {
+        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        for (const e of edges) {
+          if (!axiom.classIri || (this.individualTypes.get(e.subjectIri)?.has(axiom.classIri) ?? false)) {
+            const types = this.individualTypes.get(e.objectIri) ?? new Set();
+            types.add(axiom.targetClassIri);
+            this.individualTypes.set(e.objectIri, types);
+          }
+        }
+      } else if (axiom.type === "SelfRestriction") {
+        for (const [indIri, types] of this.individualTypes) {
+          if (types.has(axiom.classIri)) {
+            const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+            if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
+              edges.push({ subjectIri: indIri, objectIri: indIri });
+              this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+            }
+          }
+        }
+      }
+    }
+
     // Propagate individual types through hierarchy
     for (const [indIri, types] of this.individualTypes) {
       const inferredTypes = new Set(types);
@@ -817,6 +866,88 @@ export class TableauReasoner implements IOWLReasoner {
 
       case "ObjectSomeValuesFrom":
       case "DataSomeValuesFrom":
+        break;
+
+      case "SymmetricObjectProperty": {
+        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        const toAdd: { subjectIri: string; objectIri: string }[] = [];
+        for (const e of edges) {
+          if (!edges.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            toAdd.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        for (const add of toAdd) edges.push(add);
+        this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+        break;
+      }
+
+      case "InverseObjectProperty": {
+        const edgesR = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        const edgesS = this.objectPropertyAssertions.get(axiom.inversePropertyIri) ?? [];
+        for (const e of edgesR) {
+          if (!edgesS.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            edgesS.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        for (const e of edgesS) {
+          if (!edgesR.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+            edgesR.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          }
+        }
+        this.objectPropertyAssertions.set(axiom.propertyIri, edgesR);
+        this.objectPropertyAssertions.set(axiom.inversePropertyIri, edgesS);
+        break;
+      }
+
+      case "UniversalRestriction": {
+        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+        for (const e of edges) {
+          if (!axiom.classIri || (this.individualTypes.get(e.subjectIri)?.has(axiom.classIri) ?? false)) {
+            const types = this.individualTypes.get(e.objectIri) ?? new Set();
+            types.add(axiom.targetClassIri);
+            this.individualTypes.set(e.objectIri, types);
+          }
+        }
+        break;
+      }
+
+      case "DisjunctiveClass": {
+        // Disjunctive class recorded for structural and unit resolution
+        if (axiom.superClassIri && axiom.classIris.length > 0) {
+          for (const c of axiom.classIris) {
+            const sub = this.ensureClass(c);
+            sub.superClasses.add(axiom.superClassIri);
+          }
+        }
+        break;
+      }
+
+      case "SelfRestriction": {
+        for (const [indIri, types] of this.individualTypes) {
+          if (types.has(axiom.classIri)) {
+            const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+            if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
+              edges.push({ subjectIri: indIri, objectIri: indIri });
+              this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+            }
+          }
+        }
+        break;
+      }
+
+      case "NominalClass": {
+        for (const ind of axiom.individualIris) {
+          const types = this.individualTypes.get(ind) ?? new Set();
+          types.add(axiom.classIri);
+          this.individualTypes.set(ind, types);
+        }
+        break;
+      }
+
+      case "QualifiedCardinality":
+      case "AsymmetricObjectProperty":
+      case "IrreflexiveObjectProperty":
+      case "DisjointObjectProperties":
         break;
     }
   }

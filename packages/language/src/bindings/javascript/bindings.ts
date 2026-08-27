@@ -2242,20 +2242,55 @@ export class LspFacade {
     return this.exports.polyglot_hasLangChanged(arenaPtr, langId, snapshotVersion) === 1;
   }
 
+  /** Returns the number of declarative MCP tools registered in WASM. */
+  mcpGetToolCount(): number {
+    return this.exports.mcp_getToolCount ? this.exports.mcp_getToolCount() : 0;
+  }
+
+  /** Returns the DJB2 name hash for an MCP tool index. */
+  mcpGetToolNameHash(index: number): number {
+    return this.exports.mcp_getToolNameHash ? this.exports.mcp_getToolNameHash(index) : 0;
+  }
+
+  /** Dispatches an MCP tool call directly in WASM linear memory. */
+  mcpDispatchTool(toolIndex: number, arg1: number = 0, arg2: number = 0, arg3: number = 0): number {
+    return this.exports.mcp_dispatchTool ? this.exports.mcp_dispatchTool(toolIndex, arg1, arg2, arg3) : 0;
+  }
+
+  /** Returns the pointer to the MCP result output buffer in WASM linear memory. */
+  mcpGetOutputBuffer(): number {
+    return this.exports.mcp_getOutputBuffer ? this.exports.mcp_getOutputBuffer() : 0;
+  }
+
+  /** Returns the length of the MCP result output buffer in bytes. */
+  mcpGetOutputLength(): number {
+    return this.exports.mcp_getOutputLength ? this.exports.mcp_getOutputLength() : 0;
+  }
+
+  /** Reads the MCP output buffer as a UTF-8 string. */
+  mcpGetOutputText(): string {
+    const ptr = this.mcpGetOutputBuffer();
+    const len = this.mcpGetOutputLength();
+    if (ptr === 0 || len === 0) return "";
+    const bytes = new Uint8Array(this.memory.buffer, ptr, len);
+    return new TextDecoder().decode(bytes);
+  }
+
   /** Adds an OWL 2 axiom to the indexed WASM ontology store. */
   addOntologyAxiom(
     axiomType: number,
     sourceLangId: number,
-    subject: string,
-    predicate: string = "",
-    object: string = "",
+    subject: string | number,
+    predicate: string | number = "",
+    object: string | number = "",
     flags: number = 0,
+    extra: number = 0,
   ): number {
     if (!this.exports.ontology_addAxiom) return 0;
-    const sHash = subject ? this.hashString(subject) : 0;
-    const pHash = predicate ? this.hashString(predicate) : 0;
-    const oHash = object ? this.hashString(object) : 0;
-    return this.exports.ontology_addAxiom(axiomType, sourceLangId, sHash, pHash, oHash, flags);
+    const sHash = typeof subject === "number" ? subject : subject ? this.hashString(subject) : 0;
+    const pHash = typeof predicate === "number" ? predicate : predicate ? this.hashString(predicate) : 0;
+    const oHash = typeof object === "number" ? object : object ? this.hashString(object) : 0;
+    return this.exports.ontology_addAxiom(axiomType, sourceLangId, sHash, pHash, oHash, flags, extra);
   }
 
   /** Evaluates transitive SubClassOf subsumption directly in WASM memory. */
@@ -2696,6 +2731,39 @@ export class LspFacade {
     if (this.exports.ontology_clear) {
       this.exports.ontology_clear();
     }
+  }
+
+  /** Runs the full hybrid interleaved fixpoint cycle in WASM memory. */
+  runHybridFixpoint(): number {
+    return this.exports.ontology_runHybridFixpoint ? this.exports.ontology_runHybridFixpoint() : 0;
+  }
+
+  /** Validates advanced OWL 2 / SHACL constraints (asymmetry, irreflexivity, disjoint properties). */
+  validateAdvancedConstraints(): { subjectHash: number; predicateHash: number; objectHash: number }[] {
+    if (!this.exports.ontology_validateAdvancedConstraints || !this.exports.ontology_getQueryBuffer) return [];
+    const count = this.exports.ontology_validateAdvancedConstraints();
+    if (count === 0) return [];
+
+    const dirPtr = this.exports.ontology_getQueryBuffer();
+    const mem32 = new Uint32Array(this.wasmMemory.buffer);
+    const offset = dirPtr >>> 2;
+    const results = [];
+    for (let i = 0; i < count; i++) {
+      results.push({
+        subjectHash: mem32[offset + i * 3 + 0],
+        predicateHash: mem32[offset + i * 3 + 1],
+        objectHash: mem32[offset + i * 3 + 2],
+      });
+    }
+    return results;
+  }
+
+  /** Runs Tier 2 WASM Tableau Engine for disjunctive and complex proofs. */
+  runTableauSubsumption(subClassName: string, superClassName: string): boolean {
+    if (!this.exports.ontology_runTableauSubsumption) return false;
+    const subHash = this.hashString(subClassName);
+    const supHash = this.hashString(superClassName);
+    return this.exports.ontology_runTableauSubsumption(subHash, supHash) === 1;
   }
 
   /** Projects all indexed declaration stubs into OWL 2 axioms. */

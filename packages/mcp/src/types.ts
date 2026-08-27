@@ -14,4 +14,5 @@ export interface ServerContext {
   workspace?: UnifiedWorkspace | null;
   paths?: string[];
   ontologyBuilder?: OntologyBuilder | null;
+  polyglotHost?: unknown | null;
 }

@@ -933,6 +933,12 @@ export interface LanguageOptions<
    * Declares Triple Graph Grammar (TGG) rules for bidirectional model projection.
    */
   polyglot?: PolyglotConfig<RuleName, FieldName, QueryName, ModelAttrs>;
+
+  /**
+   * Declarative Model Context Protocol (MCP) Configuration.
+   * Defines AI/LLM tools, resources, and prompt templates compiled to zero-copy in-WASM handlers.
+   */
+  mcp?: McpDeclarationConfig<RuleName, FieldName, QueryName, ModelAttrs>;
 }
 
 /**
@@ -1216,9 +1222,53 @@ prec.right = function <F extends string = string>(value: number | Rule<F>, rule?
   return { type: "PREC_RIGHT", value: val, children: [toRule(r)] };
 };
 
-prec.dynamic = function <F extends string = string>(value: number, rule: Rule<F>): Rule<F> {
-  return { type: "PREC_DYNAMIC", value, children: [rule] };
-};
+export function blank(): any {
+  return { type: "BLANK" };
+}
+
+export interface LintRangeOptions {
+  field?: string;
+  startCharOffset?: number;
+  endCharOffset?: number;
+  startByte?: number;
+  endByte?: number;
+}
+
+export interface LintResult {
+  message: string;
+  severity: "error" | "warning" | "info" | "hint";
+  field?: string;
+  startCharOffset?: number;
+  endCharOffset?: number;
+  startByte?: number;
+  endByte?: number;
+}
+
+export function warning(message: string, options?: LintRangeOptions): LintResult {
+  return { message, severity: "warning", ...options };
+}
+
+export function error(message: string, options?: LintRangeOptions): LintResult {
+  return { message, severity: "error", ...options };
+}
+
+export function info(message: string, options?: LintRangeOptions): LintResult {
+  return { message, severity: "info", ...options };
+}
+
+export function hint(message: string, options?: LintRangeOptions): LintResult {
+  return { message, severity: "hint", ...options };
+}
+
+export function def<F extends string = string>(config: any): Rule<F> {
+  const { syntax, ...options } = config;
+  return { type: "DEF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
+}
+
+export function ref<F extends string = string>(config: any): Rule<F> {
+  const { syntax, ...options } = config;
+  return { type: "REF" as any, value: options, children: syntax ? [toRule(syntax)] : [] } as any;
+}
 
 // --- E-Graph Rewrite Rule Combinators ---
 
@@ -1690,6 +1740,82 @@ export function tggMapList(sourceListVar: any, targetListVar: any, mapper: (item
 
 export function tggCompute(targetVar: any, queryName: string, sourceVar: any): TGGConstraint {
   return { kind: "compute", args: [targetVar, queryName, sourceVar] };
+}
+
+// ---------------------------------------------------------------------------
+// Declarative Model Context Protocol (MCP) DSL (In-WASM Polyglot Engine)
+// ---------------------------------------------------------------------------
+
+export type McpPrimitiveType = "string" | "number" | "boolean" | "array" | "object";
+
+export interface McpPropertySchema {
+  type: McpPrimitiveType;
+  description?: string;
+  required?: boolean;
+  default?: any;
+  enum?: string[];
+  items?: McpPropertySchema;
+  properties?: Record<string, McpPropertySchema>;
+}
+
+export interface McpToolDeclaration<RuleName extends string = string, QueryName extends string = string> {
+  name: string;
+  description: string;
+  category?: "ast" | "query" | "simulation" | "reasoning" | "transformation" | "custom";
+  inputSchema: Record<string, McpPropertySchema>;
+  targetQuery?: QueryName;
+  targetAction?: string;
+  inWasmHandler?: string;
+  pure?: boolean;
+  handler?: (args: any, context: any) => Promise<any> | any;
+}
+
+export interface McpResourceDeclaration {
+  uriTemplate: string;
+  name: string;
+  mimeType?: string;
+  description?: string;
+  inWasmProvider?: string;
+  provider?: (
+    uri: string,
+    context: any,
+  ) =>
+    | Promise<{ text?: string; blob?: Uint8Array; mimeType?: string }>
+    | { text?: string; blob?: Uint8Array; mimeType?: string };
+}
+
+export interface McpPromptDeclaration {
+  name: string;
+  description: string;
+  arguments?: { name: string; description: string; required?: boolean }[];
+  template: string | ((args: Record<string, string>) => string);
+}
+
+export interface McpDeclarationConfig<
+  RuleName extends string = string,
+  FieldName extends string = string,
+  QueryName extends string = string,
+  ModelAttrs extends Record<string, Record<string, any>> = any,
+> {
+  serverName?: string;
+  serverVersion?: string;
+  tools: McpToolDeclaration<RuleName, QueryName>[];
+  resources?: McpResourceDeclaration[];
+  prompts?: McpPromptDeclaration[];
+}
+
+export function mcpTool<RuleName extends string = string, QueryName extends string = string>(
+  options: McpToolDeclaration<RuleName, QueryName>,
+): McpToolDeclaration<RuleName, QueryName> {
+  return options;
+}
+
+export function mcpResource(options: McpResourceDeclaration): McpResourceDeclaration {
+  return options;
+}
+
+export function mcpPrompt(options: McpPromptDeclaration): McpPromptDeclaration {
+  return options;
 }
 
 // ---------------------------------------------------------------------------

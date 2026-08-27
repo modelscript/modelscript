@@ -1,11 +1,13 @@
 import type { GrammarConflictDiagnostic } from "./automata.js";
 import { generateJavaScriptWrapper } from "./bindings/javascript/index.js";
+import { compileMcpConfig, type McpManifest } from "./codegen/compile_mcp.js";
 import type { GeneratedFile } from "./codegen/parser.js";
 import { generateParser, generateParserTables } from "./codegen/parser.js";
 import { generateTextMate } from "./codegen/textmate.js";
 import { LanguageOptions, SOURCE_PATH_SYMBOL, SOURCE_TEXT_SYMBOL } from "./dsl.js";
 
 export type { GrammarConflictDiagnostic } from "./automata.js";
+export type { McpManifest } from "./codegen/compile_mcp.js";
 
 /**
  * Options for configuring language parser build and source AST extraction.
@@ -52,6 +54,8 @@ export interface BuildResult {
   table?: any;
   /** Any unresolved grammar conflicts (shift/reduce or reduce/reduce). */
   conflicts?: GrammarConflictDiagnostic[];
+  /** Compiled Model Context Protocol (MCP) tool and resource manifest. */
+  mcpManifest?: McpManifest;
 }
 
 /**
@@ -92,11 +96,17 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
   assemblyScriptFiles.push({ filename: "tmLanguage.json", content: textMateContent.tm });
   assemblyScriptFiles.push({ filename: "monarch.json", content: textMateContent.monarch });
 
+  let mcpManifest: McpManifest | undefined;
+  if (languageDef.mcp) {
+    mcpManifest = compileMcpConfig(languageDef.mcp, languageDef.name).manifest;
+  }
+
   return {
     parserInfo,
     assemblyScriptFiles,
     javascriptWrapper,
     table: result.table,
     conflicts: result.table.diagnostics || [],
+    mcpManifest,
   };
 }

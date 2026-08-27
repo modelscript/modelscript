@@ -1,6 +1,7 @@
 export * from "./api.js";
 export * from "./automata.js";
 export * from "./codegen/ast-loader.js";
+export * from "./codegen/compile_mcp.js";
 export * from "./codegen/compile_tgg.js";
 export * from "./codegen/config.js";
 export * from "./codegen/parser.js";

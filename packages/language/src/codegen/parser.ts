@@ -48,6 +48,7 @@ import {
 } from "../../build/src-gen/runtime-templates.js";
 import { generateAliasAnalysis } from "./alias.js";
 import { generateCFG } from "./cfg.js";
+import { compileMcpConfig } from "./compile_mcp.js";
 import { compileTGGRules } from "./compile_tgg.js";
 import { generateDataflow } from "./dataflow.js";
 import { generateEGraphEngine } from "./egraph.js";
@@ -1002,6 +1003,13 @@ export function generateParserTables(
     code += `\nexport function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 { return 0; }\nexport function tgg_propagate_all_stale(corr: CorrespondenceIndex): u32 { return 0; }\n`;
   }
 
+  if (originalGrammar.mcp) {
+    const mcpOutput = compileMcpConfig(originalGrammar.mcp, originalGrammar.name);
+    code += "\n" + extractExports(mcpOutput.sourceCode, "./mcp");
+  } else {
+    code += `\nexport function mcp_getToolCount(): u32 { return 0; }\nexport function mcp_getToolNameHash(index: u32): u32 { return 0; }\nexport function mcp_dispatchTool(toolIndex: u32, arg1: u32, arg2: u32, arg3: u32): u32 { return 0; }\nexport function mcp_getOutputBuffer(): usize { return 0; }\nexport function mcp_getOutputLength(): u32 { return 0; }\n`;
+  }
+
   if (originalGrammar.simplification?.rules && originalGrammar.simplification.rules.length > 0) {
     code += `\n` + generateEGraphEngine(originalGrammar, originalGrammar.simplification.rules);
   } else {
@@ -1101,6 +1109,12 @@ export function generateParserTables(
   }
   if (originalGrammar.polyglot) {
     outFiles.push({ filename: "tgg.ts", content: compileTGGRules(originalGrammar.polyglot).sourceCode });
+  }
+  if (originalGrammar.mcp) {
+    outFiles.push({
+      filename: "mcp.ts",
+      content: compileMcpConfig(originalGrammar.mcp, originalGrammar.name).sourceCode,
+    });
   }
 
   code += extractExports(arenaCode, "./arena");

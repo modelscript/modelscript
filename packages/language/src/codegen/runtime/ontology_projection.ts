@@ -43,26 +43,26 @@ export function projection_projectFileStubs(fileId: u32, sourceLangId: u16): u32
       let nameHash = t_stubTable.get(baseIdx + 4);
 
       if (kind == 1) { // Class / Model Declaration
-        ontology_addAxiom(AXIOM_CLASS_DECL, sourceLangId, nameHash, 0, 0, 0);
+        ontology_addAxiom(AXIOM_CLASS_DECL, sourceLangId, nameHash, 0, 0, 0, 0);
         assertedCount++;
 
         if (parentSymbolId != 0) {
           let parentBase = parentSymbolId * STUB_STRIDE;
           let parentNameHash = t_stubTable.get(parentBase + 4);
           if (parentNameHash != 0) {
-            ontology_addAxiom(AXIOM_SUBCLASS_OF, sourceLangId, nameHash, 0, parentNameHash, 0);
+            ontology_addAxiom(AXIOM_SUBCLASS_OF, sourceLangId, nameHash, 0, parentNameHash, 0, 0);
             assertedCount++;
           }
         }
       } else if (kind == 2) { // Component / Field Declaration
-        ontology_addAxiom(AXIOM_OBJ_PROP_DECL, sourceLangId, nameHash, 0, 0, 0);
+        ontology_addAxiom(AXIOM_OBJ_PROP_DECL, sourceLangId, nameHash, 0, 0, 0, 0);
         assertedCount++;
 
         if (parentSymbolId != 0) {
           let parentBase = parentSymbolId * STUB_STRIDE;
           let parentNameHash = t_stubTable.get(parentBase + 4);
           if (parentNameHash != 0) {
-            ontology_addAxiom(AXIOM_OBJ_PROP_ASSERT, sourceLangId, parentNameHash, nameHash, 0, 0);
+            ontology_addAxiom(AXIOM_OBJ_PROP_ASSERT, sourceLangId, parentNameHash, nameHash, 0, 0, 0);
             assertedCount++;
           }
         }
@@ -93,19 +93,19 @@ export function projection_projectAllStubs(sourceLangId: u16): u32 {
     let nameHash = t_stubTable.get(baseIdx + 4);
 
     if (kind == 1) { // Class / Model
-      ontology_addAxiom(AXIOM_CLASS_DECL, sourceLangId, nameHash, 0, 0, 0);
+      ontology_addAxiom(AXIOM_CLASS_DECL, sourceLangId, nameHash, 0, 0, 0, 0);
       assertedCount++;
 
       if (parentSymbolId != 0) {
         let parentBase = parentSymbolId * STUB_STRIDE;
         let parentNameHash = t_stubTable.get(parentBase + 4);
         if (parentNameHash != 0) {
-          ontology_addAxiom(AXIOM_SUBCLASS_OF, sourceLangId, nameHash, 0, parentNameHash, 0);
+          ontology_addAxiom(AXIOM_SUBCLASS_OF, sourceLangId, nameHash, 0, parentNameHash, 0, 0);
           assertedCount++;
         }
       }
     } else if (kind == 2) { // Component
-      ontology_addAxiom(AXIOM_OBJ_PROP_DECL, sourceLangId, nameHash, 0, 0, 0);
+      ontology_addAxiom(AXIOM_OBJ_PROP_DECL, sourceLangId, nameHash, 0, 0, 0, 0);
       assertedCount++;
     }
   }

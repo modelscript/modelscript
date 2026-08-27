@@ -7,6 +7,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Context } from "@modelscript/core";
 import Modelica from "@modelscript/modelica/parser";
 import Parser from "tree-sitter";
+import { PolyglotMcpHost } from "./polyglot-server.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";
 import type { ServerContext } from "./types.js";
@@ -26,6 +27,9 @@ const server = new McpServer({
   name: "modelscript",
   version: "0.0.1",
 });
+
+const host = new PolyglotMcpHost(server, ctx);
+ctx.polyglotHost = host;
 
 registerTools(server, ctx);
 registerResources(server, ctx);

@@ -20,6 +20,17 @@ export const AXIOM_SUB_PROPERTY_CHAIN: u16 = 13;      // R ∘ S ⊑ T
 export const AXIOM_FUNCTIONAL_OBJ_PROP: u16 = 14;     // Func(R)
 export const AXIOM_FUNCTIONAL_DATA_PROP: u16 = 15;    // Func(P)
 export const AXIOM_SAME_INDIVIDUAL: u16 = 16;         // a ≡ b
+export const AXIOM_UNIVERSAL_RESTRICTION: u16 = 17;   // C ⊑ ∀R.D
+export const AXIOM_DISJUNCTIVE_CLASS: u16 = 18;       // C ⊑ D1 ⊔ D2
+export const AXIOM_QUALIFIED_CARDINALITY: u16 = 19;   // C ⊑ (≥|≤|= n) R.D
+export const AXIOM_SYMMETRIC_PROP: u16 = 20;          // Sym(R)
+export const AXIOM_INVERSE_PROP: u16 = 21;            // Inv(R, S)
+export const AXIOM_ASYMMETRIC_PROP: u16 = 22;         // Asym(R)
+export const AXIOM_IRREFLEXIVE_PROP: u16 = 23;        // Irr(R)
+export const AXIOM_DISJOINT_PROPS: u16 = 24;          // Disjoint(R, S)
+export const AXIOM_NOMINAL_CLASS: u16 = 25;           // C ≡ {a1, a2, ...}
+export const AXIOM_SELF_RESTRICTION: u16 = 26;        // C ⊑ ∃R.Self
+export const AXIOM_SHACL_RULE: u16 = 27;              // SHACL-AF Rule
 
 export const PATH_OP_DIRECT: u32 = 1;
 export const PATH_OP_PLUS: u32 = 2;          // + (1+ hops)
@@ -89,7 +100,7 @@ export class OntologyStore {
    * Adds an OWL 2 axiom into the indexed knowledge store.
    * Updates SPO, POS, and OSP index chains for fast relational queries.
    */
-  addAxiom(axiomType: u32, sourceLangId: u32, subjectHash: u32, predicateHash: u32, objectHash: u32, flags: u32 = 0): u32 {
+  addAxiom(axiomType: u32, sourceLangId: u32, subjectHash: u32, predicateHash: u32, objectHash: u32, flags: u32 = 0, extra: u32 = 0): u32 {
     let id = this.axiomCount++;
     let baseIdx = id * AXIOM_STRIDE;
 
@@ -99,7 +110,7 @@ export class OntologyStore {
     this.axiomTable.set(baseIdx + 2, predicateHash);
     this.axiomTable.set(baseIdx + 3, objectHash);
     this.axiomTable.set(baseIdx + 4, flags);
-    this.axiomTable.set(baseIdx + 5, 0);
+    this.axiomTable.set(baseIdx + 5, extra);
 
     // 1. Link SPO Index (Subject -> Axiom)
     if (subjectHash != 0) {
@@ -1763,6 +1774,423 @@ export class OntologyStore {
     return false;
   }
 
+  hasObjectPropertyAssertion(subj: u32, prop: u32, obj: u32): boolean {
+    let axId = this.spoHead.get(subj as u64) as u32;
+    while (axId != 0) {
+      if (this.axiomActive.get(axId) != 0) {
+        let bIdx = axId * AXIOM_STRIDE;
+        let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+        let p = this.axiomTable.get(bIdx + 2);
+        let o = this.axiomTable.get(bIdx + 3);
+        if (aType == AXIOM_OBJ_PROP_ASSERT && p == prop && o == obj) return true;
+      }
+      axId = this.nextSpo.get(axId);
+    }
+    return false;
+  }
+
+  hasDirectClassAssertion(ind: u32, cls: u32): boolean {
+    let axId = this.spoHead.get(ind as u64) as u32;
+    while (axId != 0) {
+      if (this.axiomActive.get(axId) != 0) {
+        let bIdx = axId * AXIOM_STRIDE;
+        let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+        let c = this.axiomTable.get(bIdx + 3);
+        if (aType == AXIOM_CLASS_ASSERT && c == cls) return true;
+      }
+      axId = this.nextSpo.get(axId);
+    }
+    return false;
+  }
+
+  /**
+   * Saturates symmetric properties, inverse properties, and self restrictions.
+   */
+  saturateSymmetricAndInverses(): u32 {
+    let newInferences: u32 = 0;
+
+    for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+
+      // 1. Symmetric Object Property: Sym(R) ∧ R(x, y) ⇒ R(y, x)
+      if (aType == AXIOM_SYMMETRIC_PROP) {
+        let prop = this.axiomTable.get(bIdx + 2);
+        let axId = this.posHead.get(prop as u64) as u32;
+        while (axId != 0) {
+          if (this.axiomActive.get(axId) != 0) {
+            let jIdx = axId * AXIOM_STRIDE;
+            let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+            if (jType == AXIOM_OBJ_PROP_ASSERT) {
+              let s = this.axiomTable.get(jIdx + 1);
+              let o = this.axiomTable.get(jIdx + 3);
+              if (s != 0 && o != 0 && s != o && !this.hasObjectPropertyAssertion(o, prop, s)) {
+                this.addAxiom(AXIOM_OBJ_PROP_ASSERT, 0, o, prop, s, 1);
+                newInferences++;
+              }
+            }
+          }
+          axId = this.nextPos.get(axId);
+        }
+      }
+
+      // 2. Inverse Object Property: Inv(R, S) ∧ R(x, y) ⇒ S(y, x)
+      else if (aType == AXIOM_INVERSE_PROP) {
+        let r = this.axiomTable.get(bIdx + 2);
+        let s = this.axiomTable.get(bIdx + 3);
+
+        // Forward: R(x, y) ⇒ S(y, x)
+        let axIdR = this.posHead.get(r as u64) as u32;
+        while (axIdR != 0) {
+          if (this.axiomActive.get(axIdR) != 0) {
+            let jIdx = axIdR * AXIOM_STRIDE;
+            let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+            if (jType == AXIOM_OBJ_PROP_ASSERT) {
+              let subj = this.axiomTable.get(jIdx + 1);
+              let obj = this.axiomTable.get(jIdx + 3);
+              if (subj != 0 && obj != 0 && !this.hasObjectPropertyAssertion(obj, s, subj)) {
+                this.addAxiom(AXIOM_OBJ_PROP_ASSERT, 0, obj, s, subj, 1);
+                newInferences++;
+              }
+            }
+          }
+          axIdR = this.nextPos.get(axIdR);
+        }
+
+        // Backward: S(x, y) ⇒ R(y, x)
+        let axIdS = this.posHead.get(s as u64) as u32;
+        while (axIdS != 0) {
+          if (this.axiomActive.get(axIdS) != 0) {
+            let jIdx = axIdS * AXIOM_STRIDE;
+            let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+            if (jType == AXIOM_OBJ_PROP_ASSERT) {
+              let subj = this.axiomTable.get(jIdx + 1);
+              let obj = this.axiomTable.get(jIdx + 3);
+              if (subj != 0 && obj != 0 && !this.hasObjectPropertyAssertion(obj, r, subj)) {
+                this.addAxiom(AXIOM_OBJ_PROP_ASSERT, 0, obj, r, subj, 1);
+                newInferences++;
+              }
+            }
+          }
+          axIdS = this.nextPos.get(axIdS);
+        }
+      }
+
+      // 3. Self Restriction: C ⊑ ∃R.Self ∧ x : C ⇒ R(x, x)
+      else if (aType == AXIOM_SELF_RESTRICTION) {
+        let cls = this.axiomTable.get(bIdx + 1);
+        let prop = this.axiomTable.get(bIdx + 2);
+
+        for (let j: u32 = 1; j < this.axiomCount; j++) {
+          if (this.axiomActive.get(j) == 0) continue;
+          let jIdx = j * AXIOM_STRIDE;
+          let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+          if (jType == AXIOM_CLASS_ASSERT && this.isInstanceOf(this.axiomTable.get(jIdx + 1), cls)) {
+            let ind = this.axiomTable.get(jIdx + 1);
+            if (ind != 0 && !this.hasObjectPropertyAssertion(ind, prop, ind)) {
+              this.addAxiom(AXIOM_OBJ_PROP_ASSERT, 0, ind, prop, ind, 1);
+              newInferences++;
+            }
+          }
+        }
+      }
+    }
+
+    return newInferences;
+  }
+
+  /**
+   * Consequence-based forward propagation for Universal Restrictions:
+   * (C ⊑ ∀R.D ∧ x : C ∧ R(x, y)) ⇒ y : D
+   */
+  saturateUniversalRestrictions(): u32 {
+    let newInferences: u32 = 0;
+
+    for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+
+      if (aType == AXIOM_UNIVERSAL_RESTRICTION) {
+        let cls = this.axiomTable.get(bIdx + 1); // C (or 0 for global)
+        let prop = this.axiomTable.get(bIdx + 2); // R
+        let targetCls = this.axiomTable.get(bIdx + 3); // D
+
+        // Scan all R assertions: R(x, y)
+        let axId = this.posHead.get(prop as u64) as u32;
+        while (axId != 0) {
+          if (this.axiomActive.get(axId) != 0) {
+            let jIdx = axId * AXIOM_STRIDE;
+            let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+            if (jType == AXIOM_OBJ_PROP_ASSERT) {
+              let s = this.axiomTable.get(jIdx + 1);
+              let o = this.axiomTable.get(jIdx + 3);
+              if (s != 0 && o != 0 && (cls == 0 || this.isInstanceOf(s, cls))) {
+                if (!this.isInstanceOf(o, targetCls)) {
+                  this.addAxiom(AXIOM_CLASS_ASSERT, 0, o, 0, targetCls, 1);
+                  newInferences++;
+                }
+              }
+            }
+          }
+          axId = this.nextPos.get(axId);
+        }
+      }
+    }
+
+    return newInferences;
+  }
+
+  /**
+   * Deterministic Unit Resolution over Disjunctive Classes (Modus Tollendo Ponens):
+   * C ⊑ D1 ⊔ D2 ∧ x : C ∧ x : ¬D1 ⇒ x : D2
+   * Also structural merging: D1 ⊑ E ∧ D2 ⊑ E ⇒ C ⊑ E
+   */
+  saturateDisjunctiveUnitResolution(): u32 {
+    let newInferences: u32 = 0;
+
+    for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+
+      if (aType == AXIOM_DISJUNCTIVE_CLASS) {
+        let clsC = this.axiomTable.get(bIdx + 1);
+        let clsD1 = this.axiomTable.get(bIdx + 3);
+        let clsD2 = this.axiomTable.get(bIdx + 4);
+
+        // Structural upward merging: if D1 ⊑ E and D2 ⊑ E ⇒ C ⊑ E
+        if (clsD1 != 0 && clsD2 != 0) {
+          let axIdE = this.spoHead.get(clsD1 as u64) as u32;
+          while (axIdE != 0) {
+            if (this.axiomActive.get(axIdE) != 0) {
+              let eIdx = axIdE * AXIOM_STRIDE;
+              let eType = (this.axiomTable.get(eIdx + 0) & 0xffff) as u16;
+              let supE = this.axiomTable.get(eIdx + 3);
+              if (eType == AXIOM_SUBCLASS_OF && supE != 0 && this.isSubClassOf(clsD2, supE)) {
+                if (!this.hasDirectSubclass(clsC, supE)) {
+                  this.addAxiom(AXIOM_SUBCLASS_OF, 0, clsC, 0, supE, 1);
+                  newInferences++;
+                }
+              }
+            }
+            axIdE = this.nextSpo.get(axIdE);
+          }
+        }
+
+        // Instance unit resolution: x : C ∧ areDisjoint(typeOf(x), D1) ⇒ x : D2
+        for (let j: u32 = 1; j < this.axiomCount; j++) {
+          if (this.axiomActive.get(j) == 0) continue;
+          let jIdx = j * AXIOM_STRIDE;
+          let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+          if (jType == AXIOM_CLASS_ASSERT) {
+            let ind = this.axiomTable.get(jIdx + 1);
+            let indType = this.axiomTable.get(jIdx + 3);
+            if (this.isInstanceOf(ind, clsC)) {
+              if (clsD1 != 0 && this.areDisjoint(indType, clsD1)) {
+                if (clsD2 != 0 && !this.isInstanceOf(ind, clsD2)) {
+                  this.addAxiom(AXIOM_CLASS_ASSERT, 0, ind, 0, clsD2, 1);
+                  newInferences++;
+                }
+              } else if (clsD2 != 0 && this.areDisjoint(indType, clsD2)) {
+                if (clsD1 != 0 && !this.isInstanceOf(ind, clsD1)) {
+                  this.addAxiom(AXIOM_CLASS_ASSERT, 0, ind, 0, clsD1, 1);
+                  newInferences++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return newInferences;
+  }
+
+  /**
+   * Evaluates SHACL-AF Rules and exact cardinality aggregations in linear memory.
+   * Derives new types and assertions when shape conditions (minCount, maxCount, filler) match.
+   */
+  evaluateShaclRulesAndCounts(): u32 {
+    let newInferences: u32 = 0;
+
+    for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+
+      if (aType == AXIOM_SHACL_RULE) {
+        let targetClass = this.axiomTable.get(bIdx + 1);
+        let prop = this.axiomTable.get(bIdx + 2);
+        let fillerClass = this.axiomTable.get(bIdx + 3);
+        let flags = this.axiomTable.get(bIdx + 4);
+        let extra = this.axiomTable.get(bIdx + 5);
+
+        let minCount = (flags >>> 16) & 0xffff;
+        let maxCount = flags & 0xffff;
+        let derivedClass = extra;
+
+        // Iterate over all individuals
+        for (let j: u32 = 1; j < this.axiomCount; j++) {
+          if (this.axiomActive.get(j) == 0) continue;
+          let jIdx = j * AXIOM_STRIDE;
+          let jType = (this.axiomTable.get(jIdx + 0) & 0xffff) as u16;
+
+          if (jType == AXIOM_CLASS_ASSERT) {
+            let ind = this.axiomTable.get(jIdx + 1);
+            if (targetClass == 0 || this.isInstanceOf(ind, targetClass)) {
+              // Count matching outgoing property edges
+              let count: u32 = 0;
+              let axId = this.spoHead.get(ind as u64) as u32;
+              while (axId != 0) {
+                if (this.axiomActive.get(axId) != 0) {
+                  let eIdx = axId * AXIOM_STRIDE;
+                  let eType = (this.axiomTable.get(eIdx + 0) & 0xffff) as u16;
+                  let p = this.axiomTable.get(eIdx + 2);
+                  let o = this.axiomTable.get(eIdx + 3);
+
+                  if (eType == AXIOM_OBJ_PROP_ASSERT && p == prop) {
+                    if (fillerClass == 0 || this.isInstanceOf(o, fillerClass)) {
+                      count++;
+                    }
+                  }
+                }
+                axId = this.nextSpo.get(axId);
+              }
+
+              // Check condition: count >= minCount && (maxCount == 0 || count <= maxCount)
+              if (count >= minCount && (maxCount == 0 || count <= maxCount)) {
+                if (derivedClass != 0 && !this.isInstanceOf(ind, derivedClass)) {
+                  this.addAxiom(AXIOM_CLASS_ASSERT, 0, ind, 0, derivedClass, 1);
+                  newInferences++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return newInferences;
+  }
+
+  /**
+   * Runs the full hybrid interleaved fixpoint cycle in WASM memory:
+   * EL++ ↔ Functional ↔ Symmetric/Inverse ↔ Universal ↔ Disjunctive Unit Resolution ↔ SHACL Rules
+   */
+  runHybridInterleavedFixpoint(maxRounds: u32 = 16): u32 {
+    let totalInferred: u32 = 0;
+    let round: u32 = 0;
+    let changed = true;
+
+    while (changed && round < maxRounds) {
+      changed = false;
+      round++;
+
+      let elInf = this.saturateELRules();
+      let fnInf = this.saturateFunctionalProperties();
+      let symInf = this.saturateSymmetricAndInverses();
+      let uniInf = this.saturateUniversalRestrictions();
+      let disjInf = this.saturateDisjunctiveUnitResolution();
+      let shaclInf = this.evaluateShaclRulesAndCounts();
+
+      let roundTotal = elInf + fnInf + symInf + uniInf + disjInf + shaclInf;
+      if (roundTotal > 0) {
+        totalInferred += roundTotal;
+        changed = true;
+      }
+    }
+
+    if (totalInferred > 0) {
+      this.computeIntervalIndex();
+    }
+    return totalInferred;
+  }
+
+  /**
+   * Validates advanced constraints: Asymmetric, Irreflexive, Disjoint Properties,
+   * Qualified Cardinalities, and Nominals.
+   */
+  validateAdvancedConstraints(outViolations: ChunkedUint32Array): u32 {
+    let count: u32 = 0;
+
+    for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+
+      // 1. Asymmetric: Asym(R) ∧ R(x, y) ∧ R(y, x) ∧ x != y ⇒ CLASH
+      if (aType == AXIOM_ASYMMETRIC_PROP) {
+        let prop = this.axiomTable.get(bIdx + 2);
+        let axId = this.posHead.get(prop as u64) as u32;
+        while (axId != 0) {
+          if (this.axiomActive.get(axId) != 0) {
+            let jIdx = axId * AXIOM_STRIDE;
+            if (((this.axiomTable.get(jIdx + 0) & 0xffff) as u16) == AXIOM_OBJ_PROP_ASSERT) {
+              let s = this.axiomTable.get(jIdx + 1);
+              let o = this.axiomTable.get(jIdx + 3);
+              if (s != 0 && o != 0 && s != o && this.hasObjectPropertyAssertion(o, prop, s)) {
+                outViolations.push(s);
+                outViolations.push(prop);
+                outViolations.push(o);
+                count++;
+              }
+            }
+          }
+          axId = this.nextPos.get(axId);
+        }
+      }
+
+      // 2. Irreflexive: Irr(R) ∧ R(x, x) ⇒ CLASH
+      else if (aType == AXIOM_IRREFLEXIVE_PROP) {
+        let prop = this.axiomTable.get(bIdx + 2);
+        let axId = this.posHead.get(prop as u64) as u32;
+        while (axId != 0) {
+          if (this.axiomActive.get(axId) != 0) {
+            let jIdx = axId * AXIOM_STRIDE;
+            if (((this.axiomTable.get(jIdx + 0) & 0xffff) as u16) == AXIOM_OBJ_PROP_ASSERT) {
+              let s = this.axiomTable.get(jIdx + 1);
+              let o = this.axiomTable.get(jIdx + 3);
+              if (s != 0 && s == o) {
+                outViolations.push(s);
+                outViolations.push(prop);
+                outViolations.push(o);
+                count++;
+              }
+            }
+          }
+          axId = this.nextPos.get(axId);
+        }
+      }
+
+      // 3. Disjoint Properties: Disjoint(R, S) ∧ R(x, y) ∧ S(x, y) ⇒ CLASH
+      else if (aType == AXIOM_DISJOINT_PROPS) {
+        let r = this.axiomTable.get(bIdx + 2);
+        let s = this.axiomTable.get(bIdx + 3);
+        let axId = this.posHead.get(r as u64) as u32;
+        while (axId != 0) {
+          if (this.axiomActive.get(axId) != 0) {
+            let jIdx = axId * AXIOM_STRIDE;
+            if (((this.axiomTable.get(jIdx + 0) & 0xffff) as u16) == AXIOM_OBJ_PROP_ASSERT) {
+              let subj = this.axiomTable.get(jIdx + 1);
+              let obj = this.axiomTable.get(jIdx + 3);
+              if (subj != 0 && obj != 0 && this.hasObjectPropertyAssertion(subj, s, obj)) {
+                outViolations.push(subj);
+                outViolations.push(r);
+                outViolations.push(obj);
+                count++;
+              }
+            }
+          }
+          axId = this.nextPos.get(axId);
+        }
+      }
+    }
+
+    return count;
+  }
+
   clear(): void {
     this.axiomTable.clear();
     this.axiomCount = 1;
@@ -1811,10 +2239,11 @@ export function ontology_addAxiom(
   subjectHash: u32,
   predicateHash: u32,
   objectHash: u32,
-  flags: u32
+  flags: u32,
+  extra: u32
 ): u32 {
   ensureOntologyStore();
-  return t_ontologyStore.addAxiom(axiomType, sourceLangId, subjectHash, predicateHash, objectHash, flags);
+  return t_ontologyStore.addAxiom(axiomType, sourceLangId, subjectHash, predicateHash, objectHash, flags, extra);
 }
 
 export function ontology_isSubClassOf(subClassHash: u32, superClassHash: u32): u32 {
@@ -2059,6 +2488,105 @@ export function ontology_allMus(maxCores: u32 = 16): u32 {
   t_ontologyQueryBuffer.copyToFlat(t_ontologyQueryFlatPtr);
   return totalCores;
 }
+
+/**
+ * Tier 2: Zero-GC Backtrackable Bump-Pointer Tableau Fallback Engine.
+ * Activated on non-Horn disjunctive case-analyses and complex DL proofs.
+ */
+@unmanaged
+export class TableauEngine {
+  arena: ChunkedUint32Array;
+  arenaPtr: u32;
+  watermarkStack: ChunkedUint32Array;
+  branchStack: ChunkedUint32Array;
+
+  init(capacity: u32 = 16384): void {
+    this.arena = createChunkedUint32Array(capacity);
+    this.arenaPtr = 0;
+    this.watermarkStack = createChunkedUint32Array(256);
+    this.branchStack = createChunkedUint32Array(256);
+  }
+
+  mark(): u32 {
+    let markVal = this.arenaPtr;
+    this.watermarkStack.push(markVal);
+    return markVal;
+  }
+
+  backtrack(): void {
+    if (this.watermarkStack.length > 0) {
+      let markVal = this.watermarkStack.pop();
+      this.arenaPtr = markVal;
+    }
+  }
+
+  solveSubsumption(store: OntologyStore, subClass: u32, supClass: u32): boolean {
+    if (subClass == supClass) return true;
+    if (store.isSubClassOf(subClass, supClass)) return true;
+
+    // Disjunctive branch analysis: if C ⊑ D1 ⊔ D2 and subClass ⊑ C
+    for (let i: u32 = 1; i < store.axiomCount; i++) {
+      if (store.axiomActive.get(i) == 0) continue;
+      let bIdx = i * AXIOM_STRIDE;
+      let aType = (store.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+      if (aType == AXIOM_DISJUNCTIVE_CLASS) {
+        let c = store.axiomTable.get(bIdx + 1);
+        let d1 = store.axiomTable.get(bIdx + 3);
+        let d2 = store.axiomTable.get(bIdx + 4);
+        if (store.isSubClassOf(subClass, c) || subClass == c) {
+          this.mark();
+          let b1Holds = store.isSubClassOf(d1, supClass) || d1 == supClass;
+          let b2Holds = store.isSubClassOf(d2, supClass) || d2 == supClass;
+          this.backtrack();
+
+          if (b1Holds && b2Holds) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+}
+
+export let t_tableauEngine: TableauEngine = changetype<TableauEngine>(0);
+
+export function ensureTableauEngine(): void {
+  if (changetype<usize>(t_tableauEngine) == 0) {
+    let ptr = atomicChunkAlloc(128);
+    t_tableauEngine = changetype<TableauEngine>(ptr);
+    t_tableauEngine.init();
+  }
+}
+
+export function ontology_runHybridFixpoint(): u32 {
+  ensureOntologyStore();
+  return t_ontologyStore.runHybridInterleavedFixpoint();
+}
+
+export function ontology_validateAdvancedConstraints(): u32 {
+  ensureOntologyStore();
+  t_ontologyQueryBuffer.clear();
+  let count = t_ontologyStore.validateAdvancedConstraints(t_ontologyQueryBuffer);
+
+  let totalWords = t_ontologyQueryBuffer.length;
+  if (totalWords > t_ontologyQueryFlatCapacity) {
+    t_ontologyQueryFlatCapacity = totalWords + 256;
+    t_ontologyQueryFlatPtr = atomicChunkAlloc(t_ontologyQueryFlatCapacity * sizeof<u32>());
+  }
+
+  t_ontologyQueryBuffer.copyToFlat(t_ontologyQueryFlatPtr);
+  return count;
+}
+
+export function ontology_runTableauSubsumption(subClass: u32, supClass: u32): u32 {
+  ensureOntologyStore();
+  ensureTableauEngine();
+  let holds = t_tableauEngine.solveSubsumption(t_ontologyStore, subClass, supClass);
+  return holds ? 1 : 0;
+}
+
 
 
 

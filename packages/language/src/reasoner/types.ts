@@ -109,6 +109,116 @@ export interface OWL2SameIndividual {
   readonly sourceLang?: string;
 }
 
+export interface OWL2UniversalRestriction {
+  readonly type: "UniversalRestriction";
+  readonly propertyIri: string;
+  readonly targetClassIri: string;
+  readonly classIri?: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2DisjunctiveClass {
+  readonly type: "DisjunctiveClass";
+  readonly classIris: readonly string[];
+  readonly superClassIri?: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2QualifiedCardinality {
+  readonly type: "QualifiedCardinality";
+  readonly classIri: string;
+  readonly propertyIri: string;
+  readonly fillerClassIri?: string;
+  readonly cardinalityType: "min" | "max" | "exact";
+  readonly count: number;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2SymmetricObjectProperty {
+  readonly type: "SymmetricObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2InverseObjectProperty {
+  readonly type: "InverseObjectProperty";
+  readonly propertyIri: string;
+  readonly inversePropertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2AsymmetricObjectProperty {
+  readonly type: "AsymmetricObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2IrreflexiveObjectProperty {
+  readonly type: "IrreflexiveObjectProperty";
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+export interface OWL2DisjointObjectProperties {
+  readonly type: "DisjointObjectProperties";
+  readonly propertyIris: readonly string[];
+  readonly sourceLang?: string;
+}
+
+export interface OWL2NominalClass {
+  readonly type: "NominalClass";
+  readonly classIri: string;
+  readonly individualIris: readonly string[];
+  readonly sourceLang?: string;
+}
+
+export interface OWL2SelfRestriction {
+  readonly type: "SelfRestriction";
+  readonly classIri: string;
+  readonly propertyIri: string;
+  readonly sourceLang?: string;
+}
+
+// ---------------------------------------------------------------------------
+// SHACL Shapes and Rules (SHACL-AF)
+// ---------------------------------------------------------------------------
+
+export interface SHACLPropertyShape {
+  readonly path: string;
+  readonly targetClass?: string;
+  readonly minCount?: number;
+  readonly maxCount?: number;
+  readonly qualifiedValueShape?: string; // target class filler
+  readonly pattern?: string; // regex
+  readonly hasValue?: string;
+  readonly in?: readonly string[]; // nominal set
+}
+
+export interface SHACLNodeShape {
+  readonly targetClass: string;
+  readonly propertyShapes: readonly SHACLPropertyShape[];
+  readonly closed?: boolean;
+}
+
+export interface SHACLRule {
+  readonly targetClass: string;
+  readonly propertyIri: string;
+  readonly fillerClassIri?: string;
+  readonly minCount?: number;
+  readonly maxCount?: number;
+  readonly derivedClassIri?: string;
+  readonly derivedPropertyIri?: string;
+  readonly derivedValueIri?: string;
+}
+
+export interface SHACLViolation {
+  readonly focusNode: string;
+  readonly resultPath: string;
+  readonly message: string;
+  readonly constraintComponent: string;
+  readonly severity?: "Violation" | "Warning" | "Info";
+}
+
 export type OWL2Axiom =
   | OWL2ClassDeclaration
   | OWL2SubClassOf
@@ -125,7 +235,17 @@ export type OWL2Axiom =
   | OWL2DataSomeValuesFrom
   | OWL2FunctionalObjectProperty
   | OWL2FunctionalDataProperty
-  | OWL2SameIndividual;
+  | OWL2SameIndividual
+  | OWL2UniversalRestriction
+  | OWL2DisjunctiveClass
+  | OWL2QualifiedCardinality
+  | OWL2SymmetricObjectProperty
+  | OWL2InverseObjectProperty
+  | OWL2AsymmetricObjectProperty
+  | OWL2IrreflexiveObjectProperty
+  | OWL2DisjointObjectProperties
+  | OWL2NominalClass
+  | OWL2SelfRestriction;
 
 export interface OWL2AxiomDelta {
   readonly retractions: readonly OWL2Axiom[];

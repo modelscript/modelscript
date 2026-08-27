@@ -35,6 +35,117 @@ const PRECEDENCE = {
 export const modelicaLanguage = language({
   name: "Modelica",
 
+  mcp: {
+    serverName: "modelica-mcp",
+    serverVersion: "1.0.0",
+    tools: [
+      {
+        name: "modelica_load",
+        description: "Load Modelica libraries from file system paths.",
+        category: "ast",
+        inputSchema: {
+          paths: { type: "array", description: "File or directory paths", required: true, items: { type: "string" } },
+        },
+      },
+      {
+        name: "modelica_parse",
+        description: "Parse inline Modelica source code and return a summary of classes and components.",
+        category: "ast",
+        inputSchema: {
+          code: { type: "string", description: "Modelica source code", required: true },
+        },
+      },
+      {
+        name: "modelica_flatten",
+        description: "Flatten a Modelica class to its DAE form.",
+        category: "transformation",
+        inputSchema: {
+          name: { type: "string", description: "Fully qualified class name", required: true },
+        },
+      },
+      {
+        name: "modelica_simulate",
+        description: "Flatten and simulate a Modelica model, returning time-series results.",
+        category: "simulation",
+        inputSchema: {
+          name: { type: "string", description: "Fully qualified class name", required: true },
+          startTime: { type: "number", description: "Simulation start time", default: 0 },
+          stopTime: { type: "number", description: "Simulation stop time", default: 10 },
+          interval: { type: "number", description: "Output interval" },
+          solver: {
+            type: "string",
+            description: "ODE solver",
+            enum: ["rk4", "dopri5", "bdf", "auto"],
+            default: "dopri5",
+          },
+          format: { type: "string", description: "Output format", enum: ["json", "csv"], default: "json" },
+        },
+      },
+      {
+        name: "modelica_doe",
+        description: "Run a Design of Experiments on a Modelica model across parameter ranges.",
+        category: "simulation",
+        inputSchema: {
+          name: { type: "string", description: "Fully qualified class name", required: true },
+          inputs: { type: "object", description: "Parameter ranges mapping", required: true },
+          outputs: { type: "array", description: "Output variable names", required: true, items: { type: "string" } },
+          strategy: {
+            type: "string",
+            enum: ["full-factorial", "latin-hypercube", "sobol", "central-composite"],
+            default: "sobol",
+          },
+          numSamples: { type: "number", description: "Number of samples", default: 50 },
+          stopTime: { type: "number", description: "Simulation stop time", default: 10 },
+        },
+      },
+      {
+        name: "modelica_sensitivity",
+        description: "Run a One-At-a-Time sensitivity analysis on a Modelica model.",
+        category: "simulation",
+        inputSchema: {
+          name: { type: "string", description: "Fully qualified class name", required: true },
+          parameters: { type: "object", description: "Parameters to perturb", required: true },
+          outputs: { type: "array", description: "Output variable names", required: true, items: { type: "string" } },
+          stopTime: { type: "number", description: "Simulation stop time", default: 10 },
+        },
+      },
+      {
+        name: "modelica_query",
+        description: "Introspect a Modelica class definition, components, extends hierarchy, and equations.",
+        category: "query",
+        inputSchema: {
+          name: { type: "string", description: "Fully qualified class name", required: true },
+        },
+      },
+    ],
+    resources: [
+      {
+        uriTemplate: "modelica://workspace/{className}/ast",
+        name: "Modelica AST Resource",
+        mimeType: "application/json",
+        description: "Abstract Syntax Tree of a loaded Modelica class",
+      },
+      {
+        uriTemplate: "modelica://workspace/{className}/dae",
+        name: "Modelica DAE Resource",
+        mimeType: "text/plain",
+        description: "Flattened DAE equations of a Modelica model",
+      },
+    ],
+    prompts: [
+      {
+        name: "modelica_optimize_parameters",
+        description: "Optimize parameters of a Modelica model to match target dynamics",
+        arguments: [
+          { name: "className", description: "Modelica class to optimize", required: true },
+          { name: "objective", description: "Optimization objective metric", required: true },
+        ],
+        template: (args: Record<string, string>) =>
+          `Optimize parameters for ${args.className} targeting objective: ${args.objective}`,
+      },
+    ],
+  },
+
   runtimeFiles: [{ filename: "flattener.ts", content: modelicaFlattenerWasmCode }],
 
   word: ($) => $.identifier,
